@@ -1963,18 +1963,8 @@ module.exports = async function (fastify) {
           requested_by: user.name || user.id
         });
 
-        // Telegram inline approval buttons
-        try {
-          const telegram = require('../services/telegram');
-          if (telegram.sendApprovalRequest) {
-            const tgMsg = `🔔 *Согласование заявки #${id}*\n\n` +
-              `👤 Запросил: ${user.name || 'Сотрудник'}\n` +
-              `🏢 Заказчик: ${pt.customer_name || '—'}\n` +
-              `📋 ${pt.work_description || ''}\n` +
-              `💰 Сумма: ${pt.estimated_sum ? Number(pt.estimated_sum).toLocaleString('ru') + ' ₽' : 'не указана'}`;
-            telegram.sendApprovalRequest(dir.id, tgMsg, { type: 'pre_tender', id: parseInt(id) });
-          }
-        } catch(e) { /* telegram optional */ }
+        // Telegram убран (заказчик 18.10.2026): канал не работает — MAX/SMS/push.
+        // Очередь согласования уже создана выше (pre_tender_approvals + email).
       }
 
       broadcast('pre_tender:updated', { id: parseInt(id), status: 'pending_approval' });
@@ -2384,18 +2374,8 @@ module.exports = async function (fastify) {
           requested_by: user.name || user.id
         });
 
-        // Telegram inline approval buttons
-        try {
-          const telegram = require('../services/telegram');
-          if (telegram.sendApprovalRequest) {
-            const tgMsg = `🔔 *Согласование заявки #${id}*\n\n` +
-              `👤 Запросил: ${user.name || 'Сотрудник'}\n` +
-              `🏢 Заказчик: ${pt.customer_name || '—'}\n` +
-              `📋 ${pt.work_description || ''}\n` +
-              `💰 Сумма: ${pt.estimated_sum ? Number(pt.estimated_sum).toLocaleString('ru') + ' ₽' : 'не указана'}`;
-            telegram.sendApprovalRequest(dir.id, tgMsg, { type: 'pre_tender', id: parseInt(id) });
-          }
-        } catch(e) { /* telegram optional */ }
+        // Telegram убран (заказчик 18.10.2026): канал не работает — MAX/SMS/push.
+        // Очередь согласования уже создана выше (pre_tender_approvals + email).
       }
 
       broadcast('pre_tender:updated', { id: parseInt(id), status: 'pending_approval' });
@@ -2505,14 +2485,7 @@ module.exports = async function (fastify) {
       return reply.code(500).send({ error: 'Ошибка создания тендера: ' + txErr.message });
     }
 
-    // Telegram notification for assigned PM (outside transaction)
-    try {
-      const telegram = require('../services/telegram');
-      if (telegram && telegram.sendNotification) {
-        const msgText = `Вам назначен тендер от ${pt.customer_name || 'заказчика'}. ${comment || ''}`.trim();
-        await telegram.sendNotification(pm_id, `🔔 *Новый тендер на просчёт*\n\n${msgText}`);
-      }
-    } catch (_) {}
+    // Telegram убран (заказчик 18.10.2026): канал не работает — MAX/SMS/push.
 
     // 5. Отправить email заказчику (вне транзакции)
     let responseEmailId = null;

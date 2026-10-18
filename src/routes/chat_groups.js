@@ -249,15 +249,8 @@ module.exports = async function(fastify) {
         `, [userId, safeTitle, safeBody, chatLink]);
       }
 
-      // 2. Telegram notification
-      try {
-        const telegram = require('../services/telegram');
-        if (telegram && telegram.sendNotification) {
-          await telegram.sendNotification(userId, `💬 *${pushTitle}*\n\n${pushBody}`);
-        }
-      } catch (tgErr) {
-        // Telegram may not be configured
-      }
+      // Telegram убран (заказчик 18.10.2026): канал не работает — MAX/SMS/push.
+      // Уведомление в колокольчик + push уже создано выше (DB insert).
     } catch (e) {
       fastify.log.error('Chat notification error:', e.message);
     }

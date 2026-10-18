@@ -73,9 +73,8 @@ async function notifyDirectorsForApproval(db, { entityType, entityId, actorName,
       user_id: dir.id, title: label, message: msg, type: 'approval',
       link: linkPath
     });
-    await sendApprovalTelegram(dir.id, label, msg, {
-      type: entityType, id: entityId, stage: 'director', requires_payment: !!requiresPayment
-    });
+    // Telegram убран (заказчик 18.10.2026): канал не работает.
+    // Решение принимается на экране «Согласование оплат» (#/approval-payment).
   }
 }
 
@@ -91,9 +90,7 @@ async function notifyBuhForPayment(db, { entityType, entityId, actorName, title,
       user_id: buh.id, title: label, message: msg, type: 'approval',
       link: `#/${entityType}?id=${entityId}`
     });
-    await sendApprovalTelegram(buh.id, label, msg, {
-      type: entityType, id: entityId, stage: 'accounting'
-    });
+    // Telegram убран (заказчик 18.10.2026): канал не работает — MAX/SMS/push.
   }
 }
 

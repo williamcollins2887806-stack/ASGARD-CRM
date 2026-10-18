@@ -11,9 +11,9 @@ import { CreditCard, ChevronRight } from 'lucide-react';
 import { formatMoney, relativeTime } from '@/lib/utils';
 
 /* Очередь «на оплату» у бухгалтерии и у директора — РАЗНЫЕ эндпоинты.
-   /approval/pending-buh отдаёт 403 всем, кроме BUH/ADMIN (approvalService.isBuh);
-   директору его звать нельзя: api-клиент трактует такой 403 как «сессия истекла»,
-   стирает токен и выбрасывает на /welcome. Директор читает свой срез — /approval/pending-dir. */
+   /approval/pending-buh отдаёт 403 всем, кроме BUH/ADMIN (approvalService.isBuh),
+   поэтому директору его звать незачем — экран показал бы «нет прав» вместо очереди.
+   Директор читает свой срез — /approval/pending-dir (+ /approval/cash-balance). */
 const BUH_ROLES = ['BUH', 'ADMIN'];
 const DIRECTOR_ROLES = ['ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV'];
 

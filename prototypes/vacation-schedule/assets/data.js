@@ -11,6 +11,43 @@ window.VS_DATA = (function () {
                     'июля','августа','сентября','октября','ноября','декабря'];
   var WEEKDAYS = ['пн','вт','ср','чт','пт','сб','вс'];
 
+  /* ── Производственный календарь 2027 (РФ) ─────────────────────────────
+     Праздничные НЕРАБОЧИЕ дни по ст. 112 ТК РФ. Эти дни в число календарных
+     дней отпуска НЕ входят и продлевают отпуск (ст. 120 ТК РФ).
+     Переносы 2027 (официальное постановление на момент вёрстки не опубликовано)
+     отмечены как ПРОЕКТНЫЕ — перед выкаткой сверить с постановлением. */
+  var HOLIDAYS_2027_RAW = [
+    { from: '2027-01-01', to: '2027-01-08', title: 'Новогодние каникулы', note: 'ст. 112 ТК РФ' },
+    { from: '2027-01-07', to: '2027-01-07', title: 'Рождество Христово', note: 'входит в каникулы' },
+    { from: '2027-02-23', to: '2027-02-23', title: 'День защитника Отечества' },
+    { from: '2027-03-08', to: '2027-03-08', title: 'Международный женский день' },
+    { from: '2027-05-01', to: '2027-05-01', title: 'Праздник Весны и Труда' },
+    { from: '2027-05-09', to: '2027-05-09', title: 'День Победы' },
+    { from: '2027-06-12', to: '2027-06-12', title: 'День России' },
+    { from: '2027-11-04', to: '2027-11-04', title: 'День народного единства' }
+  ];
+
+  /* Переносы выходных (проект, сверять с постановлением Правительства РФ). */
+  var SHIFTS_2027_RAW = [
+    { from: '2027-01-02', to: '2027-05-03', title: 'перенос с 2 января (сб)', draft: true },
+    { from: '2027-01-03', to: '2027-05-04', title: 'перенос с 3 января (вс)', draft: true },
+    { from: '2027-02-20', to: '2027-02-22', title: 'перенос с 20 февраля (сб)', draft: true },
+    { from: '2027-11-06', to: '2027-11-08', title: 'перенос с 6 ноября (сб)', draft: true }
+  ];
+
+  /** Множество нерабочих праздничных дней 'YYYY-MM-DD'. */
+  var HOLIDAYS = {};
+  function _rangeHoliday(a, b, title) {
+    rangeDays(a, b).forEach(function (d) { HOLIDAYS[d] = true; HOLIDAY_TITLES[d] = title; });
+  }
+  var HOLIDAY_TITLES = {};
+  /** Перенесённые выходные (нерабочие, но НЕ продлевают отпуск — это не праздник ст. 112). */
+  var SHIFT_DAYS = {};
+  var SHIFT_TITLES = {};
+
+  HOLIDAYS_2027_RAW.forEach(function (h) { _rangeHoliday(h.from, h.to, h.title); });
+  SHIFTS_2027_RAW.forEach(function (s) { SHIFT_DAYS[s.to] = true; SHIFT_TITLES[s.to] = s.title; });
+
   /* ── Правила (ТЗ заказчика) ────────────────────────────────────────────
      • 14 календарных дней разом — один раз в год;
      • остальные отпуска — не более 7 календарных дней;
@@ -23,7 +60,12 @@ window.VS_DATA = (function () {
     otherMax: 7,          // остальные отпуска
     singlePerYear: 1,     // сколько «длинных» отпусков разрешено
     maxParts: 6,          // максимум периодов за год
-    noticeDays: 15        // за сколько дней директору уходит письмо по конкретному отпуску
+    noticeDays: 15,       // за сколько дней директору уходит письмо по конкретному отпуску
+    planStart: '2026-11-01',   // с 1 ноября сотрудники вносят график на 2027
+    planDeadline: '2026-12-01',// до 1 декабря график должен быть закрыт
+    remindEveryHours: 24,      // напоминание директору раз в сутки
+    remindMax: 3,              // не больше 3 писем
+    autoCancelAfter: 3         // после 3-го письма без ответа — автоснятие
   };
 
   /* ── Должности/роли (русские подписи, как в CRM) ─────────────────────── */
@@ -136,6 +178,37 @@ window.VS_DATA = (function () {
   /** Месяц (0-based) по iso → 0..11 (если диапазон через год — обрезаем по году). */
   function monthOf(isoStr) { return parseIso(isoStr).m; }
 
+  /* ── Праздники, производственный календарь ──────────────────────────── */
+  function isHoliday(isoStr) { return !!HOLIDAYS[isoStr]; }
+  function holidayTitle(isoStr) { return HOLIDAY_TITLES[isoStr] || ''; }
+  function isShifted(isoStr) { return !!SHIFT_DAYS[isoStr]; }
+  function shiftTitle(isoStr) { return SHIFT_TITLES[isoStr] || ''; }
+  /** Праздники, попавшие в диапазон. */
+  function holidaysIn(a, b) {
+    return rangeDays(a, b).filter(function (d) { return isHoliday(d); });
+  }
+  /** Оплачиваемые календарные дни отпуска: календарные МИНУС праздники ст. 112 (ст. 120 ТК). */
+  function chargedDays(a, b) {
+    return rangeDays(a, b).filter(function (d) { return !isHoliday(d); }).length;
+  }
+  /** Продлить конец периода, чтобы «оплачиваемых» дней стало need (праздники продлевают отпуск). */
+  function extendEnd(start, need) {
+    var p = parseIso(start), cur = Date.UTC(p.y, p.m, p.d), got = 0;
+    while (true) {
+      var iso2 = new Date(cur).toISOString().slice(0, 10);
+      if (!isHoliday(iso2)) got++;
+      if (got >= need) return iso2;
+      cur += 86400000;
+    }
+  }
+  /** Подпись праздников диапазона: «1 мая — Праздник Весны и Труда». */
+  function holidayNote(a, b) {
+    return holidaysIn(a, b).map(function (d) {
+      var p = parseIso(d);
+      return p.d + ' ' + MONTHS_GEN[p.m] + ' — ' + (holidayTitle(d) || 'праздник');
+    });
+  }
+
   /* ── Статусы периодов ────────────────────────────────────────────────── */
   var ST = {
     approved: { label: 'Согласовано', cls: 'vs-st--ok',       short: 'согл.' },
@@ -150,7 +223,8 @@ window.VS_DATA = (function () {
   var VAC = {};   // empId -> [ {id, start, end, days, status, reason?, comment?, decided_by?, submitted_at?} ]
   function addRange(empId, start, end, status, extra) {
     var r = {
-      id: 'R' + (_seq++), start: start, end: end, days: daysBetween(start, end),
+      id: 'R' + (_seq++), start: start, end: end, days: chargedDays(start, end),
+      calDays: daysBetween(start, end), hol: holidaysIn(start, end).length,
       status: status || 'approved'
     };
     if (extra) for (var k in extra) r[k] = extra[k];
@@ -165,7 +239,7 @@ window.VS_DATA = (function () {
   addRange(5003, '2027-06-07', '2027-06-13', 'approved', { submitted_at: '02.12.2026' });
 
   // Руководители проектов
-  addRange(5016, '2027-01-12', '2027-01-18', 'approved', { submitted_at: '28.11.2026' });  // 7
+  addRange(5016, '2027-01-12', '2027-01-18', 'approved', { submitted_at: '28.11.2026' });  // 7 — для демо пересечения
   addRange(5018, '2027-09-01', '2027-09-10', 'approved', { submitted_at: '28.11.2026' });  // 10
   addRange(5019, '2027-04-19', '2027-04-25', 'approved', { submitted_at: '01.12.2026' });  // 7
   addRange(5017, '2027-08-03', '2027-08-09', 'pending',  { submitted_at: '12.01.2027' });  // 7 — на решении
@@ -192,6 +266,39 @@ window.VS_DATA = (function () {
 
   /* ── Помощники по периодам ───────────────────────────────────────────── */
   function rangesOf(empId) { return VAC[empId] || []; }
+
+  /* ── Согласование всеми директорами ────────────────────────────────────
+     Директоров трое; период согласован, когда «за» все трое. */
+  var DIRECTORS = [
+    { id: 5001, fio: 'Гажилиев Олег Викторович', role: 'DIRECTOR_COMM' },
+    { id: 5002, fio: 'Кудряшов Олег Сергеевич',  role: 'DIRECTOR_GEN' },
+    { id: 5003, fio: 'Черепанов Виктор Эдуардович', role: 'DIRECTOR_DEV' }
+  ];
+  function directorById(id) { return DIRECTORS.filter(function (d) { return d.id === id; })[0]; }
+  /** Текущий директор (для демо-подписи «вы»). */
+  var ME_DIRECTOR = 5002;
+
+  /** Голоса «за» по периоду. */
+  function approvesOf(r) { return (r && r.approves) || []; }
+  /** Сколько директоров ещё не проголосовало. */
+  function directorsLeft(r) {
+    return DIRECTORS.filter(function (d) { return approvesOf(r).indexOf(d.id) < 0; });
+  }
+  /** Итог согласования: сколько из скольких. */
+  function approveProgress(r) {
+    return { done: approvesOf(r).length, total: DIRECTORS.length, left: directorsLeft(r) };
+  }
+
+  /** Отклонённые (снятые) директором дни — храним даты и причину, повторно не поставить. */
+  var REJECTED = [];   // [{empId, periodId, days:[iso], reason, by, byId, at}]
+
+  /** Напоминания директору по периоду: 3 письма раз в сутки, затем автоснятие. */
+  var REMINDERS = {};  // periodId -> { count, lastAt, autoCancelled }
+  function reminderOf(id) {
+    if (!REMINDERS[id]) REMINDERS[id] = { count: 0, lastAt: null, autoCancelled: false };
+    return REMINDERS[id];
+  }
+
   function rangesOfMonth(empId, m) {
     return rangesOf(empId).filter(function (r) {
       return expand(r.start, r.end).some(function (d) { return monthOf(d) === m; });
@@ -261,15 +368,20 @@ window.VS_DATA = (function () {
   }
 
   /* ── Проверка нового периода ─────────────────────────────────────────── */
-  /** Валидация диапазона для сотрудника. Возвращает {ok, code, msg}. */
+  /**
+   * Валидация диапазона для сотрудника. Возвращает {ok, code, msg, days, calDays, hol}.
+   * Дни считаются по ст. 120 ТК РФ: календарные МИНУС нерабочие праздники (они продлевают отпуск).
+   */
   function validate(empId, start, end, opts) {
     opts = opts || {};
     var curId = opts.ignoreId || null;
     if (!start || !end) return { ok: false, code: 'empty', msg: 'Выберите дни в календаре', days: 0 };
     if (end < start) return { ok: false, code: 'order', msg: 'Дата окончания раньше начала', days: 0 };
-    var days = daysBetween(start, end);
-    function fail(code, msg) { return { ok: false, code: code, msg: msg, days: days }; }
-    if (days <= 0) return fail('days', 'Период пустой');
+    var calDays = daysBetween(start, end);
+    var days = chargedDays(start, end);          // оплачиваемые календарные (без праздников)
+    var hol = calDays - days;                    // сколько праздников продлевают отпуск
+    function fail(code, msg) { return { ok: false, code: code, msg: msg, days: days, calDays: calDays, hol: hol }; }
+    if (calDays <= 0) return fail('days', 'Период пустой');
 
     var b = balance(empId);
 
@@ -313,8 +425,37 @@ window.VS_DATA = (function () {
     if (start < '2027-01-01' || start > '2027-12-31') {
       return fail('year', 'График только на ' + YEAR + ' год');
     }
-    return { ok: true, code: 'ok', days: days, isLong: isLong };
+    return { ok: true, code: 'ok', days: days, calDays: calDays, hol: hol, isLong: isLong, clash: null };
   }
+
+  /**
+   * Пересечения с коллегами в диапазоне (для предупреждения, не блокирует постановку).
+   * Возвращает [{empId, fio, role, group, title, start, end, days, sameDept, overlapDays}].
+   */
+  function clashesWith(empId, start, end) {
+    var out = [], myGroup = groupOf(empId);
+    ALL.forEach(function (e) {
+      if (e.id === empId) return;
+      rangesOf(e.id).forEach(function (r) {
+        if (r.status === 'rejected') return;
+        if (end < r.start || start > r.end) return;
+        var a = start > r.start ? start : r.start;
+        var b = end < r.end ? end : r.end;
+        out.push({
+          empId: e.id, fio: e.fio, role: e.role, group: e.group, groupTitle: e.groupTitle,
+          start: r.start, end: r.end, days: r.days, status: r.status,
+          sameDept: e.group === myGroup, overlapDays: daysBetween(a, b)
+        });
+      });
+    });
+    // сначала свой отдел, затем по числу пересекающихся дней
+    out.sort(function (x, y) {
+      if (x.sameDept !== y.sameDept) return x.sameDept ? -1 : 1;
+      return y.overlapDays - x.overlapDays;
+    });
+    return out;
+  }
+
 
   /** Отклонённые директором дни (глобально, из состояния прототипа). */
   function blockedDays() {
@@ -329,7 +470,14 @@ window.VS_DATA = (function () {
     var days = rs.reduce(function (s, r) { return s + rangeDaysInMonth(r, m); }, 0);
     var hasPending = rs.some(function (r) { return r.status === 'pending'; });
     var hasRejected = rs.some(function (r) { return r.status === 'rejected'; });
-    return { days: days, count: rs.length, pending: hasPending, rejected: hasRejected, status: hasPending ? 'pending' : (hasRejected && !rs.some(function (r) { return r.status !== 'rejected'; }) ? 'rejected' : 'approved') };
+    var label = rs.map(function (r) {
+      var ds = expand(r.start, r.end).filter(function (d) { return monthOf(d) === m; });
+      return ds[0] + '—' + ds[ds.length - 1];
+    }).join(', ');
+    return {
+      days: days, count: rs.length, label: label, pending: hasPending, rejected: hasRejected,
+      status: hasPending ? 'pending' : (hasRejected && !rs.some(function (r) { return r.status !== 'rejected'; }) ? 'rejected' : 'approved')
+    };
   }
 
   return {
@@ -342,6 +490,15 @@ window.VS_DATA = (function () {
     fmtDay: fmtDay, fmtRange: fmtRange, daysBetween: daysBetween, expand: expand, rangeDays: rangeDays, monthOf: monthOf, parseIso: parseIso,
     rangesOf: rangesOf, rangesOfMonth: rangesOfMonth, rangeDaysInMonth: rangeDaysInMonth,
     plannedDays: plannedDays, balance: balance, longCount: longCount,
-    deptBusy: deptBusy, busyInMonth: busyInMonth, validate: validate, monthMark: monthMark, blockedDays: blockedDays
+    deptBusy: deptBusy, busyInMonth: busyInMonth, validate: validate, monthMark: monthMark, blockedDays: blockedDays,
+    /* согласование директорами */
+    DIRECTORS: DIRECTORS, ME_DIRECTOR: ME_DIRECTOR, directorById: directorById,
+    approvesOf: approvesOf, directorsLeft: directorsLeft, approveProgress: approveProgress,
+    REJECTED: REJECTED, REMINDERS: REMINDERS, reminderOf: reminderOf,
+    /* производственный календарь 2027 */
+    HOLIDAYS_2027: HOLIDAYS_2027_RAW, SHIFTS_2027: SHIFTS_2027_RAW,
+    isHoliday: isHoliday, holidayTitle: holidayTitle, isShifted: isShifted, shiftTitle: shiftTitle,
+    holidaysIn: holidaysIn, holidayNote: holidayNote, chargedDays: chargedDays, extendEnd: extendEnd,
+    clashesWith: clashesWith
   };
 })();

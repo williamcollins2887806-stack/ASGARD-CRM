@@ -107,15 +107,9 @@ async function routes(fastify, options) {
       RETURNING *
     `, [user_id, title, message, type || 'info', link || null]);
     
-    // Отправляем в Telegram
-    try {
-      const telegram = require('../services/telegram');
-      const tgMessage = `🔔 *${title}*\n\n${message}${link ? '\n\n🔗 Открыть в CRM' : ''}`;
-      await telegram.sendNotification(user_id, tgMessage);
-    } catch (e) {
-      fastify.log.error('Telegram notification error:', e.message);
-    }
-    
+    // Telegram убран (заказчик 18.10.2026): канал не работает — MAX/SMS/push.
+    // Запись в notifications выше уже доставляет в колокольчик + push.
+
     return { notification: result.rows[0] };
   });
 
@@ -166,12 +160,7 @@ async function routes(fastify, options) {
         VALUES ($1, $2, $3, 'system', $4, false, NOW())
       `, [user.id, title, message, link]);
       
-      // Telegram
-      try {
-        const telegram = require('../services/telegram');
-        await telegram.sendNotification(user.id, `🔔 *${title}*\n\n${message}`);
-      } catch(e) {}
-      
+      // Telegram убран (заказчик 18.10.2026): канал не работает — MAX/SMS/push.
       sent++;
     }
     

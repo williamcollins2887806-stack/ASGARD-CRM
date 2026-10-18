@@ -732,7 +732,7 @@ const SHOP_CSS = `
 .fshop-card-buy{padding:6px 12px;border-radius:10px;border:none;font-size:11px;font-weight:800;color:var(--text-primary);cursor:pointer;
   position:relative;overflow:hidden;transition:all .2s;background:color-mix(in oklab, var(--text-primary) 6%, transparent);color:var(--fshop-t3);box-shadow:none}
 .fshop-card-buy:active{transform:scale(.94)}
-.fshop-card-buy.can{background:linear-gradient(135deg,var(--fshop-gold-d),var(--fshop-gold));color:var(--text-on-gold);
+.fshop-card-buy.can{background:var(--gold-fill);color:var(--text-on-gold);
   box-shadow:0 3px 0 var(--value),0 4px 12px color-mix(in oklab, var(--value) 20%, transparent)}
 .fshop-card-buy.can:active{box-shadow:0 1px 0 var(--value);transform:translateY(2px) scale(.98)}
 .fshop-card-buy.can::after{content:'';position:absolute;top:0;left:-100%;width:40%;height:100%;
@@ -797,8 +797,8 @@ const SHOP_CSS = `
 
 .fshop-modal-confirm{display:block;width:100%;margin-top:16px;padding:16px;border-radius:16px;border:none;
   font-size:16px;font-weight:800;cursor:pointer;position:relative;overflow:hidden;
-  background:linear-gradient(135deg,var(--fshop-gold-d),var(--fshop-gold));color:var(--text-on-gold);
-  box-shadow:0 5px 0 var(--value),0 6px 20px color-mix(in oklab, var(--value) 20%, transparent);transition:all .1s}
+  background:linear-gradient(135deg,var(--gold-fill),var(--gold-fill));color:var(--text-on-gold);
+  box-shadow:0 5px 0 var(--gold-fill),0 6px 20px color-mix(in oklab, var(--gold-fill) 20%, transparent);transition:all .1s}
 .fshop-modal-confirm:active{transform:translateY(4px);box-shadow:0 1px 0 var(--value)}
 .fshop-modal-confirm::after{content:'';position:absolute;top:0;left:-100%;width:50%;height:100%;
   background:linear-gradient(90deg,transparent,color-mix(in oklab, var(--text-primary) 15%, transparent),transparent);animation:fshop-shine 3s infinite}
@@ -827,9 +827,9 @@ const SHOP_CSS = `
 .fshop-success-item-name{font-size:14px;font-weight:700}
 .fshop-success-btn{display:block;width:100%;margin-top:20px;padding:14px;border-radius:14px;border:none;
   font-size:15px;font-weight:800;color:var(--text-on-gold);cursor:pointer;
-  background:linear-gradient(135deg,var(--fshop-gold-d),var(--fshop-gold));
-  box-shadow:0 4px 0 var(--value),0 5px 16px color-mix(in oklab, var(--value) 20%, transparent);transition:all .1s}
-.fshop-success-btn:active{transform:translateY(3px);box-shadow:0 1px 0 var(--value)}
+  background:linear-gradient(135deg,var(--gold-fill),var(--gold-fill));
+  box-shadow:0 4px 0 var(--gold-fill),0 5px 16px color-mix(in oklab, var(--gold-fill) 20%, transparent);transition:all .1s}
+.fshop-success-btn:active{transform:translateY(3px);box-shadow:0 1px 0 var(--gold-fill)}
 
 /* ═══ EMPTY STATE ═══ */
 .fshop-empty{text-align:center;padding:40px 20px}

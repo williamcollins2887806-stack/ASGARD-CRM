@@ -77,10 +77,13 @@ export default function PayoutStatementBanner() {
   const overdue = p.confirmation_deadline && new Date(p.confirmation_deadline) < new Date();
 
   async function submitConfirm() {
-    if (!/^\d{4,6}$/.test(code)) { setErr('Введите код из SMS или MAX'); return; }
+    // Код подтверждения выплаты — 5 цифр (см. src/lib/payout-notify.js, CODE_LENGTH=5).
+    // Пробелы/дефисы из мессенджера убираем: рабочий часто копирует код из MAX.
+    const clean = String(code).replace(/\D/g, '');
+    if (clean.length !== 5) { setErr('Введите 5 цифр из SMS или MAX'); return; }
     setBusy(true); setErr('');
     try {
-      await apiReq('POST', `/my/${p.id}/confirm`, { code });
+      await apiReq('POST', `/my/${p.id}/confirm`, { code: clean });
       await reload();
     } catch (e) {
       setErr(e.body && e.body.error === 'invalid_code' ? 'Неверный код' : (e.message || 'Ошибка'));
@@ -140,9 +143,16 @@ export default function PayoutStatementBanner() {
 
         {step === 'confirm' && (
           <>
-            <label style={lbl}>Код из SMS или MAX</label>
-            <input value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
-              inputMode="numeric" placeholder="••••" style={input} />
+            <label style={lbl}>Код из SMS или MAX (5 цифр)</label>
+            <input
+              value={code}
+              onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 5))}
+              inputMode="numeric"
+              autoComplete="one-time-code"
+              maxLength={5}
+              placeholder="•••••"
+              style={{ ...input, letterSpacing: 8, fontSize: 20, textAlign: 'center', fontWeight: 700 }}
+            />
             <div style={errBox}>{err}</div>
             <button onClick={submitConfirm} disabled={busy} style={btnPrimary}>
               {busy ? 'Проверка…' : 'Подтвердить'}

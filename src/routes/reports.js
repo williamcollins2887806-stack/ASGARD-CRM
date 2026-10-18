@@ -716,13 +716,8 @@ async function notifyAdmins(db, fastify, type, period) {
       VALUES ($1, $2, $3, 'report', $4, false, NOW())
     `, [admin.id, titles[type], `Отчёт за ${period} готов к просмотру и скачиванию`, `#/reports?type=${type}`]);
     
-    // Telegram
-    try {
-      const telegram = require('../services/telegram');
-      await telegram.sendNotification(admin.id, 
-        `📊 *${titles[type]}*\n\nОтчёт за ${period} готов!\nСкачайте в разделе "Отчёты" в CRM.`
-      );
-    } catch(e) {}
+    // Telegram убран (заказчик 18.10.2026): канал не работает — MAX/SMS/push.
+    // Уведомление в колокольчик уже создано выше (DB insert).
   }
 }
 

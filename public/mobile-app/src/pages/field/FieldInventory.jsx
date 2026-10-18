@@ -983,9 +983,9 @@ const INV_CSS = `
 /* Timeline */
 .finv-modal-timeline{display:flex;align-items:center;justify-content:center;gap:0;margin:20px 0;padding:0 20px}
 .finv-tl-dot{width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:800;position:relative;flex-shrink:0}
-.finv-tl-dot.filled{background:linear-gradient(135deg,var(--finv-gold-d),var(--finv-gold));color:var(--text-on-gold);box-shadow:0 2px 8px color-mix(in oklab, var(--value) 25%, transparent)}
+.finv-tl-dot.filled{background:var(--gold-fill);color:var(--text-on-gold);box-shadow:0 2px 8px color-mix(in oklab, var(--gold-fill) 25%, transparent)}
 .finv-tl-dot.empty{background:color-mix(in oklab, var(--text-primary) 6%, transparent);border:2px solid color-mix(in oklab, var(--text-primary) 12%, transparent);color:var(--finv-t3)}
-.finv-tl-dot.current{background:linear-gradient(135deg,var(--finv-gold-d),var(--finv-gold));color:var(--text-on-gold);animation:finv-tlPulse 2s ease-in-out infinite}
+.finv-tl-dot.current{background:var(--gold-fill);color:var(--text-on-gold);animation:finv-tlPulse 2s ease-in-out infinite}
 @keyframes finv-tlPulse{0%,100%{box-shadow:0 0 0 0 color-mix(in oklab, var(--value) 0%, transparent)}50%{box-shadow:0 0 12px 4px color-mix(in oklab, var(--value) 30%, transparent)}}
 .finv-tl-line{flex:1;height:3px;border-radius:2px;min-width:30px}
 .finv-tl-line.filled{background:linear-gradient(90deg,var(--finv-gold-d),var(--finv-gold))}

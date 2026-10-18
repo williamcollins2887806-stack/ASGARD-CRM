@@ -80,8 +80,12 @@
   --warning: var(--value);
   --error: var(--danger);
   --err-t: var(--danger-ink);
-  --err-bg: var(--danger);
-  --success: var(--ok);
+  /* --err-bg / --success — это ФОН под текст, а не заливка под белый текст.
+     Раньше я определил их как сплошные --danger/--ok: красный текст на красном
+     фоне давал 1.21–1.65:1 (текст ошибки невидим). Делаем приглушённый тинт —
+     читается и с --err-t, и с унаследованным цветом (тема-независимо). */
+  --err-bg: color-mix(in oklab, var(--danger) 14%, transparent);
+  --success: color-mix(in oklab, var(--ok) 16%, transparent);
   --bg-base: var(--bg-primary);
   --bg-2: var(--bg-surface-alt);
   --bg-card: var(--bg-surface);

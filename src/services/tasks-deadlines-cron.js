@@ -22,12 +22,8 @@ async function notify(db, userId, type, title, message, link, entityId) {
       INSERT INTO notifications (user_id, title, message, type, link, entity_id, is_read, created_at)
       VALUES ($1, $2, $3, $4, $5, $6, false, NOW())
     `, [userId, title, message, type, link, entityId]);
-    try {
-      const telegram = require('./telegram');
-      if (telegram?.sendNotification) {
-        await telegram.sendNotification(userId, `🔔 *${title}*\n\n${message}`);
-      }
-    } catch (e) {}
+    // Telegram убран (заказчик 18.10.2026): канал не работает — MAX/SMS/push.
+    // Запись в notifications выше уже доставляет уведомление в колокольчик и push.
   } catch (e) { /* swallow */ }
 }
 

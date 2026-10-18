@@ -33,13 +33,8 @@ module.exports = async function(fastify) {
         VALUES ($1, $2, $3, 'permit', $4, false, NOW())
       `, [userId, title, message, link || '#/permits']);
 
-      // Telegram notification
-      try {
-        const telegram = require('../services/telegram');
-        await telegram.sendNotification(userId, `*${title}*\n\n${message}`);
-      } catch (tgErr) {
-        fastify.log.warn('Telegram notification failed:', tgErr.message);
-      }
+      // Telegram убран (заказчик 18.10.2026): канал не работает — MAX/SMS/push.
+      // Уведомление в колокольчик + push уже создано выше (DB insert).
     } catch (e) {
       fastify.log.error('Permit notification error:', e.message);
     }

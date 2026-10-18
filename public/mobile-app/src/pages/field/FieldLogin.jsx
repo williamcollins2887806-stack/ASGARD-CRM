@@ -346,8 +346,8 @@ export default function FieldLogin() {
 
         {step === 'code' && (
           <div className="fa-slide-in" style={{ width: '100%', maxWidth: 320 }}>
-            <h2 className="fa-heading">Код из SMS</h2>
-            <p className="fa-desc">Введи 4 цифры. Если есть Max — код мог прийти туда.</p>
+            <h2 className="fa-heading">Код из SMS или MAX</h2>
+            <p className="fa-desc">Введи 4 цифры — код придёт в SMS или MAX.</p>
 
             <div className="fa-otp-wrap">
               {otp.map((digit, i) => (

@@ -135,7 +135,7 @@ export default function MarketplaceMobile() {
     if (opts.silent) setRefreshing(true); else setLoading(true);
     try {
       // /my-stats доступен только РП — остальным (директор, наблюдатели) не запрашиваем:
-      // 403 мгновенно разлогинивал бы сессию (api-клиент трактует любой 403 как «сессия истекла»).
+      // он закрыт ролями, и экран показал бы «нет прав» вместо списка заявок.
       const [list, st] = await Promise.all([
         loadMarketplaceList(),
         canClaim ? loadMyStats() : Promise.resolve({ active_count: 0, limit: MARKETPLACE_LIMIT, can_claim: false }),

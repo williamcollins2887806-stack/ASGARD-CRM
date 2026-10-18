@@ -135,14 +135,7 @@ async function _notifyAvailable(db, log, probeResult) {
     } catch (e) {
       log && log.warn && log.warn(`[embeddings-watch] notif fail for u=${u.id}:`, e.message);
     }
-    // 2) Telegram (если бот подключён и chat_id есть)
-    if (u.telegram_chat_id && _telegram && _telegram.sendNotification) {
-      try {
-        await _telegram.sendNotification(u.id, `${title}\n\n${message}`);
-      } catch (e) {
-        log && log.warn && log.warn(`[embeddings-watch] telegram fail for u=${u.id}:`, e.message);
-      }
-    }
+    // Telegram убран (заказчик 18.10.2026): канал не работает — MAX/SMS/push.
   }
   log && log.info && log.info(`[embeddings-watch] notified ${recipients.length} recipients`);
 }

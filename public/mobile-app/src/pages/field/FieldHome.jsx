@@ -1149,8 +1149,8 @@ export default function FieldHome() {
                 <span style={{
                   position: 'absolute', top: 8, right: 8, fontSize: 10, fontWeight: 800,
                   padding: '3px 7px', borderRadius: 999,
-                  background: badge === PAUSE_BADGE ? 'var(--value)' : 'var(--danger)',
-                  color: badge === PAUSE_BADGE ? 'var(--text-on-gold)' : '#fff',
+                background: badge === PAUSE_BADGE ? 'var(--gold-fill)' : 'var(--danger)',
+                color: badge === PAUSE_BADGE ? 'var(--text-on-gold)' : 'var(--on-danger)',
                   letterSpacing: '.06em',
                   maxWidth: '55%',
                   whiteSpace: 'nowrap',
@@ -1243,8 +1243,8 @@ export default function FieldHome() {
                       <span style={{
                         position: 'absolute', top: -4, right: -4, fontSize: 10, fontWeight: 800,
                         padding: '3px 6px', borderRadius: 999,
-                        background: g.badge === PAUSE_BADGE ? 'var(--value)' : 'var(--danger)',
-                        color: g.badge === PAUSE_BADGE ? 'var(--text-on-gold)' : '#fff',
+        background: g.badge === PAUSE_BADGE ? 'var(--gold-fill)' : 'var(--danger)',
+        color: g.badge === PAUSE_BADGE ? 'var(--text-on-gold)' : 'var(--on-danger)',
                       }}>{g.badge}</span>
                     )}
                   </div>

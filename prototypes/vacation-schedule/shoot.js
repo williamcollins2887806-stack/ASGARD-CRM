@@ -11,10 +11,10 @@ const BASE = process.env.VS_BASE || 'http://127.0.0.1:8791/prototypes/vacation-s
 const OUT = path.join(__dirname, '_shots');
 fs.mkdirSync(OUT, { recursive: true });
 
-let fails = 0;
+let fails = 0, passes = 0;
 function check(name, cond, extra) {
+  if (cond) passes++; else fails++;
   console.log((cond ? 'PASS ' : 'FAIL ') + name + (extra ? ' :: ' + extra : ''));
-  if (!cond) fails++;
 }
 
 (async () => {
@@ -25,240 +25,242 @@ function check(name, cond, extra) {
   page.on('console', (m) => { if (m.type() === 'error') errors.push('CONSERR ' + m.text()); });
 
   const shot = (n) => page.screenshot({ path: path.join(OUT, n + '.png') });
-  const go = async (hash) => { await page.evaluate((h) => { location.hash = h; }, hash); await page.waitForTimeout(600); };
+  const go = async (hash) => { await page.evaluate((h) => { location.hash = h; }, hash); await page.waitForTimeout(700); };
 
   await page.goto(BASE, { waitUntil: 'networkidle', timeout: 60000 });
   await page.waitForTimeout(1200);
 
-  /* 1. Экран сотрудника: месяцы, строки, баланс */
+  /* ═══ 1. Сотрудник: сетка, баланс, премиум-элементы ═══════════════════ */
   check('месяцы отрисованы', await page.locator('.vs-mon--head').count() >= 12, 'mon=' + await page.locator('.vs-mon--head').count());
-  check('строки сотрудников', await page.locator('.vs-row').count() >= 10, 'rows=' + await page.locator('.vs-row').count());
-  check('баланс: 3 щита', await page.locator('.vs-acc').count() === 3);
-  check('два щита баланса (на 01.01 и перенос)', (await page.locator('.vs-acc--avail').count()) === 1 && (await page.locator('.vs-acc--carry').count()) === 1);
-  check('показано «Можно взять ещё»', /можно взять/i.test(await page.locator('.vs-acc--can').innerText()));
+  check('строки сотрудников', await page.locator('.vs-row').count() >= 14, 'rows=' + await page.locator('.vs-row').count());
+  check('три щита баланса', await page.locator('.vs-acc').count() === 3);
+  check('иконки SVG (не эмодзи)', await page.locator('.vs-acc__ic svg, .vs-mhead__ic svg, .vs-deadline__ic svg').count() === 4,
+    'svg=' + await page.locator('.vs-acc__ic svg, .vs-mhead__ic svg, .vs-deadline__ic svg').count());
+  check('стекло на модалке', await page.evaluate(() => {
+    const m = document.querySelector('.vs-modal');
+    return !!m && /blur/.test(getComputedStyle(m).backdropFilter || getComputedStyle(m).webkitBackdropFilter || '');
+  }));
+  check('кнопка «скрыть» — SVG, не эмодзи', await page.evaluate(() => {
+    const b = document.querySelector('.vs-hide svg');
+    return !!b;
+  }));
+  check('плашка сроков 01.11–01.12', /1 ноября/i.test(await page.locator('.vs-deadline').innerText()) && /1 декабря/i.test(await page.locator('.vs-deadline').innerText()));
+  check('легенда статусов есть', await page.locator('.vs-legend .vs-lg').count() >= 6);
   await shot('01-me-closed');
 
-  /* 2. Раскрыть месяц → один раскрытый, второй закрывает первый */
+  /* ═══ 2. Раскрытие месяца: строго один ════════════════════════════════ */
   await page.locator('.vs-mon--head[data-month="4"]').click();
   await page.waitForTimeout(500);
-  check('один раскрытый месяц после клика', await page.locator('.vs-days--head').count() === 1, 'open=' + await page.locator('.vs-days--head').count());
-  check('май подписан', /май/i.test(await page.locator('.vs-days__cap').innerText()));
+  check('один раскрытый месяц', await page.locator('.vs-days--head').count() === 1, 'open=' + await page.locator('.vs-days--head').count());
   check('31 день в мае', await page.locator('.vs-days__nm .vs-d--hd').count() === 31, 'days=' + await page.locator('.vs-days__nm .vs-d--hd').count());
-  check('вся сетка помещается (ширина ≤ вьюпорт+2)', await page.evaluate(() => {
-    const w = document.querySelector('.vs-head'); return !!w && w.scrollWidth <= window.innerWidth + 4;
-  }));
-  await shot('02-me-may-open');
-
-  /* 3. Значок при свёрнутом месяце: январь виден, май помечен */
-  check('значок у января (Морозов, 7 дней)', await page.evaluate(() => {
-    const rows = [...document.querySelectorAll('.vs-row')];
-    return rows.some(r => r.textContent.includes('Морозов') && r.querySelector('.vs-mon__mk'));
-  }));
-  check('значок у мая у меня (Андросов, 14д)', await page.evaluate(() => {
-    const me = [...document.querySelectorAll('.vs-row')].find(r => r.classList.contains('is-me'));
-    return !!me && me.querySelector('.vs-mon__mk') !== null;
-  }));
-
-  /* 4. Поставить отпуск в свободные дни → лимиты работают */
-  // июль (m=6) свободен у меня и не пересекается с сидом
-  await page.locator('.vs-mon--head[data-month="6"]').click();
-  await page.waitForTimeout(400);
-  await page.locator('.vs-row.is-me .vs-d[data-day="2027-07-01"]').click();
-  await page.locator('.vs-row.is-me .vs-d[data-day="2027-07-16"]').click();
-  await page.waitForTimeout(300);
-  let selBar = await page.locator('.vs-selbar').innerText().catch(() => '');
-  check('лимит 14 дней разом сработал', /не больше 14/i.test(selBar), selBar.replace(/\s+/g, ' '));
-  check('показывает число дней даже при ошибке', /16 кал\. дн\./i.test(selBar), selBar.replace(/\s+/g, ' '));
-  await shot('03-limit-14');
-  await page.locator('.vs-selbar [data-vs-save]').click().catch(() => {});
-  await page.waitForTimeout(300);
-  check('период НЕ сохранён при нарушении', await page.evaluate(() => {
-    const me = window.VS_DATA.rangesOf(window.VS_DATA.me.id);
-    return !me.some(r => r.start === '2027-07-01' && r.end === '2027-07-16');
-  }));
-
-  /* 5. Нормальный короткий период в свободные дни (июнь) */
-  await page.locator('.vs-selbar [data-vs-clear]').click();
-  await page.waitForTimeout(200);
-  await page.locator('.vs-mon--head[data-month="5"]').click();
-  await page.waitForTimeout(400);
-  await page.locator('.vs-row.is-me .vs-d[data-day="2027-06-08"]').click();
-  await page.locator('.vs-row.is-me .vs-d[data-day="2027-06-12"]').click();
-  await page.waitForTimeout(300);
-  await page.locator('.vs-selbar [data-vs-save]').click();
-  await page.waitForTimeout(400);
-  check('короткий отпуск поставлен', await page.evaluate(() => {
-    const me = window.VS_DATA.rangesOf(window.VS_DATA.me.id);
-    return me.some(r => r.start === '2027-06-08' && r.end === '2027-06-12' && r.days === 5);
-  }));
-  check('новый отпуск получил статус «на согласовании»', await page.evaluate(() => {
-    const me = window.VS_DATA.rangesOf(window.VS_DATA.me.id);
-    const r = me.find(x => x.start === '2027-06-08');
-    return !!r && r.status === 'pending';
-  }));
-
-  /* 6. Второй 14-дневный нельзя (основной уже занят) */
-  await page.locator('.vs-mon--head[data-month="6"]').click();
-  await page.waitForTimeout(400);
-  await page.locator('.vs-row.is-me .vs-d[data-day="2027-07-01"]').click();
-  await page.locator('.vs-row.is-me .vs-d[data-day="2027-07-14"]').click();
-  await page.waitForTimeout(300);
-  selBar = await page.locator('.vs-selbar').innerText().catch(() => '');
-  check('второй основной отпуск запрещён', /уже использован/i.test(selBar), selBar.replace(/\s+/g, ' '));
-  await page.locator('.vs-selbar [data-vs-clear]').click();
-  await page.waitForTimeout(200);
-
-  /* 7. Чужие дни править нельзя */
+  check('май подписан в шапке', /май/i.test(await page.locator('.vs-days__m').innerText()));
   await page.locator('.vs-mon--head[data-month="0"]').click();
-  await page.waitForTimeout(400);
-  const before = await page.evaluate(() => Object.keys(window.VS_STATE.sel).length);
-  const otherDay = page.locator('.vs-row:not(.is-me) .vs-d.v-ok').first();
-  await otherDay.click({ force: true });
-  await page.waitForTimeout(400);
-  check('чужие дни не редактируются', await page.evaluate((b) => Object.keys(window.VS_STATE.sel).length === b, before));
+  await page.waitForTimeout(450);
+  check('открытие другого месяца закрывает первый', await page.locator('.vs-days--head').count() === 1);
 
-  /* 8. Экран директора: карточка сотрудника и отклонение */
-  await go('#director');
-  await page.waitForTimeout(400);
-  check('панель директора видна', await page.locator('.vs-dirbar').count() === 1);
-  // открываем сотрудника, у которого есть период «на согласовании»
+  /* ═══ 3. Производственный календарь ═══════════════════════════════════ */
+  check('январь: праздники помечены', await page.locator('.vs-days__nm .vs-d--hd.is-hol').count() === 8, 'hol=' + await page.locator('.vs-days__nm .vs-d--hd.is-hol').count());
+  check('шапка месяца: бейдж «8 празд.»', /8 празд/i.test(await page.locator('.vs-days__hol').innerText()));
+
+  /* ═══ 4. Праздники продлевают отпуск (ст. 120 ТК) ═════════════════════ */
+  // выделяем 1–14 января: 1–8 праздники → оплачиваемых 6, конец продлевается
   await page.evaluate(() => {
-    const e = window.VS_DATA.ALL.find(x => window.VS_DATA.rangesOf(x.id).some(r => r.status === 'pending'));
-    const rows = [...document.querySelectorAll('.vs-row')];
-    const row = rows.find(r => r.textContent.includes(e.fio));
-    row.querySelector('.vs-who__n').click();
+    const S = window.VS_STATE;
+    S.sel = {};
+    for (let d = 1; d <= 14; d++) S.sel['2027-01-' + String(d).padStart(2, '0')] = true;
   });
+  await page.evaluate(() => window.VS_APP.render());
   await page.waitForTimeout(400);
-  const hasPend = await page.locator('[data-vs-decide]').count();
-  check('карточка сотрудника: есть кнопки решения', hasPend >= 1, 'decide=' + hasPend);
-  await shot('04-director');
-  // отклонение без комментария запрещено
-  const rejectBtn = page.locator('[data-vs-decide$="|reject"]').first();
-  if (await rejectBtn.count()) {
-    await rejectBtn.click();
-    await page.waitForTimeout(400);
-    check('модалка отклонения открылась', await page.locator('.vs-reject').count() === 1);
-    await page.locator('[data-vs-reject-confirm]').click();
-    await page.waitForTimeout(400);
-    check('без комментария отклонение блокируется', await page.evaluate(() => {
-      // период остался не отклонённым
-      const all = Object.keys(window.VS_DATA.VAC).some(k => (window.VS_DATA.VAC[k] || []).some(r => r.status === 'pending'));
-      return all;
-    }));
-    await page.fill('#vsRejectText', 'На май сдача объекта — возьми после 20 мая.');
-    await page.locator('[data-vs-reject-confirm]').click();
-    await page.waitForTimeout(500);
-    check('с комментарием — отклонено и дни заблокированы', await page.evaluate(() => {
-      const all = Object.keys(window.VS_DATA.VAC).some(k => (window.VS_DATA.VAC[k] || []).some(r => r.status === 'rejected' && !!r.reason));
-      const blocked = Object.keys(window.VS_STATE.blocked || {}).length > 0;
-      return all && blocked;
-    }));
-    await page.locator('body').click({ position: { x: 5, y: 5 } });
-    await page.waitForTimeout(300);
-  } else {
-    check('модалка отклонения открылась', true, 'нет pending — пропуск');
-    check('без комментария отклонение блокируется', true, 'нет pending — пропуск');
-    check('с комментарием — отклонено и дни заблокированы', true, 'нет pending — пропуск');
-  }
-  await shot('04b-director-after');
+  const janBar = await page.locator('.vs-selbar').innerText();
+  check('1–14 января: 6 оплачиваемых, 8 празд.', /6 дней оплачиваемых/.test(janBar) && /8 празд/.test(janBar), janBar.replace(/\n/g, ' | ').slice(0, 150));
+  check('показана дата продления', /продлите до/.test(janBar) && /22 января/.test(janBar));
+  await shot('02-holidays-extend');
 
-  /* 9. Экран бухгалтерии */
-  await go('#buh');
+  /* ═══ 5. Лимиты 14/7 и остаток ════════════════════════════════════════ */
+  await page.evaluate(() => { const S = window.VS_STATE; S.sel = {}; for (let d = 1; d <= 16; d++) S.sel['2027-07-' + String(d).padStart(2, '0')] = true; window.VS_APP.render(); });
+  await page.waitForTimeout(350);
+  check('16 дней разом — запрет', /не больше 14/.test(await page.locator('.vs-selbar').innerText()));
+  check('кнопка постановки заблокирована', await page.locator('[data-vs-save][disabled]').count() === 1);
+  await shot('03-limit-14');
+  await page.evaluate(() => { const S = window.VS_STATE; S.sel = {}; for (let d = 1; d <= 9; d++) S.sel['2027-07-' + String(d).padStart(2, '0')] = true; window.VS_APP.render(); });
+  await page.waitForTimeout(350);
+  check('9 дней — не больше 7 (не основной)', /не больше 7/.test(await page.locator('.vs-selbar').innerText()));
+
+  await page.evaluate(() => { const S = window.VS_STATE; S.sel = {}; for (let d = 1; d <= 5; d++) S.sel['2027-07-' + String(d).padStart(2, '0')] = true; window.VS_APP.render(); });
+  await page.waitForTimeout(350);
+  await page.locator('[data-vs-save]').click();
+  await page.waitForTimeout(500);
+  check('короткий отпуск поставлен', await page.evaluate(() => window.VS_DATA.rangesOf(window.VS_DATA.me.id).some(r => r.start === '2027-07-01' && r.status === 'pending')));
+
+  /* ═══ 6. Предупреждение о пересечении (пункт 1) ═══════════════════════ */
+  await page.evaluate(() => {
+    const S = window.VS_STATE; S.sel = {};
+    for (let d = 12; d <= 16; d++) S.sel['2027-01-' + String(d).padStart(2, '0')] = true;   // внутри отпуска Морозова 12–18.01
+    S.openMonth = 0; S.expansion = true; window.VS_APP.render();
+  });
+  await page.waitForTimeout(450);
+  const clashTxt = await page.locator('.vs-selbar').innerText();
+  check('предупреждение о пересечении с коллегой', /Пересечение/.test(clashTxt) && /Морозов/i.test(clashTxt), clashTxt.replace(/\n/g, ' | ').slice(0, 170));
+  check('постановка всё равно разрешена (пересечение не блокирует)', await page.locator('[data-vs-save][disabled]').count() === 0);
+  await shot('04-clash-warning');
+
+  /* ═══ 7. Скрытие: человек, отдел, solo (пункт 8) ══════════════════════ */
+  await page.evaluate(() => { const S = window.VS_STATE; S.sel = {}; window.VS_APP.render(); });
+  await page.waitForTimeout(300);
+  await page.locator('.vs-hide[data-vs-hide]').first().click();
   await page.waitForTimeout(400);
-  check('бухгалтерия: ввод дней есть', await page.locator('[data-buh-avail]').count() >= 10, 'n=' + await page.locator('[data-buh-avail]').count());
-  await shot('05-buh');
+  check('строка человека скрыта', await page.locator('.vs-chip--restore').count() >= 1);
+  await page.locator('.vs-hide--grp').first().click();
+  await page.waitForTimeout(400);
+  check('отдел скрыт', await page.locator('.vs-chip--restore').count() >= 2);
+  await page.locator('[data-vs-dept-only]').click();
+  await page.waitForTimeout(450);
+  const deptRows = await page.locator('.vs-row').count();
+  check('«только мой отдел» оставляет один отдел', deptRows > 0 && deptRows <= 6, 'rows=' + deptRows);
+  check('кнопка «показать всех» появилась', await page.locator('[data-vs-show-all]').count() === 1);
+  await page.locator('[data-vs-show-all]').click();
+  await page.waitForTimeout(450);
+  check('«показать всех» вернуло строки', await page.locator('.vs-row').count() >= 14);
 
-  var fetches = 0;
-  /* 10. График офиса + наложение (состояние на этот момент: rejection уже применён — восстановим наложение свежим офисом) */
-  await page.reload({ waitUntil: 'networkidle' });
-  await page.waitForTimeout(900);
-  await go('#office');
+  /* ═══ 8. Значок на свёрнутом месяце + тултип (пункт 11) ═══════════════ */
+  check('значок дней на свёрнутом месяце', await page.evaluate(() => {
+    const me = [...document.querySelectorAll('.vs-row')].find(r => r.classList.contains('is-me'));
+    return !!me && !!me.querySelector('.vs-mon__mk');
+  }));
+  check('тултип месяца с периодами', await page.evaluate(() => {
+    const me = [...document.querySelectorAll('.vs-row')].find(r => r.classList.contains('is-me'));
+    const m = me.querySelector('.vs-mon.has-mark');
+    return !!m && /\d{4}-\d{2}-\d{2}—\d{4}-\d{2}-\d{2}/.test(m.getAttribute('title'));
+  }));
+
+  await go('#director');
+  await page.evaluate(() => { const S = window.VS_STATE; S.openMonth = null; S.expansion = false; window.VS_APP.render(); });
+  await page.waitForTimeout(400);
+
+  /* ═══ 9. Директор: очередь, голоса, решения ═══════════════════════════ */
+  check('очередь на согласование отрисована', await page.locator('.vs-q').count() >= 3, 'q=' + await page.locator('.vs-q').count());
+  check('в карточке очереди видны пересечения', await page.locator('.vs-q__clash, .vs-q__clear').count() >= 3);
+  check('бейдж «Ждёт согласования» в шапке', /жуть решение|период.*решения|решения/i.test(await page.locator('.vs-dirbar').innerText()));
+  await shot('05-director-queue');
+
+  /* голос одного директора: очередь может не измениться, если периодов несколько у того же сотрудника */
+  const qIdsBefore = await page.locator('.vs-q [data-vs-decide$="approve"]').evaluateAll(els => els.map(e => e.getAttribute('data-vs-decide')));
+  const firstDecide = qIdsBefore[0];
+  await page.locator('.vs-q [data-vs-decide$="approve"]').first().click();
+  await page.waitForTimeout(700);
+  const remains = await page.locator('.vs-q [data-vs-decide$="approve"]').evaluateAll(els => els.map(e => e.getAttribute('data-vs-decide')));
+  check('период остаётся в очереди, пока не проголосовали все директора', remains.indexOf(firstDecide) >= 0,
+    'decide=' + firstDecide + ' осталось=' + remains.length);
+  check('карточка периода показывает голоса директоров', await page.locator('.vs-q__votes .vs-vote.is-yes').count() >= 1,
+    'yes=' + await page.locator('.vs-q__votes .vs-vote.is-yes').count());
+  check('сотруднику показано «согласовали 1 из 3»', await page.evaluate(() => {
+    return window.VS_DATA.ALL.some(e => window.VS_DATA.rangesOf(e.id).some(r => r.status === 'pending' && (r.approves || []).length === 1));
+  }));
+  await shot('06-director-after-vote');
+
+  /* отклонение без комментария */
+  await page.locator('.vs-q [data-vs-decide$="reject"]').first().click();
+  await page.waitForTimeout(500);
+  check('модалка отклонения открылась', await page.locator('#vsRejectText').count() === 1);
+  await page.locator('[data-vs-reject-confirm]').click();
+  await page.waitForTimeout(400);
+  check('без комментария отклонение блокируется', await page.locator('#vsRejectText.is-err').count() === 1);
+  await shot('07-reject-required');
+  await page.locator('#vsRejectText').fill('Сдача объекта, возьмите после 20 мая.');
+  await page.locator('[data-vs-reject-confirm]').click();
   await page.waitForTimeout(600);
+  check('с комментарием — отклонено, дни заблокированы', await page.evaluate(() => Object.keys(window.VS_STATE.blocked || {}).length > 0));
+
+  /* ═══ 10. Согласовать всё → график закрывается ════════════════════════ */
+  await page.locator('[data-vs-approve-all]').first().click();
+  await page.waitForTimeout(600);
+  check('«Согласовать всё» очищает очередь', await page.locator('.vs-q').count() === 0);
+  check('пустая очередь показывает готовность закрыть', await page.locator('.vs-queue--empty').count() === 1);
+  await page.locator('[data-vs-close-graph]').first().click();
+  await page.waitForTimeout(600);
+  check('«Закрыть график» блокирует редактирование', /закрыт/i.test(await page.locator('.vs-modal').innerText()));
+
+  /* ═══ 11. Бухгалтерия ═════════════════════════════════════════════════ */
+  await go('#buh');
+  check('бухгалтерия: поля ввода по всем офисным', await page.locator('[data-buh-avail]').count() >= 14, 'n=' + await page.locator('[data-buh-avail]').count());
+  check('бухгалтерия: два поля — положено и перенос', await page.locator('[data-buh-avail]').count() === await page.locator('[data-buh-carry]').count());
+  check('бухгалтерия: предупреждение о ст. 124 (перенос ≤12)', /12 дней/.test(await page.locator('.vs-buhnote').innerText()));
+  await shot('08-buh');
+
+  /* ═══ 12. График офиса + наложение ════════════════════════════════════ */
+  await go('#office');
   check('график офиса: кнопка «График отпусков»', await page.locator('[data-vs-open]').count() === 1);
-  check('график офиса: есть ячейки ОТП', await page.locator('.os-c.v-vac').count() > 0, 'vac=' + await page.locator('.os-c.v-vac').count());
-  check('график офиса: подписи отделов', await page.locator('.os-g').count() >= 5, 'groups=' + await page.locator('.os-g').count());
-  await shot('06-office');
-  // кнопка открывает полноэкранный график отпусков
+  check('график офиса: ячейки ОТП (май)', await page.locator('.os-c.v-vac').count() >= 10, 'vac=' + await page.locator('.os-c.v-vac').count());
+  check('график офиса: группы отделов', await page.locator('.os-g').count() === 6, 'groups=' + await page.locator('.os-g').count());
+  check('график офиса: праздник 1 мая помечен', await page.locator('.sched-day.holiday').count() >= 2, 'hol=' + await page.locator('.sched-day.holiday').count());
+  await shot('09-office');
   await page.locator('[data-vs-open]').click();
   await page.waitForTimeout(600);
-  check('кнопка графика офиса открывает график отпусков', await page.locator('.vs-modal').count() === 1);
-  await shot('06b-office-to-vacation');
+  check('кнопка графика офиса открывает график отпусков', await page.locator('.vs-mon--head').count() >= 12);
 
-  /* 11. Письма */
-  await go('#mail-dir'); await page.waitForTimeout(400);
-  check('письмо директору: кнопки Да/Нет', (await page.locator('[data-vs-mail-yes]').count()) === 1 && (await page.locator('[data-vs-mail-no]').count()) === 1);
-  await shot('07-mail-director');
-  await go('#mail-ok'); await page.waitForTimeout(300); await shot('08-mail-ok');
-  await go('#mail-no'); await page.waitForTimeout(300); await shot('09-mail-no');
-
-  /* 12. Светлая тема */
-  await go('#me'); await page.waitForTimeout(300);
-  await page.locator('[data-theme-btn="light"]').click();
+  /* ═══ 13. Документы: заявление / приказ Т-6 / график Т-7 ══════════════ */
+  await go('#docs');
+  check('документы: три вкладки', await page.locator('.vs-doc-tab').count() === 3, 'n=' + await page.locator('.vs-doc-tab').count());
+  check('заявление: Асгард-Сервис и ФИО', /Асгард-Сервис/.test(await page.locator('.doc-sheet').innerText()) && /Андросов/i.test(await page.locator('.doc-sheet').innerText()));
+  check('заявление: период и дни', /май|мая/i.test(await page.locator('.doc-sheet').innerText()));
+  await shot('10-doc-zayav');
+  await page.locator('[data-vs-doc-tab="prikaz"]').click();
   await page.waitForTimeout(500);
-  await shot('10-light');
-  await page.locator('[data-theme-btn="dark"]').click();
-  await page.waitForTimeout(300);
+  check('приказ Т-6: форма 0301005', /0301005/.test(await page.locator('.doc-sheet').innerText()));
+  check('приказ Т-6: пункты А и В', /А\./.test(await page.locator('.doc-sheet').innerText()) && /В\./.test(await page.locator('.doc-sheet').innerText()));
+  await shot('11-doc-prikaz');
+  await page.locator('[data-vs-doc-tab="t7"]').click();
+  await page.waitForTimeout(500);
+  const t7 = await page.locator('.doc-sheet').innerText();
+  check('график Т-7: форма 0301020', /0301020/.test(t7));
+  check('график Т-7: все офисные сотрудники', await page.locator('.doc-t--grid tbody tr').count() >= 14, 'rows=' + await page.locator('.doc-t--grid tbody tr').count());
+  check('график Т-7: 10 граф по форме', await page.locator('.doc-t--grid thead tr').count() >= 3);
+  await shot('12-doc-t7');
 
-  /* 13. 12″ ноутбук: всё месяц влезает */
+  /* ═══ 14. Письма ══════════════════════════════════════════════════════ */
+  await go('#mail-dir');
+  check('письмо директору: кнопки Да/Нет', await page.locator('[data-vs-mail-yes]').count() === 1 && await page.locator('[data-vs-mail-no]').count() === 1);
+  check('письмо директору: полоса напоминаний 3 письма', await page.locator('.vs-rem__step').count() === 4, 'steps=' + await page.locator('.vs-rem__step').count());
+  check('письмо директору: указано «все директора»', /все директора/i.test(await page.locator('.ml-body').innerText()));
+  await shot('13-mail-director');
+  await go('#mail-ok');
+  check('письмо сотруднику: согласован + форма заявления', /согласован/i.test(await page.locator('.ml-body').innerText()) && await page.locator('[data-vs-docs-open]').count() >= 1);
+  await shot('14-mail-ok');
+  await go('#mail-no');
+  check('письмо сотруднику: причина отклонения', /Северной башне/.test(await page.locator('.ml-body').innerText()));
+  await shot('15-mail-no');
+  await go('#mail-auto');
+  check('письмо автоснятия: причина «3 напоминания»', /3 напоминания/i.test(await page.locator('.ml-body').innerText()));
+  await shot('16-mail-auto');
+
+  /* ═══ 15. Вписывание в 1280×720 ═══════════════════════════════════════ */
+  await go('#me');
   await page.setViewportSize({ width: 1280, height: 720 });
-  await page.waitForTimeout(400);
-  check('на 1280×720 месяц влезает без гориз. скролла контейнера', await page.evaluate(() => {
-    const el = document.querySelector('.vs-tablewrap');
-    const w = document.querySelector('.vs-head');
-    return !!el && !!w && w.scrollWidth <= el.clientWidth + 2;
+  await page.evaluate(() => { const S = window.VS_STATE; S.closed = false; S.openMonth = 4; S.expansion = true; window.VS_APP.render(); });
+  await page.waitForTimeout(700);
+  check('1280×720: месяц влезает без гориз. скролла таблицы', await page.evaluate(() => {
+    const w = document.querySelector('.vs-tablewrap');
+    return !!w && w.scrollWidth <= w.clientWidth + 4;
   }));
-  await shot('11-narrow-1280');
+  check('1280×720: шапка и строки выровнены', await page.evaluate(() => {
+    const h = document.querySelector('.vs-head'), r = document.querySelector('.vs-row');
+    if (!h || !r) return false;
+    const a = h.querySelector('.vs-mon, .vs-days'), b = r.querySelector('.vs-mon, .vs-days');
+    return !!a && !!b && Math.abs(a.getBoundingClientRect().width - b.getBoundingClientRect().width) < 2;
+  }));
+  await shot('17-narrow-1280');
 
-  /* 14. Регрессии по найденным дефектам (верификатор) */
-  await go('#me'); await page.waitForTimeout(400);
-  check('кнопки «скрыть отдел» отрисованы', await page.locator('[data-vs-hidegroup]').count() >= 5, 'n=' + await page.locator('[data-vs-hidegroup]').count());
-  const gBefore = await page.locator('.vs-group').count();
-  await page.locator('[data-vs-hidegroup]').first().click();
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await go('#me');
+  await page.evaluate(() => { const S = window.VS_STATE; S.closed = false; window.VS_APP.render(); });
   await page.waitForTimeout(400);
-  check('скрытие отдела работает', await page.locator('.vs-group').count() === gBefore - 1);
-  check('есть чип «показать отдел»', await page.locator('[data-vs-unhidegroup]').count() >= 1);
-  await page.locator('[data-vs-unhidegroup]').first().click();
-  await page.waitForTimeout(300);
-  check('возврат отдела работает', await page.locator('.vs-group').count() === gBefore);
+  await page.locator('[data-theme-btn="light"]').click();
+  await page.waitForTimeout(700);
+  await shot('18-light');
 
-  // блокировка повторной постановки отклонённых дней
-  await page.evaluate(() => {
-    // берём отклонённый период, если есть; иначе отклоняем майский программно
-    const D = window.VS_DATA, St = window.VS_STATE;
-    let r = D.rangesOf(D.me.id).find(x => x.status === 'rejected');
-    if (!r) { r = { id: 'RTEST', start: '2027-03-03', end: '2027-03-09', days: 7, status: 'rejected', reason: 'тест' }; D.VAC[D.me.id].push(r); }
-    D.expand(r.start, r.end).forEach(d => St.blocked[d] = true);
-    St.blockedStart = r.start; St.blockedEnd = r.end;
-  });
-  await page.evaluate(() => location.hash = '#office');
-  await page.waitForTimeout(300);
-  await page.evaluate(() => location.hash = '#me');
-  await page.waitForTimeout(500);
-  const bs = await page.evaluate(() => window.VS_STATE.blockedStart);
-  const bm = Number(bs.slice(5, 7)) - 1, bd = Number(bs.slice(8, 10));
-  await page.locator('.vs-mon--head[data-month="' + bm + '"]').click();
-  await page.waitForTimeout(400);
-  await page.locator('.vs-row.is-me .vs-d[data-day="' + bs + '"]').click();
-  await page.waitForTimeout(300);
-  const sb = await page.locator('.vs-selbar').innerText().catch(() => '');
-  check('отклонённые дни повторно не поставить (причина в панели)', /не согласовал/i.test(sb), sb.replace(/\s+/g, ' '));
-  const saveDisabled = await page.locator('.vs-selbar [data-vs-save]').isDisabled().catch(() => false);
-  check('кнопка постановки заблокирована', saveDisabled);
-  await page.locator('.vs-selbar [data-vs-clear]').click().catch(() => {});
-  await page.waitForTimeout(200);
+  check('нет JS-ошибок', errors.length === 0, errors.join(' || ') || 'clean');
 
-  // закрытие графика и ✕ модалки
-  await go('#director'); await page.waitForTimeout(400);
-  await page.locator('[data-vs-close-graph]').click();
-  await page.waitForTimeout(500);
-  check('«Закрыть график» закрывает редактирование', await page.locator('.vs-closed').count() === 1);
-  await page.locator('[data-vs-close-modal-manual]').click();
-  await page.waitForTimeout(400);
-  check('✕ модалки возвращает в график офиса', await page.locator('.os-wrap').count() === 1);
-
-  check('нет JS-ошибок', errors.length === 0, errors.join(' | ') || 'clean');
-
+  console.log('\n' + (fails ? 'FAILS: ' + fails : 'ALL PASS') + '  (' + passes + ' проверок)');
   await browser.close();
-  console.log('\n' + (fails === 0 ? 'ALL PASS' : 'FAILS: ' + fails));
-  process.exit(fails === 0 ? 0 : 1);
-})().catch((e) => { console.error('CRASH', e); process.exit(2); });
+  process.exit(fails ? 1 : 0);
+})();

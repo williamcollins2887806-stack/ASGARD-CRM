@@ -1,19 +1,20 @@
 'use strict';
 
 /**
- * Notification helper — creates DB notification + sends Telegram
- * Used across all business event routes.
+ * Notification helper — запись в БД + SSE + web-push.
+ * ═══════════════════════════════════════════════════════════════════════════
+ * ⚠️ Telegram ИСКЛЮЧЁН намеренно (заказчик 18.10.2026): «у нас телеграм не
+ * работает — либо смс манго, либо макс». Раньше здесь была отправка в Telegram,
+ * из-за чего складывалось впечатление, что код/уведомление придёт в Telegram,
+ * хотя рабочие получают его в MAX (Green API) или SMS (Mango).
+ *
+ * Рабочие каналы доставки:
+ *   • MAX через Green API — src/services/green-api.js (sendMaxMessage)
+ *   • SMS через Mango      — src/services/mango.js
+ *   • web-push + SSE + запись в notifications (этот файл)
  */
 
 const { toPlainText } = require('../lib/plain-text');
-
-/**
- * S4: экранирование Telegram-Markdown. Имя контрагента с `*`/`_`/`[`/`` ` ``
- * ломало разметку (ошибка отправки) — «добро, но в След_раз» и т.п.
- */
-function escMd(s) {
-  return String(s == null ? '' : s).replace(/([_*\[\]()~`>#+\-=|{}.!\\])/g, '\\$1');
-}
 
 /** Push / cold-open: desktop `#/path` → mobile `/m/path`. */
 function toPushUrl(link) {
@@ -50,17 +51,8 @@ async function createNotification(db, { user_id, title, message, type, link }) {
       });
     } catch (e) { /* SSE may not be available */ }
 
-    // Telegram
-    try {
-      const telegram = require('./telegram');
-      if (telegram && telegram.sendNotification) {
-        const plainTitle = escMd(toPlainText(title).replace(/\s*\n+\s*/g, ' ').trim() || title);
-        const plainMessage = escMd(toPlainText(message || '').trim());
-        await telegram.sendNotification(user_id, `🔔 *${plainTitle}*\n\n${plainMessage}`);
-      }
-    } catch (e) {
-      // Telegram may not be configured
-    }
+    // Telegram ИСКЛЮЧЁН (заказчик 18.10.2026): не работает, каналы — MAX/SMS/push.
+    // Блок удалён, чтобы не создавать ложное впечатление доставки в Telegram.
 
     // Push notification (web-push)
     try {

@@ -62,6 +62,36 @@
   --sheen-inset-strong: rgba(255,255,255,0.25);
   --pp-hairline: linear-gradient(90deg, transparent, var(--gold), transparent);
 
+  /* ── Градиенты (зеркало design-tokens.css, используются в градиентных полосах) ── */
+  --grad-corp: linear-gradient(135deg, #C8293B, #1E4D8C);
+  --grad-red:  linear-gradient(90deg, #C8293B, #E8475A);
+  --grad-blue: linear-gradient(90deg, #1E4D8C, #4A90D9);
+  --grad-gold: linear-gradient(90deg, #D4A843, #E8C35A);
+  --grad-ok:   linear-gradient(90deg, #2D8659, #4ADE80);
+
+  /* ── Glass / премиум-поверхности ──────────────────────────────────────
+     Единый язык: полупрозрачная подложка + backdrop-blur + верхний блик.
+     Значения — из public/assets/css/design-tokens.css и huginn_dock.css. */
+  --glass-bg: color-mix(in srgb, var(--bg2) 78%, transparent);
+  --glass-bg-2: color-mix(in srgb, var(--bg3) 72%, transparent);
+  --glass-bg-raised: color-mix(in srgb, var(--bg3) 88%, transparent);
+  --glass-blur: blur(22px) saturate(175%);
+  --glass-blur-sm: blur(14px) saturate(150%);
+  --glass-hairline: rgba(255,255,255,0.10);
+  --glass-hairline-strong: rgba(255,255,255,0.18);
+  --glass-top-sheen: linear-gradient(180deg, rgba(255,255,255,0.10), transparent 42%);
+  --glass-card-sheen: linear-gradient(155deg, rgba(255,255,255,0.09) 0%, rgba(255,255,255,0.015) 34%, transparent 62%);
+  --glow-gold: 0 0 26px rgba(212,168,67,0.30);
+  --glow-blue: 0 0 26px rgba(74,144,217,0.28);
+  --inset-hairline: inset 0 1px 0 rgba(255,255,255,0.10);
+  --ring-gold: 0 0 0 3px var(--gold-bg);
+  --ring-blue: 0 0 0 3px var(--blue-bg);
+  --ring-err: 0 0 0 3px var(--err-bg);
+
+  /* Радиусы «премиум» (переопределяют базовые для крупных поверхностей) */
+  --r-2xl: 20px;
+  --r-3xl: 26px;
+
   /* Контрастные «on-color» (текст/иконки на цветном фоне) и рамки-акценты.
      Вынесены в токены, чтобы не было хардкода в компонентах. */
   --on-color: #FFFFFF;         /* белый текст на цветной заливке */
@@ -108,4 +138,22 @@ html[data-theme="light"] {
   --pp-glow-blue: 0 0 0 rgba(0,0,0,0);
   --pp-glow-ok: 0 0 0 rgba(0,0,0,0);
   --pp-sheen: linear-gradient(135deg, rgba(255,255,255,0.5) 0%, transparent 46%);
+
+  /* Светлая тема: «стекло» — плотнее и мягче, блики сдержаннее (Nordic Manuscript) */
+  --grad-blue: linear-gradient(90deg, #1A3F74, #24568F);
+  --glass-bg: color-mix(in srgb, var(--bg2) 86%, transparent);
+  --glass-bg-2: color-mix(in srgb, var(--bg3) 80%, transparent);
+  --glass-bg-raised: color-mix(in srgb, var(--bg2) 94%, transparent);
+  --glass-blur: blur(18px) saturate(130%);
+  --glass-blur-sm: blur(12px) saturate(120%);
+  --glass-hairline: rgba(139,120,90,0.22);
+  --glass-hairline-strong: rgba(139,120,90,0.34);
+  --glass-top-sheen: linear-gradient(180deg, rgba(255,255,255,0.72), transparent 44%);
+  --glass-card-sheen: linear-gradient(155deg, rgba(255,255,255,0.62) 0%, rgba(255,255,255,0.10) 36%, transparent 64%);
+  --glow-gold: 0 0 0 rgba(0,0,0,0);
+  --glow-blue: 0 0 0 rgba(0,0,0,0);
+  --inset-hairline: inset 0 1px 0 rgba(255,255,255,0.85);
+  --ring-gold: 0 0 0 3px var(--gold-bg);
+  --ring-blue: 0 0 0 3px var(--blue-bg);
+  --ring-err: 0 0 0 3px var(--err-bg);
 }

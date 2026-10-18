@@ -6,7 +6,7 @@ import { BottomSheet } from '@/components/shared/BottomSheet';
 import { EmptyState } from '@/components/shared/EmptyState';
 import { SkeletonList } from '@/components/shared/SkeletonKit';
 import { PullToRefresh } from '@/components/shared/PullToRefresh';
-import { Briefcase, ChevronRight } from 'lucide-react';
+import { Briefcase, ChevronRight, ShieldAlert } from 'lucide-react';
 import { formatMoney as fmtMoney } from '@/lib/utils';
 
 const STATUS_LABELS = {
@@ -79,7 +79,10 @@ export default function OfficialEmployees() {
   return (
     <PageShell title="Официально устроенные">
       <PullToRefresh onRefresh={fetchData}>
-        {loading ? <SkeletonList count={5} /> : employees.length === 0 ? (
+        {loading ? <SkeletonList count={5} /> : error ? (
+          <EmptyState icon={ShieldAlert} iconColor="var(--err-t)" iconBg="color-mix(in srgb, var(--err-t) 10%, transparent)"
+            title="Нет доступа или ошибка" description={String(error)} />
+        ) : employees.length === 0 ? (
           <EmptyState icon={Briefcase} iconColor="var(--blue)" iconBg="color-mix(in srgb, var(--blue) 10%, transparent)"
             title="Нет данных" description="Нет официально устроенных сотрудников" />
         ) : (

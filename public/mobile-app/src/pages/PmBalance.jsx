@@ -9,7 +9,7 @@ import { PullToRefresh } from '@/components/shared/PullToRefresh';
 import { StatCard, StatRow } from '@/components/shared/StatCard';
 import { formatMoney as fmtMoney } from '@/lib/utils';
 import {
-  Wallet, ChevronRight, ArrowDownCircle, ArrowUpCircle, Banknote,
+  Wallet, ChevronRight, ArrowDownCircle, ArrowUpCircle, Banknote, ShieldAlert,
 } from 'lucide-react';
 
 export default function PmBalance() {
@@ -63,7 +63,10 @@ export default function PmBalance() {
           </StatRow>
         )}
 
-        {loading ? <SkeletonList count={5} /> : pms.length === 0 ? (
+        {loading ? <SkeletonList count={5} /> : error ? (
+          <EmptyState icon={ShieldAlert} iconColor="var(--err-t)" iconBg="color-mix(in srgb, var(--err-t) 10%, transparent)"
+            title="Нет доступа или ошибка" description={String(error)} />
+        ) : pms.length === 0 ? (
           <EmptyState icon={Wallet} iconColor="var(--gold)" iconBg="color-mix(in srgb, var(--gold) 10%, transparent)"
             title="Нет данных" description="Нет РП с балансом" />
         ) : (

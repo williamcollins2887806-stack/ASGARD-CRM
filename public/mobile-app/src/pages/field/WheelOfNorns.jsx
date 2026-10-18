@@ -1183,7 +1183,7 @@ export default function WheelOfNorns() {
                 type="button"
                 className="wn-btn"
                 onClick={() => navigate('/field/academy')}
-                style={{ background: 'linear-gradient(135deg, var(--gold-dim), var(--gold))', color: 'var(--text-on-gold)', boxShadow: '0 6px 0 #7a5a12, 0 8px 25px color-mix(in oklab, var(--value) 28%, transparent)' }}
+                style={{ background: 'var(--gold-fill)', color: 'var(--text-on-gold)', boxShadow: '0 6px 0 color-mix(in oklab, var(--gold-fill) 70%, #000), 0 8px 25px color-mix(in oklab, var(--gold-fill) 28%, transparent)' }}
               >
                 📖 Пройти урок{blockedByLesson.title ? `: ${blockedByLesson.title}` : ''} →
               </button>

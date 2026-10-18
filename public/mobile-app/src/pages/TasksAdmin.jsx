@@ -6,7 +6,7 @@ import { BottomSheet } from '@/components/shared/BottomSheet';
 import { EmptyState } from '@/components/shared/EmptyState';
 import { SkeletonList } from '@/components/shared/SkeletonKit';
 import { PullToRefresh } from '@/components/shared/PullToRefresh';
-import { ClipboardList, Plus, ChevronRight, Search, X, Check, Trash2 } from 'lucide-react';
+import { ClipboardList, Plus, ChevronRight, Search, X, Check, Trash2, ShieldAlert } from 'lucide-react';
 import { formatDate, relativeTime } from '@/lib/utils';
 import AsgardSelect from '@/components/ui/AsgardSelect';
 
@@ -39,6 +39,7 @@ export default function TasksAdmin() {
   const [tasks, setTasks] = useState([]);
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
   const [filter, setFilter] = useState('all');
   const [search, setSearch] = useState('');
   const [showSearch, setShowSearch] = useState(false);
@@ -53,8 +54,9 @@ export default function TasksAdmin() {
         api.get('/users').catch(() => null),
       ]);
       setTasks(api.extractRows(tRes) || []);
+      setError(null);
       if (uRes) setUsers((api.extractRows(uRes) || []).filter((u) => u.is_active !== false));
-    } catch { setTasks([]); }
+    } catch (e) { setTasks([]); setError(e?.message || 'Ошибка загрузки'); }
     finally { setLoading(false); }
   }, []);
   useEffect(() => { fetchData(); }, [fetchData]);
@@ -95,7 +97,9 @@ export default function TasksAdmin() {
         <div className="flex gap-1.5 px-1 pb-3 overflow-x-auto no-scrollbar">
           {FILTERS.map((f) => <button key={f.id} onClick={() => { haptic.light(); setFilter(f.id); }} className="filter-pill spring-tap" data-active={filter === f.id}>{f.label}</button>)}
         </div>
-        {loading ? <SkeletonList count={5} /> : filtered.length === 0 ? (
+        {loading ? <SkeletonList count={5} /> : error ? (
+          <EmptyState icon={ShieldAlert} iconColor="var(--err-t)" iconBg="color-mix(in srgb, var(--err-t) 10%, transparent)" title="Нет доступа" description="Раздел доступен другим ролям" />
+        ) : filtered.length === 0 ? (
           <EmptyState icon={ClipboardList} iconColor="var(--blue)" iconBg="rgba(74,144,217,0.1)" title={search ? 'Ничего не найдено' : 'Нет задач'} description="Задачи появятся здесь" />
         ) : (
           <div className="flex flex-col gap-2 pb-4">

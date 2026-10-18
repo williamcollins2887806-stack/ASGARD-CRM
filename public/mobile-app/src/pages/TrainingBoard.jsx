@@ -7,7 +7,7 @@ import { EmptyState } from '@/components/shared/EmptyState';
 import { SkeletonList } from '@/components/shared/SkeletonKit';
 import { PullToRefresh } from '@/components/shared/PullToRefresh';
 import {
-  GraduationCap, ChevronRight, Upload, CheckCircle, Clock, AlertTriangle,
+  GraduationCap, ChevronRight, Upload, CheckCircle, Clock, AlertTriangle, ShieldAlert,
 } from 'lucide-react';
 
 const STATUS_CONFIG = {
@@ -102,7 +102,11 @@ export default function TrainingBoard() {
   return (
     <PageShell title="Обучение и допуски">
       <PullToRefresh onRefresh={fetchData}>
-        {loading ? <SkeletonList count={5} /> : items.length === 0 ? (
+        {loading ? <SkeletonList count={5} /> : error ? (
+          <EmptyState icon={ShieldAlert} iconColor="var(--err-t)" iconBg="color-mix(in srgb, var(--err-t) 10%, transparent)"
+            title={error === 'Нет доступа' || /доступ|403|прав/i.test(String(error)) ? 'Нет доступа' : 'Ошибка загрузки'}
+            description={String(error)} />
+        ) : items.length === 0 ? (
           <EmptyState icon={GraduationCap} iconColor="var(--info-t)" iconBg="color-mix(in srgb, var(--info-t) 10%, transparent)"
             title="Нет обучений" description="Все допуски в порядке" />
         ) : (
