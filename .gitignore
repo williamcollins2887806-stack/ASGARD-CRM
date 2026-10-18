@@ -26,6 +26,9 @@ tests/reports/*
 # На них опирается план «Живая сертификация + E/F/G» → решение обязано быть в истории.
 !tests/reports/COMPLETED-EVIDENCE-MAP.md
 !tests/reports/VT4-PROD-CONSOLE-FINDINGS.md
+# План выкатки 18.10.2026 (D-280/D-281/D-282): бэкап, дельта 20 миграций, порядок.
+# В whitelist, потому что это точка возврата к решению при разборе инцидента.
+!tests/reports/DEPLOY-18-10-2026-PLAN.md
 tests/report.html
 tests/report.json
 _deprecated/
