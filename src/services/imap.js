@@ -94,6 +94,32 @@ function cleanHtml(html) {
   });
 }
 
+/**
+ * V408: HTML → читаемый текст. Письма от людей часто приходят без plain-части
+ * (только HTML) — тогда `parsed.text` пуст, и разбор письма теряет содержание.
+ * Здесь: убираем style/script, превращаем блоки и <br> в переносы, снимаем теги,
+ * декодируем основные сущности. Тонкость не нужна — нужен текст для разбора.
+ */
+function htmlToPlainText(html) {
+  if (!html) return '';
+  let s = String(html);
+  s = s.replace(/<(script|style|head)[\s\S]*?<\/\1>/gi, '');
+  // Блочные концы → перенос строки, чтобы «строка = мысль» сохранялась.
+  s = s.replace(/<br\s*\/?>/gi, '\n');
+  s = s.replace(/<\/(p|div|tr|li|h[1-6]|table|blockquote)>/gi, '\n');
+  s = s.replace(/<li[^>]*>/gi, '• ');
+  s = s.replace(/<[^>]+>/g, '');
+  s = s.replace(/&nbsp;/gi, ' ').replace(/&amp;/gi, '&').replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>').replace(/&quot;/gi, '"').replace(/&#39;|&apos;/gi, "'")
+    .replace(/&laquo;/gi, '«').replace(/&raquo;/gi, '»').replace(/&mdash;/gi, '—')
+    .replace(/&ndash;/gi, '–').replace(/&hellip;/gi, '…');
+  s = s.replace(/&#(\d+);/g, (_, d) => { try { return String.fromCharCode(parseInt(d, 10)); } catch (_) { return ''; } });
+  // Схлопываем пустые строки и отступы.
+  s = s.split('\n').map((l) => l.replace(/[ \t\u00a0]+/g, ' ').trim()).join('\n');
+  s = s.replace(/\n{3,}/g, '\n\n').trim();
+  return s;
+}
+
 // ── Thread ID computation ───────────────────────────────────────────────
 function computeThreadId(messageId, inReplyTo, referencesHeader) {
   // Use first reference as thread root, fallback to inReplyTo, fallback to own messageId
@@ -309,8 +335,14 @@ async function saveEmail(account, msg, parsed) {
   const bccEmails = (parsed.bcc?.value || []).map(a => ({ address: a.address, name: a.name || '' }));
   const replyToEmail = parsed.replyTo?.value?.[0]?.address || null;
 
-  const bodyText = parsed.text || '';
-  const bodyHtmlRaw = parsed.html || '';
+  // V408 (живой тест 18.10.2026): письмо от РП пришло ТОЛЬКО в HTML — `body_text`
+  // оказался ПУСТЫМ (0 символов), хотя весь текст был в `body_html`. Из-за этого
+  // не разобрались ни объект, ни просьба инициатора. Если plain-части нет,
+  // извлекаем текст из HTML (убираем теги, склеиваем блоки, декодируем сущности).
+  let bodyText = parsed.text || '';
+  if (!bodyText.trim() && bodyHtmlRaw) {
+    bodyText = htmlToPlainText(bodyHtmlRaw);
+  }
   const bodyHtml = cleanHtml(bodyHtmlRaw);
   const snippet = makeSnippet(bodyText);
   const threadId = computeThreadId(messageId, inReplyTo, referencesHeader);
@@ -491,8 +523,15 @@ async function runDocIntakeForEmail(db, emailId) {
 
   const { extractInvoice } = require('./invoice-extract');
   const intake = require('./doc-email-intake');
-  const email = (await db.query(`SELECT id, body_text, from_email FROM emails WHERE id=$1`, [emailId])).rows[0];
+  // V408 (живой тест 18.10.2026): берём ТЕМУ и HTML-часть — раньше читали только
+  // `body_text`, который у HTML-писем пуст, а объект часто указан именно в теме.
+  const email = (await db.query(
+    `SELECT id, body_text, body_html, subject, from_email FROM emails WHERE id=$1`, [emailId])).rows[0];
   if (!email) return { skipped: 'no_email' };
+  // Если plain-части нет — извлекаем текст из HTML (иначе письмо «пустое»).
+  if (!String(email.body_text || '').trim() && email.body_html) {
+    email.body_text = htmlToPlainText(email.body_html);
+  }
 
   const atts = (await db.query(
     `SELECT id, filename, mime_type, file_path, is_inline FROM email_attachments WHERE email_id=$1`, [emailId])).rows;
@@ -505,7 +544,14 @@ async function runDocIntakeForEmail(db, emailId) {
   for (const a of invoiceAtts) {
     let text = '';
     try {
-      const full = resolveAttachmentPath ? resolveAttachmentPath(a.file_path) : a.file_path;
+      // V408 (живой тест 18.10.2026): раньше здесь стояло `resolveAttachmentPath`,
+      // которой в коде НЕТ — условие всегда ложно, в OCR шёл ОТНОСИТЕЛЬНЫЙ путь
+      // ('uploads/mail/...'), файл не находился и текст выходил ПУСТЫМ. Счёт при
+      // этом классифицировался как «не счёт» (no_bank) — заявка не создавалась.
+      // Теперь путь резолвим от базовой папки uploads (как resolveDocumentPath).
+      const baseUploads = path.resolve(process.env.UPLOAD_DIR || process.env.UPLOADS_DIR || path.join(process.cwd(), 'uploads'));
+      const rel = String(a.file_path || '').replace(/^\/?uploads\//i, '').replace(/^[\\/]+/, '');
+      const full = path.isAbsolute(String(a.file_path || '')) ? String(a.file_path) : path.join(baseUploads, rel);
       if (/pdf/i.test(a.mime_type || '')) {
         const ocr = require('./pdf-ocr');
         const res = await ocr.ocrPdfPath(full, a.filename);
@@ -522,7 +568,8 @@ async function runDocIntakeForEmail(db, emailId) {
           text = res && res.text ? res.text : '';
         }
       }
-    } catch (e) { text = ''; }
+      if (!text) console.warn(`[IMAP] intake: нет текста из вложения ${a.filename} (путь ${full})`);
+    } catch (e) { console.warn('[IMAP] intake OCR: ' + e.message); }
     if (!looksLikeInvoice(text)) continue;
     invoices.push({ attachment: a, text });
   }
@@ -530,7 +577,11 @@ async function runDocIntakeForEmail(db, emailId) {
   if (!invoices.length && looksLikeInvoice(email.body_text)) {
     invoices.push({ attachment: null, text: email.body_text });
   }
-  if (!invoices.length) return { skipped: 'no_invoice_like' };
+  if (!invoices.length) {
+    // Диагностика: почему письмо не признано счётом (частая причина — пустой текст).
+    console.warn(`[IMAP] intake: письмо ${emailId} не признано счётом (вложений ${invoiceAtts.length}, text_len ${String(email.body_text || '').length})`);
+    return { skipped: 'no_invoice_like' };
+  }
   return intake.intakeEmail(db, { email, invoices, userId: null });
 }
 

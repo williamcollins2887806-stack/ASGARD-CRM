@@ -128,6 +128,29 @@ async function enrichCatalogFromLines(db, opts = {}) {
     });
     if (!product) continue;
     created++;
+    const totalRow = qty ? Math.round(price * qty * 100) / 100 : null;
+    // V410 (живой тест 18.10.2026): повторный intake того же счёта плодил ДУБЛИ
+    // позиций (15 строк вместо 1 за 15 прогонов) — история цен искажалась.
+    // Позиция опознаётся по (документ + наименование + артикул): при повторе
+    // ОБНОВЛЯЕМ строку, а не вставляем новую.
+    if (opts.docRegistryId) {
+      const ex = await db.query(
+        `SELECT id FROM price_records
+          WHERE doc_registry_id=$1 AND lower(trim(item_name))=lower(trim($2))
+            AND COALESCE(lower(article),'') = COALESCE(lower($3),'')
+          LIMIT 1`,
+        [opts.docRegistryId, name, line.article || null]);
+      if (ex.rows[0]) {
+        await db.query(
+          `UPDATE price_records SET unit_price=$2, quantity=$3, total=$4,
+             invoice_date=$5::date, invoice_number=$6, supplier_id=$7, supplier_name=$8, recorded_at=NOW()
+           WHERE id=$1`,
+          [ex.rows[0].id, price, qty, totalRow, invDate, invNo,
+            supplier?.id || null, supplier?.name || opts.supplierName || null]);
+        priced++;
+        continue;
+      }
+    }
     await db.query(
       `INSERT INTO price_records(
          product_id, product_category_id, item_name, article, unit,
@@ -145,7 +168,7 @@ async function enrichCatalogFromLines(db, opts = {}) {
         supplier?.name || opts.supplierName || null,
         price,
         qty,
-        qty ? Math.round(price * qty * 100) / 100 : null,
+        totalRow,
         invDate,
         invNo,
         opts.docRegistryId || null,

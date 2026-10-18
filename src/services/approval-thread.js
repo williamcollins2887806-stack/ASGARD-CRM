@@ -98,7 +98,16 @@ async function handleApprovalReply(db, email) {
   //    тем же контрагентом из темы — НЕ трогаем (неоднозначно) → needs_manual.
   const idArr = [...ids];
   if (!idArr.length) {
-    return { action: 'approve', matched: 0, applied: 0, needs_manual: true, reason: 'thread_not_matched' };
+    // V406 (проверка заказчика 18.10.2026): согласующий мог ответить РАНЬШЕ, чем
+    // intake создал заявку (OCR счёта занимает ~5 с). Раньше согласие терялось
+    // («требует ручной привязки»), и заявка потом висела несогласованной.
+    // Теперь СОХРАНЯЕМ решение и применим его, когда заявка появится
+    // (см. applyPendingGrants — вызывается после создания заявки в intake).
+    const saved = await saveDeferredGrant(db, email, 'approve');
+    return {
+      action: 'approve', matched: 0, applied: 0, needs_manual: true,
+      reason: 'thread_not_matched', deferred: !!saved, grant_id: saved || null
+    };
   }
 
   const actorId = await approverId(db);
@@ -140,6 +149,91 @@ function inReplyToClean(v) {
   return m ? m[0] : String(v).trim() || null;
 }
 
+/**
+ * V406: сохранить отложенное согласие (заявки ещё нет).
+ * Пишем минимум: какое письмо, кто, тред. Антидубль — по message_id.
+ * @returns {Promise<number|null>} id записи или null
+ */
+async function saveDeferredGrant(db, email, action = 'approve', comment = null) {
+  try {
+    const sender = extractEmail(email.from_email) || null;
+    if (!sender) return null;
+    const threadKey = email.thread_id || inReplyToClean(email.in_reply_to) || null;
+    const messageId = inReplyToClean(email.message_id) || null;
+    const { rows } = await db.query(
+      `INSERT INTO doc_approval_grant(email_id, thread_key, message_id, sender_email, action, comment)
+       VALUES ($1,$2,$3,$4,$5,$6)
+       ON CONFLICT (message_id) WHERE message_id IS NOT NULL DO NOTHING
+       RETURNING id`,
+      [email.id || null, threadKey, messageId, sender, action, comment]);
+    return rows[0] ? rows[0].id : null;
+  } catch (e) {
+    console.error('[approval-thread] saveDeferredGrant:', e.message);
+    return null;
+  }
+}
+
+/**
+ * V406: применить ранее сохранённые согласия к НОВОЙ заявке.
+ * Вызывается сразу после создания заявки из письма: если согласующий уже
+ * ответил «Добро» (по треду или по References на письмо-заявку), согласуем.
+ * @returns {Promise<{applied:boolean, grant_id?:number}>}
+ */
+async function applyPendingGrants(db, { paymentId, sourceEmailId, threadKey }) {
+  try {
+    if (!paymentId) return { applied: false };
+    // Ищем неприменённые согласия: по треду письма-заявки ИЛИ по его message_id.
+    const q = await db.query(
+      `SELECT g.* FROM doc_approval_grant g
+        WHERE g.applied_at IS NULL AND g.action = 'approve'
+          AND (($1::text IS NOT NULL AND g.thread_key = $1)
+               OR ($2::integer IS NOT NULL AND g.email_id IN (
+                     SELECT id FROM emails WHERE message_id = (SELECT message_id FROM emails WHERE id = $2)))) 
+        ORDER BY g.id ASC LIMIT 5`,
+      [threadKey || null, sourceEmailId || null]);
+    if (!q.rows.length) return { applied: false };
+    const pay = (await db.query(`SELECT * FROM payment_invoices WHERE id=$1`, [paymentId])).rows[0];
+    if (!pay || pay.status !== 'awaiting_dir') return { applied: false };
+    // applyDecision открывает транзакцию через .connect(). Если пришёл «сырой» Client
+    // (как в тестах), подменяем адаптером: транзакция выполняется на самом клиенте.
+    let dbp = db;
+    if (!dbp.pool) {
+      dbp = {
+        query: (t, p) => db.query(t, p),
+        pool: { connect: () => Promise.resolve({
+          query: (t, p) => db.query(t, p),
+          release: () => {}
+        }) },
+        connect: () => Promise.resolve({
+          query: (t, p) => db.query(t, p),
+          release: () => {}
+        })
+      };
+    }
+    let appliedAny = false;
+    const actorId = await approverId(db);
+    const actor = (await db.query(`SELECT id, name, role FROM users WHERE id=$1`, [actorId])).rows[0]
+      || { id: actorId, name: 'Согласующий (по email)', role: 'DIRECTOR_COMM' };
+    for (const g of q.rows) {
+      try {
+        const { applyDecision } = require('./payment-mail');
+        const res = await applyDecision(dbp, pay, 'approve', actor);
+        if (res && res.status === 'pending_payment') {
+          appliedAny = true;
+          await db.query(`UPDATE doc_approval_grant SET applied_at=NOW(), applied_ids=array_append(COALESCE(applied_ids,'{}'), $2) WHERE id=$1`, [g.id, paymentId]);
+          console.log(`[approval-thread] отложенное согласие #${g.id} применено к заявке ${paymentId}`);
+        }
+      } catch (e) {
+        console.error('[approval-thread] applyPendingGrants applyDecision:', e.message);
+      }
+    }
+    return { applied: appliedAny };
+  } catch (e) {
+    console.error('[approval-thread] applyPendingGrants:', e.message);
+    return { applied: false };
+  }
+}
+
 /** Список допустимых адресов согласующего (сам ящик + заместители из настроек). */
 async function approverEmails(db) {
   const out = new Set();
@@ -159,4 +253,4 @@ async function approverEmails(db) {
   return [...out].map((e) => extractEmail(e)).filter(Boolean);
 }
 
-module.exports = { handleApprovalReply, approverId, approverEmails, extractEmail };
+module.exports = { handleApprovalReply, approverId, approverEmails, extractEmail, saveDeferredGrant, applyPendingGrants };

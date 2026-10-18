@@ -65,6 +65,50 @@ function extractInvoiceLines(text) {
     if (line.length < 6 || line.length > 400) continue;
     // Служебные строки итогов/шапки не позиции.
     if (/^(итого|всего|ндс|сумма|в том числе|к оплате|всего к оплате|на сумму)/i.test(line)) continue;
+
+    // ── Паттерн C (V408, живой тест 18.10.2026): таблица с разделителями «|».
+    // Формат Wildberries/Ozon: «| 1 | Жидкий ключ ВАЛЕРА, 650 мл | 6 | шт | 590.00 | 22% | 3 540.00 |».
+    // Колонки: [№] Наименование Кол-во Ед. Цена [Ставка НДС] Сумма.
+    if (line.includes('|')) {
+      const cells = line.split('|').map((x) => x.trim()).filter((x, i, arr) => !(x === '' && (i === 0 || i === arr.length - 1)));
+      // Ждём минимум: наименование + кол-во + цена (+ сумма) — отбрасываем шапку таблицы.
+      if (cells.length >= 4 && !/наименован|кол-?во|ед\.?\s*изм|цена|всего|ставка/i.test(line)) {
+        const nums = cells.map((x) => x.replace(/[ \u00a0]/g, ''));
+        const nameCell = cells.find((x) => /[а-яёa-z]{3,}/i.test(x) && !/^(шт|компл|кг|м|мм|см|л|уп|пач|рул|набор|ед|т|г|пар)$/i.test(x));
+        // Номер строки в начале таблицы («1», «2») — НЕ количество: отбрасываем его.
+        const hasLeadingNo = /^\d+[.)]?$/.test(cells[0] || '');
+        const scanFrom = hasLeadingNo ? 1 : 0;
+        // Количество — первое целое ПОСЛЕ наименования (обычно перед единицей измерения).
+        let qtyIdx = -1;
+        for (let i = scanFrom; i < cells.length; i++) {
+          if (nameCell && cells[i] === nameCell) { continue; }
+          if (/^\d+(?:[.,]\d+)?$/.test(nums[i]) && !/%/.test(cells[i])) { qtyIdx = i; break; }
+        }
+        // Цена и сумма — числа с копейками или разделителем тысяч; проценты НДС не берём.
+        const moneyIdx = [];
+        cells.forEach((cell, i) => {
+          if (/%/.test(cell)) return;                       // «22%» — ставка, не сумма
+          if (i === qtyIdx) return;
+          const v = nums[i];
+          if (!/^\d{1,3}(?:[ \u00a0]?\d{3})*(?:[.,]\d{1,2})?$/.test(v)) return;
+          if (!/[.,]|\d{3}/.test(v)) return;                // цена без копеек и без тысяч — пропускаем
+          moneyIdx.push(i);
+        });
+        const priceIdx = moneyIdx.length >= 2 ? moneyIdx[moneyIdx.length - 2] : moneyIdx[0];
+        const sumIdx = moneyIdx.length >= 2 ? moneyIdx[moneyIdx.length - 1] : null;
+        const qty = qtyIdx >= 0 ? parseSum(nums[qtyIdx]) : null;
+        const price = priceIdx != null ? parseSum(nums[priceIdx]) : null;
+        const sum = sumIdx != null ? parseSum(nums[sumIdx]) : null;
+        const name = (nameCell || '').trim().replace(/[.,;:]+$/, '');
+        if (name.length >= 3 && price > 0 && !seen.has(name.toLowerCase())) {
+          const unitCell = cells.find((x) => /^(шт|компл|кг|м|мм|см|м2|м3|л|уп|пач|рул|набор|ед|т|г|пар)$/i.test(x));
+          seen.add(name.toLowerCase());
+          out.push({ name: name.slice(0, 300), quantity: qty, unit: unitCell || null, unit_price: price, sum });
+          continue;
+        }
+      }
+    }
+
     // Паттерн A: «… <qty> <unit> x <price> = <sum>»
     let m = line.match(new RegExp('^(?:\\d+[.)]\\s*)?(.+?)\\s+(\\d+(?:[.,]\\d+)?)\\s*' + UNIT + '?\\s*[xх×*]\\s*(' + NUM + ')\\s*(?:=|—|-)?\\s*(' + NUM + ')?\\s*$', 'i'));
     if (!m) {
@@ -206,8 +250,17 @@ function extractInvoice(text) {
   }
   // НДС — явно число после «НДС»; поддержаны «НДС 22%», «в том числе НДС 22%:»,
   // «НДС(22%)», «включая НДС …». Ставка пропускается, берётся следующее число.
-  const vatM = t.match(new RegExp('(?:в\\s+том\\s+числе\\s+)?(?:включая\\s+)?НДС(?:\\s*\\(?\\s*\\d+\\s*%?\\s*\\)?)?[^\\d]{0,14}' + SUM_RE, 'i'));
+  // V408 (живой тест 18.10.2026): в табличных счетах (Wildberries) есть колонка
+  // «Ставка НДС | 22% |» — прежняя регулярка хватала «22» как СУММУ НДС (вместо 638.36).
+  // Поэтому: (1) не берём число, за которым стоит «%»; (2) предпочитаем строки
+  // «включая НДС»/«в том числе НДС» — там всегда сумма, а не ставка.
+  const VAT_PRIORITY = t.match(new RegExp('(?:в\\s+том\\s+числе|включая|сумма)\\s+НДС[^\\d%]{0,14}' + SUM_RE, 'i'));
+  const vatM = VAT_PRIORITY || t.match(new RegExp('НДС(?:\\s*\\(?\\s*\\d+\\s*%?\\s*\\)?)?[^\\d%]{0,14}' + SUM_RE, 'i'));
   if (vatM) { out.vat_amount = parseSum(vatM[1]); if (out.vat_amount != null) found(); }
+  // Если найденный «НДС» больше суммы счёта — это точно ставка/мусор, отбрасываем.
+  if (out.vat_amount != null && out.amount_gross != null && out.vat_amount > out.amount_gross) {
+    out.vat_amount = null;
+  }
   // Нетто: «без НДС», «стоимость без НДС», «нетто», «Итого без НДС».
   const netM = t.match(new RegExp('(?:итого\\s+)?(?:без\\s+НДС|стоимость\\s+без\\s+НДС|нетто)[^\\d]{0,20}' + SUM_RE, 'i'));
   if (netM) { out.amount_net = parseSum(netM[1]); if (out.amount_net != null) found(); }

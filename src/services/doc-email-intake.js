@@ -31,6 +31,30 @@ async function confidenceMin(db) {
 }
 
 /**
+ * V408: объект из ТЕМЫ письма. Инициаторы пишут «МЛСП, Замена факельного оголовка:
+ * счет от WILDBERRIES», а в самом счёте объекта нет (Wildberries/Ozon его не пишут).
+ * Берём часть темы ДО служебных «хвостов» (счёт/счет/оплата/№/от) и отбрасываем
+ * префиксы пересылки (Fwd:/Re:/FW:). Если осмысленного текста нет — null.
+ * @param {string} subject
+ * @returns {string|null}
+ */
+function extractWorkHintFromSubject(subject) {
+  let s = String(subject || '').trim();
+  if (!s) return null;
+  // Снимаем префиксы пересылки/ответа (их может быть несколько).
+  s = s.replace(/^\s*((fwd?|fw|re|пересылка|ответ)\s*:\s*)+/i, '').trim();
+  // Обрезаем служебный хвост: «: счет от …», «— счёт №…», «оплата по счёту…».
+  s = s.split(/\s*[:—–-]\s*(?:сч[её]т|оплат|invoice|плат[её]ж)/i)[0];
+  // И просто «, счет от WILDBERRIES» без двоеточия.
+  s = s.split(/\s+сч[её]т\b/i)[0];
+  s = s.replace(/[.,;:]+$/g, '').trim();
+  // Отбрасываем мусор и слишком короткие строки.
+  if (s.length < 3) return null;
+  if (/^(сч[её]т|оплата|invoice|без темы|no subject)$/i.test(s)) return null;
+  return s.slice(0, 160);
+}
+
+/**
  * V407: определить инициатора заявки по адресу отправителя.
  *
  * Зачем: раньше во всех путях стояло `userId || 1` → ответственным за документ
@@ -113,8 +137,17 @@ async function intakeOne(db, { email, attachment, text, userId = null, dryRun = 
   // V404: срок из тела письма инициатора («оплати завтра / срочно / через 2 месяца»).
   // Текст письма и текст вложения могут отличаться — берём тело письма отдельно.
   const emailBody = email && (email.body_text || email.body) || '';
-  const intent = parsePaymentIntent(String(emailBody || text || ''));
+  // V408 (живой тест 18.10.2026): у письма от РП было ПУСТОЕ тело, а объект указан
+  // В ТЕМЕ — «Fwd: МЛСП, Замена факельного оголовка: счет от WILDBERRIES».
+  // Тема — тоже часть письма инициатора: берём её в разбор (объект, срок, просьба).
+  const emailSubject = (email && email.subject) || '';
+  const intent = parsePaymentIntent(String(emailBody || emailSubject || text || ''));
   parsed._intent = intent;
+  // Объект из темы, если в счёте его нет (типично для Wildberries/Ozon-счетов).
+  if (!parsed.work_hint && emailSubject) {
+    const hint = extractWorkHintFromSubject(emailSubject);
+    if (hint) parsed.work_hint = hint;
+  }
   const confMin = await confidenceMin(db);
 
   // Не счёт (сертификат/акт/договор/УПД/накладная) — не создаём заявку.
@@ -239,6 +272,32 @@ async function intakeOne(db, { email, attachment, text, userId = null, dryRun = 
     }
     // Запоминаем supplier_id для заявки.
     if (supplierId) parsed._supplierId = supplierId;
+  } else {
+    // V408 (живой тест 18.10.2026): документ УЖЕ был в реестре (пришёл ранее),
+    // поэтому ветка создания пропускалась — и вместе с ней терялись объект,
+    // договор и срок из ЭТОГО письма. Дозаполняем только пустые поля: ручные
+    // значения не затираем (принцип «связывать, а не дублировать»).
+    try {
+      const patch = [];
+      const vals = [];
+      if (workInfo.found && workInfo.work) { vals.push(workInfo.work.id); patch.push(`work_id=COALESCE(work_id, $${vals.length})`); }
+      if (parsed.payment_due_at) { vals.push(parsed.payment_due_at); patch.push(`payment_due_at=COALESCE(payment_due_at, $${vals.length}::date)`); }
+      if (parsed.contract_basis) {
+        if (contractInfo.found) {
+          vals.push(contractInfo.contract.id); patch.push(`contract_id=COALESCE(contract_id, $${vals.length})`);
+          vals.push('linked'); patch.push(`contract_mode=$${vals.length}`);
+        } else {
+          vals.push('once'); patch.push(`contract_mode=COALESCE(NULLIF(contract_mode,'none'), $${vals.length})`);
+        }
+        vals.push(parsed.contract_basis.number || parsed.contract_basis.raw); patch.push(`contract_label=COALESCE(contract_label, $${vals.length})`);
+      }
+      if (patch.length) {
+        vals.push(docId);
+        await db.query(`UPDATE doc_registry SET ${patch.join(', ')}, updated_at=NOW() WHERE id=$${vals.length}`, vals);
+      }
+    } catch (e) {
+      console.warn('[intake] дозаполнение существующей строки: ' + (e && e.message));
+    }
   }
 
   // Заявка на оплату — только при приемлемой уверенности.
@@ -247,6 +306,18 @@ async function intakeOne(db, { email, attachment, text, userId = null, dryRun = 
     const existPay = await db.query(`SELECT id FROM payment_invoices WHERE doc_registry_id=$1`, [docId]);
     if (existPay.rows[0]) {
       paymentId = existPay.rows[0].id;
+      // V406 (живой тест 18.10.2026): заявка УЖЕ была (повторный счёт/повторное письмо) —
+      // ветка создания пропускалась, и сохранённое «Добро» к ней не применялось.
+      // Применяем отложенное согласие и здесь: заявка могла ещё ждать решения.
+      try {
+        const thr = require('./approval-thread');
+        const srcEmail = emailId ? (await db.query(`SELECT thread_id FROM emails WHERE id=$1`, [emailId])).rows[0] : null;
+        await thr.applyPendingGrants(db, {
+          paymentId,
+          sourceEmailId: emailId,
+          threadKey: (srcEmail && srcEmail.thread_id) || null
+        });
+      } catch (e) { console.warn('[intake] applyPendingGrants (existing): ' + (e && e.message)); }
     } else {
       const basis = parsed.invoice_number
         ? `Счёт ${parsed.invoice_number}${parsed.invoice_date ? ' от ' + parsed.invoice_date : ''}`
@@ -254,13 +325,30 @@ async function intakeOne(db, { email, attachment, text, userId = null, dryRun = 
       // V404: срок оплаты — приоритет у просьбы инициатора из письма, затем у счёта.
       const timing = intent.timing === 'deferred' ? 'deferred' : 'immediate';
       const dueDate = intent.due_date || parsed.payment_due_at || null;
+      // V409 (проверка заказчика 18.10.2026): ФАЙЛ счёта не прикреплялся к заявке —
+      // бухгалтерия и директор не могли открыть скан (GET /:id/file → 404), хотя
+      // вложение в письме есть. Берём путь вложения письма и кладём в заявку:
+      // `file_path` — реальный путь на диске, `file_name` — имя для скачивания.
+      let filePath = null; let fileName = null;
+      if (attachmentId) {
+        try {
+          const at = await db.query(`SELECT filename, file_path FROM email_attachments WHERE id=$1`, [attachmentId]);
+          if (at.rows[0] && at.rows[0].file_path) {
+            fileName = at.rows[0].filename || null;
+            // Путь приводим к виду «uploads/...», который понимает /:id/file.
+            filePath = String(at.rows[0].file_path).startsWith('uploads/')
+              ? String(at.rows[0].file_path)
+              : 'uploads/' + String(at.rows[0].file_path).replace(/^\/?uploads\//, '');
+          }
+        } catch (_) { /* без файла заявка всё равно создаётся */ }
+      }
       const insPay = await db.query(
         `INSERT INTO payment_invoices(status, payment_status, supplier_name, supplier_id, amount, requires_payment,
            created_by, pay_timing, due_date, basis_type, basis_text, doc_registry_id, source_email_id, source_attachment_id,
            initiator_intent, initiator_note, contract_basis_number, contract_basis_date, contract_missing,
-           work_hint, work_id, invoice_number, invoice_date, vat_amount)
+           work_hint, work_id, invoice_number, invoice_date, vat_amount, file_path, file_name)
          VALUES ('awaiting_dir','awaiting_dir',$1,$2,$3,true,$4,$5,$6::date,'other',$7,$8,$9,$10,
-                 $11,$12,$13,$14::date,$15,$16,$17,$18,$19::date,$20) RETURNING id`,
+                 $11,$12,$13,$14::date,$15,$16,$17,$18,$19::date,$20,$21,$22) RETURNING id`,
         [parsed.counterparty_name, parsed._supplierId || null, parsed.amount_gross, senderUserId || 1,
           timing, dueDate, basis, docId, emailId, attachmentId,
           intent.intent !== 'none' ? intent.intent : null,
@@ -272,8 +360,20 @@ async function intakeOne(db, { email, attachment, text, userId = null, dryRun = 
           workInfo.found ? workInfo.work.id : null,
           parsed.invoice_number || null,
           parsed.invoice_date || null,
-          parsed.vat_amount != null ? parsed.vat_amount : null]);
+          parsed.vat_amount != null ? parsed.vat_amount : null,
+          filePath, fileName]);
       paymentId = insPay.rows[0].id;
+      // V406: если согласующий уже ответил «Добро» ДО появления заявки — применяем
+      // сохранённое согласие сразу, чтобы заявка не висела несогласованной.
+      try {
+        const thr = require('./approval-thread');
+        const srcEmail = emailId ? (await db.query(`SELECT thread_id, message_id FROM emails WHERE id=$1`, [emailId])).rows[0] : null;
+        await thr.applyPendingGrants(db, {
+          paymentId,
+          sourceEmailId: emailId,
+          threadKey: (srcEmail && srcEmail.thread_id) || null
+        });
+      } catch (e) { console.warn('[intake] applyPendingGrants: ' + (e && e.message)); }
       // TTL 72ч.
       try { require('./doc-approval-ttl').stampExpiry(db, paymentId); } catch (_) {}
       // Обратная связь в реестре: строка ↔ заявка (иначе карточка и архив не видят оплату).
@@ -371,4 +471,4 @@ async function intakeEmail(db, { email, invoices, userId = null }) {
   return { count: results.length, created, needs_manual: needsManual, already, results };
 }
 
-module.exports = { intakeOne, intakeEmail, confidenceMin, resolveSenderUserId };
+module.exports = { intakeOne, intakeEmail, confidenceMin, resolveSenderUserId, extractWorkHintFromSubject };
