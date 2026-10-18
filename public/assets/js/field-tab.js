@@ -243,13 +243,37 @@ window.AsgardFieldTab = (function () {
     }
   }
 
-  function tariffSelectOptions(tariffs) {
+  function tariffSelectOptions(tariffs, opts) {
+    const warnIds = new Set(((opts && opts.warnIds) || []).map(String));
     return [{ value: '', label: '— выберите —' }].concat(
       tariffs.map(t => ({
         value: String(t.id),
         label: `${t.position_name} (${t.points}б · ${money(t.rate_per_shift)})`
+          + (warnIds.has(String(t.id)) ? ' ⚠ не из категории объекта' : '')
       }))
     );
+  }
+
+  /**
+   * Текущий сохранённый тариф мог не попасть в список, отфильтрованный по роли
+   * и категории участка (например работа «Земля», а тариф назначен по МЛСП, или
+   * роль переключили после выбора тарифа). Раньше селект показывал «— выберите —»,
+   * хотя tariff_id в БД был — «Баллы/₽/смену» показывались, а тариф «пропадал».
+   * Возвращаем тариф в начало списка и помечаем, чтобы РП видел причину.
+   */
+  function injectCurrentTariff(pool, tariffId, allTariffsPool, siteCategory) {
+    if (!tariffId) return { pool, warnIds: [] };
+    if ((pool || []).some(t => Number(t.id) === Number(tariffId))) return { pool, warnIds: [] };
+    const cur = (allTariffsPool || []).find(t => Number(t.id) === Number(tariffId));
+    if (!cur) return { pool, warnIds: [] };
+    // Предупреждаем только при реальном расхождении (другая категория либо тариф-совмещение),
+    // иначе это нормальный случай «роль поменяли» и шум в списке не нужен.
+    const mismatch = (siteCategory && cur.category && cur.category !== siteCategory && cur.category !== 'special')
+      || !!cur.is_combinable;
+    return {
+      pool: [cur].concat(pool || []),
+      warnIds: mismatch ? [String(cur.id)] : []
+    };
   }
 
   const LOG_TYPES = [
@@ -716,16 +740,18 @@ window.AsgardFieldTab = (function () {
         const rid = row.dataset.crewRid;
         if (rid == null) return;
         const role = CRSelect.getValue('ft-role-' + rid) || 'worker';
-        const roleTariffs = filterTariffsForFieldRole(newFiltered, role, newCat);
-        const opts = tariffSelectOptions(roleTariffs);
+        const filteredBase = filterTariffsForFieldRole(newFiltered, role, newCat);
+        const selId = 'ft-tariff-' + rid;
+        const curVal = CRSelect.getValue(selId);
+        // FIX: сохранённый тариф не теряем и при смене категории объекта.
+        const it = injectCurrentTariff(filteredBase, curVal, allTariffs, newCat);
         try {
-          const curVal = CRSelect.getValue('ft-tariff-' + rid);
-          CRSelect.setOptions('ft-tariff-' + rid, opts);
-          if (curVal && roleTariffs.some(t => String(t.id) === curVal)) {
-            CRSelect.setValue('ft-tariff-' + rid, curVal);
+          CRSelect.setOptions(selId, tariffSelectOptions(it.pool, { warnIds: it.warnIds }));
+          if (curVal && it.pool.some(t => String(t.id) === curVal)) {
+            CRSelect.setValue(selId, curVal);
           } else if (role === 'welder' || role === 'pto') {
             const def = defaultTariffIdForRole(newFiltered, role, newCat);
-            if (def) CRSelect.setValue('ft-tariff-' + rid, def);
+            if (def) CRSelect.setValue(selId, def);
           }
         } catch (_) { /* row may have been removed */ }
       });
@@ -1013,16 +1039,22 @@ window.AsgardFieldTab = (function () {
   function openDepartedTariffModal({ work, emp, assignment, allTariffs, specials, settingsData, onSaved }) {
     const cat = settingsData?.site_category || 'mlsp';
     const role = assignment.field_role || 'worker';
-    const pool = filterTariffsForFieldRole(
+    const filtered = filterTariffsForFieldRole(
       (allTariffs || []).filter(t => t.category === cat || t.category === 'special'),
       role,
       cat
     );
+    // FIX: тариф уехавшего тоже может быть не из категории объекта — возвращаем в список,
+    // иначе его «не видно» и при сохранении он молча затирался бы на «без тарифа».
+    const it = injectCurrentTariff(filtered, assignment.tariff_id, allTariffs, cat);
+    const pool = it.pool;
+    const warnIds = new Set(it.warnIds.map(String));
     const comboPool = (specials || []).concat((allTariffs || []).filter(t => t.is_combinable));
     let opts = '<option value="">— без тарифа —</option>';
     pool.forEach(t => {
       const sel = Number(t.id) === Number(assignment.tariff_id) ? ' selected' : '';
-      opts += `<option value="${t.id}"${sel}>${esc(t.position_name)} (${t.points || 0}б · ${money(t.rate_per_shift)})</option>`;
+      const warn = warnIds.has(String(t.id)) ? ' ⚠ не из категории объекта' : '';
+      opts += `<option value="${t.id}"${sel}>${esc(t.position_name)} (${t.points || 0}б · ${money(t.rate_per_shift)})${warn}</option>`;
     });
     let comboOpts = '<option value="">— нет —</option>';
     comboPool.filter(t => t.is_combinable).forEach(t => {
@@ -1602,14 +1634,17 @@ window.AsgardFieldTab = (function () {
     tdTariff.style.cssText = cellStyle + ';min-width:200px';
     const tariffId = 'ft-tariff-' + rid;
     CRSelect.destroy(tariffId);
-    const roleTariffs0 = filterTariffsForFieldRole(categoryPool, initialRole, siteCat);
+    const roleTariffs0base = filterTariffsForFieldRole(categoryPool, initialRole, siteCat);
+    // FIX: не терять сохранённый тариф, если он выпал из фильтра «роль × категория».
+    const it0 = injectCurrentTariff(roleTariffs0base, assignment?.tariff_id, allTariffsPool, siteCat);
+    const roleTariffs0 = it0.pool;
     let initialTariff = assignment?.tariff_id ? String(assignment.tariff_id) : '';
     if (!initialTariff && (initialRole === 'welder' || initialRole === 'pto')) {
       initialTariff = defaultTariffIdForRole(categoryPool, initialRole, siteCat);
     }
     const selTariffEl = CRSelect.create({
       id: tariffId,
-      options: tariffSelectOptions(roleTariffs0),
+      options: tariffSelectOptions(roleTariffs0, { warnIds: it0.warnIds }),
       value: initialTariff,
       placeholder: '— выберите —',
       clearable: false,
@@ -1624,10 +1659,13 @@ window.AsgardFieldTab = (function () {
         try { return CRSelect.getValue('fieldCategory'); } catch (_) { return siteCat; }
       })();
       const pool = (allTariffsPool || categoryPool).filter(t => !cat || t.category === cat);
-      const filtered = filterTariffsForFieldRole(pool.length ? pool : categoryPool, role, cat);
-      const opts = tariffSelectOptions(filtered);
+      const filteredBase = filterTariffsForFieldRole(pool.length ? pool : categoryPool, role, cat);
       const cur = CRSelect.getValue(tariffId);
-      CRSelect.setOptions(tariffId, opts);
+      // FIX: сохранённый тариф не выкидываем из списка при смене роли/категории —
+      // иначе он «пропадал» (пустой селект), хотя в БД оставался и Баллы/₽ считались по нему.
+      const it = injectCurrentTariff(filteredBase, cur, allTariffsPool, cat);
+      const filtered = it.pool;
+      CRSelect.setOptions(tariffId, tariffSelectOptions(filtered, { warnIds: it.warnIds }));
       if (cur && filtered.some(t => String(t.id) === cur)) {
         CRSelect.setValue(tariffId, cur);
       } else if (setDefault && (role === 'welder' || role === 'pto')) {
