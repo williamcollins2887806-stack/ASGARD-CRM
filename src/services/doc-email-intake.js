@@ -127,9 +127,34 @@ async function intakeOne(db, { email, attachment, text, userId = null, dryRun = 
   // заявки, счёта-договоры). Сначала определяем ТИП — платёжные документы
   // идут в заявку и реестр, остальное НЕ попадает в очередь оплаты.
   const cls = classifyDocument(text || '');
-  const parsed = extractInvoice(text || '');
+  // V412 (заказчик 18.10.2026): «нужен не костыль с регулярками, а система, которая
+  // ПОНИМАЕТ, что к чему относится». Основной путь — ИИ-извлечение по строгому
+  // JSON-контракту; регулярки (`extractInvoice`) остаются ФОЛБЭКОМ (когда ИИ недоступен
+  // или не дал поля) и перекрёстной проверкой расхождений.
+  let parsed = extractInvoice(text || '');
+  let aiUsed = false;
+  try {
+    const aiEx = require('./invoice-ai-extract');
+    const ai = await aiEx.extractByAI(text || '', { db });
+    if (ai && ai.ok && ai.data) {
+      const merged = aiEx.mergeWithRegex(ai.data, parsed);
+      parsed = merged.parsed;
+      parsed._ai_warnings = (ai.warnings || []).concat(merged.conflicts || []);
+      parsed._ai_confidence = ai.confidence;
+      aiUsed = true;
+    }
+  } catch (e) {
+    // ИИ недоступен — тихо едем на регулярках (не ломаем приём счёта).
+    try { console.warn('[intake] AI-extract: ' + (e && e.message)); } catch (_) {}
+  }
+  parsed._ai_used = aiUsed;
   parsed._kind = cls.kind;
   parsed._is_invoice = cls.is_invoice;
+  // V412: уверенность с учётом ИИ — если модель дала ключевые поля, не считаем
+  // строку «не распознанной» из-за того, что регулярки не нашли банк.
+  if (aiUsed && parsed._ai_confidence != null) {
+    parsed.confidence = Math.max(parsed.confidence || 0, parsed._ai_confidence);
+  }
   // V407 (тест заказчика 18.10.2026): инициатор — ТОТ, КТО ПРИСЛАЛ письмо,
   // а не жёстко админ (`userId || 1`). Иначе ответственным за доки становился
   // ADMIN, хотя письмо послал РП. Резолвим по from_email → users.email.
@@ -246,10 +271,12 @@ async function intakeOne(db, { email, attachment, text, userId = null, dryRun = 
       `INSERT INTO doc_registry(dir, package_type, ops_status, pay_status, invoice_number, invoice_date,
          counterparty_name, counterparty_inn, supplier_id, amount_gross, amount_net, vat_amount, has_vat,
          spend_kind,          doc_owner_id, created_by, updated_by, receive_channel, comment_text,
-         contract_mode, contract_id, contract_label, payment_due_at, work_id, delivery_due_at)
+         contract_mode, contract_id, contract_label, payment_due_at, work_id, delivery_due_at,
+         seller_name, seller_inn, payee_name, payee_inn, payee_kpp, parse_engine, parse_warnings)
        VALUES ('in','invoice','wait_sf','wait',$1,$2::date,$3,$4,$5,$6,$7,$8,$9,
                'other',$10,$10,$10,'email',$11,
-               $12,$13,$14,$15::date,$16,$17::date) RETURNING id`,
+               $12,$13,$14,$15::date,$16,$17::date,
+               $18,$19,$20,$21,$22,$23,$24::jsonb) RETURNING id`,
       [parsed.invoice_number, parsed.invoice_date, cpName, parsed.inn, supplierId,
         gross, net, vat, parsed.has_vat !== false,
         senderUserId, lowConfidence
@@ -261,7 +288,15 @@ async function intakeOne(db, { email, attachment, text, userId = null, dryRun = 
         parsed.contract_basis ? (parsed.contract_basis.number || parsed.contract_basis.raw) : null,
         parsed.payment_due_at || null,
         workInfo.found ? workInfo.work.id : null,
-        (parsed._delivery && parsed._delivery.date) || null]);
+        (parsed._delivery && parsed._delivery.date) || null,
+        // V409: ИИ различает продавца товара и получателя платежа (маркетплейсы).
+        parsed.seller_name || null,
+        parsed.seller_inn || null,
+        parsed.payee_name || null,
+        parsed.payee_inn || null,
+        parsed.payee_kpp || null,
+        parsed._ai_used ? 'ai' : 'regex',
+        JSON.stringify(parsed._ai_warnings || [])]);
     docId = insDoc.rows[0].id;
     createdDoc = true;
     // Если договор не найден, но номер указан — пометим строку неполной (жёлтый/синий).
@@ -295,6 +330,18 @@ async function intakeOne(db, { email, attachment, text, userId = null, dryRun = 
           vals.push('once'); patch.push(`contract_mode=COALESCE(NULLIF(contract_mode,'none'), $${vals.length})`);
         }
         vals.push(parsed.contract_basis.number || parsed.contract_basis.raw); patch.push(`contract_label=COALESCE(contract_label, $${vals.length})`);
+      }
+      // V409: продавец/получатель платежа и движок разбора — дозаполняем, если пусто
+      // (документ мог прийти ранее, до внедрения ИИ-разбора).
+      if (parsed.seller_name) { vals.push(parsed.seller_name); patch.push(`seller_name=COALESCE(seller_name, $${vals.length})`); }
+      if (parsed.seller_inn) { vals.push(parsed.seller_inn); patch.push(`seller_inn=COALESCE(seller_inn, $${vals.length})`); }
+      if (parsed.payee_name) { vals.push(parsed.payee_name); patch.push(`payee_name=COALESCE(payee_name, $${vals.length})`); }
+      if (parsed.payee_inn) { vals.push(parsed.payee_inn); patch.push(`payee_inn=COALESCE(payee_inn, $${vals.length})`); }
+      if (parsed.payee_kpp) { vals.push(parsed.payee_kpp); patch.push(`payee_kpp=COALESCE(payee_kpp, $${vals.length})`); }
+      // parse_engine/parse_warnings: ИИ-результат важнее старой метки регулярного разбора.
+      if (parsed._ai_used) {
+        vals.push('ai'); patch.push(`parse_engine=$${vals.length}`);
+        vals.push(JSON.stringify(parsed._ai_warnings || [])); patch.push(`parse_warnings=$${vals.length}::jsonb`);
       }
       if (patch.length) {
         vals.push(docId);
@@ -416,7 +463,9 @@ async function intakeOne(db, { email, attachment, text, userId = null, dryRun = 
       if (lines.length) {
         catalog = await enrichCatalogFromLines(db, {
           lines,
-          supplierName: parsed.counterparty_name,
+          // V409: в историю закупок («что почём купили») идёт ПРОДАВЕЦ товара,
+          // а не получатель платежа (у маркетплейсов это разные лица).
+          supplierName: parsed.seller_name || parsed.counterparty_name,
           supplierId: parsed._supplierId || null,
           userId: senderUserId,
           source: 'quote',

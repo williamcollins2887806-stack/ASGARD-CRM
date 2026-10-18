@@ -35,6 +35,24 @@ const validKpp = (v) => /^\d{9}$/.test(String(v || '').replace(/\D/g, ''));
 const validBik = (v) => /^\d{9}$/.test(String(v || '').replace(/\D/g, ''));
 const validAccount = (v) => /^\d{20}$/.test(String(v || '').replace(/\D/g, ''));
 
+/**
+ * Очистить название контрагента, НЕ разрывая парные кавычки.
+ * Дефект (найден тестом 19.10.2026): наивное `.replace(/[»"',;]+$/, '')` превращало
+ * «ООО «РОМАШКА»» в «ООО «РОМАШКА» (без закрывающей) — парная кавычка рвалась.
+ * Снимаем только хвостовую пунктуацию и НЕПАРНУЮ закрывающую кавычку.
+ */
+function tidyCounterpartyName(s) {
+  let nm = String(s || '').trim();
+  nm = nm.replace(/[,;.]+$/, '').trim();
+  // Если открывающих «не меньше», чем закрывающих — пара цела, ничего не режем.
+  const open = (nm.match(/«/g) || []).length;
+  const close = (nm.match(/»/g) || []).length;
+  if (close > open) nm = nm.replace(/»+$/, '').trim();
+  // Одинарные " — снимаем только непарную (нечётное число).
+  if ((nm.match(/"/g) || []).length % 2 === 1) nm = nm.replace(/"+$/, '').trim();
+  return nm;
+}
+
 /** Нормализовать сумму «123 456,78» / «123456.78» → число. */
 function parseSum(v) {
   const s = String(v || '').replace(/\s/g, '').replace(',', '.');
@@ -387,7 +405,7 @@ function extractInvoice(text) {
   // строки — ищем по всему тексту, а не по `^`.
   const suppM = t.match(/Поставщик[^\n:]{0,4}[:\-]\s*((?:ООО|АО|ПАО|ЗАО|ОАО|ИП)\s*[«"']?[^\n,;]{2,80})/i);
   if (suppM && suppM[1]) {
-    const nm = suppM[1].trim().replace(/[»"',;]+$/, '');
+    const nm = tidyCounterpartyName(suppM[1]);
     // Отсекаем «Асгард-Сервис» — это НАША компания (Покупатель), не контрагент.
     if (nm.length >= 3 && !/АСГАРД|ASGARD/i.test(nm)) {
       out.counterparty_name = nm.slice(0, 160);
@@ -404,7 +422,7 @@ function extractInvoice(text) {
     if (good) {
       const m = good.match(/(?:ООО|АО|ПАО|ЗАО|ОАО|ИП)\s*[«"']?[^\n«»"',;|]{2,80}/i);
       if (m) {
-        out.counterparty_name = m[0].trim().replace(/[»"',;]+$/, '').slice(0, 160);
+        out.counterparty_name = tidyCounterpartyName(m[0]).slice(0, 160);
         found();
       }
     }
@@ -420,5 +438,4 @@ function extractInvoice(text) {
   out.confidence = Math.min(1, Math.round((score / 9) * 1000) / 1000);
   return out;
 }
-
 module.exports = { extractInvoice, extractInvoiceLines, validInn, validKpp, validBik, validAccount, parseSum };

@@ -59,7 +59,8 @@ const TARGETS = [
   'V405__doc_reminder_log_null_dedup',          // ПОСЛЕ V394: дедуп + уникальный индекс
   'V406__director_dev_chat_perms',              // role_presets DIRECTOR_DEV: chat_groups
   'V407__field_tariff_grid_ceilings',           // потолки тарифов поля (D-282)
-  'V408__doc_deferred_approval'                 // doc_approval_grant (переименована из V406 — коллизия номеров)
+  'V408__doc_deferred_approval',                // doc_approval_grant (переименована из V406 — коллизия номеров)
+  'V409__doc_ai_extract_seller_payee'           // doc_registry: seller_/payee_*, parse_engine/warnings (ИИ-разбор)
 ];
 
 const pool = new Pool({
