@@ -93,7 +93,12 @@ const INVOICE = `Счёт на оплату № 1185 от 14.07.2026
     console.log('\n--- 5. ЗАЯВКА: КОНТЕКСТ ИНИЦИАТОРА ---');
     ok(pay.initiator_intent === 'tomorrow', 'просьба «завтра» распознана: ' + pay.initiator_intent);
     ok(pay.pay_timing === 'immediate', 'режим immediate (срочно): ' + pay.pay_timing);
-    ok(day(pay.due_date) === '2026-10-19', 'срок из письма (завтра, рабочий день): ' + day(pay.due_date));
+    // Дата «завтра» зависит от текущего дня — сверяем со завтрашним днём, а не хардкодом
+    // (тест ломался при смене суток: 19.10 ожидал 19.10, а «завтра» уже 20.10).
+    const tmr = new Date(); tmr.setDate(tmr.getDate() + 1);
+    const p2 = (x) => String(x).padStart(2, '0');
+    const expectTomorrow = `${tmr.getFullYear()}-${p2(tmr.getMonth() + 1)}-${p2(tmr.getDate())}`;
+    ok(day(pay.due_date) === expectTomorrow, 'срок из письма «завтра» = ' + day(pay.due_date) + ' (ждали ' + expectTomorrow + ')');
     ok(String(pay.contract_basis_number) === 'ДП-2025/01', 'договор в заявке: ' + pay.contract_basis_number);
     ok(pay.contract_missing === false, 'договор найден (не missing)');
     ok(String(pay.invoice_number) === '1185', 'номер счёта в заявке: ' + pay.invoice_number);

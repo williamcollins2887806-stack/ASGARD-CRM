@@ -348,10 +348,11 @@ function mergeWithRegex(ai, rx) {
   out.payee_inn = ai.payee_inn || null;
   out.payee_kpp = ai.payee_kpp || null;
   // Банковские реквизиты — нужны бухгалтерии для платёжки.
-  // Дыра №3 (верификатор 19.10.2026): банк обязан принадлежать ТОМУ ЖЕ лицу, что
-  // ИНН/имя контрагента. Если выбрана пара ПРОДАВЦА (например у маркетплейса счёт
-  // продавца, а банк в счёте — получателя), «чужие» реквизиты подставлять нельзя.
-  const bankMatchesParty = !payeeConfirmed || (ai.supplier_inn === ai.payee_inn);
+  // Дыра №3 (верификатор 19.10.2026): банковские реквизиты в счёте принадлежат
+  // ПОЛУЧАТЕЛЮ платежа. Значит их можно брать, только если контрагент ВЫБРАН как
+  // получатель платежа (payeeConfirmed) либо продавец и получатель — одно лицо.
+  // Иначе (выбрали продавца, а банк в счёте — чужого получателя) не подставляем.
+  const bankMatchesParty = payeeConfirmed || (ai.supplier_inn === ai.payee_inn);
   if (bankMatchesParty) {
     out.bank_name = pick(ai.bank_name, base.bank_name);
     out.bik = pick(ai.bik, base.bik);

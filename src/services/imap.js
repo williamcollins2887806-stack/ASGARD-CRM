@@ -948,11 +948,14 @@ async function analyzeOneEmail(email) {
 
     // Все входящие обрабатываются AI — он сам решает, заявка это или переписка
 
+    // Барьер счетов (19.10.2026): имя вложения критично для определения «счёт ли это».
+    // `original_filename` часто NULL (загруженные/скан-файлы) — берём `filename` как
+    // фолбэк, иначе барьер не видит «Скан_…», «invoice_…» и счёт уходит в маркетплейс.
     const attRes = await db.query(
-      'SELECT original_filename FROM email_attachments WHERE email_id = $1',
+      'SELECT original_filename, filename FROM email_attachments WHERE email_id = $1',
       [emailId]
     );
-    const attNames = attRes.rows.map(a => a.original_filename || 'file');
+    const attNames = attRes.rows.map(a => a.original_filename || a.filename || 'file');
 
     // ─── Forward-detect и определение source_kind ───────────────────────
     // Подтягиваем raw_headers (для шапок X-Forwarded-For/Resent-From).
@@ -1430,7 +1433,54 @@ async function analyzeOneEmail(email) {
 
     // Create inbox_application ONLY for genuine work proposals/tenders
     const applicationTypes = ['direct_request', 'platform_tender', 'commercial_offer'];
+    // ══════════════════════════════════════════════════════════════════════════
+    // БАРЬЕР (заказчик 19.10.2026): «письма на почту CRM помимо согласования
+    // счетов ещё создают заявки, которые падают в маркетплейс заявок. Сделать
+    // так, чтобы в маркетплейс не падали счета».
+    //
+    // Дефект подтверждён на ПРОДЕ: письмо #4847 «Fwd: Запрос КП: химические
+    // реагенты» (вложение Скан_20261013.pdf = счёт «Мир Химии») классифицировано
+    // как commercial_offer → создало заявку маркетплейса #31. Классификатор видит
+    // «Запрос КП», но не понимает, что во вложении СЧЁТ.
+    //
+    // Барьер 3 уровня (жёсткий, не полагается на «понимание» ИИ):
+    //   1) документ уже разобран intake-контуром (есть строка реестра) — это счёт;
+    //   2) вложение похоже на счёт по имени;
+    //   3) AI уже классифицировал как invoice_*/approval_*.
+    // ══════════════════════════════════════════════════════════════════════════
+    const INVOICE_CLASSES = ['invoice_approval_request', 'approval_decision', 'crm_invoice_copy'];
+    const invInCls = INVOICE_CLASSES.includes(analysis.classification);
+    let isInvoiceDoc = invInCls;
+    if (!isInvoiceDoc) {
+      try {
+        // (1) intake уже создал строку реестра/заявку по этому письму → это счёт.
+        const chk = await db.query(
+          `SELECT (SELECT 1 FROM doc_registry WHERE created_by IS NOT NULL AND id IN
+                     (SELECT doc_id FROM doc_email_intake WHERE email_id=$1 AND doc_id IS NOT NULL) LIMIT 1) AS in_reg,
+                  (SELECT 1 FROM payment_invoices WHERE source_email_id=$1 LIMIT 1) AS in_pay,
+                  (SELECT 1 FROM doc_email_intake WHERE email_id=$1 AND status IN ('parsed','needs_manual','created') LIMIT 1) AS in_intake`,
+          [emailId]);
+        const c = chk.rows[0] || {};
+        if (c.in_reg || c.in_pay || c.in_intake) isInvoiceDoc = true;
+      } catch (_) { /* при ошибке проверки не блокируем заявку рынка */ }
+    }
+    if (!isInvoiceDoc && Array.isArray(attNames) && attNames.length) {
+      // (2) имя вложения похоже на счёт/УПД/платёжный документ.
+      const RE_INV = /(сч[её]т|счет|invoice|счёт[-\s]?фактур|упд|торг[-\s]?12|плат[её]ж|квитанц|scan|скан)/i;
+      if (attNames.some((n) => RE_INV.test(String(n || '')))) isInvoiceDoc = true;
+    }
+
     if (applicationTypes.includes(analysis.classification) && !analysis._skipped) {
+      if (isInvoiceDoc) {
+        // Счёт — НЕ заявка маркетплейса. Он живёт в контуре оплаты (реестр + заявка
+        // директору). Фиксируем факт отсечения, чтобы это было видно в разборе.
+        console.log(`[IMAP-AI] #${emailId} классифицирован как ${analysis.classification}, НО это ДОКУМЕНТ-СЧЁТ (att="${(attNames || []).join(',')}") → заявка маркетплейса НЕ создаётся`);
+        try {
+          await db.query(
+            `UPDATE emails SET ai_summary = COALESCE(ai_summary,'') || ' [счёт: заявка маркетплейса не создаётся]',
+                    updated_at = NOW() WHERE id=$1`, [emailId]);
+        } catch (_) { /* не критично */ }
+      } else {
       try {
         const confidence = parseFloat(analysis.confidence) || 0;
         // §2.5: низкий confidence → needs_review=true
@@ -1645,6 +1695,7 @@ async function analyzeOneEmail(email) {
           console.error('[IMAP-AI] Platform parse error:', ppErr.message);
         }
       }
+      } // конец ветки «НЕ счёт → обычная заявка маркетплейса» (барьер счетов)
     } else {
       console.log(`[IMAP-AI] Skipped application creation for email #${emailId}: ${analysis.classification} (not a work proposal)`);
     }

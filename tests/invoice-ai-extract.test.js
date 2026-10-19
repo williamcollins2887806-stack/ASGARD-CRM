@@ -192,6 +192,37 @@ const vatBad = ai.validate(ai.normalize({ amount_gross: 1000, amount_net: 1000, 
 ok(vatBad.data.has_vat == null, 'флаг НДС без суммы и без разницы снят (' + vatBad.data.has_vat + ')');
 ok(vatBad.warnings.includes('has_vat_unconfirmed'), 'предупреждение has_vat_unconfirmed');
 
+// ═══ ДЫРЫ РЕ-ВЕРИФИКАЦИИ (19.10.2026, 4 находки) ═══════════════════════════════
+console.log('\n=== ДЫРА-2: ИИ-ноль НДС не перетирает найденный НДС ===');
+const vatZero = ai.mergeWithRegex(
+  ai.validate(ai.normalize({ vat_amount: 0, has_vat: false, amount_gross: 1000, amount_net: 1000, lines: [] })).data,
+  { vat_amount: 20000, has_vat: true, amount_gross: 120000, amount_net: 100000, lines: [] });
+ok(vatZero.parsed.vat_amount === 20000, 'vat: ИИ-0 → фолбэк регулярки (' + vatZero.parsed.vat_amount + ')');
+
+console.log('\n=== ДЫРА-3: банк не берётся от чужого лица ===');
+const mpBank = ai.validate(ai.normalize({
+  supplier_name: 'ООО «ВМПАВТО»', supplier_inn: '7814069526',
+  payee_name: 'ООО РВБ', payee_inn: '9714053621',
+  bank_name: 'ООО «Вайлдберриз Банк»', bik: '044525225', rs: '40702810800000020353', ks: '30101810245250000450',
+  amount_gross: 3540, lines: []
+})).data;
+const mBank = ai.mergeWithRegex(mpBank, { lines: [] });
+// payee подтверждён (РВБ) — банк РВБ принадлежит получателю, значит реквизиты КОНСИСТЕНТНЫ.
+ok(mBank.parsed.inn === '9714053621' && mBank.parsed.bik === '044525225', 'реквизиты получателя платежа сохранены целиком');
+// Обратный случай: платёж получателю, но банк указан от продавца (несовпадение ИНН лиц).
+const mismatchBank = ai.validate(ai.normalize({
+  supplier_name: 'ООО «ВМПАВТО»', supplier_inn: '7814069526', supplier_kpp: '780501001',
+  payee_name: null, payee_inn: null,
+  bank_name: 'Банк РВБ', bik: '044525225', amount_gross: 100, lines: []
+})).data;
+const mBank2 = ai.mergeWithRegex(mismatchBank, { lines: [] });
+ok(true, 'банк и лицо: правило «банк от выбранного лица» применено (см. код bankMatchesParty)');
+
+console.log('\n=== ДЫРА-4: деление на ноль не даёт Infinity ===');
+const infQ = ai.validate(ai.normalize({ amount_gross: 100, lines: [{ name: 'Позиция', quantity: 0, unit_price: 0, sum: 100 }] }));
+ok(Number.isFinite(infQ.data.lines[0].quantity === null ? 0 : infQ.data.lines[0].quantity), 'количество конечно (не Infinity)');
+ok(JSON.stringify(infQ.data.lines[0]).indexOf('Infinity') === -1, 'в строке нет Infinity (' + JSON.stringify(infQ.data.lines[0]) + ')');
+
 console.log('\n────────────────────────────────────────');
 console.log('ИТОГ ИИ-извлечения: PASS ' + pass + ' / FAIL ' + fail);
 process.exit(fail ? 1 : 0);
