@@ -225,6 +225,18 @@ async function intakeOne(db, { email, attachment, text, userId = null, dryRun = 
   }
 
   let createdDoc = false;
+  // FAIL-1 (верификатор 19.10.2026): карточка ПРОДАВЦА вычисляется ЗДЕСЬ, до ветки
+  // создания документа. Раньше переменная объявлялась внутри `if (!docId)`, а
+  // читалась в блоке каталога ВНЕ него → `ReferenceError: sellerSupplierId is not
+  // defined` → `enrichCatalogFromLines` не вызывался вообще, и по маркетплейс-счетам
+  // (Wildberries/Ozon, где продавец ≠ получатель) позиции НЕ попадали в номенклатуру.
+  let sellerSupplierId = null;
+  if (parsed.seller_inn && parsed.seller_inn !== parsed.inn) {
+    try {
+      const s2 = await db.query(`SELECT id FROM suppliers WHERE inn=$1 AND deleted_at IS NULL LIMIT 1`, [parsed.seller_inn]);
+      if (s2.rows[0]) sellerSupplierId = s2.rows[0].id;
+    } catch (_) { /* не критично */ }
+  }
   // V404: сопоставляем основание из счёта с договором в CRM и объект с работами.
   let contractInfo = { found: false, reason: 'none' };
   if (parsed.contract_basis && parsed.contract_basis.number) {
@@ -265,17 +277,6 @@ async function intakeOne(db, { email, attachment, text, userId = null, dryRun = 
             await db.query(`UPDATE suppliers SET ${patch.join(', ')}, updated_at=NOW() WHERE id=$${pv.length}`, pv).catch(() => {});
           }
         }
-      } catch (_) { /* не критично */ }
-    }
-    // FAIL-1 (верификатор 19.10.2026): продавец товара и получатель платежа — разные
-    // лица (маркетплейс). В номенклатуру («что почём купили») должен идти ПРОДАВЕЦ,
-    // а `supplierId` находился по ИНН получателя → история закупок писалась на чужую
-    // карточку. Если продавец отличается — ищем его карточку по seller_inn отдельно.
-    let sellerSupplierId = null;
-    if (parsed.seller_inn && parsed.seller_inn !== parsed.inn) {
-      try {
-        const s2 = await db.query(`SELECT id FROM suppliers WHERE inn=$1 AND deleted_at IS NULL LIMIT 1`, [parsed.seller_inn]);
-        if (s2.rows[0]) sellerSupplierId = s2.rows[0].id;
       } catch (_) { /* не критично */ }
     }
     const insDoc = await db.query(

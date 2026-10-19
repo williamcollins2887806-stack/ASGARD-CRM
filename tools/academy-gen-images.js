@@ -47,16 +47,35 @@ function loadEnv() {
 const ENV = loadEnv();
 const { Pool } = require(path.join(ROOT, 'node_modules', 'pg'));
 const pool = new Pool({
-  host: ENV.DB_HOST || 'localhost',
-  port: ENV.DB_PORT || 5432,
-  database: ENV.DB_NAME || 'asgard_crm',
-  user: ENV.DB_USER || 'asgard',
-  password: ENV.DB_PASSWORD,
+  host: ENV.DB_HOST || process.env.DB_HOST || 'localhost',
+  port: ENV.DB_PORT || process.env.DB_PORT || 5432,
+  database: ENV.DB_NAME || process.env.DB_NAME || 'asgard_crm',
+  user: ENV.DB_USER || process.env.DB_USER || 'asgard',
+  password: ENV.DB_PASSWORD || process.env.DB_PASSWORD || '',
 });
+
+/**
+ * Ключ routerai. Приоритет: .env → env процесса → settings.ai_config в БД.
+ * На проде ключ хранится в БД (как в ai-provider.js), а не в .env —
+ * без этого генератор падал с «Нет OPENAI_API_KEY».
+ */
+async function resolveApiKey() {
+  let k = ENV.OPENAI_API_KEY || process.env.OPENAI_API_KEY || '';
+  if (k) return k;
+  try {
+    const { rows } = await pool.query(`SELECT value_json FROM settings WHERE key = 'ai_config'`);
+    if (rows[0]?.value_json) {
+      let parsed = JSON.parse(rows[0].value_json);
+      const cfg = parsed.value_json ? JSON.parse(parsed.value_json) : parsed;
+      if (cfg.openai_api_key) return cfg.openai_api_key;
+    }
+  } catch (e) { console.log('[key] БД недоступна:', e.message); }
+  return '';
+}
+let API_KEY = ENV.OPENAI_API_KEY || process.env.OPENAI_API_KEY || '';
 
 // ── RouterAI ────────────────────────────────────────────────────────────────
 const IMG_URL = 'https://routerai.ru/api/v1/images/generations';
-const API_KEY = ENV.OPENAI_API_KEY || process.env.OPENAI_API_KEY || '';
 const MODEL_PRO = 'google/gemini-3-pro-image';       // scene, ~15 ₽, PNG 2K
 const MODEL_FLASH = 'google/gemini-3.1-flash-image'; // diagram/schema, ~7,4 ₽, JPEG 1K
 const PRICE_PRO = 15.2;   // ₽/картинка (замер 15.10.2026)
@@ -627,7 +646,10 @@ async function main() {
   const force = args.includes('--force');
   const list = args.includes('--list');
 
-  if (!API_KEY && !doRollback && !doRecompress && !list) { console.error('Нет OPENAI_API_KEY (routerai)'); process.exit(1); }
+  // Ключ может лежать не в .env, а в БД (прод) или в env процесса — пробуем всё.
+  if (!API_KEY) API_KEY = await resolveApiKey();
+
+  if (!API_KEY && !doRollback && !doRecompress && !list) { console.error('Нет OPENAI_API_KEY (routerai) — проверь .env, env процесса или settings.ai_config'); process.exit(1); }
 
   if (list) { await showStatus(); await pool.end(); return; }
   if (args.includes('--quality')) { await qualityReport(); await pool.end(); return; }
