@@ -1,0 +1,714 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   ASGARD CRM — График отпусков (офис). Порт премиум-слоя из
+   prototypes/vacation-schedule/assets/vacation.css на токены темы.
+
+   Файл АДДИТИВНЫЙ: .btn/.badge/.input берём из components.css, здесь только
+   новое. Цвета — только токены (design-tokens.css); отсутствующие в проде
+   токены объявлены ниже (как в payout-approval.css), прод-файлы не дублируем.
+
+   Не перенесено из прототипа (не нужно на реальной странице):
+   os-* (график офиса — отдельная страница), ml-* (письма — почтовый слой),
+   doc-* (предпросмотр бланков — вместо него скачивание .docx по API).
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ── Токены, отсутствующие в design-tokens.css (тема-зависимо) ─────────── */
+:root {
+  /* Радиусы «премиум» */
+  --r-2xl: 20px;
+  --r-3xl: 26px;
+
+  /* Glass / премиум-поверхности */
+  --glass-bg-2: color-mix(in srgb, var(--bg3) 72%, transparent);
+  --glass-bg-raised: color-mix(in srgb, var(--bg3) 88%, transparent);
+  --glass-blur-sm: blur(14px) saturate(150%);
+  --glass-hairline: rgba(255, 255, 255, 0.10);
+  --glass-top-sheen: linear-gradient(180deg, rgba(255, 255, 255, 0.10), transparent 42%);
+  --glass-card-sheen: linear-gradient(155deg, rgba(255, 255, 255, 0.09) 0%, rgba(255, 255, 255, 0.015) 34%, transparent 62%);
+  --glow-gold: 0 0 26px rgba(212, 168, 67, 0.30);
+  --inset-hairline: inset 0 1px 0 rgba(255, 255, 255, 0.10);
+  --ring-gold: 0 0 0 3px var(--gold-bg);
+  --ring-blue: 0 0 0 3px var(--blue-bg);
+  --ring-err: 0 0 0 3px var(--err-bg);
+
+  /* Слои страницы: свой оверлей поверх сайдбара (350) и Huginn-рейла (1200).
+     Вложенные шиты (.vsp-ov) — выше самой модалки, но ниже тостов (100000). */
+  --vs-z-stage: 1400;
+  --vs-z-overlay: 1410;
+
+  /* Градиенты и контрастные «on-color» */
+  --grad-ok: linear-gradient(90deg, #2D8659, #4ADE80);
+  /* Тени/свечения — токенами, чтобы не было хардкода в компонентах. */
+  --glow-ok: rgba(74, 222, 128, 0.45);
+  --shadow-inset-dark: rgba(0, 0, 0, 0.28);
+  --on-color: #FFFFFF;
+  --on-gold: #1A1408;
+  --ok-h: #246B48;
+
+  /* Локальные размеры сетки месяцев */
+  --vs-name-w: 250px;
+  --vs-mini-w: 26px;
+  --vs-day-h: 25px;
+  --vs-day-fs: 9.5px;
+}
+
+html[data-theme="light"] {
+  /* --on-gold НЕ меняем: на золотой заливке нужен тёмный текст в обеих темах */
+  --glass-bg-2: color-mix(in srgb, var(--bg3) 80%, transparent);
+  --glass-bg-raised: color-mix(in srgb, var(--bg2) 94%, transparent);
+  --glass-blur-sm: blur(12px) saturate(120%);
+  --glass-hairline: rgba(139, 120, 90, 0.22);
+  --glass-top-sheen: linear-gradient(180deg, rgba(255, 255, 255, 0.72), transparent 44%);
+  --glass-card-sheen: linear-gradient(155deg, rgba(255, 255, 255, 0.62) 0%, rgba(255, 255, 255, 0.10) 36%, transparent 64%);
+  --glow-gold: 0 0 0 rgba(0, 0, 0, 0);
+  --inset-hairline: inset 0 1px 0 rgba(255, 255, 255, 0.85);
+  --grad-ok: linear-gradient(90deg, #246B48, #3A8A65);
+}
+
+/* Страница занимает всю область контента: свою «модалку» рисуем сами.
+   z-index у #layout обязательно снимаем: layout.css задаёт ему
+   `position: relative; z-index: 1`, а это создаёт свой stacking context —
+   fixed-подложка внутри него уже не может подняться над сайдбаром
+   (--z-sidebar: 300) и Huginn-рейлом (1200), и они проступают поверх модалки. */
+#layout:has(.vs-stage) { padding: 0; max-width: 100%; z-index: auto; }
+
+/* ── Полноэкранная модалка ─────────────────────────────────────────────── */
+.vs-stage {
+  /* Полноэкранная модалка поверх приложения: накрывает вьюпорт, свой скролл внутри.
+     Заказчик: «модалка на весь экран», как страница выплат. */
+  position: fixed; inset: 0; z-index: var(--vs-z-stage);
+  display: block;                 /* не flex: иначе содержимое распирает ширину */
+  padding: 12px; overflow: auto;
+  background:
+    radial-gradient(900px 420px at 12% -10%, var(--blue-bg), transparent 62%),
+    radial-gradient(760px 380px at 96% 4%, var(--gold-bg), transparent 58%),
+    var(--bg0);
+  backdrop-filter: blur(3px);
+  -webkit-backdrop-filter: blur(3px);
+}
+.vs-modal {
+  /* Ширина от вьюпорта, а не от содержимого: раскрытый месяц с 31 днём
+     не должен распирать/сжимать модалку. */
+  width: calc(100vw - 24px); max-width: none; margin: 0 auto; position: relative;
+  box-sizing: border-box;
+  border-radius: var(--r-3xl); display: flex; flex-direction: column;
+  overflow: hidden; min-height: 0;
+  height: calc(100vh - 24px); max-height: calc(100vh - 24px);
+  background: var(--glass-bg);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-hairline);
+  box-shadow: var(--shadow-xl), var(--inset-hairline);
+}
+.vs-modal::before {
+  content: ''; position: absolute; inset: 0; pointer-events: none;
+  background: var(--glass-card-sheen); opacity: .9;
+}
+.vs-modal > * { position: relative; z-index: 1; }
+
+/* ── Шапка модалки ─────────────────────────────────────────────────────── */
+.vs-mhead {
+  position: relative; /* база для абсолютного крестика */
+  display: flex; align-items: center; gap: var(--sp-4);
+  padding: 15px var(--sp-5); padding-right: 60px; flex-shrink: 0;
+  border-bottom: 1px solid var(--glass-hairline);
+  background: var(--glass-top-sheen);
+}
+/* Крестик закрытия — всегда в правом верхнем углу шапки (заказчик: «крестик
+   в шапке модалки справа»). Раньше его в шапке не было вовсе: при
+   полноэкранной модалке пользователь оказывался заперт без выхода.
+   absolute, а не в потоке, — иначе при переносе .vs-mhead__acts он уезжает. */
+.vs-mhead__x {
+  position: absolute; top: 50%; right: var(--sp-5); transform: translateY(-50%);
+  z-index: 2; width: 36px; height: 36px;
+}
+.vs-mhead__x svg { width: 17px; height: 17px; }
+@media (max-width: 1180px) {
+  /* В узкой шапке .vs-mhead__acts переносится на свою строку и шапка растёт —
+     привязка к 50% высоты увела бы крестик вниз, к кнопкам. Держим в углу. */
+  .vs-mhead__x { top: 16px; right: 16px; transform: none; }
+}
+.vs-mhead__ic {
+  width: 46px; height: 46px; border-radius: var(--r-xl); flex-shrink: 0;
+  display: grid; place-items: center;
+  background: linear-gradient(150deg, var(--gold-bg), transparent 72%), var(--glass-bg-raised);
+  border: 1px solid var(--brd-gold); color: var(--gold);
+  box-shadow: var(--glow-gold), var(--inset-hairline);
+}
+.vs-mhead__ic svg { width: 23px; height: 23px; }
+.vs-mhead__tx { min-width: 0; }
+.vs-mhead__t {
+  font-size: 18px; font-weight: var(--fw-extra); letter-spacing: -.3px;
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+}
+.vs-mhead__s { font-size: 12px; color: var(--t3); margin-top: 3px; }
+.vs-mhead__acts { margin-left: auto; display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; }
+
+/* Переключатель экранов */
+.vs-tabs {
+  display: inline-flex; gap: 3px; padding: 3px;
+  border-radius: var(--r-full); border: 1px solid var(--glass-hairline);
+  background: var(--glass-bg-2);
+}
+.vs-tab {
+  display: inline-flex; align-items: center; gap: 6px; cursor: pointer; font: inherit;
+  font-size: 11.5px; font-weight: var(--fw-semi); color: var(--t3);
+  padding: 5px 12px; border: 0; border-radius: var(--r-full); background: transparent;
+  transition: color var(--fast), background var(--fast);
+}
+.vs-tab svg { width: 13px; height: 13px; }
+.vs-tab:hover { color: var(--t1); }
+.vs-tab.is-on { color: var(--gold); background: var(--gold-bg); }
+.btn .vsp-ic { margin-right: 7px; }
+.btn .vsp-ic svg { width: 14px; height: 14px; }
+.vsp-ic { display: inline-flex; align-items: center; justify-content: center; }
+.vsp-ic svg { width: 15px; height: 15px; }
+.vsp-x {
+  width: 30px; height: 30px; border-radius: var(--r-md); flex-shrink: 0;
+  display: grid; place-items: center; cursor: pointer; font: inherit;
+  background: var(--glass-bg-2); border: 1px solid var(--glass-hairline); color: var(--t3);
+  transition: color var(--fast), border-color var(--fast), transform var(--fast), background var(--fast);
+}
+.vsp-x svg { width: 15px; height: 15px; }
+.vsp-x:hover { color: var(--err-t); border-color: var(--brd-err); background: var(--err-bg); transform: rotate(90deg); }
+.empty-state .icon svg { width: 40px; height: 40px; }
+
+/* ── Баланс: два щита + «можно взять» ──────────────────────────────────── */
+.vs-bal {
+  display: grid; grid-template-columns: 258px 258px 1fr; gap: var(--sp-3);
+  padding: var(--sp-4) var(--sp-5) 0; flex-shrink: 0;
+}
+@media (max-width: 1120px) { .vs-bal { grid-template-columns: 1fr 1fr; } .vs-acc--can { grid-column: 1 / -1; } }
+.vs-acc {
+  position: relative; overflow: hidden; display: flex; align-items: center; gap: var(--sp-3);
+  padding: 13px var(--sp-4); border-radius: var(--r-2xl);
+  background: var(--glass-bg-2);
+  backdrop-filter: var(--glass-blur-sm); -webkit-backdrop-filter: var(--glass-blur-sm);
+  border: 1px solid var(--glass-hairline); box-shadow: var(--inset-hairline);
+}
+.vs-acc::after {
+  content: ''; position: absolute; inset: 0 0 auto 0; height: 2.5px; border-radius: 3px 3px 0 0;
+}
+.vs-acc--avail::after { background: var(--grad-blue); }
+.vs-acc--carry::after { background: var(--grad-gold); }
+.vs-acc--can::after   { background: var(--grad-ok); }
+.vs-acc--can { align-items: flex-start; padding: 14px var(--sp-5); }
+.vs-acc__glow {
+  position: absolute; width: 190px; height: 190px; right: -70px; top: -95px; pointer-events: none;
+  background: radial-gradient(circle, var(--gold-bg), transparent 70%);
+}
+.vs-acc--avail .vs-acc__glow { background: radial-gradient(circle, var(--blue-bg), transparent 70%); }
+.vs-acc--can .vs-acc__glow { background: radial-gradient(circle, var(--ok-bg), transparent 70%); }
+.vs-acc__ic {
+  width: 40px; height: 40px; border-radius: var(--r-lg); flex-shrink: 0;
+  display: grid; place-items: center; position: relative;
+  background: var(--glass-bg-raised); border: 1px solid var(--glass-hairline); box-shadow: var(--inset-hairline);
+}
+.vs-acc__ic svg { width: 20px; height: 20px; }
+.vs-acc--avail .vs-acc__ic { color: var(--blue-l); }
+.vs-acc--carry .vs-acc__ic { color: var(--gold); }
+.vs-acc__tx { min-width: 0; position: relative; }
+.vs-acc__l {
+  font-size: 10.5px; text-transform: uppercase; letter-spacing: .07em;
+  color: var(--t3); font-weight: var(--fw-bold);
+}
+.vs-acc__v { font-size: 24px; font-weight: var(--fw-extra); letter-spacing: -.6px; line-height: 1.15; margin-top: 1px; }
+.vs-acc__v small { font-size: 11px; color: var(--t3); font-weight: var(--fw-med); letter-spacing: 0; }
+.vs-acc--can .vs-acc__v { color: var(--ok-t); }
+.vs-acc__h { font-size: 10.5px; color: var(--t3); margin-top: 2px; }
+.vs-acc__bars {
+  display: flex; height: 8px; border-radius: var(--r-full); overflow: hidden;
+  background: var(--bg4); margin: 7px 0 6px; gap: 1.5px; box-shadow: inset 0 1px 2px var(--shadow-inset-dark);
+}
+.vs-acc__lg { display: flex; gap: 14px; flex-wrap: wrap; font-size: 10.5px; color: var(--t3); }
+.vs-acc__lg span { display: inline-flex; align-items: center; gap: 5px; }
+.vs-acc__lg b { color: var(--t2); font-weight: var(--fw-bold); }
+.vs-b { display: inline-block; height: 100%; border-radius: 2px; transition: width var(--slow); }
+.vs-b--ok   { background: var(--grad-ok); }
+.vs-b--pend { background: var(--grad-gold); }
+.vs-b--free { background: var(--bg5); }
+.vs-b--bad  { background: var(--grad-red); }
+.vs-b--wk   { background: var(--bg4); }
+.vs-b--hol  { background: var(--err-bg); border: 1px solid var(--err-t); }
+
+/* ── Плашка сроков ─────────────────────────────────────────────────────── */
+.vs-deadline {
+  display: flex; align-items: center; gap: var(--sp-4); flex-shrink: 0;
+  margin: var(--sp-3) var(--sp-5) 0; padding: 12px var(--sp-4);
+  border-radius: var(--r-2xl); border: 1px solid var(--brd-gold);
+  background: linear-gradient(120deg, var(--gold-bg), transparent 58%), var(--glass-bg-2);
+  backdrop-filter: var(--glass-blur-sm); -webkit-backdrop-filter: var(--glass-blur-sm);
+  box-shadow: var(--inset-hairline);
+}
+.vs-deadline__ic {
+  width: 36px; height: 36px; border-radius: var(--r-md); flex-shrink: 0; display: grid; place-items: center;
+  background: var(--bg3); border: 1px solid var(--brd-gold); color: var(--gold);
+}
+.vs-deadline__ic svg { width: 18px; height: 18px; }
+.vs-deadline__tx { flex: 1; min-width: 200px; }
+.vs-deadline__t { font-size: 13px; font-weight: var(--fw-semi); }
+.vs-deadline__t b { color: var(--gold); }
+.vs-deadline__s { font-size: 11.5px; color: var(--t3); margin-top: 2px; }
+.vs-deadline__prog { display: flex; align-items: center; gap: 10px; }
+.vs-deadline__bar { width: 170px; height: 8px; border-radius: var(--r-full); background: var(--bg4); overflow: hidden; }
+.vs-deadline__bar i { display: block; height: 100%; background: var(--grad-gold); border-radius: inherit; transition: width var(--slow); }
+.vs-deadline__prog span { font-size: 12px; font-weight: var(--fw-bold); color: var(--gold); }
+.vs-deadline.is-soon { border-color: var(--brd-err); background: linear-gradient(120deg, var(--err-bg), transparent 58%), var(--glass-bg-2); }
+.vs-deadline.is-soon .vs-deadline__t b, .vs-deadline.is-soon .vs-deadline__prog span { color: var(--err-t); }
+.vs-deadline.is-soon .vs-deadline__bar i { background: var(--grad-red); }
+.vs-deadline.is-closed { border-color: var(--brd); }
+.vs-deadline.is-closed .vs-deadline__ic { color: var(--t3); border-color: var(--brd); }
+
+/* ── Легенда ───────────────────────────────────────────────────────────── */
+.vs-legend { display: flex; gap: 15px; flex-wrap: wrap; align-items: center; padding: 12px var(--sp-5) 0; flex-shrink: 0; }
+.vs-lg { display: inline-flex; align-items: center; gap: 6px; font-size: 11.5px; color: var(--t2); }
+.vsp-sw { width: 14px; height: 14px; border-radius: 4px; display: inline-block; border: 1px solid var(--brd-m); }
+.vsp-sw.v-ok   { background: var(--ok-bg); border-color: var(--brd-ok); box-shadow: inset 0 0 0 3px var(--ok-t); }
+.vsp-sw.v-pend { background: var(--gold-bg); border-color: var(--brd-gold); box-shadow: inset 0 0 0 3px var(--gold); }
+.vsp-sw.v-bad  { background: var(--err-bg); border-color: var(--brd-err); box-shadow: inset 0 0 0 3px var(--err-t); }
+.vsp-sw.is-hol { background: var(--err-bg); border-color: var(--err-t); }
+.vsp-sw.is-wk  { background: var(--bg4); }
+.vsp-sw.is-blocked { background-image: repeating-linear-gradient(45deg, transparent, transparent 3px, var(--brd-err) 3px, var(--brd-err) 6px); }
+.vs-lg--hint { color: var(--t3); font-style: italic; margin-left: auto; }
+@media (max-width: 1280px) { .vs-lg--hint { margin-left: 0; width: 100%; } }
+.vs-hiddenbar { display: flex; gap: 6px; flex-wrap: wrap; padding: 10px var(--sp-5) 0; }
+
+/* ── Сообщения (ошибки/успех) ──────────────────────────────────────────── */
+.vs-note {
+  display: flex; align-items: center; gap: 8px; flex-shrink: 0;
+  margin: var(--sp-3) var(--sp-5) 0; padding: 11px var(--sp-4); border-radius: var(--r-lg);
+  font-size: 12.5px; border-left: 3px solid var(--blue-l); background: var(--glass-bg-2); color: var(--t2);
+}
+.vs-note svg { width: 15px; height: 15px; flex-shrink: 0; }
+.vs-note--ok  { border-left-color: var(--ok-t);  background: var(--ok-bg); }
+.vs-note--err { border-left-color: var(--err-t); background: var(--err-bg); color: var(--err-t); }
+.vs-closed { border-left-color: var(--gold); color: var(--gold); background: var(--gold-bg); }
+
+/* ── Таблица ───────────────────────────────────────────────────────────── */
+.vs-tablewrap {
+  flex: 1; overflow: auto; margin: var(--sp-3) var(--sp-5) 0; min-height: 180px;
+  border-radius: var(--r-2xl); border: 1px solid var(--glass-hairline);
+  background: var(--glass-bg-2);
+  backdrop-filter: var(--glass-blur-sm); -webkit-backdrop-filter: var(--glass-blur-sm);
+  box-shadow: var(--inset-hairline);
+}
+/* Раскрыт месяц: сжимаем колонку имени и «мини-месяцы», чтобы 31 день
+   помещался в ширину без горизонтальной прокрутки (в т.ч. 1280×720). */
+.vs-tablewrap.is-narrow { --vs-name-w: 116px; --vs-mini-w: 14px; --vs-day-h: 22px; --vs-day-fs: 8.5px; }
+.vs-tablewrap.is-narrow .vs-days__nm,
+.vs-tablewrap.is-narrow .vs-body .vs-days { grid-auto-columns: minmax(0, 1fr); }
+.vs-tablewrap.is-narrow .vs-days__wd { font-size: 7.5px; }
+.vs-tablewrap.is-narrow .vs-d { border-right-width: 0; }
+.vs-tablewrap.is-narrow .vs-left,
+.vs-tablewrap.is-narrow .vs-hide__t { display: none; }
+.vs-tablewrap.is-narrow .vs-chips { gap: 2px; }
+.vs-tablewrap.is-narrow .vs-chip { font-size: 8.5px; padding: 1px 5px; }
+.vs-tablewrap.is-narrow .vs-name__acts { margin-top: 2px; }
+.vs-tablewrap.is-narrow .vs-mini { padding: 2px 6px; font-size: 9.5px; }
+.vs-tablewrap.is-narrow .vs-mini svg { width: 10px; height: 10px; }
+.vs-tablewrap.is-narrow .vs-name { padding: 6px 8px; }
+.vs-tablewrap.is-narrow .vs-who { gap: 6px; }
+.vs-tablewrap.is-narrow .vs-ava { width: 24px; height: 24px; font-size: 9.5px; }
+.vs-tablewrap.is-narrow .vs-who__n { font-size: 10.5px; }
+.vs-tablewrap.is-narrow .vs-who__r { font-size: 9.5px; }
+.vs-tablewrap.is-narrow .vs-hide { padding: 0 5px; min-width: 22px; height: 22px; }
+.vs-head, .vs-row { display: grid; align-items: stretch; }
+.vs-head {
+  position: sticky; top: 0; z-index: 3;
+  background: var(--glass-bg-raised); backdrop-filter: var(--glass-blur-sm); -webkit-backdrop-filter: var(--glass-blur-sm);
+  border-bottom: 1px solid var(--brd);
+}
+.vs-name {
+  padding: 10px 14px; border-right: 1px solid var(--glass-hairline); min-width: 0;
+  display: flex; flex-direction: column; gap: 5px; justify-content: center;
+  position: sticky; left: 0; z-index: 2; background: inherit;
+}
+.vs-name--head { justify-content: center; gap: 3px; }
+.vs-name__t { font-size: 11px; font-weight: var(--fw-black); text-transform: uppercase; letter-spacing: .08em; color: var(--t3); }
+.vs-name--head small { font-size: 10px; color: var(--t3); font-weight: var(--fw-med); }
+.vs-name__acts { display: flex; gap: 5px; margin-top: 5px; flex-wrap: wrap; }
+.vs-mini {
+  display: inline-flex; align-items: center; gap: 4px; cursor: pointer; font-family: inherit;
+  font-size: 10.5px; font-weight: var(--fw-semi); color: var(--blue-l); padding: 3px 9px;
+  background: var(--blue-bg); border: 1px solid var(--brd-info); border-radius: var(--r-full);
+  transition: background var(--fast), color var(--fast), border-color var(--fast);
+}
+.vs-mini svg { width: 12px; height: 12px; }
+.vs-mini:hover { background: var(--bg4); }
+.vs-mini.is-on { background: var(--gold-bg); color: var(--gold); border-color: var(--brd-gold); }
+
+.vs-row { border-bottom: 1px solid var(--brd-m); transition: background var(--fast); }
+.vs-row:last-child { border-bottom: none; }
+.vs-row:hover > .vs-name { background: var(--glass-bg-2); }
+.vs-row.is-me > .vs-name { background: linear-gradient(90deg, var(--blue-bg), transparent 72%); box-shadow: inset 3px 0 0 var(--gold); }
+.vs-row.has-pending > .vs-name { box-shadow: inset 3px 0 0 var(--gold); }
+
+.vs-who { display: flex; align-items: center; gap: 9px; }
+.vs-ava {
+  width: 30px; height: 30px; border-radius: 50%; flex-shrink: 0; position: relative;
+  display: grid; place-items: center; font-size: 11px; font-weight: var(--fw-extra);
+  background: linear-gradient(150deg, var(--bg4), var(--bg2)); border: 1px solid var(--glass-hairline);
+  color: var(--t2); box-shadow: var(--inset-hairline);
+}
+.vs-ava.is-me {
+  background: linear-gradient(150deg, var(--gold), var(--gold-h)); color: var(--on-gold); border-color: transparent;
+  box-shadow: var(--glow-gold);
+}
+.vs-who__tx { min-width: 0; flex: 1; }
+.vs-who__n { font-size: 12.5px; font-weight: var(--fw-semi); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.vs-who__r { font-size: 10.5px; color: var(--t3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.vs-you {
+  font-size: 9.5px; font-weight: var(--fw-bold); color: var(--on-gold); background: var(--gold);
+  border-radius: var(--r-full); padding: 1px 7px; margin-left: 4px;
+}
+.vs-hide {
+  height: 26px; min-width: 26px; padding: 0 8px; border-radius: var(--r-md); flex-shrink: 0; cursor: pointer;
+  display: inline-flex; align-items: center; justify-content: center; gap: 5px; font: inherit;
+  font-size: 10.5px; font-weight: var(--fw-semi); color: var(--t3);
+  background: var(--glass-bg-raised); border: 1px solid var(--glass-hairline);
+  transition: color var(--fast), border-color var(--fast), background var(--fast), transform var(--fast), box-shadow var(--fast);
+}
+.vs-hide svg { width: 15px; height: 15px; }
+.vs-hide__t { white-space: nowrap; }
+.vs-hide:hover {
+  color: var(--err-t); border-color: var(--brd-err); background: var(--err-bg);
+  transform: translateY(-1px); box-shadow: var(--shadow-sm);
+}
+.vs-hide:active { transform: translateY(0); }
+.vs-hide--grp { margin-left: auto; border-radius: var(--r-full); }
+.vs-hide--grp svg { width: 13px; height: 13px; }
+.vs-chips { display: flex; gap: 4px; flex-wrap: wrap; }
+.vs-chip {
+  display: inline-flex; align-items: center; gap: 3px;
+  font-size: 10px; font-weight: var(--fw-semi); padding: 2px 8px; border-radius: var(--r-full);
+  border: 1px solid var(--glass-hairline); background: var(--glass-bg-raised); color: var(--t2); white-space: nowrap;
+  transition: transform var(--fast), box-shadow var(--fast);
+}
+.vs-chip b { font-weight: var(--fw-black); }
+button.vs-chip { cursor: pointer; font-family: inherit; }
+button.vs-chip:hover { transform: translateY(-1px); box-shadow: var(--shadow-sm); color: var(--t1); }
+.vs-chip--none { color: var(--t3); font-style: italic; }
+.vs-chip--restore { color: var(--blue-l); border-color: var(--brd-info); background: var(--blue-bg); }
+.vs-st--ok   { border-color: var(--brd-ok);   background: var(--ok-bg);   color: var(--ok-t); }
+.vs-st--pend { border-color: var(--brd-gold); background: var(--gold-bg); color: var(--gold); }
+.vs-st--bad  { border-color: var(--brd-err);  background: var(--err-bg);  color: var(--err-t); }
+.vs-st--draft{ border-color: var(--brd-info); background: var(--info-bg); color: var(--info-t); }
+.vs-left { font-size: 10.5px; color: var(--t3); }
+.vs-left b { color: var(--t1); }
+.vs-left__p { color: var(--gold); }
+.vs-left.is-neg b { color: var(--err-t); }
+
+/* ── Группы отделов ────────────────────────────────────────────────────── */
+.vs-group {
+  display: flex; align-items: center; gap: 8px; padding: 8px 14px;
+  background: var(--glass-bg-raised); border-bottom: 1px solid var(--glass-hairline);
+  position: sticky; left: 0;
+}
+.vs-group__t { font-size: 11px; font-weight: var(--fw-black); text-transform: uppercase; letter-spacing: .08em; color: var(--gold); }
+.vs-group__c { font-size: 10px; color: var(--t3); }
+.vs-group__line { flex: 1; height: 1px; background: linear-gradient(90deg, var(--brd), transparent); }
+
+/* ── Дни ───────────────────────────────────────────────────────────────── */
+.vs-days { border-right: 1px solid var(--brd-m); display: flex; flex-direction: column; min-width: 0; }
+.vs-days--head { background: var(--glass-bg-raised); cursor: pointer; justify-content: center; }
+.vs-days__cap { display: flex; align-items: center; justify-content: center; gap: 7px; padding: 3px 6px; }
+.vs-days__m { font-size: 11px; font-weight: var(--fw-black); text-transform: uppercase; letter-spacing: .06em; color: var(--gold); }
+.vs-days__hol {
+  font-size: 9px; font-weight: var(--fw-bold); padding: 1px 6px; border-radius: var(--r-full);
+  background: var(--err-bg); color: var(--err-t); border: 1px solid var(--brd-err);
+}
+.vs-days__x { color: var(--t3); display: inline-flex; }
+.vs-days__x svg { width: 13px; height: 13px; }
+.vs-days--head:hover .vs-days__x { color: var(--gold); }
+.vs-days__wd, .vs-days__nm { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; }
+.vs-body { min-height: 0; }
+.vs-body .vs-days { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; }
+
+/* Компактная ячейка месяца в строке сотрудника: кликабельный значок «+N дн.».
+   За счёт узких колонок раскрытый месяц (31 день) помещается на ноутбук 1280
+   без горизонтальной прокрутки — как в утверждённом макете. */
+.vs-cdn {
+  border-right: 1px solid var(--brd-m); border-top: 1px solid var(--brd-m);
+  display: grid; place-items: center; padding: 2px 1px;
+  background: transparent; color: var(--t3); font-size: 9px; line-height: 1.15;
+  white-space: nowrap; overflow: hidden; min-width: 0;
+}
+.vs-cdn.has-mark { font-weight: var(--fw-black); font-size: 9.5px; letter-spacing: -.3px; }
+.vs-cdn.has-mark.is-ok   { color: var(--ok-t); }
+.vs-cdn.has-mark.is-pend { color: var(--gold); }
+.vs-cdn.has-mark.is-bad  { color: var(--err-t); }
+.vs-cdn.is-tight { font-size: 8.5px; }
+.vs-d {
+  height: var(--vs-day-h); display: grid; place-items: center; font-size: var(--vs-day-fs, 9.5px); color: var(--t3);
+  border-right: 1px solid var(--brd-m); border-top: 1px solid var(--brd-m);
+  cursor: default; position: relative; transition: background var(--fast), box-shadow var(--fast);
+}
+.vs-d--wd, .vs-d--hd { border-top: none; }
+.vs-d--wd { font-size: 9px; color: var(--t3); text-transform: lowercase; }
+.vs-d--hd { font-size: 10px; font-weight: var(--fw-semi); color: var(--t2); }
+.vs-d.is-wk { background: var(--bg3); color: var(--t3); }
+.vs-d--hd.is-wk { color: var(--err-t); }
+.vs-d.is-hol, .vs-d--hd.is-hol { background: var(--err-bg); color: var(--err-t); font-weight: var(--fw-bold); }
+.vs-d.is-shift { background: var(--bg4); color: var(--t2); }
+.vs-d.is-mine[data-day] { cursor: pointer; }
+.vs-d.is-mine[data-day]:hover { background: var(--blue-bg); box-shadow: inset 0 0 0 1px var(--brd-info); }
+.vs-d.is-sel {
+  background: var(--gold-bg) !important; box-shadow: inset 0 0 0 1.5px var(--gold), var(--glow-gold);
+  color: var(--gold); font-weight: var(--fw-bold);
+}
+.vs-d__dot { width: 6px; height: 6px; border-radius: 50%; }
+.vs-d.is-vac { font-weight: var(--fw-bold); color: var(--t1); }
+.vs-d.v-ok   { background: color-mix(in srgb, var(--ok) 46%, transparent); }
+.vs-d.v-ok .vs-d__dot   { background: var(--ok-t); box-shadow: 0 0 5px var(--glow-ok); }
+.vs-d.v-pend { background: color-mix(in srgb, var(--gold) 38%, transparent); }
+.vs-d.v-pend .vs-d__dot { background: var(--gold); box-shadow: 0 0 5px var(--gold); }
+.vs-d.v-bad  { background: color-mix(in srgb, var(--err) 36%, transparent); text-decoration: line-through; }
+.vs-d.v-bad .vs-d__dot  { background: var(--err-t); }
+.vs-d.is-blocked {
+  background-image: repeating-linear-gradient(45deg, transparent, transparent 4px, var(--brd-err) 4px, var(--brd-err) 8px);
+  cursor: not-allowed;
+}
+
+/* ── Свёрнутый месяц ───────────────────────────────────────────────────── */
+.vs-mon {
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px;
+  border-right: 1px solid var(--brd-m); min-width: 0; cursor: pointer; padding: 2px 4px;
+  transition: background var(--fast), box-shadow var(--fast);
+}
+.vs-mon:hover { background: var(--blue-bg); box-shadow: inset 0 0 0 1px var(--brd-info); }
+.vs-mon--head { background: var(--glass-bg-raised); }
+.vs-body .vs-mon { min-height: 50px; }
+.vs-mon__n {
+  font-size: 10px; color: var(--t2); font-weight: var(--fw-bold); letter-spacing: -.1px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; line-height: 1.2;
+}
+.vs-mon.is-tight { padding: 0; }
+.vs-mon.is-tight .vs-mon__n { display: none; }
+.vs-mon.is-tight .vs-mon__mk { padding: 0 3px; min-width: 14px; font-size: 8.5px; }
+.vs-mon__mk {
+  font-size: 9.5px; font-weight: var(--fw-black); border-radius: var(--r-full);
+  padding: 0 5px; line-height: 16px; min-width: 17px; text-align: center; flex-shrink: 0;
+  box-shadow: 0 1px 4px var(--shadow-inset-dark), var(--inset-hairline);
+}
+.vs-mon__mk.is-ok   { background: var(--grad-ok); color: var(--on-color); }
+.vs-mon__mk.is-pend { background: var(--grad-gold); color: var(--on-gold); }
+.vs-mon__mk.is-bad  { background: var(--grad-red); color: var(--on-color); }
+.vs-mon.has-mark { background: color-mix(in srgb, var(--gold) 8%, transparent); }
+.vs-mon.is-tight .vs-mon__mk { padding: 0 4px; min-width: 15px; font-size: 9px; }
+.vs-mon--head.is-tight .vs-mon__mk { display: none; }
+
+/* ── Панель выделения ──────────────────────────────────────────────────── */
+.vs-selbar {
+  display: flex; align-items: flex-start; gap: var(--sp-4); flex-wrap: wrap; flex-shrink: 0;
+  margin: var(--sp-3) var(--sp-5) 0; padding: 12px var(--sp-4);
+  border-radius: var(--r-2xl); border: 1px solid var(--brd-gold);
+  background: linear-gradient(120deg, var(--gold-bg), transparent 62%), var(--glass-bg-2);
+  backdrop-filter: var(--glass-blur-sm); -webkit-backdrop-filter: var(--glass-blur-sm);
+  box-shadow: var(--inset-hairline);
+}
+.vs-selbar__tx { flex: 1; min-width: 260px; }
+.vs-selbar__r { font-size: 14.5px; font-weight: var(--fw-extra); color: var(--gold); }
+.vs-selbar__d { font-size: 11.5px; color: var(--t2); margin-top: 2px; }
+.vs-selbar__hol, .vs-selbar__clash { font-size: 11.5px; margin-top: 6px; display: flex; align-items: flex-start; gap: 6px; }
+.vs-selbar__hol { color: var(--info-t); }
+.vs-selbar__clash { color: var(--gold); }
+.vs-selbar__clash.is-clear { color: var(--ok-t); }
+.vs-selbar__hol svg, .vs-selbar__clash svg { width: 14px; height: 14px; flex-shrink: 0; margin-top: 1px; }
+.vs-selbar__acts { display: flex; gap: var(--sp-2); flex-shrink: 0; }
+.vs-bad { color: var(--err-t); }
+
+/* ── Подвал ────────────────────────────────────────────────────────────── */
+.vs-foot { display: flex; align-items: center; gap: var(--sp-3); flex-wrap: wrap; padding: var(--sp-4) var(--sp-5); flex-shrink: 0; }
+.vs-foot__tx { flex: 1; font-size: 11.5px; color: var(--t3); min-width: 220px; }
+
+/* ── Панель директора + очередь ────────────────────────────────────────── */
+.vs-dirbar {
+  display: flex; align-items: center; gap: var(--sp-4); flex-wrap: wrap; flex-shrink: 0;
+  margin: var(--sp-3) var(--sp-5) 0; padding: 12px var(--sp-4);
+  border-radius: var(--r-2xl); border: 1px solid var(--glass-hairline);
+  background: linear-gradient(120deg, var(--ok-bg), transparent 54%), var(--glass-bg-2);
+  backdrop-filter: var(--glass-blur-sm); -webkit-backdrop-filter: var(--glass-blur-sm);
+  box-shadow: var(--inset-hairline);
+}
+.vs-dirbar__i { display: flex; align-items: baseline; gap: 7px; }
+.vs-dirbar__i b { font-size: 20px; font-weight: var(--fw-extra); letter-spacing: -.5px; }
+.vs-dirbar__i span { font-size: 11px; color: var(--t3); }
+.vs-dirbar__i--hot b { color: var(--gold); }
+.vs-dirbar__sep { width: 1px; height: 28px; background: var(--glass-hairline); }
+.vs-dirbar__hint { flex: 1; min-width: 230px; font-size: 11.5px; color: var(--t3); }
+
+.vs-queue {
+  flex-shrink: 0; margin: var(--sp-3) var(--sp-5) 0;
+  border-radius: var(--r-2xl); border: 1px solid var(--glass-hairline);
+  background: var(--glass-bg-2); backdrop-filter: var(--glass-blur-sm); -webkit-backdrop-filter: var(--glass-blur-sm);
+  box-shadow: var(--inset-hairline); overflow: hidden;
+}
+.vs-queue__h {
+  display: flex; align-items: center; gap: 8px; padding: 10px var(--sp-4);
+  border-bottom: 1px solid var(--glass-hairline); background: var(--glass-top-sheen);
+}
+.vs-queue__t { display: inline-flex; align-items: center; gap: 7px; font-size: 12px; font-weight: var(--fw-black); text-transform: uppercase; letter-spacing: .06em; color: var(--t2); }
+.vs-queue__t svg { width: 15px; height: 15px; color: var(--gold); }
+.vs-queue__c { margin-left: auto; font-size: 11px; color: var(--t3); }
+.vs-queue__list { display: flex; flex-direction: column; max-height: 212px; overflow: auto; }
+.vs-queue--empty { display: flex; align-items: center; gap: 12px; padding: 16px var(--sp-4); }
+.vs-queue--empty b { display: block; font-size: 13px; }
+.vs-queue--empty span { font-size: 11.5px; color: var(--t3); }
+.vs-ok-ic svg { width: 26px; height: 26px; color: var(--ok-t); }
+
+.vs-q {
+  display: flex; align-items: center; gap: var(--sp-3); padding: 10px var(--sp-4);
+  border-bottom: 1px solid var(--brd-m); transition: background var(--fast);
+}
+.vs-q:last-child { border-bottom: none; }
+.vs-q:hover { background: var(--glass-bg-2); }
+.vs-q__ava {
+  width: 32px; height: 32px; border-radius: 50%; flex-shrink: 0; display: grid; place-items: center;
+  font-size: 11px; font-weight: var(--fw-extra); background: linear-gradient(150deg, var(--bg4), var(--bg2));
+  border: 1px solid var(--glass-hairline); box-shadow: inset 0 0 0 1.5px var(--brd-gold);
+}
+.vs-q__who { flex: 1; min-width: 0; }
+.vs-q__n { font-size: 12.5px; font-weight: var(--fw-semi); display: flex; align-items: center; gap: 7px; flex-wrap: wrap; }
+.vs-q__role { font-size: 10.5px; color: var(--t3); font-weight: var(--fw-med); }
+.vs-q__d { font-size: 11.5px; color: var(--t2); margin-top: 2px; display: flex; align-items: center; gap: 7px; flex-wrap: wrap; }
+.vs-q__hol { font-size: 10px; color: var(--info-t); }
+.vs-q__meta { display: flex; align-items: center; gap: 12px; margin-top: 5px; flex-wrap: wrap; }
+.vs-q__clash, .vs-q__clear { display: inline-flex; align-items: center; gap: 5px; font-size: 10.5px; }
+.vs-q__clash { color: var(--gold); }
+.vs-q__clear { color: var(--ok-t); }
+.vs-q__clash svg, .vs-q__clear svg { width: 13px; height: 13px; }
+.vs-q__votes { display: inline-flex; gap: 3px; margin-left: auto; }
+.vs-q__acts { display: flex; gap: var(--sp-2); flex-shrink: 0; }
+
+/* Аватары-голоса директоров */
+.vs-vote {
+  width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center;
+  font-size: 9px; font-weight: var(--fw-black); color: var(--t3);
+  background: var(--bg3); border: 1px dashed var(--brd);
+}
+.vs-vote.is-yes {
+  background: var(--grad-ok); color: var(--on-color); border: 1px solid transparent;
+  box-shadow: 0 1px 5px var(--glow-ok);
+}
+
+/* ── Оверлеи и шиты (вложенные модалки) ────────────────────────────────── */
+.vsp-ov {
+  /* Выше самой модалки (.vs-stage), иначе шит «Правила»/период уходил под неё
+     и крестик не нажимался. Ниже тостов (--z-toast: 100000). */
+  position: fixed; inset: 0; z-index: var(--vs-z-overlay); padding: 20px; overflow: auto;
+  display: grid; place-items: center;
+  background: var(--overlay); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+}
+.vsp-sheet {
+  width: min(680px, 100%); margin: auto; padding: var(--sp-5);
+  border-radius: var(--r-3xl); border: 1px solid var(--glass-hairline);
+  background: var(--glass-bg); backdrop-filter: var(--glass-blur); -webkit-backdrop-filter: var(--glass-blur);
+  box-shadow: var(--shadow-xl), var(--inset-hairline);
+}
+.vsp-sheet__h { display: flex; align-items: center; gap: 10px; margin-bottom: var(--sp-4); }
+.vsp-sheet__h b { font-size: 17px; font-weight: var(--fw-extra); }
+.vsp-sheet__h .vsp-x { margin-left: auto; }
+.vsp-sheet__ic {
+  width: 36px; height: 36px; border-radius: var(--r-md); display: grid; place-items: center; flex-shrink: 0;
+  background: var(--gold-bg); border: 1px solid var(--brd-gold); color: var(--gold);
+}
+.vsp-sheet__ic.is-bad { background: var(--err-bg); border-color: var(--brd-err); color: var(--err-t); }
+.vsp-sheet__ic svg { width: 18px; height: 18px; }
+.vs-rules__l { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 9px; }
+.vs-rules__l li { font-size: 13.5px; color: var(--t2); line-height: 1.5; }
+.vs-rules__l b { color: var(--t1); }
+
+/* Карточка сотрудника / периода */
+.vs-pc { width: min(600px, 100%); }
+.vs-pc__h { display: flex; align-items: center; gap: var(--sp-3); margin-bottom: var(--sp-4); }
+.vs-pc__n { font-size: 16px; font-weight: var(--fw-extra); }
+.vs-pc__r { font-size: 11.5px; color: var(--t3); margin-top: 2px; }
+.vs-pc__h .vsp-x { margin-left: auto; }
+.vs-pc__kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--sp-2); margin-bottom: var(--sp-4); }
+.vs-pc__k {
+  background: var(--glass-bg-2); border: 1px solid var(--glass-hairline); border-radius: var(--r-lg);
+  padding: 11px 8px; text-align: center; box-shadow: var(--inset-hairline);
+}
+.vs-pc__k b { font-size: 20px; font-weight: var(--fw-extra); display: block; letter-spacing: -.5px; }
+.vs-pc__k.is-neg b { color: var(--err-t); }
+.vs-pc__k span { font-size: 9.5px; color: var(--t3); text-transform: uppercase; letter-spacing: .04em; }
+.vs-pc__body { display: flex; flex-direction: column; gap: var(--sp-2); max-height: 48vh; overflow: auto; }
+.vs-pc-line {
+  background: var(--glass-bg-2); border: 1px solid var(--glass-hairline); border-radius: var(--r-lg);
+  padding: 12px 14px; box-shadow: var(--inset-hairline);
+}
+.vs-pc-line__t { font-size: 13px; font-weight: var(--fw-semi); display: flex; align-items: center; gap: 7px; flex-wrap: wrap; }
+.vs-pc-line__d { font-size: 11px; color: var(--t3); font-weight: var(--fw-med); }
+.vs-pc-line__voteline { display: flex; align-items: center; gap: 8px; margin-top: 8px; font-size: 10.5px; color: var(--t3); }
+.vs-pc-line__voteline .vs-vote { margin-left: 0; }
+.vs-pc-line__clash { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--gold); margin-top: 7px; }
+.vs-pc-line__clash svg { width: 13px; height: 13px; }
+.vs-pc-line__r { display: flex; align-items: flex-start; gap: 6px; font-size: 11.5px; color: var(--err-t); margin-top: 7px; }
+.vs-pc-line__r svg { width: 13px; height: 13px; flex-shrink: 0; margin-top: 1px; }
+.vs-pc-line__acts { display: flex; gap: 8px; margin-top: 11px; flex-wrap: wrap; }
+.vs-pc__foot { margin-top: var(--sp-4); }
+
+/* Отклонение: комментарий обязателен */
+.vs-reject { width: min(540px, 100%); }
+.vs-reject__who { font-size: 13px; color: var(--t2); margin-bottom: var(--sp-4); }
+.vs-reject__ta { resize: vertical; min-height: 78px; width: 100%; }
+.vs-reject__ta.is-err { border-color: var(--err); box-shadow: var(--ring-err); }
+.vs-reject__hint { display: flex; align-items: flex-start; gap: 6px; font-size: 11.5px; color: var(--t3); margin-top: 8px; }
+.vs-reject__hint svg { width: 14px; height: 14px; flex-shrink: 0; margin-top: 1px; color: var(--gold); }
+.vs-reject__acts { display: flex; gap: var(--sp-2); justify-content: flex-end; margin-top: var(--sp-4); }
+.btn.danger { background: transparent; }
+
+/* ── Бухгалтерия: балансы дней ─────────────────────────────────────────── */
+.vs-buhwrap { flex: 1; overflow: auto; margin: var(--sp-3) var(--sp-5); min-height: 120px; }
+.vs-buhnote {
+  display: flex; align-items: flex-start; gap: 8px;
+  margin: var(--sp-4) var(--sp-5) 0; padding: 12px var(--sp-4);
+  border-radius: var(--r-lg); border-left: 3px solid var(--info-t);
+  background: linear-gradient(120deg, var(--info-bg), transparent 66%), var(--glass-bg-2);
+  font-size: 12.5px; color: var(--t2); line-height: 1.5;
+}
+.vs-buhnote svg { width: 15px; height: 15px; flex-shrink: 0; margin-top: 2px; color: var(--info-t); }
+.vs-inp { width: 104px; text-align: right; padding: 7px 10px; font-family: var(--ff-mono); }
+.vs-inp.is-warn { border-color: var(--gold); box-shadow: var(--ring-gold); }
+.vs-inp__h { font-size: 9.5px; color: var(--t3); margin-top: 3px; text-align: right; }
+.vs-buhtbl { width: 100%; }
+.vs-buhtbl tr.vs-buh-g td {
+  background: var(--glass-bg-raised); font-size: 10.5px; font-weight: var(--fw-black);
+  text-transform: uppercase; letter-spacing: .07em; color: var(--gold);
+}
+
+/* ── Документы ─────────────────────────────────────────────────────────── */
+.vs-docs { padding: var(--sp-5); overflow: auto; flex: 1; }
+.vs-docs__grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: var(--sp-3); }
+@media (max-width: 900px) { .vs-docs__grid { grid-template-columns: 1fr; } }
+.vs-doc {
+  display: flex; align-items: center; gap: var(--sp-3); text-align: left; cursor: pointer; font: inherit;
+  padding: 14px var(--sp-4); border-radius: var(--r-2xl);
+  background: var(--glass-bg-2); border: 1px solid var(--glass-hairline); box-shadow: var(--inset-hairline);
+  transition: transform var(--fast), border-color var(--fast), background var(--fast);
+}
+.vs-doc:hover { transform: translateY(-1px); border-color: var(--brd-gold); background: var(--glass-bg-raised); }
+.vs-doc__ic {
+  width: 40px; height: 40px; border-radius: var(--r-lg); flex-shrink: 0; display: grid; place-items: center;
+  background: var(--gold-bg); border: 1px solid var(--brd-gold); color: var(--gold);
+}
+.vs-doc__ic svg { width: 19px; height: 19px; }
+.vs-doc__t { font-size: 13px; font-weight: var(--fw-semi); color: var(--t1); }
+.vs-doc__s { font-size: 11px; color: var(--t3); margin-top: 2px; }
+.vs-doc__go { margin-left: auto; color: var(--t3); display: inline-flex; }
+.vs-doc__go svg { width: 16px; height: 16px; }
+.vs-doc:hover .vs-doc__go { color: var(--gold); }
+
+/* ── Адаптация под 12″ ноутбук ─────────────────────────────────────────── */
+@media (max-width: 1400px) {
+  :root { --vs-name-w: 212px; --vs-day-h: 24px; }
+  .vs-mhead__t { font-size: 16px; }
+  .vs-bal { grid-template-columns: 216px 216px 1fr; padding-top: 12px; }
+  .vs-acc__v { font-size: 21px; }
+  .vs-acc__h { display: none; }
+  .vs-deadline__bar { width: 130px; }
+}
+@media (max-width: 1180px) {
+  .vs-mhead { flex-wrap: wrap; }
+  .vs-mhead__acts { width: 100%; margin-left: 0; }
+  .vs-deadline__prog { display: none; }
+}

@@ -143,6 +143,182 @@ module.exports = async function (fastify, options) {
   }
 
   // ─────────────────────────────────────────────────────────────────
+  // Недельный режим (заказчик 18.10.2026):
+  //   сотрудник заполняет РАБОЧУЮ неделю (пн–пт) целиком; в другие дни система
+  //   спрашивает «ты в офисе?» и правка уходит в staff_plan (график офиса меняется).
+  //   Выходные и праздники для отметки недоступны.
+  // ─────────────────────────────────────────────────────────────────
+
+  /** Праздники/переносы за диапазон из производственного календаря. */
+  async function calendarRange(fromIso, toIso) {
+    const { rows } = await db.query(
+      `SELECT to_char(date,'YYYY-MM-DD') AS date, is_working, kind, COALESCE(title, note) AS title
+         FROM work_calendar WHERE date >= $1::date AND date <= $2::date`, [fromIso, toIso]);
+    const map = {};
+    rows.forEach((r) => { map[r.date] = r; });
+    return map;
+  }
+
+  function pad2(n) { return String(n).padStart(2, '0'); }
+  function isoOf(dt) { return `${dt.getUTCFullYear()}-${pad2(dt.getUTCMonth() + 1)}-${pad2(dt.getUTCDate())}`; }
+
+  /** Рабочие дни недели (пн–пт), исключая праздники/переносы. */
+  function weekWorkdays(mondayIso, cal) {
+    const [y, m, d] = mondayIso.split('-').map(Number);
+    const out = [];
+    for (let i = 0; i < 5; i++) {
+      const dt = new Date(Date.UTC(y, m - 1, d + i));
+      const iso = isoOf(dt);
+      const c = cal[iso];
+      const nonWorking = c && (c.kind === 'working' ? false : (c.is_working === false));
+      if (nonWorking) continue;
+      out.push({ date: iso, holiday: false });
+    }
+    return out;
+  }
+
+  /** Понедельник недели, в которую попадает дата. */
+  function mondayOf(iso) {
+    const [y, m, d] = iso.split('-').map(Number);
+    const dt = new Date(Date.UTC(y, m - 1, d));
+    const dow = dt.getUTCDay();              // 0=вс
+    const shift = dow === 0 ? -6 : 1 - dow;  // к понедельнику
+    dt.setUTCDate(dt.getUTCDate() + shift);
+    return isoOf(dt);
+  }
+
+  /** Отпуск сотрудника на дату (из графика отпусков) — в отпуске не спрашиваем. */
+  async function onVacation(staffId, iso) {
+    const { rows } = await db.query(
+      `SELECT id FROM office_vacations
+        WHERE employee_id = $1 AND $2::date BETWEEN date_from AND date_to
+          AND status IN ('pending','approved') LIMIT 1`, [staffId, iso]);
+    return rows.length > 0;
+  }
+
+  // GET /api/daily-presence/week — состояние недели: что заполнено, что нет
+  fastify.get('/week', { preHandler: [fastify.authenticate] }, async (request, reply) => {
+    try {
+      const userId = request.user && request.user.id;
+      const role = request.user && request.user.role;
+      const name = request.user && request.user.name;
+      if (!userId) { reply.code(401); return { error: 'no_user' }; }
+      const isOffice = OFFICE_ROLES.includes(role);
+      if (!isOffice) return { required: false, days: [], server_date: await serverDate() };
+
+      const todayIso = request.query.date || await serverDate();
+      const monday = mondayOf(todayIso);
+      const staffId = await ensureStaffId(userId, name, role);
+      const cal = await calendarRange(monday, (() => {
+        const [y, m, d] = monday.split('-').map(Number);
+        return isoOf(new Date(Date.UTC(y, m - 1, d + 6)));
+      })());
+      const wd = weekWorkdays(monday, cal);
+
+      const { rows: plan } = await db.query(
+        `SELECT to_char(date,'YYYY-MM-DD') AS date, status_code, work_id FROM staff_plan
+          WHERE staff_id = $1 AND date >= $2::date AND date <= ($2::date + 6)`, [staffId, monday]);
+      const planMap = {};
+      plan.forEach((p) => { planMap[p.date] = p; });
+
+      const days = [];
+      for (const w of wd) {
+        const vac = await onVacation(staffId, w.date);
+        days.push({
+          date: w.date,
+          is_past: w.date < todayIso,
+          is_today: w.date === todayIso,
+          status_code: vac ? 'отп' : (planMap[w.date] ? planMap[w.date].status_code : null),
+          work_id: planMap[w.date] ? planMap[w.date].work_id : null,
+          on_vacation: vac,
+        });
+      }
+      const filled = days.filter((d) => d.status_code).length;
+      return {
+        required: filled < days.length,
+        week_start: monday,
+        server_date: todayIso,
+        statuses: STATUS_DEFS,
+        days,
+        works: await myActiveWorks(userId),
+      };
+    } catch (e) {
+      request.log.error(e);
+      reply.code(500);
+      return { error: 'week_failed', message: e.message };
+    }
+  });
+
+  // POST /api/daily-presence/week — принять заполнение пн–пт разом
+  fastify.post('/week', { preHandler: [fastify.authenticate] }, async (request, reply) => {
+    const client = await db.pool.connect();
+    try {
+      const userId = request.user && request.user.id;
+      const role = request.user && request.user.role;
+      const name = request.user && request.user.name;
+      if (!userId) { reply.code(401); return { error: 'no_user' }; }
+      const body = request.body || {};
+      const items = Array.isArray(body.days) ? body.days : [];
+      if (!items.length) { reply.code(400); return { error: 'empty', message: 'Нет дней для сохранения.' }; }
+
+      const staffId = await ensureStaffId(userId, name, role);
+      const dates = items.map((i) => String(i.date).slice(0, 10)).sort();
+      const cal = await calendarRange(dates[0], dates[dates.length - 1]);
+
+      let saved = 0;
+      await client.query('BEGIN');
+      for (const it of items) {
+        const iso = String(it.date).slice(0, 10);
+        const code = it.status_code;
+        if (!VALID_CODES.has(code)) { await client.query('ROLLBACK'); reply.code(400); return { error: 'bad_status', date: iso }; }
+
+        // только рабочие дни (пн–пт, не праздник/перенос)
+        const c = cal[iso];
+        const p = new Date(iso + 'T00:00:00Z');
+        const dow = p.getUTCDay();
+        const nonWorking = c && (c.kind === 'working' ? false : c.is_working === false);
+        if (dow === 0 || dow === 6 || nonWorking) {
+          await client.query('ROLLBACK');
+          reply.code(400);
+          return { error: 'non_working_day', date: iso, message: 'Заполняются только рабочие дни (пн–пт, без праздников).' };
+        }
+        if (await onVacation(staffId, iso)) continue;   // в отпуске не перезаписываем
+
+        let workId = null;
+        if (code === 'об') {
+          workId = parseInt(it.work_id, 10) || null;
+          if (!workId) { await client.query('ROLLBACK'); reply.code(400); return { error: 'work_required', date: iso }; }
+          const own = await client.query(
+            `SELECT id FROM works WHERE id = $1 AND pm_id = $2 AND deleted_at IS NULL AND ${notClosedSql('work_status')}`,
+            [workId, userId]);
+          if (!own.rows.length) { await client.query('ROLLBACK'); reply.code(400); return { error: 'work_not_yours', date: iso }; }
+        }
+
+        await client.query('SELECT pg_advisory_xact_lock($1, $2)', [203, staffId]);
+        const ex = await client.query(
+          'SELECT id FROM staff_plan WHERE staff_id = $1 AND date = $2::date ORDER BY id LIMIT 1', [staffId, iso]);
+        if (ex.rows.length) {
+          await client.query(
+            `UPDATE staff_plan SET status_code = $2, work_id = $3, updated_at = NOW() WHERE id = $1`,
+            [ex.rows[0].id, code, workId]);
+        } else {
+          await client.query(
+            `INSERT INTO staff_plan (staff_id, date, status_code, work_id, created_at, updated_at)
+             VALUES ($1, $2::date, $3, $4, NOW(), NOW())`, [staffId, iso, code, workId]);
+        }
+        saved++;
+      }
+      await client.query('COMMIT');
+      return { ok: true, saved };
+    } catch (e) {
+      try { await client.query('ROLLBACK'); } catch (_) {}
+      request.log.error(e);
+      reply.code(500);
+      return { error: 'week_save_failed', message: e.message };
+    } finally { client.release(); }
+  });
+
+  // ─────────────────────────────────────────────────────────────────
   // GET /api/daily-presence/today — нужна ли отметка + статусы + мои работы
   // ─────────────────────────────────────────────────────────────────
   fastify.get('/today', { preHandler: [fastify.authenticate] }, async (request, reply) => {
@@ -160,6 +336,22 @@ module.exports = async function (fastify, options) {
       }
 
       const staffId = await ensureStaffId(userId, name, role);
+
+      // В отпуске «где ты» не спрашиваем — система уже знает ответ.
+      const vac = await onVacation(staffId, sd);
+      if (vac) {
+        return { required: false, server_date: sd, statuses: STATUS_DEFS, works: [], current: { status_code: 'отп', work_id: null }, on_vacation: true };
+      }
+      // Праздник/выходной — тоже не спрашиваем.
+      const calToday = await calendarRange(sd, sd);
+      const c = calToday[sd];
+      const p = new Date(sd + 'T00:00:00Z');
+      const dow = p.getUTCDay();
+      const nonWorking = (dow === 0 || dow === 6) || (c && (c.kind === 'working' ? false : c.is_working === false));
+      if (nonWorking) {
+        return { required: false, server_date: sd, statuses: STATUS_DEFS, works: [], current: null, non_working: true };
+      }
+
       const current = await todayPlan(staffId);
       const works = await myActiveWorks(userId);
 

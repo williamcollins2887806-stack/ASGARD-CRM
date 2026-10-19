@@ -36,12 +36,36 @@
   function confirm() {
     if (!_selected) return;
     markChosen();
+    dismiss();
+  }
+
+  /**
+   * Убрать оверлей выбора темы.
+   * КРИТИЧНО: раньше оверлей (z-index 999999, inset:0) оставался висеть, если
+   * пользователь уходил со страницы приветствия, не выбрав тему — и глушил клики
+   * во всём интерфейсе (на графике отпусков модалка становилась недоступной).
+   */
+  function dismiss() {
     var overlay = document.getElementById('asgard-theme-selector');
     if (!overlay) return;
     overlay.classList.remove('ats-visible');
     setTimeout(function() {
       if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
     }, 450);
+  }
+
+  /** Страховка: как только ушли с приветствия — оверлей не должен висеть. */
+  function watchForLeave() {
+    function check() {
+      var overlay = document.getElementById('asgard-theme-selector');
+      if (!overlay) return;
+      var h = location.hash;
+      var onWelcome = (!h || h === '#' || h === '#/welcome') && !!document.querySelector('.welcome-page');
+      if (!onWelcome) dismiss();
+    }
+    window.addEventListener('hashchange', check);
+    var app = document.getElementById('app') || document.body;
+    try { new MutationObserver(check).observe(app, { childList: true, subtree: true }); } catch (_) {}
   }
 
   function createBanner() {
@@ -169,6 +193,16 @@
     });
     observer.observe(app, { childList: true, subtree: true });
   }
+
+  // Страховка от «залипшего» оверлея: включаем ВСЕГДА (даже если тема уже выбрана —
+  // тогда оверлея нет и проверка ничего не делает).
+  try {
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', watchForLeave);
+    } else {
+      watchForLeave();
+    }
+  } catch (_) {}
 
   window.AsgardThemeSelector = {
     show:      show,

@@ -337,6 +337,7 @@ console.log('[ASGARD] Global period functions loaded');
     {r:"/training",l:"Обучение",d:"Заявки на обучение",roles:ALL_ROLES,i:"school",p:"training_applications",g:"personnel"},
     {r:"/office-academy",l:"Академия Асгарда",d:"Корпоративное обучение — уроки и квизы",roles:ALL_ROLES,i:"school",p:"office_academy",g:"personnel"},
     {r:"/office-schedule",l:"График: Офис",d:"Статусы по дням",roles:ALL_ROLES,i:"schedule",p:"office_schedule",g:"personnel"},
+    {r:"/vacation-schedule",l:"График отпусков",d:"Отпуска офиса",roles:ALL_ROLES,i:"calendar",p:"office_schedule",g:"personnel"},
     {r:"/workers-schedule",l:"График: Рабочие",d:"Бронь и доступность",roles:["ADMIN","HR","HR_MANAGER",...DIRECTOR_ROLES],i:"workers",p:"workers_schedule",g:"personnel"},
     {r:"/hr-rating",l:"Рейтинг Дружины",d:"Оценки и средний балл",roles:["ADMIN","HR","HR_MANAGER",...DIRECTOR_ROLES],i:"rating",p:"hr_rating",g:"personnel"},
     {r:"/travel",l:"Логистика дружины",d:"Жильё, билеты, направления, обучение",roles:["ADMIN","OFFICE_MANAGER","HR","HR_MANAGER","PM",...DIRECTOR_ROLES],i:"travel",p:"travel",g:"personnel"},
@@ -2485,6 +2486,7 @@ AsgardRouter.add("/assembly", () => {
     AsgardRouter.add("/office-academy", () => { AsgardOfficeAcademyPage.render({layout, title:"Академия Асгарда"}); }, {auth:true, roles:ALL_ROLES});
   AsgardRouter.add("/workers-schedule", ()=>AsgardStaffSchedulePage.render({layout, title:"График рабочих"}), {auth:true, roles:["ADMIN","HR","HR_MANAGER",...DIRECTOR_ROLES]});
   AsgardRouter.add("/office-schedule", ()=>AsgardOfficeSchedulePage.render({layout, title:"График Дружины • Офис"}), {auth:true, roles:ALL_ROLES});
+  AsgardRouter.add("/vacation-schedule", ()=>AsgardVacationSchedulePage.render({layout, title:"График отпусков • Офис"}), {auth:true, roles:ALL_ROLES});
     AsgardRouter.add("/gantt-calcs", ()=>AsgardGanttFullPage.renderCalcs({layout}), {auth:true, roles:["ADMIN","PM","HEAD_PM",...DIRECTOR_ROLES]});
     AsgardRouter.add("/gantt-works", ()=>AsgardGanttFullPage.renderWorks({layout}), {auth:true, roles:["ADMIN","PM","HEAD_PM",...DIRECTOR_ROLES]});
     AsgardRouter.add("/gantt", ()=>AsgardGanttFullPage.renderCombined({layout}), {auth:true, roles:["ADMIN","PM","HEAD_PM",...DIRECTOR_ROLES]});

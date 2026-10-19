@@ -214,6 +214,7 @@ function check(name, cond, extra) {
   check('приказ Т-6: форма 0301005', /0301005/.test(await page.locator('.doc-sheet').innerText()));
   check('приказ Т-6: пункты А и В', /А\./.test(await page.locator('.doc-sheet').innerText()) && /В\./.test(await page.locator('.doc-sheet').innerText()));
   check('приказ Т-6: пункт Б (доп. отпуск) присутствует', /Б\./.test(await page.locator('.doc-sheet').innerText()));
+  check('приказ Т-6: строка «за период работы» (по образцу T3)', /за период работы с/i.test(await page.locator('.doc-sheet').innerText()));
   await shot('11-doc-prikaz');
   await page.locator('[data-vs-doc-tab="t7"]').click();
   await page.waitForTimeout(500);
@@ -227,6 +228,56 @@ function check(name, cond, extra) {
   }), await page.evaluate(() => {
     const nums = [...document.querySelectorAll('.doc-t--grid thead .doc-nums td')].map(t => t.textContent.trim());
     return 'nums=' + nums.join(',') + ' bodyCells=' + document.querySelectorAll('.doc-t--grid tbody tr:first-child td').length;
+  }));
+  /* Покрытие шапки: объединённые ячейки должны накрывать ВСЕ 10 граф без дыр.
+     Именно этот дефект пропускала прежняя проверка (считала только нумерацию). */
+  check('график Т-7: шапка покрывает все 10 граф без дыр', await page.evaluate(() => {
+    const table = document.querySelector('.doc-t--grid');
+    if (!table) return false;
+    const heads = [...table.querySelectorAll('thead tr')].filter(r => !r.classList.contains('doc-nums'));
+    // Карта занятости: для каждого ряда размечаем, какие графы он накрывает
+    const rows = heads.map(tr => {
+      const cells = [...tr.children];
+      const map = [];
+      for (const c of cells) {
+        const span = parseInt(c.getAttribute('colspan') || '1', 10);
+        for (let i = 0; i < span; i++) map.push(c.textContent.trim() || '(пусто)');
+      }
+      return map;
+    });
+    const maxLen = Math.max(...rows.map(r => r.length));
+    // В каждом столбце графы должен быть хотя бы один непустой заголовок
+    const holes = [];
+    for (let col = 0; col < 10; col++) {
+      const column = rows.map(r => r[col]).filter(Boolean);
+      const filled = column.some(v => v && v !== '(пусто)');
+      if (!filled) holes.push(col + 1);
+    }
+    return maxLen === 10 && holes.length === 0;
+  }), await page.evaluate(() => {
+    const table = document.querySelector('.doc-t--grid');
+    const heads = [...table.querySelectorAll('thead tr')].filter(r => !r.classList.contains('doc-nums'));
+    const rows = heads.map(tr => {
+      const map = [];
+      for (const c of [...tr.children]) {
+        const span = parseInt(c.getAttribute('colspan') || '1', 10);
+        for (let i = 0; i < span; i++) map.push(c.textContent.trim() || '(пусто)');
+      }
+      return map;
+    });
+    const cols = [];
+    for (let col = 0; col < 10; col++) {
+      const column = rows.map(r => r[col]).filter(Boolean);
+      cols.push((col + 1) + ':' + (column.length ? column.join('+') : 'ОТСУТСТВУЕТ'));
+    }
+    return 'ширина=' + Math.max(...rows.map(r => r.length)) + ' | ' + cols.join(' | ');
+  }));
+  check('график Т-7: ОТПУСК охватывает графы 5–9 (colspan=5)', await page.evaluate(() => {
+    const th = [...document.querySelectorAll('.doc-t--grid thead th')].find(t => /ОТПУСК/.test(t.textContent));
+    return !!th && parseInt(th.getAttribute('colspan') || '1', 10) === 5;
+  }), await page.evaluate(() => {
+    const th = [...document.querySelectorAll('.doc-t--grid thead th')].find(t => /ОТПУСК/.test(t.textContent));
+    return 'colspan=' + (th ? th.getAttribute('colspan') : 'нет ячейки');
   }));
   await shot('12-doc-t7');
 

@@ -919,6 +919,8 @@ fastify.register(require('./routes/sites'), { prefix: '/api/sites' });
 fastify.register(require('./routes/command-map'), { prefix: '/api/command-map' });
 fastify.register(require('./routes/director-summary'), { prefix: '/api/director-summary' });
 fastify.register(require('./routes/daily-presence'), { prefix: '/api/daily-presence' });
+fastify.register(require('./routes/vacations'),      { prefix: '/api/vacations' });
+fastify.register(require('./routes/vacation-decision'), { prefix: '/vacation-decision' });
 fastify.register(require('./routes/tkp'),       { prefix: '/api/tkp' });
   fastify.register(require('./routes/tkp_quick'), { prefix: '/api/tkp-quick' });
   fastify.register(require('./routes/work-norms'), { prefix: '/api/work-norms' });
@@ -1304,6 +1306,19 @@ try {
   });
 } catch (cronErr) {
   fastify.log.warn('[MimirLetterReminders] Init skipped: ' + cronErr.message);
+}
+
+// ── Vacation Reminders Cron: письмо директору за 15 дней, 3 напоминания, автоснятие ──
+try {
+  const vacationReminders = require('./services/vacation-reminders-cron');
+  fastify.addHook('onReady', async () => {
+    vacationReminders.start(fastify.db, fastify.log);
+  });
+  fastify.addHook('onClose', async () => {
+    vacationReminders.stop();
+  });
+} catch (cronErr) {
+  fastify.log.warn('[VacationReminders] Init skipped: ' + cronErr.message);
 }
 
 // ── Conductor Run Sweeper: startup orphan-cleanup + hourly stale-run sweep ──
