@@ -10,10 +10,10 @@
   <link rel="manifest" href="/h/manifest.webmanifest"/>
   <link rel="apple-touch-icon" href="/assets/img/apple-touch-icon.png"/>
   <title>Хугинн</title>
-  <link rel="stylesheet" href="/assets/css/design-tokens.css?v=20.28.225"/>
-  <link rel="stylesheet" href="/assets/css/huginn_dock.css?v=20.28.225"/>
+  <link rel="stylesheet" href="/assets/css/design-tokens.css?v=20.28.226"/>
+  <link rel="stylesheet" href="/assets/css/huginn_dock.css?v=20.28.226"/>
   <!-- Звонки (PBX-панель) на /h/: те же файлы, что на десктопе. -->
-  <link rel="stylesheet" href="/assets/css/phone.css?v=20.28.225"/>
+  <link rel="stylesheet" href="/assets/css/phone.css?v=20.28.226"/>
   <style>
     html, body {
       margin: 0; height: 100%;
@@ -198,7 +198,14 @@
       background: var(--hg-elev); color: var(--hg-text); text-align: center; font: 600 22px var(--hg-font); outline: none; }
     .h-code-cell:focus { border-color: var(--blue-l, #4A90D9); }
     .h-step-link { display: block; text-align: center; margin: 14px auto 0; border: 0; background: transparent;
-      color: var(--blue-l, #4A90D9); font: 400 15px var(--hg-font); cursor: pointer; }
+      color: var(--blue-l, #4A90D9); font: 400 15px var(--hg-font); cursor: pointer;
+      padding: 6px 10px; border-radius: 8px; -webkit-tap-highlight-color: transparent; }
+    /* Обратная связь: раньше у ссылок не было ни :active, ни :disabled — тап не
+       ощущался, и при 429 (cooldown 45с) кнопка «Отправить код ещё раз» выглядела
+       «мёртвой». Теперь видно и нажатие, и блокировку, и «Отправляю…». */
+    .h-step-link:active { transform: scale(0.97); opacity: .72; }
+    .h-step-link:disabled { opacity: .45; cursor: default; transform: none; }
+    .h-step-link.is-busy { opacity: .7; }
     .h-modal-back { position: fixed; inset: 0; background: rgba(0,0,0,.5); display: flex; align-items: center; justify-content: center; padding: 24px; z-index: 40; }
     .h-modal { width: 100%; max-width: 320px; background: color-mix(in srgb, var(--hg-bg, var(--bg2)) 92%, transparent);
       -webkit-backdrop-filter: blur(24px) saturate(160%); backdrop-filter: blur(24px) saturate(160%);
@@ -212,18 +219,18 @@
   <div id="app"></div>
   <!-- ?v= обязателен: /assets/* отдаётся с Cache-Control: immutable, max-age=30д.
        Без версии в URL телефон держал старый JS/CSS месяцами и «не видел» деплой. -->
-  <script src="/assets/js/huginn_icons.js?v=20.28.225"></script>
-  <script src="/assets/js/phone_mask.js?v=20.28.225"></script>
-  <script src="/assets/js/huginn_sse.js?v=20.28.225"></script>
+  <script src="/assets/js/huginn_icons.js?v=20.28.226"></script>
+  <script src="/assets/js/phone_mask.js?v=20.28.226"></script>
+  <script src="/assets/js/huginn_sse.js?v=20.28.226"></script>
   <!-- TingSound: рингтон звонка (startRing/stopRing). Обязателен ДО модуля
        звонков: без него звонок в /h/ был молчаливым (методы не находились). -->
-  <script src="/assets/js/ting_common.js?v=20.28.225"></script>
-  <script src="/assets/js/huginn_calls.js?v=20.28.225"></script>
-  <script src="/assets/js/huginn_dock.js?v=20.28.225"></script>
-  <script src="/assets/vendor/jssip.min.js?v=20.28.225"></script>
-  <script src="/assets/js/phone_core.js?v=20.28.225"></script>
-  <script src="/assets/js/phone_ui.js?v=20.28.225"></script>
-  <script src="/h/app.js?v=20.28.225"></script>
+  <script src="/assets/js/ting_common.js?v=20.28.226"></script>
+  <script src="/assets/js/huginn_calls.js?v=20.28.226"></script>
+  <script src="/assets/js/huginn_dock.js?v=20.28.226"></script>
+  <script src="/assets/vendor/jssip.min.js?v=20.28.226"></script>
+  <script src="/assets/js/phone_core.js?v=20.28.226"></script>
+  <script src="/assets/js/phone_ui.js?v=20.28.226"></script>
+  <script src="/h/app.js?v=20.28.226"></script>
   <script>
     (function () {
       var saved = localStorage.getItem('asgard_theme') || localStorage.getItem('hg_theme');
@@ -260,7 +267,7 @@
     // ≠ сторож (старый) → бесконечная перезагрузка у клиента.
     // Не переименовывать переменную VER — на неё завязан bump.
     (function () {
-      var VER = '20.28.225';
+      var VER = '20.28.226';
       var _busy = false;
       function check() {
         if (_busy) return;

@@ -236,13 +236,65 @@
       });
     });
     document.getElementById('back').onclick = () => renderLogin({ invite: inviteToken ? { inviter_name: '' } : null });
-    document.getElementById('again').onclick = async () => {
+    const againBtn = document.getElementById('again');
+    const AGAIN_LABEL = againBtn.textContent;
+    let againBusy = false;
+    let againTickTimer = null;
+    // Сброс состояния кнопки: гасим прошлый отсчёт, чтобы он не перезаписал
+    // текст после нового запроса (баг: таймер от прежнего 429 продолжал тикать).
+    const resetAgain = () => {
+      if (againTickTimer) { clearTimeout(againTickTimer); againTickTimer = null; }
+      againBtn.disabled = false;
+      againBtn.classList.remove('is-busy');
+      againBtn.textContent = AGAIN_LABEL;
+      againBusy = false;
+    };
+    // Обратная связь + честные ошибки. Раньше запрос уходил «в тишину»: при
+    // cooldown (45с) сервер отвечает 429, ответ игнорировался — кнопка казалась
+    // нерабочей, пользователь жал её снова и снова без всякой реакции.
+    againBtn.onclick = async () => {
+      if (againBusy) return;
+      againBusy = true;
+      if (againTickTimer) { clearTimeout(againTickTimer); againTickTimer = null; }
+      const e = document.getElementById('err');
+      againBtn.disabled = true;
+      againBtn.classList.add('is-busy');
+      againBtn.textContent = 'Отправляю…';
+      e.textContent = '';
       try {
-        await fetch('/api/chat-groups/auth/request-code', {
+        const res = await fetch('/api/chat-groups/auth/request-code', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ phone })
         });
-      } catch (_) {}
+        const data = await res.json().catch(() => ({}));
+        if (res.status === 429) {
+          // Cooldown сервера (LOGIN_COOLDOWN_SEC = 45): показываем отсчёт,
+          // чтобы было видно, что кнопка живая и просто ждёт.
+          e.textContent = /уже отправлен/i.test(String(data.error || ''))
+            ? 'Код уже отправлен. Подождите и запросите снова.'
+            : (data.error || 'Слишком часто. Подождите минуту.');
+          let left = 45;
+          const tick = () => {
+            if (left <= 0) { resetAgain(); return; }
+            againBtn.textContent = 'Подождите ' + left + ' с…';
+            left -= 1;
+            againTickTimer = setTimeout(tick, 1000);
+          };
+          tick();
+          return;
+        }
+        if (!res.ok) throw new Error(data.error || 'Не удалось отправить код');
+        if (data.sent === false) {
+          e.textContent = data.error || 'SMS не ушла — можно войти по ссылке на почту';
+        } else {
+          const ch = data.channel === 'max' ? 'MAX' : 'SMS';
+          e.textContent = 'Код отправлен повторно (' + ch + ')';
+        }
+        resetAgain();
+      } catch (ex) {
+        e.textContent = ex.message || 'Не удалось отправить код';
+        resetAgain();
+      }
     };
     verify.onclick = async () => {
       const e = document.getElementById('err');
