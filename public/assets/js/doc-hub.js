@@ -830,11 +830,27 @@ window.AsgardDocHubPage = (function () {
     </div>`;
   }
   function qaIcons() {
+    // V413: премиум-иконки (заказчик 19.10.2026: «системные иконки и кнопки,
+    // не красиво и не премиально»). Единая сетка 18×18, stroke-width 1.7,
+    // без буквенных подписей — смысл читается из иконки и tooltip.
+    const S = 'viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"';
     return {
-      pay: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 7h16v10H4zM4 10h16M8 14h2"/></svg><span class="lbl">Опл</span>',
-      sf: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M7 3h8l4 4v14H7z"/><path d="M15 3v4h4M9 13h6M9 17h4"/></svg><span class="lbl">СФ</span>',
-      wh: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 10l9-6 9 6v10H3z"/><path d="M9 20v-6h6v6"/></svg><span class="lbl">Скл</span>',
-      open: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 6l6 6-6 6"/></svg><span class="lbl">Кар</span>'
+      // Оплата: карта
+      pay: `<svg ${S}><rect x="2.5" y="5.5" width="19" height="13" rx="2.5"/><path d="M2.5 10h19"/><path d="M6.5 15h3"/></svg>`,
+      // СФ получена: документ с галочкой
+      sf: `<svg ${S}><path d="M14 3H7a1.8 1.8 0 0 0-1.8 1.8v14.4A1.8 1.8 0 0 0 7 21h10a1.8 1.8 0 0 0 1.8-1.8V7.8z"/><path d="M14 3v5h4.8"/><path d="M9 14.5l2 2 4-4.5"/></svg>`,
+      // Склад: коробка
+      wh: `<svg ${S}><path d="M3 8.2 12 3.5l9 4.7v7.6L12 20.5 3 15.8z"/><path d="M3 8.2 12 13l9-4.8"/><path d="M12 13v7.5"/></svg>`,
+      // Открыть карточку
+      open: `<svg ${S}><path d="M9 5.5h9.5V15"/><path d="M18.5 5.5 9.5 14.5"/><path d="M14 9.5H6a1.5 1.5 0 0 0-1.5 1.5v8A1.5 1.5 0 0 0 6 20.5h8A1.5 1.5 0 0 0 15.5 19v-8"/></svg>`,
+      // Снять отметку СФ
+      undo: `<svg ${S}><path d="M4 9h11a5 5 0 0 1 0 10h-3"/><path d="M8 5 4 9l4 4"/></svg>`,
+      // Оплачено вручную
+      paid: `<svg ${S}><circle cx="12" cy="12" r="9"/><path d="M8.5 12.5l2.5 2.5 4.5-5"/></svg>`,
+      // Корректировка
+      corr: `<svg ${S}><path d="M12 3.5 21 20H3z"/><path d="M12 9.5v4.5"/><circle cx="12" cy="17" r=".9" fill="currentColor" stroke="none"/></svg>`,
+      // Комментарий
+      cmt: `<svg ${S}><path d="M20.5 14.5a2 2 0 0 1-2 2H7.5L3.5 20.5V6a2 2 0 0 1 2-2h13a2 2 0 0 1 2 2z"/></svg>`
     };
   }
   function contractModeLabel(mode) {
@@ -910,14 +926,14 @@ window.AsgardDocHubPage = (function () {
         <td class="dh-col-sf">${closingCell(r)}</td>
         <td class="dh-actions">
           <div class="dh-qa" aria-label="Действия">
-            <button type="button" data-qa="pay" title="В очередь оплаты (со сканом)" ${r.pay_status === 'paid' ? 'disabled' : ''}>${ico.pay}</button>
-            <button type="button" data-qa="sf" title="СФ получена">${ico.sf}</button>
-            ${(Array.isArray(r.closing_json) && r.closing_json.length) ? '<button type="button" data-qa="unmark_sf" title="Снять отметку «СФ получена»" class="dh-qa__undo">↩</button>' : ''}
-            ${(canWh() && r.pay_status !== 'paid') ? '<button type="button" data-qa="mark_paid" title="Отметить оплачено без согласования" class="dh-qa__paid">₽✓</button>' : ''}
-            ${canWh() ? `<button type="button" data-qa="wh" title="Склад">${ico.wh}</button>` : ''}
-            ${canCorrect() ? `<button type="button" data-qa="corr" class="dh-qa__corr${r.correction_state === 'requested' ? ' is-on' : ''}" title="${r.correction_state === 'requested' ? 'Корректировка запрошена' : 'СФ/Акт не корректен'}" aria-label="Корректировка">🚩</button>` : ''}
-            <button type="button" data-qa="open" title="Карточка">${ico.open}</button>
-            <button type="button" class="dh-cmt-btn${r.comment_text ? ' is-filled' : ''}" data-cmt="${r.id}" data-comment="${esc(r.comment_text || '')}" title="${r.comment_text ? esc(String(r.comment_text).slice(0, 60)) : 'Комментарий'}" aria-label="Комментарий"><svg viewBox="0 0 24 24" fill="${r.comment_text ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="1.8"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></button>
+            <button type="button" class="dh-qa__pay" data-qa="pay" title="В очередь оплаты (со сканом)" aria-label="В очередь оплаты" ${r.pay_status === 'paid' ? 'disabled' : ''}>${ico.pay}</button>
+            <button type="button" class="dh-qa__sf" data-qa="sf" title="СФ получена" aria-label="СФ получена">${ico.sf}</button>
+            ${(Array.isArray(r.closing_json) && r.closing_json.length) ? `<button type="button" data-qa="unmark_sf" title="Снять отметку «СФ получена»" aria-label="Снять отметку СФ" class="dh-qa__undo">${ico.undo}</button>` : ''}
+            ${(canWh() && r.pay_status !== 'paid') ? `<button type="button" data-qa="mark_paid" title="Отметить оплачено без согласования" aria-label="Отметить оплачено" class="dh-qa__paid">${ico.paid}</button>` : ''}
+            ${canWh() ? `<button type="button" data-qa="wh" title="Склад" aria-label="Склад">${ico.wh}</button>` : ''}
+            ${canCorrect() ? `<button type="button" data-qa="corr" class="dh-qa__corr${r.correction_state === 'requested' ? ' is-on' : ''}" title="${r.correction_state === 'requested' ? 'Корректировка запрошена' : 'СФ/Акт не корректен'}" aria-label="Корректировка">${ico.corr}</button>` : ''}
+            <button type="button" data-qa="open" title="Карточка" aria-label="Открыть карточку">${ico.open}</button>
+            <button type="button" class="dh-cmt-btn${r.comment_text ? ' is-filled' : ''}" data-cmt="${r.id}" data-comment="${esc(r.comment_text || '')}" title="${r.comment_text ? esc(String(r.comment_text).slice(0, 60)) : 'Комментарий'}" aria-label="Комментарий">${ico.cmt}</button>
           </div>
         </td>
       </tr>`);

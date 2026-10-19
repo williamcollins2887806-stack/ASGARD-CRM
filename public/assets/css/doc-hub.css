@@ -162,35 +162,46 @@ a:hover { text-decoration: underline; }
 
 .dh-qa {
   display: inline-flex;
-  gap: 4px;
+  gap: 3px;
+  align-items: center;
+  padding: 3px;
+  border-radius: 11px;
+  background: color-mix(in srgb, var(--bg3) 55%, transparent);
+  border: 1px solid color-mix(in srgb, var(--brd) 70%, transparent);
   opacity: 1;
   transition: opacity var(--fast);
 }
 .dh-qa button {
-  height: 28px;
-  min-width: 28px;
-  padding: 0 7px;
+  width: 30px;
+  height: 30px;
+  min-width: 30px;
+  padding: 0;
   border-radius: 8px;
-  border: 1px solid var(--brd);
-  background: var(--bg3);
+  border: 1px solid transparent;
+  background: transparent;
   color: var(--t2);
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  font-size: 10px;
-  font-weight: 800;
-  letter-spacing: 0.02em;
+  justify-content: center;
+  cursor: pointer;
+  transition: background .14s ease, color .14s ease, border-color .14s ease, transform .14s ease;
 }
-.dh-qa button:hover {
+.dh-qa button:hover:not(:disabled) {
+  background: var(--bg2);
+  border-color: color-mix(in srgb, var(--gold) 45%, var(--brd));
   color: var(--t1);
-  border-color: color-mix(in srgb, var(--gold) 40%, var(--brd));
+  transform: translateY(-1px);
+}
+.dh-qa button:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--gold) 70%, transparent);
+  outline-offset: 1px;
 }
 .dh-qa button:disabled {
-  opacity: 0.35;
+  opacity: 0.32;
   cursor: not-allowed;
 }
-.dh-qa button svg { width: 13px; height: 13px; }
-.dh-qa .lbl { line-height: 1; }
+.dh-qa button svg { width: 16px; height: 16px; }
+.dh-qa .lbl { display: none; }
 .dh-btn--primary:hover {
   filter: brightness(1.05);
   border-color: transparent;
@@ -1998,24 +2009,16 @@ body.hg-dock-open .dh-hscroll-bar {
   z-index: 2;
 }
 .dh-table--rich thead .dh-actions { z-index: 3; background: var(--bg3, #1e293b); }
-.dh-qa {
-  display: inline-flex;
-  gap: 4px;
-  flex-wrap: nowrap;
+/* Смысловые акценты кнопок действий (только токены темы) */
+.dh-qa__pay:hover:not(:disabled) { color: var(--info-t, #60a5fa) !important; border-color: color-mix(in srgb, var(--info) 45%, transparent) !important; }
+.dh-qa__sf:hover:not(:disabled) { color: var(--ok-t, #4ade80) !important; border-color: color-mix(in srgb, var(--ok) 45%, transparent) !important; }
+.dh-qa__paid { color: var(--ok-t, #4ade80) !important; }
+.dh-qa__undo { color: var(--warn-t, #fbbf24) !important; }
+.dh-qa__corr.is-on {
+  color: var(--err-t, #f87171) !important;
+  background: color-mix(in srgb, var(--err) 16%, transparent);
+  border-color: color-mix(in srgb, var(--err) 45%, transparent) !important;
 }
-.dh-qa button {
-  min-width: 34px;
-  padding: 5px 6px;
-  border-radius: 8px;
-  border: 1px solid var(--brd, #334155);
-  background: var(--bg3, #1e293b);
-  color: var(--t2, #94a3b8);
-  display: inline-flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 2px;
-}
-.dh-qa .lbl { font-size: 9px; letter-spacing: .02em; opacity: .85; }
 
 .dh-sum-strip {
   display: grid;

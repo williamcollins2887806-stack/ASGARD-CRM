@@ -566,16 +566,26 @@ window.AsgardProcurementPage = (function() {
     // E1 (21.09.2026): исключение — «Мои заявки» (#/my-procurement), где заявку создаёт РП
     // без захода на склад. Там кнопка есть, на «Закупках» её по-прежнему нет.
     const canCreateHere = _myScope && ['PM', 'HEAD_PM', 'ADMIN'].includes(_user && _user.role);
-    // V411 (заказчик 18.10.2026): на «Моих заявках» — ДВА потока в одной странице:
-    //   • Закупки — заявка идёт по канбану через закупщика;
-    //   • Счета на оплату — сразу директору, минуя закупщика.
-    // Не плодим страницы: всё на существующей, переключатель + свои статусы.
-    const showPayTab = _myScope;
+    // V413 (заказчик 19.10.2026): РОЗДЕЛЕНИЕ ПОТОКОВ ПО РОЛЯМ.
+    //   • «Закупки» — контур РП (создаёт заявку) + закупщик PROC (отрабатывает).
+    //     Остальным вкладка не нужна: у них нет ни создания, ни обработки закупок.
+    //   • «Счета на оплату» — видят ВСЕ роли страницы (инициатор, директор,
+    //     бухгалтерия, офис-менеджер): это их контур согласования/оплаты.
+    const role = String((_user && _user.role) || '');
+    const seesProcTab = ['PM', 'HEAD_PM', 'PROC', 'ADMIN'].includes(role);
+    // «Счета на оплату» — контур согласования/оплаты; он есть на «Моих заявках»
+    // для всех ролей страницы. На «Закупках» (общий реестр) вкладки счетов нет.
+    const seesPayTab = _myScope;
+    const showSeg = seesProcTab && seesPayTab;      // переключатель нужен только при двух вкладках
+    // Если роли доступна ТОЛЬКО одна вкладка — принудительно её и показываем.
+    if (_myScope && !seesProcTab) _tab = 'pay';
+    if (!_myScope) _tab = 'proc';
+    const singlePay = seesPayTab && !seesProcTab;
     el.innerHTML = `<div class="proc-toolbar">
-      ${showPayTab ? `<div class="proc-seg" id="proc-seg">
+      ${showSeg ? `<div class="proc-seg" id="proc-seg">
         <button type="button" class="proc-seg__b ${_tab === 'proc' ? 'is-on' : ''}" data-tab="proc">Закупки</button>
         <button type="button" class="proc-seg__b ${_tab === 'pay' ? 'is-on' : ''}" data-tab="pay">Счета на оплату <span class="proc-seg__n" id="proc-pay-n">0</span></button>
-      </div>` : ''}
+      </div>` : (singlePay ? '<div class="proc-seg proc-seg--single"><span class="proc-seg__b is-on">Счета на оплату <span class="proc-seg__n" id="proc-pay-n">0</span></span></div>' : '')}
       <div class="proc-viewtoggle" id="proc-vt" style="display:${_tab === 'proc' ? '' : 'none'}">
         <button class="proc-vt ${_viewMode==='kanban'?'proc-vt--on':''}" data-vm="kanban">Канбан</button>
         <button class="proc-vt ${_viewMode==='table'?'proc-vt--on':''}" data-vm="table">Таблица</button>
@@ -585,7 +595,7 @@ window.AsgardProcurementPage = (function() {
       <div class="proc-toolbar__acts">
         ${canCreateHere && _tab === 'proc' ? '<button type="button" class="proc-act proc-act--primary" id="proc-new-req">+ Создать заявку</button>' : ''}
         ${canCreateHere && _tab === 'proc' ? '<button type="button" class="proc-act" id="proc-new-req-cart">Собрать в корзине</button>' : ''}
-        <button type="button" class="proc-act proc-act--primary" id="proc-new-pay">${_tab === 'pay' ? '+ Новое согласование' : 'Новое согласование'}</button>
+        ${_tab === 'pay' ? '<button type="button" class="proc-act proc-act--primary" id="proc-new-pay">+ Согласовать счёт</button>' : ''}
         ${_tab === 'proc' ? '<button type="button" class="proc-act" id="proc-export-xl">Excel</button>' : ''}
         ${_tab === 'proc' ? '<button type="button" class="proc-act" id="proc-tpl-xl">Шаблон</button>' : ''}
       </div>

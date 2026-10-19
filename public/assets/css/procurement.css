@@ -8,6 +8,10 @@
 .proc-seg__b:hover{color:var(--t1)}
 .proc-seg__b.is-on{background:color-mix(in srgb,var(--gold,#d4a017) 20%,var(--bg1));color:var(--t1);box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--gold,#d4a017) 45%,transparent)}
 .proc-seg__n{display:inline-block;margin-left:6px;padding:0 6px;border-radius:999px;font-size:11px;font-weight:700;background:color-mix(in srgb,var(--gold,#d4a017) 26%,transparent);color:var(--t1)}
+/* V413: у роли только одна вкладка — показываем её как заголовок-чип, без переключателя */
+.proc-seg--single{padding:3px}
+.proc-seg--single .proc-seg__b{cursor:default}
+.proc-seg--single .proc-seg__b:hover{color:var(--t1)}
 /* Карточки счетов на оплату (второй поток «Моих заявок»). V412: премиум-уровень. */
 .proc-pay-hero{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;flex-wrap:wrap;margin-bottom:14px}
 .proc-pay-hero__main{min-width:0}
