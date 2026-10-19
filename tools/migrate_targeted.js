@@ -60,7 +60,8 @@ const TARGETS = [
   'V406__director_dev_chat_perms',              // role_presets DIRECTOR_DEV: chat_groups
   'V407__field_tariff_grid_ceilings',           // потолки тарифов поля (D-282)
   'V408__doc_deferred_approval',                // doc_approval_grant (переименована из V406 — коллизия номеров)
-  'V409__doc_ai_extract_seller_payee'           // doc_registry: seller_/payee_*, parse_engine/warnings (ИИ-разбор)
+  'V409__doc_ai_extract_seller_payee',          // doc_registry: seller_/payee_*, parse_engine/warnings (ИИ-разбор)
+  'V410__user_email_aliases'                    // user_email_aliases (почта→сотрудник) + включение email_intake_enabled
 ];
 
 const pool = new Pool({

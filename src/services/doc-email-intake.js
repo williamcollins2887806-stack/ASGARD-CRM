@@ -84,10 +84,13 @@ async function resolveSenderUserId(db, email) {
   const addr = (from.match(/<([^>]+)>/) || [null, from])[1];
   if (!addr || !addr.includes('@')) return null;
   try {
-    // Заказчик 19.10.2026: счета шлют 20–50 сотрудников, в т.ч. с ЛИЧНЫХ почт
-    // (@mail.ru, @yandex.ru). У таких сотрудников корпоративного адреса в `users.email`
-    // нет — личный лежит в `employees.email`. Без этого инициатор не находился,
-    // заявка уходила на админа, и сотрудник «не видел свой счёт».
+    // V410: сначала таблица алиасов (почта → пользователь). Сюда попадают
+    // нестандартные адреса: корпоративные алиасы (pd@ = Путков) и личные почты
+    // сотрудников. Заполняется автоматически при переназначении ответственного.
+    const al = await db.query(
+      `SELECT user_id FROM user_email_aliases WHERE lower(email)=$1 AND user_id IS NOT NULL LIMIT 1`,
+      [addr]);
+    if (al.rows[0]) return al.rows[0].user_id;
     // 1) корпоративная почта пользователя;
     const { rows } = await db.query(
       `SELECT u.id, u.role,

@@ -436,6 +436,81 @@ async function routes(fastify) {
     return { ok: true, work_id: upd[0].work_id, payment: decoratePayment(upd[0]) };
   });
 
+  /**
+   * V410 (заказчик 19.10.2026): переназначить ОТВЕТСТВЕННОГО за счёт.
+   * Зачем: счета шлют десятки сотрудников с разных (в т.ч. личных) почт. Если
+   * отправитель не опознан — заявка висит на офис-менеджере (Тумаевой), и она
+   * ставит верного сотрудника ОДНИМ действием. При этом почта отправителя
+   * ЗАПОМИНАЕТСЯ как алиас (user_email_aliases) — следующее письмо с неё
+   * подтянет владельца само, без ручной работы.
+   * Права: офис-менеджер, ADMIN, директора, бухгалтерия.
+   */
+  fastify.post('/:id/owner', { preHandler: [fastify.authenticate] }, async (req, reply) => {
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id)) return reply.code(400).send({ error: 'Неверный ID' });
+    const r = String(req.user.role || '');
+    const canReassign = ['ADMIN', 'BUH', 'OFFICE_MANAGER', 'PROC'].includes(r) || /^DIRECTOR/.test(r);
+    if (!canReassign) return reply.code(403).send({ error: 'Переназначить ответственного может офис-менеджер, бухгалтерия или директор' });
+    const newOwnerId = parseInt((req.body && req.body.user_id), 10);
+    if (!Number.isFinite(newOwnerId)) return reply.code(400).send({ error: 'Неверный user_id' });
+    const u = await db.query('SELECT id, name, role FROM users WHERE id=$1', [newOwnerId]);
+    if (!u.rows[0]) return reply.code(404).send({ error: 'Пользователь не найден' });
+
+    const { rows } = await db.query('SELECT * FROM payment_invoices WHERE id=$1', [id]);
+    const pay = rows[0];
+    if (!pay) return reply.code(404).send({ error: 'Не найдено' });
+    const prevOwner = pay.created_by;
+
+    await db.query('UPDATE payment_invoices SET created_by=$2, updated_at=NOW() WHERE id=$1', [id, newOwnerId]);
+    if (pay.doc_registry_id) {
+      await db.query('UPDATE doc_registry SET doc_owner_id=$2, created_by=$2, updated_by=$2, updated_at=NOW() WHERE id=$1',
+        [pay.doc_registry_id, newOwnerId]).catch(() => {});
+    }
+
+    // Выучить алиас: почта отправителя письма → назначенный сотрудник.
+    let learned = null;
+    try {
+      const src = pay.source_email_id
+        ? (await db.query('SELECT from_email FROM emails WHERE id=$1', [pay.source_email_id])).rows[0]
+        : null;
+      if (src && src.from_email) {
+        const m = String(src.from_email).match(/<([^>]+)>/);
+        const addr = String((m ? m[1] : src.from_email)).trim().toLowerCase();
+        if (addr.includes('@')) {
+          await db.query(
+            `INSERT INTO user_email_aliases(email, user_id, source, label, created_by)
+             VALUES($1,$2,'learned',$3,$4)
+             ON CONFLICT (lower(email)) DO UPDATE SET user_id=EXCLUDED.user_id, source='learned', updated_at=NOW()`,
+            [addr, newOwnerId, u.rows[0].name || null, req.user.id]).catch(() => {});
+          learned = addr;
+        }
+      }
+    } catch (_) { /* алиас — не блокер */ }
+
+    // Уведомить нового ответственного и офис-менеджера (кто и что перевесил).
+    try {
+      const { createNotification } = require('../services/notify');
+      Promise.resolve(createNotification(db, {
+        user_id: newOwnerId,
+        title: `Счёт #${id}: вы назначены ответственным`,
+        message: `${pay.supplier_name || ''} — ${pay.amount || ''}`,
+        type: 'payment_invoice_owner_changed',
+        link: `#/my-procurement`
+      })).catch(() => {});
+      if (prevOwner && Number(prevOwner) !== Number(req.user.id)) {
+        Promise.resolve(createNotification(db, {
+          user_id: prevOwner,
+          title: `Счёт #${id}: ответственный изменён`,
+          message: `Теперь за счёт отвечает ${u.rows[0].name || ('#' + newOwnerId)}`,
+          type: 'payment_invoice_owner_changed',
+          link: `#/my-procurement`
+        })).catch(() => {});
+      }
+    } catch (_) { /* уведомления не критичны */ }
+
+    return { ok: true, owner_id: newOwnerId, prev_owner_id: prevOwner, learned_alias: learned };
+  });
+
   // Auth-gated file stream
   fastify.get('/:id/file', { preHandler: [fastify.requireRoles(FILE_ROLES)] }, async (req, reply) => {
     const id = parseInt(req.params.id);
