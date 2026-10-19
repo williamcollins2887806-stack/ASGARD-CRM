@@ -40,6 +40,7 @@ const STATUS = [
   { code: 'пг', label: 'Встреча/переговоры', short: 'П', color: '#10B981', icon: '🤝' },
   { code: 'уч', label: 'Учёба',              short: 'У', color: '#14B8A6', icon: '📚' },
   { code: 'ск', label: 'Склад',               short: 'С', color: '#8E8E93', icon: '📦' },
+  { code: 'отп', label: 'Отпуск',            short: 'От', color: '#D4A843', icon: '🌴' },
   { code: 'вх', label: 'Выходной',           short: 'В', color: '#475569', icon: '🌙' },
 ];
 const STATUS_BY_CODE = Object.fromEntries(STATUS.map((s) => [s.code, s]));
