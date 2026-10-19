@@ -65,6 +65,24 @@ const ANALYST_OWNER_SQL = 'COALESCE(r.analysis_owner_user_id, r.started_by_user_
 const COMMENT_ONLY_ROLES = new Set(['PM', 'HEAD_PM']);
 const PM_EDITABLE_FIELDS = new Set(['comment_to']);
 
+/** Календарная дата по Москве, `YYYY-MM-DD`. `toISOString()` даёт UTC и уводит на день назад. */
+function mskTodayIso(now = new Date()) {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Europe/Moscow',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  }).format(now);
+}
+
+const MSK_WEEKDAYS = ['воскресенье', 'понедельник', 'вторник', 'среда', 'четверг', 'пятница', 'суббота'];
+
+/** «понедельник» для даты `YYYY-MM-DD`. Считаем по UTC-полудню — без сдвигов TZ. */
+function mskWeekday(iso) {
+  const d = new Date(iso + 'T12:00:00Z');
+  return Number.isFinite(d.getTime()) ? MSK_WEEKDAYS[d.getUTCDay()] : '';
+}
+
 function parsePaidFlag(raw) {
   if (raw === true || raw === 'true' || raw === 1 || raw === '1') return true;
   return false;
@@ -1202,7 +1220,24 @@ async function routes(fastify) {
     return { ok: !r.error, total: r.total, sample: r.items.slice(0, 3), error: r.error || null };
   });
 
-  // GET /morning-brief — ежедневное напоминание ТО / РП при входе
+  // GET /morning-brief — ежедневное напоминание ТО / РП при входе.
+  //
+  // D-249 (19.10.2026). До этой правки брифинг врал по четырём пунктам:
+  //  1) `date` считалась как `new Date()` + `setHours(0,0,0,0)` (локальная полночь МСК),
+  //     а потом `toISOString()` — это UTC, и дата уезжала на день назад («2026-10-18»
+  //     при 19.10 на календаре). Теперь дата берётся из `Europe/Moscow`.
+  //  2) «Готовы — пора подаваться» отбирала ЛЮБОЙ отзыв с `is_final` ИЛИ
+  //     `analysis_finalized_at` — в том числе `decision='reject'`, то есть карточки,
+  //     где РП прямо сказал «не подаём». Плюс в список попадали тендеры с дедлайном
+  //     два месяца назад. Теперь: только `is_final`, только не-reject и только с
+  //     непросроченным (или не заданным) дедлайном.
+  //  3) «Ждут отчёт РП» требовала `docs_deadline >= CURRENT_DATE`, из-за чего самые
+  //     горячие — просроченные без анализа — молча выпадали. Теперь это отдельная
+  //     красная секция «просрочено».
+  //  4) Пустой `customer_name` рендерился как «#1080 · —». Теперь подставляется
+  //     `tender_title`, а если нет и его — «Без названия».
+  // Совместимость: ключи `waiting_report` / `ready_no_submit` / `need_assign`
+  // сохранены (старые клиенты не ломаются), новые секции добавлены рядом.
   fastify.get('/morning-brief', {
     preHandler: [fastify.requireRoles(ALLOWED_ROLES)]
   }, async (request) => {
@@ -1210,11 +1245,14 @@ async function routes(fastify) {
     const user = request.user;
     const role = user.role || '';
     const uid = user.id;
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    const mskDate = mskTodayIso();
+    const today = new Date(mskDate + 'T12:00:00+03:00');
+    // SQL-выражение «сегодня по Москве»: CURRENT_DATE в контейнере может быть UTC.
+    const MSK_TODAY = "(now() AT TIME ZONE 'Europe/Moscow')::date";
     const brief = {
       role,
-      date: today.toISOString().slice(0, 10),
+      date: mskDate,
+      weekday: mskWeekday(mskDate),
       to: null,
       pm: null
     };
@@ -1228,56 +1266,109 @@ async function routes(fastify) {
         ? 'AND (t.created_by_user_id = $1 OR t.created_by = $1 OR t.calculator_user_id = $1)'
         : '';
       const params = role === 'TO' ? [uid] : [];
-      const waitingReport = await db.query(`
-        SELECT t.id, t.customer_name, t.tender_title, t.docs_deadline, t.registry_status,
-               t.responsible_pm_id, pm.name AS pm_name, pm.email AS pm_email,
-               r.analysis_finalized_at, r.is_final, r.calculator_user_id
+
+      const TENDER_COLS = `
+        t.id,
+        COALESCE(NULLIF(BTRIM(t.customer_name), ''), NULLIF(BTRIM(t.tender_title), ''), 'Без названия') AS customer_name,
+        t.tender_title, t.docs_deadline, t.registry_status,
+        (t.docs_deadline - ${MSK_TODAY})::int AS days_left,
+        t.responsible_pm_id, t.calculator_user_id,
+        pm.name AS pm_name, pm.email AS pm_email,
+        r.id AS review_id, r.is_final, r.decision,
+        r.analysis_finalized_at, r.director_review_status,
+        r.work_price, r.work_price_ex_vat`;
+
+      // 1. Без отчёта РП: окно «-30 дней … +5 дней» от сегодня.
+      //    Просроченные старше месяца не тянем — это уже не утренний фокус, а разбор завалов.
+      const openReport = await db.query(`
+        SELECT ${TENDER_COLS}
         FROM tenders t
         LEFT JOIN tender_rp_reviews r ON r.tender_id = t.id
         LEFT JOIN users pm ON pm.id = COALESCE(t.responsible_pm_id, t.calculator_user_id)
         WHERE t.deleted_at IS NULL
           AND COALESCE(t.registry_status, 'рассмотрение') IN ('рассмотрение', 'готовим')
           AND t.docs_deadline IS NOT NULL
-          AND t.docs_deadline::date <= CURRENT_DATE + INTERVAL '5 days'
-          AND t.docs_deadline::date >= CURRENT_DATE
+          AND t.docs_deadline BETWEEN ${MSK_TODAY} - 30 AND ${MSK_TODAY} + 5
           AND (r.analysis_finalized_at IS NULL OR r.id IS NULL)
           ${scopeSql}
         ORDER BY t.docs_deadline ASC
-        LIMIT 50
+        LIMIT 60
       `, params);
 
-      const readyNoSubmit = await db.query(`
-        SELECT t.id, t.customer_name, t.tender_title, t.docs_deadline, t.registry_status,
-               r.is_final, r.analysis_finalized_at, r.work_price, r.work_price_ex_vat
+      // 2. Готово к подаче: РП закрыл отчёт с вердиктом «подаём», срок ещё не ушёл.
+      const readyRows = await db.query(`
+        SELECT ${TENDER_COLS}
         FROM tenders t
         JOIN tender_rp_reviews r ON r.tender_id = t.id
+        LEFT JOIN users pm ON pm.id = COALESCE(t.responsible_pm_id, t.calculator_user_id)
         WHERE t.deleted_at IS NULL
           AND COALESCE(t.registry_status, 'рассмотрение') IN ('рассмотрение', 'готовим')
-          AND (r.is_final = true OR r.analysis_finalized_at IS NOT NULL)
+          AND r.is_final = true
+          AND COALESCE(r.decision, 'submit') <> 'reject'
+          AND (t.docs_deadline IS NULL OR t.docs_deadline >= ${MSK_TODAY})
           ${scopeSql}
         ORDER BY t.docs_deadline ASC NULLS LAST
-        LIMIT 50
+        LIMIT 30
       `, params);
 
-      const needAssign = await db.query(`
-        SELECT t.id, t.customer_name, t.tender_title, t.docs_deadline, t.calculator_user_id,
-               r.analysis_finalized_at, r.is_final
+      // 3. Отчёт закрыт с вердиктом «подаём», но срок уже прошёл — статус в реестре не обновили.
+      const missedRows = await db.query(`
+        SELECT ${TENDER_COLS}
         FROM tenders t
         JOIN tender_rp_reviews r ON r.tender_id = t.id
+        LEFT JOIN users pm ON pm.id = COALESCE(t.responsible_pm_id, t.calculator_user_id)
+        WHERE t.deleted_at IS NULL
+          AND COALESCE(t.registry_status, 'рассмотрение') IN ('рассмотрение', 'готовим')
+          AND r.is_final = true
+          AND COALESCE(r.decision, 'submit') <> 'reject'
+          AND t.docs_deadline IS NOT NULL
+          AND t.docs_deadline < ${MSK_TODAY}
+          ${scopeSql}
+        ORDER BY t.docs_deadline DESC
+        LIMIT 30
+      `, params);
+
+      // 4. Анализ закрыт, считающего нет. Только живые сроки: по просроченным решение
+      //    принимает не просчёт, а закрытие в архив.
+      const needAssign = await db.query(`
+        SELECT ${TENDER_COLS}
+        FROM tenders t
+        JOIN tender_rp_reviews r ON r.tender_id = t.id
+        LEFT JOIN users pm ON pm.id = COALESCE(t.responsible_pm_id, t.calculator_user_id)
         WHERE t.deleted_at IS NULL
           AND COALESCE(t.registry_status, 'рассмотрение') = 'рассмотрение'
           AND r.analysis_finalized_at IS NOT NULL
           AND COALESCE(r.is_final, false) = false
           AND t.calculator_user_id IS NULL
+          AND r.calculator_user_id IS NULL
+          AND (t.docs_deadline IS NULL OR t.docs_deadline >= ${MSK_TODAY})
           ${scopeSql}
         ORDER BY t.docs_deadline ASC NULLS LAST
-        LIMIT 50
+        LIMIT 30
       `, params);
 
+      const open = openReport.rows;
+      const overdue = open.filter((r) => Number(r.days_left) < 0);
+      const dueToday = open.filter((r) => Number(r.days_left) === 0);
+      const soon = open.filter((r) => Number(r.days_left) > 0);
+
       brief.to = {
-        waiting_report: waitingReport.rows,
-        ready_no_submit: readyNoSubmit.rows,
+        overdue_report: overdue,
+        today_report: dueToday,
+        soon_report: soon,
+        // Совместимость со старым клиентом: «ждут отчёт» = сегодня + ближайшие 5 дней
+        waiting_report: dueToday.concat(soon),
+        ready_no_submit: readyRows.rows,
+        missed_submit: missedRows.rows,
         need_assign: needAssign.rows
+      };
+      brief.counts = {
+        overdue: overdue.length,
+        today: dueToday.length,
+        soon: soon.length,
+        ready: readyRows.rows.length,
+        need_assign: needAssign.rows.length,
+        missed: missedRows.rows.length
       };
     }
 
@@ -1287,7 +1378,10 @@ async function routes(fastify) {
       if (duty && Number(duty.pm_user_id) === Number(uid)) {
         const periodEnd = duty.period_end;
         const r = await db.query(`
-          SELECT t.id, t.customer_name, t.tender_title, t.docs_deadline, t.registry_status
+          SELECT t.id,
+                 COALESCE(NULLIF(BTRIM(t.customer_name), ''), NULLIF(BTRIM(t.tender_title), ''), 'Без названия') AS customer_name,
+                 t.tender_title, t.docs_deadline, t.registry_status,
+                 (t.docs_deadline - ${MSK_TODAY})::int AS days_left
           FROM tenders t
           LEFT JOIN tender_rp_reviews r ON r.tender_id = t.id
           WHERE t.deleted_at IS NULL
@@ -1303,7 +1397,11 @@ async function routes(fastify) {
       }
 
       const myCalcs = await db.query(`
-        SELECT t.id, t.customer_name, t.tender_title, t.docs_deadline, r.is_final, r.analysis_finalized_at
+        SELECT t.id,
+               COALESCE(NULLIF(BTRIM(t.customer_name), ''), NULLIF(BTRIM(t.tender_title), ''), 'Без названия') AS customer_name,
+               t.tender_title, t.docs_deadline,
+               (t.docs_deadline - ${MSK_TODAY})::int AS days_left,
+               r.is_final, r.analysis_finalized_at
         FROM tenders t
         JOIN tender_rp_reviews r ON r.tender_id = t.id
         WHERE t.deleted_at IS NULL
@@ -1357,7 +1455,11 @@ async function routes(fastify) {
     }
 
     const hasTo = brief.to && (
-      brief.to.waiting_report.length || brief.to.ready_no_submit.length || brief.to.need_assign.length
+      brief.to.waiting_report.length ||
+      brief.to.overdue_report.length ||
+      brief.to.ready_no_submit.length ||
+      brief.to.missed_submit.length ||
+      brief.to.need_assign.length
     );
     const hasPm = brief.pm && (
       (brief.pm.duty_analysis && brief.pm.duty_analysis.length) ||

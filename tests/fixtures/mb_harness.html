@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="ru" data-theme="dark">
+<head>
+  <meta charset="utf-8"/>
+  <title>MB harness</title>
+  <link rel="stylesheet" href="/assets/css/design-tokens.css"/>
+  <link rel="stylesheet" href="/assets/css/app.css"/>
+  <link rel="stylesheet" href="/assets/css/cr-modal.css"/>
+  <link rel="stylesheet" href="/assets/css/light-theme.css"/>
+  <style>
+    body { margin:0; background: var(--bg1); font-family: var(--ff); }
+    /* Компактная копия реального оверлея: те же классы, что в AsgardUI.showModal */
+    .cr-m-overlay { position: fixed; inset: 0; display:flex; align-items:flex-start; justify-content:center;
+      padding: 40px 20px; background: rgba(0,0,0,.65); overflow-y:auto; z-index: 10000; }
+    .cr-m-overlay--visible { opacity: 1; }
+  </style>
+</head>
+<body>
+<div id="stage"></div>
+<script>
+/* ── Минимальный стенд: ровно те API, которые использует morning_brief.js ── */
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+let overlayEl = null;
+window.AsgardUI = {
+  esc,
+  toast: (t, m) => console.log('toast', t, m),
+  showModal({ title, subtitle, icon, html, wide, onMount }) {
+    const ov = document.createElement('div');
+    ov.className = 'cr-m-overlay cr-m-overlay--visible';
+    ov.innerHTML = `
+      <div class="cr-m ${wide ? 'cr-m--wide' : ''}">
+        <div class="cr-m__topline"></div>
+        <div class="cr-m__header">
+          <div class="cr-m__icon">${esc(icon || '')}</div>
+          <div class="cr-m__titles">
+            <div class="cr-m__title">${esc(title)}</div>
+            <div class="cr-m__subtitle">${esc(subtitle || '')}</div>
+          </div>
+          <div class="cr-m__header-actions">
+            <button class="cr-m__close">×</button>
+          </div>
+        </div>
+        <div class="cr-m__body">${html}</div>
+      </div>`;
+    document.body.appendChild(ov);
+    overlayEl = ov;
+    if (onMount) onMount({ body: ov.querySelector('.cr-m__body'), modal: ov.querySelector('.cr-m'), back: ov });
+    return ov;
+  },
+  hideModal() { if (overlayEl) overlayEl.remove(); overlayEl = null; }
+};
+window.AsgardMoney = {
+  formatMoney: (v) => Number(v).toLocaleString('ru-RU') + ' ₽',
+  formatMoneyShort: (v) => {
+    const n = Number(v);
+    if (n >= 1e6) return (n / 1e6).toFixed(1).replace('.', ',') + ' млн ₽';
+    if (n >= 1e3) return Math.round(n / 1e3) + ' тыс ₽';
+    return Math.round(n).toLocaleString('ru-RU') + ' ₽';
+  }
+};
+window.AsgardAuth = { getAuth: async () => ({ token: 'x', user: { id: 1, role: 'ADMIN' } }) };
+
+/* ── Пейлоад: значения взяты из реальной прод-выборки 19.10.2026 ── */
+window.__MB_PAYLOAD__ = {
+  role: 'ADMIN',
+  date: '2026-10-19',
+  weekday: 'понедельник',
+  counts: { overdue: 3, today: 1, soon: 2, ready: 1, need_assign: 0, missed: 0 },
+  to: {
+    overdue_report: [
+      { id: 2082, customer_name: 'ООО "СОРОВСКНЕФТЬ"', tender_title: 'Поставка насосного оборудования', docs_deadline: '2026-10-15', days_left: -4 },
+      { id: 2090, customer_name: 'АО "ГАЗПРОМ ШЕЛЬФПРОЕКТ"', tender_title: 'Работы по обустройству скважин', docs_deadline: '2026-10-16', days_left: -3 },
+      { id: 2091, customer_name: 'ЗАПОЛЯРНЫЙ ФИЛИАЛ ПАО "ГМК "НОРИЛЬСКИЙ НИКЕЛЬ"', tender_title: 'Ремонт технологического оборудования', docs_deadline: '2026-10-16', days_left: -3 }
+    ],
+    today_report: [
+      { id: 2094, customer_name: 'ООО "ОК РУСАЛ АНОДНАЯ ФАБРИКА"', tender_title: 'Монтаж системы аспирации', docs_deadline: '2026-10-19', days_left: 0 }
+    ],
+    soon_report: [
+      { id: 2092, customer_name: 'ООО "ТРАНС НАФТА ГАЗДОБЫЧА"', tender_title: 'Устройство фундаментов под ёмкости', docs_deadline: '2026-10-22', days_left: 3 },
+      { id: 2095, customer_name: 'АО "ЦЕМРОС"', tender_title: 'Замена участка газохода', docs_deadline: '2026-10-23', days_left: 4 }
+    ],
+    ready_no_submit: [
+      { id: 853, customer_name: 'АО "МИХАЙЛОВСКИЙ ГОК ИМ. А.В. ВАРИЧЕВА"', tender_title: 'Гидромеханическая и реагентная очистка оборудования', docs_deadline: '', days_left: null, work_price: 4850000, pm_name: 'Андросов Н.А.' }
+    ],
+    missed_submit: [],
+    need_assign: []
+  },
+  pm: {
+    is_duty: true,
+    duty: { period_start: '2026-10-19', period_end: '2026-10-25' },
+    duty_analysis: [
+      { id: 2094, customer_name: 'ООО "ОК РУСАЛ АНОДНАЯ ФАБРИКА"', tender_title: 'Монтаж системы аспирации', docs_deadline: '2026-10-19', days_left: 0 },
+      { id: 2092, customer_name: 'ООО "ТРАНС НАФТА ГАЗДОБЫЧА"', tender_title: 'Устройство фундаментов под ёмкости', docs_deadline: '2026-10-22', days_left: 3 }
+    ],
+    my_calcs: [],
+    kanban: { waiting: 2, in_work: 4, overdue: 1, critical: [{ id: 91, title: 'application #4417', status: 'в работе' }] }
+  },
+  show: true
+};
+</script>
+<script src="/assets/js/morning_brief.js"></script>
+<script>
+  const theme = new URLSearchParams(location.search).get('theme') || 'dark';
+  document.documentElement.dataset.theme = theme;
+  AsgardMorningBrief.openModal(window.__MB_PAYLOAD__);
+</script>
+</body>
+</html>

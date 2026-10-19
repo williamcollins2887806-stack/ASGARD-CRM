@@ -61,6 +61,35 @@ export function withoutVat(incVat, vatPct = VAT_DEFAULT_PCT) {
 }
 
 /**
+ * Канон цены работ РП (D-173): `tender_rp_reviews.work_price` — цена БЕЗ НДС,
+ * ровно как `asgard_smeta.totals.price_no_vat`. Зеркало серверного
+ * `src/services/work-price.js` и ванильного `AsgardMoney.resolveWorkPrice`.
+ *
+ * LEGACY: в карточках 2025 г. `work_price` хранилась С НДС, а `work_price_ex_vat`
+ * была равна `work_price / 1.22`. Такие пары распознаём по отношению.
+ */
+export function resolveWorkPrice(review, vatPct) {
+  const rev = review || {};
+  const pct = Number.isFinite(Number(vatPct)) && Number(vatPct) > 0 ? Number(vatPct) : VAT_DEFAULT_PCT;
+  const num = (v) => (Number.isFinite(Number(v)) && v !== null && v !== '' ? Number(v) : null);
+  const wp = num(rev.work_price);
+  const wpEx = num(rev.work_price_ex_vat);
+  const withVatOf = (ex) => Math.round(ex * (1 + pct / 100) * 100) / 100;
+
+  if (wp == null || wp <= 0) {
+    if (wpEx != null && wpEx > 0) return { exVat: wpEx, withVat: withVatOf(wpEx), vatPct: pct, legacy: false };
+    return { exVat: null, withVat: null, vatPct: pct, legacy: false };
+  }
+  if (wpEx != null && wpEx > 0 && wpEx < wp) {
+    const ratio = wp / wpEx;
+    if (Math.abs(ratio - (1 + pct / 100)) < 0.02) {
+      return { exVat: wpEx, withVat: wp, vatPct: pct, legacy: true };
+    }
+  }
+  return { exVat: wp, withVat: withVatOf(wp), vatPct: pct, legacy: false };
+}
+
+/**
  * Основная строка — сумма с НДС; вторая — «в т.ч. НДС … ₽».
  * @returns {{ withVat: string, vatLine: string, vatAmount: number }}
  */
@@ -94,15 +123,14 @@ export function formatMoneyVat(withVatAmount, vatAmountOrPct, opts = {}) {
 export function suggestSubmissionPrices(row, vatPct = VAT_DEFAULT_PCT) {
   const rev = row?.rp_review || {};
   const pct = Number(row?.vat_pct) || vatPct;
-  let withV = null;
-  let exV = null;
-  if (rev.work_price != null && Number(rev.work_price) > 0) {
-    withV = Number(rev.work_price);
-    exV = rev.work_price_ex_vat != null ? Number(rev.work_price_ex_vat) : withoutVat(withV, pct);
-  } else if (rev.work_price_ex_vat != null && Number(rev.work_price_ex_vat) > 0) {
-    exV = Number(rev.work_price_ex_vat);
-    withV = withVat(exV, pct);
-  } else {
+
+  // D-173: `work_price` — цена БЕЗ НДС. Раньше здесь она бралась как сумма С НДС,
+  // и подсказка в «Подались» была завышена ровно на ставку НДС.
+  const canon = resolveWorkPrice(rev, pct);
+  let withV = canon.withVat;
+  let exV = canon.exVat;
+
+  if (exV == null) {
     let rj = rev.report_json;
     try {
       if (typeof rj === 'string') rj = JSON.parse(rj || '{}');
