@@ -566,6 +566,8 @@ try{
       // 2. Скрытые пользователем вкладки
       if (hiddenRoutes.includes('#' + n.r)) return false;
       if (n.navHide) return false;
+      // 3. Скрыто у всех, кроме администратора (19.10.2026)
+      if (role !== 'ADMIN' && isAdminOnlyHidden(n.r)) return false;
       return true;
     });
 
@@ -793,7 +795,6 @@ try{
         <div id="layout">${body}</div>
         <div class="runesep" aria-hidden="true"></div>
         <hr class="hr"/>
-        <div class="help">Данные хранятся на сервере. Резервное копирование автоматическое.</div>
         <div class="credit">ᚠᚹ Сей сайт выкован Androsov'ым — да служит АСГАРД-СЕРВИС ᚹᚠ</div>
       </main>
 
@@ -2268,9 +2269,44 @@ var _setupPinKeypad = null;
     'payment-invoices':    'Счета на оплату',
     'command-map-flat':    'Гео-карта'
   };
+  function routeKey(route){
+    return String(route || '').replace(/^\/+/, '').split('?')[0].split('/')[0];
+  }
   function isMaintenance(route){
-    const key = String(route || '').replace(/^\/+/, '').split('?')[0].split('/')[0];
-    return Object.prototype.hasOwnProperty.call(MAINTENANCE_PAGES, key);
+    return Object.prototype.hasOwnProperty.call(MAINTENANCE_PAGES, routeKey(route));
+  }
+
+  // ── Скрыто у ВСЕХ, КРОМЕ администратора (19.10.2026) ────────────────────────
+  // В левом меню не показывается никому, кроме ADMIN; прямой переход для
+  // не-админов закрыт баннером. Админ видит и меню, и страницы как обычно.
+  const ADMIN_ONLY_HIDDEN = {
+    'my-dashboard':        'Мой дашборд',
+    'bonus-approval':      'Согласование премий',
+    'gantt-calcs':         'Гантт: Просчёты',
+    'kanban':              'Канбан-доска',
+    'one-time-pay':        'Разовые оплаты',
+    'pass-requests':       'Заявки на пропуск',
+    'training':            'Обучение',
+    'all-works':           'Свод Контрактов',
+    'tasks-admin':         'Управление задачами',
+    'collections':         'Подборки Дружины',
+    'hr-requests':         'Заявки персонала',
+    'permit-applications': 'Заявки на оформление разрешений',
+    'workers-schedule':    'График: Рабочие',
+    'site-crew':           'Кто на объектах',
+    'training-board':      'Обучение и допуски',
+    'pm-balance':          'Баланс подотчётников',
+    'alerts':              'Уведомления'
+  };
+  function isAdminOnlyHidden(route){
+    return Object.prototype.hasOwnProperty.call(ADMIN_ONLY_HIDDEN, routeKey(route));
+  }
+  /** Текущая роль из локальной сессии (синхронно). */
+  function currentRole(){
+    try {
+      const a = window.AsgardAuth && AsgardAuth.getAuth && AsgardAuth.getAuth();
+      return (a && a.user && a.user.role) || null;
+    } catch (_) { return null; }
   }
   function maintenanceCard(name){
     return `<div class="panel" style="max-width:660px;margin:48px auto;text-align:center;padding:32px 28px">
@@ -2302,14 +2338,22 @@ var _setupPinKeypad = null;
 
     /* «Страница на ремонте»: перехватываем роуты, помеченные в MAINTENANCE_PAGES —
        вместо их обработчика показываем баннер. Патч ставится ДО регистраций ниже,
-       поэтому работает для ВСЕХ точек входа (прямой адрес, закладка, сторонний вызов). */
+       поэтому работает для ВСЕХ точек входа (прямой адрес, закладка, сторонний вызов).
+       ADMIN_ONLY_HIDDEN закрыт так же, но ТОЛЬКО для не-админов: у ADMIN работает как обычно. */
     (function(){
       var _origAdd = AsgardRouter.add;
       AsgardRouter.add = function(path, handler, opts){
         if (isMaintenance(path)) {
-          var _name = MAINTENANCE_PAGES[String(path||'').replace(/^\/+/, '').split('?')[0].split('/')[0]] || path;
+          var _name = MAINTENANCE_PAGES[routeKey(path)] || path;
           return _origAdd.call(AsgardRouter, path, function(){
             return layout(maintenanceCard(_name), { title: 'Страница на ремонте' });
+          }, opts);
+        }
+        if (isAdminOnlyHidden(path)) {
+          var _aName = ADMIN_ONLY_HIDDEN[routeKey(path)] || path;
+          return _origAdd.call(AsgardRouter, path, function(){
+            if (currentRole() === 'ADMIN') return handler.apply(this, arguments);
+            return layout(maintenanceCard(_aName), { title: 'Страница на ремонте' });
           }, opts);
         }
         return _origAdd.call(AsgardRouter, path, handler, opts);
