@@ -157,6 +157,8 @@ async function sseRoutes(fastify) {
             const stillConnected = clients.has(userId);
             if (!stillConnected) {
               try {
+                // ВАЖНО (D-286): require ВНУТРИ try — если модуль бросит при загрузке,
+                // асинхронный колбэк setTimeout даст Unhandled Promise Rejection.
                 const db = require('../services/db');
                 const wasDispatcher = await db.query(
                   'SELECT is_call_dispatcher FROM user_call_status WHERE user_id = $1 AND is_call_dispatcher = true',
