@@ -38,7 +38,18 @@ const FILLER_TOKENS = new Set([
 // инструкция («Добро\n--\nНе оплачивайте») → отказ.
 const PAY_WORDS_RE = /(оплач|оплат|плат|перечисл|перевед|перевод|деньг|счёт|счет|заморо|приостанов)/i;
 // Ловушки-ложные согласия.
-const FALSE_APPROVE = [/добро\s+пожаловать/i, /доброе\s+(утро|день|вечер|время)/i, /доброй\s+ночи/i, /доброжелательн/i, /добросовестн/i, /добротн/i];
+// D-277: раньше регекспы были БЕЗ границ слова — «добро» матчилось внутри
+// «доброе утро» и «доброжелательный», поэтому любое тело с приветствием
+// помечалось falsePositive и «Добро» директора отвергалось. Границы обязательны.
+const C = '(?:^|[^а-яёa-z])';
+const E = '(?:[^а-яёa-z]|$)';
+const FALSE_APPROVE = [
+  new RegExp(`${C}добро\\s+пожаловать${E}`, 'i'),
+  new RegExp(`${C}добр(?:ое|ый|ой|ого)\\s+(?:утро|день|вечер|время|ночи|дня)${E}`, 'i'),
+  new RegExp(`${C}доброжелательн`, 'i'),
+  new RegExp(`${C}добросовестн`, 'i'),
+  new RegExp(`${C}добротн`, 'i')
+];
 
 /** Убрать цитаты прежней переписки (чужие письма). Подпись НЕ режем здесь. */
 function stripQuotes(text) {
@@ -53,13 +64,36 @@ function stripQuotes(text) {
     /\n\s*(Пересылаю|Пересланное сообщение|Перенаправлено)/i,
     /\n\s*From:\s.*\n\s*(Sent|To):/i,
     /\n\s*On .{0,80}wrote:/i,
-    /\n\s*письмо\s+от\s+/i
+    /\n\s*письмо\s+от\s+/i,
+    // D-277 (прод 19.10.2026): Яндекс.Почта / Mail.ru. Реальное письмо #4889
+    // («Добро» директора) НЕ обрезалось: маркера «в 11:10, Виктория Тумаева
+    // <office@…> написал(а):» в списке не было. Цитата оставалась в теле, и
+    // «доброе утро!» внутри неё ложно срабатывало как falsePositive —
+    // согласие директора терялось. Две формы: с датой и без.
+    /\n\s*\d{1,2}\s+[а-яё.]+\s+\d{4}\s*(?:г\.)?\s*,?\s*в\s*\d{1,2}:\d{2}/i,
+    /\n\s*.*(?:написал\(а\)|написала|написал|wrote)\s*:/i,
+    /\n\s*[^\n]{0,120}<[^>\s]+@[^>]+>\s*(?:написал|пишет)/i
   ];
   for (const re of cutMarkers) {
     const m = s.split(re);
     if (m.length > 1) s = m[0];
   }
   return s.trim();
+}
+
+/**
+ * Убрать подпись мобильного клиента.
+ * D-277: «Добро» + автоподпись iPhone приходят СКЛЕЕННЫМИ в один токен —
+ * «ДоброОтправлено с iPhone» (перенос строки в теле письма не сохраняется).
+ * После разборки на токены это давало unknown_tokens → согласие терялось.
+ * Вырезаем подпись как подстроку ДО токенизации: «ДоброОтправлено с iPhone»
+ * → «Добро».
+ */
+function stripSignature(text) {
+  return String(text || '')
+    .replace(/(?:отправлено|отправлен[оа]|переслано|переслан[оа]|отправлено\s+из|sent|forwarded)\s+(?:с|со|из|from)\s+(?:my\s+|моего\s+|мобильного\s+)?(?:iphone|ipad|ipod|android|samsung|galaxy|xperia|huawei|honor|мобильного|мобильной|мобильного\s+устройства|почты|mail)[^\n]*/gi, ' ')
+    .replace(/^\s*--\s*$/gm, '\n')
+    .trim();
 }
 
 /** Нормализовать токен: убрать пунктуацию/эмодзи/кавычки. */
@@ -88,7 +122,6 @@ function hasMixedScript(w) {
  */
 function detectApproval(body) {
   const whole = String(body || '');
-  for (const trap of FALSE_APPROVE) { if (trap.test(whole)) return { approve: false, falsePositive: true }; }
 
   const cut = stripQuotes(whole);
   if (!cut) return { approve: false };
@@ -128,8 +161,17 @@ function detectApproval(body) {
   // Тело до разделителя подписи.
   const head = parts[0];
 
+  // D-277: подпись мобильного клиента режем ДО токенизации («ДоброОтправлено
+  // с iPhone» → «Добро»).
+  const cleaned = stripSignature(head);
+
+  // Ловушки-ложные согласия проверяем на СОБСТВЕННОМ тексте директора, уже
+  // без цитаты и подписи. Раньше проверяли `whole` (всё тело): приветствие
+  // из ЦИТАТЫ («Коллеги, доброе утро!») глушило настоящее «Добро» — D-277.
+  for (const trap of FALSE_APPROVE) { if (trap.test(cleaned)) return { approve: false, falsePositive: true }; }
+
   // Разбиваем на токены, отбрасывая пустые.
-  const tokens = head.split(/\s+/).map(normToken).filter(Boolean);
+  const tokens = cleaned.split(/\s+/).map(normToken).filter(Boolean);
   if (!tokens.length) return { approve: false };
   // Длинное тело — не однозначное согласие (fail-closed → ручное подтверждение).
   if (tokens.length > 6) return { approve: false, reason: 'too_long' };
@@ -137,7 +179,7 @@ function detectApproval(body) {
   const unknown = tokens.filter((t) => !APPROVE_TOKENS.has(t) && !FILLER_TOKENS.has(t));
   if (unknown.length) return { approve: false, reason: 'unknown_tokens', unknown: unknown.slice(0, 4) };
   // Гомоглифы (кириллица+латиница в слове) — подделка.
-  if (head.split(/\s+/).some(hasMixedScript)) return { approve: false, reason: 'mixed_script' };
+  if (cleaned.split(/\s+/).some(hasMixedScript)) return { approve: false, reason: 'mixed_script' };
 
   const hit = tokens.find((t) => APPROVE_TOKENS.has(t));
   return hit ? { approve: true, word: hit } : { approve: false, reason: 'no_approve_token' };
