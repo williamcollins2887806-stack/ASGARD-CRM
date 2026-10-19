@@ -214,6 +214,25 @@ html[data-theme="light"] {
 .po-adj-delta__v--new { color: var(--gold); }
 
 /* ═══ Часть 4. Единый экран согласований ═════════════════════════════ */
+
+/* ADMIN: переключатель «Как директор / Как бухгалтер» (полный паритет).
+   Заказчик 19.10.2026: админ должен видеть РОВНО тот экран, что директор или
+   бухгалтер, а не урезанную копию. Стиль — как у .ap-tabs, но отдельный
+   сегмент-контрол справа от заголовка. */
+.ap-viewswitch {
+  display: inline-flex; padding: 3px; gap: 2px; border-radius: 10px;
+  background: var(--bg2); border: 1px solid var(--brd);
+}
+.ap-viewswitch__b {
+  padding: 7px 13px; border: none; border-radius: 8px; cursor: pointer;
+  font-family: inherit; font-size: 12.5px; font-weight: var(--fw-semi, 600);
+  color: var(--t2); background: none; transition: background var(--base, .2s), color var(--base, .2s);
+  white-space: nowrap;
+}
+.ap-viewswitch__b:hover { color: var(--t1); background: var(--bg3); }
+.ap-viewswitch__b.is-on { background: var(--bg0); color: var(--t1); box-shadow: var(--shadow-sm); }
+.ap-viewswitch__b:focus-visible { outline: 2px solid var(--blue-l); outline-offset: 1px; }
+
 .ap-tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--brd); margin-bottom: var(--sp-5, 20px); flex-wrap: wrap; }
 .ap-tab {
   position: relative; padding: 12px 18px; border: none; background: none; cursor: pointer;
