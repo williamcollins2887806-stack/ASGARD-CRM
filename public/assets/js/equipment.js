@@ -778,7 +778,7 @@ window.AsgardEquipment = (function () {
   function bindEvents() {
     var s = $('#fkSearch');
     if(s) s.addEventListener('input', debounce(function() { searchTerm = s.value.trim(); applyClientFilters(); }, 300));
-    _mountCR('#fkCat_w', 'fkCat', { id: 'fkCat', placeholder: 'Кат��гория', options: _catArr(), onChange: v => { activeFilters.category_id = v || null; debouncedLoad(); } });
+    _mountCR('#fkCat_w', 'fkCat', { id: 'fkCat', placeholder: 'Категория', options: _catArr(), onChange: v => { activeFilters.category_id = v || null; debouncedLoad(); } });
     _mountCR('#fkStatus_w', 'fkStatus', { id: 'fkStatus', placeholder: 'Статус', options: _statusFilterArr(), onChange: v => { activeFilters.status = v || null; debouncedLoad(); } });
     _mountCR('#fkWh_w', 'fkWh', { id: 'fkWh', placeholder: 'Склад', options: _whArr(), onChange: v => { activeFilters.warehouse_id = v || null; debouncedLoad(); } });
     $('#btnAddEquipment')?.addEventListener('click', openAddForm);
@@ -1196,7 +1196,7 @@ window.AsgardEquipment = (function () {
         '<div style="display:grid;gap:14px">' +
           '<div><label style="display:block;margin-bottom:4px;font-size:13px;color:var(--text-muted)">Наименование *</label>' +
             '<input name="name" class="inp" required/></div>' +
-          '<div><label style="display:block;margin-bottom:4px;font-size:13px;color:var(--text-muted)">��атегория *</label>' +
+          '<div><label style="display:block;margin-bottom:4px;font-size:13px;color:var(--text-muted)">Категория *</label>' +
             '<div id="fkAdd_cat_w"></div>' + _hiddenVal('category_id','') + '</div>' +
         '</div></div>' +
       '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:14px">' +
