@@ -1,0 +1,501 @@
+/* ═══════════════════════════════════════════════════════════════════════════════
+   §92. CONTRAST FIX — слепые зоны светлой темы, найденные сплошным аудитом
+   Аудит 74 страниц: 15 страниц с низким контрастом, 1109 нарушений.
+   Группы (по числу нарушений):
+     /nd-permits        664  — модуль написан только под тёмную, var(--text)
+                              не определён в светлой теме → белый текст на белом;
+     /warehouse(-v2)    120  — статус на карточке: color:${st.c} на ${st.c}33;
+     /help                7  — свои --c-t1/--c-t2, тёплые, не читаются;
+     /gantt              12  — .w/.gsub/.left на светлой подложке;
+     /cash               17  — .cash-step-label 10px #? на светлом;
+     /correspondence      19  — .corr-dir/outgoing 11px;
+     прочее (мелочь)          — .status-badge, .bill-st, .nd-btn и т.п.
+   Правки — только цвета и размеры, без изменения разметки.
+   ═══════════════════════════════════════════════════════════════════════════════ */
+
+/* ═══ 1. ND-PERMITS: модуль не знал про светлую тему ═══════════════════════
+   У него свои переменные (--text, --muted, --brd) с тёмными фоллбэками.
+   Переопределяем их в светлой теме — тогда весь модуль перекрашивается сам. */
+html[data-theme="light"] .nd-page,
+html[data-theme="light"] body:has(.nd-page) {
+  --text: var(--t1);
+  --text-muted: var(--t2);
+  --muted: var(--t2);
+  --brd: var(--brd);
+  --bg: var(--bg2);
+  --bg-2: var(--bg3);
+  --panel: var(--bg2);
+  --gold: #8E6212;
+  --gold-l: #A97418;
+  --gold-h: #7A540F;
+  --gold-bg: rgba(142, 98, 18, 0.10);
+  --red: var(--red);
+  --input-radius: 10px;
+}
+
+/* Кнопки модуля — в общую систему */
+html[data-theme="light"] .nd-btn {
+  min-height: 34px;
+  border-radius: 10px;
+  font-weight: 600;
+  border: 1px solid color-mix(in srgb, #0F172A 12%, transparent);
+  background: color-mix(in srgb, #FFFFFF 88%, transparent);
+  color: var(--t1);
+  box-shadow: 0 1px 2px rgba(16, 24, 40, 0.05);
+  transition: background 0.16s ease, border-color 0.16s ease, box-shadow 0.16s ease;
+}
+html[data-theme="light"] .nd-btn:hover:not(:disabled) {
+  background: #FFFFFF;
+  border-color: color-mix(in srgb, #0F172A 18%, transparent);
+  box-shadow: 0 2px 6px rgba(16, 24, 40, 0.08);
+}
+
+/* ghost: был color: var(--text) = белый на белом → 1.1:1 */
+html[data-theme="light"] .nd-btn-secondary,
+html[data-theme="light"] .nd-btn-ghost {
+  background: color-mix(in srgb, #FFFFFF 70%, transparent);
+  color: var(--t1);
+  border-color: color-mix(in srgb, #0F172A 15%, transparent);
+}
+html[data-theme="light"] .nd-btn-secondary:hover:not(:disabled),
+html[data-theme="light"] .nd-btn-ghost:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--blue) 7%, #FFFFFF);
+  border-color: color-mix(in srgb, var(--blue) 32%, transparent);
+  color: var(--blue);
+}
+
+/* primary: был #121820 на --gold — тёмный текст на тёмном золоте */
+html[data-theme="light"] .nd-btn-primary {
+  background: linear-gradient(180deg, #2563EB 0%, #1D4ED8 100%);
+  border-color: #1E40AF;
+  color: #FFFFFF;
+  font-weight: 700;
+  box-shadow: 0 1px 2px rgba(29, 78, 216, 0.26), 0 6px 16px rgba(29, 78, 216, 0.20);
+}
+html[data-theme="light"] .nd-btn-primary:hover:not(:disabled) {
+  background: linear-gradient(180deg, #3B82F6 0%, #1D4ED8 100%);
+  border-color: #1E40AF;
+  color: #FFFFFF;
+}
+
+/* danger: был прозрачный + var(--red) → на светлом 3.17:1 */
+html[data-theme="light"] .nd-btn-danger {
+  background: color-mix(in srgb, var(--red) 8%, #FFFFFF);
+  color: #A81D2C;
+  border-color: color-mix(in srgb, var(--red) 26%, transparent);
+}
+html[data-theme="light"] .nd-btn-danger:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--red) 14%, #FFFFFF);
+  color: #8E1424;
+}
+
+/* Мелкие подписи модуля: были #8b95a8 / #6b6254 — на белом не читаются */
+html[data-theme="light"] .nd-card-meta,
+html[data-theme="light"] .nd-card-foot,
+html[data-theme="light"] .nd-muted,
+html[data-theme="light"] .nd-sheet .nd-muted {
+  color: var(--t3) !important;
+}
+
+/* ── Модуль захардкожен тёмными поверхностями — перекрашиваем их ──────────
+   #0e131a (фон карточек/списка/форм), #8b95a8 (muted), #e8eef7 (текст),
+   #eef2f7/#f5e6c8 (заголовки), #2a3446 (границы). */
+html[data-theme="light"] :is(.nd-risk-list, .nd-risk-list-tall, .nd-search,
+  .nd-card, .nd-panel, .nd-sheet, .nd-side, .nd-tpl-detail, .nd-empty,
+  .nd-crud-form, .nd-form, .nd-form-body, .nd-sheet-body, .nd-modal,
+  .nd-crud, .nd-crud-body, .nd-drawer, .nd-popper, .nd-pop) {
+  background: var(--bg2) !important;
+  border-color: color-mix(in srgb, #0F172A 10%, transparent) !important;
+  color: var(--t1) !important;
+}
+/* любые поля внутри этих форм тоже были тёмными */
+html[data-theme="light"] :is(.nd-crud-form, .nd-form, .nd-sheet) :is(.nd-field, .nd-select, .nd-textarea, input, select, textarea) {
+  background: var(--bg2) !important;
+  color: var(--t1) !important;
+  border-color: color-mix(in srgb, #0F172A 12%, transparent) !important;
+}
+html[data-theme="light"] :is(.nd-risk-row, .nd-card-title, .nd-risk-row strong,
+  .nd-text, .nd-body) {
+  color: var(--t1) !important;
+  border-bottom-color: color-mix(in srgb, #0F172A 8%, transparent) !important;
+}
+html[data-theme="light"] :is(.nd-risk-row strong, .nd-card-title) {
+  color: var(--t1) !important;
+}
+/* muted в любом виде — не светлее --t3 (3.44:1 → 4.9:1) */
+html[data-theme="light"] .nd-muted,
+html[data-theme="light"] .nd-muted * {
+  color: var(--t2) !important;
+}
+html[data-theme="light"] .nd-lbl {
+  color: var(--t2) !important;
+}
+html[data-theme="light"] .nd-hint {
+  color: var(--t3) !important;
+}
+html[data-theme="light"] .nd-side-sec-h {
+  color: var(--t2) !important;
+}
+
+/* Hero этого модуля — тёмный: это осознанный акцент, гасим только жёсткий чёрный */
+html[data-theme="light"] .nd-hero {
+  background:
+    radial-gradient(ellipse 80% 60% at 100% 0%, rgba(224, 165, 38, 0.18), transparent 55%),
+    linear-gradient(145deg, #1E2433 0%, #171B26 55%, #241E14 100%);
+  border-color: color-mix(in srgb, #E0A526 42%, transparent);
+}
+
+/* ═══ 2. WAREHOUSE: статус на карточке — цвет текста = цвет фона ═══════════
+   Инлайн style="background:${c}33;color:${c}" — берём контрастный цвет текста. */
+html[data-theme="light"] .wh2-eq-card__st {
+  background: color-mix(in srgb, #FFFFFF 92%, transparent) !important;
+  color: var(--t1) !important;
+  border: 1px solid color-mix(in srgb, #0F172A 14%, transparent);
+  box-shadow: 0 2px 8px rgba(16, 24, 40, 0.12);
+  font-weight: 700;
+}
+/* Внутри — цветная точка-индикатор по тону (её задаёт JS атрибутом data-* ) */
+html[data-theme="light"] .wh2-card__badge,
+html[data-theme="light"] .wh2-eq-card__qty {
+  color: var(--t1) !important;
+  background: color-mix(in srgb, #FFFFFF 94%, transparent) !important;
+}
+
+/* ═══ 3. HELP (/help): свои тёплые переменные ═══════════════════════════════ */
+html[data-theme="light"] .ht-page,
+html[data-theme="light"] body:has(.ht-page) {
+  --c-t1: #1A1D20;
+  --c-t2: #4A5361;
+  --c-t3: #5F6B7A;
+  --c-gold: #8E6212;
+  --bd: rgba(15, 23, 42, 0.10);
+}
+html[data-theme="light"] .ht-sub {
+  color: var(--t2) !important;
+  font-size: 12.5px;
+}
+html[data-theme="light"] .ht-btn {
+  background: color-mix(in srgb, #FFFFFF 86%, transparent) !important;
+  border: 1px solid color-mix(in srgb, #0F172A 13%, transparent) !important;
+  color: var(--t1) !important;
+  border-radius: 10px;
+  box-shadow: 0 1px 2px rgba(16, 24, 40, 0.05);
+}
+html[data-theme="light"] .ht-btn:hover {
+  background: #FFFFFF !important;
+  border-color: color-mix(in srgb, var(--blue) 30%, transparent) !important;
+  color: var(--blue) !important;
+}
+html[data-theme="light"] .ht-btn--primary {
+  background: linear-gradient(180deg, #2563EB 0%, #1D4ED8 100%) !important;
+  border-color: #1E40AF !important;
+  color: #FFFFFF !important;
+  font-weight: 700;
+}
+html[data-theme="light"] .ht-tab {
+  color: var(--t2) !important;
+}
+html[data-theme="light"] .ht-tab:hover {
+  color: var(--t1) !important;
+}
+html[data-theme="light"] .ht-tab.active,
+html[data-theme="light"] .ht-tab.is-active {
+  color: var(--blue) !important;
+  border-bottom-color: var(--blue) !important;
+  font-weight: 700;
+}
+html[data-theme="light"] .ht-empty-icon {
+  color: var(--t3) !important;
+}
+
+/* ═══ 4. GANTT: подписи на светлой подложке ════════════════════════════════ */
+html[data-theme="light"] .cr-gantt-nav__btn {
+  color: var(--t2) !important;
+  border-radius: 8px;
+}
+html[data-theme="light"] .cr-gantt-nav__btn--active {
+  background: linear-gradient(180deg, #2563EB 0%, #1D4ED8 100%) !important;
+  border-color: #1E40AF !important;
+  color: #FFFFFF !important;
+  font-weight: 700;
+}
+html[data-theme="light"] .gantt .w,
+html[data-theme="light"] .gantt .left,
+html[data-theme="light"] .gantt .gsub,
+html[data-theme="light"] [class*="gantt"] .w,
+html[data-theme="light"] [class*="gantt"] .left,
+html[data-theme="light"] [class*="gantt"] .gsub {
+  color: var(--t2) !important;
+}
+
+/* ═══ 5. CASH: 10px подписи шагов ══════════════════════════════════════════ */
+html[data-theme="light"] .cash-step-label {
+  color: var(--t2) !important;
+  font-size: 11px !important;
+  font-weight: 600;
+}
+html[data-theme="light"] .cash-step.is-done .cash-step-label,
+html[data-theme="light"] .cash-step.is-active .cash-step-label {
+  color: var(--t1) !important;
+}
+
+/* ═══ 6. CORRESPONDENCE: направление письма ═══════════════════════════════ */
+html[data-theme="light"] .corr-dir,
+html[data-theme="light"] .corr-dir.outgoing,
+html[data-theme="light"] .corr-dir.incoming,
+html[data-theme="light"] .corr-sstatus {
+  font-size: 11px;
+  font-weight: 700;
+}
+html[data-theme="light"] .corr-dir.outgoing { color: #8A4B0F !important; }
+html[data-theme="light"] .corr-dir.incoming { color: var(--blue) !important; }
+html[data-theme="light"] .corr-sstatus { color: var(--t2) !important; }
+
+/* ═══ 7. Статусы и бейджи: единый контраст ═════════════════════════════════ */
+html[data-theme="light"] :is(.status-badge, .bill-st, .status) {
+  font-weight: 700;
+}
+html[data-theme="light"] .status-badge.done,
+html[data-theme="light"] .status-badge.working,
+html[data-theme="light"] .status-badge.in-progress,
+html[data-theme="light"] .bill-st.is-ok,
+html[data-theme="light"] .status.status-green {
+  color: #0F6B3A !important;
+  background: rgba(18, 135, 74, 0.10) !important;
+  border-color: rgba(18, 135, 74, 0.22) !important;
+}
+
+/* ═══ 8. KANBAN: активные табы ═════════════════════════════════════════════ */
+html[data-theme="light"] .pk3-tab.active,
+html[data-theme="light"] .pk3-tab.is-active,
+html[data-theme="light"] [class*="pk3"] .active {
+  color: var(--blue) !important;
+  font-weight: 700;
+}
+html[data-theme="light"] .dh-qchip.is-on {
+  color: #FFFFFF !important;
+  background: linear-gradient(180deg, #2563EB 0%, #1D4ED8 100%) !important;
+  border-color: #1E40AF !important;
+}
+
+/* ═══ 9. Общая страховка: 11px-подписи не должны быть светлее --t3 ════════ */
+html[data-theme="light"] :is(.nd-hint, .nd-muted, .nd-lbl, .corr-sstatus,
+  .cash-step-label, .ht-sub, .dw-kpi-sub, .dw-label) {
+  text-shadow: none;
+}
+
+/* ═══ 10. СКЛАД: инлайн-цвета из JS (#30d158 и т.п.) ═══════════════════════
+   В warehouse-v2.js статусы пишутся inline: color:#30d158 (неоновый зелёный
+   тёмной темы). На белом это 2.02:1. Перебиваем инлайн через атрибутный
+   селектор по style — иначе !important не сработает. */
+html[data-theme="light"] .wh2-eq-card__meta span[style*="color"] {
+  color: var(--t1) !important;
+  font-weight: 600;
+}
+/* «● Новое», «✓ …» — зелёный оставляем как точку, но темнее */
+html[data-theme="light"] .wh2-eq-card__meta span[style*="#30d158"],
+html[data-theme="light"] .wh2-eq-card__meta span[style*="#34c759"] {
+  color: #0F6B3A !important;
+}
+html[data-theme="light"] .wh2-eq-card__meta span[style*="#ff9f0a"],
+html[data-theme="light"] .wh2-eq-card__meta span[style*="#ffa500"] {
+  color: #A97418 !important;
+}
+html[data-theme="light"] .wh2-eq-card__meta span[style*="#ff453a"],
+html[data-theme="light"] .wh2-eq-card__meta span[style*="#ff3b30"] {
+  color: #A81D2C !important;
+}
+/* Общая страховка для любых инлайн-цветов в метаданных склада */
+html[data-theme="light"] :is(.wh2-eq-card__meta, .wh2-card__meta, .wh2-meta) {
+  color: var(--t2);
+}
+
+/* ═══ 11. GANTT: собственный набор классов (.gboard/.ghead/.w/.left/.gsub) ══
+   Цвета взяты из тёмной темы: rgba(242,208,138) и rgba(184,196,231) —
+   на светлой подложке #F1F4F8 это 1.3–1.5:1. Перекрашиваем по контейнеру. */
+html[data-theme="light"] :is(.gboard, .ghead, .grow, .gname, .right, .gcell) {
+  color: var(--t1) !important;
+}
+html[data-theme="light"] .gboard {
+  background: var(--bg2) !important;
+  border-color: color-mix(in srgb, #0F172A 10%, transparent) !important;
+}
+html[data-theme="light"] :is(.ghead, .grow) {
+  border-color: color-mix(in srgb, #0F172A 8%, transparent) !important;
+}
+/* именно текст: .left (левая колонка), .w (даты шкалы), .gsub (подпись) */
+html[data-theme="light"] .gboard .left,
+html[data-theme="light"] .ghead .left,
+html[data-theme="light"] .gboard .w,
+html[data-theme="light"] .ghead .w,
+html[data-theme="light"] .gboard .gsub,
+html[data-theme="light"] .gboard .gname,
+html[data-theme="light"] .gboard .sub {
+  color: var(--t2) !important;
+  font-weight: 600;
+}
+html[data-theme="light"] .gboard .gname strong,
+html[data-theme="light"] .gboard .gname b {
+  color: var(--t1) !important;
+}
+/* Навигация масштаба: активный — синий, остальные — графит */
+html[data-theme="light"] .cr-gantt-nav__scales {
+  background: color-mix(in srgb, #FFFFFF 80%, transparent) !important;
+  border-radius: 10px;
+}
+html[data-theme="light"] .cr-gantt-nav__btn {
+  color: var(--t2) !important;
+}
+html[data-theme="light"] .cr-gantt-nav__btn--active {
+  background: linear-gradient(180deg, #2563EB 0%, #1D4ED8 100%) !important;
+  color: #FFFFFF !important;
+  border-color: #1E40AF !important;
+  font-weight: 700;
+}
+/* Полоса/бар работ — контрастная подпись внутри */
+html[data-theme="light"] :is(.gbar, .gbar-label, .bar-label) {
+  color: #FFFFFF !important;
+  text-shadow: 0 1px 2px rgba(15, 23, 42, 0.35);
+}
+
+/* ═══ 12. CASH: 💵 От СЗ — метка источника ════════════════════════════════ */
+html[data-theme="light"] :is(.cash-src, .cash-source, .cash-src-label,
+  [class*="cash-src"], [class*="cash-source"]) {
+  color: var(--t2) !important;
+  font-weight: 600;
+}
+
+/* ═══ 13. PM-CALCS: рейтинг дежурного ═════════════════════════════════════ */
+html[data-theme="light"] .pm-duty-rating-score {
+  color: var(--gold) !important;
+  font-weight: 800;
+}
+html[data-theme="light"] .pm-duty-rating-score.is-low,
+html[data-theme="light"] .pm-duty-rating-score[data-grade="E"] {
+  color: var(--red) !important;
+}
+
+/* ═══ 14. BELLCOUNT: счётчик уведомлений ═════════════════════════════════ */
+/* Двойная причина дефекта:
+   1) app.css ставил color: var(--bg0) = #E6EAF0 на синем → 1.04:1;
+   2) var(--red) НЕ наследуется на .bellcount (он живёт в #root, где
+      переменные темы не объявлены) — background резолвился в прозрачный.
+   Поэтому здесь литеральные цвета, без var(). */
+html[data-theme="light"] .bellbtn .bellcount,
+html[data-theme="light"] .bellcount,
+html[data-theme="light"] .bell-count,
+html[data-theme="light"] #notifCount {
+  background-color: #C41E31 !important;
+  color: #FFFFFF !important;
+  font-weight: 700;
+  border: 0 !important;
+  box-shadow: none !important;
+}
+
+/* ═══ 17. CASH: «От СЗ» — подпись в balance-label / заголовках ════════════ */
+/* rgb(95,107,122) на #F1F4F8 = 4.14:1 — чуть не хватает до 4.5 */
+html[data-theme="light"] .cash-balance-card .balance-label,
+html[data-theme="light"] .cash-balance-grid .balance-label {
+  color: var(--t1) !important;
+  font-weight: 600;
+}
+/* зелёный 21,128,61 на светлом = 4.24:1 → темнее */
+html[data-theme="light"] :is(.cash-section-title, .cash-balance-card.success) :is(span, b, strong) {
+  color: #0B5C31 !important;
+}
+html[data-theme="light"] .cash-balance-card.success .balance-label {
+  color: #0B5C31 !important;
+}
+html[data-theme="light"] table.tbl span[style*="color"],
+html[data-theme="light"] .tbl .cash-ok {
+  color: #0B5C31 !important;
+}
+
+/* ═══ 18. PERSONNEL: бейджи статуса в таблице ════════════════════════════ */
+/* .badge #4A5361 11px на белом = 4.46:1 — на грани; .btn-status-badge зелёный 4.13 */
+html[data-theme="light"] .prs-row .badge,
+html[data-theme="light"] .prs-col-status-td .badge {
+  color: var(--t1) !important;
+  font-weight: 600;
+}
+html[data-theme="light"] .btn-status-badge {
+  color: var(--t1) !important;
+  font-weight: 700;
+}
+html[data-theme="light"] .btn-status-badge.is-ok,
+html[data-theme="light"] .btn-status-badge.is-green {
+  color: #0B5C31 !important;
+}
+
+/* ═══ 19. PM-CALCS: значение «15» (4.45:1) ═══════════════════════════════ */
+html[data-theme="light"] .pm-duty-rating-score,
+html[data-theme="light"] .pm-duty-rating-score * {
+  color: var(--gold) !important;
+  font-weight: 800;
+}
+html[data-theme="light"] .pm-duty-rating-score.is-low,
+html[data-theme="light"] .pm-duty-rating-score[data-grade="E"] {
+  color: var(--red) !important;
+}
+/* Табы «дежурного РП»: <em> внутри кнопки был color: #E6EAF0 (светлый)
+   на золотом фоне #8E6212 = 4.45:1. Ставим белый на золотом явно. */
+html[data-theme="light"] .pm-duty-tab.is-active,
+html[data-theme="light"] .pm-duty-tab[aria-selected="true"] {
+  background: linear-gradient(180deg, #A97418 0%, #8E6212 100%) !important;
+  border-color: #7A540F !important;
+}
+html[data-theme="light"] .pm-duty-tab.is-active,
+html[data-theme="light"] .pm-duty-tab.is-active em,
+html[data-theme="light"] .pm-duty-tab.is-active span,
+html[data-theme="light"] .pm-duty-tab[aria-selected="true"],
+html[data-theme="light"] .pm-duty-tab[aria-selected="true"] em {
+  color: #FFFFFF !important;
+  font-weight: 700;
+}
+html[data-theme="light"] .pm-duty-tab:not(.is-active) {
+  color: var(--t2) !important;
+  background: color-mix(in srgb, #FFFFFF 80%, transparent) !important;
+}
+/* Счётчик <em> в НЕактивном табе: был color: #E6EAF0 на белом = 4.45:1 */
+html[data-theme="light"] .pm-duty-tab:not(.is-active) em,
+html[data-theme="light"] .pm-duty-tab:not(.is-active) b,
+html[data-theme="light"] .pm-duty-tab:not(.is-active) span {
+  color: #1A1D20 !important;
+  font-weight: 700;
+  opacity: 1 !important;
+}
+html[data-theme="light"] .pm-duty-tab:not(.is-active) {
+  color: #4A5361 !important;
+}
+/* В активном табе (золотой фон #8E6212) счётчик обязан быть белым,
+   иначе #1A1D20 на золоте = 3.15:1. */
+html[data-theme="light"] .pm-duty-tab.is-active em,
+html[data-theme="light"] .pm-duty-tab.is-active b,
+html[data-theme="light"] .pm-duty-tab[aria-selected="true"] em {
+  color: #FFFFFF !important;
+  opacity: 1 !important;
+}
+
+/* ═══ 15. INVOICES: «Частично» (warn) ═════════════════════════════════════ */
+html[data-theme="light"] .bill-st.is-warn {
+  color: #8A5A0C !important;
+  background: rgba(224, 165, 38, 0.14) !important;
+  border-color: rgba(224, 165, 38, 0.30) !important;
+  font-weight: 700;
+}
+
+/* ═══ 16. ND-PERMITS: остатки подписей ════════════════════════════════════ */
+html[data-theme="light"] .nd-side-sec-h,
+html[data-theme="light"] .nd-sheet .nd-side-sec-h {
+  color: var(--t2) !important;
+  font-weight: 700;
+}
+html[data-theme="light"] .nd-lbl,
+html[data-theme="light"] .nd-sheet .nd-lbl {
+  color: var(--t2) !important;
+  font-weight: 600;
+}
+html[data-theme="light"] .nd-hint,
+html[data-theme="light"] .nd-sheet .nd-hint {
+  color: var(--t3) !important;
+}
