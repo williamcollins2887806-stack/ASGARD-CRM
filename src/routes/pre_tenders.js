@@ -337,10 +337,10 @@ module.exports = async function (fastify) {
         const newStatus = row.status === 'new' ? 'in_review' : row.status;
         await client.query(
           `UPDATE pre_tender_requests
-              SET assigned_to = $1,
-                  status = $2,
-                  updated_at = NOW()
-            WHERE id = $3`,
+             SET assigned_to = $1,
+                 status = $2,
+                 updated_at = NOW()
+           WHERE id = $3`,
           [user.id, newStatus, ptId]);
 
         // 6. Личный канбан — карточка у нового владельца.
@@ -358,7 +358,8 @@ module.exports = async function (fastify) {
         return {
           item: updated.rows[0],
           card_id: cardInfo.card_id,
-          customer_name: row.customer_name
+          customer_name: row.customer_name,
+          needs_ai: !updated.rows[0].ai_processed_at
         };
       });
     } catch (err) {
@@ -402,10 +403,23 @@ module.exports = async function (fastify) {
       request.log.warn('pre-tender claim notify failed: ' + e.message);
     }
 
+    // V413: если AI не разбирал заявку — запускаем разбор прямо сейчас, чтобы РП
+    // открыл карточку уже с названием, типом работ, объёмами и телефоном.
+    // Не блокируем ответ: разбор идёт в фоне, фронт обновится по SSE/перезагрузке.
+    if (result.needs_ai) {
+      Promise.resolve()
+        .then(() => preTenderService.analyzePreTender(ptId))
+        .then((an) => {
+          broadcast('pre_tender:analyzed', { id: ptId, work_title: an && an.work_title });
+        })
+        .catch((e) => request.log.warn('post-claim AI analyze failed: ' + e.message));
+    }
+
     return {
       success: true,
       item: result.item,
       card_id: result.card_id,
+      needs_ai: result.needs_ai || false,
       redirect_to: `#/personal-kanban?card=${result.card_id}`
     };
   });
@@ -681,6 +695,13 @@ module.exports = async function (fastify) {
     const srcType = ALLOWED_SOURCE_TYPES.includes(source_type) ? source_type : 'manual';
 
     const workTypeVal = (ai_work_type && typeof ai_work_type === 'string') ? ai_work_type.trim().slice(0, 200) : null;
+    // V413: короткое название работы. Если не задано — собираем из типа работ и заказчика,
+    // а НЕ из текста письма (иначе вся простыня попадала в заголовок карточки).
+    const rawTitle = (request.body.work_title && typeof request.body.work_title === 'string')
+      ? request.body.work_title.trim().slice(0, 200) : '';
+    const workTitleVal = rawTitle
+      || [workTypeVal, (customer_name || '').trim()].filter(Boolean).join(' · ').slice(0, 200)
+      || null;
 
     const ins = await db.query(`
       INSERT INTO pre_tender_requests (
@@ -688,8 +709,8 @@ module.exports = async function (fastify) {
         contact_person, contact_phone, work_description, work_location,
         work_deadline, estimated_sum, ai_color, status, created_by, assigned_to,
         decision_comment, ai_work_type, work_volume, work_volume_unit,
-        work_start_plan, work_end_plan
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'gray', 'new', $11, $12, $13, $14, $15, $16, $17, $18)
+        work_start_plan, work_end_plan, work_title
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'gray', 'new', $11, $12, $13, $14, $15, $16, $17, $18, $19)
       RETURNING id
     `, [
       srcType,
@@ -704,6 +725,7 @@ module.exports = async function (fastify) {
       work_volume_unit ? String(work_volume_unit).slice(0, 30) : null,
       work_start_plan || null,
       work_end_plan || null,
+      workTitleVal,
     ]);
 
     const newId = ins.rows[0].id;

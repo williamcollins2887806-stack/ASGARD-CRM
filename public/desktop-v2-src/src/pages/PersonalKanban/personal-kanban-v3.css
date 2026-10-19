@@ -287,6 +287,36 @@
 .pk3-row textarea { resize: vertical; min-height: 56px; }
 .pk3-twocol { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
 
+/* S-22: перечень объёмов по позициям — у каждой работы своя единица. */
+.pk3-scope-list {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 8px 10px;
+  border: 1px solid var(--brd-1, var(--brd));
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.02);
+}
+.pk3-scope-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 12.5px;
+  line-height: 1.35;
+}
+.pk3-scope-name { color: var(--t-2, var(--t2)); }
+.pk3-scope-vol {
+  color: var(--gold-l, #e8c56a);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.pk3-scope-empty {
+  font-size: 12px;
+  color: var(--t-3, var(--t3));
+  font-style: italic;
+}
+
 /* ── AI block ── */
 .pk3-ai-block {
   background: var(--ok-bg); border-left: 3px solid var(--ok);

@@ -196,10 +196,11 @@ async function loadEntitySnapshot(entityKind, entityId) {
       // блок «Документы» просто пуст.
       const r = await db.query(
         `SELECT pt.id,
-                COALESCE(NULLIF(pt.work_description, ''),
-                         NULLIF(pt.work_location, ''),
+                COALESCE(NULLIF(pt.work_title, ''),
+                         NULLIF(pt.ai_work_type, ''),
                          NULLIF(pt.customer_name, ''),
                          'Запрос #' || pt.id::text) AS title,
+                pt.work_title, pt.ai_scope_items,
                 pt.customer_name, pt.customer_email, pt.customer_inn,
                 pt.contact_person, pt.contact_phone,
                 pt.work_description, pt.work_location, pt.work_deadline,
@@ -263,10 +264,11 @@ async function loadEntitySnapshotsBatch(entityKind, ids) {
                FROM tenders WHERE id = ANY($1::int[])`;
     } else if (entityKind === 'pre_tender') {
       sql = `SELECT pt.id,
-                    COALESCE(NULLIF(pt.work_description, ''),
-                             NULLIF(pt.work_location, ''),
+                    COALESCE(NULLIF(pt.work_title, ''),
+                             NULLIF(pt.ai_work_type, ''),
                              NULLIF(pt.customer_name, ''),
                              'Запрос #' || pt.id::text) AS title,
+                    pt.work_title, pt.ai_scope_items,
                     pt.customer_name, pt.customer_email, pt.customer_inn,
                     pt.contact_person, pt.contact_phone,
                     pt.work_description, pt.work_location, pt.work_deadline,
@@ -1008,6 +1010,7 @@ module.exports = async function (fastify) {
       allowed = ['customer_name', 'customer_inn', 'customer_email',
                  'contact_person', 'contact_phone',
                  'work_description', 'work_location', 'work_deadline',
+                 'work_title',
                  'ai_work_type', 'work_volume', 'work_volume_unit',
                  'work_start_plan', 'work_end_plan',
                  'estimated_sum',

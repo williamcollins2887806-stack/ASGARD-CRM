@@ -638,7 +638,7 @@ async function loadFunnelMarketplace(db) {
 
   for (const pt of ptRes.rows) {
     const customer = pt.customer_name || null;
-    const work = pt.work_description || pt.ai_work_type || pt.email_subject || null;
+    const work = pt.work_title || pt.ai_work_type || pt.work_description || pt.email_subject || null;
     const docs = [
       ...normalizeEmailDocs(pt.email_attachments, pt.id),
       ...normalizeManualDocs(pt.manual_documents, pt.id)
@@ -773,6 +773,7 @@ async function loadFunnelKanban(db, user, scope) {
               pt.contact_phone,
               pt.work_description,
               pt.ai_work_type,
+              pt.work_title,
               pt.work_deadline,
               pt.estimated_sum,
               pt.status,
@@ -848,7 +849,7 @@ async function loadFunnelKanban(db, user, scope) {
     if (row.entity_kind === 'pre_tender') {
       const pt = ptMap.get(row.entity_id) || {};
       customer = pt.customer_name || null;
-      work = pt.work_description || pt.ai_work_type || null;
+      work = pt.work_title || pt.ai_work_type || pt.work_description || null;
       workDescription = pt.work_description || null;
       customerInn = pt.customer_inn || null;
       contactPerson = pt.contact_person || null;

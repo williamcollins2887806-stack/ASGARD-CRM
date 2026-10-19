@@ -2283,6 +2283,12 @@ window.AsgardPersonalKanbanV3 = (function () {
 /* Work section */
 .pk3-work-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 16px; }
 .pk3-work-grid .pk3-row-full { grid-column: 1 / -1; }
+/* S-22: перечень объёмов по позициям — своя единица у каждой работы. */
+.pk3-scope-list { display: flex; flex-direction: column; gap: 5px; padding: 8px 10px; border: 1px solid var(--brd); border-radius: 9px; background: rgba(255,255,255,.02); }
+.pk3-scope-row { display: flex; justify-content: space-between; gap: 10px; font-size: 12.5px; line-height: 1.35; }
+.pk3-scope-name { color: var(--t2); }
+.pk3-scope-vol { color: var(--gold-l); font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.pk3-scope-empty { font-size: 12px; color: var(--t3); font-style: italic; }
 .pk3-work-card { background: var(--bg3); border: 1px solid var(--brd-m); border-radius: 12px; padding: 12px 14px; }
 .pk3-row textarea.pk3-autogrow { resize: none; overflow-y: hidden; min-height: 72px; max-height: 280px; field-sizing: content; line-height: 1.45; }
 
@@ -3167,9 +3173,22 @@ html[data-theme="light"] .pk3-stk-float-bar { background: rgba(255,255,255,.94);
   function _v3CardDisplay(c) {
     const ek = c.entity_kind || c.kind || '';
     if (ek === 'pre_tender') {
+      // V413: главная строка карточки — короткое название работы от ИИ.
+      // Раньше title = заказчик, а ПОД ним вываливался весь work_description
+      // (до 2000 знаков, включая «Отправлено из мобильной Яндекс Почты»).
+      // Теперь: [тип работ/объект] сверху, заказчик — короткой строкой снизу.
+      const workLine = (c.work_title || c.ai_work_type || '').trim();
+      const customer = (c.customer_name || '').trim();
+      const fallback = c.title && c.title !== c.work_description ? c.title : '';
+      const scope = Array.isArray(c.ai_scope_items) ? c.ai_scope_items : [];
+      const scopeLine = scope.length
+        ? scope.map((it) => [it.name, it.volume != null ? `${it.volume} ${it.unit || ''}`.trim() : '']
+            .filter(Boolean).join(' — ')).join(' · ').slice(0, 90)
+        : '';
       return {
-        title: c.customer_name || c.title || ('#' + (c.entity_id || c.id)),
-        subtitle: c.work_description || '',
+        title: workLine || customer || fallback || ('#' + (c.entity_id || c.id)),
+        subtitle: [workLine && customer ? customer : (customer || fallback), scopeLine]
+          .filter(Boolean).join(' · '),
         kindLabel: 'ПКП',
       };
     }
@@ -3743,7 +3762,31 @@ html[data-theme="light"] .pk3-stk-float-bar { background: rgba(255,255,255,.94);
     'Промывка систем отопления', 'Антикоррозионная обработка', 'ПНР (пуско-наладочные работы)',
     'Диагностика', 'Монтажные работы', 'Другое'
   ];
-  const PK3_VOLUME_UNITS = ['м³', 'м²', 'п.м.', 'часов', 'точек', 'тонн', 'шт', 'компл'];
+
+  // S-22: у каждого типа работ СВОИ единицы объёма. Раньше для всех был м³ —
+  // мойку мерили кубометрами, сварку тоже. Теперь набор единиц зависит от типа.
+  const PK3_UNITS_BY_TYPE = {
+    'Гидромеханическая очистка':   ['м³', 'м²', 'п.м.', 'шт'],
+    'Химическая промывка':         ['м³', 'м²', 'тонн', 'шт'],
+    'Очистка АВО':                 ['шт', 'секций', 'м²'],
+    'Очистка теплообменников':     ['шт', 'м²', 'м³'],
+    'Очистка резервуаров':         ['м³', 'м²', 'шт'],
+    'Очистка трубопроводов':       ['п.м.', 'м³', 'м²'],
+    'Очистка котлов':              ['шт', 'м²', 'м³'],
+    'Очистка градирен':            ['м³', 'м²', 'шт'],
+    'Вентиляция и кондиционирование': ['п.м.', 'м²', 'шт', 'компл'],
+    'Промывка систем отопления':   ['п.м.', 'м³', 'точек'],
+    'Антикоррозионная обработка':  ['м²', 'п.м.', 'шт'],
+    'ПНР (пуско-наладочные работы)': ['точек', 'шт', 'часов'],
+    'Диагностика':                 ['точек', 'п.м.', 'шт', 'часов'],
+    'Монтажные работы':            ['тонн', 'шт', 'п.м.', 'компл'],
+    'Другое':                      ['м³', 'м²', 'п.м.', 'часов', 'точек', 'тонн', 'шт', 'компл']
+  };
+  const PK3_VOLUME_UNITS = ['м³', 'м²', 'п.м.', 'часов', 'точек', 'секций', 'тонн', 'шт', 'компл'];
+
+  function _unitsForWorkType(type) {
+    return PK3_UNITS_BY_TYPE[type] || PK3_VOLUME_UNITS;
+  }
 
   const _stkSvgEdit = '<svg viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>';
   const _stkSvgDel = '<svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>';
@@ -3754,9 +3797,10 @@ html[data-theme="light"] .pk3-stk-float-bar { background: rgba(255,255,255,.94);
       `<option value="${esc(t)}"${t === sel ? ' selected' : ''}>${esc(t)}</option>`
     ).join('');
   }
-  function _volumeUnitOptions(selected) {
-    const sel = selected || 'м³';
-    return PK3_VOLUME_UNITS.map((u) =>
+  function _volumeUnitOptions(selected, workType) {
+    const list = _unitsForWorkType(workType);
+    const sel = selected || list[0];
+    return list.map((u) =>
       `<option${u === sel ? ' selected' : ''}>${esc(u)}</option>`
     ).join('');
   }
@@ -4032,8 +4076,8 @@ html[data-theme="light"] .pk3-stk-float-bar { background: rgba(255,255,255,.94);
     return _section('sec-client', _PK3_ICO.user, 'Клиент и контакты', null, `
       ${_row('Заказчик', `
         <div style="display:flex;gap:6px;align-items:stretch">
-          <input id="pk3-f-customer" value="${esc(customerName)}" readonly placeholder="Кликни — выбрать из справочника"
-                 style="cursor:pointer;flex:1" data-action="customer-pick" title="Выбрать контрагента из справочника" />
+          <input id="pk3-f-customer" value="${esc(customerName)}" readonly placeholder="Кликни — открыть карточку или выбрать"
+                 style="cursor:pointer;flex:1" data-action="customer-smart" title="${customerName ? 'Открыть карточку контрагента, если ИНН известен' : 'Выбрать контрагента из справочника'}" />
           <button class="pk3-btn pk3-ghost pk3-sm pk3-btn-icon" data-action="customer-pick" title="Найти в справочнике">${_PK3_ICO.search}</button>
           <button class="pk3-btn pk3-gold pk3-sm" data-action="customer-new" title="Создать нового контрагента">＋ Новый</button>
         </div>
@@ -4294,7 +4338,15 @@ html[data-theme="light"] .pk3-stk-float-bar { background: rgba(255,255,255,.94);
   function _secWork(card) {
     const wt = card.ai_work_type || '';
     const vol = card.work_volume != null ? String(card.work_volume) : '';
-    const vu = card.work_volume_unit || 'м³';
+    const vu = card.work_volume_unit || _unitsForWorkType(wt)[0];
+    const scopeItems = Array.isArray(card.ai_scope_items) ? card.ai_scope_items : [];
+    const scopeHtml = scopeItems.length
+      ? '<div class="pk3-scope-list">' + scopeItems.map((it) => `
+          <div class="pk3-scope-row">
+            <span class="pk3-scope-name">${esc(it.name || '—')}</span>
+            <span class="pk3-scope-vol">${it.volume != null ? esc(String(it.volume)) : '—'} ${esc(it.unit || '')}</span>
+          </div>`).join('') + '</div>'
+      : '<div class="pk3-scope-empty">ИИ не нашёл явных объёмов в заявке — заполните вручную.</div>';
     return _section('sec-work', _PK3_ICO.wrench, 'Что делать', null, `
       <div class="pk3-work-grid">
         <div class="pk3-work-card pk3-row-full">
@@ -4303,8 +4355,11 @@ html[data-theme="light"] .pk3-stk-float-bar { background: rgba(255,255,255,.94);
         <div class="pk3-work-card pk3-row-full">
           ${_row('Описание', `<textarea id="pk3-f-desc" class="pk3-autogrow" rows="3">${esc(card.work_description || '')}</textarea>`)}
         </div>
+        <div class="pk3-work-card pk3-row-full">
+          ${_row('Объёмы по позициям', scopeHtml)}
+        </div>
         <div class="pk3-work-card">
-          ${_row('Объём', `<div class="pk3-twocol"><input id="pk3-f-vol" type="number" min="0" step="any" placeholder="число" value="${esc(vol)}" /><select id="pk3-f-volunit">${_volumeUnitOptions(vu)}</select></div>`)}
+          ${_row('Объём (итого)', `<div class="pk3-twocol"><input id="pk3-f-vol" type="number" min="0" step="any" placeholder="число" value="${esc(vol)}" /><select id="pk3-f-volunit">${_volumeUnitOptions(vu, wt)}</select></div>`)}
         </div>
         <div class="pk3-work-card">
           ${_row('Дедлайн КП', `<input type="date" id="pk3-f-kpdeadline" value="${esc(_toDateInputValue(card.work_deadline))}" />`)}
@@ -5366,6 +5421,14 @@ html[data-theme="light"] .pk3-stk-float-bar { background: rgba(255,255,255,.94);
     if (act === 'save-fin')        return _saveFinanceFields(card);
     if (act === 'egrul-lookup')    return _doEgrulLookup();
     if (act === 'customer-pick')   return _openCustomerPicker(card);
+    if (act === 'customer-smart') {
+      // Клик по заказчику: если ИНН известен — открываем карточку контрагента
+      // (директор жаловался, что клик предлагал «выбрать заказчика» заново),
+      // иначе — пикер справочника.
+      const inn = (document.getElementById('pk3-f-inn')?.value || card.customer_inn || '').trim();
+      if (inn) { location.hash = '#/customer?inn=' + encodeURIComponent(inn); return; }
+      return _openCustomerPicker(card);
+    }
     if (act === 'customer-new')    return _openCreateCustomerModal(card);
     if (act === 'customer-open-card') {
       const inn = (document.getElementById('pk3-f-inn')?.value || card.customer_inn || '').trim();

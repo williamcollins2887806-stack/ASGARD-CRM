@@ -667,6 +667,9 @@ module.exports = async function (fastify) {
         (app.body_preview || '').slice(0, 1500)
       ].filter(Boolean).join('\n');
 
+      // V413: короткий заголовок карточки (не текст письма).
+      const workTitle = [app.ai_work_type, customerName].filter(Boolean).join(' · ').slice(0, 200) || null;
+
       // 4. INSERT pre_tender_request
       const ptIns = await client.query(`
         INSERT INTO pre_tender_requests
@@ -677,7 +680,8 @@ module.exports = async function (fastify) {
            estimated_sum,
            ai_summary, ai_color, ai_recommendation,
            has_documents,
-           status, assigned_to, created_by)
+           status, assigned_to, created_by,
+           work_title, ai_work_type)
         VALUES ($1, 'email',
                 $2, $3, $4,
                 $5, $6,
@@ -685,7 +689,8 @@ module.exports = async function (fastify) {
                 $8,
                 $9, $10, $11,
                 $12,
-                'new', $13, $14)
+                'new', $13, $14,
+                $15, $16)
         RETURNING id, status, customer_name, customer_inn`,
         [
           app.email_id || null,
@@ -702,6 +707,8 @@ module.exports = async function (fastify) {
           (app.attachment_count || 0) > 0,
           app.assigned_pm_id || null,
           user.id,
+          workTitle,
+          app.ai_work_type ? String(app.ai_work_type).slice(0, 200) : null,
         ]);
       const preTenderId = ptIns.rows[0].id;
 

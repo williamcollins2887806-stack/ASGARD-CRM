@@ -58,6 +58,35 @@ const FLOW_TABS = [
   { id: 'tender',      label: '📋 Тендеры' },
   { id: 'work',        label: '🏗 Работы' },
 ];
+// S-22: единицы объёма зависят от типа работ (мойка — м², сварка — стыки, и т.д.).
+const WORK_TYPES = [
+  'Гидромеханическая очистка', 'Химическая промывка', 'Очистка АВО',
+  'Очистка теплообменников', 'Очистка резервуаров', 'Очистка трубопроводов',
+  'Очистка котлов', 'Очистка градирен', 'Вентиляция и кондиционирование',
+  'Промывка систем отопления', 'Антикоррозионная обработка', 'ПНР (пуско-наладочные работы)',
+  'Диагностика', 'Монтажные работы', 'Другое'
+];
+const UNITS_BY_TYPE = {
+  'Гидромеханическая очистка': ['м³', 'м²', 'п.м.', 'шт'],
+  'Химическая промывка': ['м³', 'м²', 'тонн', 'шт'],
+  'Очистка АВО': ['шт', 'секций', 'м²'],
+  'Очистка теплообменников': ['шт', 'м²', 'м³'],
+  'Очистка резервуаров': ['м³', 'м²', 'шт'],
+  'Очистка трубопроводов': ['п.м.', 'м³', 'м²'],
+  'Очистка котлов': ['шт', 'м²', 'м³'],
+  'Очистка градирен': ['м³', 'м²', 'шт'],
+  'Вентиляция и кондиционирование': ['п.м.', 'м²', 'шт', 'компл'],
+  'Промывка систем отопления': ['п.м.', 'м³', 'точек'],
+  'Антикоррозионная обработка': ['м²', 'п.м.', 'шт'],
+  'ПНР (пуско-наладочные работы)': ['точек', 'шт', 'часов'],
+  'Диагностика': ['точек', 'п.м.', 'шт', 'часов'],
+  'Монтажные работы': ['тонн', 'шт', 'п.м.', 'компл'],
+  'Другое': ['м³', 'м²', 'п.м.', 'часов', 'точек', 'секций', 'тонн', 'шт', 'компл']
+};
+function unitsForWorkType(type) {
+  return UNITS_BY_TYPE[type] || UNITS_BY_TYPE['Другое'];
+}
+
 // S-21: 9 стадий (addendum=5; win/lose/work сдвинулись на +1). Соответствует V3_STAGE_LABELS.
 const COL_TO_STAGE = { new: 0, calc: 1, addendum: 2, kp_prep: 3, approval: 4, sent: 5, win: 6, lose: 7, work: 8 };
 
@@ -689,6 +718,20 @@ function DrawerV3({ card, onClose, onChanged, openModal }) {
               data-phone-mask="off"
             />
           </Row>
+          <Row label="Карточка клиента">
+            <Btn
+              variant="ghost"
+              size="sm"
+              disabled={!customer.inn}
+              title={customer.inn ? 'Открыть в справочнике контрагентов' : 'Сначала выберите контрагента'}
+              onClick={() => {
+                if (!customer.inn) return;
+                window.location.hash = '#/customer?inn=' + encodeURIComponent(customer.inn);
+              }}
+            >
+              Открыть карточку клиента ↗
+            </Btn>
+          </Row>
           <Row label="Город / Объект">
             <input
               value={customer.address}
@@ -699,9 +742,54 @@ function DrawerV3({ card, onClose, onChanged, openModal }) {
         </Section>
 
         <Section id="sec-work" ic="🔧" title="Что делать" open={openSections['sec-work']} onToggle={() => toggle('sec-work')}>
-          <Row label="Тип работ"><select><option>Гидромеханическая очистка</option><option>Химическая промывка</option><option>Антикоррозионная обработка</option><option>Монтажные работы</option><option>Диагностика</option><option>Вентиляция</option><option>Другое</option></select></Row>
+          <Row label="Тип работ">
+            <select
+              value={card.ai_work_type || ''}
+              disabled={!canEditCustomer}
+              onChange={(e) => canEditCustomer && patchCard(card.id, { ai_work_type: e.target.value || null }).then(onChanged).catch(() => {})}
+            >
+              <option value="">— не выбрано —</option>
+              {WORK_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+            </select>
+          </Row>
           <Row label="Описание"><textarea defaultValue={card.work_description || ''} /></Row>
-          <Row label="Объём"><div className="pk3-twocol"><input placeholder="число"/><select><option>м³</option><option>часов</option><option>точек</option><option>тонн</option></select></div></Row>
+          <Row label="Объёмы по позициям">
+            {Array.isArray(card.ai_scope_items) && card.ai_scope_items.length ? (
+              <div className="pk3-scope-list">
+                {card.ai_scope_items.map((it, i) => (
+                  <div key={i} className="pk3-scope-row">
+                    <span className="pk3-scope-name">{it.name || '—'}</span>
+                    <span className="pk3-scope-vol">
+                      {it.volume != null ? it.volume : '—'} {it.unit || ''}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="pk3-scope-empty">ИИ не нашёл явных объёмов в заявке — заполните вручную.</div>
+            )}
+          </Row>
+          <Row label="Объём (итого)">
+            <div className="pk3-twocol">
+              <input
+                type="number"
+                min="0"
+                step="any"
+                placeholder="число"
+                defaultValue={card.work_volume != null ? card.work_volume : ''}
+                onBlur={(e) => canEditCustomer && patchCard(card.id, {
+                  work_volume: e.target.value === '' ? null : Number(e.target.value)
+                }).catch(() => {})}
+              />
+              <select
+                value={card.work_volume_unit || unitsForWorkType(card.ai_work_type)[0]}
+                disabled={!canEditCustomer}
+                onChange={(e) => canEditCustomer && patchCard(card.id, { work_volume_unit: e.target.value }).catch(() => {})}
+              >
+                {unitsForWorkType(card.ai_work_type).map((u) => <option key={u} value={u}>{u}</option>)}
+              </select>
+            </div>
+          </Row>
           <Row label="Дедлайн КП"><input type="date" defaultValue={card.work_deadline || ''} /></Row>
           <Row label="Сроки работ"><div className="pk3-twocol"><input type="date"/><input type="date"/></div></Row>
         </Section>

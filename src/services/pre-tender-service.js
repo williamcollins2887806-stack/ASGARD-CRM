@@ -31,6 +31,8 @@ const SYSTEM_PROMPT = `Ты — старший аналитик тендерно
 
 ФОРМАТ ОТВЕТА (строго JSON, без markdown):
 {
+  "work_title": "Короткое название работы, 3-8 слов, без кавычек и переносов. Например: «Химическая промывка теплообменника»",
+  "work_type": "Тип работ из списка ниже или null",
   "summary": "Развёрнутый отчёт по заявке (3-5 предложений)",
   "color": "green|yellow|red",
   "recommendation": "Конкретная рекомендация 2-3 предложения",
@@ -41,17 +43,45 @@ const SYSTEM_PROMPT = `Ты — старший аналитик тендерно
   "auto_suggestion": "accept_green|review|reject_red|need_info",
   "risk_factors": ["фактор 1", "фактор 2"],
   "required_specialists": ["сварщик НАКС", "монтажник", "инженер ПНР"],
+  "scope_items": [
+    { "name": "Промывка теплообменника", "volume": 12, "unit": "м³" }
+  ],
   "extracted_data": {
     "customer_name": "...",
     "customer_inn": "... или null",
     "contact_person": "... или null",
     "contact_phone": "... или null",
-    "work_description": "...",
+    "work_description": "Что именно нужно сделать — 2-4 предложения деловым языком, НЕ копия письма",
     "work_location": "... или null",
     "work_deadline": "YYYY-MM-DD или null",
     "estimated_sum": число или null
   }
 }
+
+ПРАВИЛА work_title:
+- Это ЗАГОЛОВОК карточки в канбане. 3-8 слов. Без «Здравствуйте», без подписей,
+  без цитат переписки, без адресов почты, без «Отправлено из мобильной Яндекс Почты».
+- Формула: [тип работ] [объект/оборудование]. Пример: «Травление сосуда 6301С18».
+- Пиши с заглавной буквы, без точки в конце.
+
+ПРАВИЛА extracted_data.work_description:
+- Перескажи задачу своими словами деловым языком: что за оборудование, что с ним
+  сделать, какие условия (срок, место, особые требования).
+- НЕ копируй тело письма и служебные строки пересылки. Если данных мало —
+  напиши то, что понятно, не выдумывай.
+
+ПРАВИЛА scope_items (объёмы работ):
+- Перечисли КАЖДУЮ работу отдельной позицией со СВОЕЙ единицей измерения.
+  Чистка ёмкости — м³. Мойка поверхности — м². Сварка — стыков. Трубы — п.м.
+  Оборудование — шт/компл. Если объём не указан — volume: null.
+- Если в письме объём не назван — верни пустой массив [].
+
+ПРАВИЛА ТИПОВ РАБОТ (поле ai_work_type определяется из scope_items):
+используй термины профиля: «Химическая промывка», «Гидромеханическая очистка»,
+«Очистка теплообменников», «Очистка резервуаров», «Очистка трубопроводов»,
+«Травление», «Пассивация», «Очистка АВО», «Очистка котлов», «Промывка систем отопления»,
+«Вентиляция и кондиционирование», «Монтажные работы», «Сварочные работы (НАКС)»,
+«Антикоррозионная обработка», «Теплоизоляция», «ПНР», «Диагностика», «Другое».
 
 ПРАВИЛА МАРКИРОВКИ:
 🟢 GREEN (work_match_score >= 70): Точно наш профиль, есть опыт и специалисты
@@ -175,6 +205,12 @@ async function createPreTenderFromEmail(emailId, options = {}) {
     || ''
   ).slice(0, 2000);
 
+  // V416: заголовок карточки — короткий, от ИИ. Раньше в title уезжал весь
+  // work_description (до 2000 знаков) и «Отправлено из мобильной Яндекс Почты».
+  const workTitle = (email.work_title || '').trim()
+    || [email.ai_work_type, customerName].filter(Boolean).join(' · ').slice(0, 200)
+    || null;
+
   const ins = await db.query(`
     INSERT INTO pre_tender_requests (
       email_id, source_type,
@@ -183,7 +219,8 @@ async function createPreTenderFromEmail(emailId, options = {}) {
       work_description,
       ai_summary, ai_color, ai_recommendation,
       has_documents,
-      status, created_by, assigned_to
+      status, created_by, assigned_to,
+      work_title, ai_work_type
     ) VALUES (
       $1, 'email',
       $2, $3, $4,
@@ -191,7 +228,8 @@ async function createPreTenderFromEmail(emailId, options = {}) {
       $7,
       $8, $9, $10,
       $11,
-      'new', $12, $13
+      'new', $12, $13,
+      $14, $15
     )
     RETURNING id
   `, [
@@ -207,7 +245,9 @@ async function createPreTenderFromEmail(emailId, options = {}) {
     email.ai_recommendation || null,
     email.has_attachments || false,
     email.sent_by_user_id || null,
-    assignedTo
+    assignedTo,
+    workTitle,
+    email.ai_work_type ? String(email.ai_work_type).slice(0, 200) : null
   ]);
 
   const preTenderId = ins.rows[0].id;
@@ -419,16 +459,21 @@ ${extractedTexts.length ? '\nСОДЕРЖИМОЕ ВЛОЖЕНИЙ:\n' + extract
 ЗАГРУЗКА КОМПАНИИ:
 ${workloadInfo}`;
 
-  // Вызываем AI
-  const config = aiProvider.getConfig();
-  if (!config.hasAnthropicKey && !config.hasOpenAIKey) {
-    return fallbackAnalysis(pt);
-  }
-
+  // Вызываем AI.
+  // ВАЖНО: НЕ проверяем здесь aiProvider.getConfig().has*Key — ключи грузятся
+  // ЛЕНИВО из settings.ai_config при первом complete(), поэтому до первого вызова
+  // getConfig() всегда отдаёт false. Из-за этой проверки разбор ВСЕГДА уходил в
+  // fallback («нет ИИ разбора» на карточке РП). Пусть решает complete():
+  // нет ключей → он сам вернёт demo-ответ, и мы отдадим fallback.
   try {
+    // Ключи грузятся ЛЕНИВО из settings.ai_config. До первого complete() getConfig()
+    // отдаёт has*Key=false, из-за чего разбор всегда падал в fallback («нет ИИ»).
+    await aiProvider._loadKeysFromDB();
+    const hasAnthropic = aiProvider.getConfig().hasAnthropicKey;
+
     // Формируем content: текст + (опционально) изображения для Vision
     let messageContent;
-    if (imageBlocks.length > 0 && config.hasAnthropicKey) {
+    if (imageBlocks.length > 0 && hasAnthropic) {
       // Мультимодальный запрос: текст + изображения (только Anthropic поддерживает Vision)
       messageContent = [
         { type: 'text', text: userMessage },
@@ -446,8 +491,13 @@ ${workloadInfo}`;
     const response = await aiProvider.complete({
       system: SYSTEM_PROMPT,
       messages: [{ role: 'user', content: messageContent }],
-      maxTokens: 2048,
-      temperature: 0.3
+      maxTokens: 4096,
+      temperature: 0.3,
+      // V416: модель по умолчанию — reasoning-модель. Без отключения reasoning она
+      // весь бюджет тратит на chain-of-thought и отдаёт content="" (finish=length),
+      // из-за чего карточка оставалась БЕЗ разбора ИИ. Отключаем reasoning и даём
+      // запас токенов под JSON со scope_items.
+      reasoning: { enabled: false }
     });
 
     const result = parseAIResult(response.text);
@@ -466,6 +516,9 @@ ${workloadInfo}`;
         ai_risk_factors = $9,
         ai_required_specialists = $10,
         ai_processed_at = NOW(),
+        work_title = COALESCE(NULLIF($20, ''), work_title),
+        ai_scope_items = COALESCE($21::jsonb, ai_scope_items),
+        ai_work_type = COALESCE(NULLIF($22, ''), ai_work_type),
         customer_name = COALESCE(NULLIF($11, ''), customer_name),
         customer_inn = COALESCE(NULLIF($12, ''), customer_inn),
         contact_person = COALESCE(NULLIF($13, ''), contact_person),
@@ -495,8 +548,15 @@ ${workloadInfo}`;
       result.extracted_data?.work_location || '',
       result.extracted_data?.work_deadline || null,
       result.extracted_data?.estimated_sum || null,
-      preTenderId
+      preTenderId,
+      result.work_title || '',
+      result.scope_items && result.scope_items.length ? JSON.stringify(result.scope_items) : null,
+      result.work_type || ''
     ]);
+
+    // V416: телефон/ИНН, если ИИ не нашёл — достаём регэкспом из текста письма
+    // и справочника контрагентов. Иначе РП видел пустой телефон, хотя он есть в подписи.
+    await applyContactFallbacks(preTenderId, pt, result, db);
 
     // Логируем
     await db.query(`
@@ -525,7 +585,21 @@ function parseAIResult(text) {
     const p = JSON.parse(clean);
     const color = ['green', 'yellow', 'red'].includes(p.color) ? p.color : 'yellow';
     const confidence = Math.max(0, Math.min(1, parseFloat(p.confidence) || 0.5));
+    // V416: перечень объёмов — у каждой работы своя единица.
+    const scopeItems = Array.isArray(p.scope_items)
+      ? p.scope_items
+          .filter((it) => it && (it.name || it.volume != null))
+          .slice(0, 30)
+          .map((it) => ({
+            name: String(it.name || '').trim().slice(0, 200) || null,
+            volume: Number.isFinite(Number(it.volume)) && Number(it.volume) > 0 ? Number(it.volume) : null,
+            unit: it.unit ? String(it.unit).trim().slice(0, 30) : null
+          }))
+      : [];
     return {
+      work_title: p.work_title ? String(p.work_title).trim().slice(0, 200) : null,
+      work_type: p.work_type ? String(p.work_type).trim().slice(0, 200) : null,
+      scope_items: scopeItems,
       summary: p.summary || '',
       color,
       recommendation: p.recommendation || '',
@@ -547,6 +621,9 @@ function parseAIResult(text) {
 
 function fallbackResult() {
   return {
+    work_title: null,
+    work_type: null,
+    scope_items: [],
     summary: 'Автоматический анализ недоступен. Требуется ручная проверка.',
     color: 'yellow',
     recommendation: 'Просмотрите заявку вручную.',
@@ -569,6 +646,9 @@ function fallbackAnalysis(pt) {
   const color = score >= 70 ? 'green' : score >= 30 ? 'yellow' : 'red';
 
   return {
+    work_title: null,
+    work_type: null,
+    scope_items: [],
     summary: `Обнаружено ${matches.length} ключевых слов нашего профиля: ${matches.join(', ') || 'нет'}. Требуется ручная проверка.`,
     color,
     recommendation: matches.length > 2 ? 'Рекомендуется рассмотреть заявку.' : 'Требуется детальное изучение.',
@@ -583,8 +663,77 @@ function fallbackAnalysis(pt) {
   };
 }
 
-// ── Информация о загрузке ────────────────────────────────────────────
+/**
+ * V416: дотягиваем контакты, которые ИИ не выделил.
+ *  1. Телефон — регэкспом из тела письма (RU-форматы, +7/8, скобки, дефисы).
+ *  2. ИНН — из справочника customers по точному совпадению названия.
+ * Пишем только если поле пустое: ручные правки РП не перетираем.
+ */
+async function applyContactFallbacks(preTenderId, pt, result, dbc = db) {
+  try {
+    const text = String(pt.body_text || '') + '\n' + String(pt.work_description || '');
+    // Телефоны: +7 (495) 123-45-67, 8-800-555-35-35, 3446003396 — только с разделителями
+    // или префиксом, чтобы не выхватить ИНН/год/объём из текста.
+    const phoneRe = /(?:\+7|8)[\s(-]*\d{3}[\s)-]*\d{3}[\s-]*\d{2}[\s-]*\d{2}(?!\d)/g;
+    const phoneMatches = text.match(phoneRe) || [];
+    // Отсекаем НАШИ номера (подпись Асгарда в пересылаемом письме), иначе клиенту
+    // доставался телефон менеджера, а не заказчика.
+    const OWN_PHONE_RE = /^(?:\+?7|8)?(?:499|495|800|812)\d{7}$/;
+    const firstPhone = phoneMatches
+      .map((p) => p.replace(/[^\d+]/g, ''))
+      .map((p) => (p.startsWith('8') ? '+7' + p.slice(1) : p))
+      .find((p) => p.replace(/\D/g, '').length >= 10 && !OWN_PHONE_RE.test(p)) || null;
 
+    const updates = [];
+    const vals = [];
+    let i = 1;
+
+    const cur = await dbc.query(
+      'SELECT contact_phone, customer_inn, work_title FROM pre_tender_requests WHERE id = $1',
+      [preTenderId]);
+    const row = cur.rows[0] || {};
+
+    if (!row.contact_phone && !result.extracted_data?.contact_phone && firstPhone) {
+      updates.push(`contact_phone = $${i++}`);
+      vals.push(firstPhone.slice(0, 30));
+    }
+
+    if (!row.customer_inn && !result.extracted_data?.customer_inn && row.work_title !== undefined) {
+      const name = String(result.extracted_data?.customer_name || pt.customer_name || '').trim();
+      if (name) {
+        // Названия сравниваем БЕЗ кавычек и регистра: в письмах «ОАО «Волгограднефтемаш»»,
+        // в справочнике — ОАО "ВОЛГОГРАДНЕФТЕМАШ". Иначе ИНН никогда не подставлялся.
+        const norm = (s) => String(s || '')
+          .toLowerCase()
+          .replace(/[«»"'`]/g, '')
+          .replace(/\s+/g, ' ')
+          .trim();
+        const all = await dbc.query(
+          `SELECT inn, name FROM customers
+            WHERE inn IS NOT NULL AND LENGTH(inn) IN (10,12)`
+        );
+        const target = norm(name);
+        const hit = all.rows.find((r) => norm(r.name) === target)
+          || all.rows.find((r) => target.length > 6 && (norm(r.name).includes(target) || target.includes(norm(r.name))));
+        if (hit?.inn) {
+          updates.push(`customer_inn = $${i++}`);
+          vals.push(hit.inn);
+        }
+      }
+    }
+
+    if (!updates.length) return;
+    updates.push('updated_at = NOW()');
+    vals.push(preTenderId);
+    await dbc.query(
+      `UPDATE pre_tender_requests SET ${updates.join(', ')} WHERE id = $${i}`,
+      vals);
+  } catch (e) {
+    console.warn('[PreTender] contact fallback failed:', e.message);
+  }
+}
+
+// ── Информация о загрузке ────────────────────────────────────────────
 async function getWorkloadInfo() {
   try {
     const [works, employees] = await Promise.all([
