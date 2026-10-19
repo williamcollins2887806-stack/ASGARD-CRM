@@ -44,6 +44,7 @@ const SYSTEM = `Ты извлекаешь реквизиты из ТЕКСТА �
   "amount_gross": число — сумма С НДС (всего к оплате),
   "amount_net": число — сумма БЕЗ НДС,
   "vat_amount": число — сумма НДС,
+  "vat_rate": число — СТАВКА НДС в процентах (22, 20, 10, 7, 5 или 0), null если не указана,
   "has_vat": true если НДС указан и больше нуля, false если «без НДС»,
   "payment_due_at": "срок оплаты YYYY-MM-DD, если в тексте явно про оплату",
   "contract_basis": "номер договора-основания, если указан",
@@ -178,6 +179,7 @@ function normalize(raw) {
     amount_gross: num(o.amount_gross),
     amount_net: num(o.amount_net),
     vat_amount: num(o.vat_amount),
+    vat_rate: num(o.vat_rate),
     has_vat: typeof o.has_vat === 'boolean' ? o.has_vat : null,
     payment_due_at: isoDate(o.payment_due_at),
     contract_basis: str(o.contract_basis, 80),
@@ -235,6 +237,35 @@ function validate(data) {
       d.has_vat = null;
       warnings.push('has_vat_unconfirmed');
     }
+  }
+
+  // 3b. СТАВКА НДС (V412, заказчик 19.10.2026: «НДС не только 22%, бывает 5, 0, 10»).
+  // Допустимые ставки РФ: 22, 20, 10, 7, 5, 0. Выдуманную ставку отбрасываем;
+  // если модели ставку не дала, но есть суммы — ВЫВОДИМ её точно:
+  //   t = gross × r/(100+r)  →  r = 100 × t/(gross − t).
+  const VAT_RATES = [22, 20, 10, 7, 5, 0];
+  if (d.vat_rate != null) {
+    if (!VAT_RATES.includes(Math.round(Number(d.vat_rate)))) {
+      warnings.push('vat_rate_unknown');
+      d.vat_rate = null;
+    } else {
+      d.vat_rate = Math.round(Number(d.vat_rate));
+    }
+  }
+  if (d.vat_rate == null && d.vat_amount != null && d.vat_amount > 0
+      && d.amount_gross != null && d.amount_gross > d.vat_amount) {
+    const calc = R(100 * d.vat_amount / (d.amount_gross - d.vat_amount));
+    // Округляем к ближайшей допустимой ставке, если расхождение < 0.5 п.п.
+    const near = VAT_RATES.find((r) => Math.abs(r - calc) < 0.5);
+    d.vat_rate = near != null ? near : calc;
+    warnings.push('vat_rate_derived');
+  }
+  // «Без НДС» — ставки нет вовсе (это НЕ 0%).
+  if (d.has_vat === false) d.vat_rate = null;
+
+  // 3c. Нетто: gross − НДС. Заполняем, если не пришло.
+  if (d.amount_net == null && d.amount_gross != null) {
+    d.amount_net = R(d.amount_gross - (d.vat_amount || 0));
   }
 
   // 4. Позиции: пересчёт суммы и отбрасывание явных выдумок.
@@ -403,6 +434,9 @@ function mergeWithRegex(ai, rx) {
   // Дыра №2 (верификатор 19.10.2026): НДС тоже через pickPos — ИИ-ноль не должен
   // перетирать найденный НДС (иначе бухгалтерия получит счёт без НДС).
   out.vat_amount = pickPos(ai.vat_amount, base.vat_amount);
+  // V412: ставка НДС — от ИИ, фолбэк из регулярок (если те её нашли).
+  if (ai.vat_rate != null) out.vat_rate = ai.vat_rate;
+  else if (base.vat_rate != null) out.vat_rate = base.vat_rate;
   // has_vat: ИИ-флаг принимаем, только если он подтверждён числом НДС или нетто≠сумма
   // (иначе «НДС есть» без суммы — FAIL-6). Иначе — флаг из регулярок.
   if (ai.has_vat != null && (ai.vat_amount != null || base.has_vat == null)) out.has_vat = ai.has_vat;

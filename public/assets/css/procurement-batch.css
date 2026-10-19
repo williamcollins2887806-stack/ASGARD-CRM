@@ -148,3 +148,22 @@
 .pbatch__cp-item:hover { background: var(--bg3); }
 .pbatch__cp-name { font-size: 12.5px; font-weight: 600; color: var(--t1); }
 .pbatch__cp-sub { font-size: 10.5px; color: var(--t3); }
+
+/* ── НДС и основание (V412) ───────────────────────────────────────────────── */
+.pbatch__frow--vat { grid-template-columns: 132px minmax(0, 1fr); align-items: start; }
+.pbatch__vat { display: grid; grid-template-columns: 110px minmax(0, 1fr); gap: 8px; align-items: center; }
+.pbatch__vat-sel { padding: 7px 8px; border-radius: 8px; border: 1px solid var(--brd);
+  background: var(--bg0); color: var(--t1); font-size: 12.5px; cursor: pointer; }
+.pbatch__vat-sel:focus { outline: none; border-color: color-mix(in srgb, var(--gold, #d4a017) 55%, var(--brd)); }
+.pbatch__vat-hint { grid-column: 1 / -1; font-size: 10.5px; color: var(--t3); }
+.pbatch__frow--basis { grid-template-columns: 132px minmax(0, 1fr); align-items: start; }
+.pbatch__basis { display: grid; grid-template-columns: 150px minmax(0, 1fr) 34px; gap: 8px; align-items: center; }
+.pbatch__basis-sel { padding: 7px 8px; border-radius: 8px; border: 1px solid var(--brd);
+  background: var(--bg0); color: var(--t1); font-size: 12.5px; cursor: pointer; }
+.pbatch__basis-new { width: 34px; height: 32px; border-radius: 8px; border: 1px solid var(--brd);
+  background: var(--bg2); color: var(--t1); font-size: 15px; cursor: pointer; line-height: 1; }
+.pbatch__basis-new:hover { border-color: color-mix(in srgb, var(--gold, #d4a017) 55%, var(--brd)); color: var(--gold, #d4a017); }
+@media (max-width: 620px) {
+  .pbatch__vat, .pbatch__basis { grid-template-columns: 1fr; }
+  .pbatch__basis-new { width: 100%; }
+}

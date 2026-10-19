@@ -1913,7 +1913,14 @@ window.AsgardProcurementPage = (function() {
         const pid = +c.getAttribute('data-pay');
         // V411: если счёт входит в партию — открываем экран партии (выборочное решение).
         const item = (typeof _payRows !== 'undefined' ? _payRows : []).find((x) => Number(x.id) === pid);
-        if (item && item.batch_id) { openBatchDecision(item.batch_id); return; }
+        const role = String((_user && _user.role) || '');
+        const isBuh = ['BUH', 'ADMIN'].includes(role);
+        if (item && item.batch_id) {
+          // V412: бухгалтерия — экран ОПЛАТЫ, директор — экран РЕШЕНИЯ.
+          if (isBuh && window.AsgardPaymentBuh) { window.AsgardPaymentBuh.open(item.batch_id, () => loadMyPayments()); return; }
+          openBatchDecision(item.batch_id);
+          return;
+        }
         openPaymentInvoiceModal(pid);
       };
       c.addEventListener('click', (e) => { if (e.target.closest('[data-file]')) return; openCard(); });

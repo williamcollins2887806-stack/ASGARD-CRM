@@ -259,7 +259,7 @@ async function routes(fastify) {
       `SELECT pi.id, pi.supplier_name, pi.amount, pi.status, pi.payment_status, pi.pay_timing,
               pi.due_date, pi.created_at, pi.updated_at, pi.invoice_number, pi.invoice_date,
               pi.basis_text, pi.file_path, pi.file_name, pi.doc_registry_id,
-              pi.contract_basis_number, pi.contract_missing, pi.work_hint, pi.vat_amount,
+              pi.contract_basis_number, pi.contract_missing, pi.work_hint, pi.vat_amount, pi.vat_rate, pi.amount_net,
               pi.initiator_intent, pi.pp_number, pi.payee_requisites,
               pi.approval_expires_at, pi.dir_approved_at, pi.buh_acted_at,
               pi.batch_id,
@@ -295,6 +295,57 @@ async function routes(fastify) {
       })),
       total: rows.length
     };
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // V411/V412: превью счёта — ОБЪЯВЛЕНО ДО '/:id', иначе Fastify примет
+  // «preview» за id (роут '/:id' перехватывает и отдаёт 404 «не найдено»).
+  // ═══════════════════════════════════════════════════════════════════════════
+  fastify.get('/preview/:id', async (req, reply) => {
+    // Авторизация: заголовок ИЛИ ?token (для <img src>, который не шлёт заголовки).
+    let user = req.user;
+    if (!user) {
+      const qt = String((req.query && req.query.token) || '');
+      if (qt) { try { user = fastify.jwt.verify(qt); } catch (_) { user = null; } }
+    }
+    if (!user) return reply.code(401).send({ error: 'Token required' });
+    if (!FILE_ROLES.includes(user.role)) return reply.code(403).send({ error: 'Нет доступа' });
+    const id = parseInt(req.params.id, 10);
+    if (!Number.isFinite(id)) return reply.code(400).send({ error: 'Неверный ID' });
+    const row = (await db.query('SELECT file_path, file_name, created_by FROM payment_invoices WHERE id=$1', [id])).rows[0];
+    if (!row || !row.file_path) return reply.code(404).send({ error: 'Файл не приложен' });
+    const { uploadFsPath } = require('../utils/upload-url');
+    const full = uploadFsPath(row.file_path);
+    if (!full || !fs.existsSync(full)) return reply.code(404).send({ error: 'Файл не найден на диске' });
+    const ocrPdf = require('../services/pdf-ocr');
+    const ext = String(full).toLowerCase().split('.').pop();
+    // Картинка — отдаём как есть (это уже превью).
+    if (['png', 'jpg', 'jpeg', 'webp'].includes(ext)) {
+      reply.header('Cache-Control', 'private, max-age=60');
+      return reply.type(ext === 'png' ? 'image/png' : 'image/jpeg').send(fsp.createReadStream(full));
+    }
+    // PDF — рендерим первую страницу в PNG через тот же poppler, что и OCR.
+    try {
+      const tmpDir = await fsp.mkdtemp(path.join(os.tmpdir(), 'pv-'));
+      const prefix = path.join(tmpDir, 'p');
+      const { execFile } = require('child_process');
+      // pdftoppm на Windows лежит в пакете poppler — берём путь из pdf-ocr,
+      // иначе ENOENT и превью «недоступно».
+      const bin = ocrPdf.PDFTOPPM_BIN || process.env.PDFTOPPM_BIN || 'pdftoppm';
+      await new Promise((resolve, reject) => {
+        execFile(bin, ['-png', '-r', '110', '-f', '1', '-l', '1', full, prefix],
+          { timeout: 25000 }, (err) => (err ? reject(err) : resolve()));
+      });
+      const files = (await fsp.readdir(tmpDir)).filter((f) => f.endsWith('.png')).sort();
+      if (!files.length) throw new Error('нет страниц');
+      const png = await fsp.readFile(path.join(tmpDir, files[0]));
+      fsp.rm(tmpDir, { recursive: true, force: true }).catch(() => {});
+      reply.header('Cache-Control', 'private, max-age=60');
+      return reply.type('image/png').send(png);
+    } catch (e) {
+      fastify.log.warn('[preview] render failed: ' + e.message);
+      return reply.code(415).send({ error: 'Не удалось построить превью', hint: 'откройте оригинал' });
+    }
   });
 
   fastify.get('/:id', { preHandler: [fastify.authenticate] }, async (req, reply) => {
@@ -568,7 +619,11 @@ async function routes(fastify) {
   fastify.post('/', { preHandler: [fastify.requireRoles(CREATE_ROLES)] }, async (req, reply) => {
     const b = req.body || {};
     const amount = num(b.amount);
-    if (amount <= 0 && !(b.line_items && b.line_items.length)) {
+    // V412: разрешаем создать карточку с нулевой суммой, когда есть ФАЙЛ.
+    // Это потоковая загрузка (модалка партии): файл загружен → карточка создана →
+    // OCR заполнит сумму. Раньше требовалось amount>0, и загрузка падала.
+    const allowZeroAmount = !!(b.file_path || b.file_name);
+    if (amount <= 0 && !(b.line_items && b.line_items.length) && !allowZeroAmount) {
       return reply.code(400).send({ error: 'Укажите сумму или позиции' });
     }
     const filePath = normalizeUploadUrl(b.file_path);
@@ -576,7 +631,10 @@ async function routes(fastify) {
       return reply.code(400).send({ error: 'Прикрепите файл счёта' });
     }
     if (!(b.supplier_name || b.supplier_id)) {
-      return reply.code(400).send({ error: 'Укажите поставщика' });
+      // V412: при потоковой загрузке поставщик ещё не распознан — ставим заглушку,
+      // OCR заменит её. Иначе загрузка падала бы на пустом поле.
+      if (!allowZeroAmount) return reply.code(400).send({ error: 'Укажите поставщика' });
+      b.supplier_name = 'Распознаётся…';
     }
     const lines = Array.isArray(b.line_items) ? b.line_items : [];
     const sum = amount > 0 ? amount : lines.reduce((s, l) => s + num(l.unit_price) * num(l.qty || l.quantity || 1), 0);
@@ -805,44 +863,6 @@ async function routes(fastify) {
   // распознаём тем же OCR-контуром, что и почта — единая логика.
   // ═══════════════════════════════════════════════════════════════════════════
 
-  /** PNG-превью первой страницы счёта (или сам файл, если это картинка). */
-  fastify.get('/preview/:id', { preHandler: [fastify.requireRoles(FILE_ROLES)] }, async (req, reply) => {
-    const id = parseInt(req.params.id, 10);
-    if (!Number.isFinite(id)) return reply.code(400).send({ error: 'Неверный ID' });
-    const row = (await db.query('SELECT file_path, file_name, created_by FROM payment_invoices WHERE id=$1', [id])).rows[0];
-    if (!row || !row.file_path) return reply.code(404).send({ error: 'Файл не приложен' });
-    const { resolveDocumentPath } = require('../services/pdf-ocr');
-    const full = resolveDocumentPath(row.file_path);
-    if (!full || !fsp.existsSync(full)) return reply.code(404).send({ error: 'Файл не найден на диске' });
-    const ext = String(full).toLowerCase().split('.').pop();
-    // Картинка — отдаём как есть (это уже превью).
-    if (['png', 'jpg', 'jpeg', 'webp'].includes(ext)) {
-      reply.header('Cache-Control', 'private, max-age=60');
-      return reply.type(ext === 'png' ? 'image/png' : 'image/jpeg').send(fsp.createReadStream(full));
-    }
-    // PDF — рендерим первую страницу в PNG через тот же poppler, что и OCR.
-    try {
-      const tmpDir = await fsp.mkdtemp(path.join(os.tmpdir(), 'pv-'));
-      const prefix = path.join(tmpDir, 'p');
-      const { exec } = require('../services/pdf-ocr');
-      void exec;
-      const { execFile } = require('child_process');
-      await new Promise((resolve, reject) => {
-        execFile(process.env.PDFTOPPM_BIN || 'pdftoppm', ['-png', '-r', '110', '-f', '1', '-l', '1', full, prefix],
-          { timeout: 25000 }, (err) => (err ? reject(err) : resolve()));
-      });
-      const files = (await fsp.readdir(tmpDir)).filter((f) => f.endsWith('.png')).sort();
-      if (!files.length) throw new Error('нет страниц');
-      const png = await fsp.readFile(path.join(tmpDir, files[0]));
-      fsp.rm(tmpDir, { recursive: true, force: true }).catch(() => {});
-      reply.header('Cache-Control', 'private, max-age=60');
-      return reply.type('image/png').send(png);
-    } catch (e) {
-      fastify.log.warn('[preview] render failed: ' + e.message);
-      return reply.code(415).send({ error: 'Не удалось построить превью', hint: 'откройте оригинал' });
-    }
-  });
-
   /**
    * Распознать загруженный счёт и вернуть ПОЛЯ для автозаполнения формы
    * (номер/дата/сумма/НДС/поставщик/договор/срок/позиции).
@@ -855,10 +875,11 @@ async function routes(fastify) {
     if (!row) return reply.code(404).send({ error: 'Счёт не найден' });
     if (!row.file_path) return reply.code(400).send({ error: 'Файл не приложен' });
     try {
-      const { resolveDocumentPath } = require('../services/pdf-ocr');
-      const full = resolveDocumentPath(row.file_path);
-      if (!full || !fsp.existsSync(full)) return reply.code(404).send({ error: 'Файл не найден' });
+      const { uploadFsPath } = require('../utils/upload-url');
       const ocr = require('../services/pdf-ocr');
+      // file_path хранится как «/uploads/payment-invoices/...» → нужен абсолютный путь.
+      const full = uploadFsPath(row.file_path);
+      if (!full || !fs.existsSync(full)) return reply.code(404).send({ error: 'Файл не найден', path: row.file_path });
       let text = '';
       if (/\.pdf$/i.test(full)) {
         const r = await ocr.ocrPdfPath(full, row.file_name || 'invoice.pdf');
@@ -892,13 +913,17 @@ async function routes(fastify) {
              invoice_date = COALESCE($5::date, invoice_date),
              due_date = COALESCE($6::date, due_date),
              vat_amount = COALESCE($7, vat_amount),
+             vat_rate = COALESCE($9, vat_rate),
+             amount_net = COALESCE($10, amount_net),
              contract_basis_number = COALESCE(NULLIF($8,''), contract_basis_number),
              updated_at = NOW()
            WHERE id=$1`,
           [id, parsed.amount_gross || 0, parsed.counterparty_name || '',
             parsed.invoice_number || '', parsed.invoice_date || null,
             parsed.payment_due_at || null, parsed.vat_amount != null ? parsed.vat_amount : null,
-            (parsed.contract_basis && parsed.contract_basis.number) || '']).catch(() => {});
+            (parsed.contract_basis && parsed.contract_basis.number) || '',
+            parsed.vat_rate != null ? parsed.vat_rate : null,
+            parsed.amount_net != null ? parsed.amount_net : null]).catch(() => {});
       } catch (_) { /* запись полей — не блокер */ }
       return {
         ok: true,
@@ -911,6 +936,7 @@ async function routes(fastify) {
           amount: parsed.amount_gross || null,
           amount_net: parsed.amount_net || null,
           vat_amount: parsed.vat_amount != null ? parsed.vat_amount : null,
+          vat_rate: parsed.vat_rate != null ? parsed.vat_rate : null,
           has_vat: parsed.has_vat,
           invoice_number: parsed.invoice_number || null,
           invoice_date: parsed.invoice_date || null,
@@ -925,8 +951,8 @@ async function routes(fastify) {
         text_preview: (text || '').slice(0, 1200)
       };
     } catch (e) {
-      fastify.log.error('[recognize] ' + e.message);
-      return reply.code(500).send({ error: 'Не удалось распознать', detail: e.message });
+      fastify.log.error('[recognize] #' + id + ' ' + (e && e.stack ? e.stack.slice(0, 400) : e.message));
+      return reply.code(500).send({ error: 'Не удалось распознать', detail: String((e && e.message) || e).slice(0, 200) });
     }
   });
 

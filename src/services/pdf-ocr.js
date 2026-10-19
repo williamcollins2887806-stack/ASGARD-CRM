@@ -1108,6 +1108,7 @@ module.exports = {
   ocrManyPdfPaths,
   ocrImageBuffer,
   resolveDocumentPath,
+  PDFTOPPM_BIN,
   OCR_MODEL,
   OCR_MAX_PAGES
 };

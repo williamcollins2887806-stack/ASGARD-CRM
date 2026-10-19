@@ -246,7 +246,7 @@ window.AsgardPaymentBatch = (function () {
     const conf = Math.round((it.confidence || 0) * 100);
     pane.innerHTML = `
       <div class="pbatch__preview">
-        <img src="/api/payment-invoices/${it.invoiceId}/preview" alt="Превью счёта" loading="lazy"
+        <img src="/api/payment-invoices/preview/${it.invoiceId}?token=${encodeURIComponent(localStorage.getItem('asgard_token') || '')}" alt="Превью счёта" loading="lazy"
              onerror="this.parentElement.innerHTML='<div class=pbatch__prev-err>Превью недоступно<br><a href=\\'/api/payment-invoices/${it.invoiceId}/file\\' target=_blank>Открыть оригинал</a></div>'">
         <div class="pbatch__prev-nav">
           <button type="button" class="pbatch__prev-btn" data-nav="-1" ${S.activeIdx === 0 ? 'disabled' : ''}>‹ Пред.</button>
@@ -273,12 +273,30 @@ window.AsgardPaymentBatch = (function () {
         </div>
         <div class="pbatch__frow pbatch__frow--vat">
           <label>НДС</label>
-          <input type="number" step="0.01" min="0" data-f="vat_amount" value="${f.vat_amount != null ? f.vat_amount : ''}" placeholder="0">
-          <span class="pbatch__vat-hint">${f.has_vat ? 'с НДС' : 'без НДС'}</span>
+          <div class="pbatch__vat">
+            <select data-f="vat_rate" class="pbatch__vat-sel">
+              <option value="" ${f.vat_rate == null ? 'selected' : ''}>без НДС</option>
+              <option value="22" ${Number(f.vat_rate) === 22 ? 'selected' : ''}>22%</option>
+              <option value="20" ${Number(f.vat_rate) === 20 ? 'selected' : ''}>20%</option>
+              <option value="10" ${Number(f.vat_rate) === 10 ? 'selected' : ''}>10%</option>
+              <option value="7" ${Number(f.vat_rate) === 7 ? 'selected' : ''}>7%</option>
+              <option value="5" ${Number(f.vat_rate) === 5 ? 'selected' : ''}>5%</option>
+              <option value="0" ${Number(f.vat_rate) === 0 && f.vat_rate != null ? 'selected' : ''}>0%</option>
+            </select>
+            <input type="number" step="0.01" min="0" data-f="vat_amount" value="${f.vat_amount != null ? f.vat_amount : ''}" placeholder="сумма НДС">
+            <span class="pbatch__vat-hint" data-vat-hint>${vatHint(f)}</span>
+          </div>
         </div>
-        <div class="pbatch__frow">
-          <label>Договор-основание</label>
-          <input type="text" data-f="contract_number" value="${esc(f.contract_number || '')}" placeholder="например ДП-2025/01">
+        <div class="pbatch__frow pbatch__frow--basis">
+          <label>Основание</label>
+          <div class="pbatch__basis">
+            <select data-f="basis_type" class="pbatch__basis-sel">
+              ${['contract:Договор', 'offer:Оферта', 'once:Разовая поставка', 'general:Общий / заявка', 'none:Без договора', 'other:Прочее']
+                .map((x) => { const [v, l] = x.split(':'); return `<option value="${v}" ${(f.basis_type || '') === v ? 'selected' : ''}>${l}</option>`; }).join('')}
+            </select>
+            <input type="text" data-f="contract_number" value="${esc(f.contract_number || '')}" placeholder="№ договора-основания">
+            <button type="button" class="pbatch__basis-new" data-new-contract title="Открыть реестр договоров">＋</button>
+          </div>
         </div>
         <div class="pbatch__hint">Все поля можно поправить руками — директор увидит вашу версию.</div>
         <div class="pbatch__fields-acts">
@@ -305,6 +323,25 @@ window.AsgardPaymentBatch = (function () {
     });
     // Поиск поставщика с подсказками из базы (как в реестре счетов).
     bindSupplierSearch(pane, it);
+    // V412: выбор ставки НДС — пересчитываем сумму НДС от суммы счёта.
+    pane.querySelector('[data-f="vat_rate"]')?.addEventListener('change', (e) => {
+      const v = e.target.value;
+      if (!it.fields) it.fields = {};
+      it.fields.vat_rate = v === '' ? null : Number(v);
+      const gross = Number(it.fields.amount) || 0;
+      if (it.fields.vat_rate != null && gross > 0) {
+        it.fields.vat_amount = Math.round(gross * it.fields.vat_rate / (100 + it.fields.vat_rate) * 100) / 100;
+        it.fields.has_vat = it.fields.vat_rate > 0;
+      } else {
+        it.fields.vat_amount = 0;
+        it.fields.has_vat = false;
+      }
+      render();
+    });
+    // Кнопка «＋» — открыть реестр договоров (создать/выбрать основание).
+    pane.querySelector('[data-new-contract]')?.addEventListener('click', () => {
+      try { location.hash = '#/contracts'; } catch (_) {}
+    });
     pane.querySelector('[data-remove]')?.addEventListener('click', async () => {
       const idx = +pane.querySelector('[data-remove]').getAttribute('data-remove');
       const item = S.items[idx];
@@ -325,6 +362,19 @@ window.AsgardPaymentBatch = (function () {
       } catch (e) { item.status = 'error'; item.error = e.message; }
       render();
     });
+  }
+
+  /** Подсказка по НДС: показывает, сходится ли сумма НДС со ставкой. */
+  function vatHint(f) {
+    const gross = Number(f.amount) || 0;
+    const rate = f.vat_rate;
+    const vat = Number(f.vat_amount) || 0;
+    if (rate == null || rate === '') return gross ? 'без НДС' : '';
+    const r = Number(rate);
+    if (!gross) return r + '%';
+    const expect = Math.round(gross * r / (100 + r) * 100) / 100;
+    if (Math.abs(expect - vat) < 1) return r + '% · сумма НДС сходится';
+    return `${r}% · ожидается ${expect.toLocaleString('ru-RU', { minimumFractionDigits: 2 })} ₽`;
   }
 
   function fieldRow(it, label, key, val, type) {
@@ -407,6 +457,9 @@ window.AsgardPaymentBatch = (function () {
             invoice_date: f.invoice_date || null,
             due_date: f.payment_due_at || null,
             vat_amount: f.vat_amount != null ? f.vat_amount : null,
+            vat_rate: f.vat_rate != null ? f.vat_rate : null,
+            amount_net: f.amount_net != null ? f.amount_net : null,
+            basis_type: f.basis_type || 'other',
             contract_basis_number: f.contract_number || null
           })
         }).catch(() => {});

@@ -62,7 +62,8 @@ const TARGETS = [
   'V408__doc_deferred_approval',                // doc_approval_grant (переименована из V406 — коллизия номеров)
   'V409__doc_ai_extract_seller_payee',          // doc_registry: seller_/payee_*, parse_engine/warnings (ИИ-разбор)
   'V410__user_email_aliases',                   // user_email_aliases (почта→сотрудник) + включение email_intake_enabled
-  'V411__payment_batches'                       // payment_batches (партия счетов) + payment_invoices.batch_id
+  'V411__payment_batches',                      // payment_batches (партия счетов) + payment_invoices.batch_id
+  'V412__payment_invoice_vat_rate'              // payment_invoices.vat_rate + amount_net (ставки 22/20/10/7/5/0)
 ];
 
 const pool = new Pool({
