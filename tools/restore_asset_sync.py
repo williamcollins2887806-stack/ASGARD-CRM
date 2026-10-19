@@ -62,6 +62,13 @@ TARGET_FILES = [
     # иначе будущая выкатка из локального дерева может откатить head с манифестом (B4).
     "public/m/index.html",
     "public/m/manifest.json",
+    # /h — тонкая оболочка (headless/склад). Д-5 (верификатор 19.10.2026): НЕ была
+    # в контуре, хотя деплой её везёт (TAR_PATHS) — расхождение не подсвечивалось.
+    "public/h/index.html",
+    "public/h/sw.js",
+    "public/h/app.js",
+    "public/h/manifest.webmanifest",
+    "public/h/android.html",
 ]
 # D-195: public/icons (1072 SVG иконок каталога) существует ТОЛЬКО на проде — его нет ни в git,
 # ни в локальном дереве. Любая выкатка из локального дерева сносит папку, и иконки пропадают

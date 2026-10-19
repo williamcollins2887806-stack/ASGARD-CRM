@@ -84,14 +84,10 @@ async function resolveSenderUserId(db, email) {
   const addr = (from.match(/<([^>]+)>/) || [null, from])[1];
   if (!addr || !addr.includes('@')) return null;
   try {
-    // V410: сначала таблица алиасов (почта → пользователь). Сюда попадают
-    // нестандартные адреса: корпоративные алиасы (pd@ = Путков) и личные почты
-    // сотрудников. Заполняется автоматически при переназначении ответственного.
-    const al = await db.query(
-      `SELECT user_id FROM user_email_aliases WHERE lower(email)=$1 AND user_id IS NOT NULL LIMIT 1`,
-      [addr]);
-    if (al.rows[0]) return al.rows[0].user_id;
-    // 1) корпоративная почта пользователя;
+    // 1) Корпоративная почта пользователя — САМЫЙ ДОСТОВЕРНЫЙ источник.
+    // Порядок ВАЖЕН (дыра Д-3 верификатора 19.10.2026): раньше алиасы читались
+    // ПЕРВЫМИ, и выученный по подделанному `From` алиас перекрывал живого владельца
+    // корпоративного адреса. Теперь прямые источники приоритетнее алиасов.
     const { rows } = await db.query(
       `SELECT u.id, u.role,
               (SELECT count(*) FROM works w WHERE w.pm_id = u.id AND w.deleted_at IS NULL) AS works_cnt
@@ -109,7 +105,17 @@ async function resolveSenderUserId(db, email) {
       if (byRole) return byRole.id;
       return rows[0].id;
     }
-    // 2) личная почта сотрудника (employees.email → employees.user_id → users).
+    // 2) Алиасы (почта → пользователь): нестандартные адреса (pd@ = Путков) и
+    //    личные почты. Учитываем только АКТИВНОГО пользователя (дыра Д-4:
+    //    деактивированный сотрудник не должен продолжать получать счета).
+    const al = await db.query(
+      `SELECT a.user_id FROM user_email_aliases a
+         JOIN users u ON u.id = a.user_id
+        WHERE lower(a.email)=$1 AND a.user_id IS NOT NULL AND u.is_active IS NOT FALSE
+        LIMIT 1`,
+      [addr]);
+    if (al.rows[0]) return al.rows[0].user_id;
+    // 3) личная почта сотрудника (employees.email → employees.user_id → users).
     const emp = await db.query(
       `SELECT u.id, u.role,
               (SELECT count(*) FROM works w WHERE w.pm_id = u.id AND w.deleted_at IS NULL) AS works_cnt

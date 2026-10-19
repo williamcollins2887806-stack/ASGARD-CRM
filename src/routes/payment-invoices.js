@@ -468,6 +468,10 @@ async function routes(fastify) {
     }
 
     // Выучить алиас: почта отправителя письма → назначенный сотрудник.
+    // Д-3 (верификатор 19.10.2026): НЕ перезаписываем достоверные привязки.
+    // Учим ТОЛЬКО когда адрес ни в users.email, ни в employees.email не найден
+    // (иначе подделанный `From` навсегда перевесит живого владельца корп. адреса).
+    // И только INSERT — существующую запись не трогаем (DO NOTHING).
     let learned = null;
     try {
       const src = pay.source_email_id
@@ -477,12 +481,21 @@ async function routes(fastify) {
         const m = String(src.from_email).match(/<([^>]+)>/);
         const addr = String((m ? m[1] : src.from_email)).trim().toLowerCase();
         if (addr.includes('@')) {
-          await db.query(
-            `INSERT INTO user_email_aliases(email, user_id, source, label, created_by)
-             VALUES($1,$2,'learned',$3,$4)
-             ON CONFLICT (lower(email)) DO UPDATE SET user_id=EXCLUDED.user_id, source='learned', updated_at=NOW()`,
-            [addr, newOwnerId, u.rows[0].name || null, req.user.id]).catch(() => {});
-          learned = addr;
+          const known = await db.query(
+            `SELECT 1 FROM users WHERE lower(email)=$1 AND is_active IS NOT FALSE
+             UNION ALL
+             SELECT 1 FROM employees e JOIN users u ON u.id=e.user_id
+              WHERE lower(e.email)=$1 AND u.is_active IS NOT FALSE
+             LIMIT 1`, [addr]);
+          if (!known.rows.length) {
+            const ins = await db.query(
+              `INSERT INTO user_email_aliases(email, user_id, source, label, created_by)
+               VALUES($1,$2,'learned',$3,$4)
+               ON CONFLICT (lower(email)) DO NOTHING
+               RETURNING id`,
+              [addr, newOwnerId, u.rows[0].name || null, req.user.id]).catch(() => ({ rows: [] }));
+            if (ins.rows && ins.rows.length) learned = addr;
+          }
         }
       }
     } catch (_) { /* алиас — не блокер */ }
