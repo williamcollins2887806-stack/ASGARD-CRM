@@ -33,7 +33,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "tools"))
 import shell_guard  # noqa: E402
 
-VER = "20.28.228"
+VER = "20.28.229"
 HOST = "92.242.61.184"
 USER = "root"
 KEY = str(Path.home() / ".ssh" / "asgard_crm_deploy")
