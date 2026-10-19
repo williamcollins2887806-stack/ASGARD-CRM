@@ -1656,111 +1656,136 @@ var _setupPinKeypad = null;
     var auth = (window.AsgardAuth && AsgardAuth.getAuth) ? AsgardAuth.getAuth() : null;
     if (!auth || !auth.token) return;
 
-    var info;
+    // ╨Ч╨░╨║╨░╨╖╤З╨╕╨║ (18.10.2026): ╤Б╨╛╤В╤А╤Г╨┤╨╜╨╕╨║ ╨╖╨░╨┐╨╛╨╗╨╜╤П╨╡╤В ╨а╨Р╨С╨Ю╨з╨г╨о ╨Э╨Х╨Ф╨Х╨Ы╨о (╨┐╨╜тАУ╨┐╤В) ╤Ж╨╡╨╗╨╕╨║╨╛╨╝,
+    // ╨░ ╨╜╨╡ ╤В╨╛╨╗╤М╨║╨╛ ╤Б╨╡╨│╨╛╨┤╨╜╤П. ╨Ч╨░╤И╤С╨╗ ╨╜╨╡ ╨▓ ╨┐╨╛╨╜╨╡╨┤╨╡╨╗╤М╨╜╨╕╨║ тАФ ╤В╨╛╨╢╨╡ ╤Б╨┐╤А╨░╤И╨╕╨▓╨░╨╡╨╝ ╨┐╤А╨╛ ╤В╨╡╨║╤Г╤Й╤Г╤О ╨╜╨╡╨┤╨╡╨╗╤О.
+    var week;
     try {
-      var r = await fetch('/api/daily-presence/today', { headers: { 'Authorization': 'Bearer ' + auth.token } });
-      info = await r.json();
-    } catch(e) { return; }                 // сеть упала — не блокируем (fail-open)
-    // LS-флаг ключуем по ДАТЕ СЕРВЕРА (а не локальной UTC) — иначе в полночь рассинхрон TZ
-    var serverDate = (info && info.server_date) ? info.server_date : new Date().toISOString().slice(0,10);
-    var todayKey = 'presence_done_' + serverDate;
-    if (localStorage.getItem(todayKey) === '1') return;  // уже отметился сегодня
-    if (!info || !info.required) { localStorage.setItem(todayKey, '1'); return; }
+      var r = await fetch('/api/daily-presence/week', { headers: { 'Authorization': 'Bearer ' + auth.token } });
+      week = await r.json();
+    } catch (e) { return; }                 // ╤Б╨╡╤В╤М ╤Г╨┐╨░╨╗╨░ тАФ ╨╜╨╡ ╨▒╨╗╨╛╨║╨╕╤А╤Г╨╡╨╝ (fail-open)
+    if (!week || !week.required) return;    // ╨╜╨╡╨┤╨╡╨╗╤П ╤Г╨╢╨╡ ╨╖╨░╨┐╨╛╨╗╨╜╨╡╨╜╨░ (╨╕╨╗╨╕ ╨╜╨╡ ╨╛╤Д╨╕╤Б╨╜╨░╤П ╤А╨╛╨╗╤М)
 
-    var statuses = (info.statuses && info.statuses.length) ? info.statuses : [
-      {code:'оф',label:'В офисе',emoji:'🏢'},{code:'уд',label:'Удалёнка',emoji:'🏠'},
-      {code:'км',label:'Командировка',emoji:'🚗'},{code:'бн',label:'Больничный',emoji:'🤒'},
-      {code:'сс',label:'За свой счёт',emoji:'🌴'},{code:'вх',label:'Выходной',emoji:'🛌'}
+    var serverDate = week.server_date || new Date().toISOString().slice(0, 10);
+    var weekKey = 'presence_week_done_' + (week.week_start || serverDate);
+    if (localStorage.getItem(weekKey) === '1') return;
+
+    var statuses = (week.statuses && week.statuses.length) ? week.statuses : [
+      { code: '╨╛╤Д', label: '╨Т ╨╛╤Д╨╕╤Б╨╡' }, { code: '╤Г╨┤', label: '╨г╨┤╨░╨╗╤С╨╜╨║╨░' },
+      { code: '╨║╨╝', label: '╨Ъ╨╛╨╝╨░╨╜╨┤╨╕╤А╨╛╨▓╨║╨░' }, { code: '╨▒╨╜', label: '╨С╨╛╨╗╤М╨╜╨╕╤З╨╜╤Л╨╣' },
+      { code: '╤Б╤Б', label: '╨Ч╨░ ╤Б╨▓╨╛╨╣ ╤Б╤З╤С╤В' }, { code: '╨▓╤Е', label: '╨Т╤Л╤Е╨╛╨┤╨╜╨╛╨╣' },
     ];
-    var works = info.works || [];   // ТОЛЬКО мои активные работы (для «На объекте»)
+    var works = week.works || [];
+    var days = week.days || [];
 
-    function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];}); }
+    function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]); }); }
+    var WD = ['╨▓╤Б', '╨┐╨╜', '╨▓╤В', '╤Б╤А', '╤З╤В', '╨┐╤В', '╤Б╨▒'];
+    function dayLabel(iso) {
+      var p = iso.split('-').map(Number);
+      var dt = new Date(Date.UTC(p[0], p[1] - 1, p[2]));
+      return WD[dt.getUTCDay()] + ', ' + p[2] + '.' + String(p[1]).padStart(2, '0');
+    }
     var userName = (auth.user && auth.user.name) ? auth.user.name : '';
-    var firstName = userName ? userName.trim().split(/\s+/).slice(-1)[0] : '';   // имя из ФИО (последнее слово)
-    // викинг-приветствие, без фамильярного обращения по фамилии
-    var greet = firstName ? ('Привет, ' + esc(firstName) + '!') : 'Доброго дня, воин!';
+    var firstName = userName ? userName.trim().split(/\s+/).slice(-1)[0] : '';
+    var greet = firstName ? ('╨Я╤А╨╕╨▓╨╡╤В, ' + esc(firstName) + '!') : '╨Ф╨╛╨▒╤А╨╛╨│╨╛ ╨┤╨╜╤П, ╨▓╨╛╨╕╨╜!';
 
-    return new Promise(function(resolve){
+    return new Promise(function (resolve) {
       var ov = document.createElement('div');
       ov.id = 'asgard-presence-gate';
       ov.setAttribute('style',
-        'position:fixed;inset:0;z-index:100000;display:flex;align-items:center;justify-content:center;'+
-        'background:rgba(6,9,16,0.94);backdrop-filter:blur(6px);');
-      var workOpts = works.map(function(w){
-        var place = w.place ? (' · ' + esc(w.place)) : '';
-        return '<option value="'+w.id+'">'+esc(w.title)+place+'</option>';
+        'position:fixed;inset:0;z-index:100000;display:flex;align-items:center;justify-content:center;' +
+        'background:rgba(6,9,16,0.94);backdrop-filter:blur(6px);overflow:auto;padding:16px');
+      var workOpts = works.map(function (w) {
+        var place = w.place ? (' ┬╖ ' + esc(w.place)) : '';
+        return '<option value="' + w.id + '">' + esc(w.title) + place + '</option>';
       }).join('');
+
+      // ╨б╤В╤А╨╛╨║╨░ ╨║╨░╨╢╨┤╨╛╨│╨╛ ╤А╨░╨▒╨╛╤З╨╡╨│╨╛ ╨┤╨╜╤П ╨╜╨╡╨┤╨╡╨╗╨╕: ╨┤╨░╤В╨░ + ╨▓╤Л╨▒╨╛╤А ╤Б╤В╨░╤В╤Г╤Б╨░.
+      var rowsHtml = days.map(function (d) {
+        if (d.on_vacation) {
+          return '<div style="display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:10px;background:#16233a">' +
+            '<span style="width:74px;font-size:12px;opacity:.7">' + esc(dayLabel(d.date)) + '</span>' +
+            '<span style="font-size:13px;font-weight:700;color:#e9c46a">╨Ю╤В╨┐╤Г╤Б╨║</span>' +
+            '<span style="margin-left:auto;font-size:11px;opacity:.55">╤Г╨╢╨╡ ╤Б╨╛╨│╨╗╨░╤Б╨╛╨▓╨░╨╜╨╛</span></div>';
+        }
+        var opts = statuses.map(function (s) {
+          var sel = (d.status_code === s.code) ? ' selected' : '';
+          return '<option value="' + esc(s.code) + '"' + sel + '>' + esc(s.label) + '</option>';
+        }).join('');
+        return '<div style="display:flex;align-items:center;gap:10px;padding:6px 0" data-day-row="' + esc(d.date) + '">' +
+          '<span style="width:74px;font-size:12px;opacity:.7">' + esc(dayLabel(d.date)) + '</span>' +
+          '<select data-day="' + esc(d.date) + '" style="flex:1;padding:9px;border-radius:9px;background:#111726;color:#e9eff8;border:1px solid #2a3550">' +
+          '<option value="">тАФ ╨▓╤Л╨▒╨╡╤А╨╕ тАФ</option>' + opts +
+          '</select></div>';
+      }).join('');
+
       ov.innerHTML =
-        '<div style="width:min(460px,93vw);background:linear-gradient(160deg,#10182b,#161019);border:1px solid #2a3550;border-radius:18px;'+
-        'padding:26px 24px;box-shadow:0 20px 60px #000a, inset 0 0 0 1px #d8b15a22;font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;color:#e9eff8">'+
-          '<div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">'+
-            '<span style="font-size:24px">🛡️</span>'+
-            '<div style="font-size:20px;font-weight:900;letter-spacing:.3px;'+
-              'background:linear-gradient(90deg,#6aa6ff,#ffd36a);-webkit-background-clip:text;background-clip:text;color:transparent">'+greet+'</div>'+
-          '</div>'+
-          '<div style="font-size:13.5px;opacity:.75;margin-bottom:4px">Отметься в дружину — где ты сегодня держишь строй?</div>'+
-          '<div style="font-size:11.5px;opacity:.5;margin-bottom:16px">Без отметки чертог закрыт. Запись попадёт в «График офиса».</div>'+
-          '<div id="pg-opts" style="display:grid;grid-template-columns:1fr 1fr;gap:9px"></div>'+
-          '<div id="pg-work-wrap" style="display:none;margin-top:14px">'+
-            '<label style="font-size:12px;opacity:.7">Твоя работа</label>'+
-            '<select id="pg-work" style="width:100%;margin-top:5px;padding:10px;border-radius:10px;background:#111726;color:#e9eff8;border:1px solid #2a3550">'+workOpts+'</select>'+
-          '</div>'+
-          '<div id="pg-err" style="color:#f85149;font-size:12px;margin-top:10px;min-height:16px"></div>'+
-          '<button id="pg-save" style="width:100%;margin-top:8px;padding:13px;border:none;border-radius:11px;cursor:pointer;'+
-            'background:linear-gradient(135deg,#1f6fff,#7a3aff);color:#fff;font-size:15px;font-weight:800">⚔ В строй</button>'+
+        '<div style="width:min(560px,95vw);background:linear-gradient(160deg,#10182b,#161019);border:1px solid #2a3550;border-radius:18px;' +
+        'padding:24px;box-shadow:0 20px 60px #000a, inset 0 0 0 1px #d8b15a22;font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;color:#e9eff8">' +
+        '<div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">' +
+        '<span style="font-size:22px">ЁЯЫбя╕П</span>' +
+        '<div style="font-size:19px;font-weight:900">' + greet + '</div></div>' +
+        '<div style="font-size:13.5px;opacity:.75;margin-bottom:4px">╨Ч╨░╨┐╨╛╨╗╨╜╨╕ ╤А╨░╨▒╨╛╤З╤Г╤О ╨╜╨╡╨┤╨╡╨╗╤О тАФ ╨│╨┤╨╡ ╤В╤Л ╨▒╤Г╨┤╨╡╤И╤М ╨┤╨╡╤А╨╢╨░╤В╤М ╤Б╤В╤А╨╛╨╣?</div>' +
+        '<div style="font-size:11.5px;opacity:.5;margin-bottom:14px">╨в╨╛╨╗╤М╨║╨╛ ╤А╨░╨▒╨╛╤З╨╕╨╡ ╨┤╨╜╨╕ (╨┐╨╜тАУ╨┐╤В). ╨Т╤Л╤Е╨╛╨┤╨╜╤Л╨╡ ╨╕ ╨┐╤А╨░╨╖╨┤╨╜╨╕╨║╨╕ ╨┐╤А╨╛╨┐╤Г╤Й╨╡╨╜╤Л. ╨Ч╨░╨┐╨╕╤Б╤М ╨┐╨╛╨┐╨░╨┤╤С╤В ╨▓ ┬л╨У╤А╨░╤Д╨╕╨║ ╨╛╤Д╨╕╤Б╨░┬╗.</div>' +
+        '<div id="pg-days">' + rowsHtml + '</div>' +
+        '<div id="pg-work-wrap" style="display:none;margin-top:12px">' +
+        '<label style="font-size:12px;opacity:.7">╨а╨░╨▒╨╛╤В╨░ (╨┤╨╗╤П ┬л╨Э╨░ ╨╛╨▒╤К╨╡╨║╤В╨╡┬╗)</label>' +
+        '<select id="pg-work" style="width:100%;margin-top:5px;padding:10px;border-radius:10px;background:#111726;color:#e9eff8;border:1px solid #2a3550">' + workOpts + '</select></div>' +
+        '<div id="pg-err" style="color:#f85149;font-size:12px;margin-top:10px;min-height:16px"></div>' +
+        '<button id="pg-save" style="width:100%;margin-top:6px;padding:13px;border:none;border-radius:11px;cursor:pointer;' +
+        'background:linear-gradient(135deg,#1f6fff,#7a3aff);color:#fff;font-size:15px;font-weight:800">тЪФ ╨Т ╤Б╤В╤А╨╛╨╣</button>' +
         '</div>';
       document.body.appendChild(ov);
 
-      var chosen = null;
-      var optsBox = ov.querySelector('#pg-opts');
-      statuses.forEach(function(o){
-        var b = document.createElement('button');
-        b.textContent = (o.emoji?o.emoji+' ':'') + o.label;
-        b.setAttribute('data-k', o.code);
-        b.setAttribute('style','padding:12px 10px;border-radius:11px;cursor:pointer;font-size:13.5px;font-weight:700;'+
-          'background:#111726;border:1.5px solid #243049;color:#cdd9ec;transition:.15s;text-align:left');
-        b.addEventListener('click', function(){
-          chosen = o.code;
-          Array.prototype.forEach.call(optsBox.children, function(x){
-            x.style.borderColor = '#243049'; x.style.background = '#111726'; x.style.color = '#cdd9ec';
-          });
-          b.style.borderColor = '#d8b15a'; b.style.background = '#1a2236'; b.style.color = '#fff';
-          ov.querySelector('#pg-work-wrap').style.display = (o.code === 'об') ? 'block' : 'none';
-          ov.querySelector('#pg-err').textContent = '';
-        });
-        optsBox.appendChild(b);
+      // ╨Я╤А╨╕ ┬л╨Э╨░ ╨╛╨▒╤К╨╡╨║╤В╨╡┬╗ ╨│╨┤╨╡-╤В╨╛ ╨▓ ╨╜╨╡╨┤╨╡╨╗╨╡ тАФ ╨┐╨╛╨║╨░╨╖╤Л╨▓╨░╨╡╨╝ ╨▓╤Л╨▒╨╛╤А ╤А╨░╨▒╨╛╤В╤Л.
+      function syncWorkVisibility() {
+        var anyObj = Array.prototype.some.call(ov.querySelectorAll('[data-day]'), function (s) { return s.value === '╨╛╨▒'; });
+        ov.querySelector('#pg-work-wrap').style.display = anyObj ? 'block' : 'none';
+      }
+      Array.prototype.forEach.call(ov.querySelectorAll('[data-day]'), function (s) {
+        s.addEventListener('change', syncWorkVisibility);
       });
+      syncWorkVisibility();
 
-      // блокируем клик-вне — модалку нельзя закрыть без выбора
-      ov.addEventListener('click', function(e){ if (e.target === ov) e.stopPropagation(); });
+      // ╨▒╨╗╨╛╨║╨╕╤А╤Г╨╡╨╝ ╨║╨╗╨╕╨║-╨▓╨╜╨╡ тАФ ╨╝╨╛╨┤╨░╨╗╨║╤Г ╨╜╨╡╨╗╤М╨╖╤П ╨╖╨░╨║╤А╤Л╤В╤М ╨▒╨╡╨╖ ╨▓╤Л╨▒╨╛╤А╨░
+      ov.addEventListener('click', function (e) { if (e.target === ov) e.stopPropagation(); });
 
-      ov.querySelector('#pg-save').addEventListener('click', async function(){
+      ov.querySelector('#pg-save').addEventListener('click', async function () {
         var errEl = ov.querySelector('#pg-err');
-        if (!chosen) { errEl.textContent = 'Выбери, где ты сегодня'; return; }
+        var payload = [];
         var workId = null;
-        if (chosen === 'об') {
-          workId = parseInt(ov.querySelector('#pg-work') && ov.querySelector('#pg-work').value, 10) || null;
-          if (!workId) { errEl.textContent = 'Выбери работу'; return; }
+        var objSel = ov.querySelector('#pg-work');
+        if (objSel) workId = parseInt(objSel.value, 10) || null;
+
+        Array.prototype.forEach.call(ov.querySelectorAll('[data-day]'), function (s) {
+          if (!s.value) return;
+          payload.push({ date: s.getAttribute('data-day'), status_code: s.value, work_id: s.value === '╨╛╨▒' ? workId : null });
+        });
+        if (!payload.length) { errEl.textContent = '╨Ю╤В╨╝╨╡╤В╤М ╤Е╨╛╤В╤П ╨▒╤Л ╨╛╨┤╨╕╨╜ ╨┤╨╡╨╜╤М'; return; }
+        if (payload.some(function (p) { return p.status_code === '╨╛╨▒'; }) && !workId) {
+          errEl.textContent = '╨Т╤Л╨▒╨╡╤А╨╕ ╤А╨░╨▒╨╛╤В╤Г ╨┤╨╗╤П ┬л╨Э╨░ ╨╛╨▒╤К╨╡╨║╤В╨╡┬╗'; return;
         }
+
         var btn = ov.querySelector('#pg-save');
-        btn.disabled = true; btn.textContent = 'Сохранение...';
+        btn.disabled = true; btn.textContent = '╨б╨╛╤Е╤А╨░╨╜╨╡╨╜╨╕╨╡...';
         try {
-          var resp = await fetch('/api/daily-presence', {
+          var resp = await fetch('/api/daily-presence/week', {
             method: 'POST',
             headers: { 'Authorization': 'Bearer ' + auth.token, 'Content-Type': 'application/json' },
-            body: JSON.stringify({ status_code: chosen, work_id: workId })
+            body: JSON.stringify({ days: payload }),
           });
-          if (!resp.ok) throw new Error('save failed');
-          localStorage.setItem(todayKey, '1');
+          var j = await resp.json().catch(function () { return {}; });
+          if (!resp.ok) throw new Error(j.message || 'save failed');
+          localStorage.setItem(weekKey, '1');
           ov.remove();
           resolve();
-        } catch(e) {
-          errEl.textContent = 'Не удалось сохранить. Повтори.';
-          btn.disabled = false; btn.textContent = '⚔ В строй';
+        } catch (e) {
+          errEl.textContent = e.message || '╨Э╨╡ ╤Г╨┤╨░╨╗╨╛╤Б╤М ╤Б╨╛╤Е╤А╨░╨╜╨╕╤В╤М. ╨Я╨╛╨▓╤В╨╛╤А╨╕.';
+          btn.disabled = false; btn.textContent = 'тЪФ ╨Т ╤Б╤В╤А╨╛╨╣';
         }
       });
     });
   }
+
 
   async function backupModal(){
     const html = `
