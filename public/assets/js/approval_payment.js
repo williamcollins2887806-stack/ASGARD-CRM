@@ -79,8 +79,16 @@ window.AsgardApprovalPaymentPage = (function() {
     } catch (_) {}
     return '';
   }
+  // Заказчик 19.10.2026: «Я согласовал — а где бухгалтерии смотреть, что оплачивать?
+  // Или я как админ не смогу это видеть?»
+  // Раньше ADMIN попадал в режим 'dir' (только счета НА согласование) и очереди
+  // к оплате не видел вовсе, хотя бэк её отдаёт: BUH_ROLES = ['BUH','ADMIN'].
+  // Теперь у админа ОБА среза: вкладка «Счета» (его решения) + вкладка
+  // «К оплате · бух.» (очередь оплаты, как у бухгалтера).
+  let _isAdmin = false;
   function roleToMode(role) {
     const r = String(role || '');
+    _isAdmin = (r === 'ADMIN');
     return (r === 'ADMIN' || /^DIRECTOR/.test(r)) ? 'dir' : 'buh';
   }
   async function resolveMode() {
@@ -344,6 +352,7 @@ window.AsgardApprovalPaymentPage = (function() {
           <button class="ap-tab" data-aptab="cash">💵 Касса</button>
           <button class="ap-tab" data-aptab="plan">📋 Планирование на 1-е</button>
           <button class="ap-tab" data-aptab="archive">🗄 Архив</button>
+          ${_isAdmin ? '<button class="ap-tab" data-aptab="buh">💳 К оплате · бух.</button>' : ''}
         </div>
         <div id="ap_panel"></div>
         <div id="ap_invoices_panel">` : `
@@ -568,6 +577,7 @@ window.AsgardApprovalPaymentPage = (function() {
       if (tab === 'payouts') await renderPayoutsTab(panel);
       else if (tab === 'cash') await renderCashTab(panel);
       else if (tab === 'archive') await renderArchiveTab(panel);
+      else if (tab === 'buh') await renderBuhQueueForAdmin(panel);
       else await renderPlanTab(panel);
     };
     Array.from(tabs.querySelectorAll('.ap-tab')).forEach((b) => {
@@ -587,6 +597,52 @@ window.AsgardApprovalPaymentPage = (function() {
         }
       } catch (_) {}
     })();
+  }
+
+  /**
+   * Вкладка «К оплате · бух.» — очередь оплаты для АДМИНА.
+   * Заказчик 19.10.2026: «Я согласовал — а где бухгалтерии смотреть, что оплачивать?
+   * Или я как админ не смогу это видеть?»
+   * Бэк это уже разрешает (BUH_ROLES = ['BUH','ADMIN']), не хватало только входа
+   * на экране. Тянем тот же /api/approval/pending-buh, что видит бухгалтер.
+   */
+  async function renderBuhQueueForAdmin(panel) {
+    let data;
+    try {
+      const r = await fetch('/api/approval/pending-buh', { headers: getHeaders() });
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      data = await r.json();
+    } catch (e) {
+      panel.innerHTML = `<div class="empty-state">${esc(humanErrText(e, 'Не удалось загрузить очередь оплаты — обновите страницу.'))}</div>`;
+      return;
+    }
+    const items = (data.items || []).filter((x) => x.entity_type === 'payment_invoices');
+    const total = items.reduce((s, x) => s + (Number(x.amount) || 0), 0);
+    if (!items.length) {
+      panel.innerHTML = hero('💳', 'К оплате · бухгалтерия', 'Счетов к оплате нет', 0, 'ожидают оплаты')
+        + '<div class="empty-state"><div class="icon">✓</div><div class="title">Очередь пуста</div>'
+        + '<div class="hint">Согласованные счета появятся здесь автоматически</div></div>';
+      return;
+    }
+    panel.innerHTML = hero('💳', 'К оплате · бухгалтерия', `Ожидают оплаты · ${items.length}`, total, 'к перечислению')
+      + items.map((it) => {
+        const num = it.invoice_number ? ('№ ' + it.invoice_number) : ('#' + it.id);
+        const due = it.due_date ? ' · до ' + String(it.due_date).slice(0, 10).split('-').reverse().join('.') : '';
+        return `<div class="ap-card" data-pay-id="${it.id}">
+          <div class="ap-card__hd">
+            <div class="ap-card__kind ap-card__kind--invoice">🧾</div>
+            <div style="min-width:0">
+              <div class="ap-card__t">${esc(it.supplier_name || 'Поставщик')}</div>
+              <div class="ap-card__s">Счёт ${esc(num)}${esc(due)}${it.initiator_name ? ' · от ' + esc(it.initiator_name) : ''}</div>
+            </div>
+            <div class="ap-card__sum">${money(it.amount)}<small>к оплате</small></div>
+          </div>
+          <div class="ap-card__body" style="display:flex;gap:8px;flex-wrap:wrap">
+            <a class="btn primary btn-sm" href="#/my-procurement">Оплатить</a>
+            <a class="btn ghost btn-sm" href="#/my-procurement">Открыть счёт</a>
+          </div>
+        </div>`;
+      }).join('');
   }
 
   /** Вкладка «Выплаты»: список от Димы, прогресс, точечные решения. */

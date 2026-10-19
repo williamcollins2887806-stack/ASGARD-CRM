@@ -148,9 +148,13 @@ window.AsgardProcurementPage = (function() {
     }
     let kind = payFileExt(fileName, fileUrl || apiUrl || staticUrl);
     const needLoad = !!apiUrl && !src && (kind === 'pdf' || kind === 'img' || kind === 'other');
-    // Видимая «бумага» — всегда, даже если PDF-viewer в iframe пустой (headless / dark chrome)
+    // «Бумага» — ЗАПАСНОЙ вид, когда файла нет вообще. Раньше она рисовалась ВСЕГДА
+    // и стояла НАД настоящим файлом: директор видел суррогатную карточку сверху, а
+    // сам счёт — обрезанной полоской 180–220 px (скриншот заказчика 19.10.2026).
+    // Теперь: есть файл → показываем только файл, целиком.
+    const hasRealFile = !!(src || apiUrl);
     let paper = '';
-    if (pay) {
+    if (pay && !hasRealFile) {
       const lines = Array.isArray(pay.line_items_json) ? pay.line_items_json
         : (typeof pay.line_items_json === 'string' ? (() => { try { return JSON.parse(pay.line_items_json || '[]'); } catch (_) { return []; } })() : []);
       const lineHtml = lines.slice(0, 6).map(l =>
@@ -161,7 +165,7 @@ window.AsgardProcurementPage = (function() {
         <div class="proc-pay-paper__sum">${money2(pay.amount)}</div>
         <div class="proc-pay-paper__meta">${esc(pay.supplier_name || '—')}<br>${esc(pay.basis_text || pay.basis_type || '')}</div>
         ${lineHtml ? `<div class="proc-pay-paper__lines">${lineHtml}</div>` : ''}
-        <div class="proc-pay-paper__file">${esc(fileName || 'файл счёта')}${src || apiUrl ? ' · готов к открытию' : ''}</div>
+        <div class="proc-pay-paper__file">${esc(fileName || 'файл счёта')}</div>
       </div>`;
     }
     let media = '';
@@ -224,7 +228,7 @@ window.AsgardProcurementPage = (function() {
       const paper = body.querySelector('[data-pay-paper]');
       const paperHtml = paper ? paper.outerHTML : '';
       if (kind === 'pdf') body.innerHTML = paperHtml + `<iframe title="Счёт PDF" class="proc-pay-modal__pdf" src="${u}#toolbar=0"></iframe>`;
-      else if (kind === 'img') body.innerHTML = paperHtml + `<img alt="Счёт" src="${u}">`;
+      else if (kind === 'img') body.innerHTML = paperHtml + `<img alt="Счёт" class="proc-pay-modal__img" src="${u}">`;
       else if (!paperHtml) body.innerHTML = `<div class="proc-pay-modal__preview-empty"><strong>Превью недоступно</strong><span>${esc(name)} — откройте или скачайте</span></div>`;
       else body.innerHTML = paperHtml;
     } catch (e) {
