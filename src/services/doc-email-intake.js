@@ -84,6 +84,11 @@ async function resolveSenderUserId(db, email) {
   const addr = (from.match(/<([^>]+)>/) || [null, from])[1];
   if (!addr || !addr.includes('@')) return null;
   try {
+    // Заказчик 19.10.2026: счета шлют 20–50 сотрудников, в т.ч. с ЛИЧНЫХ почт
+    // (@mail.ru, @yandex.ru). У таких сотрудников корпоративного адреса в `users.email`
+    // нет — личный лежит в `employees.email`. Без этого инициатор не находился,
+    // заявка уходила на админа, и сотрудник «не видел свой счёт».
+    // 1) корпоративная почта пользователя;
     const { rows } = await db.query(
       `SELECT u.id, u.role,
               (SELECT count(*) FROM works w WHERE w.pm_id = u.id AND w.deleted_at IS NULL) AS works_cnt
@@ -93,16 +98,61 @@ async function resolveSenderUserId(db, email) {
         LIMIT 10`,
       [addr]
     );
-    if (!rows.length) return null;
-    // 1) Есть работы — значит это РП (или иной владелец проектов).
-    const owner = rows.find((r) => Number(r.works_cnt) > 0);
-    if (owner) return owner.id;
-    // 2) Профильная роль: закупки/РП — те, кто инициирует оплаты.
-    const byRole = ['PM', 'HEAD_PM', 'PROC', 'TO', 'HEAD_TO', 'BUH', 'OFFICE_MANAGER']
-      .map((role) => rows.find((r) => String(r.role) === role)).find(Boolean);
-    if (byRole) return byRole.id;
-    // 3) Самый ранний аккаунт с этой почтой.
-    return rows[0].id;
+    if (rows.length) {
+      const owner = rows.find((r) => Number(r.works_cnt) > 0);
+      if (owner) return owner.id;
+      const byRole = ['PM', 'HEAD_PM', 'PROC', 'TO', 'HEAD_TO', 'BUH', 'OFFICE_MANAGER']
+        .map((role) => rows.find((r) => String(r.role) === role)).find(Boolean);
+      if (byRole) return byRole.id;
+      return rows[0].id;
+    }
+    // 2) личная почта сотрудника (employees.email → employees.user_id → users).
+    const emp = await db.query(
+      `SELECT u.id, u.role,
+              (SELECT count(*) FROM works w WHERE w.pm_id = u.id AND w.deleted_at IS NULL) AS works_cnt
+         FROM employees e JOIN users u ON u.id = e.user_id
+        WHERE lower(e.email) = $1 AND u.is_active IS NOT FALSE
+        ORDER BY works_cnt DESC, u.id ASC
+        LIMIT 10`,
+      [addr]
+    );
+    if (emp.rows.length) {
+      const owner = emp.rows.find((r) => Number(r.works_cnt) > 0);
+      if (owner) return owner.id;
+      const byRole = ['PM', 'HEAD_PM', 'PROC', 'TO', 'HEAD_TO', 'BUH', 'OFFICE_MANAGER']
+        .map((role) => emp.rows.find((r) => String(r.role) === role)).find(Boolean);
+      if (byRole) return byRole.id;
+      return emp.rows[0].id;
+    }
+    // 3) Почта не привязана ни к пользователю, ни к сотруднику.
+    // Заказчик 19.10.2026: НЕ отдаём заявку админу (сотрудник её не увидит).
+    // Назначаем ОФИС-МЕНЕДЖЕРА (Тумаева) — она сама переназначит ответственного.
+    const fallback = await resolveOfficeManagerId(db);
+    return fallback;
+  } catch (_) {
+    return null;
+  }
+}
+
+/**
+ * Фолбэк-ответственный, когда отправитель письма не опознан.
+ * Офис-менеджер (настройка `doc_fallback_owner_user_id`, иначе первый активный
+ * OFFICE_MANAGER по id). Заказчик 19.10.2026: ей передаём счёт и она меняет
+ * ответственного — лучше, чем «уйдёт админу и потеряется».
+ */
+async function resolveOfficeManagerId(db) {
+  try {
+    const s = await db.query(`SELECT value_json FROM settings WHERE key='doc_fallback_owner_user_id' LIMIT 1`);
+    if (s.rows[0]) {
+      let v = s.rows[0].value_json; try { v = JSON.parse(v); } catch (_) {}
+      const n = parseInt(v, 10);
+      if (Number.isFinite(n)) return n;
+    }
+  } catch (_) { /* нет настройки — берём по роли */ }
+  try {
+    const r = await db.query(
+      `SELECT id FROM users WHERE role='OFFICE_MANAGER' AND is_active IS NOT FALSE ORDER BY id ASC LIMIT 1`);
+    return r.rows[0] ? r.rows[0].id : null;
   } catch (_) {
     return null;
   }
@@ -157,8 +207,18 @@ async function intakeOne(db, { email, attachment, text, userId = null, dryRun = 
   }
   // V407 (тест заказчика 18.10.2026): инициатор — ТОТ, КТО ПРИСЛАЛ письмо,
   // а не жёстко админ (`userId || 1`). Иначе ответственным за доки становился
-  // ADMIN, хотя письмо послал РП. Резолвим по from_email → users.email.
+  // ADMIN, хотя письмо послал РП. Резолвим по from_email → users.email, затем по
+  // личной почте сотрудника (employees.email) — счета шлют и с неё.
   const senderUserId = userId || await resolveSenderUserId(db, email);
+  // Заказчик 19.10.2026: если почта отправителя не привязана — ответственным ставим
+  // ОФИС-МЕНЕДЖЕРА (Тумаева), она переназначит. Помечаем это, чтобы было видно.
+  if (!senderUserId) {
+    try {
+      const fromRaw = String((email && (email.from_email || email.from)) || '').toLowerCase();
+      parsed._ai_warnings = (parsed._ai_warnings || []).concat(['initiator_unresolved:' + fromRaw.slice(0, 80)]);
+      console.warn(`[intake] инициатор не найден по почте «${fromRaw}» — назначен офис-менеджер (переназначит)`);
+    } catch (_) { /* не критично */ }
+  }
   // V404: срок из тела письма инициатора («оплати завтра / срочно / через 2 месяца»).
   // Текст письма и текст вложения могут отличаться — берём тело письма отдельно.
   const emailBody = email && (email.body_text || email.body) || '';

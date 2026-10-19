@@ -189,6 +189,12 @@ function shouldSkipEmail(email) {
       // сотрудники», а intake-контур согласования. Не пропускаем копии CRM.
       const crmSelf = String(process.env.CRM_SELF_EMAIL || 'crm@asgard-service.com').toLowerCase();
       if (from.includes(crmSelf)) break;
+      // Заказчик 19.10.2026: наши сотрудники (РП/закупщик) присылают СЧЁТ на ящик CRM —
+      // такие письма обязаны обрабатываться, а не тихо пропадать как «внутренние»
+      // (кейс Баринова #4878: «АГПЗ, счет BP-7784», вложение-счёт, но skip=internal_email).
+      // Если в теме/теле есть явные признаки счёта — НЕ пропускаем к AI-разбору.
+      const looksLikeInvoice = /(сч[её]т|счет|инвойс|invoice|упд|оплат|к оплате|итого|НДС|БИК|р\/с|к\/с)/i.test((subject || '') + ' ' + (bodyText || ''));
+      if (looksLikeInvoice) break;
       return { skip: true, reason: 'internal_email' };
     }
   }
