@@ -20,6 +20,18 @@ const { classifyDocument } = require('./doc-classifier');
 const { parsePaymentIntent, parseDeliveryHint } = require('./payment-intent');
 const { matchContract, matchWork } = require('./contract-match');
 const { enrichCatalogFromLines } = require('./catalog-from-invoice');
+// D-283 (аудит 19.10.2026): tidyOrgName существовал и корректно чинил
+// `ООО "ТД "БАШПРОМТОРГ"` (незакрытая внешняя кавычка), но в intake его НЕ
+// вызывали — в заявку и реестр попадало кривое имя. Подключаем.
+const { tidyOrgName } = require('../lib/item-name-clean');
+
+/**
+ * D-283 (аудит 19.10.2026): допустимые ставки НДС по НК РФ.
+ * В БД лежал 9.91% у счёта АэроОтель №1388 — такой ставки не существует.
+ * Валидация была только в AI-ветке (invoice-ai-extract), а регулярный
+ * фолбэк клал ставку как есть. Здесь — последний рубеж перед записью.
+ */
+const VAT_OK = [0, 5, 7, 10, 20, 22];
 
 /** Порог уверенности (настройка email_parse_confidence_min, fallback 0.7). */
 async function confidenceMin(db) {
@@ -338,7 +350,9 @@ async function intakeOne(db, { email, attachment, text, userId = null, dryRun = 
   if (!docId) {
     // counterparty_name/amount_gross NOT NULL — при неудачном разборе подставляем
     // читаемые заглушки, чтобы строка всё равно попала в реестр (needs_manual).
-    const cpName = parsed.counterparty_name || (parsed.inn ? ('ИНН ' + parsed.inn) : 'Контрагент не распознан');
+    // D-283: чистим название контрагента от OCR-мусора (незакрытые/вложенные
+    // кавычки). Кривое имя ломает поиск и связывание с справочником.
+    const cpName = tidyOrgName(parsed.counterparty_name || (parsed.inn ? ('ИНН ' + parsed.inn) : 'Контрагент не распознан'));
     const gross = parsed.amount_gross != null ? parsed.amount_gross : 0;
     const net = parsed.amount_net != null ? parsed.amount_net : gross;
     const vat = parsed.vat_amount != null ? parsed.vat_amount : 0;
@@ -348,8 +362,7 @@ async function intakeOne(db, { email, attachment, text, userId = null, dryRun = 
       try {
         const s = await db.query(`SELECT id FROM suppliers WHERE inn=$1 AND deleted_at IS NULL LIMIT 1`, [parsed.inn]);
         if (s.rows[0]) {
-          supplierId = s.rows[0].id;
-          // Если в карточке нет банковских реквизитов — заполняем из распознанного
+          supplierId = s.rows[0].id;          // Если в карточке нет банковских реквизитов — заполняем из распознанного
           // счёта (иначе бухгалтеру нечего копировать в платёжку).
           const patch = [];
           const pv = [];
@@ -363,6 +376,35 @@ async function intakeOne(db, { email, attachment, text, userId = null, dryRun = 
           }
         }
       } catch (_) { /* не критично */ }
+    }
+    // D-283 (аудит 19.10.2026): поставщик не находился, если ИНН в справочнике
+    // ДРУГОЙ. Реальный случай: счёт АэроОтель с ИНН 2901264958 (Архангельск),
+    // а в suppliers ООО "АЭРООТЕЛЬ" записан с ИНН 7014049295 (Томск). Либо это
+    // два разных юрлица, либо в справочнике ошибка — но реквизиты для платёжки
+    // нужны СЕЙЧАС, иначе бухгалтер вбивает руками.
+    // Фолбэк: ищем по точному названию. Совпадение помечаем предупреждением,
+    // чтобы расхождение ИНН не потерялось (не «исправляем молча»).
+    let supplierMatchNote = null;
+    if (!supplierId && parsed.counterparty_name) {
+      try {
+        const byName = await db.query(
+          `SELECT id, inn FROM suppliers
+            WHERE deleted_at IS NULL
+              AND lower(regexp_replace(trim(name), '^ооо\\s+|^"|"+$', '', 'gi'))
+                = lower(regexp_replace(trim($1), '^ооо\\s+|^"|"+$', '', 'gi'))
+            LIMIT 1`, [parsed.counterparty_name]);
+        if (byName.rows[0]) {
+          supplierId = byName.rows[0].id;
+          const supInn = byName.rows[0].inn;
+          if (supInn && parsed.inn && String(supInn) !== String(parsed.inn)) {
+            supplierMatchNote = `supplier_inn_mismatch: в счёте ${parsed.inn}, в справочнике ${supInn}`;
+          }
+        }
+      } catch (_) { /* не критично */ }
+    }
+    if (supplierMatchNote) {
+      try { parsed._warnings = [...(parsed._warnings || []), supplierMatchNote]; } catch (_) {}
+      console.warn('[intake] ' + supplierMatchNote + ' (счёт ' + (parsed.invoice_number || '?') + ')');
     }
     const insDoc = await db.query(
       `INSERT INTO doc_registry(dir, package_type, ops_status, pay_status, invoice_number, invoice_date,
@@ -477,7 +519,26 @@ async function intakeOne(db, { email, attachment, text, userId = null, dryRun = 
         : 'Счёт из письма';
       // V404: срок оплаты — приоритет у просьбы инициатора из письма, затем у счёта.
       const timing = intent.timing === 'deferred' ? 'deferred' : 'immediate';
-      const dueDate = intent.due_date || parsed.payment_due_at || null;
+      // D-283 (аудит 19.10.2026): у 3 из 5 счетов срок оплаты оказался пустым —
+      // светофор не мог показать просрочку (счёт от 01.10 висел «без срока»).
+      // Если счёт срок не печатает, берём дату счёта + N дней (по умолчанию 10,
+      // настраивается в settings.doc_due_days). Это ОЦЕНКА, помечаем источником,
+      // чтобы бухгалтер видел: срок не из бумаги.
+      let dueDate = intent.due_date || parsed.payment_due_at || null;
+      let dueDerived = false;
+      if (!dueDate && parsed.invoice_date) {
+        try {
+          const cfg = await db.query(`SELECT value_json FROM settings WHERE key='doc_due_days' LIMIT 1`);
+          let days = 10;
+          if (cfg.rows[0]) { let v = cfg.rows[0].value_json; try { v = JSON.parse(v); } catch (_) {} const n = parseInt(v, 10); if (Number.isFinite(n) && n > 0 && n <= 90) days = n; }
+          const d0 = new Date(String(parsed.invoice_date) + 'T00:00:00Z');
+          if (!Number.isNaN(d0.getTime())) {
+            d0.setUTCDate(d0.getUTCDate() + days);
+            dueDate = d0.toISOString().slice(0, 10);
+            dueDerived = true;
+          }
+        } catch (_) { /* без настройки — срок останется пустым */ }
+      }
       // V409 (проверка заказчика 18.10.2026): ФАЙЛ счёта не прикреплялся к заявке —
       // бухгалтерия и директор не могли открыть скан (GET /:id/file → 404), хотя
       // вложение в письме есть. Берём путь вложения письма и кладём в заявку:
@@ -499,9 +560,11 @@ async function intakeOne(db, { email, attachment, text, userId = null, dryRun = 
         `INSERT INTO payment_invoices(status, payment_status, supplier_name, supplier_id, amount, requires_payment,
            created_by, pay_timing, due_date, basis_type, basis_text, doc_registry_id, source_email_id, source_attachment_id,
            initiator_intent, initiator_note, contract_basis_number, contract_basis_date, contract_missing,
-           work_hint, work_id, invoice_number, invoice_date, vat_amount, file_path, file_name)
+           work_hint, work_id, invoice_number, invoice_date, vat_amount, file_path, file_name,
+           line_items_json, vat_rate, amount_net)
          VALUES ('awaiting_dir','awaiting_dir',$1,$2,$3,true,$4,$5,$6::date,'other',$7,$8,$9,$10,
-                 $11,$12,$13,$14::date,$15,$16,$17,$18,$19::date,$20,$21,$22) RETURNING id`,
+                 $11,$12,$13,$14::date,$15,$16,$17,$18,$19::date,$20,$21,$22,
+                 $23::jsonb,$24,$25) RETURNING id`,
         [parsed.counterparty_name, parsed._supplierId || null, parsed.amount_gross, senderUserId || 1,
           timing, dueDate, basis, docId, emailId, attachmentId,
           intent.intent !== 'none' ? intent.intent : null,
@@ -514,7 +577,15 @@ async function intakeOne(db, { email, attachment, text, userId = null, dryRun = 
           parsed.invoice_number || null,
           parsed.invoice_date || null,
           parsed.vat_amount != null ? parsed.vat_amount : null,
-          filePath, fileName]);
+          filePath, fileName,
+          // D-283 (аудит 19.10.2026): позиции распознавались и лежали в
+          // doc_email_intake.parse_raw + price_records, но в САМУ заявку не
+          // попадали — INSERT не содержал колонку. Бухгалтер и мобилка видели
+          // счёт без состава: «что оплачиваем» непонятно.
+          JSON.stringify(Array.isArray(parsed.lines) ? parsed.lines : []),
+          // Ставка НДС — валидированная (см. invoice-ai-extract: только 0/5/7/10/20/22).
+          parsed.vat_rate != null && VAT_OK.includes(Number(parsed.vat_rate)) ? Number(parsed.vat_rate) : null,
+          parsed.amount_net != null ? parsed.amount_net : null]);
       paymentId = insPay.rows[0].id;
       // V406: если согласующий уже ответил «Добро» ДО появления заявки — применяем
       // сохранённое согласие сразу, чтобы заявка не висела несогласованной.

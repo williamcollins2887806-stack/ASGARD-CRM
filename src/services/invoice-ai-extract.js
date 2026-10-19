@@ -23,6 +23,14 @@
 
 const { validInn, validKpp, validBik, validAccount } = require('./invoice-extract');
 
+/**
+ * D-283: допустимые ставки НДС по НК РФ. Одна константа на весь модуль —
+ * нужна и в normalize() (AI-ветка), и в mergeWithRegex (регулярный фолбэк).
+ * До этой правки валидация жила ТОЛЬКО в normalize(), а фолбэк писал ставку
+ * как есть: на проде у счёта №1388 оказалось 9.91% — такой ставки не бывает.
+ */
+const VAT_RATES_GLOBAL = [22, 20, 10, 7, 5, 0];
+
 /** Промпт: просим СТРОГО JSON и запрещаем угадывать. */
 const SYSTEM = `Ты извлекаешь реквизиты из ТЕКСТА российского счёта на оплату.
 Верни СТРОГО один JSON-объект, без markdown и пояснений.
@@ -243,7 +251,9 @@ function validate(data) {
   // Допустимые ставки РФ: 22, 20, 10, 7, 5, 0. Выдуманную ставку отбрасываем;
   // если модели ставку не дала, но есть суммы — ВЫВОДИМ её точно:
   //   t = gross × r/(100+r)  →  r = 100 × t/(gross − t).
-  const VAT_RATES = [22, 20, 10, 7, 5, 0];
+  // D-283: константа вынесена на уровень модуля (VAT_RATES_GLOBAL) — она нужна
+  // и в mergeWithRegex, где раньше валидации не было вовсе.
+  const VAT_RATES = VAT_RATES_GLOBAL;
   if (d.vat_rate != null) {
     if (!VAT_RATES.includes(Math.round(Number(d.vat_rate)))) {
       warnings.push('vat_rate_unknown');
@@ -437,6 +447,26 @@ function mergeWithRegex(ai, rx) {
   // V412: ставка НДС — от ИИ, фолбэк из регулярок (если те её нашли).
   if (ai.vat_rate != null) out.vat_rate = ai.vat_rate;
   else if (base.vat_rate != null) out.vat_rate = base.vat_rate;
+  // D-283 (аудит 19.10.2026): ЗДЕСЬ ЖЕ валидируем ставку из ЛЮБОГО источника.
+  // Раньше проверка жила только в normalize() (AI-ветка), а регулярный фолбэк
+  // писал что нашёл: на проде у счёта №1388 легло 9.91% — такой ставки в НК РФ
+  // нет, бухгалтер видел её в поле НДС. Теперь: недопустимая ставка → выводим
+  // из сумм; если и это невозможно — null («не указана»).
+  if (out.vat_rate != null) {
+    const vr = Number(out.vat_rate);
+    if (!VAT_RATES_GLOBAL.includes(Math.round(vr))) {
+      const g = Number(out.amount_gross); const t = Number(out.vat_amount);
+      let near = null;
+      if (g > 0 && t > 0 && g > t) {
+        const derived = Math.round((100 * t / (g - t)) * 100) / 100;
+        near = VAT_RATES_GLOBAL.find((r) => Math.abs(r - derived) < 0.5);
+      }
+      out.vat_rate = near != null ? near : null;
+      out._vat_rate_fixed = true;   // маркер для предупреждений
+    } else {
+      out.vat_rate = Math.round(vr);
+    }
+  }
   // has_vat: ИИ-флаг принимаем, только если он подтверждён числом НДС или нетто≠сумма
   // (иначе «НДС есть» без суммы — FAIL-6). Иначе — флаг из регулярок.
   if (ai.has_vat != null && (ai.vat_amount != null || base.has_vat == null)) out.has_vat = ai.has_vat;
