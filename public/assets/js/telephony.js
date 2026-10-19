@@ -481,6 +481,21 @@ window.AsgardTelephonyPage = (function () {
 
     var overlay = $('#detailOverlay');
     if (overlay) overlay.addEventListener('click', closeDetailPanel);
+    // Esc закрывает карточку (частый запрос: «не понятно, как закрыть»).
+    if (!window._telDetailEscBound) {
+      window._telDetailEscBound = true;
+      document.addEventListener('keydown', function (e) {
+        if (e.key !== 'Escape') return;
+        var p = document.getElementById('detailPanel');
+        if (p && p.classList.contains('call-detail-panel--open')) closeDetailPanel();
+      });
+      // Страховка: уход со страницы телефонии не должен оставлять скролл-лок.
+      window.addEventListener('hashchange', function () {
+        if (location.hash.indexOf('#/telephony') !== 0) {
+          document.body.classList.remove('call-detail-open');
+        }
+      });
+    }
     // Карточка НЕ открывается автоматически по query.id: из-за этого при каждом
     // заходе на «Телефонию» выезжала панель и не закрывалась (жалоба 10.10.2026).
     // Убираем id из URL, карточку открывает только клик по строке.
@@ -1911,6 +1926,8 @@ window.AsgardTelephonyPage = (function () {
       '</div>';
     panel.classList.add('call-detail-panel--open');
     overlay.classList.add('call-detail-overlay--visible');
+    // Скролл-лок: пока карточка открыта, страница за ней не скроллится.
+    document.body.classList.add('call-detail-open');
     $$('.call-row.is-selected').forEach(function (r) { r.classList.remove('is-selected'); });
     var sel = $('.call-row[data-id="' + String(callId) + '"]');
     if (sel) sel.classList.add('is-selected');
@@ -1943,6 +1960,7 @@ window.AsgardTelephonyPage = (function () {
     var overlay = $('#detailOverlay');
     if (panel)   panel.classList.remove('call-detail-panel--open');
     if (overlay) overlay.classList.remove('call-detail-overlay--visible');
+    document.body.classList.remove('call-detail-open');
     $$('.call-row.is-selected').forEach(function (r) { r.classList.remove('is-selected'); });
   }
 
