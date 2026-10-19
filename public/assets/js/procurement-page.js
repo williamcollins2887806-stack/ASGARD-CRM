@@ -1664,7 +1664,13 @@ window.AsgardProcurementPage = (function() {
     if (!body) return;
     body.innerHTML = '<div class="proc-skel">' + Array.from({ length: 3 }).map(() => '<div class="proc-skel-row"></div>').join('') + '</div>';
     let d;
-    try { d = await apiFetch('/api/payment-invoices/my'); } catch (e) { body.innerHTML = `<div class="proc-empty">⚠️ ${esc(e.message)}</div>`; return; }
+    // Заказчик 19.10.2026: админ/директор/бухгалтерия не видели ЧУЖИХ заявок —
+    // страница запрашивала /my без `all`, а бэк по умолчанию фильтрует по created_by.
+    // Итог: 4 счёта за сегодня «не видны», хотя в реестре они есть.
+    // Привилегированные роли видят ВСЕ счета (им нужна сводка), обычные — свои.
+    const role = String((_user && _user.role) || '');
+    const seesAll = ['ADMIN', 'BUH', 'PROC', 'HEAD_PM', 'HEAD_TO'].includes(role) || /^DIRECTOR/.test(role);
+    try { d = await apiFetch('/api/payment-invoices/my' + (seesAll ? '?all=1' : '')); } catch (e) { body.innerHTML = `<div class="proc-empty">⚠️ ${esc(e.message)}</div>`; return; }
     _payRows = d.items || [];
     const n = document.getElementById('proc-pay-n');
     if (n) n.textContent = String(_payRows.length);

@@ -61,7 +61,8 @@ const TARGETS = [
   'V407__field_tariff_grid_ceilings',           // потолки тарифов поля (D-282)
   'V408__doc_deferred_approval',                // doc_approval_grant (переименована из V406 — коллизия номеров)
   'V409__doc_ai_extract_seller_payee',          // doc_registry: seller_/payee_*, parse_engine/warnings (ИИ-разбор)
-  'V410__user_email_aliases'                    // user_email_aliases (почта→сотрудник) + включение email_intake_enabled
+  'V410__user_email_aliases',                   // user_email_aliases (почта→сотрудник) + включение email_intake_enabled
+  'V411__payment_batches'                       // payment_batches (партия счетов) + payment_invoices.batch_id
 ];
 
 const pool = new Pool({

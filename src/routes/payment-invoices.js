@@ -658,6 +658,143 @@ async function routes(fastify) {
     return { ...decoratePayment(pay), mail };
   });
 
+  // ═══════════════════════════════════════════════════════════════════════════
+  // V411: ПАРТИЯ счетов на согласование (заказчик 19.10.2026).
+  // «10 счетов — 10 заявок или одна?» → ОДНА заявка (партия), но директор решает
+  // по КАЖДОМУ счёту выборочно. Статус по счёту живёт в payment_invoices.status,
+  // поэтому «часть согласовал, часть отклонил» работает бесплатно.
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  /** Создать партию из N счетов (уже загруженных, суммы могут быть 0 до OCR). */
+  fastify.post('/batches', { preHandler: [fastify.requireRoles(CREATE_ROLES)] }, async (req, reply) => {
+    const b = req.body || {};
+    const ids = Array.isArray(b.invoice_ids) ? b.invoice_ids.map((x) => parseInt(x, 10)).filter(Number.isFinite) : [];
+    if (!ids.length) return reply.code(400).send({ error: 'Передайте invoice_ids — счета для партии' });
+    const client = await db.connect();
+    try {
+      await client.query('BEGIN');
+      // Проверяем, что счета существуют и принадлежат отправителю (или он привилегированный).
+      const role = String(req.user.role || '');
+      const isPriv = ['ADMIN', 'BUH', 'PROC'].includes(role) || /^DIRECTOR/.test(role);
+      const own = await client.query(
+        `SELECT id, amount FROM payment_invoices
+          WHERE id = ANY($1::int[]) AND ($2::bool OR created_by = $3)`,
+        [ids, isPriv, req.user.id]);
+      if (!own.rows.length) return reply.code(404).send({ error: 'Счета не найдены' });
+      const total = own.rows.reduce((s, r) => s + Number(r.amount || 0), 0);
+      const ttl = await db.query(`SELECT value_json FROM settings WHERE key='doc_approval_ttl_hours' LIMIT 1`).catch(() => ({ rows: [] }));
+      let hours = 72;
+      if (ttl.rows[0]) { try { hours = parseInt(JSON.parse(ttl.rows[0].value_json), 10) || 72; } catch (_) {} }
+      const batch = (await client.query(
+        `INSERT INTO payment_batches(created_by, title, comment_text, total_amount, invoices_count, expires_at)
+         VALUES($1,$2,$3,$4,$5, NOW() + ($6 || ' hours')::interval) RETURNING *`,
+        [req.user.id, b.title || null, b.comment_text || null, total, own.rows.length, String(hours)])).rows[0];
+      await client.query(
+        `UPDATE payment_invoices SET batch_id=$1, updated_at=NOW()
+          WHERE id = ANY($2::int[]) AND batch_id IS NULL`,
+        [batch.id, own.rows.map((r) => r.id)]);
+      await client.query('COMMIT');
+      return { ok: true, batch, invoice_ids: own.rows.map((r) => r.id) };
+    } catch (e) {
+      await client.query('ROLLBACK');
+      fastify.log.error('[payment-invoices] batch create: ' + e.message);
+      return reply.code(500).send({ error: 'Не удалось создать партию' });
+    } finally {
+      client.release();
+    }
+  });
+
+  /** Партия целиком: шапка + все счета с их статусами (экран директора/бухгалтера). */
+  fastify.get('/batches/:id', { preHandler: [fastify.authenticate] }, async (req, reply) => {
+    const id = parseInt(req.params.id, 10);
+    if (!Number.isFinite(id)) return reply.code(400).send({ error: 'Неверный ID' });
+    const b = (await db.query(
+      `SELECT b.*, u.name AS initiator_name, u.role AS initiator_role
+         FROM payment_batches b LEFT JOIN users u ON u.id = b.created_by WHERE b.id=$1`, [id])).rows[0];
+    if (!b) return reply.code(404).send({ error: 'Партия не найдена' });
+    const r = String(req.user.role || '');
+    const isPriv = ['ADMIN', 'BUH', 'PROC'].includes(r) || /^DIRECTOR/.test(r);
+    if (!isPriv && Number(b.created_by) !== Number(req.user.id)) {
+      return reply.code(403).send({ error: 'Нет доступа к партии' });
+    }
+    const items = (await db.query(
+      `SELECT pi.*, d.counterparty_inn, d.work_id AS reg_work_id, w.work_title
+         FROM payment_invoices pi
+         LEFT JOIN doc_registry d ON d.id = pi.doc_registry_id
+         LEFT JOIN works w ON w.id = d.work_id
+        WHERE pi.batch_id=$1 ORDER BY pi.id`, [id])).rows;
+    // Сводка решений: сколько уже согласовано/отклонено (для индикатора выборочности).
+    const summary = {
+      total: items.length,
+      approved: items.filter((x) => x.status === 'pending_payment' || x.payment_status === 'paid').length,
+      rejected: items.filter((x) => x.status === 'rejected').length,
+      pending: items.filter((x) => x.status === 'awaiting_dir').length
+    };
+    return { batch: b, items: items.map(decoratePayment), summary };
+  });
+
+  /**
+   * ВЫБОРОЧНОЕ решение директора по партии: { approve: [id], reject: [id], comment }.
+   * Счета вне списков остаются awaiting_dir (директор решит позже).
+   */
+  fastify.post('/batches/:id/decide', { preHandler: [fastify.requireRoles(DIR_ROLES)] }, async (req, reply) => {
+    const id = parseInt(req.params.id, 10);
+    if (!Number.isFinite(id)) return reply.code(400).send({ error: 'Неверный ID' });
+    const b = req.body || {};
+    const toArr = (v) => (Array.isArray(v) ? v.map((x) => parseInt(x, 10)).filter(Number.isFinite) : []);
+    const approveIds = toArr(b.approve);
+    const rejectIds = toArr(b.reject);
+    if (!approveIds.length && !rejectIds.length) {
+      return reply.code(400).send({ error: 'Отметьте счета: approve[] и/или reject[]' });
+    }
+    const batch = (await db.query('SELECT * FROM payment_batches WHERE id=$1', [id])).rows[0];
+    if (!batch) return reply.code(404).send({ error: 'Партия не найдена' });
+    const timing = b.pay_timing === 'deferred' ? 'deferred' : 'immediate';
+    const actor = { id: req.user.id, name: req.user.name || 'Директор', role: req.user.role };
+    const { applyDecision } = require('../services/payment-mail');
+    const dbp = { query: (t, p) => db.query(t, p), pool: db, connect: () => db.connect() };
+    const done = { approved: [], rejected: [], skipped: [] };
+    for (const pid of approveIds) {
+      const pay = (await db.query('SELECT * FROM payment_invoices WHERE id=$1 AND batch_id=$2', [pid, id])).rows[0];
+      if (!pay || pay.status !== 'awaiting_dir') { done.skipped.push(pid); continue; }
+      try {
+        // Применяем как обычное согласование директора — единая логика (расходы, реестр, бух).
+        await db.query(`UPDATE payment_invoices SET pay_timing=$2 WHERE id=$1`, [pid, timing]);
+        const res = await applyDecision(dbp, pay, 'approve', actor);
+        if (res && res.status === 'pending_payment') done.approved.push(pid); else done.skipped.push(pid);
+      } catch (e) { fastify.log.error('[batch decide approve] ' + e.message); done.skipped.push(pid); }
+    }
+    for (const pid of rejectIds) {
+      const pay = (await db.query('SELECT * FROM payment_invoices WHERE id=$1 AND batch_id=$2', [pid, id])).rows[0];
+      if (!pay || pay.status !== 'awaiting_dir') { done.skipped.push(pid); continue; }
+      try {
+        await applyDecision(dbp, pay, 'reject', actor);
+        done.rejected.push(pid);
+      } catch (e) { fastify.log.error('[batch decide reject] ' + e.message); done.skipped.push(pid); }
+    }
+    // Пересчитываем статус партии по факту решений по счетам.
+    const after = (await db.query(
+      `SELECT
+         count(*)::int AS total,
+         count(*) FILTER (WHERE status='awaiting_dir')::int AS pending,
+         count(*) FILTER (WHERE status='pending_payment' OR payment_status='paid')::int AS approved,
+         count(*) FILTER (WHERE status='rejected')::int AS rejected
+       FROM payment_invoices WHERE batch_id=$1`, [id])).rows[0];
+    let bstatus = 'awaiting_dir';
+    if (after.pending === 0) {
+      if (after.approved && after.rejected) bstatus = 'mixed';
+      else if (after.approved) bstatus = 'approved';
+      else bstatus = 'rejected';
+    } else if (after.approved || after.rejected) {
+      bstatus = 'partially_approved';
+    }
+    await db.query(
+      `UPDATE payment_batches SET status=$2, dir_approved_at=CASE WHEN $2<>'awaiting_dir' THEN NOW() ELSE NULL END,
+              dir_approved_by=CASE WHEN $2<>'awaiting_dir' THEN $3 ELSE NULL END, updated_at=NOW()
+        WHERE id=$1`, [id, bstatus, req.user.id]).catch(() => {});
+    return { ok: true, batch_status: bstatus, ...done, summary: after };
+  });
+
   // multipart upload file for standalone
   fastify.post('/upload', { preHandler: [fastify.requireRoles(CREATE_ROLES)] }, async (req, reply) => {
     const data = await req.file();
