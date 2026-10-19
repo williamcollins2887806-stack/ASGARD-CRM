@@ -260,6 +260,10 @@ window.AsgardPaymentBatch = (function () {
           <span class="pbatch__conf ${conf >= 70 ? 'is-ok' : 'is-warn'}">распознано ${conf}%${it.engine === 'ai' ? ' · ИИ' : ''}</span>
         </div>
         ${fieldRow(it, 'Поставщик', 'supplier_name', f.supplier_name, 'text')}
+        <div class="pbatch__cp" id="pb-cp">
+          <input type="text" class="pbatch__cp-input" data-cp-search placeholder="Начните вводить — подскажем из базы (ИНН, договоры, число счетов)" autocomplete="off">
+          <div class="pbatch__cp-drop" data-cp-drop hidden></div>
+        </div>
         ${fieldRow(it, 'Номер счёта', 'invoice_number', f.invoice_number, 'text')}
         ${fieldRow(it, 'Дата счёта', 'invoice_date', f.invoice_date, 'date')}
         ${fieldRow(it, 'Срок оплаты', 'payment_due_at', f.payment_due_at, 'date')}
@@ -299,6 +303,8 @@ window.AsgardPaymentBatch = (function () {
         render();
       };
     });
+    // Поиск поставщика с подсказками из базы (как в реестре счетов).
+    bindSupplierSearch(pane, it);
     pane.querySelector('[data-remove]')?.addEventListener('click', async () => {
       const idx = +pane.querySelector('[data-remove]').getAttribute('data-remove');
       const item = S.items[idx];
@@ -326,6 +332,59 @@ window.AsgardPaymentBatch = (function () {
       <label>${label}</label>
       <input type="${type}" data-f="${key}" value="${type === 'date' ? esc(String(val || '').slice(0, 10)) : esc(val || '')}">
     </div>`;
+  }
+
+  /**
+   * Поиск поставщика как в реестре счетов: подсказки из /api/customers/registry-suggest
+   * (там же число счетов и договоров). Выбор подставляет имя и ИНН.
+   */
+  function bindSupplierSearch(pane, it) {
+    const wrap = pane.querySelector('#pb-cp');
+    const inp = pane.querySelector('[data-cp-search]');
+    const drop = pane.querySelector('[data-cp-drop]');
+    if (!wrap || !inp || !drop) return;
+    let tmr = null;
+    let items = [];
+
+    const render = () => {
+      if (!items.length) { drop.hidden = true; drop.innerHTML = ''; return; }
+      drop.hidden = false;
+      drop.innerHTML = items.map((c, i) => {
+        const bits = [];
+        if (c.inn) bits.push('ИНН ' + c.inn);
+        if (c.docs_count) bits.push(c.docs_count + ' сч.');
+        if (c.contracts_count) bits.push(c.contracts_count + ' дог.');
+        return `<button type="button" class="pbatch__cp-item" data-ci="${i}">
+          <span class="pbatch__cp-name">${esc(c.name)}</span>
+          <span class="pbatch__cp-sub">${esc(bits.join(' · ') || 'в базе')}</span>
+        </button>`;
+      }).join('');
+      drop.querySelectorAll('[data-ci]').forEach((b) => {
+        b.onclick = () => {
+          const c = items[+b.getAttribute('data-ci')];
+          if (!c) return;
+          if (!it.fields) it.fields = {};
+          it.fields.supplier_name = c.name;
+          if (c.inn) it.fields.inn = c.inn;
+          items = []; drop.hidden = true; inp.value = '';
+          render();
+        };
+      });
+    };
+
+    inp.oninput = () => {
+      const q = inp.value.trim();
+      clearTimeout(tmr);
+      if (q.length < 2) { items = []; render(); return; }
+      tmr = setTimeout(async () => {
+        try {
+          const j = await api('/api/customers/registry-suggest?q=' + encodeURIComponent(q) + '&limit=10');
+          items = (j && j.suppliers) || [];
+        } catch (_) { items = []; }
+        render();
+      }, 220);
+    };
+    inp.onblur = () => { setTimeout(() => { drop.hidden = true; }, 180); };
   }
 
   // ── Отправка партии ───────────────────────────────────────────────────────

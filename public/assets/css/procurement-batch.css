@@ -134,3 +134,17 @@
   padding-top: 11px; border-top: 1px solid var(--brd); }
 .pdecide__summary { font-size: 12px; color: var(--t2); }
 .pdecide__summary b { color: var(--t1); }
+
+/* ── Поиск поставщика с подсказками (как в реестре счетов) ─────────────────── */
+.pbatch__cp { position: relative; margin: -2px 0 4px; }
+.pbatch__cp-input { width: 100%; padding: 8px 11px; border-radius: 8px; border: 1px solid var(--brd);
+  background: var(--bg0); color: var(--t1); font-size: 12px; }
+.pbatch__cp-input:focus { outline: none; border-color: color-mix(in srgb, var(--gold, #d4a017) 55%, var(--brd)); }
+.pbatch__cp-drop { position: absolute; z-index: 30000; left: 0; right: 0; top: calc(100% + 4px);
+  max-height: 240px; overflow: auto; border-radius: 10px; padding: 4px;
+  background: var(--bg2); border: 1px solid var(--brd); box-shadow: 0 14px 32px rgba(0,0,0,.42); }
+.pbatch__cp-item { display: flex; flex-direction: column; gap: 1px; width: 100%; text-align: left;
+  padding: 7px 9px; border: 0; border-radius: 7px; background: transparent; cursor: pointer; font: inherit; }
+.pbatch__cp-item:hover { background: var(--bg3); }
+.pbatch__cp-name { font-size: 12.5px; font-weight: 600; color: var(--t1); }
+.pbatch__cp-sub { font-size: 10.5px; color: var(--t3); }
