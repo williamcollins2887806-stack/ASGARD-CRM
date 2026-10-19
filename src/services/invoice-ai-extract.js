@@ -337,11 +337,13 @@ function validate(data) {
 async function extractByAI(text, opts = {}) {
   const src = String(text || '').trim();
   if (src.length < 40) return { ok: false, error: 'text_too_short' };
-  // Бюджетная модель: извлечение реквизитов — не задача для рассуждений.
-  // reasoning-модель (deepseek-v4.1-flash) съедает max_tokens «мыслями» и обрывает
-  // JSON (живой тест 18.10.2026: finish_reason=length, content пуст). Берём
-  // дешёвый flash-lite и ЯВНО отключаем reasoning, чтобы весь бюджет ушёл в JSON.
-  const model = opts.model || process.env.INVOICE_AI_MODEL || 'google/gemini-3.1-flash-lite';
+  // D-286 (заказчик 19.10.2026): единая модель по всей CRM — см. ai-models.js.
+  // Раньше здесь был отдельный хардкод 'google/gemini-3.1-flash-lite', из-за чего
+  // счета распознавались ДРУГОЙ моделью, чем письма и остальная CRM. Теперь
+  // дефолт один (deepseek-v4.1-flash-1017), переопределяется через INVOICE_AI_MODEL.
+  // reasoning отключаем явно: нужен только финальный JSON, не рассуждения.
+  const { MODEL_DEFAULT: AI_MODEL_DEFAULT } = require('./ai-models');
+  const model = opts.model || process.env.INVOICE_AI_MODEL || AI_MODEL_DEFAULT;
   try {
     const ai = require('./ai-provider');
     const r = await ai.complete({

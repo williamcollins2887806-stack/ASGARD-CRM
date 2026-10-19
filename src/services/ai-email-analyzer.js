@@ -950,6 +950,15 @@ async function analyzeEmail({ emailId, subject, bodyText, fromEmail, fromName, a
     // D-204: классификация с retry при обрыве по токенам.
     // Было maxTokens=1024 → JSON обрывался на середине → parse падал → тихий 'other'.
     // Теперь: бюджет 4096, при stopReason='length' повтор с удвоением (до ceiling).
+    // D-284 (прод 19.10.2026): ЗДЕСЬ НЕ БЫЛО отключения reasoning.
+    // Модель по умолчанию — deepseek-v4.1-flash, «думающая»: reasoning съедает
+    // бюджет max_tokens РАНЬШЕ content, и ответ приходит ПУСТЫМ с
+    // stopReason='length'. Симптом на живом письме #4894: три попытки
+    // 4096 → 8192 → 16384, все три «Empty AI response», письмо висело
+    // неразобранным 2.5 минуты. В invoice-ai-extract (счета) это уже было
+    // учтено, а в анализаторе писем — забыли.
+    // Выключаем reasoning: нужен только финальный JSON, размышления не нужны.
+    const reasoningOff = { enabled: false };
     let attempt = 0;
     let budget = ANALYSIS_MAX_TOKENS;
     let response;
@@ -960,13 +969,24 @@ async function analyzeEmail({ emailId, subject, bodyText, fromEmail, fromName, a
         system: ANALYSIS_SYSTEM_PROMPT,
         messages: [{ role: 'user', content: messageContent }],
         maxTokens: budget,
-        temperature: 0.3
+        temperature: 0.3,
+        reasoning: reasoningOff
       });
 
       parsedResult = parseAIResponse(response.text);
 
       const truncated = response.stopReason === 'length' || response.stopReason === 'max_tokens';
       if (!parsedResult._parse_failed && !truncated) break;
+
+      // D-284: отличаем «пустой ответ из-за reasoning» от «JSON не влез».
+      // Если текст ПУСТОЙ и stopReason=length — это не нехватка бюджета на JSON,
+      // а reasoning, съевший всё. Удвоение бюджета помогает, но дорого: три
+      // попытки × 4096...16384 токенов на каждое письмо. Теперь reasoning
+      // отключён выше, а этот лог нужен, чтобы дефект был виден сразу.
+      const emptyText = !String(response.text || '').trim();
+      if (emptyText && truncated) {
+        console.warn(`[AI-Analyzer] #${emailId}: ПУСТОЙ ответ при stopReason=length — похоже на reasoning-модель, съевшую бюджет (attempt=${attempt}, budget=${budget})`);
+      }
 
       if (budget >= ANALYSIS_MAX_TOKENS_CEILING || attempt >= 3) {
         console.warn(`[AI-Analyzer] #${emailId}: разбор не удался после ${attempt} попыток (budget=${budget}, stopReason=${response.stopReason}) — needs_review`);
@@ -1064,9 +1084,23 @@ function buildAnalysisMessage({ subject, bodyText, fromEmail, fromName, attachme
   msg += `Тема: ${subject || '(без темы)'}\n\n`;
 
   if (bodyText) {
-    // Ограничиваем длину тела
+    // Ограничиваем длину тела.
+    // D-284: тело пересланного письма содержит служебную шапку форвардера
+    // («-------- Пересылаемое сообщение --------» + подпись), а САМО ТЗ идёт
+    // ниже. Простое slice(0, 3000) срезало как раз содержательную часть.
+    // Теперь режем по СМЫСЛУ: сохраняем начало (кто/что просит) и хвост
+    // (техническое описание обычно в конце).
     const maxLen = 3000;
-    const body = bodyText.length > maxLen ? bodyText.slice(0, maxLen) + '...[обрезано]' : bodyText;
+    let body;
+    if (bodyText.length > maxLen) {
+      const head = Math.floor(maxLen * 0.4);
+      const tail = maxLen - head;
+      body = bodyText.slice(0, head)
+        + '\n...[середина опущена]...\n'
+        + bodyText.slice(-tail);
+    } else {
+      body = bodyText;
+    }
     msg += `ТЕКСТ ПИСЬМА:\n${body}\n\n`;
   }
 
@@ -1076,7 +1110,18 @@ function buildAnalysisMessage({ subject, bodyText, fromEmail, fromName, attachme
 
   // Извлечённое содержимое вложений (PDF, DOCX, XLSX)
   if (attachmentTexts?.length) {
-    msg += `СОДЕРЖИМОЕ ВЛОЖЕНИЙ:\n${attachmentTexts.join('\n\n').slice(0, 20000)}\n\n`;
+    // D-284: раньше — просто `.slice(0, 20000)` на склейке. Что это давало
+    // на деле: первый файл (часто «Шаблон формата» или «Инструкция») съедал
+    // весь бюджет, а реальное ТЗ в конце не доходило до модели.
+    // Теперь: общий лимит делится, и каждому файлу гарантирован минимум,
+    // чтобы ни один документ не был отброшен целиком.
+    const TOTAL = 20000;
+    const perFile = Math.max(1500, Math.floor(TOTAL / attachmentTexts.length));
+    const capped = attachmentTexts.map((t) => {
+      const s = String(t || '');
+      return s.length > perFile ? s.slice(0, perFile) + '\n...[файл обрезан]' : s;
+    }).join('\n\n');
+    msg += `СОДЕРЖИМОЕ ВЛОЖЕНИЙ:\n${capped.slice(0, TOTAL)}\n\n`;
   }
 
   if (workload) {

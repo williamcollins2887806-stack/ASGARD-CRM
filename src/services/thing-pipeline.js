@@ -205,7 +205,9 @@ async function handleProtocol(db, job, log) {
     // Reasoning-модель (deepseek-v4-pro) сжигает весь лимит на размышления и
     // возвращает пустой content — протокол получался пустым. Flash отвечает
     // сразу и валидным JSON. Переопределяется через THING_PROTOCOL_MODEL.
-    model: process.env.THING_PROTOCOL_MODEL || 'deepseek/deepseek-v4.1-flash'
+    // D-286: модель берём из единого реестра (ai-models.js), без локального
+    // хардкода — иначе при смене модели часть CRM остаётся на старой.
+    model: process.env.THING_PROTOCOL_MODEL || require('./ai-models').MODEL_DEFAULT
   });
 
   if (!aiResult || !String(aiResult.text || '').trim()) {
