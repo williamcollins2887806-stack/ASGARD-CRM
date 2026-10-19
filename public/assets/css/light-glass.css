@@ -252,3 +252,125 @@ html[data-theme="light"] .inp:focus {
     box-shadow: none !important;
   }
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+   §90-L. MODERN POLISH — доводка «дорогого» вида
+   Мелкие штрихи, которые дают современность без перерисовки:
+   сетка отступов, скругления, таблицы, поля, hover-подъём.
+   ═══════════════════════════════════════════════════════════════════════════════ */
+
+html[data-theme="light"] {
+  --r-card: 14px;
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* ── Единые скругления: карточки 14px, поля 10px, плашки 999px ─────────── */
+html[data-theme="light"] :is(.card, .panel, .cr-card, .dash-widget-v2,
+  .stat-card, .kpi-card, .metric-card, .approval-card, .profile-card,
+  .worker-card, .hr-card, .trip-card, .est-card, .proc-card, .tender-card,
+  .call-card, .sr-card, .meeting-card) {
+  border-radius: var(--r-card) !important;
+}
+html[data-theme="light"] :is(.dw-kpi-card, .cr-select__trigger, .cr-f-input,
+  .cr-f-select, .cr-f-textarea, input, select, textarea, .inp) {
+  border-radius: 10px !important;
+}
+
+/* ── Карточки: подъём на hover, плавная кривая ─────────────────────────── */
+html[data-theme="light"] :is(.card, .panel, .dash-widget-v2, .stat-card,
+  .kpi-card, .metric-card, .worker-card, .hr-card, .est-card, .proc-card,
+  .tender-card) {
+  transition: box-shadow 0.22s var(--ease-out),
+              border-color 0.22s var(--ease-out),
+              transform 0.22s var(--ease-out);
+}
+html[data-theme="light"] :is(.card, .panel, .dash-widget-v2, .stat-card,
+  .kpi-card, .metric-card, .worker-card, .hr-card, .est-card, .proc-card,
+  .tender-card):hover {
+  transform: translateY(-2px);
+  box-shadow: var(--glass-shadow-hover), var(--glass-edge) !important;
+}
+
+/* ── Таблицы: воздух, зебра почти невидимая, sticky-шапка ──────────────── */
+html[data-theme="light"] :is(table, .tbl, .cr-table) thead th {
+  background: color-mix(in srgb, var(--bg1) 70%, #FFFFFF) !important;
+  color: var(--t2) !important;
+  font-size: 11.5px !important;
+  font-weight: 700 !important;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 10px 12px !important;
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  backdrop-filter: blur(6px);
+}
+html[data-theme="light"] :is(table, .tbl, .cr-table) tbody td {
+  padding: 10px 12px !important;
+  border-bottom: 1px solid color-mix(in srgb, #0F172A 6%, transparent) !important;
+}
+html[data-theme="light"] :is(table, .tbl, .cr-table) tbody tr:nth-child(even) td {
+  background: color-mix(in srgb, var(--bg1) 45%, #FFFFFF) !important;
+}
+html[data-theme="light"] :is(table, .tbl, .cr-table) tbody tr:hover td {
+  background: color-mix(in srgb, var(--blue) 5%, #FFFFFF) !important;
+}
+
+/* ── Поля: чёткий фокус, без «мыльной» рамки ───────────────────────────── */
+html[data-theme="light"] :is(input, select, textarea, .inp):focus-visible {
+  outline: none !important;
+  border-color: color-mix(in srgb, var(--blue) 52%, transparent) !important;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--blue) 13%, transparent) !important;
+}
+
+/* ── Скроллбары: тонкие, современные ───────────────────────────────────── */
+html[data-theme="light"] ::-webkit-scrollbar { width: 10px; height: 10px; }
+html[data-theme="light"] ::-webkit-scrollbar-track { background: transparent; }
+html[data-theme="light"] ::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, #0F172A 16%, transparent);
+  border-radius: 999px;
+  border: 3px solid transparent;
+  background-clip: content-box;
+}
+html[data-theme="light"] ::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, #0F172A 28%, transparent);
+  background-clip: content-box;
+}
+
+/* ── Разделители: волосяные, холодные ──────────────────────────────────── */
+html[data-theme="light"] :is(hr, .divider, .sep) {
+  border: none !important;
+  height: 1px !important;
+  background: color-mix(in srgb, #0F172A 7%, transparent) !important;
+}
+
+/* ── Топбар: чуть выше и с воздухом ────────────────────────────────────── */
+html[data-theme="light"] .topbar,
+html[data-theme="light"] .asg-header {
+  min-height: 58px;
+  padding-left: 22px;
+  padding-right: 22px;
+}
+
+/* ── Заголовки страниц: плотнее, современнее ───────────────────────────── */
+html[data-theme="light"] :is(.page-title, .cr-page-title, h1.page-title) {
+  font-size: 19px !important;
+  font-weight: 800 !important;
+  letter-spacing: -0.015em !important;
+  color: var(--t1) !important;
+}
+
+/* ── Бейджи и чипы: единая геометрия ───────────────────────────────────── */
+html[data-theme="light"] :is(.badge, .pill, .tag, .chip) {
+  border-radius: 999px !important;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+/* ── Уважение к reduced-motion ─────────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  html[data-theme="light"] :is(.card, .panel, .dash-widget-v2, .stat-card,
+    .kpi-card, .metric-card):hover {
+    transform: none;
+  }
+}
