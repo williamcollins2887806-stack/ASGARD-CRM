@@ -5725,9 +5725,20 @@ html[data-theme="light"] .pk3-stk-float-bar { background: rgba(255,255,255,.94);
         || /\.docx?$/.test(nameLow) || /\.xlsx?$/.test(nameLow)
       );
       if (needsPdf) previewUrl += (url.indexOf('?') >= 0 ? '&' : '?') + 'format=pdf';
-      const archiveListUrl = (mimeLow.includes('zip') || nameLow.endsWith('.zip')) && src === 'manual'
-        ? `/api/pre-tenders/${ptId}/documents/${encodeURIComponent(docId)}/archive-list` : null;
-      window.AsgardDocPreview.open({ title: fname.trim(), fileUrl: previewUrl, mime, downloadUrl: url, archiveListUrl });
+      // D-290: архивы из письма тоже открываются списком (раньше — только manual_documents).
+      const isZipDoc = mimeLow.includes('zip') || nameLow.endsWith('.zip');
+      let archiveListUrl = null;
+      let archiveEntryUrl = null;
+      if (isZipDoc) {
+        if (src === 'manual') {
+          archiveListUrl = `/api/pre-tenders/${ptId}/documents/${encodeURIComponent(docId)}/archive-list?token=${token}`;
+          archiveEntryUrl = `/api/pre-tenders/${ptId}/documents/${encodeURIComponent(docId)}/archive-entry?token=${token}`;
+        } else if (src === 'email') {
+          archiveListUrl = `/api/pre-tenders/${ptId}/email-attachments/${encodeURIComponent(docId)}/archive-list?token=${token}`;
+          archiveEntryUrl = `/api/pre-tenders/${ptId}/email-attachments/${encodeURIComponent(docId)}/archive-entry?token=${token}`;
+        }
+      }
+      window.AsgardDocPreview.open({ title: fname.trim(), fileUrl: previewUrl, mime, downloadUrl: url, archiveListUrl, archiveEntryUrl });
     } else {
       window.open(url, '_blank', 'noopener');
     }

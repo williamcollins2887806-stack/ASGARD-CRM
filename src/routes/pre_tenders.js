@@ -132,6 +132,172 @@ function isMimirGeneratedDoc(doc) {
   return !!(doc && (doc.generated_by === 'mimir' || doc.source === 'mimir'));
 }
 
+// ── Предпросмотр вложений (D-290, 19.10.2026) ───────────────────────────────
+// Модуль doc-preview-modal.js уже умел img/pdf/text/office/zip, но:
+//   • офис конвертировался только для manual_documents (вложения почты — 415);
+//   • архив отдавал лишь список имён, посмотреть файл внутри было нельзя.
+// Эти хелперы закрывают оба пробела для ЛЮБОГО источника.
+
+const OFFICE_CONVERT_EXTS = new Set(['.xlsx', '.xls', '.docx', '.doc', '.odt', '.ods', '.rtf', '.pptx', '.ppt', '.csv']);
+const OFFICE_CONVERT_MIME_PARTS = ['spreadsheet', 'wordprocessing', 'msword', 'officedocument', 'presentation', 'rtf'];
+
+/** Нужна ли серверная конвертация в PDF для предпросмотра. */
+function needsOfficeConversion(absPath, mime) {
+  const ext = String(path.extname(absPath || '') || '').toLowerCase();
+  if (OFFICE_CONVERT_EXTS.has(ext)) return true;
+  const m = String(mime || '').toLowerCase();
+  return OFFICE_CONVERT_MIME_PARTS.some((p) => m.includes(p));
+}
+
+/**
+ * LibreOffice --headless → PDF. Кэш в /tmp/pkpdf_cache по хэшу пути+size+mtime,
+ * иначе каждое открытие XLSX на 3 МБ занимает 3-8 секунд.
+ * Возвращает Buffer или null; ошибку НЕ бросает — вызывающий отдаёт исходник.
+ */
+function convertOfficeToPdf(absPath) {
+  const fsCrypto = require('crypto');
+  let stat = null;
+  try { stat = fs.statSync(absPath); } catch (_) { return null; }
+
+  const cacheDir = '/tmp/pkpdf_cache';
+  try { fs.mkdirSync(cacheDir, { recursive: true }); } catch (_) {}
+  const key = fsCrypto.createHash('sha1')
+    .update(absPath + '|' + stat.size + '|' + Math.floor(stat.mtimeMs || 0))
+    .digest('hex');
+  const cached = path.join(cacheDir, key + '.pdf');
+
+  try {
+    if (fs.existsSync(cached)) {
+      const b = fs.readFileSync(cached);
+      if (b && b.length > 4) return b;
+    }
+  } catch (_) {}
+
+  const { spawnSync } = require('child_process');
+  const tmpDir = `/tmp/pkpdf_${Date.now()}_${Math.floor(Math.random() * 1e6)}`;
+  try { fs.mkdirSync(tmpDir, { recursive: true }); } catch (_) {}
+  try {
+    const r = spawnSync('libreoffice', ['--headless', '--convert-to', 'pdf', '--outdir', tmpDir, absPath], {
+      timeout: 45000,
+      windowsHide: true,
+      env: { ...process.env, HOME: '/tmp' },
+    });
+    if (r.status !== 0) return null;
+    const baseNoExt = path.basename(absPath, path.extname(absPath));
+    let pdfAbs = path.join(tmpDir, baseNoExt + '.pdf');
+    if (!fs.existsSync(pdfAbs)) {
+      const list = fs.readdirSync(tmpDir).filter((f) => /\.pdf$/i.test(f));
+      if (list.length) pdfAbs = path.join(tmpDir, list[0]);
+    }
+    if (!fs.existsSync(pdfAbs)) return null;
+    const buf = fs.readFileSync(pdfAbs);
+    try { fs.writeFileSync(cached, buf); } catch (_) {}
+    return buf;
+  } catch (_) {
+    return null;
+  } finally {
+    try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch (_) {}
+  }
+}
+
+/**
+ * D-290: имена внутри ZIP. Русские архивы (Windows/WinRAR) пишут имена в CP866
+ * БЕЗ флага UTF-8 (0x800) в general purpose bit flag. adm-zip в этом случае
+ * декодирует как latin1, и кириллица в списке файлов превращается в мусор.
+ * Декодируем cp866 только когда флага нет и есть не-ASCII байты.
+ */
+function decodeArchiveEntryName(entry) {
+  const raw = entry.rawEntryName;
+  if (!raw || !raw.length) return entry.entryName || '';
+  // ASCII — декодировать нечего.
+  if (raw.every((b) => b < 0x80)) return entry.entryName || '';
+  const flags = (entry.header && entry.header.flags) || 0;
+  if (flags & 0x800) return entry.entryName || ''; // уже UTF-8
+  try {
+    const decoded = new TextDecoder('ibm866').decode(raw);
+    if (decoded && !decoded.includes('\uFFFD')) return decoded;
+  } catch (_) { /* нет поддержки cp866 — оставляем как есть */ }
+  return entry.entryName || '';
+}
+
+/** Список файлов архива с читаемыми именами. */
+function listArchiveEntries(zip) {
+  return zip.getEntries()
+    .filter((e) => !e.isDirectory)
+    .map((e) => ({
+      path: decodeArchiveEntryName(e),
+      size: (e.header && e.header.size) || 0,
+      compressed: (e.header && e.header.compressedSize) || 0,
+    }));
+}
+
+/**
+ * Найти файл в архиве по имени, которое прислал клиент (уже декодированному).
+ * Прямой getEntry не годится: в архиве лежит cp866-байты.
+ */
+function findArchiveEntry(zip, wantedPath) {
+  const raw = String(wantedPath || '').replace(/\\/g, '/');
+  if (!raw || raw.includes('\0')) return null;
+  if (raw.split('/').some((p) => p === '..')) return null;
+
+  // 1) Быстрый путь — имя совпало как есть (архивы с UTF-8-флагом).
+  try {
+    const direct = zip.getEntry(raw);
+    if (direct && !direct.isDirectory) return direct;
+  } catch (_) {}
+
+  // 2) Сравниваем декодированные имена (cp866-архивы).
+  for (const e of zip.getEntries()) {
+    if (e.isDirectory) continue;
+    if (decodeArchiveEntryName(e).replace(/\\/g, '/') === raw) return e;
+  }
+  return null;
+}
+
+/**
+ * Достать файл из ZIP для предпросмотра. Офисные документы внутри архива тоже
+ * конвертируем в PDF (через временный файл), иначе DOCX из архива не открыть.
+ * Возвращает { data: Buffer, contentType, filename } или null.
+ */
+function extractArchiveEntryForPreview(zip, entryPath, wantPdf) {
+  const entry = findArchiveEntry(zip, entryPath);
+  if (!entry) return null;
+  const decoded = decodeArchiveEntryName(entry);
+  const name = path.basename(decoded);
+  const ext = String(path.extname(name) || '').toLowerCase();
+  let data = entry.getData();
+
+  if (wantPdf && needsOfficeConversion('x' + ext, null) && ext !== '.pdf') {
+    const tmpDir = `/tmp/pkzip_${Date.now()}_${Math.floor(Math.random() * 1e6)}`;
+    try {
+      fs.mkdirSync(tmpDir, { recursive: true });
+      const tmpFile = path.join(tmpDir, name);
+      fs.writeFileSync(tmpFile, data);
+      const pdf = convertOfficeToPdf(tmpFile);
+      if (pdf) {
+        return { data: pdf, contentType: 'application/pdf', filename: name.replace(/\.[^.]+$/, '') + '.pdf' };
+      }
+    } catch (_) {
+      /* падаем в исходник */
+    } finally {
+      try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch (_) {}
+    }
+  }
+
+  return { data, contentType: previewContentTypeForEntry(name, null), filename: name };
+}
+
+/** Читаемый тип по расширению внутри архива (браузер получит inline). */
+function previewContentTypeForEntry(name, fallbackMime) {
+  const ext = String(path.extname(name || '') || '').toLowerCase();
+  try {
+    const { safeContentType } = require('../lib/upload-ext');
+    return safeContentType(ext, fallbackMime);
+  } catch (_) {
+    return fallbackMime || 'application/octet-stream';
+  }
+}
+
 module.exports = async function (fastify) {
 
   // ═══════════════════════════════════════════════════════════════════
@@ -1299,48 +1465,20 @@ module.exports = async function (fastify) {
         return reply.code(415).send({ error: 'pdf_conversion_unsupported_source', source_ext: srcExt, source_mime: srcMime });
       }
 
-      const { spawnSync } = require('child_process');
-      const tmpDir = `/tmp/pkpdf_${Date.now()}_${docIdx}_${Math.floor(Math.random() * 1e6)}`;
-      try { fs.mkdirSync(tmpDir, { recursive: true }); } catch (_) {}
-      let pdfAbs = null;
-      try {
-        const r = spawnSync('libreoffice', ['--headless', '--convert-to', 'pdf', '--outdir', tmpDir, absPath], {
-          timeout: 30000,
-          windowsHide: true
-        });
-        if (r.status !== 0) {
-          try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch (_) {}
-          const stderr = (r.stderr && r.stderr.toString()) || (r.error && r.error.message) || 'libreoffice non-zero exit';
-          return reply.code(500).send({ error: 'PDF conversion failed', detail: stderr.slice(0, 500) });
-        }
-        const baseNoExt = path.basename(absPath, path.extname(absPath));
-        pdfAbs = path.join(tmpDir, baseNoExt + '.pdf');
-        if (!fs.existsSync(pdfAbs)) {
-          // LibreOffice мог дать другое имя (нормализация unicode/пробелов) — берём первый .pdf в tmpDir.
-          try {
-            const list = fs.readdirSync(tmpDir).filter(f => /\.pdf$/i.test(f));
-            if (list.length) pdfAbs = path.join(tmpDir, list[0]);
-          } catch (_) {}
-        }
-        if (!pdfAbs || !fs.existsSync(pdfAbs)) {
-          try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch (_) {}
-          return reply.code(500).send({ error: 'PDF conversion failed', detail: 'output_pdf_not_found' });
-        }
-        const buf = fs.readFileSync(pdfAbs);
-        const srcDispName = (doc.original_name || doc.filename || 'document');
-        const pdfDispName = srcDispName.replace(/\.[^.]+$/, '') + '.pdf';
-        const safeDispName = pdfDispName.replace(/[\r\n"]/g, '_');
-        // Удаляем временную директорию сразу после чтения, до .send (буфер уже в памяти).
-        try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch (_) {}
-        return reply
-          .header('Content-Type', 'application/pdf')
-          .header('Content-Length', buf.length)
-          .header('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(safeDispName)}`)
-          .send(buf);
-      } catch (e) {
-        try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch (_) {}
-        return reply.code(500).send({ error: 'PDF conversion failed', detail: String(e && e.message || e).slice(0, 500) });
+      // D-290: единый хелпер с дисковым кэшем (/tmp/pkpdf_cache). Раньше здесь была
+      // своя конвертация без кэша — один и тот же XLSX на 3 МБ открывался 3-8 сек.
+      const pdfBuf = convertOfficeToPdf(absPath);
+      if (!pdfBuf) {
+        return reply.code(500).send({ error: 'PDF conversion failed', detail: 'libreoffice_failed' });
       }
+      const srcDispName = (doc.original_name || doc.filename || 'document');
+      const pdfDispName = srcDispName.replace(/\.[^.]+$/, '') + '.pdf';
+      const safeDispName = pdfDispName.replace(/[\r\n"]/g, '_');
+      return reply
+        .header('Content-Type', 'application/pdf')
+        .header('Content-Length', pdfBuf.length)
+        .header('Content-Disposition', `inline; filename*=UTF-8''${encodeURIComponent(safeDispName)}`)
+        .send(pdfBuf);
     }
     // ─── /Wave-8 task A ────────────────────────────────────────────────────
 
@@ -1397,13 +1535,7 @@ module.exports = async function (fastify) {
     if (ext !== '.zip') return reply.code(400).send({ error: 'not_a_zip_archive' });
     try {
       const zip = new AdmZip(absPath);
-      const entries = zip.getEntries()
-        .filter((e) => !e.isDirectory)
-        .map((e) => ({
-          path: e.entryName,
-          size: (e.header && e.header.size) || 0,
-          compressed: (e.header && e.header.compressedSize) || 0,
-        }));
+      const entries = listArchiveEntries(zip);
       return { entries, count: entries.length };
     } catch (e) {
       return reply.code(500).send({ error: 'archive_read_failed', detail: String(e.message || e).slice(0, 200) });
@@ -1894,6 +2026,30 @@ module.exports = async function (fastify) {
       try { if (fs.existsSync(p) && fs.statSync(p).isFile()) { absPath = p; break; } } catch (_) {}
     }
     if (!absPath) return reply.code(404).send({ error: 'file_not_found_on_disk' });
+
+    // D-290: ?format=pdf для ВЛОЖЕНИЙ ПОЧТЫ. Раньше офис конвертировался только
+    // для manual_documents → DOCX/XLSX из письма не открывались в предпросмотре.
+    if (String(request.query.format || '').toLowerCase() === 'pdf') {
+      const srcExt = String(path.extname(absPath) || '').toLowerCase();
+      const isPdfSrc = srcExt === '.pdf' || String(att.mime_type || '').toLowerCase() === 'application/pdf';
+      if (!isPdfSrc) {
+        if (!needsOfficeConversion(absPath, att.mime_type)) {
+          return reply.code(415).send({ error: 'pdf_conversion_unsupported_source', source_ext: srcExt });
+        }
+        const pdfBuf = convertOfficeToPdf(absPath);
+        if (!pdfBuf) {
+          return reply.code(500).send({ error: 'PDF conversion failed', detail: 'libreoffice_failed' });
+        }
+        const pdfName = (att.original_filename || att.filename || 'document')
+          .replace(/\.[^.]+$/, '') + '.pdf';
+        return reply
+          .header('Content-Type', 'application/pdf')
+          .header('Content-Length', pdfBuf.length)
+          .header('Content-Disposition', `inline; filename*=UTF-8''${encodeURIComponent(pdfName.replace(/[\r\n"]/g, '_'))}`)
+          .send(pdfBuf);
+      }
+    }
+
     const buf = fs.readFileSync(absPath);
     const dispName = (att.original_filename || att.filename || 'attachment').replace(/[\r\n"]/g, '_');
     // D-220 (20.09): тип по расширению реального файла (белый список), не по client-supplied MIME.
@@ -1903,6 +2059,164 @@ module.exports = async function (fastify) {
       .header('Content-Length', buf.length)
       .header('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(dispName)}`)
       .send(buf);
+  });
+
+  // ═══════════════════════════════════════════════════════════════════
+  // 7.7a GET /:ptId/email-attachments/:attId/archive-list
+  //      Содержимое ZIP-вложения почты (D-290). Раньше работало только для
+  //      manual_documents — архив из письма открывался как «скачать».
+  // ═══════════════════════════════════════════════════════════════════
+  fastify.get('/:ptId/email-attachments/:attId/archive-list', {
+    preHandler: [
+      async (request, reply) => {
+        if (!request.headers.authorization && request.query.token) {
+          request.headers.authorization = 'Bearer ' + request.query.token;
+        }
+      },
+      fastify.authenticate
+    ]
+  }, async (request, reply) => {
+    const AdmZip = require('adm-zip');
+    const ptId = Number(request.params.ptId);
+    const attId = Number(request.params.attId);
+    if (!Number.isFinite(ptId) || !Number.isFinite(attId)) {
+      return reply.code(400).send({ error: 'invalid_params' });
+    }
+    const acc = await checkPreTenderAccess(request.user, ptId);
+    if (!acc.ok) return reply.code(acc.code).send({ error: acc.error });
+    const r = await db.query(`
+      SELECT ea.id, ea.filename, ea.original_filename, ea.mime_type, ea.size, ea.file_path
+      FROM email_attachments ea
+      JOIN pre_tender_requests pt ON pt.email_id = ea.email_id
+      WHERE ea.id = $1 AND pt.id = $2 LIMIT 1
+    `, [attId, ptId]);
+    const att = r.rows[0];
+    if (!att) return reply.code(404).send({ error: 'attachment_not_found' });
+    const candidates = [
+      att.file_path,
+      path.join(process.cwd(), att.file_path),
+      path.join(process.cwd(), 'uploads', att.file_path),
+      path.join(process.cwd(), 'uploads', 'mail', att.file_path),
+    ];
+    let absPath = null;
+    for (const p of candidates) {
+      try { if (fs.existsSync(p) && fs.statSync(p).isFile()) { absPath = p; break; } } catch (_) {}
+    }
+    if (!absPath) return reply.code(404).send({ error: 'file_not_found_on_disk' });
+    if (String(path.extname(absPath) || '').toLowerCase() !== '.zip') {
+      return reply.code(400).send({ error: 'not_a_zip_archive' });
+    }
+    try {
+      const zip = new AdmZip(absPath);
+      const entries = listArchiveEntries(zip);
+      return { entries, count: entries.length };
+    } catch (e) {
+      return reply.code(500).send({ error: 'archive_read_failed', detail: String(e.message || e).slice(0, 200) });
+    }
+  });
+
+  // ═══════════════════════════════════════════════════════════════════
+  // 7.7b GET /:ptId/documents/:docIdx/archive-entry?path=...
+  //      Достать ОДИН файл из ZIP для предпросмотра (D-290).
+  //      Раньше проводник показывал только имена — «открыть файл внутри» нельзя.
+  // ═══════════════════════════════════════════════════════════════════
+  fastify.get('/:ptId/documents/:docIdx/archive-entry', {
+    preHandler: [
+      async (request, reply) => {
+        if (!request.headers.authorization && request.query.token) {
+          request.headers.authorization = 'Bearer ' + request.query.token;
+        }
+      },
+      fastify.authenticate
+    ]
+  }, async (request, reply) => {
+    const AdmZip = require('adm-zip');
+    const ptId = Number(request.params.ptId);
+    const docIdx = Number(request.params.docIdx);
+    if (!Number.isFinite(ptId) || !Number.isFinite(docIdx) || docIdx < 0) {
+      return reply.code(400).send({ error: 'invalid_params' });
+    }
+    const acc = await checkPreTenderAccess(request.user, ptId);
+    if (!acc.ok) return reply.code(acc.code).send({ error: acc.error });
+    const r = await db.query(
+      `SELECT manual_documents FROM pre_tender_requests WHERE id = $1 LIMIT 1`, [ptId]);
+    const docs = Array.isArray(r.rows[0]?.manual_documents) ? r.rows[0].manual_documents : [];
+    if (docIdx >= docs.length) return reply.code(404).send({ error: 'document_not_found' });
+    const absPath = resolvePreTenderDocPath(docs[docIdx], ptId);
+    if (!absPath || !fs.existsSync(absPath)) return reply.code(404).send({ error: 'file_not_found_on_disk' });
+    if (String(path.extname(absPath) || '').toLowerCase() !== '.zip') {
+      return reply.code(400).send({ error: 'not_a_zip_archive' });
+    }
+    try {
+      const zip = new AdmZip(absPath);
+      const out = extractArchiveEntryForPreview(zip, request.query.path, String(request.query.format || '').toLowerCase() === 'pdf');
+      if (!out) return reply.code(404).send({ error: 'entry_not_found' });
+      return reply
+        .header('Content-Type', out.contentType)
+        .header('Content-Length', out.data.length)
+        .header('Content-Disposition', `inline; filename*=UTF-8''${encodeURIComponent(out.filename.replace(/[\r\n"]/g, '_'))}`)
+        .send(out.data);
+    } catch (e) {
+      return reply.code(500).send({ error: 'archive_read_failed', detail: String(e.message || e).slice(0, 200) });
+    }
+  });
+
+  // ═══════════════════════════════════════════════════════════════════
+  // 7.7c GET /:ptId/email-attachments/:attId/archive-entry?path=...
+  //      То же для ZIP-вложения почты.
+  // ═══════════════════════════════════════════════════════════════════
+  fastify.get('/:ptId/email-attachments/:attId/archive-entry', {
+    preHandler: [
+      async (request, reply) => {
+        if (!request.headers.authorization && request.query.token) {
+          request.headers.authorization = 'Bearer ' + request.query.token;
+        }
+      },
+      fastify.authenticate
+    ]
+  }, async (request, reply) => {
+    const AdmZip = require('adm-zip');
+    const ptId = Number(request.params.ptId);
+    const attId = Number(request.params.attId);
+    if (!Number.isFinite(ptId) || !Number.isFinite(attId)) {
+      return reply.code(400).send({ error: 'invalid_params' });
+    }
+    const acc = await checkPreTenderAccess(request.user, ptId);
+    if (!acc.ok) return reply.code(acc.code).send({ error: acc.error });
+    const r = await db.query(`
+      SELECT ea.file_path
+      FROM email_attachments ea
+      JOIN pre_tender_requests pt ON pt.email_id = ea.email_id
+      WHERE ea.id = $1 AND pt.id = $2 LIMIT 1
+    `, [attId, ptId]);
+    const att = r.rows[0];
+    if (!att) return reply.code(404).send({ error: 'attachment_not_found' });
+    const candidates = [
+      att.file_path,
+      path.join(process.cwd(), att.file_path),
+      path.join(process.cwd(), 'uploads', att.file_path),
+      path.join(process.cwd(), 'uploads', 'mail', att.file_path),
+    ];
+    let absPath = null;
+    for (const p of candidates) {
+      try { if (fs.existsSync(p) && fs.statSync(p).isFile()) { absPath = p; break; } } catch (_) {}
+    }
+    if (!absPath) return reply.code(404).send({ error: 'file_not_found_on_disk' });
+    if (String(path.extname(absPath) || '').toLowerCase() !== '.zip') {
+      return reply.code(400).send({ error: 'not_a_zip_archive' });
+    }
+    try {
+      const zip = new AdmZip(absPath);
+      const out = extractArchiveEntryForPreview(zip, request.query.path, String(request.query.format || '').toLowerCase() === 'pdf');
+      if (!out) return reply.code(404).send({ error: 'entry_not_found' });
+      return reply
+        .header('Content-Type', out.contentType)
+        .header('Content-Length', out.data.length)
+        .header('Content-Disposition', `inline; filename*=UTF-8''${encodeURIComponent(out.filename.replace(/[\r\n"]/g, '_'))}`)
+        .send(out.data);
+    } catch (e) {
+      return reply.code(500).send({ error: 'archive_read_failed', detail: String(e.message || e).slice(0, 200) });
+    }
   });
 
   // ═══════════════════════════════════════════════════════════════════
