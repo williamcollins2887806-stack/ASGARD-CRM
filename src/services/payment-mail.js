@@ -67,14 +67,21 @@ function hashToken(raw) {
   return crypto.createHash('sha256').update(String(raw), 'utf8').digest('hex');
 }
 
-function wrapEmail(title, inner) {
+// opts.kicker / opts.footer — точки расширения для писем-согласований других модулей
+// (напр. отпуска). Без opts поведение прежнее (payment-mail).
+function wrapEmail(title, inner, opts) {
+  opts = opts || {};
+  const kicker = opts.kicker ? esc(opts.kicker) : 'АСГАРД · ОПЛАТА';
+  const footer = opts.footer != null
+    ? esc(opts.footer)
+    : 'Вход в CRM не нужен. Решение — кнопки Согласовать / Отказать. Счёт во вложении письма.';
   return `<!DOCTYPE html>
 <html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
 <body style="margin:0;padding:0;background:#eef1f6;font-family:Arial,Helvetica,sans-serif;color:#1b2a4a;">
   <div style="max-width:560px;margin:0 auto;padding:20px 16px 40px;">
     <div style="background:#fff;border-radius:14px;overflow:hidden;box-shadow:0 8px 24px rgba(27,42,74,.08);">
       <div style="background:#1b2a4a;color:#fff;padding:18px 20px;">
-        <div style="font-size:12px;letter-spacing:.08em;color:#c9a227;font-weight:700;">АСГАРД · ОПЛАТА</div>
+        <div style="font-size:12px;letter-spacing:.08em;color:#c9a227;font-weight:700;">${kicker}</div>
         <div style="font-size:18px;font-weight:700;margin-top:4px;">${esc(title)}</div>
       </div>
       <div style="padding:22px 20px 26px;">
@@ -82,7 +89,7 @@ function wrapEmail(title, inner) {
       </div>
     </div>
     <p style="text-align:center;font-size:12px;color:#6b7280;margin-top:14px;line-height:1.45;">
-      Вход в CRM не нужен. Решение — кнопки Согласовать / Отказать. Счёт во вложении письма.
+      ${footer}
     </p>
   </div>
 </body></html>`;
@@ -112,6 +119,17 @@ function ctaButtons(pageUrl) {
   return `
     <a href="${esc(pageUrl)}" style="display:block;background:#15803d;color:#fff;text-decoration:none;text-align:center;padding:14px 16px;border-radius:10px;font-weight:700;font-size:16px;margin:18px 0 10px;">Согласовать</a>
     <a href="${esc(pageUrl)}" style="display:block;background:#b91c1c;color:#fff;text-decoration:none;text-align:center;padding:14px 16px;border-radius:10px;font-weight:700;font-size:16px;">Отказать</a>
+    <p style="font-size:13px;color:#6b7280;margin:16px 0 0;line-height:1.45;">
+      Откроется страница решения без входа в CRM. Ссылка действует ${TOKEN_TTL_HOURS} часов.
+    </p>`;
+}
+
+// Кнопки «Да / Нет» на две РАЗНЫЕ ссылки (отпуска, касса). Для бинарных
+// решений, где approve/reject ведут на разные URL. Повторяет стиль ctaButtons.
+function ctaButtonsDual({ primaryUrl, secondaryUrl, primaryLabel, secondaryLabel }) {
+  return `
+    <a href="${esc(primaryUrl)}" style="display:block;background:#15803d;color:#fff;text-decoration:none;text-align:center;padding:14px 16px;border-radius:10px;font-weight:700;font-size:16px;margin:18px 0 10px;">${esc(primaryLabel || 'Да, согласовать')}</a>
+    <a href="${esc(secondaryUrl)}" style="display:block;background:#b91c1c;color:#fff;text-decoration:none;text-align:center;padding:14px 16px;border-radius:10px;font-weight:700;font-size:16px;">${esc(secondaryLabel || 'Нет, снять')}</a>
     <p style="font-size:13px;color:#6b7280;margin:16px 0 0;line-height:1.45;">
       Откроется страница решения без входа в CRM. Ссылка действует ${TOKEN_TTL_HOURS} часов.
     </p>`;
@@ -657,6 +675,10 @@ module.exports = {
   landingMessageHtml,
   landingActionHtml,
   landingBatchActionHtml,
+  // Точки расширения для писем-согласований других модулей (напр. отпуска).
+  wrapEmail,
+  ctaButtons,
+  ctaButtonsDual,
   createToken,
   createBatchToken,
   buildAttachment,
