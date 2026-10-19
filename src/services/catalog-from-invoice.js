@@ -5,6 +5,11 @@
  * найти/создать supplier + product + INSERT price_records.
  */
 
+// Очистка наименований (заказчик 19.10.2026): размеры/ГОСТ/фасовка уходят в
+// артикул, в item_name остаётся читаемое имя. Работает для ВСЕХ путей записи
+// в номенклатуру (почта, ручная загрузка, импорт) — не только для ИИ-парсера.
+const { splitItemName, tidyOrgName } = require('../lib/item-name-clean');
+
 function num(v) {
   const n = parseFloat(v);
   return Number.isFinite(n) ? n : 0;
@@ -34,7 +39,8 @@ async function ensureSupplier(db, { supplierId, supplierName }) {
     const { rows } = await db.query('SELECT id, name FROM suppliers WHERE id=$1', [supplierId]);
     if (rows[0]) return rows[0];
   }
-  const name = String(supplierName || '').trim();
+  // Кавычки в названии из OCR приводим в порядок («ООО "ТД "БАШПРОМТОРГ» → закрытая пара).
+  const name = tidyOrgName(String(supplierName || '').trim());
   if (!name) return null;
   const found = await db.query(
     `SELECT id, name FROM suppliers WHERE lower(name)=lower($1) LIMIT 1`,
@@ -116,13 +122,17 @@ async function enrichCatalogFromLines(db, opts = {}) {
   let created = 0;
   let priced = 0;
   for (const line of lines) {
-    const name = line.name || line.invoice_name || line.item_name;
+    // Очистка наименования: «Мат из минваты ... - 2000.1200.60 ГОСТ ... (5,184 м3)»
+    // → имя «Мат из минваты ...», остаток в артикул. Чистые названия не трогает.
+    const split = splitItemName(line.name || line.invoice_name || line.item_name);
+    const name = split.name;
+    const articleLine = line.article || split.tail || null;
     const price = num(line.unit_price);
     if (!name || !(price > 0)) continue;
     const qty = num(line.quantity != null ? line.quantity : (line.qty != null ? line.qty : line.need_qty)) || null;
     const product = await findOrCreateProduct(db, {
       name,
-      article: line.article,
+      article: articleLine,
       unit: line.unit,
       userId: opts.userId
     });
@@ -139,7 +149,7 @@ async function enrichCatalogFromLines(db, opts = {}) {
           WHERE doc_registry_id=$1 AND lower(trim(item_name))=lower(trim($2))
             AND COALESCE(lower(article),'') = COALESCE(lower($3),'')
           LIMIT 1`,
-        [opts.docRegistryId, name, line.article || null]);
+        [opts.docRegistryId, name, articleLine]);
       if (ex.rows[0]) {
         await db.query(
           `UPDATE price_records SET unit_price=$2, quantity=$3, total=$4,
@@ -162,7 +172,7 @@ async function enrichCatalogFromLines(db, opts = {}) {
         product.id,
         product.category_id || null,
         name,
-        line.article || null,
+        articleLine,
         line.unit || 'шт',
         supplier?.id || null,
         supplier?.name || opts.supplierName || null,
