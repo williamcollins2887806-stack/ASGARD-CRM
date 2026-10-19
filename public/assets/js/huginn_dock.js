@@ -1720,12 +1720,13 @@
     const panel = root.querySelector('#hgPanel');
     if (!panel) return;
     attachRippleDelegate(panel);
-    const tabChanged = state.tab !== lastPanelTab;
-    if (tabChanged) {
-      lastPanelTab = state.tab;
-      syncRailActive();
-      Promise.resolve().then(notifyLayout);
-    }
+      const tabChanged = state.tab !== lastPanelTab;
+      const enteringContacts = state.tab === 'contacts' && lastPanelTab !== 'contacts';
+      if (tabChanged) {
+        lastPanelTab = state.tab;
+        syncRailActive();
+        Promise.resolve().then(notifyLayout);
+      }
     if (root) {
       root.classList.toggle('is-thread', !!(state.chatId && (state.tab === 'huginn' || state.isMimirThread)));
       syncFloatNavBodyClasses();
@@ -1796,10 +1797,14 @@
       return;
     }
 
-    if (state.tab === 'contacts') {
-      renderContactsPanel(panel);
-      return;
-    }
+      if (state.tab === 'contacts') {
+        // Сброс «залипшего» фильтра: contactsQ жил вечно, поэтому после любого
+        // поиска список оставался отфильтрованным (казалось, что контакты
+        // пропали). При входе в таб всегда показываем полный список.
+        if (enteringContacts) state.contactsQ = '';
+        renderContactsPanel(panel);
+        return;
+      }
     if (state.tab === 'settings') {
       renderSettingsPanel(panel);
       return;
@@ -3677,10 +3682,13 @@
     });
   }
 
-  async function renderContactsPanel(panel) {
+  async function renderContactsPanel(panel, opts) {
+    // opts.keepFocus — не пересоздавать шапку/поле поиска (иначе ввод теряет
+    // фокус после первой буквы: panel.innerHTML перерисовывался целиком).
+    const keepFocus = !!(opts && opts.keepFocus);
     const q = (state.contactsQ || '').toLowerCase().trim();
     if (!state.contactsDirectory || !state.contactsDirectory.length) {
-      panel.innerHTML = '<div class="hg-empty">Загрузка…</div>';
+      if (!keepFocus) panel.innerHTML = '<div class="hg-empty">Загрузка…</div>';
       await loadContactsDirectory();
     }
     let rows = contactRowsFromChats();
@@ -3752,6 +3760,82 @@
         </button>`;
       }
     }
+    // Привязка обработчиков строк/индекса — общая для обеих ветвей рендера.
+    // Раньше в ветке keepFocus стоял ранний return ДО этой привязки: после
+    // ввода в поиске список обновлялся, но контакты переставали кликаться.
+    const wireContacts = () => {
+      // A9: алфавитный индекс — клик скроллит к букве.
+      panel.querySelectorAll('#hgAlpha [data-letter]').forEach((el) => {
+        el.onclick = () => {
+          const L = el.getAttribute('data-letter');
+          const head = panel.querySelector('.hg-contact-letter[data-letter-head="' + (window.CSS && CSS.escape ? CSS.escape(L) : L) + '"]');
+          if (head) head.scrollIntoView({ block: 'start', behavior: 'smooth' });
+        };
+      });
+      panel.querySelectorAll('.hg-contact-row.is-invite').forEach((el) => {
+        const uid = Number(el.getAttribute('data-invite-uid'));
+        el.oncontextmenu = (ev) => {
+          ev.preventDefault();
+          ev.stopPropagation();
+          openContactMenu(uid, ev.clientX, ev.clientY);
+        };
+        el.onclick = () => openInviteSheet({ name: el.getAttribute('data-invite-name') });
+      });
+      panel.querySelectorAll('.hg-contact-row:not(.is-invite)').forEach((el) => {
+        const uidAttr = Number(el.getAttribute('data-uid'));
+        // Правая кнопка: звонок через Mango / Huginn / чат / приглашение.
+        el.oncontextmenu = (ev) => {
+          ev.preventDefault();
+          ev.stopPropagation();
+          openContactMenu(uidAttr, ev.clientX, ev.clientY);
+        };
+        el.onclick = async () => {
+          const cid = Number(el.getAttribute('data-cid'));
+          const uid = Number(el.getAttribute('data-uid'));
+          state.selectedContactUid = uid || null;
+          panel.querySelectorAll('.hg-contact-row').forEach((row) => {
+            row.classList.toggle('is-active', row === el);
+          });
+          if (cid > 0) { state.tab = 'huginn'; state.mobileNav = 'chats'; openChat(cid); return; }
+          if (uid > 0) {
+            try {
+              const data = await api('/api/chat-groups/direct', { method: 'POST', body: { user_id: uid } });
+              const chat = data.chat || data;
+              state.tab = 'huginn';
+              state.mobileNav = 'chats';
+              const row = state.contactsDirectory && state.contactsDirectory.find((u) => Number(u.user_id) === uid);
+              await ensureChatOpened(chat, {
+                direct_user_id: uid,
+                direct_user_name: (row && row.name) || null,
+                name: (row && row.name) || null
+              });
+            } catch (e) {
+              showToast(e.message || 'Не удалось открыть чат');
+            }
+            return;
+          }
+          showToast('Контакт недоступен');
+        };
+      });
+    };
+
+    // При keepFocus обновляем ТОЛЬКО список и алфавитный индекс: шапка с полем
+    // поиска остаётся живой, каретка и фокус сохраняются.
+    if (keepFocus) {
+      const listEl = panel.querySelector('#hgContactList');
+      if (listEl) listEl.innerHTML = listHtml;
+      const alphaEl = panel.querySelector('#hgAlpha');
+      if (alphaEl) {
+        const present = new Set(rows.map((r) => (humanizeChatName(r.name).trim().charAt(0) || '#').toUpperCase()));
+        alphaEl.innerHTML = letters.map((L) => `<span data-letter="${L}"${present.has(L) ? '' : ' class="is-dim"'}>${L}</span>`).join('');
+      }
+      // Обновляем счётчик «в сети», если он есть в шапке.
+      const cap = panel.querySelector('#hgOnlineCount');
+      if (cap) cap.textContent = onlineCount ? (onlineCount + ' в сети') : '';
+      // ВАЖНО: строки пересозданы → заново вешаем обработчики.
+      wireContacts();
+      return;
+    }
     panel.innerHTML = `
       <div class="hg-contacts">
         <div class="hg-contacts-head">
@@ -3771,63 +3855,13 @@
       </div>`;
     panel.querySelector('#hgContactSearch').oninput = (e) => {
       state.contactsQ = e.target.value;
-      renderContactsPanel(panel);
+      // keepFocus: перерисовываем только список — иначе фокус терялся на первой
+      // же букве и «дальше не даёт вводить, пока не наведёшь на инпут».
+      renderContactsPanel(panel, { keepFocus: true });
     };
     panel.querySelector('#hgContactSort').onclick = () => openContactSortMenu();
     panel.querySelector('#hgContactAdd').onclick = () => inviteSomeone();
-    // A9: алфавитный индекс — клик скроллит к букве.
-    panel.querySelectorAll('#hgAlpha [data-letter]').forEach((el) => {
-      el.onclick = () => {
-        const L = el.getAttribute('data-letter');
-        const head = panel.querySelector('.hg-contact-letter[data-letter-head="' + (window.CSS && CSS.escape ? CSS.escape(L) : L) + '"]');
-        if (head) head.scrollIntoView({ block: 'start', behavior: 'smooth' });
-      };
-    });
-    panel.querySelectorAll('.hg-contact-row.is-invite').forEach((el) => {
-      const uid = Number(el.getAttribute('data-invite-uid'));
-      el.oncontextmenu = (ev) => {
-        ev.preventDefault();
-        ev.stopPropagation();
-        openContactMenu(uid, ev.clientX, ev.clientY);
-      };
-      el.onclick = () => openInviteSheet({ name: el.getAttribute('data-invite-name') });
-    });
-    panel.querySelectorAll('.hg-contact-row:not(.is-invite)').forEach((el) => {
-      const uidAttr = Number(el.getAttribute('data-uid'));
-      // Правая кнопка: звонок через Mango / Huginn / чат / приглашение.
-      el.oncontextmenu = (ev) => {
-        ev.preventDefault();
-        ev.stopPropagation();
-        openContactMenu(uidAttr, ev.clientX, ev.clientY);
-      };
-      el.onclick = async () => {
-        const cid = Number(el.getAttribute('data-cid'));
-        const uid = Number(el.getAttribute('data-uid'));
-        state.selectedContactUid = uid || null;
-        panel.querySelectorAll('.hg-contact-row').forEach((row) => {
-          row.classList.toggle('is-active', row === el);
-        });
-        if (cid > 0) { state.tab = 'huginn'; state.mobileNav = 'chats'; openChat(cid); return; }
-        if (uid > 0) {
-          try {
-            const data = await api('/api/chat-groups/direct', { method: 'POST', body: { user_id: uid } });
-            const chat = data.chat || data;
-            state.tab = 'huginn';
-            state.mobileNav = 'chats';
-            const row = state.contactsDirectory && state.contactsDirectory.find((u) => Number(u.user_id) === uid);
-            await ensureChatOpened(chat, {
-              direct_user_id: uid,
-              direct_user_name: (row && row.name) || null,
-              name: (row && row.name) || null
-            });
-          } catch (e) {
-            showToast(e.message || 'Не удалось открыть чат');
-          }
-          return;
-        }
-        showToast('Контакт недоступен');
-      };
-    });
+    wireContacts();
   }
 
   function applyFxMode(mode) {
