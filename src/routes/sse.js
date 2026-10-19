@@ -87,6 +87,13 @@ async function sseRoutes(fastify) {
 
     // Отключаем буферизацию
     const raw = reply.raw;
+    // ДЕФЕКТ (заказчик 19.10.2026, ERR_HTTP_HEADERS_SENT ×252 за 3ч): обработчик
+    // объявлен `async`, поэтому Fastify по его завершении сам пытается отправить
+    // ответ — а заголовки уже ушли через raw.writeHead. Получаем
+    // «Cannot write headers after they are sent» на каждый реконнект SSE.
+    // reply.hijack() сообщает Fastify, что ответом управляем мы и отправлять
+    // ничего не нужно. ВЫЗЫВАТЬ ДО raw.writeHead.
+    reply.hijack();
     raw.writeHead(200, {
       'Content-Type': 'text/event-stream',
       'Cache-Control': 'no-cache',

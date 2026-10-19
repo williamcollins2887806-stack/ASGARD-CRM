@@ -189,6 +189,25 @@ async function sendCrmEmail(db, userId, mailOptions) {
   if (process.env.SMTP_DISABLED === '1' || process.env.SMTP_DISABLED === 'true') {
     return { dry_run: true, skipped: 'smtp_disabled', to: mailOptions && mailOptions.to, subject: mailOptions && mailOptions.subject };
   }
+  // ЗАЩИТА (заказчик 19.10.2026): не отправляем на тестовые/несуществующие ящики.
+  // Рассылки уходили на test_admin@test.asgard.local и т.п. → домен не существует,
+  // Yandex слал bounce, в ящике накопилось 653 письма. Проверяем ВСЕ адреса To/Cc/Bcc.
+  try {
+    const { isSafeRecipient } = require('../lib/user-filters');
+    const asList = (v) => (Array.isArray(v) ? v : (v ? [v] : []));
+    const pickAddr = (v) => String(v || '').replace(/^.*<([^>]+)>.*$/, '$1').trim();
+    const all = [...asList(mailOptions.to), ...asList(mailOptions.cc), ...asList(mailOptions.bcc)].map(pickAddr);
+    const bad = all.filter((a) => a && !isSafeRecipient(a));
+    if (bad.length && bad.length === all.filter(Boolean).length) {
+      // Все получатели небезопасны — не отправляем вовсе.
+      return { ok: false, skipped: 'unsafe_recipients', to: mailOptions && mailOptions.to, bad };
+    }
+    if (bad.length) {
+      // Часть адресов плохая — вычищаем их, шлём остальным.
+      const keep = (v) => asList(v).filter((a) => isSafeRecipient(pickAddr(a)));
+      mailOptions = { ...mailOptions, to: keep(mailOptions.to), cc: keep(mailOptions.cc), bcc: keep(mailOptions.bcc) };
+    }
+  } catch (_) { /* фильтр не должен ломать отправку */ }
   const { transport, fromEmail, fromName, isPersonal } = await getTransportForUser(db, userId);
 
   const from = fromName ? `"${fromName}" <${fromEmail}>` : fromEmail;

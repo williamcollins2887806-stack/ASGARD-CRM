@@ -1,17 +1,17 @@
-/**
- * ASGARD CRM — Mimir Conductor: HTTP/SSE роуты (Сессия 2, Шаг 2.9)
- * ═══════════════════════════════════════════════════════════════════════════
- * Регистрируется на том же префиксе /api/mimir, что и старый mimir.js, но с
- * непересекающимися путями /conductor/*. Старый Мимир не трогаем.
+﻿/**
+ * ASGARD CRM вЂ” Mimir Conductor: HTTP/SSE СЂРѕСѓС‚С‹ (РЎРµСЃСЃРёСЏ 2, РЁР°Рі 2.9)
+ * в•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђ
+ * Р РµРіРёСЃС‚СЂРёСЂСѓРµС‚СЃСЏ РЅР° С‚РѕРј Р¶Рµ РїСЂРµС„РёРєСЃРµ /api/mimir, С‡С‚Рѕ Рё СЃС‚Р°СЂС‹Р№ mimir.js, РЅРѕ СЃ
+ * РЅРµРїРµСЂРµСЃРµРєР°СЋС‰РёРјРёСЃСЏ РїСѓС‚СЏРјРё /conductor/*. РЎС‚Р°СЂС‹Р№ РњРёРјРёСЂ РЅРµ С‚СЂРѕРіР°РµРј.
  *
- *   POST /api/mimir/conductor/start          — запустить просчёт (роль-гейт)
- *   GET  /api/mimir/conductor/events         — SSE-поток War Room (auth ?token=)
- *   GET  /api/mimir/conductor/run/:id        — детали прогона
- *   GET  /api/mimir/conductor/artifact/:id   — один артефакт
+ *   POST /api/mimir/conductor/start          вЂ” Р·Р°РїСѓСЃС‚РёС‚СЊ РїСЂРѕСЃС‡С‘С‚ (СЂРѕР»СЊ-РіРµР№С‚)
+ *   GET  /api/mimir/conductor/events         вЂ” SSE-РїРѕС‚РѕРє War Room (auth ?token=)
+ *   GET  /api/mimir/conductor/run/:id        вЂ” РґРµС‚Р°Р»Рё РїСЂРѕРіРѕРЅР°
+ *   GET  /api/mimir/conductor/artifact/:id   вЂ” РѕРґРёРЅ Р°СЂС‚РµС„Р°РєС‚
  *
- * Фича-флаг ОТМЕНЁН: доступ только по ролям через fastify.requireRoles([...]).
- * AI-вызовы внутри runConductor идут через ai-provider (в dev — stub-режим).
- * ═══════════════════════════════════════════════════════════════════════════
+ * Р¤РёС‡Р°-С„Р»Р°Рі РћРўРњР•РќРЃРќ: РґРѕСЃС‚СѓРї С‚РѕР»СЊРєРѕ РїРѕ СЂРѕР»СЏРј С‡РµСЂРµР· fastify.requireRoles([...]).
+ * AI-РІС‹Р·РѕРІС‹ РІРЅСѓС‚СЂРё runConductor РёРґСѓС‚ С‡РµСЂРµР· ai-provider (РІ dev вЂ” stub-СЂРµР¶РёРј).
+ * в•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђ
  */
 
 'use strict';
@@ -25,21 +25,21 @@ const { parseReplyAndMap } = require('../services/mimir-conductor/reply-parser')
 const { applyAnswers, resumeConductorIfBlocked } = require('../services/mimir-conductor/apply-answers');
 const { generateDirectorReport } = require('../services/mimir-conductor/director-report');
 
-// Роли, которым разрешён запуск Conductor (ADMIN проходит автоматически,
-// HEAD_* наследуют — это уже встроено в fastify.requireRoles).
+// Р РѕР»Рё, РєРѕС‚РѕСЂС‹Рј СЂР°Р·СЂРµС€С‘РЅ Р·Р°РїСѓСЃРє Conductor (ADMIN РїСЂРѕС…РѕРґРёС‚ Р°РІС‚РѕРјР°С‚РёС‡РµСЃРєРё,
+// HEAD_* РЅР°СЃР»РµРґСѓСЋС‚ вЂ” СЌС‚Рѕ СѓР¶Рµ РІСЃС‚СЂРѕРµРЅРѕ РІ fastify.requireRoles).
 const ALLOWED_ROLES = [
   'PM', 'HEAD_PM', 'TO', 'HEAD_TO',
   'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV'
 ];
 
-// Роли «всевидящего» доступа: руководство и директора читают ЛЮБОЙ просчёт.
-// Остальные роли из ALLOWED_ROLES видят только свои (initiated_by === user.id).
+// Р РѕР»Рё В«РІСЃРµРІРёРґСЏС‰РµРіРѕВ» РґРѕСЃС‚СѓРїР°: СЂСѓРєРѕРІРѕРґСЃС‚РІРѕ Рё РґРёСЂРµРєС‚РѕСЂР° С‡РёС‚Р°СЋС‚ Р›Р®Р‘РћР™ РїСЂРѕСЃС‡С‘С‚.
+// РћСЃС‚Р°Р»СЊРЅС‹Рµ СЂРѕР»Рё РёР· ALLOWED_ROLES РІРёРґСЏС‚ С‚РѕР»СЊРєРѕ СЃРІРѕРё (initiated_by === user.id).
 const SUPERVISOR_ROLES = new Set([
   'ADMIN', 'HEAD_PM', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV', 'CHIEF_ENGINEER'
 ]);
 
 /**
- * Проверка доступа к конкретному прогону: владелец ИЛИ супервизорская роль.
+ * РџСЂРѕРІРµСЂРєР° РґРѕСЃС‚СѓРїР° Рє РєРѕРЅРєСЂРµС‚РЅРѕРјСѓ РїСЂРѕРіРѕРЅСѓ: РІР»Р°РґРµР»РµС† РР›Р СЃСѓРїРµСЂРІРёР·РѕСЂСЃРєР°СЏ СЂРѕР»СЊ.
  * @returns {boolean}
  */
 function canAccessRun(user, run) {
@@ -48,20 +48,20 @@ function canAccessRun(user, run) {
   return Number(run.initiated_by) === Number(user.id);
 }
 
-// Терминальные статусы прогона — на них SSE закрывает поток.
+// РўРµСЂРјРёРЅР°Р»СЊРЅС‹Рµ СЃС‚Р°С‚СѓСЃС‹ РїСЂРѕРіРѕРЅР° вЂ” РЅР° РЅРёС… SSE Р·Р°РєСЂС‹РІР°РµС‚ РїРѕС‚РѕРє.
 const TERMINAL_STATUSES = new Set([
   'READY_FOR_REVIEW', 'ERROR', 'APPROVED', 'REJECTED'
 ]);
 
-// Ответ заказчика на письмо: допустимые MIME и лимит размера (Сессия 08, fix #3).
-// D-220b: сам список теперь не решает судьбу файла — каноничное расширение определяет
-// `safeStoredExt` (см. ниже), который покрывает эти же типы и отбивает .html/.svg/пустой MIME.
+// РћС‚РІРµС‚ Р·Р°РєР°Р·С‡РёРєР° РЅР° РїРёСЃСЊРјРѕ: РґРѕРїСѓСЃС‚РёРјС‹Рµ MIME Рё Р»РёРјРёС‚ СЂР°Р·РјРµСЂР° (РЎРµСЃСЃРёСЏ 08, fix #3).
+// D-220b: СЃР°Рј СЃРїРёСЃРѕРє С‚РµРїРµСЂСЊ РЅРµ СЂРµС€Р°РµС‚ СЃСѓРґСЊР±Сѓ С„Р°Р№Р»Р° вЂ” РєР°РЅРѕРЅРёС‡РЅРѕРµ СЂР°СЃС€РёСЂРµРЅРёРµ РѕРїСЂРµРґРµР»СЏРµС‚
+// `safeStoredExt` (СЃРј. РЅРёР¶Рµ), РєРѕС‚РѕСЂС‹Р№ РїРѕРєСЂС‹РІР°РµС‚ СЌС‚Рё Р¶Рµ С‚РёРїС‹ Рё РѕС‚Р±РёРІР°РµС‚ .html/.svg/РїСѓСЃС‚РѕР№ MIME.
 const MAX_REPLY_BYTES = 50 * 1024 * 1024; // 50 MB
 
 async function mimirConductorRoutes(fastify, options) {
-  // ═══════════════════════════════════════════════════════════════════════════
-  // POST /conductor/start — создать прогон и запустить его (fire-and-forget)
-  // ═══════════════════════════════════════════════════════════════════════════
+  // в•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђ
+  // POST /conductor/start вЂ” СЃРѕР·РґР°С‚СЊ РїСЂРѕРіРѕРЅ Рё Р·Р°РїСѓСЃС‚РёС‚СЊ РµРіРѕ (fire-and-forget)
+  // в•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђ
   fastify.post('/conductor/start', {
     preHandler: [fastify.authenticate, fastify.requireRoles(ALLOWED_ROLES)]
   }, async (request, reply) => {
@@ -74,13 +74,13 @@ async function mimirConductorRoutes(fastify, options) {
 
     if (!workId && !tenderId && !estimateId) {
       return reply.code(400).send({
-        error: 'Нужен хотя бы один из: work_id, tender_id, estimate_id'
+        error: 'РќСѓР¶РµРЅ С…РѕС‚СЏ Р±С‹ РѕРґРёРЅ РёР·: work_id, tender_id, estimate_id'
       });
     }
 
     let contractValue = body.contract_value ?? null;
 
-    // Если задан work_id — подтянем контрактную стоимость из works.
+    // Р•СЃР»Рё Р·Р°РґР°РЅ work_id вЂ” РїРѕРґС‚СЏРЅРµРј РєРѕРЅС‚СЂР°РєС‚РЅСѓСЋ СЃС‚РѕРёРјРѕСЃС‚СЊ РёР· works.
     if (workId && contractValue == null) {
       try {
         const wr = await fastify.db.query(
@@ -103,17 +103,17 @@ async function mimirConductorRoutes(fastify, options) {
       });
     } catch (e) {
       request.log.error(`[conductor/start] createRun failed: ${e.message}`);
-      return reply.code(500).send({ error: 'Не удалось создать прогон' });
+      return reply.code(500).send({ error: 'РќРµ СѓРґР°Р»РѕСЃСЊ СЃРѕР·РґР°С‚СЊ РїСЂРѕРіРѕРЅ' });
     }
 
     const runId = run.runId;
 
-    // mode из body — может быть 'deterministic' (фиксированный pipeline 29 шагов)
-    // или 'conductor' / undefined (LLM-orchestrator). Передаём дальше в runConductor.
+    // mode РёР· body вЂ” РјРѕР¶РµС‚ Р±С‹С‚СЊ 'deterministic' (С„РёРєСЃРёСЂРѕРІР°РЅРЅС‹Р№ pipeline 29 С€Р°РіРѕРІ)
+    // РёР»Рё 'conductor' / undefined (LLM-orchestrator). РџРµСЂРµРґР°С‘Рј РґР°Р»СЊС€Рµ РІ runConductor.
     const mode = String(request.body?.mode || '').toLowerCase() === 'deterministic'
       ? 'deterministic' : 'conductor';
 
-    // Fire-and-forget: не блокируем ответ. Ошибки внутри loop → статус ERROR.
+    // Fire-and-forget: РЅРµ Р±Р»РѕРєРёСЂСѓРµРј РѕС‚РІРµС‚. РћС€РёР±РєРё РІРЅСѓС‚СЂРё loop в†’ СЃС‚Р°С‚СѓСЃ ERROR.
     setImmediate(() => {
       runConductor(runId, { mode }).catch(async (err) => {
         try {
@@ -125,7 +125,7 @@ async function mimirConductorRoutes(fastify, options) {
             stage: 'runConductor'
           });
         } catch (inner) {
-          request.log.error(`[conductor] не удалось записать ERROR для run ${runId}: ${inner.message}`);
+          request.log.error(`[conductor] РЅРµ СѓРґР°Р»РѕСЃСЊ Р·Р°РїРёСЃР°С‚СЊ ERROR РґР»СЏ run ${runId}: ${inner.message}`);
         }
       });
     });
@@ -133,41 +133,43 @@ async function mimirConductorRoutes(fastify, options) {
     return reply.code(202).send({ run_id: runId, status: run.status });
   });
 
-  // ═══════════════════════════════════════════════════════════════════════════
-  // GET /conductor/events?run_id=&since_event_id= — SSE War Room
-  // Авторизация через ?token= (EventSource не шлёт заголовки).
-  // ═══════════════════════════════════════════════════════════════════════════
+  // в•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђ
+  // GET /conductor/events?run_id=&since_event_id= вЂ” SSE War Room
+  // РђРІС‚РѕСЂРёР·Р°С†РёСЏ С‡РµСЂРµР· ?token= (EventSource РЅРµ С€Р»С‘С‚ Р·Р°РіРѕР»РѕРІРєРё).
+  // в•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђ
   fastify.get('/conductor/events', async (request, reply) => {
     const token = request.query.token;
-    if (!token) return reply.code(401).send({ error: 'token_required', message: 'Требуется вход в систему.', hint: 'Войдите заново и повторите действие.' });
+    if (!token) return reply.code(401).send({ error: 'token_required', message: 'РўСЂРµР±СѓРµС‚СЃСЏ РІС…РѕРґ РІ СЃРёСЃС‚РµРјСѓ.', hint: 'Р’РѕР№РґРёС‚Рµ Р·Р°РЅРѕРІРѕ Рё РїРѕРІС‚РѕСЂРёС‚Рµ РґРµР№СЃС‚РІРёРµ.' });
 
     let tokenUser;
     try {
       tokenUser = fastify.jwt.verify(token);
     } catch (err) {
-      return reply.code(401).send({ error: 'invalid_token', message: 'Сессия недействительна.', hint: 'Войдите заново и повторите действие.' });
+      return reply.code(401).send({ error: 'invalid_token', message: 'РЎРµСЃСЃРёСЏ РЅРµРґРµР№СЃС‚РІРёС‚РµР»СЊРЅР°.', hint: 'Р’РѕР№РґРёС‚Рµ Р·Р°РЅРѕРІРѕ Рё РїРѕРІС‚РѕСЂРёС‚Рµ РґРµР№СЃС‚РІРёРµ.' });
     }
 
-    // Роль-гейт (preHandler здесь не применим — авторизация через ?token=).
+    // Р РѕР»СЊ-РіРµР№С‚ (preHandler Р·РґРµСЃСЊ РЅРµ РїСЂРёРјРµРЅРёРј вЂ” Р°РІС‚РѕСЂРёР·Р°С†РёСЏ С‡РµСЂРµР· ?token=).
     if (!(tokenUser.role === 'ADMIN' || ALLOWED_ROLES.includes(tokenUser.role))) {
-      return reply.code(403).send({ error: 'Недостаточно прав' });
+      return reply.code(403).send({ error: 'РќРµРґРѕСЃС‚Р°С‚РѕС‡РЅРѕ РїСЂР°РІ' });
     }
 
     const runId = Number(request.query.run_id);
     if (!Number.isInteger(runId) || runId <= 0) {
-      return reply.code(400).send({ error: 'run_id_required', message: 'Не указан просчёт.', hint: 'Выберите просчёт из списка и повторите.' });
+      return reply.code(400).send({ error: 'run_id_required', message: 'РќРµ СѓРєР°Р·Р°РЅ РїСЂРѕСЃС‡С‘С‚.', hint: 'Р’С‹Р±РµСЂРёС‚Рµ РїСЂРѕСЃС‡С‘С‚ РёР· СЃРїРёСЃРєР° Рё РїРѕРІС‚РѕСЂРёС‚Рµ.' });
     }
 
-    // Проверим, что прогон существует.
+    // РџСЂРѕРІРµСЂРёРј, С‡С‚Рѕ РїСЂРѕРіРѕРЅ СЃСѓС‰РµСЃС‚РІСѓРµС‚.
     const run = await cr.getRun(runId);
-    if (!run) return reply.code(404).send({ error: 'run_not_found', message: 'Просчёт не найден.', hint: 'Обновите страницу — возможно, просчёт удалён.' });
+    if (!run) return reply.code(404).send({ error: 'run_not_found', message: 'РџСЂРѕСЃС‡С‘С‚ РЅРµ РЅР°Р№РґРµРЅ.', hint: 'РћР±РЅРѕРІРёС‚Рµ СЃС‚СЂР°РЅРёС†Сѓ вЂ” РІРѕР·РјРѕР¶РЅРѕ, РїСЂРѕСЃС‡С‘С‚ СѓРґР°Р»С‘РЅ.' });
 
-    // Доступ — владелец прогона ИЛИ супервизорская роль.
+    // Р”РѕСЃС‚СѓРї вЂ” РІР»Р°РґРµР»РµС† РїСЂРѕРіРѕРЅР° РР›Р СЃСѓРїРµСЂРІРёР·РѕСЂСЃРєР°СЏ СЂРѕР»СЊ.
     if (!canAccessRun(tokenUser, run)) {
-      return reply.code(403).send({ error: 'Нет доступа к этому просчёту' });
+      return reply.code(403).send({ error: 'РќРµС‚ РґРѕСЃС‚СѓРїР° Рє СЌС‚РѕРјСѓ РїСЂРѕСЃС‡С‘С‚Сѓ' });
     }
 
     const raw = reply.raw;
+
+    reply.hijack();
     raw.writeHead(200, {
       'Content-Type': 'text/event-stream',
       'Cache-Control': 'no-cache',
@@ -185,7 +187,7 @@ async function mimirConductorRoutes(fastify, options) {
 
     safeWrite(`event: connected\ndata: ${JSON.stringify({ run_id: runId, status: run.status, ts: Date.now() })}\n\n`);
 
-    // Досылка новых событий + закрытие на терминальном статусе.
+    // Р”РѕСЃС‹Р»РєР° РЅРѕРІС‹С… СЃРѕР±С‹С‚РёР№ + Р·Р°РєСЂС‹С‚РёРµ РЅР° С‚РµСЂРјРёРЅР°Р»СЊРЅРѕРј СЃС‚Р°С‚СѓСЃРµ.
     const flush = async () => {
       if (closed) return;
       try {
@@ -220,28 +222,28 @@ async function mimirConductorRoutes(fastify, options) {
 
     request.raw.on('close', cleanup);
 
-    // Первый catch-up сразу.
+    // РџРµСЂРІС‹Р№ catch-up СЃСЂР°Р·Сѓ.
     flush();
 
-    // Long-lived: не вызываем reply.send().
+    // Long-lived: РЅРµ РІС‹Р·С‹РІР°РµРј reply.send().
   });
 
-  // ═══════════════════════════════════════════════════════════════════════════
-  // GET /conductor/run/:id — детали прогона
-  // ═══════════════════════════════════════════════════════════════════════════
+  // в•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђ
+  // GET /conductor/run/:id вЂ” РґРµС‚Р°Р»Рё РїСЂРѕРіРѕРЅР°
+  // в•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђ
   fastify.get('/conductor/run/:id', {
     preHandler: [fastify.authenticate, fastify.requireRoles(ALLOWED_ROLES)]
   }, async (request, reply) => {
     const runId = Number(request.params.id);
     if (!Number.isInteger(runId) || runId <= 0) {
-      return reply.code(400).send({ error: 'invalid_run_id', message: 'Некорректный идентификатор просчёта.', hint: 'Обновите страницу и откройте просчёт заново.' });
+      return reply.code(400).send({ error: 'invalid_run_id', message: 'РќРµРєРѕСЂСЂРµРєС‚РЅС‹Р№ РёРґРµРЅС‚РёС„РёРєР°С‚РѕСЂ РїСЂРѕСЃС‡С‘С‚Р°.', hint: 'РћР±РЅРѕРІРёС‚Рµ СЃС‚СЂР°РЅРёС†Сѓ Рё РѕС‚РєСЂРѕР№С‚Рµ РїСЂРѕСЃС‡С‘С‚ Р·Р°РЅРѕРІРѕ.' });
     }
     const details = await cr.getFullRunDetails(runId);
-    if (!details) return reply.code(404).send({ error: 'run_not_found', message: 'Просчёт не найден.', hint: 'Обновите страницу — возможно, просчёт удалён.' });
+    if (!details) return reply.code(404).send({ error: 'run_not_found', message: 'РџСЂРѕСЃС‡С‘С‚ РЅРµ РЅР°Р№РґРµРЅ.', hint: 'РћР±РЅРѕРІРёС‚Рµ СЃС‚СЂР°РЅРёС†Сѓ вЂ” РІРѕР·РјРѕР¶РЅРѕ, РїСЂРѕСЃС‡С‘С‚ СѓРґР°Р»С‘РЅ.' });
     if (!canAccessRun(request.user, details.run)) {
-      return reply.code(403).send({ error: 'Нет доступа к этому просчёту' });
+      return reply.code(403).send({ error: 'РќРµС‚ РґРѕСЃС‚СѓРїР° Рє СЌС‚РѕРјСѓ РїСЂРѕСЃС‡С‘С‚Сѓ' });
     }
-    // Required-агенты для прогресс-бара UI
+    // Required-Р°РіРµРЅС‚С‹ РґР»СЏ РїСЂРѕРіСЂРµСЃСЃ-Р±Р°СЂР° UI
     try {
       const hardRules = require('../services/mimir-conductor/hard-rules');
       const tzArt = (details.artifacts || []).find((a) => a.artifact_type === 'tz_summary');
@@ -256,28 +258,28 @@ async function mimirConductorRoutes(fastify, options) {
         completed_required: completedRequired,
         progress_pct: required.length ? Math.round((completedRequired.length / required.length) * 100) : 0
       };
-    } catch (e) { /* progress не критичен */ }
+    } catch (e) { /* progress РЅРµ РєСЂРёС‚РёС‡РµРЅ */ }
     return details;
   });
 
-  // ═══════════════════════════════════════════════════════════════════════════
-  // СЕССИЯ 7 — Директорский отчёт (PDF)
-  // ═══════════════════════════════════════════════════════════════════════════
+  // в•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђ
+  // РЎР•РЎРЎРРЇ 7 вЂ” Р”РёСЂРµРєС‚РѕСЂСЃРєРёР№ РѕС‚С‡С‘С‚ (PDF)
+  // в•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђ
 
-  // POST /conductor/run/:id/generate-report — сгенерировать директорский PDF
+  // POST /conductor/run/:id/generate-report вЂ” СЃРіРµРЅРµСЂРёСЂРѕРІР°С‚СЊ РґРёСЂРµРєС‚РѕСЂСЃРєРёР№ PDF
   fastify.post('/conductor/run/:id/generate-report', {
     preHandler: [fastify.authenticate, fastify.requireRoles(ALLOWED_ROLES)]
   }, async (request, reply) => {
     const runId = Number(request.params.id);
     if (!Number.isInteger(runId) || runId <= 0) {
-      return reply.code(400).send({ error: 'invalid_run_id', message: 'Некорректный идентификатор просчёта.', hint: 'Обновите страницу и откройте просчёт заново.' });
+      return reply.code(400).send({ error: 'invalid_run_id', message: 'РќРµРєРѕСЂСЂРµРєС‚РЅС‹Р№ РёРґРµРЅС‚РёС„РёРєР°С‚РѕСЂ РїСЂРѕСЃС‡С‘С‚Р°.', hint: 'РћР±РЅРѕРІРёС‚Рµ СЃС‚СЂР°РЅРёС†Сѓ Рё РѕС‚РєСЂРѕР№С‚Рµ РїСЂРѕСЃС‡С‘С‚ Р·Р°РЅРѕРІРѕ.' });
     }
     const run = await cr.getRun(runId);
-    if (!run) return reply.code(404).send({ error: 'run_not_found', message: 'Просчёт не найден.', hint: 'Обновите страницу — возможно, просчёт удалён.' });
-    // Отчёт строится по готовому просчёту.
+    if (!run) return reply.code(404).send({ error: 'run_not_found', message: 'РџСЂРѕСЃС‡С‘С‚ РЅРµ РЅР°Р№РґРµРЅ.', hint: 'РћР±РЅРѕРІРёС‚Рµ СЃС‚СЂР°РЅРёС†Сѓ вЂ” РІРѕР·РјРѕР¶РЅРѕ, РїСЂРѕСЃС‡С‘С‚ СѓРґР°Р»С‘РЅ.' });
+    // РћС‚С‡С‘С‚ СЃС‚СЂРѕРёС‚СЃСЏ РїРѕ РіРѕС‚РѕРІРѕРјСѓ РїСЂРѕСЃС‡С‘С‚Сѓ.
     if (!['READY_FOR_REVIEW', 'APPROVED', 'REJECTED'].includes(run.status)) {
       return reply.code(409).send({
-        error: `Отчёт можно сгенерировать только по завершённому просчёту (статус: ${run.status})`
+        error: `РћС‚С‡С‘С‚ РјРѕР¶РЅРѕ СЃРіРµРЅРµСЂРёСЂРѕРІР°С‚СЊ С‚РѕР»СЊРєРѕ РїРѕ Р·Р°РІРµСЂС€С‘РЅРЅРѕРјСѓ РїСЂРѕСЃС‡С‘С‚Сѓ (СЃС‚Р°С‚СѓСЃ: ${run.status})`
       });
     }
     try {
@@ -285,65 +287,65 @@ async function mimirConductorRoutes(fastify, options) {
       return { ok: true, run_id: runId, report_path: pdfPath };
     } catch (e) {
       request.log.error(`[conductor/generate-report] run ${runId}: ${e.message}`);
-      return reply.code(500).send({ error: `Не удалось сгенерировать отчёт: ${e.message}` });
+      return reply.code(500).send({ error: `РќРµ СѓРґР°Р»РѕСЃСЊ СЃРіРµРЅРµСЂРёСЂРѕРІР°С‚СЊ РѕС‚С‡С‘С‚: ${e.message}` });
     }
   });
 
-  // GET /conductor/run/:id/report — скачать сгенерированный PDF
+  // GET /conductor/run/:id/report вЂ” СЃРєР°С‡Р°С‚СЊ СЃРіРµРЅРµСЂРёСЂРѕРІР°РЅРЅС‹Р№ PDF
   fastify.get('/conductor/run/:id/report', {
     preHandler: [fastify.authenticate, fastify.requireRoles(ALLOWED_ROLES)]
   }, async (request, reply) => {
     const runId = Number(request.params.id);
     if (!Number.isInteger(runId) || runId <= 0) {
-      return reply.code(400).send({ error: 'invalid_run_id', message: 'Некорректный идентификатор просчёта.', hint: 'Обновите страницу и откройте просчёт заново.' });
+      return reply.code(400).send({ error: 'invalid_run_id', message: 'РќРµРєРѕСЂСЂРµРєС‚РЅС‹Р№ РёРґРµРЅС‚РёС„РёРєР°С‚РѕСЂ РїСЂРѕСЃС‡С‘С‚Р°.', hint: 'РћР±РЅРѕРІРёС‚Рµ СЃС‚СЂР°РЅРёС†Сѓ Рё РѕС‚РєСЂРѕР№С‚Рµ РїСЂРѕСЃС‡С‘С‚ Р·Р°РЅРѕРІРѕ.' });
     }
     const run = await cr.getRun(runId);
-    if (!run) return reply.code(404).send({ error: 'run_not_found', message: 'Просчёт не найден.', hint: 'Обновите страницу — возможно, просчёт удалён.' });
+    if (!run) return reply.code(404).send({ error: 'run_not_found', message: 'РџСЂРѕСЃС‡С‘С‚ РЅРµ РЅР°Р№РґРµРЅ.', hint: 'РћР±РЅРѕРІРёС‚Рµ СЃС‚СЂР°РЅРёС†Сѓ вЂ” РІРѕР·РјРѕР¶РЅРѕ, РїСЂРѕСЃС‡С‘С‚ СѓРґР°Р»С‘РЅ.' });
     if (!canAccessRun(request.user, run)) {
-      return reply.code(403).send({ error: 'Нет доступа к этому отчёту' });
+      return reply.code(403).send({ error: 'РќРµС‚ РґРѕСЃС‚СѓРїР° Рє СЌС‚РѕРјСѓ РѕС‚С‡С‘С‚Сѓ' });
     }
     const filePath = run.director_report_path;
     if (!filePath || !fs.existsSync(filePath)) {
-      return reply.code(404).send({ error: 'Отчёт ещё не сгенерирован. Сначала вызовите generate-report.' });
+      return reply.code(404).send({ error: 'РћС‚С‡С‘С‚ РµС‰С‘ РЅРµ СЃРіРµРЅРµСЂРёСЂРѕРІР°РЅ. РЎРЅР°С‡Р°Р»Р° РІС‹Р·РѕРІРёС‚Рµ generate-report.' });
     }
     reply.header('Content-Type', 'application/pdf');
     reply.header('Content-Disposition', `inline; filename="director_report_${runId}.pdf"`);
     return reply.send(fs.createReadStream(filePath));
   });
 
-  // ═══════════════════════════════════════════════════════════════════════════
-  // GET /conductor/artifact/:id — один артефакт
-  // ═══════════════════════════════════════════════════════════════════════════
+  // в•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђ
+  // GET /conductor/artifact/:id вЂ” РѕРґРёРЅ Р°СЂС‚РµС„Р°РєС‚
+  // в•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђ
   fastify.get('/conductor/artifact/:id', {
     preHandler: [fastify.authenticate, fastify.requireRoles(ALLOWED_ROLES)]
   }, async (request, reply) => {
     const artifactId = Number(request.params.id);
     if (!Number.isInteger(artifactId) || artifactId <= 0) {
-      return reply.code(400).send({ error: 'invalid_artifact_id', message: 'Некорректный идентификатор файла.', hint: 'Обновите страницу и откройте файл заново.' });
+      return reply.code(400).send({ error: 'invalid_artifact_id', message: 'РќРµРєРѕСЂСЂРµРєС‚РЅС‹Р№ РёРґРµРЅС‚РёС„РёРєР°С‚РѕСЂ С„Р°Р№Р»Р°.', hint: 'РћР±РЅРѕРІРёС‚Рµ СЃС‚СЂР°РЅРёС†Сѓ Рё РѕС‚РєСЂРѕР№С‚Рµ С„Р°Р№Р» Р·Р°РЅРѕРІРѕ.' });
     }
     const artifact = await cr.getArtifactById(artifactId);
-    if (!artifact) return reply.code(404).send({ error: 'artifact_not_found', message: 'Файл не найден.', hint: 'Обновите страницу — возможно, файл удалён.' });
-    // Доступ — по владельцу прогона, к которому принадлежит артефакт.
+    if (!artifact) return reply.code(404).send({ error: 'artifact_not_found', message: 'Р¤Р°Р№Р» РЅРµ РЅР°Р№РґРµРЅ.', hint: 'РћР±РЅРѕРІРёС‚Рµ СЃС‚СЂР°РЅРёС†Сѓ вЂ” РІРѕР·РјРѕР¶РЅРѕ, С„Р°Р№Р» СѓРґР°Р»С‘РЅ.' });
+    // Р”РѕСЃС‚СѓРї вЂ” РїРѕ РІР»Р°РґРµР»СЊС†Сѓ РїСЂРѕРіРѕРЅР°, Рє РєРѕС‚РѕСЂРѕРјСѓ РїСЂРёРЅР°РґР»РµР¶РёС‚ Р°СЂС‚РµС„Р°РєС‚.
     const run = await cr.getRun(artifact.conductor_run_id);
     if (!canAccessRun(request.user, run)) {
-      return reply.code(403).send({ error: 'Нет доступа к этому артефакту' });
+      return reply.code(403).send({ error: 'РќРµС‚ РґРѕСЃС‚СѓРїР° Рє СЌС‚РѕРјСѓ Р°СЂС‚РµС„Р°РєС‚Сѓ' });
     }
     return artifact;
   });
 
-  // ═══════════════════════════════════════════════════════════════════════════
-  // СЕССИЯ 5 — Уточнения, письма заказчику, async-ответы
-  // ═══════════════════════════════════════════════════════════════════════════
+  // в•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђ
+  // РЎР•РЎРЎРРЇ 5 вЂ” РЈС‚РѕС‡РЅРµРЅРёСЏ, РїРёСЃСЊРјР° Р·Р°РєР°Р·С‡РёРєСѓ, async-РѕС‚РІРµС‚С‹
+  // в•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђ
 
-  // POST /conductor/letter/generate — { run_id, clarification_ids }
+  // POST /conductor/letter/generate вЂ” { run_id, clarification_ids }
   fastify.post('/conductor/letter/generate', {
     preHandler: [fastify.authenticate, fastify.requireRoles(ALLOWED_ROLES)]
   }, async (request, reply) => {
     const body = request.body || {};
     const runId = Number(body.run_id);
     const ids = Array.isArray(body.clarification_ids) ? body.clarification_ids.map(Number).filter(Boolean) : [];
-    if (!Number.isInteger(runId) || runId <= 0) return reply.code(400).send({ error: 'run_id_required', message: 'Не указан просчёт.', hint: 'Выберите просчёт из списка и повторите.' });
-    if (!ids.length) return reply.code(400).send({ error: 'clarification_ids_required', message: 'Не выбраны уточнения.', hint: 'Отметьте хотя бы одно уточнение и повторите.' });
+    if (!Number.isInteger(runId) || runId <= 0) return reply.code(400).send({ error: 'run_id_required', message: 'РќРµ СѓРєР°Р·Р°РЅ РїСЂРѕСЃС‡С‘С‚.', hint: 'Р’С‹Р±РµСЂРёС‚Рµ РїСЂРѕСЃС‡С‘С‚ РёР· СЃРїРёСЃРєР° Рё РїРѕРІС‚РѕСЂРёС‚Рµ.' });
+    if (!ids.length) return reply.code(400).send({ error: 'clarification_ids_required', message: 'РќРµ РІС‹Р±СЂР°РЅС‹ СѓС‚РѕС‡РЅРµРЅРёСЏ.', hint: 'РћС‚РјРµС‚СЊС‚Рµ С…РѕС‚СЏ Р±С‹ РѕРґРЅРѕ СѓС‚РѕС‡РЅРµРЅРёРµ Рё РїРѕРІС‚РѕСЂРёС‚Рµ.' });
     try {
       return await generateClarificationLetter({ runId, clarificationIds: ids, pmUserId: request.user.id });
     } catch (e) {
@@ -352,15 +354,15 @@ async function mimirConductorRoutes(fastify, options) {
     }
   });
 
-  // GET /conductor/letter/:id/download/:format — format: docx | pdf
+  // GET /conductor/letter/:id/download/:format вЂ” format: docx | pdf
   fastify.get('/conductor/letter/:id/download/:format', {
     preHandler: [fastify.authenticate]
   }, async (request, reply) => {
     const letter = await getLetterById(Number(request.params.id));
-    if (!letter) return reply.code(404).send({ error: 'letter_not_found', message: 'Письмо не найдено.', hint: 'Обновите страницу — возможно, письмо удалено.' });
+    if (!letter) return reply.code(404).send({ error: 'letter_not_found', message: 'РџРёСЃСЊРјРѕ РЅРµ РЅР°Р№РґРµРЅРѕ.', hint: 'РћР±РЅРѕРІРёС‚Рµ СЃС‚СЂР°РЅРёС†Сѓ вЂ” РІРѕР·РјРѕР¶РЅРѕ, РїРёСЃСЊРјРѕ СѓРґР°Р»РµРЅРѕ.' });
     const format = request.params.format === 'pdf' ? 'pdf' : 'docx';
     const filePath = format === 'pdf' ? letter.pdf_path : letter.docx_path;
-    if (!filePath || !fs.existsSync(filePath)) return reply.code(404).send({ error: 'Файл письма не найден на диске' });
+    if (!filePath || !fs.existsSync(filePath)) return reply.code(404).send({ error: 'Р¤Р°Р№Р» РїРёСЃСЊРјР° РЅРµ РЅР°Р№РґРµРЅ РЅР° РґРёСЃРєРµ' });
 
     const mime = format === 'pdf'
       ? 'application/pdf'
@@ -371,13 +373,13 @@ async function mimirConductorRoutes(fastify, options) {
     return reply.send(fs.createReadStream(filePath));
   });
 
-  // POST /conductor/letter/:id/mark-sent — { sent_at?, channel? }
+  // POST /conductor/letter/:id/mark-sent вЂ” { sent_at?, channel? }
   fastify.post('/conductor/letter/:id/mark-sent', {
     preHandler: [fastify.authenticate, fastify.requireRoles(ALLOWED_ROLES)]
   }, async (request, reply) => {
     const letterId = Number(request.params.id);
     const letter = await getLetterById(letterId);
-    if (!letter) return reply.code(404).send({ error: 'letter_not_found', message: 'Письмо не найдено.', hint: 'Обновите страницу — возможно, письмо удалено.' });
+    if (!letter) return reply.code(404).send({ error: 'letter_not_found', message: 'РџРёСЃСЊРјРѕ РЅРµ РЅР°Р№РґРµРЅРѕ.', hint: 'РћР±РЅРѕРІРёС‚Рµ СЃС‚СЂР°РЅРёС†Сѓ вЂ” РІРѕР·РјРѕР¶РЅРѕ, РїРёСЃСЊРјРѕ СѓРґР°Р»РµРЅРѕ.' });
     const body = request.body || {};
     const sentAt = body.sent_at ? new Date(body.sent_at) : new Date();
 
@@ -385,8 +387,8 @@ async function mimirConductorRoutes(fastify, options) {
       "UPDATE mimir_customer_letters SET status = 'SENT', sent_at = $1, sent_by = $2 WHERE id = $3",
       [sentAt, request.user.id, letterId]
     );
-    // Открытые вопросы письма → ждут ответа заказчика (остаются OPEN+blocking, но
-    // помечаем источник статусом ожидания через событие).
+    // РћС‚РєСЂС‹С‚С‹Рµ РІРѕРїСЂРѕСЃС‹ РїРёСЃСЊРјР° в†’ Р¶РґСѓС‚ РѕС‚РІРµС‚Р° Р·Р°РєР°Р·С‡РёРєР° (РѕСЃС‚Р°СЋС‚СЃСЏ OPEN+blocking, РЅРѕ
+    // РїРѕРјРµС‡Р°РµРј РёСЃС‚РѕС‡РЅРёРє СЃС‚Р°С‚СѓСЃРѕРј РѕР¶РёРґР°РЅРёСЏ С‡РµСЂРµР· СЃРѕР±С‹С‚РёРµ).
     try {
       await cr.addEvent(letter.conductor_run_id, null, 'letter_sent', {
         letter_id: letterId, letter_number: letter.letter_number, channel: body.channel || 'manual'
@@ -395,29 +397,29 @@ async function mimirConductorRoutes(fastify, options) {
     return { ok: true };
   });
 
-  // POST /conductor/letter/:id/upload-reply — multipart file ИЛИ body.text
+  // POST /conductor/letter/:id/upload-reply вЂ” multipart file РР›Р body.text
   fastify.post('/conductor/letter/:id/upload-reply', {
     preHandler: [fastify.authenticate, fastify.requireRoles(ALLOWED_ROLES)]
   }, async (request, reply) => {
     const letterId = Number(request.params.id);
     const letter = await getLetterById(letterId);
-    if (!letter) return reply.code(404).send({ error: 'letter_not_found', message: 'Письмо не найдено.', hint: 'Обновите страницу — возможно, письмо удалено.' });
+    if (!letter) return reply.code(404).send({ error: 'letter_not_found', message: 'РџРёСЃСЊРјРѕ РЅРµ РЅР°Р№РґРµРЅРѕ.', hint: 'РћР±РЅРѕРІРёС‚Рµ СЃС‚СЂР°РЅРёС†Сѓ вЂ” РІРѕР·РјРѕР¶РЅРѕ, РїРёСЃСЊРјРѕ СѓРґР°Р»РµРЅРѕ.' });
 
     let replyPath = null;
     let rawText = null;
 
     if (request.isMultipart && request.isMultipart()) {
-      // Лимит размера на уровне стрима: при превышении файл будет «truncated».
+      // Р›РёРјРёС‚ СЂР°Р·РјРµСЂР° РЅР° СѓСЂРѕРІРЅРµ СЃС‚СЂРёРјР°: РїСЂРё РїСЂРµРІС‹С€РµРЅРёРё С„Р°Р№Р» Р±СѓРґРµС‚ В«truncatedВ».
       const file = await request.file({ limits: { fileSize: MAX_REPLY_BYTES } });
       if (file) {
-        // MIME-whitelist (fix #3) — отсекаем до записи на диск.
-        // D-220b (21.09): пустой mimetype обходил проверку (`if (file.mimetype && …)`),
-        // а расширение бралось из клиентского имени — `image/png` + имя `evil.html` давал .html.
+        // MIME-whitelist (fix #3) вЂ” РѕС‚СЃРµРєР°РµРј РґРѕ Р·Р°РїРёСЃРё РЅР° РґРёСЃРє.
+        // D-220b (21.09): РїСѓСЃС‚РѕР№ mimetype РѕР±С…РѕРґРёР» РїСЂРѕРІРµСЂРєСѓ (`if (file.mimetype && вЂ¦)`),
+        // Р° СЂР°СЃС€РёСЂРµРЅРёРµ Р±СЂР°Р»РѕСЃСЊ РёР· РєР»РёРµРЅС‚СЃРєРѕРіРѕ РёРјРµРЅРё вЂ” `image/png` + РёРјСЏ `evil.html` РґР°РІР°Р» .html.
         const { safeStoredExt } = require('../lib/upload-ext');
         const storedExt = safeStoredExt(file.mimetype, file.filename, { allow: 'doc' });
         if (!storedExt) {
           return reply.code(415).send({
-            error: `Тип файла не поддерживается: ${file.mimetype || '(не указан)'}. Разрешены: PDF, DOCX, XLSX, JPG, PNG, TIFF, TXT.`
+            error: `РўРёРї С„Р°Р№Р»Р° РЅРµ РїРѕРґРґРµСЂР¶РёРІР°РµС‚СЃСЏ: ${file.mimetype || '(РЅРµ СѓРєР°Р·Р°РЅ)'}. Р Р°Р·СЂРµС€РµРЅС‹: PDF, DOCX, XLSX, JPG, PNG, TIFF, TXT.`
           });
         }
         if (!fs.existsSync(LETTERS_DIR)) fs.mkdirSync(LETTERS_DIR, { recursive: true });
@@ -429,21 +431,21 @@ async function mimirConductorRoutes(fastify, options) {
           ws.on('finish', resolve);
           ws.on('error', rej);
         });
-        // Превышение лимита: поток обрезан → удаляем огрызок и возвращаем 413.
+        // РџСЂРµРІС‹С€РµРЅРёРµ Р»РёРјРёС‚Р°: РїРѕС‚РѕРє РѕР±СЂРµР·Р°РЅ в†’ СѓРґР°Р»СЏРµРј РѕРіСЂС‹Р·РѕРє Рё РІРѕР·РІСЂР°С‰Р°РµРј 413.
         if (file.file.truncated) {
           try { fs.unlinkSync(replyPath); } catch (_) { /* noop */ }
           return reply.code(413).send({
-            error: `Файл превышает лимит ${Math.floor(MAX_REPLY_BYTES / (1024 * 1024))} МБ`
+            error: `Р¤Р°Р№Р» РїСЂРµРІС‹С€Р°РµС‚ Р»РёРјРёС‚ ${Math.floor(MAX_REPLY_BYTES / (1024 * 1024))} РњР‘`
           });
         }
-        // Текстовое поле text может ехать рядом в multipart
+        // РўРµРєСЃС‚РѕРІРѕРµ РїРѕР»Рµ text РјРѕР¶РµС‚ РµС…Р°С‚СЊ СЂСЏРґРѕРј РІ multipart
         if (file.fields && file.fields.text && file.fields.text.value) rawText = file.fields.text.value;
       }
     } else {
       rawText = (request.body && request.body.text) || null;
     }
 
-    if (!replyPath && !rawText) return reply.code(400).send({ error: 'Нужен файл или текст ответа' });
+    if (!replyPath && !rawText) return reply.code(400).send({ error: 'РќСѓР¶РµРЅ С„Р°Р№Р» РёР»Рё С‚РµРєСЃС‚ РѕС‚РІРµС‚Р°' });
 
     try {
       const mapping = await parseReplyAndMap(letterId, replyPath, rawText);
@@ -454,14 +456,14 @@ async function mimirConductorRoutes(fastify, options) {
     }
   });
 
-  // POST /conductor/letter/:id/apply-mapping — { mapping:[{question_id, answer_text}] }
+  // POST /conductor/letter/:id/apply-mapping вЂ” { mapping:[{question_id, answer_text}] }
   fastify.post('/conductor/letter/:id/apply-mapping', {
     preHandler: [fastify.authenticate, fastify.requireRoles(ALLOWED_ROLES)]
   }, async (request, reply) => {
     const letterId = Number(request.params.id);
     const body = request.body || {};
     const mapping = Array.isArray(body.mapping) ? body.mapping : [];
-    if (!mapping.length) return reply.code(400).send({ error: 'mapping_required', message: 'Не передано соответствие ответов и вопросов.', hint: 'Заполните соответствия и повторите.' });
+    if (!mapping.length) return reply.code(400).send({ error: 'mapping_required', message: 'РќРµ РїРµСЂРµРґР°РЅРѕ СЃРѕРѕС‚РІРµС‚СЃС‚РІРёРµ РѕС‚РІРµС‚РѕРІ Рё РІРѕРїСЂРѕСЃРѕРІ.', hint: 'Р—Р°РїРѕР»РЅРёС‚Рµ СЃРѕРѕС‚РІРµС‚СЃС‚РІРёСЏ Рё РїРѕРІС‚РѕСЂРёС‚Рµ.' });
     try {
       const applied = await applyAnswers(letterId, mapping, request.user.id);
       const resume = await resumeConductorIfBlocked(letterId);
@@ -472,17 +474,17 @@ async function mimirConductorRoutes(fastify, options) {
     }
   });
 
-  // ═══════════════════════════════════════════════════════════════════════════
-  // POST /conductor/clarification/:id/answer — универсальный ответ на уточнение
-  // Принимает один из: answer_text (текст), document_ids[] (привязать файлы как ответ),
-  // accept_assumption=true (принять default_assumption). После применения автоматически
-  // проверяет блокеры и резумит Conductor если все blocking-вопросы закрыты.
-  // ═══════════════════════════════════════════════════════════════════════════
+  // в•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђ
+  // POST /conductor/clarification/:id/answer вЂ” СѓРЅРёРІРµСЂСЃР°Р»СЊРЅС‹Р№ РѕС‚РІРµС‚ РЅР° СѓС‚РѕС‡РЅРµРЅРёРµ
+  // РџСЂРёРЅРёРјР°РµС‚ РѕРґРёРЅ РёР·: answer_text (С‚РµРєСЃС‚), document_ids[] (РїСЂРёРІСЏР·Р°С‚СЊ С„Р°Р№Р»С‹ РєР°Рє РѕС‚РІРµС‚),
+  // accept_assumption=true (РїСЂРёРЅСЏС‚СЊ default_assumption). РџРѕСЃР»Рµ РїСЂРёРјРµРЅРµРЅРёСЏ Р°РІС‚РѕРјР°С‚РёС‡РµСЃРєРё
+  // РїСЂРѕРІРµСЂСЏРµС‚ Р±Р»РѕРєРµСЂС‹ Рё СЂРµР·СѓРјРёС‚ Conductor РµСЃР»Рё РІСЃРµ blocking-РІРѕРїСЂРѕСЃС‹ Р·Р°РєСЂС‹С‚С‹.
+  // в•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђ
   fastify.post('/conductor/clarification/:id/answer', {
     preHandler: [fastify.authenticate, fastify.requireRoles(ALLOWED_ROLES)]
   }, async (request, reply) => {
     const clarId = Number(request.params.id);
-    if (!clarId) return reply.code(400).send({ error: 'invalid_clarification_id', message: 'Некорректный идентификатор уточнения.', hint: 'Обновите страницу и откройте уточнение заново.' });
+    if (!clarId) return reply.code(400).send({ error: 'invalid_clarification_id', message: 'РќРµРєРѕСЂСЂРµРєС‚РЅС‹Р№ РёРґРµРЅС‚РёС„РёРєР°С‚РѕСЂ СѓС‚РѕС‡РЅРµРЅРёСЏ.', hint: 'РћР±РЅРѕРІРёС‚Рµ СЃС‚СЂР°РЅРёС†Сѓ Рё РѕС‚РєСЂРѕР№С‚Рµ СѓС‚РѕС‡РЅРµРЅРёРµ Р·Р°РЅРѕРІРѕ.' });
     const body = request.body || {};
     const answerText = body.answer_text != null ? String(body.answer_text).trim() : null;
     const docIds = Array.isArray(body.document_ids) ? body.document_ids.filter((x) => Number.isInteger(Number(x))).map(Number) : [];
@@ -490,7 +492,7 @@ async function mimirConductorRoutes(fastify, options) {
 
     const db = fastify.db;
     try {
-      // Получаем уточнение + проверяем что run видимо текущему пользователю
+      // РџРѕР»СѓС‡Р°РµРј СѓС‚РѕС‡РЅРµРЅРёРµ + РїСЂРѕРІРµСЂСЏРµРј С‡С‚Рѕ run РІРёРґРёРјРѕ С‚РµРєСѓС‰РµРјСѓ РїРѕР»СЊР·РѕРІР°С‚РµР»СЋ
       const { rows } = await db.query(
         `SELECT c.id, c.conductor_run_id, c.status, c.channel, c.blocking, c.default_assumption,
                 r.tender_id, r.work_id, r.initiated_by
@@ -500,21 +502,21 @@ async function mimirConductorRoutes(fastify, options) {
         [clarId]
       );
       const cl = rows[0];
-      if (!cl) return reply.code(404).send({ error: 'Уточнение не найдено' });
-      if (cl.status !== 'OPEN') return reply.code(409).send({ error: `Уточнение уже ${cl.status}` });
+      if (!cl) return reply.code(404).send({ error: 'РЈС‚РѕС‡РЅРµРЅРёРµ РЅРµ РЅР°Р№РґРµРЅРѕ' });
+      if (cl.status !== 'OPEN') return reply.code(409).send({ error: `РЈС‚РѕС‡РЅРµРЅРёРµ СѓР¶Рµ ${cl.status}` });
 
-      // RBAC: PM может отвечать только в своих run, директор/админ — везде.
+      // RBAC: PM РјРѕР¶РµС‚ РѕС‚РІРµС‡Р°С‚СЊ С‚РѕР»СЊРєРѕ РІ СЃРІРѕРёС… run, РґРёСЂРµРєС‚РѕСЂ/Р°РґРјРёРЅ вЂ” РІРµР·РґРµ.
       if (request.user.role === 'PM' && cl.initiated_by && cl.initiated_by !== request.user.id) {
-        return reply.code(403).send({ error: 'Нет доступа к чужому просчёту' });
+        return reply.code(403).send({ error: 'РќРµС‚ РґРѕСЃС‚СѓРїР° Рє С‡СѓР¶РѕРјСѓ РїСЂРѕСЃС‡С‘С‚Сѓ' });
       }
 
-      // Собираем итоговый текст ответа
+      // РЎРѕР±РёСЂР°РµРј РёС‚РѕРіРѕРІС‹Р№ С‚РµРєСЃС‚ РѕС‚РІРµС‚Р°
       let finalAnswer = '';
       let answerSource = 'manual';
 
       if (acceptAssumption && cl.default_assumption) {
         const asp = typeof cl.default_assumption === 'string' ? cl.default_assumption : JSON.stringify(cl.default_assumption);
-        finalAnswer = `[Принято допущение по умолчанию] ${asp}`;
+        finalAnswer = `[РџСЂРёРЅСЏС‚Рѕ РґРѕРїСѓС‰РµРЅРёРµ РїРѕ СѓРјРѕР»С‡Р°РЅРёСЋ] ${asp}`;
         answerSource = 'default_assumption';
       }
       if (answerText) {
@@ -526,13 +528,13 @@ async function mimirConductorRoutes(fastify, options) {
           'SELECT id, original_name, mime_type, ROUND(size/1024.0, 1) AS kb FROM documents WHERE id = ANY($1)',
           [docIds]
         );
-        const docList = docs.map((d) => `#${d.id} ${d.original_name} (${d.mime_type}, ${d.kb} КБ)`).join('; ');
-        finalAnswer = (finalAnswer ? finalAnswer + '\n\n' : '') + `[Приложены файлы] ${docList}`;
+        const docList = docs.map((d) => `#${d.id} ${d.original_name} (${d.mime_type}, ${d.kb} РљР‘)`).join('; ');
+        finalAnswer = (finalAnswer ? finalAnswer + '\n\n' : '') + `[РџСЂРёР»РѕР¶РµРЅС‹ С„Р°Р№Р»С‹] ${docList}`;
         answerSource = answerSource === 'manual' ? 'document_upload' : 'mixed';
       }
 
       if (!finalAnswer) {
-        return reply.code(400).send({ error: 'Нужен либо answer_text, либо document_ids[], либо accept_assumption' });
+        return reply.code(400).send({ error: 'РќСѓР¶РµРЅ Р»РёР±Рѕ answer_text, Р»РёР±Рѕ document_ids[], Р»РёР±Рѕ accept_assumption' });
       }
 
       // UPDATE clarification
@@ -544,7 +546,7 @@ async function mimirConductorRoutes(fastify, options) {
         [finalAnswer, request.user.id, answerSource, clarId]
       );
 
-      // Событие в War Room
+      // РЎРѕР±С‹С‚РёРµ РІ War Room
       try {
         await db.query(
           `INSERT INTO mimir_agent_events (conductor_run_id, agent_run_id, event_type, payload)
@@ -557,7 +559,7 @@ async function mimirConductorRoutes(fastify, options) {
         );
       } catch (_) { /* noop */ }
 
-      // Авто-resume если все блокеры закрыты
+      // РђРІС‚Рѕ-resume РµСЃР»Рё РІСЃРµ Р±Р»РѕРєРµСЂС‹ Р·Р°РєСЂС‹С‚С‹
       const resumeResult = await _tryResumeRun(fastify, cl.conductor_run_id);
 
       return {
@@ -573,11 +575,11 @@ async function mimirConductorRoutes(fastify, options) {
     }
   });
 
-  // ═══════════════════════════════════════════════════════════════════════════
-  // GET /conductor/my-runs — список последних просчётов пользователя со статусом.
-  // Используется UI для "продолжить просчёт" при возврате на conductor-estimate.html.
-  // PM видит только свои, директор/админ — все. Сортировка по updated_at DESC.
-  // ═══════════════════════════════════════════════════════════════════════════
+  // в•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђ
+  // GET /conductor/my-runs вЂ” СЃРїРёСЃРѕРє РїРѕСЃР»РµРґРЅРёС… РїСЂРѕСЃС‡С‘С‚РѕРІ РїРѕР»СЊР·РѕРІР°С‚РµР»СЏ СЃРѕ СЃС‚Р°С‚СѓСЃРѕРј.
+  // РСЃРїРѕР»СЊР·СѓРµС‚СЃСЏ UI РґР»СЏ "РїСЂРѕРґРѕР»Р¶РёС‚СЊ РїСЂРѕСЃС‡С‘С‚" РїСЂРё РІРѕР·РІСЂР°С‚Рµ РЅР° conductor-estimate.html.
+  // PM РІРёРґРёС‚ С‚РѕР»СЊРєРѕ СЃРІРѕРё, РґРёСЂРµРєС‚РѕСЂ/Р°РґРјРёРЅ вЂ” РІСЃРµ. РЎРѕСЂС‚РёСЂРѕРІРєР° РїРѕ updated_at DESC.
+  // в•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђ
   fastify.get('/conductor/my-runs', {
     preHandler: [fastify.authenticate, fastify.requireRoles(ALLOWED_ROLES)]
   }, async (request, reply) => {
@@ -608,7 +610,7 @@ async function mimirConductorRoutes(fastify, options) {
           LIMIT $${params.length}`,
         params
       );
-      // queue_position для WAITING_FOR_SLOT (по FIFO created_at среди ожидающих)
+      // queue_position РґР»СЏ WAITING_FOR_SLOT (РїРѕ FIFO created_at СЃСЂРµРґРё РѕР¶РёРґР°СЋС‰РёС…)
       const waitingIds = rows.filter((r) => r.status === 'WAITING_FOR_SLOT').map((r) => r.id);
       let queueMap = {};
       if (waitingIds.length) {
@@ -629,24 +631,24 @@ async function mimirConductorRoutes(fastify, options) {
     }
   });
 
-  // ═══════════════════════════════════════════════════════════════════════════
-  // POST /conductor/run/:id/approve — директор/HEAD_TO утверждает Conductor-просчёт.
-  // FEEDBACK-LOOP: утверждённый просчёт автоматически попадает в
-  // mimir_reference_projects как эталон для будущих похожих проектов.
-  // Доступ: ADMIN, DIRECTOR_*, HEAD_TO.
-  // ═══════════════════════════════════════════════════════════════════════════
+  // в•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђ
+  // POST /conductor/run/:id/approve вЂ” РґРёСЂРµРєС‚РѕСЂ/HEAD_TO СѓС‚РІРµСЂР¶РґР°РµС‚ Conductor-РїСЂРѕСЃС‡С‘С‚.
+  // FEEDBACK-LOOP: СѓС‚РІРµСЂР¶РґС‘РЅРЅС‹Р№ РїСЂРѕСЃС‡С‘С‚ Р°РІС‚РѕРјР°С‚РёС‡РµСЃРєРё РїРѕРїР°РґР°РµС‚ РІ
+  // mimir_reference_projects РєР°Рє СЌС‚Р°Р»РѕРЅ РґР»СЏ Р±СѓРґСѓС‰РёС… РїРѕС…РѕР¶РёС… РїСЂРѕРµРєС‚РѕРІ.
+  // Р”РѕСЃС‚СѓРї: ADMIN, DIRECTOR_*, HEAD_TO.
+  // в•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђ
   fastify.post('/conductor/run/:id/approve', {
     preHandler: [fastify.authenticate, fastify.requireRoles(['ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV', 'HEAD_TO'])]
   }, async (request, reply) => {
     const runId = Number(request.params.id);
-    if (!runId) return reply.code(400).send({ error: 'invalid_run_id', message: 'Некорректный идентификатор просчёта.', hint: 'Обновите страницу и откройте просчёт заново.' });
+    if (!runId) return reply.code(400).send({ error: 'invalid_run_id', message: 'РќРµРєРѕСЂСЂРµРєС‚РЅС‹Р№ РёРґРµРЅС‚РёС„РёРєР°С‚РѕСЂ РїСЂРѕСЃС‡С‘С‚Р°.', hint: 'РћР±РЅРѕРІРёС‚Рµ СЃС‚СЂР°РЅРёС†Сѓ Рё РѕС‚РєСЂРѕР№С‚Рµ РїСЂРѕСЃС‡С‘С‚ Р·Р°РЅРѕРІРѕ.' });
     const db = fastify.db;
     try {
       const { rows } = await db.query('SELECT id, status, initiated_by, work_id, tender_id FROM mimir_conductor_runs WHERE id=$1', [runId]);
       const run = rows[0];
-      if (!run) return reply.code(404).send({ error: 'Просчёт не найден' });
+      if (!run) return reply.code(404).send({ error: 'РџСЂРѕСЃС‡С‘С‚ РЅРµ РЅР°Р№РґРµРЅ' });
       if (!['READY_FOR_REVIEW', 'BLOCKED_BY_CUSTOMER', 'BLOCKED_BY_PM'].includes(run.status)) {
-        return reply.code(409).send({ error: `Просчёт нельзя утвердить из статуса ${run.status}` });
+        return reply.code(409).send({ error: `РџСЂРѕСЃС‡С‘С‚ РЅРµР»СЊР·СЏ СѓС‚РІРµСЂРґРёС‚СЊ РёР· СЃС‚Р°С‚СѓСЃР° ${run.status}` });
       }
       await db.query(
         `UPDATE mimir_conductor_runs SET status='APPROVED', completed_at=NOW(), updated_at=NOW() WHERE id=$1`,
@@ -660,13 +662,13 @@ async function mimirConductorRoutes(fastify, options) {
         );
       } catch (_) { /* noop */ }
 
-      // FEEDBACK-LOOP: эталон в mimir_reference_projects
+      // FEEDBACK-LOOP: СЌС‚Р°Р»РѕРЅ РІ mimir_reference_projects
       let learnResult = null;
       try {
         const { learnFromConductorRun } = require('../services/mimir-conductor/reference-learner');
         learnResult = await learnFromConductorRun(runId, { createdBy: request.user.id, source: 'conductor_approve' });
         if (learnResult.ok) {
-          fastify.log.info(`[conductor/approve] feedback-loop: run #${runId} → reference #${learnResult.reference_id} (${learnResult.created ? 'created' : 'updated'})`);
+          fastify.log.info(`[conductor/approve] feedback-loop: run #${runId} в†’ reference #${learnResult.reference_id} (${learnResult.created ? 'created' : 'updated'})`);
         } else {
           fastify.log.warn(`[conductor/approve] feedback-loop skipped: ${learnResult.reason || learnResult.error}`);
         }
@@ -684,34 +686,34 @@ async function mimirConductorRoutes(fastify, options) {
     }
   });
 
-  // ═══════════════════════════════════════════════════════════════════════════
-  // POST /conductor/run/:id/cancel — РП останавливает свой просчёт.
-  // RBAC: PM только свой, DIRECTOR/ADMIN — любой. Терминальные статусы не
-  // отменяются (READY_FOR_REVIEW, APPROVED, REJECTED, CANCELLED, ERROR, COMPLETED).
-  // ═══════════════════════════════════════════════════════════════════════════
+  // в•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђ
+  // POST /conductor/run/:id/cancel вЂ” Р Рџ РѕСЃС‚Р°РЅР°РІР»РёРІР°РµС‚ СЃРІРѕР№ РїСЂРѕСЃС‡С‘С‚.
+  // RBAC: PM С‚РѕР»СЊРєРѕ СЃРІРѕР№, DIRECTOR/ADMIN вЂ” Р»СЋР±РѕР№. РўРµСЂРјРёРЅР°Р»СЊРЅС‹Рµ СЃС‚Р°С‚СѓСЃС‹ РЅРµ
+  // РѕС‚РјРµРЅСЏСЋС‚СЃСЏ (READY_FOR_REVIEW, APPROVED, REJECTED, CANCELLED, ERROR, COMPLETED).
+  // в•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђ
   fastify.post('/conductor/run/:id/cancel', {
     preHandler: [fastify.authenticate, fastify.requireRoles(ALLOWED_ROLES)]
   }, async (request, reply) => {
     const runId = Number(request.params.id);
-    if (!runId) return reply.code(400).send({ error: 'invalid_run_id', message: 'Некорректный идентификатор просчёта.', hint: 'Обновите страницу и откройте просчёт заново.' });
+    if (!runId) return reply.code(400).send({ error: 'invalid_run_id', message: 'РќРµРєРѕСЂСЂРµРєС‚РЅС‹Р№ РёРґРµРЅС‚РёС„РёРєР°С‚РѕСЂ РїСЂРѕСЃС‡С‘С‚Р°.', hint: 'РћР±РЅРѕРІРёС‚Рµ СЃС‚СЂР°РЅРёС†Сѓ Рё РѕС‚РєСЂРѕР№С‚Рµ РїСЂРѕСЃС‡С‘С‚ Р·Р°РЅРѕРІРѕ.' });
     const db = fastify.db;
     try {
       const { rows } = await db.query('SELECT id, status, initiated_by FROM mimir_conductor_runs WHERE id=$1', [runId]);
       const run = rows[0];
-      if (!run) return reply.code(404).send({ error: 'Просчёт не найден' });
+      if (!run) return reply.code(404).send({ error: 'РџСЂРѕСЃС‡С‘С‚ РЅРµ РЅР°Р№РґРµРЅ' });
       if (request.user.role === 'PM' && run.initiated_by && Number(run.initiated_by) !== Number(request.user.id)) {
-        return reply.code(403).send({ error: 'Нет доступа к чужому просчёту' });
+        return reply.code(403).send({ error: 'РќРµС‚ РґРѕСЃС‚СѓРїР° Рє С‡СѓР¶РѕРјСѓ РїСЂРѕСЃС‡С‘С‚Сѓ' });
       }
       const terminal = new Set(['READY_FOR_REVIEW', 'APPROVED', 'REJECTED', 'CANCELLED', 'ERROR', 'COMPLETED']);
       if (terminal.has(run.status)) {
-        return reply.code(409).send({ error: `Просчёт уже завершён (${run.status})` });
+        return reply.code(409).send({ error: `РџСЂРѕСЃС‡С‘С‚ СѓР¶Рµ Р·Р°РІРµСЂС€С‘РЅ (${run.status})` });
       }
       await db.query(
         `UPDATE mimir_conductor_runs
             SET status='CANCELLED', completed_at=NOW(), updated_at=NOW(),
                 blocked_reason=COALESCE(blocked_reason, $1)
           WHERE id=$2`,
-        [`Отменён пользователем #${request.user.id} (${request.user.role})`, runId]
+        [`РћС‚РјРµРЅС‘РЅ РїРѕР»СЊР·РѕРІР°С‚РµР»РµРј #${request.user.id} (${request.user.role})`, runId]
       );
       try {
         await db.query(
@@ -727,20 +729,20 @@ async function mimirConductorRoutes(fastify, options) {
     }
   });
 
-  // ═══════════════════════════════════════════════════════════════════════════
-  // POST /conductor/clarification/:id/answer-with-norms — структурированный ввод
-  // нормативов прямо из War Room. РП видит expected_inputs[], заполняет поля,
-  // данные пишутся в нужное хранилище (settings.company_profile / field_tariff_grid
-  // / settings.reference_norms / tz_summary) и clarification закрывается.
-  // Тело: { values: { <expected_input.key>: <значение>, ... } }
-  // ═══════════════════════════════════════════════════════════════════════════
+  // в•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђ
+  // POST /conductor/clarification/:id/answer-with-norms вЂ” СЃС‚СЂСѓРєС‚СѓСЂРёСЂРѕРІР°РЅРЅС‹Р№ РІРІРѕРґ
+  // РЅРѕСЂРјР°С‚РёРІРѕРІ РїСЂСЏРјРѕ РёР· War Room. Р Рџ РІРёРґРёС‚ expected_inputs[], Р·Р°РїРѕР»РЅСЏРµС‚ РїРѕР»СЏ,
+  // РґР°РЅРЅС‹Рµ РїРёС€СѓС‚СЃСЏ РІ РЅСѓР¶РЅРѕРµ С…СЂР°РЅРёР»РёС‰Рµ (settings.company_profile / field_tariff_grid
+  // / settings.reference_norms / tz_summary) Рё clarification Р·Р°РєСЂС‹РІР°РµС‚СЃСЏ.
+  // РўРµР»Рѕ: { values: { <expected_input.key>: <Р·РЅР°С‡РµРЅРёРµ>, ... } }
+  // в•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђ
   fastify.post('/conductor/clarification/:id/answer-with-norms', {
     preHandler: [fastify.authenticate, fastify.requireRoles(ALLOWED_ROLES)]
   }, async (request, reply) => {
     const clarId = Number(request.params.id);
-    if (!clarId) return reply.code(400).send({ error: 'invalid_clarification_id', message: 'Некорректный идентификатор уточнения.', hint: 'Обновите страницу и откройте уточнение заново.' });
+    if (!clarId) return reply.code(400).send({ error: 'invalid_clarification_id', message: 'РќРµРєРѕСЂСЂРµРєС‚РЅС‹Р№ РёРґРµРЅС‚РёС„РёРєР°С‚РѕСЂ СѓС‚РѕС‡РЅРµРЅРёСЏ.', hint: 'РћР±РЅРѕРІРёС‚Рµ СЃС‚СЂР°РЅРёС†Сѓ Рё РѕС‚РєСЂРѕР№С‚Рµ СѓС‚РѕС‡РЅРµРЅРёРµ Р·Р°РЅРѕРІРѕ.' });
     const values = (request.body && request.body.values) || {};
-    if (!Object.keys(values).length) return reply.code(400).send({ error: 'values пустой' });
+    if (!Object.keys(values).length) return reply.code(400).send({ error: 'values РїСѓСЃС‚РѕР№' });
 
     const db = fastify.db;
     try {
@@ -753,13 +755,13 @@ async function mimirConductorRoutes(fastify, options) {
         [clarId]
       );
       const cl = rows[0];
-      if (!cl) return reply.code(404).send({ error: 'Уточнение не найдено' });
-      if (cl.status !== 'OPEN') return reply.code(409).send({ error: `Уточнение уже ${cl.status}` });
+      if (!cl) return reply.code(404).send({ error: 'РЈС‚РѕС‡РЅРµРЅРёРµ РЅРµ РЅР°Р№РґРµРЅРѕ' });
+      if (cl.status !== 'OPEN') return reply.code(409).send({ error: `РЈС‚РѕС‡РЅРµРЅРёРµ СѓР¶Рµ ${cl.status}` });
       if (request.user.role === 'PM' && cl.initiated_by && cl.initiated_by !== request.user.id) {
-        return reply.code(403).send({ error: 'Нет доступа к чужому просчёту' });
+        return reply.code(403).send({ error: 'РќРµС‚ РґРѕСЃС‚СѓРїР° Рє С‡СѓР¶РѕРјСѓ РїСЂРѕСЃС‡С‘С‚Сѓ' });
       }
 
-      // expected_inputs[] хранится в options_json (как часть clarification)
+      // expected_inputs[] С…СЂР°РЅРёС‚СЃСЏ РІ options_json (РєР°Рє С‡Р°СЃС‚СЊ clarification)
       const expected = (cl.options_json && Array.isArray(cl.options_json.expected_inputs))
         ? cl.options_json.expected_inputs : [];
 
@@ -769,18 +771,18 @@ async function mimirConductorRoutes(fastify, options) {
         const v = values[inp.key];
         if (v == null || v === '') {
           if (!inp.optional) {
-            return reply.code(400).send({ error: `Поле "${inp.key}" обязательно` });
+            return reply.code(400).send({ error: `РџРѕР»Рµ "${inp.key}" РѕР±СЏР·Р°С‚РµР»СЊРЅРѕ` });
           }
           continue;
         }
         const value = inp.type === 'number' ? Number(v) : String(v);
         if (inp.type === 'number' && !Number.isFinite(value)) {
-          return reply.code(400).send({ error: `Поле "${inp.key}" должно быть числом` });
+          return reply.code(400).send({ error: `РџРѕР»Рµ "${inp.key}" РґРѕР»Р¶РЅРѕ Р±С‹С‚СЊ С‡РёСЃР»РѕРј` });
         }
         writes.push({ target: inp.target, key: inp.key, value, label: inp.label });
       }
 
-      // Применяем каждое write к нужному хранилищу
+      // РџСЂРёРјРµРЅСЏРµРј РєР°Р¶РґРѕРµ write Рє РЅСѓР¶РЅРѕРјСѓ С…СЂР°РЅРёР»РёС‰Сѓ
       await db.transaction(async (client) => {
         for (const w of writes) {
           const t = String(w.target || '');
@@ -788,7 +790,7 @@ async function mimirConductorRoutes(fastify, options) {
             const fpKey = t.replace('company_profile.financial_policy.', '');
             await client.query(
               `INSERT INTO settings (key, value_json, description, updated_at)
-               VALUES ('company_profile', jsonb_build_object('financial_policy', jsonb_build_object($1::text, $2::numeric)), 'Mimir Conductor — авто-обновление', NOW())
+               VALUES ('company_profile', jsonb_build_object('financial_policy', jsonb_build_object($1::text, $2::numeric)), 'Mimir Conductor вЂ” Р°РІС‚Рѕ-РѕР±РЅРѕРІР»РµРЅРёРµ', NOW())
                ON CONFLICT (key) DO UPDATE
                   SET value_json = jsonb_set(COALESCE(settings.value_json, '{}'::jsonb), ARRAY['financial_policy', $1], to_jsonb($2::numeric), true),
                       updated_at = NOW()`,
@@ -799,7 +801,7 @@ async function mimirConductorRoutes(fastify, options) {
             const path = t.replace('reference_norms.', '').split('.');
             await client.query(
               `INSERT INTO settings (key, value_json, description, updated_at)
-               VALUES ('reference_norms', jsonb_set('{}'::jsonb, $1::text[], to_jsonb($2::numeric), true), 'Mimir Conductor — производственные нормативы (заполняются РП)', NOW())
+               VALUES ('reference_norms', jsonb_set('{}'::jsonb, $1::text[], to_jsonb($2::numeric), true), 'Mimir Conductor вЂ” РїСЂРѕРёР·РІРѕРґСЃС‚РІРµРЅРЅС‹Рµ РЅРѕСЂРјР°С‚РёРІС‹ (Р·Р°РїРѕР»РЅСЏСЋС‚СЃСЏ Р Рџ)', NOW())
                ON CONFLICT (key) DO UPDATE
                   SET value_json = jsonb_set(COALESCE(settings.value_json, '{}'::jsonb), $1::text[], to_jsonb($2::numeric), true),
                       updated_at = NOW()`,
@@ -823,7 +825,7 @@ async function mimirConductorRoutes(fastify, options) {
             summary.push(`field_tariff_grid["${positionName}"].rate_per_shift = ${w.value}`);
           } else if (t.startsWith('tz_summary.')) {
             const path = t.replace('tz_summary.', '').split('.');
-            // Дополняем артефакт tz_summary текущего run — создаём новую версию
+            // Р”РѕРїРѕР»РЅСЏРµРј Р°СЂС‚РµС„Р°РєС‚ tz_summary С‚РµРєСѓС‰РµРіРѕ run вЂ” СЃРѕР·РґР°С‘Рј РЅРѕРІСѓСЋ РІРµСЂСЃРёСЋ
             const r = await client.query(
               `SELECT id, content FROM mimir_artifacts
                 WHERE conductor_run_id=$1 AND artifact_type='tz_summary' AND superseded_by IS NULL
@@ -838,7 +840,7 @@ async function mimirConductorRoutes(fastify, options) {
               cur = cur[path[i]];
             }
             cur[path[path.length - 1]] = w.value;
-            // Помечаем старую как superseded и создаём новую
+            // РџРѕРјРµС‡Р°РµРј СЃС‚Р°СЂСѓСЋ РєР°Рє superseded Рё СЃРѕР·РґР°С‘Рј РЅРѕРІСѓСЋ
             if (prev) {
               await client.query(`UPDATE mimir_artifacts SET superseded_by=NULL WHERE id=$1`, [prev.id]);
             }
@@ -851,19 +853,19 @@ async function mimirConductorRoutes(fastify, options) {
             if (prev) {
               await client.query(`UPDATE mimir_artifacts SET superseded_by=$1 WHERE id=$2`, [ins.rows[0].id, prev.id]);
             }
-            summary.push(`tz_summary.${path.join('.')} = ${w.value} (новый артефакт ${ins.rows[0].id})`);
+            summary.push(`tz_summary.${path.join('.')} = ${w.value} (РЅРѕРІС‹Р№ Р°СЂС‚РµС„Р°РєС‚ ${ins.rows[0].id})`);
           } else {
             summary.push(`SKIPPED unknown target: ${t}`);
           }
         }
 
-        // Закрываем clarification
+        // Р—Р°РєСЂС‹РІР°РµРј clarification
         await client.query(
           `UPDATE mimir_clarifications
               SET status='ANSWERED', answer_text=$1, answered_by=$2, answered_at=NOW(),
                   answer_source='inline_form', updated_at=NOW()
             WHERE id=$3`,
-          [`РП заполнил поля: ${summary.join('; ')}`, request.user.id, clarId]
+          [`Р Рџ Р·Р°РїРѕР»РЅРёР» РїРѕР»СЏ: ${summary.join('; ')}`, request.user.id, clarId]
         );
 
         await client.query(
@@ -891,17 +893,17 @@ async function mimirConductorRoutes(fastify, options) {
     }
   });
 
-  // ═══════════════════════════════════════════════════════════════════════════
-  // POST /conductor/run/:id/recheck-blockers — пересмотр блокеров (когда РП
-  // загрузил документы через UI работы/тендера, без явного «ответа на вопрос»).
-  // Если у run все blocking-clarifications закрыты ИЛИ появились новые документы
-  // покрывающие категорию документного вопроса — пометить ANSWERED + resume.
-  // ═══════════════════════════════════════════════════════════════════════════
+  // в•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђ
+  // POST /conductor/run/:id/recheck-blockers вЂ” РїРµСЂРµСЃРјРѕС‚СЂ Р±Р»РѕРєРµСЂРѕРІ (РєРѕРіРґР° Р Рџ
+  // Р·Р°РіСЂСѓР·РёР» РґРѕРєСѓРјРµРЅС‚С‹ С‡РµСЂРµР· UI СЂР°Р±РѕС‚С‹/С‚РµРЅРґРµСЂР°, Р±РµР· СЏРІРЅРѕРіРѕ В«РѕС‚РІРµС‚Р° РЅР° РІРѕРїСЂРѕСЃВ»).
+  // Р•СЃР»Рё Сѓ run РІСЃРµ blocking-clarifications Р·Р°РєСЂС‹С‚С‹ РР›Р РїРѕСЏРІРёР»РёСЃСЊ РЅРѕРІС‹Рµ РґРѕРєСѓРјРµРЅС‚С‹
+  // РїРѕРєСЂС‹РІР°СЋС‰РёРµ РєР°С‚РµРіРѕСЂРёСЋ РґРѕРєСѓРјРµРЅС‚РЅРѕРіРѕ РІРѕРїСЂРѕСЃР° вЂ” РїРѕРјРµС‚РёС‚СЊ ANSWERED + resume.
+  // в•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђ
   fastify.post('/conductor/run/:id/recheck-blockers', {
     preHandler: [fastify.authenticate, fastify.requireRoles(ALLOWED_ROLES)]
   }, async (request, reply) => {
     const runId = Number(request.params.id);
-    if (!runId) return reply.code(400).send({ error: 'invalid_run_id', message: 'Некорректный идентификатор просчёта.', hint: 'Обновите страницу и откройте просчёт заново.' });
+    if (!runId) return reply.code(400).send({ error: 'invalid_run_id', message: 'РќРµРєРѕСЂСЂРµРєС‚РЅС‹Р№ РёРґРµРЅС‚РёС„РёРєР°С‚РѕСЂ РїСЂРѕСЃС‡С‘С‚Р°.', hint: 'РћР±РЅРѕРІРёС‚Рµ СЃС‚СЂР°РЅРёС†Сѓ Рё РѕС‚РєСЂРѕР№С‚Рµ РїСЂРѕСЃС‡С‘С‚ Р·Р°РЅРѕРІРѕ.' });
     const db = fastify.db;
     try {
       const { rows } = await db.query(
@@ -909,11 +911,11 @@ async function mimirConductorRoutes(fastify, options) {
         [runId]
       );
       const run = rows[0];
-      if (!run) return reply.code(404).send({ error: 'Просчёт не найден' });
+      if (!run) return reply.code(404).send({ error: 'РџСЂРѕСЃС‡С‘С‚ РЅРµ РЅР°Р№РґРµРЅ' });
       if (request.user.role === 'PM' && run.initiated_by !== request.user.id) {
-        return reply.code(403).send({ error: 'Нет доступа' });
+        return reply.code(403).send({ error: 'РќРµС‚ РґРѕСЃС‚СѓРїР°' });
       }
-      // Подсчитаем новые документы тендера/работы, не учтённые в parsed_documents
+      // РџРѕРґСЃС‡РёС‚Р°РµРј РЅРѕРІС‹Рµ РґРѕРєСѓРјРµРЅС‚С‹ С‚РµРЅРґРµСЂР°/СЂР°Р±РѕС‚С‹, РЅРµ СѓС‡С‚С‘РЅРЅС‹Рµ РІ parsed_documents
       const docCount = await _countAttachableDocuments(db, run);
       const result = await _tryResumeRun(fastify, runId);
       return {
@@ -930,19 +932,19 @@ async function mimirConductorRoutes(fastify, options) {
     }
   });
 
-  // ═══════════════════════════════════════════════════════════════════════════
-  // POST /conductor/run/:id/recompute-with-feedback — пересчёт по правке РП.
-  // Принимает {feedback_text}. Сохраняет правку как pm_feedback-артефакт,
-  // переводит run в RUNNING, инициирует runConductorResume — следующая итерация
-  // Conductor учтёт обратную связь.
-  // ═══════════════════════════════════════════════════════════════════════════
+  // в•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђ
+  // POST /conductor/run/:id/recompute-with-feedback вЂ” РїРµСЂРµСЃС‡С‘С‚ РїРѕ РїСЂР°РІРєРµ Р Рџ.
+  // РџСЂРёРЅРёРјР°РµС‚ {feedback_text}. РЎРѕС…СЂР°РЅСЏРµС‚ РїСЂР°РІРєСѓ РєР°Рє pm_feedback-Р°СЂС‚РµС„Р°РєС‚,
+  // РїРµСЂРµРІРѕРґРёС‚ run РІ RUNNING, РёРЅРёС†РёРёСЂСѓРµС‚ runConductorResume вЂ” СЃР»РµРґСѓСЋС‰Р°СЏ РёС‚РµСЂР°С†РёСЏ
+  // Conductor СѓС‡С‚С‘С‚ РѕР±СЂР°С‚РЅСѓСЋ СЃРІСЏР·СЊ.
+  // в•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђ
   fastify.post('/conductor/run/:id/recompute-with-feedback', {
     preHandler: [fastify.authenticate, fastify.requireRoles(ALLOWED_ROLES)]
   }, async (request, reply) => {
     const runId = Number(request.params.id);
     const feedback = String((request.body && request.body.feedback_text) || '').trim();
-    if (!runId) return reply.code(400).send({ error: 'invalid_run_id', message: 'Некорректный идентификатор просчёта.', hint: 'Обновите страницу и откройте просчёт заново.' });
-    if (!feedback) return reply.code(400).send({ error: 'feedback_text обязателен' });
+    if (!runId) return reply.code(400).send({ error: 'invalid_run_id', message: 'РќРµРєРѕСЂСЂРµРєС‚РЅС‹Р№ РёРґРµРЅС‚РёС„РёРєР°С‚РѕСЂ РїСЂРѕСЃС‡С‘С‚Р°.', hint: 'РћР±РЅРѕРІРёС‚Рµ СЃС‚СЂР°РЅРёС†Сѓ Рё РѕС‚РєСЂРѕР№С‚Рµ РїСЂРѕСЃС‡С‘С‚ Р·Р°РЅРѕРІРѕ.' });
+    if (!feedback) return reply.code(400).send({ error: 'feedback_text РѕР±СЏР·Р°С‚РµР»РµРЅ' });
 
     const db = fastify.db;
     try {
@@ -951,23 +953,23 @@ async function mimirConductorRoutes(fastify, options) {
         [runId]
       );
       const run = rows[0];
-      if (!run) return reply.code(404).send({ error: 'Просчёт не найден' });
+      if (!run) return reply.code(404).send({ error: 'РџСЂРѕСЃС‡С‘С‚ РЅРµ РЅР°Р№РґРµРЅ' });
       if (request.user.role === 'PM' && run.initiated_by !== request.user.id) {
-        return reply.code(403).send({ error: 'Нет доступа' });
+        return reply.code(403).send({ error: 'РќРµС‚ РґРѕСЃС‚СѓРїР°' });
       }
-      // Сохраняем feedback как артефакт типа pm_feedback (Conductor его учтёт)
+      // РЎРѕС…СЂР°РЅСЏРµРј feedback РєР°Рє Р°СЂС‚РµС„Р°РєС‚ С‚РёРїР° pm_feedback (Conductor РµРіРѕ СѓС‡С‚С‘С‚)
       const cr = require('../services/mimir-conductor/conductor-run');
       const artifact = {
-        summary: 'Обратная связь РП к финальной смете',
+        summary: 'РћР±СЂР°С‚РЅР°СЏ СЃРІСЏР·СЊ Р Рџ Рє С„РёРЅР°Р»СЊРЅРѕР№ СЃРјРµС‚Рµ',
         feedback_text: feedback,
         author_user_id: request.user.id,
         created_at: new Date().toISOString()
       };
       try {
         await cr.addArtifact(runId, null, 'pm_feedback', artifact);
-      } catch (_) { /* схема может ругаться на тип — не критично */ }
+      } catch (_) { /* СЃС…РµРјР° РјРѕР¶РµС‚ СЂСѓРіР°С‚СЊСЃСЏ РЅР° С‚РёРї вЂ” РЅРµ РєСЂРёС‚РёС‡РЅРѕ */ }
 
-      // Перевод run в RUNNING
+      // РџРµСЂРµРІРѕРґ run РІ RUNNING
       await db.query(
         `UPDATE mimir_conductor_runs SET status = 'RUNNING', blocked_reason = NULL, updated_at = NOW() WHERE id = $1`,
         [runId]
@@ -980,7 +982,7 @@ async function mimirConductorRoutes(fastify, options) {
         );
       } catch (_) {}
 
-      // Фоновый resume
+      // Р¤РѕРЅРѕРІС‹Р№ resume
       setImmediate(() => {
         try {
           const { runConductorResume } = require('../services/mimir-conductor/apply-answers');
@@ -992,50 +994,50 @@ async function mimirConductorRoutes(fastify, options) {
         }
       });
 
-      return { ok: true, run_id: runId, status: 'RUNNING', message: 'Conductor учтёт правку в следующей итерации' };
+      return { ok: true, run_id: runId, status: 'RUNNING', message: 'Conductor СѓС‡С‚С‘С‚ РїСЂР°РІРєСѓ РІ СЃР»РµРґСѓСЋС‰РµР№ РёС‚РµСЂР°С†РёРё' };
     } catch (e) {
       request.log.error(`[recompute-with-feedback] ${e.message}`);
       return reply.code(500).send({ error: e.message });
     }
   });
 
-  // ═══════════════════════════════════════════════════════════════════════════
-  // POST /conductor/run/:id/adjust-margin — РП изменяет маржу/прибыль в финальной
-  // смете и получает пересчитанные цифры. Создаётся новая версия артефакта
-  // final_estimate (старая помечается superseded). Не запускает Conductor —
-  // просто математический пересчёт revenue/VAT при той же себестоимости.
+  // в•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђ
+  // POST /conductor/run/:id/adjust-margin вЂ” Р Рџ РёР·РјРµРЅСЏРµС‚ РјР°СЂР¶Сѓ/РїСЂРёР±С‹Р»СЊ РІ С„РёРЅР°Р»СЊРЅРѕР№
+  // СЃРјРµС‚Рµ Рё РїРѕР»СѓС‡Р°РµС‚ РїРµСЂРµСЃС‡РёС‚Р°РЅРЅС‹Рµ С†РёС„СЂС‹. РЎРѕР·РґР°С‘С‚СЃСЏ РЅРѕРІР°СЏ РІРµСЂСЃРёСЏ Р°СЂС‚РµС„Р°РєС‚Р°
+  // final_estimate (СЃС‚Р°СЂР°СЏ РїРѕРјРµС‡Р°РµС‚СЃСЏ superseded). РќРµ Р·Р°РїСѓСЃРєР°РµС‚ Conductor вЂ”
+  // РїСЂРѕСЃС‚Рѕ РјР°С‚РµРјР°С‚РёС‡РµСЃРєРёР№ РїРµСЂРµСЃС‡С‘С‚ revenue/VAT РїСЂРё С‚РѕР№ Р¶Рµ СЃРµР±РµСЃС‚РѕРёРјРѕСЃС‚Рё.
   //
-  // Body: { new_margin_pct: 22.5 } ИЛИ { new_profit_rub: 5000000 } ИЛИ { new_total_with_margin: 30000000 }
-  // ═══════════════════════════════════════════════════════════════════════════
+  // Body: { new_margin_pct: 22.5 } РР›Р { new_profit_rub: 5000000 } РР›Р { new_total_with_margin: 30000000 }
+  // в•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђ
   fastify.post('/conductor/run/:id/adjust-margin', {
     preHandler: [fastify.authenticate, fastify.requireRoles(ALLOWED_ROLES)]
   }, async (request, reply) => {
     const runId = Number(request.params.id);
-    if (!runId) return reply.code(400).send({ error: 'invalid_run_id', message: 'Некорректный идентификатор просчёта.', hint: 'Обновите страницу и откройте просчёт заново.' });
+    if (!runId) return reply.code(400).send({ error: 'invalid_run_id', message: 'РќРµРєРѕСЂСЂРµРєС‚РЅС‹Р№ РёРґРµРЅС‚РёС„РёРєР°С‚РѕСЂ РїСЂРѕСЃС‡С‘С‚Р°.', hint: 'РћР±РЅРѕРІРёС‚Рµ СЃС‚СЂР°РЅРёС†Сѓ Рё РѕС‚РєСЂРѕР№С‚Рµ РїСЂРѕСЃС‡С‘С‚ Р·Р°РЅРѕРІРѕ.' });
     const b = request.body || {};
     const db = fastify.db;
     try {
       const { rows: rRows } = await db.query(
         `SELECT initiated_by FROM mimir_conductor_runs WHERE id = $1`, [runId]
       );
-      if (!rRows[0]) return reply.code(404).send({ error: 'Просчёт не найден' });
+      if (!rRows[0]) return reply.code(404).send({ error: 'РџСЂРѕСЃС‡С‘С‚ РЅРµ РЅР°Р№РґРµРЅ' });
       if (request.user.role === 'PM' && rRows[0].initiated_by !== request.user.id) {
-        return reply.code(403).send({ error: 'Нет доступа' });
+        return reply.code(403).send({ error: 'РќРµС‚ РґРѕСЃС‚СѓРїР°' });
       }
 
-      // Берём текущий final_estimate
+      // Р‘РµСЂС‘Рј С‚РµРєСѓС‰РёР№ final_estimate
       const cr = require('../services/mimir-conductor/conductor-run');
       const final = await cr.getArtifact(runId, 'final_estimate');
       if (!final || !final.content || !final.content.ssr) {
-        return reply.code(400).send({ error: 'Финальная смета ещё не готова — Conductor не дошёл до неё' });
+        return reply.code(400).send({ error: 'Р¤РёРЅР°Р»СЊРЅР°СЏ СЃРјРµС‚Р° РµС‰С‘ РЅРµ РіРѕС‚РѕРІР° вЂ” Conductor РЅРµ РґРѕС€С‘Р» РґРѕ РЅРµС‘' });
       }
       const ssr = JSON.parse(JSON.stringify(final.content.ssr));
       const cost = Number(ssr.total_cost) || 0;
       if (cost <= 0) {
-        return reply.code(400).send({ error: 'Себестоимость = 0 — нельзя пересчитать маржу' });
+        return reply.code(400).send({ error: 'РЎРµР±РµСЃС‚РѕРёРјРѕСЃС‚СЊ = 0 вЂ” РЅРµР»СЊР·СЏ РїРµСЂРµСЃС‡РёС‚Р°С‚СЊ РјР°СЂР¶Сѓ' });
       }
 
-      // Определяем новую маржу из любого из трёх полей body
+      // РћРїСЂРµРґРµР»СЏРµРј РЅРѕРІСѓСЋ РјР°СЂР¶Сѓ РёР· Р»СЋР±РѕРіРѕ РёР· С‚СЂС‘С… РїРѕР»РµР№ body
       let newMarginPct;
       if (b.new_margin_pct != null) {
         newMarginPct = Number(b.new_margin_pct);
@@ -1047,14 +1049,14 @@ async function mimirConductorRoutes(fastify, options) {
         const revenue = Number(b.new_total_with_margin);
         newMarginPct = revenue > cost ? ((revenue - cost) / revenue * 100) : 0;
       } else {
-        return reply.code(400).send({ error: 'Нужно одно из: new_margin_pct, new_profit_rub, new_total_with_margin' });
+        return reply.code(400).send({ error: 'РќСѓР¶РЅРѕ РѕРґРЅРѕ РёР·: new_margin_pct, new_profit_rub, new_total_with_margin' });
       }
 
       if (!isFinite(newMarginPct) || newMarginPct < 0 || newMarginPct >= 95) {
-        return reply.code(400).send({ error: 'Маржа должна быть в диапазоне 0..95%' });
+        return reply.code(400).send({ error: 'РњР°СЂР¶Р° РґРѕР»Р¶РЅР° Р±С‹С‚СЊ РІ РґРёР°РїР°Р·РѕРЅРµ 0..95%' });
       }
 
-      // Пересчёт
+      // РџРµСЂРµСЃС‡С‘С‚
       const marginDec = newMarginPct / 100;
       const newRevenue = cost / (1 - marginDec);
       const newProfit = newRevenue - cost;
@@ -1062,11 +1064,11 @@ async function mimirConductorRoutes(fastify, options) {
       const newVat = newRevenue * vatPct / 100;
       const newTotalWithVat = newRevenue + newVat;
 
-      // Старые цифры для аудита
+      // РЎС‚Р°СЂС‹Рµ С†РёС„СЂС‹ РґР»СЏ Р°СѓРґРёС‚Р°
       const oldRevenue = Number(ssr.total_with_margin) || 0;
       const oldMargin = Number(ssr.gross_profit_margin_pct) || 0;
 
-      // Обновлённая SSR
+      // РћР±РЅРѕРІР»С‘РЅРЅР°СЏ SSR
       ssr.gross_profit_margin_pct = Number(newMarginPct.toFixed(2));
       ssr.total_with_margin = Math.round(newRevenue);
       ssr.vat = Math.round(newVat);
@@ -1080,13 +1082,13 @@ async function mimirConductorRoutes(fastify, options) {
         to: { margin_pct: newMarginPct, total_with_margin: ssr.total_with_margin }
       });
 
-      // Сохраняем новую версию артефакта (supersede старой)
+      // РЎРѕС…СЂР°РЅСЏРµРј РЅРѕРІСѓСЋ РІРµСЂСЃРёСЋ Р°СЂС‚РµС„Р°РєС‚Р° (supersede СЃС‚Р°СЂРѕР№)
       const newContent = Object.assign({}, final.content, { ssr });
       try {
         await cr.addArtifact(runId, null, 'final_estimate', newContent);
-      } catch (_) { /* schema может ругаться при дубле — best-effort */ }
+      } catch (_) { /* schema РјРѕР¶РµС‚ СЂСѓРіР°С‚СЊСЃСЏ РїСЂРё РґСѓР±Р»Рµ вЂ” best-effort */ }
 
-      // Событие в War Room
+      // РЎРѕР±С‹С‚РёРµ РІ War Room
       try {
         await db.query(
           `INSERT INTO mimir_agent_events (conductor_run_id, agent_run_id, event_type, payload)
@@ -1115,12 +1117,12 @@ async function mimirConductorRoutes(fastify, options) {
     }
   });
 
-  // ═══════════════════════════════════════════════════════════════════════════
-  // POST /conductor/reference/import — импорт эталона напрямую (РП заполняет
-  // фактические данные после завершения работы или загружает старый проект).
-  // Принимает полный набор полей mimir_reference_projects. Endpoint минимально
-  // умный — структуру эталона формирует РП через UI (либо опциональный AI-extract).
-  // ═══════════════════════════════════════════════════════════════════════════
+  // в•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђ
+  // POST /conductor/reference/import вЂ” РёРјРїРѕСЂС‚ СЌС‚Р°Р»РѕРЅР° РЅР°РїСЂСЏРјСѓСЋ (Р Рџ Р·Р°РїРѕР»РЅСЏРµС‚
+  // С„Р°РєС‚РёС‡РµСЃРєРёРµ РґР°РЅРЅС‹Рµ РїРѕСЃР»Рµ Р·Р°РІРµСЂС€РµРЅРёСЏ СЂР°Р±РѕС‚С‹ РёР»Рё Р·Р°РіСЂСѓР¶Р°РµС‚ СЃС‚Р°СЂС‹Р№ РїСЂРѕРµРєС‚).
+  // РџСЂРёРЅРёРјР°РµС‚ РїРѕР»РЅС‹Р№ РЅР°Р±РѕСЂ РїРѕР»РµР№ mimir_reference_projects. Endpoint РјРёРЅРёРјР°Р»СЊРЅРѕ
+  // СѓРјРЅС‹Р№ вЂ” СЃС‚СЂСѓРєС‚СѓСЂСѓ СЌС‚Р°Р»РѕРЅР° С„РѕСЂРјРёСЂСѓРµС‚ Р Рџ С‡РµСЂРµР· UI (Р»РёР±Рѕ РѕРїС†РёРѕРЅР°Р»СЊРЅС‹Р№ AI-extract).
+  // в•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђ
   fastify.post('/conductor/reference/import', {
     preHandler: [fastify.authenticate, fastify.requireRoles(ALLOWED_ROLES)]
   }, async (request, reply) => {
@@ -1128,7 +1130,7 @@ async function mimirConductorRoutes(fastify, options) {
     const db = fastify.db;
     try {
       if (!b.customer_name || !b.work_type) {
-        return reply.code(400).send({ error: 'customer_name и work_type обязательны' });
+        return reply.code(400).send({ error: 'customer_name Рё work_type РѕР±СЏР·Р°С‚РµР»СЊРЅС‹' });
       }
       const sql = `INSERT INTO mimir_reference_projects (
         customer_name, customer_inn, customer_kpp, object_name, city, region,
@@ -1185,17 +1187,17 @@ async function mimirConductorRoutes(fastify, options) {
     }
   });
 
-  // ═══════════════════════════════════════════════════════════════════════════
-  // POST /conductor/run/:id/save-actuals — после завершения реальной работы
-  // РП вносит фактические цифры → создаём эталон автоматически из run+actuals.
-  // Это и есть feedback-loop: каждая закрытая работа = +1 эталон в базу.
-  // ═══════════════════════════════════════════════════════════════════════════
+  // в•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђ
+  // POST /conductor/run/:id/save-actuals вЂ” РїРѕСЃР»Рµ Р·Р°РІРµСЂС€РµРЅРёСЏ СЂРµР°Р»СЊРЅРѕР№ СЂР°Р±РѕС‚С‹
+  // Р Рџ РІРЅРѕСЃРёС‚ С„Р°РєС‚РёС‡РµСЃРєРёРµ С†РёС„СЂС‹ в†’ СЃРѕР·РґР°С‘Рј СЌС‚Р°Р»РѕРЅ Р°РІС‚РѕРјР°С‚РёС‡РµСЃРєРё РёР· run+actuals.
+  // Р­С‚Рѕ Рё РµСЃС‚СЊ feedback-loop: РєР°Р¶РґР°СЏ Р·Р°РєСЂС‹С‚Р°СЏ СЂР°Р±РѕС‚Р° = +1 СЌС‚Р°Р»РѕРЅ РІ Р±Р°Р·Сѓ.
+  // в•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђ
   fastify.post('/conductor/run/:id/save-actuals', {
     preHandler: [fastify.authenticate, fastify.requireRoles(ALLOWED_ROLES)]
   }, async (request, reply) => {
     const runId = Number(request.params.id);
     const b = request.body || {};
-    if (!runId) return reply.code(400).send({ error: 'invalid_run_id', message: 'Некорректный идентификатор просчёта.', hint: 'Обновите страницу и откройте просчёт заново.' });
+    if (!runId) return reply.code(400).send({ error: 'invalid_run_id', message: 'РќРµРєРѕСЂСЂРµРєС‚РЅС‹Р№ РёРґРµРЅС‚РёС„РёРєР°С‚РѕСЂ РїСЂРѕСЃС‡С‘С‚Р°.', hint: 'РћР±РЅРѕРІРёС‚Рµ СЃС‚СЂР°РЅРёС†Сѓ Рё РѕС‚РєСЂРѕР№С‚Рµ РїСЂРѕСЃС‡С‘С‚ Р·Р°РЅРѕРІРѕ.' });
     const db = fastify.db;
     try {
       const { rows: rRows } = await db.query(
@@ -1208,20 +1210,20 @@ async function mimirConductorRoutes(fastify, options) {
         [runId]
       );
       const run = rRows[0];
-      if (!run) return reply.code(404).send({ error: 'Просчёт не найден' });
+      if (!run) return reply.code(404).send({ error: 'РџСЂРѕСЃС‡С‘С‚ РЅРµ РЅР°Р№РґРµРЅ' });
       if (request.user.role === 'PM' && run.initiated_by !== request.user.id) {
-        return reply.code(403).send({ error: 'Нет доступа' });
+        return reply.code(403).send({ error: 'РќРµС‚ РґРѕСЃС‚СѓРїР°' });
       }
 
-      // Получаем артефакт final_estimate если был (для cost_planned)
+      // РџРѕР»СѓС‡Р°РµРј Р°СЂС‚РµС„Р°РєС‚ final_estimate РµСЃР»Рё Р±С‹Р» (РґР»СЏ cost_planned)
       const cr = require('../services/mimir-conductor/conductor-run');
       const finalArt = await cr.getArtifact(runId, 'final_estimate').catch(() => null);
       const costPlanned = (finalArt && finalArt.content && finalArt.content.ssr && finalArt.content.ssr.subtotal_cost) || run.contract_value || null;
 
-      const customerName = b.customer_name || run.w_customer || run.t_customer || 'Неизвестный заказчик';
-      const workType = b.work_type || run.work_title || run.tender_title || 'Подрядные работы';
+      const customerName = b.customer_name || run.w_customer || run.t_customer || 'РќРµРёР·РІРµСЃС‚РЅС‹Р№ Р·Р°РєР°Р·С‡РёРє';
+      const workType = b.work_type || run.work_title || run.tender_title || 'РџРѕРґСЂСЏРґРЅС‹Рµ СЂР°Р±РѕС‚С‹';
 
-      // Создаём эталон
+      // РЎРѕР·РґР°С‘Рј СЌС‚Р°Р»РѕРЅ
       const sql = `INSERT INTO mimir_reference_projects (
         customer_name, object_name, city, work_type, work_subtype, industry_sector,
         contract_value_planned, contract_value_actual,
@@ -1249,18 +1251,18 @@ async function mimirConductorRoutes(fastify, options) {
         JSON.stringify(b.insights || {}),
         run.work_id || null, run.tender_id || null,
         b.quality_score || 7,
-        b.notes || `Эталон создан из Conductor run #${runId} (feedback-loop)`,
+        b.notes || `Р­С‚Р°Р»РѕРЅ СЃРѕР·РґР°РЅ РёР· Conductor run #${runId} (feedback-loop)`,
         `${workType} ${customerName} ${b.object_name || ''}`.toLowerCase(),
         request.user.id
       ]);
-      return { ok: true, reference_id: r2.rows[0].id, message: 'Эталон создан, будет использован в похожих просчётах' };
+      return { ok: true, reference_id: r2.rows[0].id, message: 'Р­С‚Р°Р»РѕРЅ СЃРѕР·РґР°РЅ, Р±СѓРґРµС‚ РёСЃРїРѕР»СЊР·РѕРІР°РЅ РІ РїРѕС…РѕР¶РёС… РїСЂРѕСЃС‡С‘С‚Р°С…' };
     } catch (e) {
       request.log.error(`[save-actuals] ${e.message}`);
       return reply.code(500).send({ error: e.message });
     }
   });
 
-  // GET /conductor/references — список эталонов (для UI и админ-панели)
+  // GET /conductor/references вЂ” СЃРїРёСЃРѕРє СЌС‚Р°Р»РѕРЅРѕРІ (РґР»СЏ UI Рё Р°РґРјРёРЅ-РїР°РЅРµР»Рё)
   fastify.get('/conductor/references', {
     preHandler: [fastify.authenticate, fastify.requireRoles(ALLOWED_ROLES)]
   }, async (request) => {
@@ -1281,19 +1283,19 @@ async function mimirConductorRoutes(fastify, options) {
     }
   });
 
-  // ═══════════════════════════════════════════════════════════════════════════
+  // в•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђ
   // GET /references/search?q=&work_type=&volume_min=&volume_max=&limit=10
-  // ─────────────────────────────────────────────────────────────────────────
-  // Поиск похожих эталонов из mimir_reference_projects для Quick/Conductor.
-  // Размещён в этом файле (а не в /conductor/*) намеренно: используется и
-  // Quick-сессией ТКП (V129), и Conductor'ом (V133), и канбан-витриной.
+  // в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
+  // РџРѕРёСЃРє РїРѕС…РѕР¶РёС… СЌС‚Р°Р»РѕРЅРѕРІ РёР· mimir_reference_projects РґР»СЏ Quick/Conductor.
+  // Р Р°Р·РјРµС‰С‘РЅ РІ СЌС‚РѕРј С„Р°Р№Р»Рµ (Р° РЅРµ РІ /conductor/*) РЅР°РјРµСЂРµРЅРЅРѕ: РёСЃРїРѕР»СЊР·СѓРµС‚СЃСЏ Рё
+  // Quick-СЃРµСЃСЃРёРµР№ РўРљРџ (V129), Рё Conductor'РѕРј (V133), Рё РєР°РЅР±Р°РЅ-РІРёС‚СЂРёРЅРѕР№.
   //
-  // RBAC: PM/HEAD_PM/TO/HEAD_TO/ADMIN/DIRECTOR_* (через requireRoles).
+  // RBAC: PM/HEAD_PM/TO/HEAD_TO/ADMIN/DIRECTOR_* (С‡РµСЂРµР· requireRoles).
   //
-  // Возвращает массив записей с similarity_pct =
-  //   100 - abs(volume - target_volume) / target_volume * 100  (если задан target),
-  //   иначе 100 (по умолчанию все «совпадают»).
-  // ═══════════════════════════════════════════════════════════════════════════
+  // Р’РѕР·РІСЂР°С‰Р°РµС‚ РјР°СЃСЃРёРІ Р·Р°РїРёСЃРµР№ СЃ similarity_pct =
+  //   100 - abs(volume - target_volume) / target_volume * 100  (РµСЃР»Рё Р·Р°РґР°РЅ target),
+  //   РёРЅР°С‡Рµ 100 (РїРѕ СѓРјРѕР»С‡Р°РЅРёСЋ РІСЃРµ В«СЃРѕРІРїР°РґР°СЋС‚В»).
+  // в•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђ
   fastify.get('/references/search', {
     preHandler: [fastify.authenticate, fastify.requireRoles(ALLOWED_ROLES)]
   }, async (request, reply) => {
@@ -1356,7 +1358,7 @@ async function mimirConductorRoutes(fastify, options) {
 
     try {
       const { rows } = await db.query(sql, params);
-      // Целевой volume для similarity: середина диапазона, либо одна граница.
+      // Р¦РµР»РµРІРѕР№ volume РґР»СЏ similarity: СЃРµСЂРµРґРёРЅР° РґРёР°РїР°Р·РѕРЅР°, Р»РёР±Рѕ РѕРґРЅР° РіСЂР°РЅРёС†Р°.
       let target = null;
       if (Number.isFinite(volMin) && Number.isFinite(volMax)) target = (volMin + volMax) / 2;
       else if (Number.isFinite(volMin)) target = volMin;
@@ -1374,7 +1376,7 @@ async function mimirConductorRoutes(fastify, options) {
         return { ...r, similarity_pct };
       });
 
-      // Если задан target — пересортируем по similarity (без потери первичного ORDER BY качества).
+      // Р•СЃР»Рё Р·Р°РґР°РЅ target вЂ” РїРµСЂРµСЃРѕСЂС‚РёСЂСѓРµРј РїРѕ similarity (Р±РµР· РїРѕС‚РµСЂРё РїРµСЂРІРёС‡РЅРѕРіРѕ ORDER BY РєР°С‡РµСЃС‚РІР°).
       if (target != null) {
         items.sort((a, b) => (b.similarity_pct - a.similarity_pct) ||
                             ((b.quality_score || 0) - (a.quality_score || 0)));
@@ -1383,11 +1385,11 @@ async function mimirConductorRoutes(fastify, options) {
       return { success: true, items, total: items.length };
     } catch (e) {
       request.log.error({ err: e }, '[mimir-conductor] /references/search failed');
-      return reply.code(500).send({ error: 'search_failed', message: 'Не удалось выполнить поиск из-за внутренней ошибки.', hint: 'Повторите попытку. Если повторяется — сообщите администратору.' });
+      return reply.code(500).send({ error: 'search_failed', message: 'РќРµ СѓРґР°Р»РѕСЃСЊ РІС‹РїРѕР»РЅРёС‚СЊ РїРѕРёСЃРє РёР·-Р·Р° РІРЅСѓС‚СЂРµРЅРЅРµР№ РѕС€РёР±РєРё.', hint: 'РџРѕРІС‚РѕСЂРёС‚Рµ РїРѕРїС‹С‚РєСѓ. Р•СЃР»Рё РїРѕРІС‚РѕСЂСЏРµС‚СЃСЏ вЂ” СЃРѕРѕР±С‰РёС‚Рµ Р°РґРјРёРЅРёСЃС‚СЂР°С‚РѕСЂСѓ.' });
     }
   });
 
-  // GET /conductor/awaiting-customer — просчёты в ожидании заказчика для PM
+  // GET /conductor/awaiting-customer вЂ” РїСЂРѕСЃС‡С‘С‚С‹ РІ РѕР¶РёРґР°РЅРёРё Р·Р°РєР°Р·С‡РёРєР° РґР»СЏ PM
   fastify.get('/conductor/awaiting-customer', {
     preHandler: [fastify.authenticate]
   }, async () => {
@@ -1419,13 +1421,13 @@ async function mimirConductorRoutes(fastify, options) {
   });
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-// HELPERS (внутри файла, не экспортируются)
-// ═══════════════════════════════════════════════════════════════════════════
+// в•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђ
+// HELPERS (РІРЅСѓС‚СЂРё С„Р°Р№Р»Р°, РЅРµ СЌРєСЃРїРѕСЂС‚РёСЂСѓСЋС‚СЃСЏ)
+// в•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђв•ђ
 
 /**
- * Попробовать резумнуть run если все blocking-clarifications закрыты.
- * Возвращает { resumed, remaining, reason }.
+ * РџРѕРїСЂРѕР±РѕРІР°С‚СЊ СЂРµР·СѓРјРЅСѓС‚СЊ run РµСЃР»Рё РІСЃРµ blocking-clarifications Р·Р°РєСЂС‹С‚С‹.
+ * Р’РѕР·РІСЂР°С‰Р°РµС‚ { resumed, remaining, reason }.
  */
 async function _tryResumeRun(fastify, runId) {
   const db = fastify.db;
@@ -1447,7 +1449,7 @@ async function _tryResumeRun(fastify, runId) {
     return { resumed: false, reason: 'has_blocking_open', remaining };
   }
 
-  // Снимаем блок и запускаем resume
+  // РЎРЅРёРјР°РµРј Р±Р»РѕРє Рё Р·Р°РїСѓСЃРєР°РµРј resume
   await db.query(
     `UPDATE mimir_conductor_runs SET status='RUNNING', blocked_reason=NULL, updated_at=NOW() WHERE id=$1`,
     [runId]
@@ -1456,7 +1458,7 @@ async function _tryResumeRun(fastify, runId) {
     await db.query(
       `INSERT INTO mimir_agent_events (conductor_run_id, agent_run_id, event_type, payload)
        VALUES ($1, NULL, 'status_change', $2::jsonb)`,
-      [runId, JSON.stringify({ from: run.status, to: 'RUNNING', reason: 'auto-resume: все блокеры закрыты' })]
+      [runId, JSON.stringify({ from: run.status, to: 'RUNNING', reason: 'auto-resume: РІСЃРµ Р±Р»РѕРєРµСЂС‹ Р·Р°РєСЂС‹С‚С‹' })]
     );
   } catch (_) {}
 
@@ -1474,7 +1476,7 @@ async function _tryResumeRun(fastify, runId) {
   return { resumed: true, reason: 'all_blockers_closed', remaining: 0 };
 }
 
-/** Подсчёт документов работы/тендера, которые можно подцепить к Conductor. */
+/** РџРѕРґСЃС‡С‘С‚ РґРѕРєСѓРјРµРЅС‚РѕРІ СЂР°Р±РѕС‚С‹/С‚РµРЅРґРµСЂР°, РєРѕС‚РѕСЂС‹Рµ РјРѕР¶РЅРѕ РїРѕРґС†РµРїРёС‚СЊ Рє Conductor. */
 async function _countAttachableDocuments(db, run) {
   const conds = [];
   const params = [];
@@ -1485,7 +1487,7 @@ async function _countAttachableDocuments(db, run) {
   const sql = `SELECT COUNT(*)::int AS n FROM documents
                 WHERE (${conds.join(' OR ')})
                   AND lower(COALESCE(type,'')) NOT IN
-                      ('logistics','паспорт','полис до мсу','полис','счёт','счет','билеты','билет','медполис')`;
+                      ('logistics','РїР°СЃРїРѕСЂС‚','РїРѕР»РёСЃ РґРѕ РјСЃСѓ','РїРѕР»РёСЃ','СЃС‡С‘С‚','СЃС‡РµС‚','Р±РёР»РµС‚С‹','Р±РёР»РµС‚','РјРµРґРїРѕР»РёСЃ')`;
   const { rows } = await db.query(sql, params);
   return rows[0].n;
 }

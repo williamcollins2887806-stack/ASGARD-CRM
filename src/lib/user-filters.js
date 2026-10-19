@@ -27,6 +27,27 @@ function isTestUserRecord(user) {
   return name.startsWith('test ') || name.startsWith('тест ');
 }
 
+/**
+ * Безопасен ли адрес для РЕАЛЬНОЙ отправки письма (заказчик 19.10.2026).
+ * Причина: рассылки уходили на test_admin@test.asgard.local и т.п. — домен не
+ * существует, Yandex возвращал bounce, в ящике накопилось 653 письма.
+ * Запрещаем: несуществующие домены тестов (.local/.test/.example),
+ * адреса на @test.*, локальную часть test_*, пустые адреса.
+ */
+function isSafeRecipient(email) {
+  const e = String(email || '').trim().toLowerCase();
+  if (!e || !e.includes('@')) return false;
+  const domain = e.split('@').pop();
+  if (!domain || !domain.includes('.')) return false;         // нет TLD
+  if (/\.(local|test|invalid|example|localhost)$/.test(domain)) return false;
+  if (domain.startsWith('test.') || domain.includes('.test.')) return false;
+  // RFC 2606 / RFC 6761: example.com/net/org — зарезервированы для документации,
+  // реальной доставки нет (в прод-БД такие адреса попадали из тестов).
+  if (/(^|\.)example\.(com|net|org)$/.test(domain)) return false;
+  if (e.startsWith('test_') || e.startsWith('test@')) return false;
+  return true;
+}
+
 /** Whether list endpoints should omit test users for this request. */
 function shouldHideTestUsersFromLists(request) {
   if (process.env.SHOW_TEST_USERS === '1') return false;
@@ -64,6 +85,7 @@ module.exports = {
   SYSTEM_LOGINS,
   isTestLogin,
   isTestUserRecord,
+  isSafeRecipient,
   shouldHideTestUsersFromLists,
   usersExcludeSql,
   staffExcludeTestSql,

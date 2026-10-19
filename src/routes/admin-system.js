@@ -1,4 +1,4 @@
-'use strict';
+﻿'use strict';
 
 const { exec, spawn } = require('child_process');
 const { promisify } = require('util');
@@ -10,7 +10,7 @@ const db = require('../services/db');
 
 const PROJECT_ROOT = '/var/www/asgard-crm';
 
-// Пути доступные Мимиру для чтения (только src/ и migrations/)
+// РџСѓС‚Рё РґРѕСЃС‚СѓРїРЅС‹Рµ РњРёРјРёСЂСѓ РґР»СЏ С‡С‚РµРЅРёСЏ (С‚РѕР»СЊРєРѕ src/ Рё migrations/)
 function isSafePath(filePath) {
   const norm = path.normalize(filePath).replace(/\\/g, '/');
   if (norm.includes('..')) return false;
@@ -18,11 +18,11 @@ function isSafePath(filePath) {
   return /^(src\/|migrations\/|public\/assets\/js\/)/.test(norm);
 }
 
-// ─── CRM Passport (техническая документация) ─────────────────────────────────
+// в”Ђв”Ђв”Ђ CRM Passport (С‚РµС…РЅРёС‡РµСЃРєР°СЏ РґРѕРєСѓРјРµРЅС‚Р°С†РёСЏ) в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
 const CRM_PASSPORT = {
   project: {
-    name:    'АСГАРД CRM',
-    desc:    'CRM для управления тендерами, работами, персоналом и финансами строительной компании АСГАРД-СЕРВИС',
+    name:    'РђРЎР“РђР Р” CRM',
+    desc:    'CRM РґР»СЏ СѓРїСЂР°РІР»РµРЅРёСЏ С‚РµРЅРґРµСЂР°РјРё, СЂР°Р±РѕС‚Р°РјРё, РїРµСЂСЃРѕРЅР°Р»РѕРј Рё С„РёРЅР°РЅСЃР°РјРё СЃС‚СЂРѕРёС‚РµР»СЊРЅРѕР№ РєРѕРјРїР°РЅРёРё РђРЎР“РђР Р”-РЎР•Р Р’РРЎ',
     version: 'v20.x',
     branch:  'mobile-v3',
   },
@@ -32,7 +32,7 @@ const CRM_PASSPORT = {
     project_path: '/var/www/asgard-crm',
     service:      'asgard-crm (systemd)',
     port:         3000,
-    proxy:        'nginx → localhost:3000',
+    proxy:        'nginx в†’ localhost:3000',
     restart:      'systemctl restart asgard-crm',
     status:       'systemctl is-active asgard-crm',
     logs:         'journalctl -u asgard-crm -f --no-pager',
@@ -40,8 +40,8 @@ const CRM_PASSPORT = {
   ssh: {
     connect:  'ssh -i ~/.ssh/asgard_crm_deploy root@92.242.61.184',
     key_file: '~/.ssh/asgard_crm_deploy (Ed25519)',
-    deploy_method: 'Python 3.12 + paramiko (SFTP) — НЕ git push на GitHub',
-    scripts:  ['deploy_reports_tkp.py', 'banner_v*.py (баннер обновления)'],
+    deploy_method: 'Python 3.12 + paramiko (SFTP) вЂ” РќР• git push РЅР° GitHub',
+    scripts:  ['deploy_reports_tkp.py', 'banner_v*.py (Р±Р°РЅРЅРµСЂ РѕР±РЅРѕРІР»РµРЅРёСЏ)'],
   },
   database: {
     type:    'PostgreSQL 14',
@@ -49,94 +49,94 @@ const CRM_PASSPORT = {
     user:    'asgard',
     host:    'localhost',
     psql_cmd: 'PGPASSWORD=123456789 psql -U asgard -d asgard_crm',
-    note:    'Пароль хранится в .env → DB_PASSWORD',
+    note:    'РџР°СЂРѕР»СЊ С…СЂР°РЅРёС‚СЃСЏ РІ .env в†’ DB_PASSWORD',
   },
   stack: {
     backend:  ['Node.js v20', 'Fastify v4', 'node-cron', 'ExcelJS', 'Puppeteer (PDF)'],
     frontend: ['Vanilla JS ES6+ (desktop)', 'React 18 + Vite (mobile /m/)', 'ES5 legacy (field /field/)'],
-    ai:       ['routerai.ru (OpenAI-совместимый прокси)', 'Модель: deepseek/deepseek-v4.1-flash', 'Ключ в DB: settings.ai_config'],
-    infra:    ['nginx (реверс-прокси)', 'systemd (сервис)', 'PostgreSQL (БД)'],
+    ai:       ['routerai.ru (OpenAI-СЃРѕРІРјРµСЃС‚РёРјС‹Р№ РїСЂРѕРєСЃРё)', 'РњРѕРґРµР»СЊ: deepseek/deepseek-v4.1-flash', 'РљР»СЋС‡ РІ DB: settings.ai_config'],
+    infra:    ['nginx (СЂРµРІРµСЂСЃ-РїСЂРѕРєСЃРё)', 'systemd (СЃРµСЂРІРёСЃ)', 'PostgreSQL (Р‘Р”)'],
   },
   structure: {
-    'src/index.js':            'Главный файл — Fastify, плагины, middleware, регистрация роутов',
-    'src/routes/':             'API маршруты (один файл = один модуль, prefix /api/...)',
-    'src/services/':           'Фоновые сервисы: ai-provider, db, push, cron, mango (SMS)',
-    'src/lib/':                'Вспомогательные библиотеки (worker-finances и др.)',
-    'public/assets/js/':       'Desktop JS страницы (ES6+, window.AsgardXxxPage)',
-    'public/assets/css/':      'Стили (design-tokens.css, components.css, app.css)',
-    'public/mobile-app/src/':  'React мобильное приложение (исходники JSX/hooks)',
-    'public/m/':               'Сборка React-приложения (npm run build → cp dist/* ../m/)',
-    'migrations/':             'SQL миграции (V001__...sql → V0NN__...sql)',
+    'src/index.js':            'Р“Р»Р°РІРЅС‹Р№ С„Р°Р№Р» вЂ” Fastify, РїР»Р°РіРёРЅС‹, middleware, СЂРµРіРёСЃС‚СЂР°С†РёСЏ СЂРѕСѓС‚РѕРІ',
+    'src/routes/':             'API РјР°СЂС€СЂСѓС‚С‹ (РѕРґРёРЅ С„Р°Р№Р» = РѕРґРёРЅ РјРѕРґСѓР»СЊ, prefix /api/...)',
+    'src/services/':           'Р¤РѕРЅРѕРІС‹Рµ СЃРµСЂРІРёСЃС‹: ai-provider, db, push, cron, mango (SMS)',
+    'src/lib/':                'Р’СЃРїРѕРјРѕРіР°С‚РµР»СЊРЅС‹Рµ Р±РёР±Р»РёРѕС‚РµРєРё (worker-finances Рё РґСЂ.)',
+    'public/assets/js/':       'Desktop JS СЃС‚СЂР°РЅРёС†С‹ (ES6+, window.AsgardXxxPage)',
+    'public/assets/css/':      'РЎС‚РёР»Рё (design-tokens.css, components.css, app.css)',
+    'public/mobile-app/src/':  'React РјРѕР±РёР»СЊРЅРѕРµ РїСЂРёР»РѕР¶РµРЅРёРµ (РёСЃС…РѕРґРЅРёРєРё JSX/hooks)',
+    'public/m/':               'РЎР±РѕСЂРєР° React-РїСЂРёР»РѕР¶РµРЅРёСЏ (npm run build в†’ cp dist/* ../m/)',
+    'migrations/':             'SQL РјРёРіСЂР°С†РёРё (V001__...sql в†’ V0NN__...sql)',
   },
   deploy_rules: [
-    'При каждом деплое desktop JS — бампить SHELL_VERSION в index.html (иначе SW кэш)',
-    'При каждом деплое — добавлять запись в app_updates с changelog',
-    'Деплой через SFTP/paramiko — НИКОГДА не git push на GitHub',
-    'Mobile: npm run build → cp -r dist/* ../m/ → systemctl restart asgard-crm',
+    'РџСЂРё РєР°Р¶РґРѕРј РґРµРїР»РѕРµ desktop JS вЂ” Р±Р°РјРїРёС‚СЊ SHELL_VERSION РІ index.html (РёРЅР°С‡Рµ SW РєСЌС€)',
+    'РџСЂРё РєР°Р¶РґРѕРј РґРµРїР»РѕРµ вЂ” РґРѕР±Р°РІР»СЏС‚СЊ Р·Р°РїРёСЃСЊ РІ app_updates СЃ changelog',
+    'Р”РµРїР»РѕР№ С‡РµСЂРµР· SFTP/paramiko вЂ” РќРРљРћР“Р”Рђ РЅРµ git push РЅР° GitHub',
+    'Mobile: npm run build в†’ cp -r dist/* ../m/ в†’ systemctl restart asgard-crm',
   ],
   roles: ['ADMIN','PM','HEAD_PM','TO','HEAD_TO','HR','HR_MANAGER','BUH',
           'DIRECTOR_GEN','DIRECTOR_COMM','DIRECTOR_DEV','OFFICE_MANAGER',
           'CHIEF_ENGINEER','WAREHOUSE','PROC'],
   cron_jobs: [
-    { name:'AcademyCron',  time:'Воскресенье 20:00 МСК',  desc:'Генерация недельного урока (Мимир)' },
-    { name:'AcademyCron',  time:'Ежедневно 07:00 МСК',    desc:'Факт дня (Мимир)' },
-    { name:'MimirCron',    time:'09:00 и 13:30 МСК',      desc:'Утренний и дневной дайджест' },
-    { name:'PerDiemCron',  time:'Ежедневно (по чекинам)', desc:'Автоначисление суточных рабочим' },
-    { name:'SLA cron',     time:'Каждые 5 минут',         desc:'SLA тикеты, уведомления' },
+    { name:'AcademyCron',  time:'Р’РѕСЃРєСЂРµСЃРµРЅСЊРµ 20:00 РњРЎРљ',  desc:'Р“РµРЅРµСЂР°С†РёСЏ РЅРµРґРµР»СЊРЅРѕРіРѕ СѓСЂРѕРєР° (РњРёРјРёСЂ)' },
+    { name:'AcademyCron',  time:'Р•Р¶РµРґРЅРµРІРЅРѕ 07:00 РњРЎРљ',    desc:'Р¤Р°РєС‚ РґРЅСЏ (РњРёРјРёСЂ)' },
+    { name:'MimirCron',    time:'09:00 Рё 13:30 РњРЎРљ',      desc:'РЈС‚СЂРµРЅРЅРёР№ Рё РґРЅРµРІРЅРѕР№ РґР°Р№РґР¶РµСЃС‚' },
+    { name:'PerDiemCron',  time:'Р•Р¶РµРґРЅРµРІРЅРѕ (РїРѕ С‡РµРєРёРЅР°Рј)', desc:'РђРІС‚РѕРЅР°С‡РёСЃР»РµРЅРёРµ СЃСѓС‚РѕС‡РЅС‹С… СЂР°Р±РѕС‡РёРј' },
+    { name:'SLA cron',     time:'РљР°Р¶РґС‹Рµ 5 РјРёРЅСѓС‚',         desc:'SLA С‚РёРєРµС‚С‹, СѓРІРµРґРѕРјР»РµРЅРёСЏ' },
   ],
   test_accounts: [
     { login:'test_pm',       role:'PM',           password:'Test123!', pin:'1234' },
     { login:'test_director', role:'DIRECTOR_GEN', password:'Test123!', pin:'0000' },
   ],
   key_files: {
-    'src/routes/estimates.js':     'Просчёты тендеров — approve-finalize, отчёты PDF/Excel',
-    'src/routes/tenders.js':       'Тендеры — статусы, матрица переходов',
-    'src/services/academy-cron.js':'Академия Мимира — генерация уроков и фактов',
-    'src/services/ai-provider.js': 'AI провайдер — routerai.ru, fallback логика',
-    'src/services/mango.js':       'SMS через Mango VPBX API',
-    'src/services/per-diem-cron.js':'Суточные — автоначисление',
-    'public/index.html':           'SPA entry point — SHELL_VERSION, скрипты, стили',
-    'public/assets/js/app.js':     'Главный JS — роутер, навигация, layout',
+    'src/routes/estimates.js':     'РџСЂРѕСЃС‡С‘С‚С‹ С‚РµРЅРґРµСЂРѕРІ вЂ” approve-finalize, РѕС‚С‡С‘С‚С‹ PDF/Excel',
+    'src/routes/tenders.js':       'РўРµРЅРґРµСЂС‹ вЂ” СЃС‚Р°С‚СѓСЃС‹, РјР°С‚СЂРёС†Р° РїРµСЂРµС…РѕРґРѕРІ',
+    'src/services/academy-cron.js':'РђРєР°РґРµРјРёСЏ РњРёРјРёСЂР° вЂ” РіРµРЅРµСЂР°С†РёСЏ СѓСЂРѕРєРѕРІ Рё С„Р°РєС‚РѕРІ',
+    'src/services/ai-provider.js': 'AI РїСЂРѕРІР°Р№РґРµСЂ вЂ” routerai.ru, fallback Р»РѕРіРёРєР°',
+    'src/services/mango.js':       'SMS С‡РµСЂРµР· Mango VPBX API',
+    'src/services/per-diem-cron.js':'РЎСѓС‚РѕС‡РЅС‹Рµ вЂ” Р°РІС‚РѕРЅР°С‡РёСЃР»РµРЅРёРµ',
+    'public/index.html':           'SPA entry point вЂ” SHELL_VERSION, СЃРєСЂРёРїС‚С‹, СЃС‚РёР»Рё',
+    'public/assets/js/app.js':     'Р“Р»Р°РІРЅС‹Р№ JS вЂ” СЂРѕСѓС‚РµСЂ, РЅР°РІРёРіР°С†РёСЏ, layout',
   },
 };
 
-// ─── Mimir system prompt ──────────────────────────────────────────────────────
-const MIMIR_SYSTEM = `Ты — Мимир, AI-аналитик для CRM-системы АСГАРД (Node.js/Fastify/PostgreSQL).
-Анализируй логи сервера. При необходимости читай код через инструменты read_file и grep_code.
+// в”Ђв”Ђв”Ђ Mimir system prompt в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
+const MIMIR_SYSTEM = `РўС‹ вЂ” РњРёРјРёСЂ, AI-Р°РЅР°Р»РёС‚РёРє РґР»СЏ CRM-СЃРёСЃС‚РµРјС‹ РђРЎР“РђР Р” (Node.js/Fastify/PostgreSQL).
+РђРЅР°Р»РёР·РёСЂСѓР№ Р»РѕРіРё СЃРµСЂРІРµСЂР°. РџСЂРё РЅРµРѕР±С…РѕРґРёРјРѕСЃС‚Рё С‡РёС‚Р°Р№ РєРѕРґ С‡РµСЂРµР· РёРЅСЃС‚СЂСѓРјРµРЅС‚С‹ read_file Рё grep_code.
 
-Вернуть ТОЛЬКО JSON (без markdown), структура:
+Р’РµСЂРЅСѓС‚СЊ РўРћР›Р¬РљРћ JSON (Р±РµР· markdown), СЃС‚СЂСѓРєС‚СѓСЂР°:
 {
   "severity": "ok|info|warn|error|critical",
-  "summary": "Краткое резюме 1-2 предложения простым языком",
+  "summary": "РљСЂР°С‚РєРѕРµ СЂРµР·СЋРјРµ 1-2 РїСЂРµРґР»РѕР¶РµРЅРёСЏ РїСЂРѕСЃС‚С‹Рј СЏР·С‹РєРѕРј",
   "issues": [
     {
-      "title": "Название проблемы",
-      "description": "Подробное объяснение — что сломалось и почему",
+      "title": "РќР°Р·РІР°РЅРёРµ РїСЂРѕР±Р»РµРјС‹",
+      "description": "РџРѕРґСЂРѕР±РЅРѕРµ РѕР±СЉСЏСЃРЅРµРЅРёРµ вЂ” С‡С‚Рѕ СЃР»РѕРјР°Р»РѕСЃСЊ Рё РїРѕС‡РµРјСѓ",
       "severity": "warn|error|critical",
       "fix_type": "quick|complex|none",
-      "commands": ["команда если quick"],
-      "claude_prompt": "Подробный промпт для Claude Code если complex, иначе пустая строка"
+      "commands": ["РєРѕРјР°РЅРґР° РµСЃР»Рё quick"],
+      "claude_prompt": "РџРѕРґСЂРѕР±РЅС‹Р№ РїСЂРѕРјРїС‚ РґР»СЏ Claude Code РµСЃР»Рё complex, РёРЅР°С‡Рµ РїСѓСЃС‚Р°СЏ СЃС‚СЂРѕРєР°"
     }
   ]
 }
 
-Правила:
-- fix_type=quick → 1-3 shell-команды которые исправляют проблему
-- fix_type=complex → подробный промпт для Claude Code: что читать, где ошибка, что исправить
-- fix_type=none → не требует действий
-- Если логи чистые → severity=ok, issues=[], summary=описание что всё хорошо
-- Пиши по-русски`;
+РџСЂР°РІРёР»Р°:
+- fix_type=quick в†’ 1-3 shell-РєРѕРјР°РЅРґС‹ РєРѕС‚РѕСЂС‹Рµ РёСЃРїСЂР°РІР»СЏСЋС‚ РїСЂРѕР±Р»РµРјСѓ
+- fix_type=complex в†’ РїРѕРґСЂРѕР±РЅС‹Р№ РїСЂРѕРјРїС‚ РґР»СЏ Claude Code: С‡С‚Рѕ С‡РёС‚Р°С‚СЊ, РіРґРµ РѕС€РёР±РєР°, С‡С‚Рѕ РёСЃРїСЂР°РІРёС‚СЊ
+- fix_type=none в†’ РЅРµ С‚СЂРµР±СѓРµС‚ РґРµР№СЃС‚РІРёР№
+- Р•СЃР»Рё Р»РѕРіРё С‡РёСЃС‚С‹Рµ в†’ severity=ok, issues=[], summary=РѕРїРёСЃР°РЅРёРµ С‡С‚Рѕ РІСЃС‘ С…РѕСЂРѕС€Рѕ
+- РџРёС€Рё РїРѕ-СЂСѓСЃСЃРєРё`;
 
 const MIMIR_TOOLS = [
   {
     type: 'function',
     function: {
       name: 'read_file',
-      description: 'Читает файл из кодовой базы CRM. Используй когда видишь путь к файлу в стек-трейсе.',
+      description: 'Р§РёС‚Р°РµС‚ С„Р°Р№Р» РёР· РєРѕРґРѕРІРѕР№ Р±Р°Р·С‹ CRM. РСЃРїРѕР»СЊР·СѓР№ РєРѕРіРґР° РІРёРґРёС€СЊ РїСѓС‚СЊ Рє С„Р°Р№Р»Сѓ РІ СЃС‚РµРє-С‚СЂРµР№СЃРµ.',
       parameters: {
         type: 'object',
         properties: {
-          path: { type: 'string', description: 'Путь от корня проекта: src/routes/estimates.js' }
+          path: { type: 'string', description: 'РџСѓС‚СЊ РѕС‚ РєРѕСЂРЅСЏ РїСЂРѕРµРєС‚Р°: src/routes/estimates.js' }
         },
         required: ['path']
       }
@@ -146,12 +146,12 @@ const MIMIR_TOOLS = [
     type: 'function',
     function: {
       name: 'grep_code',
-      description: 'Поиск по коду CRM. Возвращает строки с совпадениями.',
+      description: 'РџРѕРёСЃРє РїРѕ РєРѕРґСѓ CRM. Р’РѕР·РІСЂР°С‰Р°РµС‚ СЃС‚СЂРѕРєРё СЃ СЃРѕРІРїР°РґРµРЅРёСЏРјРё.',
       parameters: {
         type: 'object',
         properties: {
-          pattern:   { type: 'string', description: 'Регулярное выражение' },
-          directory: { type: 'string', description: 'Папка для поиска (по умолчанию src/)' }
+          pattern:   { type: 'string', description: 'Р РµРіСѓР»СЏСЂРЅРѕРµ РІС‹СЂР°Р¶РµРЅРёРµ' },
+          directory: { type: 'string', description: 'РџР°РїРєР° РґР»СЏ РїРѕРёСЃРєР° (РїРѕ СѓРјРѕР»С‡Р°РЅРёСЋ src/)' }
         },
         required: ['pattern']
       }
@@ -162,14 +162,14 @@ const MIMIR_TOOLS = [
 async function executeTool(name, args) {
   if (name === 'read_file') {
     const filePath = (args.path || '').replace(/^\//, '');
-    if (!isSafePath(filePath)) return 'ОШИБКА: доступ к этому файлу запрещён';
+    if (!isSafePath(filePath)) return 'РћРЁРР‘РљРђ: РґРѕСЃС‚СѓРї Рє СЌС‚РѕРјСѓ С„Р°Р№Р»Сѓ Р·Р°РїСЂРµС‰С‘РЅ';
     try {
       const full = path.join(PROJECT_ROOT, filePath);
       const content = fs.readFileSync(full, 'utf8');
       const lines = content.split('\n');
-      return lines.slice(0, 200).join('\n') + (lines.length > 200 ? '\n...(обрезано до 200 строк)' : '');
+      return lines.slice(0, 200).join('\n') + (lines.length > 200 ? '\n...(РѕР±СЂРµР·Р°РЅРѕ РґРѕ 200 СЃС‚СЂРѕРє)' : '');
     } catch (e) {
-      return `ОШИБКА: файл не найден — ${args.path}`;
+      return `РћРЁРР‘РљРђ: С„Р°Р№Р» РЅРµ РЅР°Р№РґРµРЅ вЂ” ${args.path}`;
     }
   }
   if (name === 'grep_code') {
@@ -182,24 +182,24 @@ async function executeTool(name, args) {
         `grep -r --include="*.js" -n "${pattern}" "${dir}" 2>/dev/null | head -40`,
         { timeout: 8000 }
       );
-      return stdout || '(ничего не найдено)';
-    } catch (_) { return '(ничего не найдено)'; }
+      return stdout || '(РЅРёС‡РµРіРѕ РЅРµ РЅР°Р№РґРµРЅРѕ)';
+    } catch (_) { return '(РЅРёС‡РµРіРѕ РЅРµ РЅР°Р№РґРµРЅРѕ)'; }
   }
-  return 'ОШИБКА: неизвестный инструмент';
+  return 'РћРЁРР‘РљРђ: РЅРµРёР·РІРµСЃС‚РЅС‹Р№ РёРЅСЃС‚СЂСѓРјРµРЅС‚';
 }
 
-// ─── Route plugin ─────────────────────────────────────────────────────────────
+// в”Ђв”Ђв”Ђ Route plugin в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
 module.exports = async function(fastify) {
 
   const adminOnly = {
     preHandler: [fastify.authenticate, async (req, reply) => {
       if (req.user.role !== 'ADMIN') {
-        return reply.code(403).send({ error: 'Только для ADMIN' });
+        return reply.code(403).send({ error: 'РўРѕР»СЊРєРѕ РґР»СЏ ADMIN' });
       }
     }]
   };
 
-  // ── GET /health ─────────────────────────────────────────────────────────────
+  // в”Ђв”Ђ GET /health в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
   fastify.get('/health', adminOnly, async (req, reply) => {
     const [memR, diskR, uptR, svcR, cpuR] = await Promise.allSettled([
       execAsync('free -m', { timeout: 5000 }),
@@ -270,7 +270,7 @@ module.exports = async function(fastify) {
     };
   });
 
-  // ── GET /logs ───────────────────────────────────────────────────────────────
+  // в”Ђв”Ђ GET /logs в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
   fastify.get('/logs', adminOnly, async (req, reply) => {
     const lines = Math.min(parseInt(req.query.lines || '300'), 1000);
     const level = req.query.level || 'all';
@@ -299,15 +299,16 @@ module.exports = async function(fastify) {
 
       return { logs: parsed.reverse(), total: parsed.length };
     } catch (e) {
-      // Graceful degrade — don't break the page.
+      // Graceful degrade вЂ” don't break the page.
       return { logs: [], total: 0, error: e.message };
     }
   });
 
-  // ── GET /logs/stream — SSE ──────────────────────────────────────────────────
+  // в”Ђв”Ђ GET /logs/stream вЂ” SSE в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
   fastify.get('/logs/stream', adminOnly, async (req, reply) => {
+    reply.hijack();
     reply.raw.writeHead(200, {
-      'Content-Type':  'text/event-stream',
+      'Content-Type': 'text/event-stream',
       'Cache-Control': 'no-cache',
       'Connection':    'keep-alive',
       'X-Accel-Buffering': 'no'
@@ -330,16 +331,16 @@ module.exports = async function(fastify) {
     req.raw.on('close', () => { clearInterval(beat); proc.kill('SIGTERM'); });
   });
 
-  // ── POST /analyze — Мимир с tool-calling ────────────────────────────────────
+  // в”Ђв”Ђ POST /analyze вЂ” РњРёРјРёСЂ СЃ tool-calling в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
   fastify.post('/analyze', adminOnly, async (req, reply) => {
     const { logs } = req.body || {};
-    if (!logs || !logs.trim()) return reply.code(400).send({ error: 'logs обязателен' });
+    if (!logs || !logs.trim()) return reply.code(400).send({ error: 'logs РѕР±СЏР·Р°С‚РµР»РµРЅ' });
 
     const aiProvider = require('../services/ai-provider');
     await aiProvider._loadKeysFromDB();
 
     let messages = [
-      { role: 'user', content: `Проанализируй логи сервера и найди проблемы:\n\n${logs.slice(0, 8000)}` }
+      { role: 'user', content: `РџСЂРѕР°РЅР°Р»РёР·РёСЂСѓР№ Р»РѕРіРё СЃРµСЂРІРµСЂР° Рё РЅР°Р№РґРё РїСЂРѕР±Р»РµРјС‹:\n\n${logs.slice(0, 8000)}` }
     ];
 
     let finalText = '';
@@ -373,19 +374,19 @@ module.exports = async function(fastify) {
       const clean = finalText.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
       analysis = JSON.parse(clean);
     } catch (_) {
-      analysis = { severity: 'warn', summary: finalText || 'Мимир не смог разобрать ответ', issues: [] };
+      analysis = { severity: 'warn', summary: finalText || 'РњРёРјРёСЂ РЅРµ СЃРјРѕРі СЂР°Р·РѕР±СЂР°С‚СЊ РѕС‚РІРµС‚', issues: [] };
     }
 
     return { ok: true, analysis };
   });
 
-  // ── POST /action ────────────────────────────────────────────────────────────
+  // в”Ђв”Ђ POST /action в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
   fastify.post('/action', adminOnly, async (req, reply) => {
     const { action, command } = req.body || {};
 
     if (action === 'restart') {
       setTimeout(() => exec('systemctl restart asgard-crm', () => {}), 800);
-      return { ok: true, message: 'Рестарт запущен. Сервис вернётся через ~5 секунд.' };
+      return { ok: true, message: 'Р РµСЃС‚Р°СЂС‚ Р·Р°РїСѓС‰РµРЅ. РЎРµСЂРІРёСЃ РІРµСЂРЅС‘С‚СЃСЏ С‡РµСЂРµР· ~5 СЃРµРєСѓРЅРґ.' };
     }
 
     if (action === 'bump-version') {
@@ -393,14 +394,14 @@ module.exports = async function(fastify) {
         const htmlPath = path.join(PROJECT_ROOT, 'public/index.html');
         let html = fs.readFileSync(htmlPath, 'utf8');
         const m = html.match(/ASGARD_SHELL_VERSION\s*=\s*'([^']+)'/);
-        if (!m) return reply.code(400).send({ error: 'SHELL_VERSION не найден в index.html' });
+        if (!m) return reply.code(400).send({ error: 'SHELL_VERSION РЅРµ РЅР°Р№РґРµРЅ РІ index.html' });
 
         const parts = m[1].split('.');
         parts[parts.length - 1] = String(parseInt(parts[parts.length - 1]) + 1);
         const newVer = parts.join('.');
         html = html.replace(/ASGARD_SHELL_VERSION\s*=\s*'[^']+'/, `ASGARD_SHELL_VERSION = '${newVer}'`);
         fs.writeFileSync(htmlPath, html, 'utf8');
-        return { ok: true, message: `SHELL_VERSION обновлён: ${m[1]} → ${newVer}`, new_version: newVer };
+        return { ok: true, message: `SHELL_VERSION РѕР±РЅРѕРІР»С‘РЅ: ${m[1]} в†’ ${newVer}`, new_version: newVer };
       } catch (e) {
         return reply.code(500).send({ error: e.message });
       }
@@ -416,10 +417,10 @@ module.exports = async function(fastify) {
       }
     }
 
-    return reply.code(400).send({ error: `Неизвестное действие: ${action}` });
+    return reply.code(400).send({ error: `РќРµРёР·РІРµСЃС‚РЅРѕРµ РґРµР№СЃС‚РІРёРµ: ${action}` });
   });
 
-  // ── GET /updates ─────────────────────────────────────────────────────────────
+  // в”Ђв”Ђ GET /updates в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
   fastify.get('/updates', adminOnly, async (req, reply) => {
     const { rows } = await db.query(
       `SELECT id, version, title, changes, target, published_at
@@ -428,13 +429,13 @@ module.exports = async function(fastify) {
     return { updates: rows };
   });
 
-  // ── GET /crm-info ─────────────────────────────────────────────────────────────
+  // в”Ђв”Ђ GET /crm-info в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
   fastify.get('/crm-info', adminOnly, async (req, reply) => {
     return { info: CRM_PASSPORT };
   });
 
-  // ── GET /ai-config ───────────────────────────────────────────────────────────
-  // Текущая конфигурация AI-провайдеров (маскированные ключи, статус подключения).
+  // в”Ђв”Ђ GET /ai-config в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
+  // РўРµРєСѓС‰Р°СЏ РєРѕРЅС„РёРіСѓСЂР°С†РёСЏ AI-РїСЂРѕРІР°Р№РґРµСЂРѕРІ (РјР°СЃРєРёСЂРѕРІР°РЅРЅС‹Рµ РєР»СЋС‡Рё, СЃС‚Р°С‚СѓСЃ РїРѕРґРєР»СЋС‡РµРЅРёСЏ).
   fastify.get('/ai-config', adminOnly, async (req, reply) => {
     const aiProvider = require('../services/ai-provider');
     try { await aiProvider._loadKeysFromDB(); } catch (_) {}
@@ -463,16 +464,16 @@ module.exports = async function(fastify) {
       anthropic_model: dbConfig.anthropic_model || '',
       openai_model:    dbConfig.openai_model    || '',
       openai_url:      dbConfig.openai_url      || '',
-      // Маски (никогда не возвращаем сам ключ)
+      // РњР°СЃРєРё (РЅРёРєРѕРіРґР° РЅРµ РІРѕР·РІСЂР°С‰Р°РµРј СЃР°Рј РєР»СЋС‡)
       anthropic_key_mask: maskKey(dbConfig.anthropic_api_key || ''),
       openai_key_mask:    maskKey(dbConfig.openai_api_key || '')
     };
   });
 
-  // ── POST /ai-config — сохранить настройки AI (ключи + provider) ─────────────
+  // в”Ђв”Ђ POST /ai-config вЂ” СЃРѕС…СЂР°РЅРёС‚СЊ РЅР°СЃС‚СЂРѕР№РєРё AI (РєР»СЋС‡Рё + provider) в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
   fastify.post('/ai-config', adminOnly, async (req, reply) => {
     const body = req.body || {};
-    // Читаем текущий ai_config, чтобы не затереть ключи которые пользователь не менял
+    // Р§РёС‚Р°РµРј С‚РµРєСѓС‰РёР№ ai_config, С‡С‚РѕР±С‹ РЅРµ Р·Р°С‚РµСЂРµС‚СЊ РєР»СЋС‡Рё РєРѕС‚РѕСЂС‹Рµ РїРѕР»СЊР·РѕРІР°С‚РµР»СЊ РЅРµ РјРµРЅСЏР»
     let current = {};
     try {
       const r = await db.query("SELECT value_json FROM settings WHERE key = 'ai_config'");
@@ -483,18 +484,18 @@ module.exports = async function(fastify) {
     } catch (_) {}
 
     const next = { ...current };
-    // Текстовые поля без ключей — перезаписываем всегда
+    // РўРµРєСЃС‚РѕРІС‹Рµ РїРѕР»СЏ Р±РµР· РєР»СЋС‡РµР№ вЂ” РїРµСЂРµР·Р°РїРёСЃС‹РІР°РµРј РІСЃРµРіРґР°
     if (body.provider          !== undefined) next.provider          = String(body.provider);
     if (body.anthropic_model   !== undefined) next.anthropic_model   = String(body.anthropic_model || '');
     if (body.openai_model      !== undefined) next.openai_model      = String(body.openai_model    || '');
     if (body.openai_url        !== undefined) next.openai_url        = String(body.openai_url      || '');
-    // Ключи: пишем только если пришли непустые
+    // РљР»СЋС‡Рё: РїРёС€РµРј С‚РѕР»СЊРєРѕ РµСЃР»Рё РїСЂРёС€Р»Рё РЅРµРїСѓСЃС‚С‹Рµ
     if (body.anthropic_api_key && String(body.anthropic_api_key).trim()) next.anthropic_api_key = String(body.anthropic_api_key).trim();
     if (body.openai_api_key    && String(body.openai_api_key).trim())    next.openai_api_key    = String(body.openai_api_key).trim();
-    // Очистка ключа — отдельным флагом
+    // РћС‡РёСЃС‚РєР° РєР»СЋС‡Р° вЂ” РѕС‚РґРµР»СЊРЅС‹Рј С„Р»Р°РіРѕРј
     if (body.clear_anthropic_key) delete next.anthropic_api_key;
     if (body.clear_openai_key)    delete next.openai_api_key;
-    // Зачистим legacy Yandex-ключи если они ещё в БД от старой версии
+    // Р—Р°С‡РёСЃС‚РёРј legacy Yandex-РєР»СЋС‡Рё РµСЃР»Рё РѕРЅРё РµС‰С‘ РІ Р‘Р” РѕС‚ СЃС‚Р°СЂРѕР№ РІРµСЂСЃРёРё
     delete next.yandex_gpt_api_key;
     delete next.yandex_folder_id;
     delete next.yandex_model;
@@ -505,7 +506,7 @@ module.exports = async function(fastify) {
       ON CONFLICT (key) DO UPDATE SET value_json = $1, updated_at = NOW()
     `, [JSON.stringify(next)]);
 
-    // Сбросим кэш ai-provider, чтобы новые ключи перечитались на следующий запрос
+    // РЎР±СЂРѕСЃРёРј РєСЌС€ ai-provider, С‡С‚РѕР±С‹ РЅРѕРІС‹Рµ РєР»СЋС‡Рё РїРµСЂРµС‡РёС‚Р°Р»РёСЃСЊ РЅР° СЃР»РµРґСѓСЋС‰РёР№ Р·Р°РїСЂРѕСЃ
     try {
       const aiProvider = require('../services/ai-provider');
       if (aiProvider._resetKeysCache) aiProvider._resetKeysCache();
@@ -514,20 +515,20 @@ module.exports = async function(fastify) {
     return { ok: true };
   });
 
-  // ── POST /ai-test — отправить пробный запрос текущему провайдеру ────────────
+  // в”Ђв”Ђ POST /ai-test вЂ” РѕС‚РїСЂР°РІРёС‚СЊ РїСЂРѕР±РЅС‹Р№ Р·Р°РїСЂРѕСЃ С‚РµРєСѓС‰РµРјСѓ РїСЂРѕРІР°Р№РґРµСЂСѓ в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
   // Body: { provider?: 'auto'|'anthropic'|'openai', prompt?: string }
   fastify.post('/ai-test', adminOnly, async (req, reply) => {
     const aiProvider = require('../services/ai-provider');
     const { provider, prompt } = req.body || {};
-    const userPrompt = (prompt && String(prompt).trim()) || 'Ответь одной фразой: «AI готов к работе». Ничего не добавляй.';
+    const userPrompt = (prompt && String(prompt).trim()) || 'РћС‚РІРµС‚СЊ РѕРґРЅРѕР№ С„СЂР°Р·РѕР№: В«AI РіРѕС‚РѕРІ Рє СЂР°Р±РѕС‚РµВ». РќРёС‡РµРіРѕ РЅРµ РґРѕР±Р°РІР»СЏР№.';
 
     try {
       await aiProvider._loadKeysFromDB();
     } catch (_) {}
 
-    // Если попросили конкретного провайдера — временно переопределим через опции complete()
+    // Р•СЃР»Рё РїРѕРїСЂРѕСЃРёР»Рё РєРѕРЅРєСЂРµС‚РЅРѕРіРѕ РїСЂРѕРІР°Р№РґРµСЂР° вЂ” РІСЂРµРјРµРЅРЅРѕ РїРµСЂРµРѕРїСЂРµРґРµР»РёРј С‡РµСЂРµР· РѕРїС†РёРё complete()
     const callOpts = {
-      system: 'Ты — тестовый бот для проверки соединения. Отвечай кратко (одна фраза).',
+      system: 'РўС‹ вЂ” С‚РµСЃС‚РѕРІС‹Р№ Р±РѕС‚ РґР»СЏ РїСЂРѕРІРµСЂРєРё СЃРѕРµРґРёРЅРµРЅРёСЏ. РћС‚РІРµС‡Р°Р№ РєСЂР°С‚РєРѕ (РѕРґРЅР° С„СЂР°Р·Р°).',
       messages: [{ role: 'user', content: userPrompt }],
       maxTokens: 80,
       temperature: 0.2
@@ -554,24 +555,24 @@ module.exports = async function(fastify) {
     }
   });
 
-  // ── GET /terminal — WebSocket PTY ──────────────────────────────────────────
-  // Проверяем что @fastify/websocket зарегистрирован и node-pty доступен
+  // в”Ђв”Ђ GET /terminal вЂ” WebSocket PTY в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
+  // РџСЂРѕРІРµСЂСЏРµРј С‡С‚Рѕ @fastify/websocket Р·Р°СЂРµРіРёСЃС‚СЂРёСЂРѕРІР°РЅ Рё node-pty РґРѕСЃС‚СѓРїРµРЅ
   let nodePty = null;
   try { nodePty = require('node-pty'); } catch (_) {}
 
   if (nodePty && fastify.websocketServer) {
     fastify.get('/terminal', { websocket: true }, (socket, req) => {
-      // Аутентификация: токен передаётся через query ?token=xxx
+      // РђСѓС‚РµРЅС‚РёС„РёРєР°С†РёСЏ: С‚РѕРєРµРЅ РїРµСЂРµРґР°С‘С‚СЃСЏ С‡РµСЂРµР· query ?token=xxx
       const token = req.query.token;
       try {
         const decoded = fastify.jwt.verify(token);
         if (decoded.role !== 'ADMIN') {
-          socket.send(JSON.stringify({ type: 'error', data: '\r\n\x1b[31mДоступ запрещён: только ADMIN\x1b[0m\r\n' }));
+          socket.send(JSON.stringify({ type: 'error', data: '\r\n\x1b[31mР”РѕСЃС‚СѓРї Р·Р°РїСЂРµС‰С‘РЅ: С‚РѕР»СЊРєРѕ ADMIN\x1b[0m\r\n' }));
           socket.close();
           return;
         }
       } catch (e) {
-        socket.send(JSON.stringify({ type: 'error', data: '\r\n\x1b[31mОшибка авторизации\x1b[0m\r\n' }));
+        socket.send(JSON.stringify({ type: 'error', data: '\r\n\x1b[31mРћС€РёР±РєР° Р°РІС‚РѕСЂРёР·Р°С†РёРё\x1b[0m\r\n' }));
         socket.close();
         return;
       }
@@ -606,13 +607,13 @@ module.exports = async function(fastify) {
     });
   }
 
-  // ─── Тарифная сетка (HR Module v2) ──────────────────────────────────────
-  // Доступ: ADMIN, DIRECTOR_GEN
+  // в”Ђв”Ђв”Ђ РўР°СЂРёС„РЅР°СЏ СЃРµС‚РєР° (HR Module v2) в”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђв”Ђ
+  // Р”РѕСЃС‚СѓРї: ADMIN, DIRECTOR_GEN
   const adminOrDirector = {
     preHandler: [fastify.authenticate, async (req, reply) => {
       const r = req.user.role;
       if (!['ADMIN','DIRECTOR_GEN','DIRECTOR_COMM','DIRECTOR_DEV','BUH'].includes(r)) {
-        return reply.code(403).send({ error: 'Только ADMIN/Директор/Бухгалтер' });
+        return reply.code(403).send({ error: 'РўРѕР»СЊРєРѕ ADMIN/Р”РёСЂРµРєС‚РѕСЂ/Р‘СѓС…РіР°Р»С‚РµСЂ' });
       }
     }]
   };
@@ -626,7 +627,7 @@ module.exports = async function(fastify) {
       `);
       return { tariffs: rows };
     } catch (e) {
-      return reply.code(500).send({ error: 'field_tariff_grid недоступна: ' + e.message });
+      return reply.code(500).send({ error: 'field_tariff_grid РЅРµРґРѕСЃС‚СѓРїРЅР°: ' + e.message });
     }
   });
 
@@ -639,13 +640,13 @@ module.exports = async function(fastify) {
     if (points         !== undefined) { updates.push(`points = $${idx}`);         values.push(points);         idx++; }
     if (rate_per_shift !== undefined) { updates.push(`rate_per_shift = $${idx}`); values.push(rate_per_shift); idx++; }
     if (is_combinable  !== undefined) { updates.push(`is_combinable = $${idx}`);  values.push(!!is_combinable); idx++; }
-    if (!updates.length) return reply.code(400).send({ error: 'Нет данных' });
+    if (!updates.length) return reply.code(400).send({ error: 'РќРµС‚ РґР°РЅРЅС‹С…' });
     values.push(id);
     const { rows } = await db.query(
       `UPDATE field_tariff_grid SET ${updates.join(', ')} WHERE id = $${idx} RETURNING *`,
       values
     );
-    if (!rows[0]) return reply.code(404).send({ error: 'Тариф не найден' });
+    if (!rows[0]) return reply.code(404).send({ error: 'РўР°СЂРёС„ РЅРµ РЅР°Р№РґРµРЅ' });
     return { tariff: rows[0] };
   });
 
@@ -668,7 +669,7 @@ module.exports = async function(fastify) {
     const updates = [];
     if (monthly !== undefined) {
       const v = parseFloat(monthly);
-      if (!Number.isFinite(v) || v < 0) return reply.code(400).send({ error: 'monthly должен быть числом >= 0' });
+      if (!Number.isFinite(v) || v < 0) return reply.code(400).send({ error: 'monthly РґРѕР»Р¶РµРЅ Р±С‹С‚СЊ С‡РёСЃР»РѕРј >= 0' });
       await db.query(`
         INSERT INTO settings (key, value_json, updated_at) VALUES ('self_employed_monthly_limit', $1, NOW())
         ON CONFLICT (key) DO UPDATE SET value_json = EXCLUDED.value_json, updated_at = NOW()
@@ -677,7 +678,7 @@ module.exports = async function(fastify) {
     }
     if (yearly !== undefined) {
       const v = parseFloat(yearly);
-      if (!Number.isFinite(v) || v < 0) return reply.code(400).send({ error: 'yearly должен быть числом >= 0' });
+      if (!Number.isFinite(v) || v < 0) return reply.code(400).send({ error: 'yearly РґРѕР»Р¶РµРЅ Р±С‹С‚СЊ С‡РёСЃР»РѕРј >= 0' });
       await db.query(`
         INSERT INTO settings (key, value_json, updated_at) VALUES ('self_employed_yearly_limit', $1, NOW())
         ON CONFLICT (key) DO UPDATE SET value_json = EXCLUDED.value_json, updated_at = NOW()

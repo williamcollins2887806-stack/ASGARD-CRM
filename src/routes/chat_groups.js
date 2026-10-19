@@ -2184,6 +2184,10 @@ module.exports = async function(fastify) {
     }
 
     // SSE streaming
+    // Заказчик 19.10.2026 (ERR_HTTP_HEADERS_SENT): без hijack() Fastify по
+    // завершении обработчика пытается отправить ответ поверх уже отправленных
+    // заголовков SSE. hijack() — ДО writeHead.
+    reply.hijack();
     reply.raw.writeHead(200, {
       'Content-Type': 'text/event-stream',
       'Cache-Control': 'no-cache',

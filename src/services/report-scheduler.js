@@ -170,7 +170,12 @@ class ReportScheduler {
     if (!report) return;
 
     try {
-      // Получаем пользователей с их персональными настройками
+      // Получаем пользователей с их персональными настройками.
+      // Заказчик 19.10.2026: рассылка уходила на ТЕСТОВЫЕ ящики
+      // (test_admin@test.asgard.local, test_director_*@test.asgard.local) — домен
+      // не существует, Yandex возвращал bounce, в ящике накопилось 653 письма.
+      // Фильтр на уровне SQL + проверка адреса перед отправкой (двойная защита:
+      // даже если в БД заведётся тестовый пользователь, письмо не уйдёт).
       const { rows: users } = await this.db.query(`
         SELECT u.id, u.email, u.name, u.role,
           COALESCE(p.is_enabled, true) as pref_enabled,
@@ -182,6 +187,13 @@ class ReportScheduler {
         WHERE u.role IN ('ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV')
           AND u.is_active = true
           AND COALESCE(p.is_enabled, true) = true
+          AND COALESCE(u.email, '') <> ''
+          AND u.email NOT ILIKE '%@test.%'
+          AND u.email NOT ILIKE '%@%.local'
+          AND u.email NOT ILIKE '%@example.%'
+          AND u.email NOT ILIKE 'test\\_%'
+          AND COALESCE(u.login, '') NOT ILIKE 'test\\_%'
+          AND COALESCE(u.login, '') <> 'mimir_bot'
       `, [reportType]);
 
       for (const user of users) {
