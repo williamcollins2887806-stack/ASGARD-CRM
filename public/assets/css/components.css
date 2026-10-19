@@ -4716,17 +4716,20 @@ html[data-theme="light"] .viking-welcome .vw-saga-wrap {
   gap: 12px;
   margin-bottom: 18px;
 }
+/* Заголовок виджета-дашборда: Cinzel не содержит кириллицы и для русского
+   текста браузер подставлял Times New Roman. Используем Inter с плотным
+   трекингом — заголовок читается и остаётся акцентным. */
 .custom-dash .dash-head-title {
   display: flex;
   align-items: center;
   gap: 10px;
   margin: 0;
-  font-size: 22px;
+  font-size: 21px;
   font-weight: 800;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.04em;
   text-transform: uppercase;
   color: var(--gold);
-  font-family: var(--ff-norse, Cinzel, serif);
+  font-family: var(--ff);
 }
 .custom-dash .dash-head-rune {
   font-size: 20px;

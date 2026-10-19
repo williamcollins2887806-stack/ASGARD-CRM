@@ -3872,14 +3872,19 @@ html[data-theme="light"] .themebtn:hover {
   filter: invert(1) opacity(1) brightness(1.2) !important;
 }
 
-/* Navitem icons тАФ light theme */
+/* Navitem icons — light theme.
+   Иконки это <img src="*.svg"> — файл нарисован белым (stroke="currentColor"
+   в отвязанном SVG резолвится в белый), CSS color их не перекрашивает.
+   Фильтры подобраны замером пикселя: цель #47546A / активная #1D4ED8. */
 html[data-theme="light"] .ico img {
-  filter: brightness(0) saturate(100%) invert(30%) sepia(10%) saturate(500%) hue-rotate(180deg) brightness(90%);
+  filter: brightness(0) saturate(100%) invert(32%) sepia(10%) saturate(900%) hue-rotate(180deg) brightness(94%) contrast(90%) !important;
+  opacity: 1 !important;
 }
 
 html[data-theme="light"] .navitem:hover .ico img,
 html[data-theme="light"] .navitem.active .ico img {
-  filter: brightness(0) saturate(100%) invert(25%) sepia(90%) saturate(2000%) hue-rotate(340deg) brightness(95%);
+  filter: brightness(0) saturate(100%) invert(24%) sepia(92%) saturate(2600%) hue-rotate(218deg) brightness(92%) contrast(95%) !important;
+  opacity: 1 !important;
 }
 
 html[data-theme="light"] .ico {
@@ -3889,9 +3894,9 @@ html[data-theme="light"] .ico {
 
 html[data-theme="light"] .navitem:hover .ico,
 html[data-theme="light"] .navitem.active .ico {
-  background: rgba(220, 38, 38, 0.1);
-  border-color: rgba(220, 38, 38, 0.2);
-  box-shadow: 0 0 12px rgba(220, 38, 38, 0.15);
+  background: color-mix(in srgb, var(--blue) 9%, transparent);
+  border-color: color-mix(in srgb, var(--blue) 18%, transparent);
+  box-shadow: none;
 }
 
 /* Brand */
@@ -13127,14 +13132,215 @@ table.reg-table tbody tr.reg-row-unread > td:first-child {
 }
 .hub-funnel-zero-ic { font-size: 28px; margin-bottom: 6px; }
 
-/* Morning brief */
-.morning-brief .mb-lead { margin: 0 0 12px; color: var(--t2); font-size: 13px; }
-.morning-brief .mb-block { margin-bottom: 14px; }
-.morning-brief .mb-block-h { font-weight: 750; margin-bottom: 6px; }
-.morning-brief .mb-n { font-size: 12px; opacity: .7; }
-.morning-brief .mb-list { margin: 0; padding-left: 18px; font-size: 13px; }
-.morning-brief .mb-list li { margin-bottom: 4px; }
-.morning-brief .mb-empty { font-size: 13px; }
+/* ── Утренний брифинг (D-249) ────────────────────────────────────────────────
+   Премиальный слой: герой-баннер с золотым свечением, полоса KPI, секции-карточки.
+   Только токены темы — без #hex, чтобы работали обе темы. */
+.mbk { display: flex; flex-direction: column; gap: 14px; }
+
+/* 1. Герой */
+.mbk-hero {
+  position: relative; overflow: hidden;
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 16px; flex-wrap: wrap;
+  padding: 18px 20px 16px;
+  border-radius: var(--r-lg);
+  border: 1px solid color-mix(in srgb, var(--gold) 26%, var(--brd));
+  background:
+    radial-gradient(ellipse 110% 130% at 0% -40%, color-mix(in srgb, var(--gold) 16%, transparent), transparent 60%),
+    radial-gradient(ellipse 80% 90% at 100% 120%, color-mix(in srgb, var(--blue) 12%, transparent), transparent 55%),
+    linear-gradient(160deg, color-mix(in srgb, var(--bg4) 60%, var(--bg2)), var(--bg2) 55%, color-mix(in srgb, var(--bg2) 85%, var(--bg1)));
+  box-shadow: var(--shadow-md);
+}
+.mbk-hero::after {
+  content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: 2px;
+  background: linear-gradient(90deg, transparent, var(--gold) 20%, var(--gold-l) 50%, var(--gold) 80%, transparent);
+  opacity: .9; pointer-events: none;
+}
+.mbk-hero-main { position: relative; z-index: 1; min-width: 0; }
+.mbk-kicker {
+  font-size: 10.5px; font-weight: var(--fw-bold);
+  letter-spacing: .14em; text-transform: uppercase;
+  color: var(--gold); margin-bottom: 6px;
+}
+.mbk-title {
+  margin: 0; font-family: var(--ff-head);
+  font-size: 21px; font-weight: var(--fw-extra);
+  letter-spacing: -.02em; line-height: 1.15; color: var(--t1);
+  text-wrap: balance;
+}
+.mbk-sub { margin: 5px 0 0; font-size: 12.5px; color: var(--t2); line-height: 1.45; }
+.mbk-sub b { color: var(--t1); font-weight: var(--fw-bold); font-variant-numeric: tabular-nums; }
+.mbk-hero-ic {
+  position: relative; z-index: 1; flex-shrink: 0;
+  width: 46px; height: 46px; border-radius: 13px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 22px;
+  background: color-mix(in srgb, var(--gold) 15%, var(--bg3));
+  border: 1px solid color-mix(in srgb, var(--gold) 34%, var(--brd));
+  box-shadow: 0 0 22px color-mix(in srgb, var(--gold) 22%, transparent);
+}
+/* Мягкий «рассвет» за иконкой — единственная анимация в окне. */
+.mbk-hero-pulse {
+  position: absolute; inset: -7px; border-radius: 18px;
+  border: 1px solid color-mix(in srgb, var(--gold) 30%, transparent);
+  animation: mbk-pulse 3.6s ease-in-out infinite;
+  pointer-events: none;
+}
+@keyframes mbk-pulse {
+  0%, 100% { opacity: .0; transform: scale(.92); }
+  45%      { opacity: .85; transform: scale(1.04); }
+  100%     { opacity: 0; transform: scale(1.12); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .mbk-hero-pulse { animation: none; opacity: .35; }
+}
+
+/* 2. Полоса KPI */
+.mbk-kpis {
+  display: grid; gap: 8px;
+  grid-template-columns: repeat(auto-fit, minmax(118px, 1fr));
+}
+.mbk-kpi {
+  text-align: left; font: inherit; cursor: pointer;
+  padding: 10px 12px; border-radius: var(--r-lg);
+  border: 1px solid var(--brd-m);
+  background: color-mix(in srgb, var(--bg3) 55%, var(--bg2));
+  color: var(--t1);
+  transition: transform var(--base), border-color var(--base), background var(--base);
+}
+.mbk-kpi:hover { transform: translateY(-1px); border-color: color-mix(in srgb, var(--gold) 40%, var(--brd)); }
+.mbk-kpi-l {
+  display: block; font-size: 10px; font-weight: var(--fw-semi);
+  letter-spacing: .06em; text-transform: uppercase; color: var(--t3);
+}
+.mbk-kpi-v {
+  display: block; margin-top: 3px;
+  font-size: 20px; font-weight: var(--fw-extra);
+  line-height: 1.1; font-variant-numeric: tabular-nums;
+}
+.mbk-kpi.is-err  { border-color: color-mix(in srgb, var(--err) 40%, var(--brd)); background: color-mix(in srgb, var(--err-bg) 80%, var(--bg2)); }
+.mbk-kpi.is-err  .mbk-kpi-v { color: var(--err-t); }
+.mbk-kpi.is-warn { border-color: color-mix(in srgb, var(--warn) 40%, var(--brd)); background: color-mix(in srgb, var(--warn-bg) 75%, var(--bg2)); }
+.mbk-kpi.is-warn .mbk-kpi-v { color: var(--warn-t); }
+.mbk-kpi.is-ok   .mbk-kpi-v { color: var(--ok-t); }
+.mbk-kpi.is-gold .mbk-kpi-v { color: var(--gold-l); }
+.mbk-kpi.is-zero { opacity: .62; }
+
+/* 3. Секции */
+.mbk-sec {
+  border-radius: var(--r-lg); overflow: hidden;
+  border: 1px solid var(--brd-m);
+  background: color-mix(in srgb, var(--bg3) 32%, var(--bg2));
+}
+.mbk-sec + .mbk-sec { margin-top: 0; }
+.mbk-sec.tone-err  { border-color: color-mix(in srgb, var(--err) 34%, var(--brd)); }
+.mbk-sec.tone-warn { border-color: color-mix(in srgb, var(--warn) 34%, var(--brd)); }
+.mbk-sec.tone-ok   { border-color: color-mix(in srgb, var(--ok) 34%, var(--brd)); }
+.mbk-sec.tone-info { border-color: color-mix(in srgb, var(--info) 32%, var(--brd)); }
+.mbk-sec.tone-gold { border-color: color-mix(in srgb, var(--gold) 34%, var(--brd)); }
+
+.mbk-sec-h {
+  display: flex; align-items: center; gap: 10px;
+  padding: 9px 12px;
+  border-bottom: 1px solid var(--brd-m);
+  background: color-mix(in srgb, var(--bg1) 30%, transparent);
+}
+.mbk-sec-h h3 {
+  margin: 0; font-size: 12.5px; font-weight: var(--fw-bold);
+  letter-spacing: .01em; color: var(--t1); min-width: 0;
+}
+.mbk-n {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 21px; height: 19px; padding: 0 6px;
+  border-radius: var(--r-full);
+  font-size: 10.5px; font-weight: var(--fw-bold);
+  font-variant-numeric: tabular-nums;
+  background: color-mix(in srgb, var(--t1) 9%, transparent);
+  color: var(--t2);
+}
+.tone-err  .mbk-n { background: color-mix(in srgb, var(--err) 22%, transparent);  color: var(--err-t); }
+.tone-warn .mbk-n { background: color-mix(in srgb, var(--warn) 22%, transparent); color: var(--warn-t); }
+.tone-ok   .mbk-n { background: color-mix(in srgb, var(--ok) 22%, transparent);   color: var(--ok-t); }
+.tone-gold .mbk-n { background: color-mix(in srgb, var(--gold) 24%, transparent); color: var(--gold-l); }
+.mbk-sec-h .mbk-hint { font-size: 11px; color: var(--t3); margin-left: 2px; }
+.mbk-sec-act { margin-left: auto; flex-shrink: 0; }
+
+/* 4. Строка тендера */
+.mbk-row {
+  display: flex; align-items: center; gap: 10px; width: 100%;
+  padding: 9px 12px; margin: 0;
+  border: 0; border-bottom: 1px solid color-mix(in srgb, var(--t1) 5%, transparent);
+  background: transparent; color: inherit; font: inherit; text-align: left;
+  cursor: pointer; transition: background var(--fast);
+}
+.mbk-row:last-child { border-bottom: none; }
+.mbk-row:hover { background: color-mix(in srgb, var(--gold) 7%, transparent); }
+.mbk-row:focus-visible { outline: 2px solid var(--gold); outline-offset: -2px; }
+.mbk-row-id {
+  flex-shrink: 0; min-width: 58px;
+  font-size: 11.5px; font-weight: var(--fw-bold);
+  font-variant-numeric: tabular-nums;
+  color: var(--gold); letter-spacing: .01em;
+}
+.mbk-row-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.mbk-row-cust {
+  font-size: 12.5px; font-weight: var(--fw-semi); color: var(--t1);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.mbk-row-ttl {
+  font-size: 11.5px; color: var(--t3);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.mbk-row-side { flex-shrink: 0; display: flex; align-items: center; gap: 8px; }
+.mbk-pm { font-size: 11px; color: var(--t3); white-space: nowrap; }
+.mbk-dl {
+  font-size: 10.5px; font-weight: var(--fw-bold);
+  padding: 2px 8px; border-radius: var(--r-full);
+  white-space: nowrap; font-variant-numeric: tabular-nums;
+  border: 1px solid var(--brd-m); background: color-mix(in srgb, var(--t1) 6%, transparent);
+  color: var(--t2);
+}
+.mbk-dl.is-over  { color: var(--err-t);  border-color: color-mix(in srgb, var(--err) 42%, var(--brd));  background: color-mix(in srgb, var(--err-bg) 85%, var(--bg3)); }
+.mbk-dl.is-today { color: var(--warn-t); border-color: color-mix(in srgb, var(--warn) 42%, var(--brd)); background: color-mix(in srgb, var(--warn-bg) 85%, var(--bg3)); }
+.mbk-dl.is-soon  { color: var(--gold-l); border-color: color-mix(in srgb, var(--gold) 38%, var(--brd)); background: color-mix(in srgb, var(--gold-bg) 80%, var(--bg3)); }
+.mbk-row-go { flex-shrink: 0; font-size: 13px; color: var(--t3); transition: color var(--fast), transform var(--fast); }
+.mbk-row:hover .mbk-row-go { color: var(--gold); transform: translateX(2px); }
+
+/* 5. Канбан-статистика */
+.mbk-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; padding: 10px 12px; }
+.mbk-stats > div {
+  padding: 9px 10px; border-radius: var(--r-md);
+  background: color-mix(in srgb, var(--bg3) 60%, transparent);
+  border: 1px solid var(--brd-m);
+  display: flex; flex-direction: column; gap: 2px;
+}
+.mbk-stats span { font-size: 9.5px; letter-spacing: .06em; text-transform: uppercase; color: var(--t3); }
+.mbk-stats b { font-size: 18px; font-variant-numeric: tabular-nums; }
+.mbk-stats .is-bad b { color: var(--err-t); }
+.mbk-crit { padding: 0 12px 10px; font-size: 11.5px; color: var(--t3); }
+.mbk-link { padding: 0 12px 12px; }
+.mbk-link a { font-size: 11.5px; color: var(--gold); text-decoration: none; }
+.mbk-link a:hover { text-decoration: underline; }
+
+/* 6. Ноль / футер */
+.mbk-zero {
+  text-align: center; padding: 26px 18px;
+  border: 1px dashed var(--brd); border-radius: var(--r-lg);
+  color: var(--t2); font-size: 12.5px; line-height: 1.5;
+}
+.mbk-zero-ic { font-size: 26px; margin-bottom: 6px; opacity: .75; }
+.mbk-foot {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  margin-top: 2px; padding-top: 10px;
+  border-top: 1px solid var(--brd-m);
+}
+.mbk-foot-note { font-size: 11px; color: var(--t3); }
+
+@media (max-width: 620px) {
+  .mbk-row-side { flex-direction: column; align-items: flex-end; gap: 3px; }
+  .mbk-title { font-size: 18px; }
+  .mbk-row-id { min-width: 50px; }
+}
 /* тХРтХРтХР Employee workspace (#/employee) тХРтХРтХР */
 .emp-ws { display: flex; flex-direction: column; gap: 12px; }
 .emp-ws-top {

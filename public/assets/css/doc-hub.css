@@ -2441,7 +2441,7 @@ body.hg-dock-open .dh-hscroll-bar {
    (title 1.0-1.1 → нечитаемо). Здесь те же пилюли/кнопки получают тёмные чернила. */
 html[data-theme="light"] .dh-btn--primary { color: #1C1914; }
 html[data-theme="light"] .dh-top__eyebrow { color: var(--gold-h, #9A6E12); }
-html[data-theme="light"] .dh-pill { border-color: rgba(139,120,90,0.22); }
+html[data-theme="light"] .dh-pill { border-color: rgba(15,23,42,0.12); }
 html[data-theme="light"] .dh-pill--ok {
   background: color-mix(in srgb, var(--ok) 16%, var(--bg2));
   color: #24503B;

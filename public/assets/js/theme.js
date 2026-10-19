@@ -72,7 +72,7 @@
     try {
       const meta = document.querySelector('meta[name="theme-color"]');
       if (meta) {
-        meta.content = theme === 'light' ? '#f8fafc' : '#0a1628';
+        meta.content = theme === 'light' ? '#F4F6F8' : '#0D1117';
       }
     } catch(e){}
 

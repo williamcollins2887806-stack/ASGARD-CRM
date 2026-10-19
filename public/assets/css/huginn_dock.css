@@ -302,11 +302,11 @@ html[data-theme="light"] {
   --hg-bubble-them: var(--hg-tg-bubble-them);
   --hg-bubble-me: var(--hg-tg-bubble-me);
   --hg-text: var(--t1, #1A1510);
-  --hg-muted: var(--t2, #6B5E4E);
-  --hg-faint: var(--t3, #8B785A);
-  --hg-border: var(--brd-m, rgba(139, 120, 90, 0.14));
-  --hg-sep: var(--brd-m, rgba(139, 120, 90, 0.14));
-  --hg-accent-chat: var(--blue-l, #2B5F9E);
+  --hg-muted: var(--t2, #4A5361);
+  --hg-faint: var(--t3, #5F6B7A);
+  --hg-border: var(--brd-m, rgba(15, 23, 42, 0.10));
+  --hg-sep: var(--brd-m, rgba(15, 23, 42, 0.10));
+  --hg-accent-chat: var(--blue, #1D4ED8);
   --hg-danger: var(--red, #E53935);
   --hg-online: var(--green, #31B545);
   --hg-hover: var(--bg-hover, var(--bg3, rgba(0, 0, 0, 0.04)));
@@ -433,7 +433,7 @@ html[data-theme="light"] .hg-glass[data-role="card"] {
 .hg-rail-btn:focus-visible { outline: 2px solid var(--hg-accent-chat); outline-offset: 2px; }
 .hg-rail-btn.is-active {
   color: var(--hg-accent-chat);
-  background: rgba(82, 136, 193, 0.12);
+  background: color-mix(in srgb, var(--hg-accent-chat) 12%, transparent);
   transition: background 150ms var(--hg-ease-ui), color 150ms var(--hg-ease-ui);
 }
 .hg-rail-btn svg { width: 24px; height: 24px; stroke-width: 1.75; }
@@ -535,7 +535,7 @@ html[data-theme="light"] .hg-rail-badge {
 .hg-list-head-hybrid .hg-head-edit {
   border: 0;
   background: transparent;
-  color: var(--blue-l, #4A90D9);
+  color: var(--hg-accent-chat, var(--blue, #1D4ED8));
   font: 600 15px/1 var(--hg-font);
   cursor: pointer;
   padding: 8px 4px;

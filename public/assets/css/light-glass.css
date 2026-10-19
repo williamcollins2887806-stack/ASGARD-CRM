@@ -1,0 +1,254 @@
+/* ═══════════════════════════════════════════════════════════════════════════════
+   §90. GLASS UI 2.0 — светлая тема по всей CRM
+   Принцип (iOS 26 / Telegram): слой = полупрозрачная поверхность + blur + тонкая
+   светлая грань сверху. Никаких «дешёвых» линейных градиентов на кнопках.
+   Всё построено на токенах, поэтому не ломает ни одну страницу.
+   ═══════════════════════════════════════════════════════════════════════════════ */
+
+/* ── 90-A. Токены стекла ─────────────────────────────────────────────────── */
+html[data-theme="light"] {
+  --glass-1: color-mix(in srgb, #FFFFFF 76%, transparent);   /* плотное: модалки */
+  --glass-2: color-mix(in srgb, #FFFFFF 64%, transparent);   /* обычное: карточки */
+  --glass-3: color-mix(in srgb, #FFFFFF 52%, transparent);   /* лёгкое: топбар */
+  --glass-brd: color-mix(in srgb, #FFFFFF 72%, #0F172A 8%);
+  --glass-edge: inset 0 1px 0 rgba(255, 255, 255, 0.85);
+  --glass-blur: 18px;
+  --glass-sat: 1.35;
+  /* тень стекла: близкая + рассеянная, без цветного пятна */
+  --glass-shadow: 0 1px 2px rgba(16,24,40,0.06), 0 8px 24px rgba(16,24,40,0.08);
+  --glass-shadow-hover: 0 2px 4px rgba(16,24,40,0.07), 0 14px 34px rgba(16,24,40,0.12);
+}
+
+/* ── 90-B. Базовая поверхность приложения: холодный фон с мягкими пятнами ── */
+html[data-theme="light"] body {
+  background:
+    radial-gradient(1100px 620px at 12% -8%,  rgba(29, 78, 216, 0.055), transparent 62%),
+    radial-gradient(980px 560px at 92% 4%,    rgba(224, 165, 38, 0.055), transparent 60%),
+    radial-gradient(900px 620px at 50% 108%,  rgba(18, 135, 74, 0.035), transparent 65%),
+    var(--bg1);
+  background-attachment: fixed;
+}
+
+/* ── 90-C. Топбар: плавающее стекло + волосяная граница ─────────────────── */
+html[data-theme="light"] .topbar,
+html[data-theme="light"] .asg-header,
+html[data-theme="light"] header.main-header {
+  background: var(--glass-3) !important;
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-sat));
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-sat));
+  border-bottom: 1px solid var(--glass-brd) !important;
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.6), 0 6px 20px rgba(16, 24, 40, 0.05) !important;
+}
+
+/* ── 90-D. Сайдбар: стеклянная стена, но без «пластика» ─────────────────── */
+html[data-theme="light"] .sidenav {
+  background: var(--glass-3) !important;
+  background-image: none !important;
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-sat));
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-sat));
+  border-right: 1px solid var(--glass-brd) !important;
+  box-shadow: 1px 0 0 rgba(255, 255, 255, 0.55) !important;
+}
+
+/* ── 90-E. Карточки и панели: одна формула стекла ───────────────────────── */
+html[data-theme="light"] :is(.card, .panel, .cr-card, .widget, .stat-card, .kpi-card,
+  .metric-card, .approval-card, .profile-card, .worker-card, .hr-card, .trip-card,
+  .est-card, .proc-card, .tender-card, .pre-tender-card, .call-card, .sr-card,
+  .er-summary-card, .meeting-card, .mimir-result-card) {
+  background: var(--glass-2) !important;
+  -webkit-backdrop-filter: blur(14px) saturate(1.25);
+  backdrop-filter: blur(14px) saturate(1.25);
+  border: 1px solid var(--glass-brd) !important;
+  box-shadow: var(--glass-shadow), var(--glass-edge) !important;
+}
+
+/* ── 90-F. Модалки и шторки: плотнее, потому что поверх контента ────────── */
+html[data-theme="light"] :is(.modal-content, .cr-m, .cr-d, .cr-cf, .search-modal,
+  .cmd-palette, .command-palette, .dropdown-menu, .popover, .context-menu,
+  .nav-group-items, .cr-select__dropdown, .cr-ac__dropdown, .cr-dp__popup, .cr-ep__dropdown) {
+  background: var(--glass-1) !important;
+  -webkit-backdrop-filter: blur(24px) saturate(1.4);
+  backdrop-filter: blur(24px) saturate(1.4);
+  border: 1px solid var(--glass-brd) !important;
+  box-shadow: 0 2px 6px rgba(16,24,40,0.08), 0 24px 60px rgba(16,24,40,0.18), var(--glass-edge) !important;
+}
+
+/* ── 90-G. Кнопки: убираем «дешёвый» градиент, делаем матовое стекло ────── */
+/* Виновник был .btn.ghost::after с linear-gradient(blue → gold). */
+html[data-theme="light"] .btn.ghost::after {
+  content: none !important;
+  display: none !important;
+}
+html[data-theme="light"] .btn::before {
+  content: none !important;
+  display: none !important;
+}
+html[data-theme="light"] .btn {
+  background: color-mix(in srgb, #FFFFFF 82%, transparent) !important;
+  -webkit-backdrop-filter: blur(10px) saturate(1.2);
+  backdrop-filter: blur(10px) saturate(1.2);
+  border: 1px solid var(--glass-brd) !important;
+  color: var(--t1) !important;
+  box-shadow: 0 1px 2px rgba(16,24,40,0.05), inset 0 1px 0 rgba(255,255,255,0.9) !important;
+  transition: background 0.16s ease, border-color 0.16s ease, box-shadow 0.16s ease, transform 0.16s ease;
+}
+html[data-theme="light"] .btn:hover {
+  background: color-mix(in srgb, #FFFFFF 94%, transparent) !important;
+  border-color: color-mix(in srgb, #0F172A 16%, transparent) !important;
+  box-shadow: 0 2px 6px rgba(16,24,40,0.08), inset 0 1px 0 rgba(255,255,255,0.95) !important;
+  transform: translateY(-1px);
+}
+html[data-theme="light"] .btn:active { transform: translateY(0) scale(0.985); }
+html[data-theme="light"] .btn:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: 2px;
+}
+
+/* Ghost — самый лёгкий: только текст и волосяная рамка */
+html[data-theme="light"] .btn.ghost {
+  background: transparent !important;
+  border: 1px solid var(--glass-brd) !important;
+  color: var(--t2) !important;
+  box-shadow: none !important;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+html[data-theme="light"] .btn.ghost:hover {
+  background: color-mix(in srgb, #FFFFFF 72%, transparent) !important;
+  border-color: color-mix(in srgb, var(--blue) 26%, transparent) !important;
+  color: var(--blue) !important;
+  box-shadow: 0 2px 8px rgba(16,24,40,0.07) !important;
+}
+
+/* Primary / gold / red — сплошные, без градиента, с честной тенью */
+html[data-theme="light"] .btn.primary,
+html[data-theme="light"] .btn.blue {
+  background: var(--blue) !important;
+  border: 1px solid color-mix(in srgb, var(--blue) 78%, #000 22%) !important;
+  color: #fff !important;
+  box-shadow: 0 1px 2px rgba(29,78,216,0.24), 0 6px 16px rgba(29,78,216,0.20) !important;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+html[data-theme="light"] .btn.primary:hover,
+html[data-theme="light"] .btn.blue:hover {
+  background: var(--blue-h) !important;
+  box-shadow: 0 2px 4px rgba(29,78,216,0.26), 0 10px 24px rgba(29,78,216,0.24) !important;
+}
+html[data-theme="light"] .btn.gold {
+  background: var(--gold) !important;
+  border: 1px solid color-mix(in srgb, var(--gold) 78%, #000 22%) !important;
+  color: #fff !important;
+  box-shadow: 0 1px 2px rgba(142,98,18,0.24), 0 6px 16px rgba(142,98,18,0.20) !important;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+html[data-theme="light"] .btn.gold:hover {
+  background: var(--gold-h) !important;
+  box-shadow: 0 2px 4px rgba(142,98,18,0.26), 0 10px 24px rgba(142,98,18,0.24) !important;
+}
+html[data-theme="light"] .btn.red:not(#btnLogout),
+html[data-theme="light"] .btn.danger {
+  background: var(--red) !important;
+  border: 1px solid color-mix(in srgb, var(--red) 78%, #000 22%) !important;
+  color: #fff !important;
+  box-shadow: 0 1px 2px rgba(196,30,49,0.24), 0 6px 16px rgba(196,30,49,0.20) !important;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+html[data-theme="light"] .btn.red:not(#btnLogout):hover,
+html[data-theme="light"] .btn.danger:hover {
+  background: var(--red-h) !important;
+  box-shadow: 0 2px 4px rgba(196,30,49,0.26), 0 10px 24px rgba(196,30,49,0.24) !important;
+}
+html[data-theme="light"] .btn.green,
+html[data-theme="light"] .btn.success {
+  background: var(--ok) !important;
+  border: 1px solid color-mix(in srgb, var(--ok) 78%, #000 22%) !important;
+  color: #fff !important;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
+/* ── 90-H. Иконки: контраст вместо бледности ────────────────────────────── */
+html[data-theme="light"] .sidenav .nav-group-header,
+html[data-theme="light"] .sidenav .nav-group-icon,
+html[data-theme="light"] .sidenav .navitem .ico {
+  color: #47546A !important;
+}
+html[data-theme="light"] .sidenav .nav-group-header:hover,
+html[data-theme="light"] .sidenav .nav-group.has-active > .nav-group-header {
+  color: var(--blue) !important;
+}
+html[data-theme="light"] .sidenav .nav-group.has-active > .nav-group-header {
+  background: color-mix(in srgb, var(--blue) 10%, transparent) !important;
+}
+html[data-theme="light"] .iconbtn,
+html[data-theme="light"] #btnTheme {
+  color: #47546A !important;
+}
+html[data-theme="light"] .iconbtn:hover,
+html[data-theme="light"] #btnTheme:hover {
+  color: var(--blue) !important;
+  background: color-mix(in srgb, var(--blue) 8%, transparent) !important;
+}
+
+/* ── 90-I. Читаемость: поднимаем самый мелкий кегль ─────────────────────── */
+/* Было 10–11px — на светлом фоне это «мыло». Поднимаем до 12px
+   только там, где текст реально мелкий, не ломая сетку. */
+html[data-theme="light"] :is(.dw-kpi-sub, .dw-kpi-lab, .dw-label, .dash-head-meta,
+  .dwr-chip, .dw-welcome-meta, .dw-link, .widget-link, .dw-body .empty,
+  .cr-table th, .tbl th, table th, .cr-f-label, .muted, .hint, .help) {
+  font-size: 12px;
+  line-height: 1.45;
+}
+html[data-theme="light"] :is(.dash-head-meta, .dw-welcome-meta) { font-size: 12.5px; }
+
+/* ── 90-J. Мелочи: чёткие границы таблиц и полей на стекле ──────────────── */
+html[data-theme="light"] input,
+html[data-theme="light"] select,
+html[data-theme="light"] textarea,
+html[data-theme="light"] .inp {
+  background: color-mix(in srgb, #FFFFFF 78%, transparent) !important;
+  border: 1px solid var(--glass-brd) !important;
+  box-shadow: inset 0 1px 2px rgba(16,24,40,0.04) !important;
+}
+html[data-theme="light"] input:focus,
+html[data-theme="light"] select:focus,
+html[data-theme="light"] textarea:focus,
+html[data-theme="light"] .inp:focus {
+  border-color: color-mix(in srgb, var(--blue) 45%, transparent) !important;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--blue) 14%, transparent) !important;
+}
+
+/* ── 90-K. Отключение тяжёлого стекла на слабых машинах и при печати ────── */
+@media (prefers-reduced-transparency: reduce), (prefers-reduced-motion: reduce) {
+  html[data-theme="light"] .topbar,
+  html[data-theme="light"] .sidenav,
+  html[data-theme="light"] .card,
+  html[data-theme="light"] .panel,
+  html[data-theme="light"] .dash-widget-v2,
+  html[data-theme="light"] .btn {
+    -webkit-backdrop-filter: none !important;
+    backdrop-filter: none !important;
+    background: #FFFFFF !important;
+  }
+}
+@supports not (backdrop-filter: blur(1px)) {
+  html[data-theme="light"] .topbar,
+  html[data-theme="light"] .sidenav,
+  html[data-theme="light"] .dash-widget-v2 {
+    background: #FFFFFF !important;
+  }
+}
+@media print {
+  html[data-theme="light"] .topbar,
+  html[data-theme="light"] .sidenav,
+  html[data-theme="light"] .card,
+  html[data-theme="light"] .panel {
+    -webkit-backdrop-filter: none !important;
+    backdrop-filter: none !important;
+    background: #FFFFFF !important;
+    box-shadow: none !important;
+  }
+}
