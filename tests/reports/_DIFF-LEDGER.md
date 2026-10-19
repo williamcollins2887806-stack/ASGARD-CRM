@@ -9346,3 +9346,67 @@ ERR_HTTP_HEADERS_SENT (unhandled rejection). До деплоя 67 за 40 мин
 Зафиксировано как отдельная находка к разбору.
 
 **Статус:** DEPLOYED. Ожидает живой проверки (прислать счёт с новой почты).
+
+---
+
+## D-286. ERR_HTTP_HEADERS_SENT: причина найдена и частично закрыта, ОСТАТОК (19.10.2026)
+
+**Симптом.** В логах прода `ERR_HTTP_HEADERS_SENT` (Unhandled Promise Rejection).
+До деплоя 12:30–13:30: **143 ошибки на 4 367 запросов (3.3%)**.
+
+**Что установлено точно (по reqId → url):**
+- SSE-потоки: обработчик `async` + `reply.raw.writeHead` → Fastify по завершении
+  пытается отправить ответ повторно. Закрыто `reply.hijack()` в **9 местах**
+  (`sse.js`, `chat_groups.js`, `mimir.js`×3, `mimir-conductor.js`,
+  `admin-system.js`, `tkp_quick.js`×2). Коммит `ae83c368`.
+- Дополнительно найден источник массовой рассылки bounce — не он.
+
+**Результат после выкатки (shell 20.28.227, рестарт 13:59:52):**
+- было **143 / час** → стало **~1 / минуту** (14:05–14:13: 15 шт).
+- т.е. снижение примерно в 2.4 раза, но **НЕ ноль**.
+
+**ОСТАТОК — не закрыт.** По reqId после фикса всё ещё дают ошибку:
+| URL | Кол-во | Тип |
+|---|---|---|
+| `/api/telephony/missed` | 6 | обычный GET, polling |
+| `/api/telephony/webhook/events/call` | 5 | webhook Mango |
+| `/api/chat-groups/events` | 5 | обычный GET, polling |
+| `/api/telephony/webhook/result/stat` | 2 | webhook Mango |
+
+Проверено и **исключено**: два `onSend`-хука (оба безопасны), `preHandler`
+(только `/m/index.html`), `onRequest`-хуки, свой `addContentTypeParser`
+(корректен), `verifyMangoSignature` (возвращает `false`), `checkWebhookRate`
+(синхронная). Двойной регистрации `/missed` и `chat_groups` нет.
+
+**Гипотеза для следующего прохода:** ошибка не в самом обработчике, а в
+`Unhandled Promise Rejection` — где-то `async`-функция вызывается без
+`await`/`.catch()` и пытается писать в уже отвеченный `reply`. Проверять
+`setImmediate`/fire-and-forget в `telephony.js` (`enqueueCallProcess`) и
+`huginnEvents.catchUp`/`touchLastSeen`.
+
+**Статус:** частично закрыто, FIXED≠DONE. Не выдавать как «исправлено».
+
+---
+
+## D-287. Рассылка на тестовые ящики: 653 bounce удалены, защита в 3 слоя (19.10.2026)
+
+**Заказчик:** «в почте более сотни таких писем, удали и сделай так, чтобы на
+тестовые ящики больше рассылки не шли».
+
+**Причина.** Отчёты по звонкам (`report-scheduler._deliver`) отбирали получателей
+по `role + is_active` без проверки адреса → в выборку попадали
+`test_admin@test.asgard.local`, `test_director_gen@…local` и т.п. Домен не
+существует, Yandex возвращал bounce. Всего накопилось **653** письма.
+
+**Сделано.**
+1. `report-scheduler`: SQL-фильтр (`@test.`, `@*.local`, `@example.`,
+   логин `test_*`, `mimir_bot`).
+2. `user-filters.isSafeRecipient()`: единая проверка адреса (TLD, зарезервированные
+   домены RFC 2606, `test_*`).
+3. `crm-mailer.sendCrmEmail`: защита в ЕДИНОЙ точке отправки — плохие адреса
+   вычищаются из To/Cc/Bcc; если все плохие — письмо не уходит.
+
+**Прод.** Удалено 653 bounce (бэкап `/tmp/bounces-backup.csv`), `mimir_bot`
+восстановлен после случайной деактивации, активных тестовых с почтой не осталось.
+
+**Тесты:** `email-recipient-safety` 23/0, `internal-invoice-not-skipped` 7/0.
