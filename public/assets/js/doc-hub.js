@@ -78,6 +78,9 @@ window.AsgardDocHubPage = (function () {
     facetIncomplete: false,
     quarter: '',
     year: '',
+    // Сортировка реестра (заказчик 19.10.2026: «где фильтр по дате внесения?»).
+    // invoice_desc — как было (дата счёта), created_desc — по дате внесения в CRM.
+    sort: 'invoice_desc',
     actsTab: false,      // V394: вкладка «Акты сверки»
     archiveTab: false,   // паритет с «Выплатами»: вкладка «Архив»
     sfTab: false,        // V394: экран «Входящие СФ» (кладовщик)
@@ -639,7 +642,19 @@ window.AsgardDocHubPage = (function () {
     if (/^tl-(red|blue|yellow|green)$/.test(state.kpi)) p.set('traffic', state.kpi.slice(3));
     if (state.quarter) p.set('quarter', String(state.quarter));
     if (state.year) p.set('year', String(state.year));
-    p.set('sort', 'invoice_date');
+    // Заказчик 19.10.2026: сортировка была ЖЁСТКО invoice_date — «фильтра по дате
+    // внесения» не было вовсе. Теперь выбирается (дата счёта / дата внесения / сумма).
+    const sortMap = {
+      invoice_desc: ['invoice_date', 'desc'],
+      invoice_asc: ['invoice_date', 'asc'],
+      created_desc: ['created_at', 'desc'],
+      created_asc: ['created_at', 'asc'],
+      amount_desc: ['amount_gross', 'desc'],
+      amount_asc: ['amount_gross', 'asc']
+    };
+    const [sortField, sortDir] = sortMap[state.sort] || ['invoice_date', 'desc'];
+    p.set('sort', sortField);
+    p.set('order', sortDir);
     return '?' + p.toString();
   }
 
@@ -1112,6 +1127,17 @@ window.AsgardDocHubPage = (function () {
         <label class="dh-facet">
           <span>Статус</span>
           <select id="dhFacetOps">${opts}</select>
+        </label>
+        <label class="dh-facet dh-facet--sort">
+          <span>Сортировка</span>
+          <select id="dhSort">
+            <option value="invoice_desc" ${state.sort === 'invoice_desc' ? 'selected' : ''}>Дата счёта ↓ (свежие сверху)</option>
+            <option value="invoice_asc"  ${state.sort === 'invoice_asc' ? 'selected' : ''}>Дата счёта ↑ (свежие снизу)</option>
+            <option value="created_desc" ${state.sort === 'created_desc' ? 'selected' : ''}>Дата внесения ↓ (свежие сверху)</option>
+            <option value="created_asc"  ${state.sort === 'created_asc' ? 'selected' : ''}>Дата внесения ↑ (свежие снизу)</option>
+            <option value="amount_desc"  ${state.sort === 'amount_desc' ? 'selected' : ''}>Сумма ↓</option>
+            <option value="amount_asc"   ${state.sort === 'amount_asc' ? 'selected' : ''}>Сумма ↑</option>
+          </select>
         </label>
         <div class="dh-facet">
           <span>Отв. документы</span>
@@ -2198,7 +2224,15 @@ window.AsgardDocHubPage = (function () {
 
   function timelineHtml(row) {
     const paid = row.pay_status === 'paid';
-    const closing = !!(row.closing_json || row.sf_number || row.ops_status === 'done');
+    // ДЕФЕКТ (заказчик 19.10.2026): `closing_json` приходит как `[]` — пустой МАССИВ,
+    // а в JS `[]` truthy. Поэтому СФ помечалась «получено», хотя её нет
+    // (`sf_received_at = NULL`, closing пуст). Проверяем РЕАЛЬНОЕ наличие данных.
+    const closingArr = Array.isArray(row.closing_json) ? row.closing_json : [];
+    const closing = closingArr.length > 0
+      || !!row.sf_number
+      || !!row.sf_received_at
+      || row.ops_status === 'done'
+      || row.ops_status === 'closed';
     const whDone = row.wh_status === 'buh_ok';
     const whActive = row.wh_status && row.wh_status !== 'none' && !whDone;
     const onecDone = !!row.onec_id;
@@ -3475,6 +3509,7 @@ window.AsgardDocHubPage = (function () {
       state.facetPms = dhMultiSelectValue('dhFacetPms');
       state.facetIncomplete = !!root.querySelector('#dhFacetIncomplete')?.checked;
       state.year = root.querySelector('#dhFacetYear')?.value || '';
+      state.sort = root.querySelector('#dhSort')?.value || 'invoice_desc';
       if (state.facetIncomplete) state.kpi = 'incomplete';
       syncHash();
       await refresh();
@@ -3489,6 +3524,8 @@ window.AsgardDocHubPage = (function () {
     root.querySelector('#dhFacetOps')?.addEventListener('change', apply);
     root.querySelector('#dhFacetIncomplete')?.addEventListener('change', apply);
     root.querySelector('#dhFacetYear')?.addEventListener('change', apply);
+    // Сортировка реестра (дата счёта / дата внесения / сумма).
+    root.querySelector('#dhSort')?.addEventListener('change', apply);
     root.querySelector('#dhQtrChips')?.addEventListener('click', async (ev) => {
       const btn = ev.target.closest('[data-qtr]');
       if (!btn) return;

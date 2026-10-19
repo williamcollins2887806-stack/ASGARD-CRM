@@ -2546,27 +2546,32 @@ html[data-theme="light"] .dh-cp-badge { color: #24503B; background: rgba(45,106,
 .dh-qa__paid { color: var(--ok-t, #4ade80); font-weight: 800; }
 
 /* Мультивыбор ответственных (фильтр реестра): чипы + поиск */
-.dh-ms { position: relative; min-width: 170px; }
+.dh-ms { position: relative; min-width: 210px; max-width: 320px; }
 .dh-ms__trigger {
-  display: flex; align-items: center; justify-content: space-between; gap: 6px;
-  width: 100%; min-height: 32px; padding: 4px 8px; cursor: pointer;
-  border-radius: 8px; border: 1px solid var(--brd-m, #334155);
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  width: 100%; min-height: 34px; padding: 5px 10px; cursor: pointer;
+  border-radius: 9px; border: 1px solid var(--brd-m, #334155);
   background: var(--bg3, #1e293b); color: var(--t1, #f8fafc);
-  font: inherit; font-size: 12px; text-align: left;
+  font: inherit; font-size: 12.5px; text-align: left;
+  transition: border-color .14s ease, background .14s ease;
 }
-.dh-ms__trigger:hover { border-color: color-mix(in srgb, var(--gold, #d4a017) 40%, var(--brd, #334155)); }
-.dh-ms__chips { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; min-width: 0; }
-.dh-ms__ph { color: var(--t3, #94a3b8); }
+.dh-ms__trigger:hover { border-color: color-mix(in srgb, var(--gold, #d4a017) 45%, var(--brd, #334155)); }
+.dh-ms__trigger[aria-expanded="true"] { border-color: color-mix(in srgb, var(--gold, #d4a017) 60%, var(--brd)); }
+.dh-ms__chips { display: flex; align-items: center; gap: 5px; flex-wrap: nowrap; min-width: 0; overflow: hidden; }
+.dh-ms__ph { color: var(--t3, #94a3b8); white-space: nowrap; }
+/* Читаемость ФИО: чип растягивается под текст, обрезается только на границе контейнера */
 .dh-ms__chip {
-  display: inline-flex; align-items: center; gap: 4px; max-width: 130px;
-  padding: 1px 6px; border-radius: 999px; font-size: 11px;
-  background: color-mix(in srgb, var(--gold, #d4a017) 16%, transparent);
-  border: 1px solid color-mix(in srgb, var(--gold, #d4a017) 40%, transparent);
+  display: inline-flex; align-items: center; gap: 5px; min-width: 0;
+  padding: 2px 8px; border-radius: 999px; font-size: 12px; font-weight: 500;
+  background: color-mix(in srgb, var(--gold, #d4a017) 18%, transparent);
+  border: 1px solid color-mix(in srgb, var(--gold, #d4a017) 45%, transparent);
   color: var(--t1, #f8fafc); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-.dh-ms__chip-x { border: 0; background: transparent; color: inherit; cursor: pointer; font-size: 10px; padding: 0 1px; }
-.dh-ms__more { font-size: 11px; color: var(--t3, #94a3b8); }
-.dh-ms__caret { flex: 0 0 auto; color: var(--t3, #94a3b8); font-size: 10px; }
+.dh-ms__chip-x { border: 0; background: transparent; color: inherit; cursor: pointer; font-size: 11px; padding: 0 1px; opacity: .7; flex: 0 0 auto; }
+.dh-ms__chip-x:hover { opacity: 1; }
+.dh-ms__more { font-size: 11.5px; color: var(--t2, #94a3b8); background: var(--bg2); border: 1px solid var(--brd); border-radius: 999px; padding: 1px 7px; flex: 0 0 auto; }
+.dh-ms__caret { flex: 0 0 auto; color: var(--t3, #94a3b8); font-size: 11px; transition: transform .14s ease; }
+.dh-ms__trigger[aria-expanded="true"] .dh-ms__caret { transform: rotate(180deg); }
 .dh-ms__drop {
   position: absolute; z-index: 20000; left: 0; top: calc(100% + 4px);
   width: max(240px, 100%); max-height: 320px; overflow: auto;

@@ -182,6 +182,20 @@ function ids(email, attachment) {
  */
 async function intakeOne(db, { email, attachment, text, userId = null, dryRun = false }) {
   const { emailId, attachmentId } = ids(email, attachment);
+  // ДЕФЕКТ (заказчик 19.10.2026): строка реестра создавалась БЕЗ ссылки на скан —
+  // «счёт не приложен», хотя файл в письме есть. Достаём путь вложения сразу,
+  // чтобы записать его в doc_registry.original_path_url.
+  let attachFilePath = null;
+  let attachFileName = null;
+  if (attachmentId) {
+    try {
+      const at = await db.query(`SELECT filename, original_filename, file_path FROM email_attachments WHERE id=$1`, [attachmentId]);
+      if (at.rows[0] && at.rows[0].file_path) {
+        attachFilePath = String(at.rows[0].file_path);
+        attachFileName = at.rows[0].original_filename || at.rows[0].filename || null;
+      }
+    } catch (_) { /* не критично */ }
+  }
   // Замечание заказчика 17.10: в папке были НЕ только счета (сертификаты,
   // заявки, счёта-договоры). Сначала определяем ТИП — платёжные документы
   // идут в заявку и реестр, остальное НЕ попадает в очередь оплаты.
@@ -294,6 +308,8 @@ async function intakeOne(db, { email, attachment, text, userId = null, dryRun = 
   }
 
   let createdDoc = false;
+  // Путь вложения → в строку реестра (см. attachFilePath выше).
+  if (attachFilePath) parsed._filePath = attachFilePath;
   // FAIL-1 (верификатор 19.10.2026): карточка ПРОДАВЦА вычисляется ЗДЕСЬ, до ветки
   // создания документа. Раньше переменная объявлялась внутри `if (!docId)`, а
   // читалась в блоке каталога ВНЕ него → `ReferenceError: sellerSupplierId is not
@@ -353,11 +369,12 @@ async function intakeOne(db, { email, attachment, text, userId = null, dryRun = 
          counterparty_name, counterparty_inn, supplier_id, amount_gross, amount_net, vat_amount, has_vat,
          spend_kind,          doc_owner_id, created_by, updated_by, receive_channel, comment_text,
          contract_mode, contract_id, contract_label, payment_due_at, work_id, delivery_due_at,
-         seller_name, seller_inn, payee_name, payee_inn, payee_kpp, parse_engine, parse_warnings)
+         seller_name, seller_inn, payee_name, payee_inn, payee_kpp, parse_engine, parse_warnings,
+         original_path_url)
        VALUES ('in','invoice','wait_sf','wait',$1,$2::date,$3,$4,$5,$6,$7,$8,$9,
                'other',$10,$10,$10,'email',$11,
                $12,$13,$14,$15::date,$16,$17::date,
-               $18,$19,$20,$21,$22,$23,$24::jsonb) RETURNING id`,
+               $18,$19,$20,$21,$22,$23,$24::jsonb,$25) RETURNING id`,
       [parsed.invoice_number, parsed.invoice_date, cpName, parsed.inn, supplierId,
         gross, net, vat, parsed.has_vat !== false,
         senderUserId, lowConfidence
@@ -377,7 +394,10 @@ async function intakeOne(db, { email, attachment, text, userId = null, dryRun = 
         parsed.payee_inn || null,
         parsed.payee_kpp || null,
         parsed._ai_used ? 'ai' : 'regex',
-        JSON.stringify(parsed._ai_warnings || [])]);
+        JSON.stringify(parsed._ai_warnings || []),
+        // ДЕФЕКТ (заказчик 19.10.2026): «счёт не приложен» — путь к файлу не писался,
+        // хотя вложение физически есть. Теперь строка реестра ссылается на скан.
+        parsed._filePath || null]);
     docId = insDoc.rows[0].id;
     createdDoc = true;
     // Если договор не найден, но номер указан — пометим строку неполной (жёлтый/синий).

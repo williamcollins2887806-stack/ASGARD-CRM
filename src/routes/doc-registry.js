@@ -552,10 +552,17 @@ module.exports = async function docRegistryRoutes(fastify) {
     const { where, params } = buildFilters(q, req.user.id, req.user.role);
     const limit = Math.min(Math.max(parseInt(q.limit, 10) || 50, 1), 200);
     const page = Math.max(parseInt(q.page, 10) || 1, 1);
-    const sort = String(q.sort || 'invoice_date').toLowerCase();
-    const orderSql = sort === 'id'
-      ? 'ORDER BY d.id DESC'
-      : 'ORDER BY d.invoice_date DESC NULLS LAST, d.id DESC';
+    // ── Сортировка реестра (заказчик 19.10.2026) ──────────────────────────
+    // Было жёстко `invoice_date DESC`. Нужна сортировка и по ДАТЕ ВНЕСЕНИЯ
+    // (created_at), и по сумме, и в обе стороны. ТОЛЬКО белый список — никакой
+    // подстановки пользовательской строки в SQL.
+    const SORT_COLS = { invoice_date: 'd.invoice_date', created_at: 'd.created_at', id: 'd.id', amount_gross: 'd.amount_gross' };
+    const sortRaw = String(q.sort || 'invoice_date').toLowerCase();
+    const sortCol = SORT_COLS[sortRaw] || SORT_COLS.invoice_date;
+    const orderRaw = String(q.order || 'desc').toLowerCase();
+    const orderDir = orderRaw === 'asc' ? 'ASC' : 'DESC';
+    const sort = sortRaw in SORT_COLS ? sortRaw : 'invoice_date';
+    const orderSql = `ORDER BY ${sortCol} ${orderDir} NULLS LAST, d.id DESC`;
     const [cnt, list] = await Promise.all([
       db.query(`SELECT COUNT(*)::int n FROM doc_registry d LEFT JOIN works w ON w.id=d.work_id${where}`, params),
       db.query(`${JOIN_SQL.replace('SELECT d.*,', `SELECT d.*, (${traffic.trafficSql('d')}) AS traffic,`)}${where} ${orderSql} LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
