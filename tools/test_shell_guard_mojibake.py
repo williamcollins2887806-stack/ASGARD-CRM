@@ -68,7 +68,21 @@ for rel in ("public/index.html", "public/sw.js"):
         n = shell_guard._mojibake_in(p)
         check("%s: нет mojibake" % rel, n == 0, "найдено: %s" % n)
 
-# ── 3. Негативный контроль через реальный run_checks ───────────────────────
+# ── 3. Сам гейт не должен краснеть на своих образцах ──────────────────────
+print("\n=== собственный код детектора ===")
+for rel in ("tools/shell_guard.py", "tools/test_shell_guard_mojibake.py"):
+    p = os.path.join(ROOT, rel)
+    if os.path.exists(p):
+        # В файле ЕСТЬ образцы (иначе детектор нечего проверять),
+        # но при этом он обязан быть в списке исключений — иначе гейт краснеет сам на себя.
+        raw_n = shell_guard._mojibake_in(p)
+        skipped = rel in shell_guard.MOJIBAKE_SKIP_FILES
+        check("%s: содержит образец, но исключён из скана" % rel,
+              (raw_n or 0) > 0 and skipped,
+              "образцов=%s, в исключениях=%s" % (raw_n, skipped))
+
+# Историческое испорченное дерево должно ловиться в общем скане.
+# ── 4. Негативный контроль через реальный run_checks ───────────────────────
 print("\n=== негативный контроль (копия дерева с испорченным файлом) ===")
 tmp = tempfile.mkdtemp(prefix="guard-test-")
 try:

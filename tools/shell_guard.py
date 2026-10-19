@@ -66,6 +66,13 @@ MOJIBAKE_RE = re.compile(
 MOJIBAKE_EXT = (".css", ".js", ".jsx", ".html", ".json", ".sql", ".svg")
 # Каталоги, которые заведомо не наши (сборки/зависимости) — их не сканируем даже в --mojibake-all.
 MOJIBAKE_SKIP_DIRS = {"node_modules", ".git", "vendor", "dist", "build", "coverage", "__pycache__"}
+# Детектор и его тест содержат образцы mojibake как определения шаблона — это не дефект,
+# а инструмент. Иначе гейт краснел бы сам на себя при любой правке.
+MOJIBAKE_SKIP_FILES = {
+    "tools/shell_guard.py",
+    "tools/test_shell_guard_mojibake.py",
+    "tools/fix_css_mojibake.js",
+}
 
 # Корневые файлы, которые тоже едут на прод: правка после подписи обязана блокировать деплой.
 DEPLOY_ROOT_FILES = {
@@ -151,6 +158,8 @@ def _deployable_files(base_dir):
     for p in sorted(paths):
         if not p.endswith(MOJIBAKE_EXT):
             continue
+        if p in MOJIBAKE_SKIP_FILES:
+            continue
         if any(part in MOJIBAKE_SKIP_DIRS for part in p.split("/")):
             continue
         full = os.path.join(base_dir, p)
@@ -172,7 +181,10 @@ def _all_scannable_files(base_dir):
                 if not fn.endswith(MOJIBAKE_EXT):
                     continue
                 full = os.path.join(dirpath, fn)
-                out.append((os.path.relpath(full, base_dir).replace("\\", "/"), full))
+                rel = os.path.relpath(full, base_dir).replace("\\", "/")
+                if rel in MOJIBAKE_SKIP_FILES:
+                    continue
+                out.append((rel, full))
     return out
 
 
