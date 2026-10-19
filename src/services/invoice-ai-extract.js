@@ -224,14 +224,18 @@ function validate(data) {
         warnings.push('line_recalc');
       }
     } else if (s != null && p != null && q == null) {
-      q = R(s / p);
-      warnings.push('line_qty_from_sum');
+      // Дыра №4 (верификатор 19.10.2026): p мог быть обнулён/не задан → деление на 0
+      // давало Infinity. Защищаемся: выводим только при p > 0.
+      if (p > 0) { q = R(s / p); warnings.push('line_qty_from_sum'); }
     } else if (s != null && p == null && q != null) {
       // FAIL-5: «сумма без цены» раньше теряла unit_price → строка молча выкидывалась
       // из номенклатуры (`price > 0` обязателен). Выводим цену из суммы и количества.
-      p = R(s / q);
-      warnings.push('line_price_from_sum');
+      if (q > 0) { p = R(s / q); warnings.push('line_price_from_sum'); }
     }
+    // Дыра №4: ни одно из полей не должно оставаться Infinity/NaN.
+    if (!Number.isFinite(q)) q = null;
+    if (!Number.isFinite(p)) p = null;
+    if (!Number.isFinite(s)) s = null;
     good.push({ ...l, quantity: q, unit_price: p, sum: s });
   }
   d.lines = good;
@@ -343,16 +347,29 @@ function mergeWithRegex(ai, rx) {
   out.payee_name = ai.payee_name || null;
   out.payee_inn = ai.payee_inn || null;
   out.payee_kpp = ai.payee_kpp || null;
-  // Банковские реквизиты — нужны бухгалтерии для платёжки; берём от ИИ, фолбэк — регулярки.
-  out.bank_name = pick(ai.bank_name, base.bank_name);
-  out.bik = pick(ai.bik, base.bik);
-  out.rs = pick(ai.rs, base.rs);
-  out.ks = pick(ai.ks, base.ks);
+  // Банковские реквизиты — нужны бухгалтерии для платёжки.
+  // Дыра №3 (верификатор 19.10.2026): банк обязан принадлежать ТОМУ ЖЕ лицу, что
+  // ИНН/имя контрагента. Если выбрана пара ПРОДАВЦА (например у маркетплейса счёт
+  // продавца, а банк в счёте — получателя), «чужие» реквизиты подставлять нельзя.
+  const bankMatchesParty = !payeeConfirmed || (ai.supplier_inn === ai.payee_inn);
+  if (bankMatchesParty) {
+    out.bank_name = pick(ai.bank_name, base.bank_name);
+    out.bik = pick(ai.bik, base.bik);
+    out.rs = pick(ai.rs, base.rs);
+    out.ks = pick(ai.ks, base.ks);
+  } else {
+    // Реквизиты продавца ИИ не отдаёт (в счёте их обычно нет) — оставляем пусто,
+    // бухгалтерия возьмёт из карточки поставщика. Чужой банк не подставляем.
+    out.bank_name = null; out.bik = null; out.rs = null; out.ks = null;
+    conflicts.push('bank_party_mismatch');
+  }
   out.invoice_number = pick(ai.invoice_number, base.invoice_number);
   out.invoice_date = pick(ai.invoice_date, base.invoice_date);
   out.amount_gross = pickPos(ai.amount_gross, base.amount_gross);
   out.amount_net = pickPos(ai.amount_net, base.amount_net);
-  out.vat_amount = pick(ai.vat_amount, base.vat_amount);
+  // Дыра №2 (верификатор 19.10.2026): НДС тоже через pickPos — ИИ-ноль не должен
+  // перетирать найденный НДС (иначе бухгалтерия получит счёт без НДС).
+  out.vat_amount = pickPos(ai.vat_amount, base.vat_amount);
   // has_vat: ИИ-флаг принимаем, только если он подтверждён числом НДС или нетто≠сумма
   // (иначе «НДС есть» без суммы — FAIL-6). Иначе — флаг из регулярок.
   if (ai.has_vat != null && (ai.vat_amount != null || base.has_vat == null)) out.has_vat = ai.has_vat;
