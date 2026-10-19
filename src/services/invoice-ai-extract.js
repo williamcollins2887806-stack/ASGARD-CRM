@@ -78,6 +78,27 @@ function normalize(raw) {
     const s = String(v).trim();
     return s ? s.slice(0, max) : null;
   };
+  /**
+   * Разделить наименование на ЧИСТОЕ имя и «хвост» (размеры, ГОСТ, фасовка).
+   * Дефект (заказчик 19.10.2026): OCR склеивает всё в одну строку —
+   * «Мат из минеральной ваты МП (СТ)-100 - 2000.1200.60 ГОСТ 21880-2022 36 руп. (5,184 м3)».
+   * В номенклатуру должно идти читаемое имя, а габариты/ГОСТ — в артикул,
+   * иначе поиск по товару не работает.
+   */
+  const splitName = (v) => {
+    const raw = String(v || '').replace(/\s+/g, ' ').trim();
+    if (!raw) return { name: null, extra: null };
+    // Отрезаем хвост начиная с размеров (2000.1200.60 / 3х2,5 / 1200x600) или ГОСТ/ТУ/фасовки.
+    const CUT = /\s*[-–—]?\s*(?:\d{3,}\s*[.,xх×]\s*\d{2,}|\bГОСТ\s|\bТУ\s*\d|\b\d+\s*(?:руп|рул|шт|кг|м3|м2|л)\.?\s*\(|\(\s*\d+[.,]\d+\s*м3)/i;
+    const m = raw.match(CUT);
+    let name = raw, extra = null;
+    if (m && m.index >= 20) {   // не режем, если размер в самом начале (это часть названия)
+      name = raw.slice(0, m.index).replace(/[\s\-–—,.;:]+$/, '').trim();
+      extra = raw.slice(m.index).replace(/^[\s\-–—]+/, '').trim();
+    }
+    if (!name) { name = raw; extra = null; }
+    return { name: name.slice(0, 300), extra: extra ? extra.slice(0, 150) : null };
+  };
   const digits = (v) => {
     if (v == null) return null;
     const s = String(v).replace(/\D/g, '');
@@ -114,6 +135,7 @@ function normalize(raw) {
     const s = num(l && l.sum);
     return {
       name: str(l && l.name, 300),
+      article: str(l && (l.article || l.code || l.sku), 120),
       quantity: q,
       unit: str(l && l.unit, 20),
       unit_price: p,
@@ -127,6 +149,13 @@ function normalize(raw) {
   const seen = new Set();
   const lines = [];
   for (const l of rawLines) {
+    // Чистим наименование: размеры/ГОСТ/фасовку — в артикул (article), не в имя.
+    if (l.name) {
+      const sp = splitName(l.name);
+      l.name = sp.name;
+      if (!l.article && sp.extra) l.article = sp.extra;
+    }
+    if (!l.name) continue;
     const key = [l.name.toLowerCase(), l.quantity, l.unit_price, l.sum].join('|');
     if (seen.has(key)) continue;
     seen.add(key);

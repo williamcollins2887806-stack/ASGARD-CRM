@@ -234,6 +234,24 @@ const infQ = ai.validate(ai.normalize({ amount_gross: 100, lines: [{ name: 'По
 ok(Number.isFinite(infQ.data.lines[0].quantity === null ? 0 : infQ.data.lines[0].quantity), 'количество конечно (не Infinity)');
 ok(JSON.stringify(infQ.data.lines[0]).indexOf('Infinity') === -1, 'в строке нет Infinity (' + JSON.stringify(infQ.data.lines[0]) + ')');
 
+// ═══ ОЧИСТКА НАИМЕНОВАНИЯ (заказчик 19.10.2026) ═══════════════════════════════
+console.log('\n=== Очистка наименования: размеры/ГОСТ → артикул ===');
+const dirty = ai.normalize({ lines: [{
+  name: 'Мат из минеральной ваты прошивной теплоизоляционный МП (СТ)-100 - 2000.1200.60 ГОСТ 21880-2022 36 руп. (5,184 м3)',
+  quantity: 77.76, unit: 'м3', unit_price: 5600, sum: 435456
+}] });
+ok(dirty.lines[0].name === 'Мат из минеральной ваты прошивной теплоизоляционный МП (СТ)-100',
+  'имя очищено от размеров/ГОСТ: ' + JSON.stringify(dirty.lines[0].name));
+ok(/2000\.1200\.60/.test(dirty.lines[0].article || ''), 'размеры ушли в артикул: ' + JSON.stringify(dirty.lines[0].article));
+
+const cleanNames = ai.normalize({ lines: [
+  { name: 'Автоуслуги', quantity: 1, unit_price: 166000, sum: 166000 },
+  { name: 'Ручка', quantity: 30, unit: 'шт', unit_price: 1500, sum: 45000 },
+  { name: 'Проживание ТРУХИН А. С. 12.10.2026 13.10.2026', quantity: 1, unit: 'сут', unit_price: 2100, sum: 2100 }
+] });
+ok(cleanNames.lines[0].name === 'Автоуслуги', 'обычное имя не тронуто');
+ok(cleanNames.lines[1].name === 'Ручка', 'короткое имя не тронуто');
+ok(cleanNames.lines[2].name.includes('Проживание'), 'дата в имени сохранена (это часть услуги)');
+
 console.log('\n────────────────────────────────────────');
-console.log('ИТОГ ИИ-извлечения: PASS ' + pass + ' / FAIL ' + fail);
-process.exit(fail ? 1 : 0);
+console.log('ИТОГ ИИ-извлечения: PASS ' + pass + ' / FAIL ' + fail);process.exit(fail ? 1 : 0);
