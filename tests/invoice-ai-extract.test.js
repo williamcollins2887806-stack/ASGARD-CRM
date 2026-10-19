@@ -207,16 +207,27 @@ const mpBank = ai.validate(ai.normalize({
   amount_gross: 3540, lines: []
 })).data;
 const mBank = ai.mergeWithRegex(mpBank, { lines: [] });
-// payee подтверждён (РВБ) — банк РВБ принадлежит получателю, значит реквизиты КОНСИСТЕНТНЫ.
 ok(mBank.parsed.inn === '9714053621' && mBank.parsed.bik === '044525225', 'реквизиты получателя платежа сохранены целиком');
-// Обратный случай: платёж получателю, но банк указан от продавца (несовпадение ИНН лиц).
-const mismatchBank = ai.validate(ai.normalize({
-  supplier_name: 'ООО «ВМПАВТО»', supplier_inn: '7814069526', supplier_kpp: '780501001',
-  payee_name: null, payee_inn: null,
-  bank_name: 'Банк РВБ', bik: '044525225', amount_gross: 100, lines: []
+
+// FAIL-2 ре-верификации (19.10.2026): у ОБЫЧНОГО счёта ИИ часто не дублирует payee_*.
+// Раньше банк обнулялся → бухгалтерия теряла БИК/р-с для платёжки. Теперь сохраняется.
+const plainInvoice = ai.validate(ai.normalize({
+  supplier_name: 'ООО ТД «Мир Химии»', supplier_inn: '2310155505',
+  bank_name: 'ПАО БАНК УРАЛСИБ', bik: '040349700', rs: '40702810247000006400', ks: '30101810400000000700',
+  amount_gross: 25690, lines: []
 })).data;
-const mBank2 = ai.mergeWithRegex(mismatchBank, { lines: [] });
-ok(true, 'банк и лицо: правило «банк от выбранного лица» применено (см. код bankMatchesParty)');
+const mPlain = ai.mergeWithRegex(plainInvoice, { bik: '040349700', rs: '40702810247000006400', lines: [] });
+ok(mPlain.parsed.bik === '040349700', 'обычный счёт (ИИ без payee_*) сохраняет БИК: ' + mPlain.parsed.bik);
+ok(mPlain.parsed.rs === '40702810247000006400', 'обычный счёт сохраняет р/с: ' + mPlain.parsed.rs);
+ok(!mPlain.conflicts.includes('bank_party_mismatch'), 'ложного bank_party_mismatch нет');
+
+// Чужой банк (ИИ явно назвал получателя, но выбран продавец) — по-прежнему не берём.
+const foreignBank = ai.validate(ai.normalize({
+  supplier_name: 'ООО «ВМПАВТО»', supplier_inn: '7814069526', supplier_kpp: '780501001',
+  payee_name: 'ООО РВБ', payee_inn: '999', bank_name: 'Банк РВБ', bik: '044525225', amount_gross: 100, lines: []
+})).data;
+const mForeign = ai.mergeWithRegex(foreignBank, { lines: [] });
+ok(mForeign.parsed.bik === null || mForeign.conflicts.includes('bank_party_mismatch'), 'чужой банк не подставлен без пометки');
 
 console.log('\n=== ДЫРА-4: деление на ноль не даёт Infinity ===');
 const infQ = ai.validate(ai.normalize({ amount_gross: 100, lines: [{ name: 'Позиция', quantity: 0, unit_price: 0, sum: 100 }] }));

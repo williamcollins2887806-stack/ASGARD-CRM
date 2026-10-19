@@ -111,6 +111,35 @@ const ok = (c, m) => { if (c) { pass++; console.log('  PASS ' + m); } else { fai
   const afterC = (await db.query(`SELECT count(*)::int AS n FROM inbox_applications WHERE email_id=$1`, [eC])).rows[0].n;
   ok(afterC === 0, 'C: вложение «invoice_*» → заявка рынка не создана (' + afterC + ')');
 
+  // ── Кейс D: ЛОЖНЫЕ ОТСЕЧЕНИЯ (FAIL ре-верификации 19.10.2026) ──
+  // «Ра-СЧЁТ-стоимости_работ.xlsx», «ТЗ_СЧЁТ-чики.pdf», «scan_ТЗ_обмеры.jpg» —
+  // это документы РАБОТ, не счета. Они ОБЯЗАНЫ создавать заявку.
+  const falseNeg = [
+    ['Расчет_стоимости_работ.xlsx', 'Расчёт стоимости работ'],
+    ['ТЗ_счетчики_учета.pdf', 'ТЗ на счётчики учёта'],
+    ['scan_ТЗ_обмеры.jpg', 'Отсканированное ТЗ с обмерами']
+  ];
+  for (const [fname, subj] of falseNeg) {
+    const eD = (await db.query(
+      `INSERT INTO emails(subject, body_text, from_email, direction, is_deleted, email_date, created_at)
+       VALUES($1,$2,$3,'inbound',false,NOW(),NOW()) RETURNING id`,
+      [subj, 'Просим выполнить работы, ТЗ и расчёт во вложении', 'client@example.com'])).rows[0].id;
+    await db.query(`INSERT INTO email_attachments(email_id, filename, mime_type, file_path, is_inline) VALUES($1,$2,$3,$4,false)`,
+      [eD, fname, 'application/octet-stream', '/uploads/tmp/' + fname]);
+    realAnalyzer.analyzeEmail = async () => ({
+      classification: 'direct_request', color: 'green', confidence: 0.85,
+      summary: 'Запрос работ', recommendation: 'В работу', work_type: 'работы',
+      estimated_budget: null, estimated_days: null, keywords: [], _raw: { model: 'test' }
+    });
+    try { const rowD = (await db.query(`SELECT * FROM emails WHERE id=$1`, [eD])).rows[0]; await imap.analyzeOneEmail(rowD); } catch (e) { /* ok */ }
+    realAnalyzer.analyzeEmail = realFn;
+    const nD = (await db.query(`SELECT count(*)::int AS n FROM inbox_applications WHERE email_id=$1`, [eD])).rows[0].n;
+    ok(nD === 1, `D: «${fname}» — документ РАБОТ, заявка создана (${nD})`);
+    await db.query(`DELETE FROM inbox_applications WHERE email_id=$1`, [eD]).catch(() => {});
+    await db.query(`DELETE FROM email_attachments WHERE email_id=$1`, [eD]).catch(() => {});
+    await db.query(`DELETE FROM emails WHERE id=$1`, [eD]).catch(() => {});
+  }
+
   // Чистка тестовых данных.
   for (const id of [eA, eB, eC]) {
     await db.query(`DELETE FROM inbox_applications WHERE email_id=$1`, [id]).catch(() => {});

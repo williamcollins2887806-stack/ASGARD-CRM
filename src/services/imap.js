@@ -1466,8 +1466,20 @@ async function analyzeOneEmail(email) {
     }
     if (!isInvoiceDoc && Array.isArray(attNames) && attNames.length) {
       // (2) имя вложения похоже на счёт/УПД/платёжный документ.
-      const RE_INV = /(сч[её]т|счет|invoice|счёт[-\s]?фактур|упд|торг[-\s]?12|плат[её]ж|квитанц|scan|скан)/i;
-      if (attNames.some((n) => RE_INV.test(String(n || '')))) isInvoiceDoc = true;
+      // FAIL верификатора 19.10.2026: прежний регексп без границ слов отсекал
+      // НАСТОЯЩИЕ заявки («Ра-СЧЁТ-стоимости_работ.xlsx», «ТЗ_СЧЁТ-чики.pdf»,
+      // «scan_ТЗ_обмеры.jpg»). Теперь два правила:
+      //   • маркеры счёта — ТОЛЬКО целыми словами (границы слов);
+      //   • если имя явно про РАБОТЫ (ТЗ/обмер/чертёж/смета/расчёт/ведомость),
+      //     это документ заявки, а НЕ счёт — даже если содержит «скан».
+      const RE_WORK_DOC = /(^|[^а-яёa-z])(тз|техзадани|обмер|черт[её]ж|смета|расч[её]т|ведомост|спецификац|запрос|проект)/i;
+      const RE_INV_TOKEN = /(^|[^а-яёa-z])(сч[её]т|счета|счет|invoice|инвойс|сч[-\s]?фактур|упд|торг[-\s]?12|накладная|квитанц|скан|scan|платежн|payment)([^а-яёa-z]|$)/i;
+      const isInvoiceName = attNames.some((n) => {
+        const s = String(n || '');
+        if (RE_WORK_DOC.test(s)) return false; // ТЗ/расчёт/обмер — документ работ, не счёт
+        return RE_INV_TOKEN.test(s);
+      });
+      if (isInvoiceName) isInvoiceDoc = true;
     }
 
     if (applicationTypes.includes(analysis.classification) && !analysis._skipped) {
