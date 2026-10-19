@@ -463,6 +463,97 @@ window.AsgardProcurementPage = (function() {
     if (clr) clr.addEventListener('click', () => attachWork(payId, null));
   }
 
+  // ═══════════════════════════════════════════════════════════════════════════
+  // V411: МОДАЛКА ДИРЕКТОРА — партия счетов, выборочное согласование.
+  // Заказчик: «директор может выборочно согласовать, а часть нет?» → да.
+  // Показываем список, счётчик и сводку; решение по каждому счёту.
+  // ═══════════════════════════════════════════════════════════════════════════
+  async function openBatchDecision(batchId) {
+    await ensureUser();
+    let data;
+    try { data = await apiFetch('/api/payment-invoices/batches/' + batchId); }
+    catch (e) { toast('Партия', e.message || 'не загрузилась', 'err'); return; }
+    const b = data.batch || {};
+    const items = data.items || [];
+    const sum = data.summary || {};
+    const niceDate = (d) => (d ? String(d).slice(0, 10).split('-').reverse().join('.') : '');
+
+    const rowOf = (it) => {
+      const st = it.status === 'pending_payment' || it.payment_status === 'paid' ? 'ok'
+        : it.status === 'rejected' ? 'err' : 'pending';
+      const stLabel = st === 'ok' ? 'Согласован' : st === 'err' ? 'Отклонён' : 'Ждёт решения';
+      const pending = st === 'pending';
+      return `<label class="pdecide__row ${st === 'ok' ? 'is-approved' : st === 'err' ? 'is-rejected' : ''}">
+        <input type="checkbox" data-pid="${it.id}" ${pending ? '' : 'disabled'} ${st === 'ok' ? 'checked' : ''}>
+        <div>
+          <div class="pdecide__sup">${esc(it.supplier_name || '—')}</div>
+          <div class="pdecide__meta">${it.invoice_number ? '№ ' + esc(it.invoice_number) : 'б/н'}${it.invoice_date ? ' от ' + niceDate(it.invoice_date) : ''}${it.contract_basis_number ? ' · договор ' + esc(it.contract_basis_number) : ''}</div>
+        </div>
+        <div class="pdecide__sum">${money2(it.amount)}</div>
+        <div class="pdecide__st pdecide__st--${st}">${stLabel}</div>
+        <div class="pdecide__meta">${it.has_file ? `<button type="button" class="proc-pay__btn" data-prev="${it.id}">Счёт</button>` : 'без файла'}</div>
+      </label>`;
+    };
+
+    const html = `<div class="pdecide">
+      <div class="pdecide__head">
+        <div>
+          <div class="pdecide__t">Заявка на оплату №${b.id}</div>
+          <div class="pdecide__s">${esc(b.initiator_name || 'Инициатор')} · ${items.length} ${items.length === 1 ? 'счёт' : 'счетов'} · ${money2(b.total_amount)}</div>
+        </div>
+        <div class="pdecide__all">
+          <button type="button" class="btn ghost" id="pd-all">Выбрать все</button>
+          <button type="button" class="btn ghost" id="pd-none">Снять все</button>
+        </div>
+      </div>
+      ${b.comment_text ? `<div class="proc-pay-modal__hint">${esc(b.comment_text)}</div>` : ''}
+      <div class="pdecide__list">${items.map(rowOf).join('')}</div>
+      <div class="pdecide__foot">
+        <div class="pdecide__summary">
+          Отмечено: <b id="pd-cnt">0</b> из ${sum.pending != null ? sum.pending : items.length} ждущих
+          ${sum.approved ? ` · уже согласовано: <b>${sum.approved}</b>` : ''}
+          ${sum.rejected ? ` · отклонено: <b>${sum.rejected}</b>` : ''}
+        </div>
+        <div class="pbatch__acts">
+          <button type="button" class="btn ghost" id="pd-reject">Отклонить отмеченные</button>
+          <button type="button" class="btn primary" id="pd-approve">Согласовать отмеченные</button>
+        </div>
+      </div>
+    </div>`;
+    showModal({ title: 'Согласование партии счетов', html, wide: true });
+
+    const boxes = () => [...document.querySelectorAll('.pdecide__list input[data-pid]')].filter((x) => !x.disabled);
+    const syncCnt = () => { const c = document.getElementById('pd-cnt'); if (c) c.textContent = String(boxes().filter((x) => x.checked).length); };
+    document.querySelectorAll('.pdecide__list input[data-pid]').forEach((x) => { x.onchange = syncCnt; });
+    document.getElementById('pd-all')?.addEventListener('click', () => { boxes().forEach((x) => { x.checked = true; }); syncCnt(); });
+    document.getElementById('pd-none')?.addEventListener('click', () => { boxes().forEach((x) => { x.checked = false; }); syncCnt(); });
+    syncCnt();
+
+    const decide = async (mode) => {
+      const ids = boxes().filter((x) => x.checked).map((x) => +x.getAttribute('data-pid'));
+      if (!ids.length) { toast('Ничего не отмечено', 'Поставьте галочки у счетов', 'warn'); return; }
+      try {
+        const body = mode === 'approve' ? { approve: ids } : { reject: ids };
+        const r = await apiFetch('/api/payment-invoices/batches/' + batchId + '/decide', {
+          method: 'POST', body: JSON.stringify(body)
+        });
+        const n = mode === 'approve' ? (r.approved || []).length : (r.rejected || []).length;
+        toast(mode === 'approve' ? 'Согласовано' : 'Отклонено',
+          `${n} ${n === 1 ? 'счёт' : 'счетов'} · статус партии: ${r.batch_status || '—'}`, 'ok');
+        closeModal();
+        loadMyPayments();
+      } catch (e) { toast('Ошибка', e.message, 'err'); }
+    };
+    document.getElementById('pd-approve')?.addEventListener('click', () => decide('approve'));
+    document.getElementById('pd-reject')?.addEventListener('click', () => decide('reject'));
+    document.querySelectorAll('[data-prev]').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        e.preventDefault(); e.stopPropagation();
+        window.open('/api/payment-invoices/' + btn.getAttribute('data-prev') + '/file', '_blank');
+      });
+    });
+  }
+
   async function openPaymentInvoiceModal(payId) {
     try {
       await ensureUser();
@@ -610,7 +701,14 @@ window.AsgardProcurementPage = (function() {
     const cartBtn = el.querySelector('#proc-new-req-cart');
     if (cartBtn) cartBtn.onclick = () => { location.hash = '#/warehouse-v2'; };
     const newPayBtn = el.querySelector('#proc-new-pay');
-    if (newPayBtn) newPayBtn.onclick = () => openStandalonePaymentModal();
+    if (newPayBtn) newPayBtn.onclick = () => {
+      // V411: партия счетов с потоковой загрузкой, превью и автозаполнением.
+      if (window.AsgardPaymentBatch && window.AsgardPaymentBatch.open) {
+        window.AsgardPaymentBatch.open();
+      } else {
+        openStandalonePaymentModal();
+      }
+    };
     // V411: переключатель «Закупки ↔ Счета на оплату».
     // ВАЖНО: перерисовываем ТОЛЬКО тулбар целиком (через сам renderFilters) —
     // но элементы, которых на текущей вкладке нет (Excel/Статус), уже отсутствуют,
@@ -1772,6 +1870,9 @@ window.AsgardProcurementPage = (function() {
     const fileBtn = it.has_file ? `<button type="button" class="proc-pay__btn" data-file="${it.id}" title="Скачать счёт">PDF</button>` : '';
     const contractBadge = it.contract_missing
       ? '<span class="proc-pay-tag proc-pay-tag--warn" title="Договор-основание не найден в CRM">нет договора</span>' : '';
+    // V411: счёт в партии — помечаем, чтобы человек понимал «это одна заявка на N счетов».
+    const batchBadge = it.batch_id
+      ? `<span class="proc-pay-tag" title="Счёт входит в партию — согласуется вместе с другими">партия #${it.batch_id}</span>` : '';
     const work = it.work_title
       ? `<span class="proc-pay__work" title="${esc(it.work_title)}">🏗 ${esc(it.work_title.slice(0, 30))}</span>`
       : (it.work_hint ? `<span class="proc-pay__work" title="${esc(it.work_hint)}">🏗 ${esc(String(it.work_hint).slice(0, 30))}</span>` : '');
@@ -1791,6 +1892,7 @@ window.AsgardProcurementPage = (function() {
       <div class="proc-pay-card__foot">
         ${intentTag}
         ${contractBadge}
+        ${batchBadge}
         ${due ? `<span class="proc-pay__due">${due}</span>` : ''}
         <span class="proc-pay__grow"></span>
         ${it.lines_count ? `<span class="proc-pay-card__lines" title="Позиции в номенклатуре">${it.lines_count} поз.</span>` : ''}
@@ -1807,8 +1909,17 @@ window.AsgardProcurementPage = (function() {
       renderPayShell(body);
     }));
     body.querySelectorAll('[data-pay]').forEach((c) => {
-      c.addEventListener('click', (e) => { if (e.target.closest('[data-file]')) return; openPaymentInvoiceModal(+c.getAttribute('data-pay')); });
-      c.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openPaymentInvoiceModal(+c.getAttribute('data-pay')); } });
+      const openCard = () => {
+        const pid = +c.getAttribute('data-pay');
+        // V411: если счёт входит в партию — открываем экран партии (выборочное решение).
+        const item = (typeof _payRows !== 'undefined' ? _payRows : []).find((x) => Number(x.id) === pid);
+        if (item && item.batch_id) { openBatchDecision(item.batch_id); return; }
+        openPaymentInvoiceModal(pid);
+      };
+      c.addEventListener('click', (e) => { if (e.target.closest('[data-file]')) return; openCard(); });
+      c.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openCard(); }
+      });
     });
     body.querySelectorAll('[data-file]').forEach((b) => b.addEventListener('click', (e) => {
       e.stopPropagation();

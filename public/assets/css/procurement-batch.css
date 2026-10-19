@@ -1,0 +1,136 @@
+/* ASGARD CRM — партия счетов на согласование (V411). Только токены темы. */
+
+.pbatch { display: flex; flex-direction: column; gap: 14px; }
+
+.pbatch__head { display: flex; justify-content: space-between; align-items: flex-start; gap: 14px; flex-wrap: wrap; }
+.pbatch__t { font-size: 19px; font-weight: 800; color: var(--t1); letter-spacing: -.02em; }
+.pbatch__s { font-size: 12.5px; color: var(--t2); margin-top: 4px; line-height: 1.45; max-width: 560px; }
+.pbatch__s b { color: var(--t1); }
+.pbatch__counter { font-size: 12px; font-weight: 700; padding: 5px 12px; border-radius: 999px; white-space: nowrap;
+  background: color-mix(in srgb, var(--gold, #d4a017) 18%, transparent); color: var(--t1);
+  border: 1px solid color-mix(in srgb, var(--gold, #d4a017) 42%, transparent); }
+
+/* ── Зона загрузки ───────────────────────────────────────────────────────── */
+.pbatch__drop { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px;
+  padding: 22px 16px; border-radius: 14px; cursor: pointer; text-align: center;
+  border: 1.6px dashed color-mix(in srgb, var(--brd) 150%, transparent);
+  background: color-mix(in srgb, var(--bg2) 60%, transparent); transition: .15s; }
+.pbatch__drop:hover, .pbatch__drop.is-over {
+  border-color: color-mix(in srgb, var(--gold, #d4a017) 60%, var(--brd));
+  background: color-mix(in srgb, var(--gold, #d4a017) 8%, var(--bg2)); }
+.pbatch__drop input { position: absolute; opacity: 0; width: 0; height: 0; }
+.pbatch__drop-ico { font-size: 24px; line-height: 1; color: var(--gold, #d4a017); opacity: .85; }
+.pbatch__drop-t { font-size: 13.5px; font-weight: 650; color: var(--t1); }
+.pbatch__drop-s { font-size: 11.5px; color: var(--t3); }
+
+/* ── Две колонки: список / панель ─────────────────────────────────────────── */
+.pbatch__body { display: grid; grid-template-columns: minmax(220px, 300px) minmax(0, 1fr); gap: 14px; align-items: start; }
+@media (max-width: 860px) { .pbatch__body { grid-template-columns: 1fr; } }
+
+.pbatch__list { display: flex; flex-direction: column; gap: 8px; max-height: min(52vh, 460px); overflow: auto; padding-right: 2px; }
+.pbatch__list-empty { padding: 18px 12px; text-align: center; font-size: 12.5px; color: var(--t3); }
+
+.pbatch__item { display: flex; flex-direction: column; gap: 5px; text-align: left; cursor: pointer;
+  padding: 11px 12px; border-radius: 11px; border: 1px solid var(--brd); background: var(--bg2);
+  font: inherit; transition: .14s; }
+.pbatch__item:hover { border-color: color-mix(in srgb, var(--gold, #d4a017) 45%, var(--brd)); }
+.pbatch__item.is-active { border-color: var(--gold, #d4a017); box-shadow: 0 0 0 1px color-mix(in srgb, var(--gold, #d4a017) 45%, transparent); }
+.pbatch__item--error { border-color: color-mix(in srgb, var(--err) 55%, var(--brd)); }
+.pbatch__item-top { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.pbatch__item-n { font-size: 11px; font-weight: 750; color: var(--t3); text-transform: uppercase; letter-spacing: .05em; }
+.pbatch__item-st { font-size: 10px; font-weight: 700; padding: 1px 8px; border-radius: 999px; white-space: nowrap; }
+.pbatch__item-st--upload, .pbatch__item-st--ocr { color: var(--info-t); background: color-mix(in srgb, var(--info) 15%, transparent); }
+.pbatch__item-st--ready { color: var(--ok-t); background: color-mix(in srgb, var(--ok) 15%, transparent); }
+.pbatch__item-st--error { color: var(--err-t); background: color-mix(in srgb, var(--err) 15%, transparent); }
+.pbatch__item-sup { font-size: 12.5px; font-weight: 600; color: var(--t1); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pbatch__item-row { display: flex; justify-content: space-between; gap: 8px; font-size: 11.5px; color: var(--t2); }
+.pbatch__item-row b { color: var(--t1); font-variant-numeric: tabular-nums; }
+.pbatch__item-err { font-size: 10.5px; color: var(--err-t); }
+
+.pbatch__bar { height: 4px; border-radius: 999px; overflow: hidden; background: var(--bg1); margin-top: 3px; }
+.pbatch__bar i { display: block; height: 100%; border-radius: 999px;
+  background: linear-gradient(90deg, var(--info), color-mix(in srgb, var(--gold, #d4a017) 70%, var(--info)));
+  transition: width .35s ease; }
+.pbatch__bar--big { height: 6px; width: min(320px, 80%); margin: 10px auto 0; }
+
+/* ── Панель превью + поля ─────────────────────────────────────────────────── */
+.pbatch__pane { min-width: 0; display: flex; flex-direction: column; gap: 12px; }
+.pbatch__pane-empty { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px;
+  padding: 44px 16px; text-align: center; font-size: 12.5px; color: var(--t2);
+  border: 1px dashed var(--brd); border-radius: 13px; background: var(--bg1); }
+.pbatch__pane-ico { font-size: 28px; opacity: .6; }
+.pbatch__pane-load { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px;
+  padding: 48px 16px; text-align: center; border: 1px solid var(--brd); border-radius: 13px; background: var(--bg1); }
+.pbatch__pane-load-t { font-size: 14px; font-weight: 650; color: var(--t1); }
+.pbatch__pane-load-s { font-size: 12px; color: var(--t2); }
+.pbatch__pane-err { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 36px 16px;
+  text-align: center; border: 1px solid color-mix(in srgb, var(--err) 45%, var(--brd)); border-radius: 13px;
+  background: color-mix(in srgb, var(--err) 7%, var(--bg1)); }
+.pbatch__spin { width: 26px; height: 26px; border-radius: 50%; border: 2.6px solid var(--bg3);
+  border-top-color: var(--gold, #d4a017); animation: pbatch-spin .8s linear infinite; }
+@keyframes pbatch-spin { to { transform: rotate(360deg); } }
+
+.pbatch__preview { position: relative; border: 1px solid var(--brd); border-radius: 13px; overflow: hidden; background: var(--bg0); }
+.pbatch__preview img { display: block; width: 100%; max-height: 42vh; object-fit: contain; background: var(--bg0); }
+.pbatch__prev-err { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px;
+  min-height: 180px; font-size: 12.5px; color: var(--t2); }
+.pbatch__prev-err a { color: var(--gold, #d4a017); }
+.pbatch__prev-nav { display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  padding: 7px 10px; border-top: 1px solid var(--brd); background: var(--bg2); font-size: 11.5px; color: var(--t2); }
+.pbatch__prev-btn { padding: 4px 10px; border-radius: 7px; border: 1px solid var(--brd); background: var(--bg1);
+  color: var(--t1); font-size: 11.5px; cursor: pointer; }
+.pbatch__prev-btn:disabled { opacity: .35; cursor: default; }
+.pbatch__prev-btn:hover:not(:disabled) { border-color: color-mix(in srgb, var(--gold, #d4a017) 55%, var(--brd)); }
+
+.pbatch__fields { display: flex; flex-direction: column; gap: 8px; padding: 13px 14px;
+  border: 1px solid var(--brd); border-radius: 13px; background: var(--bg1); }
+.pbatch__fields-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 2px; }
+.pbatch__fields-t { font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--t2); }
+.pbatch__conf { font-size: 11px; font-weight: 700; padding: 2px 9px; border-radius: 999px; }
+.pbatch__conf.is-ok { color: var(--ok-t); background: color-mix(in srgb, var(--ok) 15%, transparent); }
+.pbatch__conf.is-warn { color: var(--warn-t); background: color-mix(in srgb, var(--warn) 15%, transparent); }
+
+.pbatch__frow { display: grid; grid-template-columns: 132px minmax(0, 1fr); gap: 8px; align-items: center; }
+@media (max-width: 620px) { .pbatch__frow { grid-template-columns: 1fr; gap: 3px; } }
+.pbatch__frow label { font-size: 11.5px; color: var(--t2); }
+.pbatch__frow input { width: 100%; padding: 7px 10px; border-radius: 8px; border: 1px solid var(--brd);
+  background: var(--bg0); color: var(--t1); font-size: 12.5px; }
+.pbatch__frow input:focus { outline: none; border-color: color-mix(in srgb, var(--gold, #d4a017) 60%, var(--brd));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--gold, #d4a017) 14%, transparent); }
+.pbatch__frow--vat { grid-template-columns: 132px minmax(0, 1fr) auto; }
+.pbatch__vat-hint { font-size: 10.5px; color: var(--t3); white-space: nowrap; }
+.pbatch__hint { font-size: 11px; color: var(--t3); line-height: 1.4; }
+.pbatch__fields-acts { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 4px; }
+
+/* ── Подвал ──────────────────────────────────────────────────────────────── */
+.pbatch__foot { display: flex; justify-content: space-between; align-items: center; gap: 14px; flex-wrap: wrap;
+  padding-top: 12px; border-top: 1px solid var(--brd); }
+.pbatch__total { display: flex; flex-direction: column; gap: 1px; }
+.pbatch__total span { font-size: 11px; color: var(--t3); }
+.pbatch__total b { font-size: 19px; font-weight: 800; color: var(--t1); font-variant-numeric: tabular-nums; }
+.pbatch__acts { display: flex; gap: 8px; }
+
+/* ── Экран директора: выборочное согласование ─────────────────────────────── */
+.pdecide { display: flex; flex-direction: column; gap: 12px; }
+.pdecide__head { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+.pdecide__t { font-size: 17px; font-weight: 800; color: var(--t1); }
+.pdecide__s { font-size: 12px; color: var(--t2); margin-top: 3px; }
+.pdecide__all { display: flex; gap: 8px; flex-wrap: wrap; }
+.pdecide__list { display: flex; flex-direction: column; gap: 7px; max-height: min(54vh, 480px); overflow: auto; }
+.pdecide__row { display: grid; grid-template-columns: 26px minmax(0, 1.4fr) 110px 96px 120px; gap: 10px; align-items: center;
+  padding: 10px 12px; border: 1px solid var(--brd); border-radius: 10px; background: var(--bg1); font-size: 12.5px; }
+@media (max-width: 760px) { .pdecide__row { grid-template-columns: 26px minmax(0, 1fr) auto; } }
+.pdecide__row.is-approved { border-color: color-mix(in srgb, var(--ok) 50%, var(--brd)); background: color-mix(in srgb, var(--ok) 7%, var(--bg1)); }
+.pdecide__row.is-rejected { border-color: color-mix(in srgb, var(--err) 50%, var(--brd)); background: color-mix(in srgb, var(--err) 7%, var(--bg1)); }
+.pdecide__row input[type="checkbox"] { width: 16px; height: 16px; cursor: pointer; }
+.pdecide__sup { font-weight: 650; color: var(--t1); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pdecide__meta { font-size: 11px; color: var(--t2); }
+.pdecide__sum { font-weight: 750; color: var(--t1); font-variant-numeric: tabular-nums; text-align: right; }
+.pdecide__st { font-size: 10.5px; font-weight: 700; padding: 2px 8px; border-radius: 999px; text-align: center; }
+.pdecide__st--pending { color: var(--warn-t); background: color-mix(in srgb, var(--warn) 15%, transparent); }
+.pdecide__st--ok { color: var(--ok-t); background: color-mix(in srgb, var(--ok) 15%, transparent); }
+.pdecide__st--err { color: var(--err-t); background: color-mix(in srgb, var(--err) 15%, transparent); }
+.pdecide__foot { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap;
+  padding-top: 11px; border-top: 1px solid var(--brd); }
+.pdecide__summary { font-size: 12px; color: var(--t2); }
+.pdecide__summary b { color: var(--t1); }

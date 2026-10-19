@@ -8,6 +8,7 @@
 const path = require('path');
 const fs = require('fs');
 const fsp = require('fs').promises;
+const os = require('os');
 const paymentMail = require('../services/payment-mail');
 const { createNotification } = require('../services/notify');
 const { stampExpiry } = require('../services/doc-approval-ttl');
@@ -261,6 +262,7 @@ async function routes(fastify) {
               pi.contract_basis_number, pi.contract_missing, pi.work_hint, pi.vat_amount,
               pi.initiator_intent, pi.pp_number, pi.payee_requisites,
               pi.approval_expires_at, pi.dir_approved_at, pi.buh_acted_at,
+              pi.batch_id,
               u.name AS initiator_name,
               d.work_id AS registry_work_id, w.work_title AS work_title,
               (SELECT count(*)::int FROM price_records pr WHERE pr.doc_registry_id = pi.doc_registry_id) AS lines_count
@@ -793,6 +795,139 @@ async function routes(fastify) {
               dir_approved_by=CASE WHEN $2<>'awaiting_dir' THEN $3 ELSE NULL END, updated_at=NOW()
         WHERE id=$1`, [id, bstatus, req.user.id]).catch(() => {});
     return { ok: true, batch_status: bstatus, ...done, summary: after };
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // V411: ПРЕВЬЮ и РАСПОЗНАВАНИЕ загруженного счёта (заказчик 19.10.2026).
+  // «Превью недоступно — скачайте или откройте. Надо видеть что загрузил».
+  // «Хочу видеть загрузку 0-100%, когда 100% — счёт распознан».
+  // Решение: PDF рендерим в PNG первой страницы (стабильно в любом браузере),
+  // распознаём тем же OCR-контуром, что и почта — единая логика.
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  /** PNG-превью первой страницы счёта (или сам файл, если это картинка). */
+  fastify.get('/preview/:id', { preHandler: [fastify.requireRoles(FILE_ROLES)] }, async (req, reply) => {
+    const id = parseInt(req.params.id, 10);
+    if (!Number.isFinite(id)) return reply.code(400).send({ error: 'Неверный ID' });
+    const row = (await db.query('SELECT file_path, file_name, created_by FROM payment_invoices WHERE id=$1', [id])).rows[0];
+    if (!row || !row.file_path) return reply.code(404).send({ error: 'Файл не приложен' });
+    const { resolveDocumentPath } = require('../services/pdf-ocr');
+    const full = resolveDocumentPath(row.file_path);
+    if (!full || !fsp.existsSync(full)) return reply.code(404).send({ error: 'Файл не найден на диске' });
+    const ext = String(full).toLowerCase().split('.').pop();
+    // Картинка — отдаём как есть (это уже превью).
+    if (['png', 'jpg', 'jpeg', 'webp'].includes(ext)) {
+      reply.header('Cache-Control', 'private, max-age=60');
+      return reply.type(ext === 'png' ? 'image/png' : 'image/jpeg').send(fsp.createReadStream(full));
+    }
+    // PDF — рендерим первую страницу в PNG через тот же poppler, что и OCR.
+    try {
+      const tmpDir = await fsp.mkdtemp(path.join(os.tmpdir(), 'pv-'));
+      const prefix = path.join(tmpDir, 'p');
+      const { exec } = require('../services/pdf-ocr');
+      void exec;
+      const { execFile } = require('child_process');
+      await new Promise((resolve, reject) => {
+        execFile(process.env.PDFTOPPM_BIN || 'pdftoppm', ['-png', '-r', '110', '-f', '1', '-l', '1', full, prefix],
+          { timeout: 25000 }, (err) => (err ? reject(err) : resolve()));
+      });
+      const files = (await fsp.readdir(tmpDir)).filter((f) => f.endsWith('.png')).sort();
+      if (!files.length) throw new Error('нет страниц');
+      const png = await fsp.readFile(path.join(tmpDir, files[0]));
+      fsp.rm(tmpDir, { recursive: true, force: true }).catch(() => {});
+      reply.header('Cache-Control', 'private, max-age=60');
+      return reply.type('image/png').send(png);
+    } catch (e) {
+      fastify.log.warn('[preview] render failed: ' + e.message);
+      return reply.code(415).send({ error: 'Не удалось построить превью', hint: 'откройте оригинал' });
+    }
+  });
+
+  /**
+   * Распознать загруженный счёт и вернуть ПОЛЯ для автозаполнения формы
+   * (номер/дата/сумма/НДС/поставщик/договор/срок/позиции).
+   * Не создаёт заявку — только разбор: фронт подставляет значения, человек правит.
+   */
+  fastify.post('/:id/recognize', { preHandler: [fastify.requireRoles(CREATE_ROLES)] }, async (req, reply) => {
+    const id = parseInt(req.params.id, 10);
+    if (!Number.isFinite(id)) return reply.code(400).send({ error: 'Неверный ID' });
+    const row = (await db.query('SELECT id, file_path, file_name, status, created_by FROM payment_invoices WHERE id=$1', [id])).rows[0];
+    if (!row) return reply.code(404).send({ error: 'Счёт не найден' });
+    if (!row.file_path) return reply.code(400).send({ error: 'Файл не приложен' });
+    try {
+      const { resolveDocumentPath } = require('../services/pdf-ocr');
+      const full = resolveDocumentPath(row.file_path);
+      if (!full || !fsp.existsSync(full)) return reply.code(404).send({ error: 'Файл не найден' });
+      const ocr = require('../services/pdf-ocr');
+      let text = '';
+      if (/\.pdf$/i.test(full)) {
+        const r = await ocr.ocrPdfPath(full, row.file_name || 'invoice.pdf');
+        text = (r && r.text) || '';
+      } else {
+        const buf = await fsp.readFile(full);
+        const mime = /\.png$/i.test(full) ? 'image/png' : 'image/jpeg';
+        const r = await ocr.ocrImageBuffer(buf, mime, row.file_name || 'invoice.jpg');
+        text = (r && r.text) || '';
+      }
+      // ИИ-разбор (основной путь) + фолбэк на регулярки — тот же контур, что у почты.
+      const { extractInvoice } = require('../services/invoice-extract');
+      const aiEx = require('../services/invoice-ai-extract');
+      let parsed = extractInvoice(text || '');
+      let aiUsed = false;
+      try {
+        const ai = await aiEx.extractByAI(text || '');
+        if (ai && ai.ok && ai.data) {
+          parsed = aiEx.mergeWithRegex(ai.data, parsed).parsed;
+          aiUsed = true;
+        }
+      } catch (_) { /* фолбэк на регулярки */ }
+      // Обновляем счёт распознанными полями (сумма/№/дата/НДС), НЕ трогая ручные правки
+      // статуса. Человек всё равно может поправить через PATCH.
+      try {
+        await db.query(
+          `UPDATE payment_invoices SET
+             amount = COALESCE(NULLIF($2,0), amount),
+             supplier_name = COALESCE(NULLIF($3,''), supplier_name),
+             invoice_number = COALESCE(NULLIF($4,''), invoice_number),
+             invoice_date = COALESCE($5::date, invoice_date),
+             due_date = COALESCE($6::date, due_date),
+             vat_amount = COALESCE($7, vat_amount),
+             contract_basis_number = COALESCE(NULLIF($8,''), contract_basis_number),
+             updated_at = NOW()
+           WHERE id=$1`,
+          [id, parsed.amount_gross || 0, parsed.counterparty_name || '',
+            parsed.invoice_number || '', parsed.invoice_date || null,
+            parsed.payment_due_at || null, parsed.vat_amount != null ? parsed.vat_amount : null,
+            (parsed.contract_basis && parsed.contract_basis.number) || '']).catch(() => {});
+      } catch (_) { /* запись полей — не блокер */ }
+      return {
+        ok: true,
+        engine: aiUsed ? 'ai' : 'regex',
+        confidence: parsed.confidence || 0,
+        fields: {
+          supplier_name: parsed.counterparty_name || null,
+          inn: parsed.inn || null,
+          kpp: parsed.kpp || null,
+          amount: parsed.amount_gross || null,
+          amount_net: parsed.amount_net || null,
+          vat_amount: parsed.vat_amount != null ? parsed.vat_amount : null,
+          has_vat: parsed.has_vat,
+          invoice_number: parsed.invoice_number || null,
+          invoice_date: parsed.invoice_date || null,
+          payment_due_at: parsed.payment_due_at || null,
+          contract_number: (parsed.contract_basis && parsed.contract_basis.number) || null,
+          bank_name: parsed.bank_name || null,
+          bik: parsed.bik || null,
+          rs: parsed.rs || null,
+          ks: parsed.ks || null,
+          lines: Array.isArray(parsed.lines) ? parsed.lines : []
+        },
+        text_preview: (text || '').slice(0, 1200)
+      };
+    } catch (e) {
+      fastify.log.error('[recognize] ' + e.message);
+      return reply.code(500).send({ error: 'Не удалось распознать', detail: e.message });
+    }
   });
 
   // multipart upload file for standalone
