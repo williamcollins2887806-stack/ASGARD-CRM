@@ -126,7 +126,11 @@ async function createPreTenderFromEmail(emailId, options = {}) {
            ia.extracted_customer_name, ia.extracted_customer_inn,
            ia.extracted_customer_contact_email, ia.extracted_customer_contact_person,
            ia.extracted_customer_phone, ia.extracted_customer_address,
-           ia.ai_raw_json
+           ia.ai_raw_json,
+           -- D-287: без этих полей заголовок карточки падал в имя клиента,
+           -- а тип работы и срок не доезжали до заявки вовсе.
+           ia.ai_work_type, ia.ai_estimated_days, ia.ai_summary, ia.ai_color,
+           ia.ai_recommendation, ia.ai_keywords
     FROM emails e
     LEFT JOIN inbox_applications ia ON ia.email_id = e.id
     WHERE e.id = $1
@@ -207,8 +211,23 @@ async function createPreTenderFromEmail(emailId, options = {}) {
 
   // V416: заголовок карточки — короткий, от ИИ. Раньше в title уезжал весь
   // work_description (до 2000 знаков) и «Отправлено из мобильной Яндекс Почты».
+  //
+  // D-287 (прод 19.10.2026, письмо #4894): заголовок стал «ООО «Велесстрой»» —
+  // просто ИМЯ КЛИЕНТА вместо того, что за работа. Причина: `email.work_title`
+  // в письмах не существует (он есть только в pre_tender_requests), поэтому
+  // выражение падало в `[ai_work_type, customerName].join(' · ')`, где
+  // ai_work_type тоже не пришёл с уровня письма — оставался только клиент.
+  // Теперь: приоритет — ai_work_type из РАЗБОРА письма, затем заявка, затем
+  // название клиента как последний резерв (лучше хоть что-то, чем пусто).
+  const aiWorkType = String(email.ai_work_type || email.work_type || '').trim();
+  const subjectClean = String(email.subject || '')
+    .replace(/^\s*(Fwd?|Переслано|Re)\s*:\s*/i, '')
+    .replace(/\s+/g, ' ')
+    .trim();
   const workTitle = (email.work_title || '').trim()
-    || [email.ai_work_type, customerName].filter(Boolean).join(' · ').slice(0, 200)
+    || aiWorkType.slice(0, 200)
+    || subjectClean.slice(0, 200)
+    || customerName
     || null;
 
   const ins = await db.query(`

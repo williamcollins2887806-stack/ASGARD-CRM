@@ -550,6 +550,10 @@ async function extractAttachmentTexts(emailId, { maxPerFile = MAX_EXTRACT_PER_FI
 
     const texts = [];
     const imageBlocks = [];
+    // D-287: файлы, которые НЕ удалось прочитать. Раньше они исчезали молча —
+    // в логе было «found 4 attachments / extracted 2 text blocks», и никто не
+    // знал, что два документа выпали. Теперь список идёт наверх в отчёт.
+    const unreadFiles = [];
 
     for (const a of attRes.rows) {
       console.log(`[AI-Analyzer] Processing attachment: "${a.original_filename}" mime=${a.mime_type} file_path=${a.file_path}`);
@@ -577,56 +581,78 @@ async function extractAttachmentTexts(emailId, { maxPerFile = MAX_EXTRACT_PER_FI
         continue;
       }
 
-      // XLSX
+      // XLSX / XLS
+      // D-287 (прод 19.10.2026): ExcelJS понимает ТОЛЬКО .xlsx (zip-контейнер
+      // OOXML). Старый бинарный .xls (BIFF) он не читает: `workbook.xlsx.load`
+      // бросает ошибку, и файл молча выпадал из разбора. В письме #4894 так
+      // потерялся «Шаблон формата Детализация.xls» (179 КБ) — то есть сама
+      // форма, которую заказчик просил заполнить. Для .xls — отдельная ветка.
       if (a.mime_type?.includes('spreadsheet') || a.mime_type?.includes('ms-excel')
           || a.file_path.endsWith('.xlsx') || a.file_path.endsWith('.xls')) {
         try {
-          const ExcelJS = require('exceljs');
           const buf = fs.readFileSync(absPath);
-          const workbook = new ExcelJS.Workbook();
-          await workbook.xlsx.load(buf);
+          const isLegacyXls = a.file_path.toLowerCase().endsWith('.xls')
+            || a.mime_type === 'application/vnd.ms-excel';
           const lines = [];
-          workbook.eachSheet((sheet, sheetId) => {
-            if (sheetId > 2) return;
-            lines.push(`[${sheet.name}]`);
-            let cnt = 0;
-            sheet.eachRow((row) => {
-              if (cnt++ > 100) return;
-              const vals = [];
-              row.eachCell((cell) => {
-                // D-204: на реальном файле «пассивация труб компрессоров.xlsx»
-                // САМ геттер cell.text падает с "Cannot read properties of null
-                // (reading 'toString')" — поэтому к cell.text не обращаемся вообще,
-                // а собираем текст из cell.value (richText / formula / hyperlink).
-                try {
-                  const raw = cell.value;
-                  if (raw == null) return;
-                  let v;
-                  if (typeof raw === 'object') {
-                    v = raw.text ?? raw.result ?? raw.hyperlink ?? null;
-                    if (v == null && Array.isArray(raw.richText)) {
-                      v = raw.richText.map((rt) => rt?.text || '').join('');
+          if (isLegacyXls) {
+            const XLSX = require('xlsx');
+            const wb = XLSX.read(buf, { type: 'buffer', cellDates: true });
+            for (const name of wb.SheetNames.slice(0, 2)) {
+              const rows = XLSX.utils.sheet_to_json(wb.Sheets[name], { header: 1, raw: false, defval: '' });
+              lines.push(`[${name}]`);
+              for (const r of rows.slice(0, 100)) {
+                const vals = (r || []).map((v) => String(v == null ? '' : v).trim()).filter(Boolean);
+                if (vals.length) lines.push(vals.join(' | '));
+              }
+            }
+            console.log(`[AI-Analyzer] Extracted legacy XLS: "${a.original_filename}" → ${lines.length} lines`);
+          } else {
+            const ExcelJS = require('exceljs');
+            const workbook = new ExcelJS.Workbook();
+            await workbook.xlsx.load(buf);
+            workbook.eachSheet((sheet, sheetId) => {
+              if (sheetId > 2) return;
+              lines.push(`[${sheet.name}]`);
+              let cnt = 0;
+              sheet.eachRow((row) => {
+                if (cnt++ > 100) return;
+                const vals = [];
+                row.eachCell((cell) => {
+                  // D-204: у реального файла геттер cell.text падает на null —
+                  // собираем текст из cell.value (richText / formula / hyperlink).
+                  try {
+                    const raw = cell.value;
+                    if (raw == null) return;
+                    let v;
+                    if (typeof raw === 'object') {
+                      v = raw.text ?? raw.result ?? raw.hyperlink ?? null;
+                      if (v == null && Array.isArray(raw.richText)) {
+                        v = raw.richText.map((rt) => (rt && rt.text) || '').join('');
+                      }
+                    } else {
+                      v = raw;
                     }
-                  } else {
-                    v = raw;
+                    if (v != null && typeof v !== 'object') {
+                      const s = String(v).trim();
+                      if (s) vals.push(s);
+                    }
+                  } catch (cellErr) {
+                    console.warn(`[AI-Analyzer] XLSX cell skipped in "${a.original_filename}":`, cellErr.message);
                   }
-                  if (v != null && typeof v !== 'object') {
-                    const s = String(v).trim();
-                    if (s) vals.push(s);
-                  }
-                } catch (cellErr) {
-                  console.warn(`[AI-Analyzer] XLSX cell skipped in "${a.original_filename}":`, cellErr.message);
-                }
+                });
+                if (vals.length) lines.push(vals.join(' | '));
               });
-              if (vals.length) lines.push(vals.join(' | '));
             });
-          });
+          }
           if (lines.length) {
             texts.push(`[${a.original_filename}]\n${lines.join('\n').slice(0, maxPerFile)}`);
-            console.log(`[AI-Analyzer] Extracted XLSX: "${a.original_filename}" → ${lines.length} lines`);
+            console.log(`[AI-Analyzer] Extracted spreadsheet: "${a.original_filename}" → ${lines.length} lines`);
+          } else {
+            unreadFiles.push(a.original_filename + ' (таблица без текста)');
           }
         } catch (xlsErr) {
-          console.error(`[AI-Analyzer] XLSX extraction error for "${a.original_filename}":`, xlsErr.message);
+          console.error(`[AI-Analyzer] Spreadsheet extraction error for "${a.original_filename}":`, xlsErr.message);
+          unreadFiles.push(a.original_filename + ' (' + xlsErr.message.slice(0, 60) + ')');
         }
         continue;
       }
@@ -875,8 +901,9 @@ async function extractAttachmentTexts(emailId, { maxPerFile = MAX_EXTRACT_PER_FI
       }
     }
 
-    console.log(`[AI-Analyzer] Email #${emailId}: extracted ${texts.length} text blocks, ${imageBlocks.length} images`);
-    return { texts, imageBlocks };
+    console.log(`[AI-Analyzer] Email #${emailId}: extracted ${texts.length} text blocks, ${imageBlocks.length} images`
+      + (unreadFiles.length ? `, НЕ ПРОЧИТАНО: ${unreadFiles.join('; ')}` : ''));
+    return { texts, imageBlocks, unreadFiles };
   } catch (err) {
     console.error('[AI-Analyzer] Attachment extraction error:', err.message, err.stack);
     return { texts: [], imageBlocks: [] };

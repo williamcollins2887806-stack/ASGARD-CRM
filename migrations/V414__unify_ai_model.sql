@@ -19,15 +19,17 @@
 BEGIN;
 
 -- 1. Настройка провайдера: любая старая deepseek/flash-модель → -1017.
+--    ВНИМАНИЕ: settings.value_json имеет тип TEXT (не jsonb), поэтому работаем
+--    через приведение ::jsonb и обратно ::text.
 UPDATE settings
    SET value_json = jsonb_set(
-         value_json,
+         value_json::jsonb,
          '{openai_model}',
-         to_jsonb('deepseek/deepseek-v4.1-flash-1017'::text)),
+         to_jsonb('deepseek/deepseek-v4.1-flash-1017'::text))::text,
        updated_at = NOW()
  WHERE key = 'ai_config'
-   AND value_json ? 'openai_model'
-   AND (value_json ->> 'openai_model') IN (
+   AND (value_json::jsonb) ? 'openai_model'
+   AND ((value_json::jsonb) ->> 'openai_model') IN (
          'deepseek/deepseek-v4-pro',
          'deepseek/deepseek-v4.1-flash',
          'deepseek-v4-pro',
