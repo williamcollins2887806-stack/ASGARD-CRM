@@ -68,7 +68,11 @@ function getStats() {
 
 async function sseRoutes(fastify) {
   // GET /api/sse/stream?token=JWT
-  fastify.get('/stream', async (request, reply) => {
+  // D-286 (19.10.2026): обработчик СОЗНАТЕЛЬНО синхронный (без async/await на верхнем
+  // уровне). Для long-lived SSE Fastify не должен ждать промис и финализировать ответ:
+  // именно это давало ERR_HTTP_HEADERS_SENT при переподключениях. Всё, что может
+  // бросить, — внутри try/catch, промисов наружу не отдаём.
+  fastify.get('/stream', (request, reply) => {
     // Авторизация через query-параметр (EventSource не поддерживает заголовки)
     const token = request.query.token;
     if (!token) {
