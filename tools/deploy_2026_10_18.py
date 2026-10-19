@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env python3
+#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """Deploy ASGARD-CRM РЅР° РїСЂРѕРґ 18-19.10.2026 (shell 20.28.225).
 
@@ -33,7 +33,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "tools"))
 import shell_guard  # noqa: E402
 
-VER = "20.28.231"
+VER = "20.28.232"
 HOST = "92.242.61.184"
 USER = "root"
 KEY = str(Path.home() / ".ssh" / "asgard_crm_deploy")
