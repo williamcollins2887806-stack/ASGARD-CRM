@@ -79,6 +79,9 @@ window.AsgardDocHubPage = (function () {
     facetOps: '',
     facetOwners: [],
     facetPms: [],
+    // D-306: под-ответственный — свободная подпись внутри общего аккаунта
+    // (АГПЗ → Пираев / Михайлушкин / Тумаева). Фильтр без справочника.
+    facetOwnerNotes: [],
     facetIncomplete: false,
     quarter: '',
     year: '',
@@ -145,6 +148,12 @@ window.AsgardDocHubPage = (function () {
     }
   }
   function canWh() { return WH_ROLES.includes(role()); }
+  // D-306: «Показать все» имеет смысл только для ролей с полной видимостью
+  // (зеркало FULL_VISIBILITY в src/lib/doc-visibility.js). Иначе галочка
+  // обманывала бы: PM/PROC/TO кликнут, а бэкенд молча оставит их выборку.
+  function canScopeAll() {
+    return ['ADMIN', 'BUH', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV', 'DIRECTOR', 'OFFICE_MANAGER'].includes(role());
+  }
   // Акты сверки ведёт бухгалтерия/офис/директора — зеркало RECON_ROLES на бэке.
   function canReconAct() { return ['BUH', 'ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV', 'DIRECTOR', 'OFFICE_MANAGER'].includes(role()); }
   function canCorrect() { return CORR_ROLES.includes(role()); }
@@ -664,6 +673,9 @@ window.AsgardDocHubPage = (function () {
     if (state.facetOps) p.set('ops_status', state.facetOps);
     if (state.facetOwners && state.facetOwners.length) p.set('doc_owner_id', state.facetOwners.join(','));
     if (state.facetPms && state.facetPms.length) p.set('pm_id', state.facetPms.join(','));
+    // D-306: фильтр по подписи под-ответственного (свободный текст).
+    // «||» — разделитель, чтобы запятая в ФИО не ломала фильтр.
+    if (state.facetOwnerNotes && state.facetOwnerNotes.length) p.set('owner_note', state.facetOwnerNotes.join('||'));
     if (state.facetIncomplete || state.kpi === 'incomplete') p.set('incomplete', '1');
     if (state.kpi === 'pay') p.set('kpi', 'pay');
     if (state.kpi === 'sf') p.set('kpi', 'sf');
@@ -701,10 +713,12 @@ window.AsgardDocHubPage = (function () {
           : [],
         // Ответственные для мультивыбора: отв. за документы и РП
         doc_owners: Array.isArray(f.doc_owners) ? f.doc_owners : [],
-        pms: Array.isArray(f.pms) ? f.pms : []
+        pms: Array.isArray(f.pms) ? f.pms : [],
+        // D-306: подсказки под-ответственных (уже введённые подписи).
+        owner_notes: Array.isArray(f.owner_notes) ? f.owner_notes : []
       };
     } catch (_) {
-      state.facets = { counterparties: [], doc_owners: [], pms: [] };
+      state.facets = { counterparties: [], doc_owners: [], pms: [], owner_notes: [] };
     }
   }
 
@@ -1125,6 +1139,9 @@ window.AsgardDocHubPage = (function () {
       const search = host.querySelector('.dh-ms__search');
       const id = host.id;
       const opts = () => {
+        if (id.indexOf('Notes') >= 0) {
+          return ((state.facets && state.facets.owner_notes) || []).map((u) => ({ value: u.note, label: `${u.note} · ${u.n}` }));
+        }
         const key = id.indexOf('Owner') >= 0 ? 'doc_owners' : 'pms';
         const raw = (state.facets && state.facets[key]) || [];
         return raw.map((u) => ({ value: u.id, label: u.name }));
@@ -1231,6 +1248,15 @@ window.AsgardDocHubPage = (function () {
             placeholder: 'Все'
           })}
         </div>
+        <div class="dh-facet dh-facet--note">
+          <span>Под-ответственный</span>
+          ${dhMultiSelectHtml({
+            id: 'dhFacetNotes',
+            options: (state.facets.owner_notes || []).map((u) => ({ value: u.note, label: `${u.note} · ${u.n}` })),
+            selected: state.facetOwnerNotes,
+            placeholder: 'Все'
+          })}
+        </div>
         <div class="dh-facet">
           <span>Отв. за объект</span>
           ${dhMultiSelectHtml({
@@ -1279,7 +1305,7 @@ window.AsgardDocHubPage = (function () {
               </div>
               <button class="dh-chip ${state.facetIncomplete || state.kpi === 'incomplete' ? 'is-on' : ''}" type="button" id="dhChipIncomplete">Неполные <span class="n">${kpiVal('incomplete')}</span></button>
               <label class="dh-scope">
-                <input type="checkbox" id="dhScopeAll" ${scopeAll ? 'checked' : ''}/> Показать все
+                <input type="checkbox" id="dhScopeAll" ${scopeAll ? 'checked' : ''} ${canScopeAll() ? '' : 'disabled title="Доступно офис-менеджеру, бухгалтерии и директорам"'}/> Показать все
               </label>
             </div>
             ${facetsHtml()}
@@ -3035,7 +3061,14 @@ window.AsgardDocHubPage = (function () {
       d.hidden = false;
       d.classList.add('is-on');
       d.setAttribute('aria-hidden', 'false');
-      if (ov) { ov.hidden = false; ov.classList.add('is-on'); ov.onclick = () => closeDrawer(); }
+      // D-306 (заказчик 20.10.2026): «во время сохранения у Вики бывает экран
+      // мутнеет как будто глючит». Причина: saveDrawer вызывал openDrawer()
+      // заново, а тот каждый раз заново включал полупрозрачный оверлей
+      // (rgba(0,0,0,.55)) — экран на мгновение затемнялся.
+      // Теперь: если карточка уже открыта для ЭТОЙ ЖЕ строки, оверлей не трогаем.
+      const reopeningSame = !d.hidden && String(d.dataset.docId || '') === String(id);
+      d.dataset.docId = String(id);
+      if (ov && !reopeningSame) { ov.hidden = false; ov.classList.add('is-on'); ov.onclick = () => closeDrawer(); }
 
       const sums = sumParts(row);
       const titleNo = row.invoice_number ? ('Счёт ' + row.invoice_number) : ('#' + row.id);
@@ -3268,6 +3301,16 @@ window.AsgardDocHubPage = (function () {
               <div class="dh-section__h">Ответственные</div>
               <div class="dh-section__b dh-grid2">
                 <div class="dh-field"><label>Отв. за документы</label><input type="hidden" id="drDocOwner" value="${esc(String(row.doc_owner_id || ''))}" /><div id="drDocOwner_w" class="dh-crselect-host"></div></div>
+                <!-- D-306: под-ответственный. Свободный текст рядом с аккаунтом:
+                     на АГПЗ сидят 4 человека, каждому нужны «свои» строки.
+                     Список подсказок — уже введённые ФИО (можно вписать новое). -->
+                <div class="dh-field dh-field--note">
+                  <label>Под-ответственный <span class="dh-field__hint">кто внёс · свободный текст</span></label>
+                  <input id="drDocOwnerNote" list="drOwnerNoteList" type="text" maxlength="120"
+                         placeholder="Например: Пираев С. — или оставьте пустым"
+                         value="${esc(row.doc_owner_note || '')}" autocomplete="off"/>
+                  <datalist id="drOwnerNoteList"></datalist>
+                </div>
                 <div class="dh-field"><label>РП / объект</label><input type="hidden" id="drPmId" value="${esc(String(row.pm_id || ''))}" /><div id="drPm_w" class="dh-crselect-host"></div></div>
                 <div class="dh-field"><label>Код 1С</label><input id="drOnecId" value="${esc(row.onec_id || '')}"/></div>
               </div>
@@ -3347,6 +3390,22 @@ window.AsgardDocHubPage = (function () {
             wWrap.appendChild(sel);
           }
         } catch (_) {}
+      })();
+
+      // D-306: подсказки под-ответственных. Заказчик: «в следующий документ
+      // зашли и выбрали либо прошлое ФИО, либо новое написали». Поэтому грузим
+      // уже введённые подписи; приоритет — подписи того же владельца (АГПЗ).
+      (async () => {
+        const inp = d.querySelector('#drDocOwnerNote');
+        const dl = d.querySelector('#drOwnerNoteList');
+        if (!inp || !dl) return;
+        try {
+          const ownerId = String(row.doc_owner_id || '');
+          const res = await fetch('/api/doc-registry/owner-notes' + (ownerId ? '?doc_owner_id=' + encodeURIComponent(ownerId) : ''), { headers: authHeaders() });
+          const data = await res.json();
+          const notes = Array.isArray(data.notes) ? data.notes : [];
+          dl.innerHTML = notes.map((n) => `<option value="${esc(n.note)}">${esc(String(n.count))} док.</option>`).join('');
+        } catch (_) { /* подсказки не критичны */ }
       })();
 
       // Mount user CRSelects (doc_owner + pm) in drawer
@@ -3538,12 +3597,19 @@ window.AsgardDocHubPage = (function () {
           payment_schedule: readSchedule(d),
           reconciliation_note: d.querySelector('#drRecNote')?.value || null,
           doc_owner_id: parseInt((window.CRSelect ? CRSelect.getValue('drDocOwner') : null) || d.querySelector('#drDocOwner')?.value) || null,
+          // D-306: под-ответственный — свободный текст (может быть пустым).
+          doc_owner_note: (d.querySelector('#drDocOwnerNote')?.value || '').trim() || null,
           pm_id: parseInt((window.CRSelect ? CRSelect.getValue('drPm') : null) || d.querySelector('#drPmId')?.value) || null,
           onec_id: d.querySelector('#drOnecId')?.value || null,
           comment_text: d.querySelector('#drComment')?.value || ''
         };
         if (closingRows.length) patch.closing_json = closingRows;
         try {
+          // D-306: «во время сохранения экран мутнеет как будто глючит».
+          // Помимо оверлея (см. openDrawer) карточка перерисовывается целиком —
+          // запоминаем прокрутку и НЕ показываем «Загрузку» поверх.
+          const bodyEl = d.querySelector('.dh-drawer__body');
+          const keepBody = bodyEl ? bodyEl.scrollTop : 0;
           await api('/' + id, { method: 'PUT', body: JSON.stringify(patch) });
           toast('Сохранено', 'Карточка обновлена', 'ok');
           // D-297: обновляем только строку в таблице, а не всю страницу.
@@ -3552,7 +3618,9 @@ window.AsgardDocHubPage = (function () {
           const keep = captureScroll();
           await refreshRow(id);
           restoreScroll(keep);
-          openDrawer(id);
+          await openDrawer(id);
+          const bodyAfter = d.querySelector('.dh-drawer__body');
+          if (bodyAfter) bodyAfter.scrollTop = keepBody;
         } catch (e) { toast('Ошибка', e.message || 'PUT failed', 'err'); }
       };
 
@@ -3805,6 +3873,7 @@ window.AsgardDocHubPage = (function () {
       state.facetOps = root.querySelector('#dhFacetOps')?.value || '';
       state.facetOwners = dhMultiSelectValue('dhFacetOwners');
       state.facetPms = dhMultiSelectValue('dhFacetPms');
+      state.facetOwnerNotes = dhMultiSelectValue('dhFacetNotes');
       state.facetIncomplete = !!root.querySelector('#dhFacetIncomplete')?.checked;
       state.year = root.querySelector('#dhFacetYear')?.value || '';
       state.sort = root.querySelector('#dhSort')?.value || 'invoice_desc';

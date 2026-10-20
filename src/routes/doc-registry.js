@@ -43,7 +43,9 @@ const WRITE_COLS = [
   // V394: условия оплаты/СФ/акты (correction_* — только через action, не здесь).
   'payment_kind', 'payment_schedule', 'sf_basis', 'service_done_at', 'no_payment_terms',
   'sf_requested_at', 'sf_received_at', 'recon_requested_at', 'recon_received_at', 'recon_due_at',
-  'currency', 'amount_currency'
+  'currency', 'amount_currency',
+  // D-306: свободная подпись «чьими руками внесено» внутри общего аккаунта.
+  'doc_owner_note'
 ];
 
 const JOIN_SQL = `SELECT d.*,
@@ -209,7 +211,8 @@ function sanitizeText(v, maxLen = 4000) {
 const TEXT_COLS = new Set([
   'counterparty_name', 'counterparty_email', 'counterparty_phone', 'comment_text',
   'contract_label', 'delivery_note', 'receive_channel', 'reconciliation_note',
-  'vitya_state', 'invoice_number', 'onec_id', 'edo_status', 'edo_external_id'
+  'vitya_state', 'invoice_number', 'onec_id', 'edo_status', 'edo_external_id',
+  'doc_owner_note'
 ]);
 
 /** Рекурсивная очистка строк внутри объектов/массивов (N3). */
@@ -478,6 +481,20 @@ function buildFilters(q, userId, role) {
   };
   if (q.doc_owner_id) manyIds('d.doc_owner_id', q.doc_owner_id);
   if (q.pm_id) manyIds('d.pm_id', q.pm_id);
+  // D-306: под-ответственный — свободная подпись внутри общего аккаунта.
+  // Мультивыбор тех же значений, что в подсказках (см. /owner-notes).
+  // Сравнение без регистра: «Пираев С.» == «пираев с.».
+  // Разделитель в query — «||», потому что в ФИО бывает запятая
+  // («Иванов И., Петров П.»), и split по запятой развалил бы фильтр.
+  if (q.owner_note) {
+    const notes = String(q.owner_note).split('||').map((s) => s.trim()).filter(Boolean);
+    if (notes.length) {
+      params.push(notes.map((s) => s.toLowerCase()));
+      where += ` AND lower(BTRIM(COALESCE(d.doc_owner_note,''))) = ANY($${params.length}::text[])`;
+    }
+  }
+  // Отдельный режим «мои строки» для подписи не нужен: фронт подставляет
+  // ФИО пользователя в тот же owner_note (он знает своё имя из сессии).
   if (q.counterparty) { params.push(`%${q.counterparty}%`); where += ` AND d.counterparty_name ILIKE $${params.length}`; }
   if (q.q) {
     params.push(`%${q.q}%`);
@@ -563,9 +580,15 @@ module.exports = async function docRegistryRoutes(fastify) {
     const orderDir = orderRaw === 'asc' ? 'ASC' : 'DESC';
     const sort = sortRaw in SORT_COLS ? sortRaw : 'invoice_date';
     const orderSql = `ORDER BY ${sortCol} ${orderDir} NULLS LAST, d.id DESC`;
+    // D-306: НЕ использовать String.replace() с шаблонной строкой-заменой —
+    // в SQL светофора есть regex с `$'` (`!~ '^[А-ЯЁ]...$'`), и replace трактует
+    // `$'` как «остаток строки», вставляя JOIN_SQL в середину выражения.
+    // Результат: с 20.10.2026 список реестра падал 500 у ВСЕХ ролей
+    // («syntax error at or near "no"»). Подстановка только через функцию.
+    const listSql = JOIN_SQL.replace('SELECT d.*,', () => `SELECT d.*, (${traffic.trafficSql('d')}) AS traffic,`);
     const [cnt, list] = await Promise.all([
       db.query(`SELECT COUNT(*)::int n FROM doc_registry d LEFT JOIN works w ON w.id=d.work_id${where}`, params),
-      db.query(`${JOIN_SQL.replace('SELECT d.*,', `SELECT d.*, (${traffic.trafficSql('d')}) AS traffic,`)}${where} ${orderSql} LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
+      db.query(`${listSql}${where} ${orderSql} LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
         [...params, limit, (page - 1) * limit])
     ]);
     // План §12: флаг отдаётся фронту, чтобы UI показывал светофор/корректировки
@@ -612,7 +635,7 @@ module.exports = async function docRegistryRoutes(fastify) {
     // Единая матрица видимости (S1): фасеты не должны показывать чужое.
     scopeSql += visibilitySql(params, req.user.role, req.user.id, { scope });
     try {
-      const [cp, ops, owners, pms, works] = await Promise.all([
+      const [cp, ops, owners, pms, works, notes] = await Promise.all([
         db.query(
           `SELECT DISTINCT TRIM(d.counterparty_name) AS name FROM doc_registry d ${scopeSql}
            AND TRIM(COALESCE(d.counterparty_name,''))<>'' ORDER BY 1 LIMIT 500`, params
@@ -632,6 +655,14 @@ module.exports = async function docRegistryRoutes(fastify) {
           `SELECT DISTINCT w.id, COALESCE(w.work_title, w.object_name) AS title
            FROM doc_registry d INNER JOIN works w ON w.id=d.work_id ${scopeSql}
            ORDER BY 2 NULLS LAST LIMIT 500`, params
+        ),
+        // D-306: подсказки под-ответственных — уже введённые подписи с числом
+        // строк. Справочник не заводим: как в Excel, список растёт сам.
+        db.query(
+          `SELECT BTRIM(d.doc_owner_note) AS note, count(*)::int AS n
+             FROM doc_registry d ${scopeSql}
+              AND d.doc_owner_note IS NOT NULL AND BTRIM(d.doc_owner_note) <> ''
+            GROUP BY 1 ORDER BY 2 DESC, 1 LIMIT 300`, params
         )
       ]);
       return {
@@ -639,7 +670,11 @@ module.exports = async function docRegistryRoutes(fastify) {
         ops_status: ops.rows.map((r) => r.ops_status).filter(Boolean),
         doc_owners: owners.rows,
         pms: pms.rows,
-        works: works.rows
+        works: works.rows,
+        // D-306: подсказки под-ответственных с числом строк, чтобы в фильтре
+        // было видно «Пираев С. · 12». Собираем из уже введённых значений —
+        // справочник не нужен, как в Excel.
+        owner_notes: notes.rows
       };
     } catch (e) {
       fastify.log.warn('[doc-registry] facets: ' + (e && e.message));
@@ -651,6 +686,33 @@ module.exports = async function docRegistryRoutes(fastify) {
    * V394: экран «Входящие СФ» для кладовщика — минимум полей.
    * Все входящие СФ, ожидающие получения/подтверждения. Роль WAREHOUSE/ADMIN/BUH.
    */
+  /**
+   * D-306: подсказки под-ответственных для карточки документа.
+   * Заказчик: «в следующий документ зашли и выбрали либо прошлое фио, либо
+   * новое написали — и уже стало 2». Поэтому список строится по ВСЕМ уже
+   * введённым подписям, приоритет — подписи того же владельца (АГПЗ).
+   * Свободный ввод не ограничиваем: чего нет в списке — вводится руками.
+   */
+  fastify.get('/owner-notes', auth, async (req) => {
+    const p = [];
+    const vis = visibilitySql(p, req.user.role, req.user.id, { scope: 'all' });
+    const ownerId = parseInt((req.query || {}).doc_owner_id, 10);
+    const { rows } = await db.query(
+      `SELECT BTRIM(d.doc_owner_note) AS note,
+              count(*)::int AS n,
+              bool_or(d.doc_owner_id = $${p.length + 1}) AS same_owner
+         FROM doc_registry d
+        WHERE d.deleted_at IS NULL
+          AND d.doc_owner_note IS NOT NULL AND BTRIM(d.doc_owner_note) <> ''
+          ${vis}
+        GROUP BY 1
+        ORDER BY bool_or(d.doc_owner_id = $${p.length + 1}) DESC, count(*) DESC, 1
+        LIMIT 200`,
+      [...p, Number.isFinite(ownerId) ? ownerId : null]
+    );
+    return { notes: rows.map((r) => ({ note: r.note, count: r.n, same_owner: r.same_owner })) };
+  });
+
   fastify.get('/incoming-sf', auth, async (req, reply) => {
     if (!WH_ROLES.has(req.user.role)) {
       return reply.code(403).send({ error: 'Экран доступен складу, бухгалтерии и админу' });

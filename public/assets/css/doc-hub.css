@@ -1587,6 +1587,11 @@ body.hg-dock-open .dh-hscroll-bar {
 .dh-facet input { padding-right: 10px; }
 /* Сортировка: длинные подписи не должны обрезаться многоточием. */
 .dh-facet--sort select { min-width: 250px; }
+/* D-306: под-ответственный — свободная подпись. Шире обычного фасета,
+   потому что ФИО вводятся руками и фильтруются мультивыбором. */
+.dh-facet--note { min-width: 200px; }
+.dh-field__hint { font-weight: 400; font-size: 11px; color: var(--t3, #94a3b8); margin-left: 6px; }
+.dh-field--note input { font-size: 13px; }
 .dh-facet--check {
   flex-direction: row;
   align-items: center;
