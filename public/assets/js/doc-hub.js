@@ -1202,7 +1202,7 @@ window.AsgardDocHubPage = (function () {
           })}
         </div>
         <div class="dh-facet">
-          <span>РП</span>
+          <span>Отв. за объект</span>
           ${dhMultiSelectHtml({
             id: 'dhFacetPms',
             options: (state.facets.pms || []).map((u) => ({ value: u.id, label: u.name })),
@@ -1562,7 +1562,7 @@ window.AsgardDocHubPage = (function () {
             <input type="hidden" name="doc_owner_id" id="dhWizDocOwnerId" value="${esc(d.doc_owner_id || '')}" />
             <div id="dhWizDocOwner_w" class="dh-crselect-host"></div>
           </div>
-          <div class="dh-field"><label>РП</label>
+          <div class="dh-field"><label>Отв. за объект</label>
             <input type="hidden" name="pm_id" id="dhWizPmId" value="${esc(d.pm_id || '')}" />
             <div id="dhWizPm_w" class="dh-crselect-host"></div>
           </div>
@@ -1593,7 +1593,7 @@ window.AsgardDocHubPage = (function () {
         <div class="dh-review-card"><div class="k">Вид расхода</div><div class="v">${esc(spendKindLabel(d.spend_kind))}</div></div>
         <div class="dh-review-card"><div class="k">Работа</div><div class="v">${d.work_id ? '#' + esc(String(d.work_id)) : (d.spend_kind === 'work' ? 'не выбран' : '—')}</div></div>
         <div class="dh-review-card"><div class="k">Отв. документы</div><div class="v">${d.doc_owner_id ? esc(String(d.doc_owner_name || ('#' + d.doc_owner_id))) : 'я (по умолчанию)'}</div></div>
-        <div class="dh-review-card"><div class="k">РП</div><div class="v">${d.pm_id ? esc(String(d.pm_name || ('#' + d.pm_id))) : '—'}</div></div>
+        <div class="dh-review-card"><div class="k">Отв. за объект</div><div class="v">${d.pm_id ? esc(String(d.pm_name || ('#' + d.pm_id))) : '—'}</div></div>
         <div class="dh-review-card"><div class="k">Получение закрывающих</div><div class="v">${esc(d.receive_channel || '—')}</div></div>
       </div>
       <div class="dh-field"><label>Позиции для каталога (входящие)</label>
@@ -3774,6 +3774,9 @@ window.AsgardDocHubPage = (function () {
       state.year = root.querySelector('#dhFacetYear')?.value || '';
       state.sort = root.querySelector('#dhSort')?.value || 'invoice_desc';
       if (state.facetIncomplete) state.kpi = 'incomplete';
+      // Снятие галочки обязано вернуть фильтр: раньше state.kpi навсегда
+      // оставался 'incomplete', и «Только неполные» не отключался (D-296).
+      else if (state.kpi === 'incomplete') state.kpi = 'all';
       syncHash();
       await refresh();
     };

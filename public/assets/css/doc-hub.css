@@ -2615,12 +2615,19 @@ html[data-theme="light"] .dh-cp-badge { color: #24503B; background: rgba(45,106,
 .dh-ms__more { font-size: 11.5px; color: var(--t2, #94a3b8); background: var(--bg2); border: 1px solid var(--brd); border-radius: 999px; padding: 1px 7px; flex: 0 0 auto; }
 .dh-ms__caret { flex: 0 0 auto; color: var(--t3, #94a3b8); font-size: 11px; transition: transform .14s ease; }
 .dh-ms__trigger[aria-expanded="true"] .dh-ms__caret { transform: rotate(180deg); }
+/* ═══ Мультивыбор ответственных (D-296, 20.10.2026) ═══
+   ВАЖНО: .dh-ms__item — это <label>, а глобальное правило app.css
+   (`label { display:block; text-transform:uppercase }`) ломало его:
+   галочка уезжала вправо, ФИО шло капсом в три строки, появлялся
+   горизонтальный скролл. Поэтому свойства заданы явно и с !important,
+   а чекбокс получает flex:0 0 auto слева. */
 .dh-ms__drop {
   position: absolute; z-index: 20000; left: 0; top: calc(100% + 4px);
-  width: max(240px, 100%); max-height: 320px; overflow: auto;
+  width: max(240px, 100%); max-height: 320px; overflow-x: hidden; overflow-y: auto;
   padding: 8px; border-radius: 10px;
   background: var(--bg2, #151922); border: 1px solid var(--brd, #334155);
   box-shadow: 0 16px 40px rgba(0,0,0,.45);
+  box-sizing: border-box;
 }
 .dh-ms__search {
   width: 100%; padding: 6px 9px; margin-bottom: 6px;
@@ -2632,10 +2639,54 @@ html[data-theme="light"] .dh-cp-badge { color: #24503B; background: rgba(45,106,
   border: 0; background: transparent; color: var(--blue-l, #60a5fa);
   cursor: pointer; font-size: 11.5px; padding: 0;
 }
-.dh-ms__list { display: flex; flex-direction: column; max-height: 220px; overflow: auto; }
-.dh-ms__item { display: flex; align-items: center; gap: 8px; padding: 4px 6px; border-radius: 6px; cursor: pointer; font-size: 12.5px; }
-.dh-ms__item[hidden] { display: none; }
+.dh-ms__list { display: flex; flex-direction: column; max-height: 220px; overflow-y: auto; overflow-x: hidden; min-width: 0; }
+/* Строка выбора. Перебиваем глобальный `label` из app.css намеренно:
+   иначе галочка уходит вправо, текст становится КАПСОМ и рвётся по словам. */
+.dh-ms__item {
+  display: flex !important;
+  align-items: center !important;
+  gap: 9px;
+  padding: 6px 8px;
+  border-radius: 7px;
+  cursor: pointer;
+  font-size: 12.5px;
+  line-height: 1.25;
+  text-transform: none !important;
+  letter-spacing: 0 !important;
+  font-weight: 500 !important;
+  color: var(--t1, #f8fafc);
+  margin: 0 !important;
+  min-width: 0;
+  width: 100%;
+  box-sizing: border-box;
+}
+.dh-ms__item[hidden] { display: none !important; }
 .dh-ms__item:hover { background: var(--bg3, #1e293b); }
+/* Чекбокс слева, ФИКСИРОВАННОГО размера. Глобальные стили проекта
+   растягивают input до 100%/180px — здесь это недопустимо: из-за этого
+   галочка занимала всю строку, а ФИО уезжало вправо в три строки. */
+.dh-ms__item input[type="checkbox"] {
+  flex: 0 0 auto !important;
+  order: 0;
+  width: 18px !important;
+  min-width: 18px !important;
+  max-width: 18px !important;
+  height: 18px !important;
+  min-height: 18px !important;
+  max-height: 18px !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  box-sizing: border-box;
+}
+/* Текст занимает остаток и переносится по словам только при реальной нехватке места. */
+.dh-ms__item span {
+  flex: 1 1 auto;
+  min-width: 0;
+  order: 1;
+  white-space: normal;
+  overflow-wrap: break-word;
+  text-align: left;
+}
 .dh-ms__empty { padding: 10px; color: var(--t3, #94a3b8); font-size: 12px; text-align: center; }
 
 /* ═══ D-291: «График оплат» — календарь платежей ═══ */
