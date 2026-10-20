@@ -491,11 +491,37 @@ async function sendDailyDigests(db, log) {
     }
     const lines = fresh.map((f) => {
       const label = f.invoice_number ? `Счёт ${f.invoice_number}` : `Документ #${f.doc_id}`;
-      const kindTxt = f.kind === 'correction' ? 'корректировка'
-        : f.kind === 'pay_due' ? 'срок оплаты' : 'ждём СФ';
       const dueTxt = f.due_date ? `до ${fmtDateRu(f.due_date)}` : '';
       const overdue = f.due_date && String(f.due_date).slice(0, 10) < todayIso();
-      return { label, kindTxt, dueTxt, overdue, cp: f.counterparty_name || '', kind: f.kind, doc_id: f.doc_id };
+      // D-302 (заказчик 20.10.2026): «в письме по каждому нужно указывать,
+      // что и где нужно сделать — а то непонятно, что нужно сделать
+      // пользователю». Раньше был только тип («💳 срок оплаты») — это
+      // констатация, а не инструкция. Теперь для каждой задачи есть:
+      //   • action — ЧТО сделать (глагол в повелительном наклонении);
+      //   • where  — ГДЕ это сделать в CRM (какой раздел/кнопка).
+      // Тексты разные по роли: оплату ставит бухгалтерия, СФ отмечает
+      // владелец/склад, корректировку снимает автор.
+      let action, where, kindTxt;
+      if (f.kind === 'correction') {
+        kindTxt = 'корректировка';
+        action = 'Заменить СФ/акт и снять флаг';
+        where = 'Карточка документа → «Закрывающие» → загрузить новый файл, затем «Снять» в красном баннере';
+      } else if (f.kind === 'pay_due') {
+        kindTxt = 'срок оплаты';
+        // Просрочка и предстоящая оплата — разные действия.
+        if (overdue) {
+          action = 'Оплатить сегодня и отметить оплату';
+          where = 'Карточка документа → «В очередь оплаты» → после платежа «Отметить оплачено» (или через очередь бухгалтерии)';
+        } else {
+          action = 'Подготовить оплату и отметить оплату';
+          where = 'Карточка документа → «В очередь оплаты» → после платежа «Отметить оплачено»';
+        }
+      } else {
+        kindTxt = 'закрывающие';
+        action = 'Запросить СФ или акт у поставщика';
+        where = 'Карточка документа → «Закрывающие» → добавить номер и дату, либо «СФ получена»';
+      }
+      return { label, kindTxt, dueTxt, overdue, cp: f.counterparty_name || '', kind: f.kind, doc_id: f.doc_id, action, where };
     });
 
     // D-300 (заказчик 20.10.2026): письмо было ПЛОСКИМ ТЕКСТОМ и со ссылкой
@@ -513,12 +539,17 @@ async function sendDailyDigests(db, log) {
       const accent = l.overdue ? '#b91c1c' : (l.kind === 'correction' ? '#b45309' : '#1b2a4a');
       const badgeBg = l.overdue ? '#fef2f2' : (l.kind === 'correction' ? '#fff8e6' : '#eef2ff');
       const badgeTxt = l.overdue ? 'просрочено' : (l.kind === 'correction' ? 'корректировка' : l.kindTxt);
+      const whereShort = escHtml(l.where.replace('Карточка документа → ', ''));
       return `<tr>
-        <td style="padding:10px 0;border-bottom:1px solid #eef1f6;vertical-align:top;">
+        <td style="padding:12px 0;border-bottom:1px solid #eef1f6;vertical-align:top;">
           <div style="font-size:14px;font-weight:700;color:${accent};">${escHtml(l.label)}</div>
           <div style="font-size:13px;color:#6b7280;margin-top:2px;">${escHtml(l.cp)}${l.dueTxt ? ' · ' + escHtml(l.dueTxt) : ''}</div>
+          <div style="margin-top:7px;padding:8px 10px;border-left:3px solid ${accent};background:#f8fafc;border-radius:0 6px 6px 0;">
+            <div style="font-size:13px;font-weight:700;color:${accent};">${escHtml(l.action)}</div>
+            <div style="font-size:12px;color:#6b7280;margin-top:3px;line-height:1.4;">${whereShort}</div>
+          </div>
         </td>
-        <td style="padding:10px 0;border-bottom:1px solid #eef1f6;text-align:right;white-space:nowrap;vertical-align:top;">
+        <td style="padding:12px 0 12px 10px;border-bottom:1px solid #eef1f6;text-align:right;white-space:nowrap;vertical-align:top;">
           <span style="display:inline-block;padding:3px 9px;border-radius:999px;font-size:11px;font-weight:700;background:${badgeBg};color:${accent};">${escHtml(badgeTxt)}</span>
         </td>
       </tr>`;
@@ -527,8 +558,11 @@ async function sendDailyDigests(db, log) {
     const html = wrapEmail(
       `Задачи по документам: ${fresh.length}`,
       `<div style="font-size:13px;color:#6b7280;margin-bottom:4px;">Здравствуйте, ${escHtml(u.name || '')}!</div>
-       <div style="font-size:15px;color:#1b2a4a;margin-bottom:14px;">
+       <div style="font-size:15px;color:#1b2a4a;margin-bottom:6px;">
          ${fresh.length} ${plural(fresh.length, 'задача', 'задачи', 'задач')} по реестру документов${overdueCount ? `, из них <b style="color:#b91c1c;">${overdueCount} ${plural(overdueCount, 'просрочена', 'просрочены', 'просрочено')}</b>` : ''}.
+       </div>
+       <div style="font-size:12.5px;color:#6b7280;margin-bottom:14px;">
+         По каждой задаче указано, что сделать и в каком месте карточки.
        </div>
        <table style="width:100%;border-collapse:collapse;margin-bottom:6px;">${rowHtml}</table>
        <a href="${escHtml(link)}" style="display:block;background:#15803d;color:#fff;text-decoration:none;text-align:center;padding:14px 16px;border-radius:10px;font-weight:700;font-size:16px;margin:18px 0 8px;">Открыть реестр документов</a>
@@ -538,13 +572,15 @@ async function sendDailyDigests(db, log) {
        </p>`,
       {
         kicker: 'АСГАРД · ДОКУМЕНТЫ',
-        footer: 'Сводка формируется автоматически один раз в день. Задачи исчезают из неё после оплаты или получения закрывающих.'
+        footer: 'Сводка формируется автоматически один раз в день. Задача исчезает из неё, когда действие выполнено: оплата отмечена, СФ/акт получены, корректировка снята.'
       });
 
     const text =
       `Здравствуйте, ${u.name || ''}!\n\n`
       + `Задачи по реестру документов — ${fresh.length}:\n\n`
-      + lines.map((l) => `• ${l.kindTxt}: ${l.label} · ${l.cp}${l.dueTxt ? ' (' + l.dueTxt + ')' : ''}`).join('\n')
+      + lines.map((l) => `• ${l.label} · ${l.cp}${l.dueTxt ? ' (' + l.dueTxt + ')' : ''}\n`
+          + `  ЧТО СДЕЛАТЬ: ${l.action}\n`
+          + `  ГДЕ: ${l.where}`).join('\n\n')
       + `\n\nОткрыть реестр: ${link}\n`;
 
     try {
