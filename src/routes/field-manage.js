@@ -975,6 +975,11 @@ async function routes(fastify, options) {
         travel: 'road', ship: 'ship', helicopter: 'helicopter',
         waiting: 'standby', warehouse: 'warehouse', medical: 'medical', training: 'training'
       };
+      // D-295: иконки для Excel-выгрузки информационных отметок (без баллов).
+      const STAGE_ICON_EXCEL = {
+        warehouse: '📦', medical: '🏥', travel: '🚗', ship: '🚢',
+        helicopter: '🚁', training: '🎓', waiting: '⏳'
+      };
       const stageParams = [workId];
       let stageDateFilter = '';
       let sidx = 2;
@@ -1077,10 +1082,73 @@ async function routes(fastify, options) {
         });
       }
 
+      // ── Информационные отметки (D-295) ──────────────────────────────
+      // Склад / МО / дорога / корабль / обучение, которые офис (Вика, Хосе) ставит
+      // рабочим БЕЗ привязки к работе: fts.work_id IS NULL или чужая работа.
+      // Полевой табель фильтрует этапы строго по work_id, поэтому такие отметки
+      // РП не видел вовсе, хотя в «Табеле моей дружины» они есть (там фильтр по
+      // сотруднику). Показываем их ТОЛЬКО как иконки: без баллов, сумм и суточных —
+      // деньги уже учтены в своих областях, второй раз их складывать нельзя.
+      const infoByEmp = {};
+      if (rosterIds.length) {
+        let infoFilter = '';
+        const infoParams = [workId, rosterIds];
+        let iidx = 3;
+        if (dateFrom) { infoFilter += ` AND COALESCE(fts.date_to, fts.date_from) >= $${iidx}::date`; infoParams.push(dateFrom); iidx++; }
+        if (dateTo)   { infoFilter += ` AND fts.date_from <= $${iidx}::date`; infoParams.push(dateTo); iidx++; }
+        try {
+          const { rows: infoStages } = await db.query(`
+            SELECT fts.id, fts.employee_id, fts.stage_type, fts.date_from, fts.date_to,
+                   fts.days_count, fts.work_id, fts.status, w.work_title,
+                   COALESCE(u.name, '') AS entered_by_fio, COALESCE(u.role, '') AS entered_by_role
+              FROM field_trip_stages fts
+              LEFT JOIN works w ON w.id = fts.work_id
+              LEFT JOIN users u ON u.id = fts.entered_by_user_id
+             WHERE COALESCE(fts.status, 'active') NOT IN ('rejected', 'cancelled')
+               AND fts.stage_type IN ('warehouse','medical','travel','ship','helicopter','training','waiting')
+               AND fts.work_id IS DISTINCT FROM $1
+               AND fts.employee_id = ANY($2::int[])
+               ${infoFilter}
+             ORDER BY fts.employee_id, fts.date_from, fts.id
+          `, infoParams);
+          for (const s of infoStages) {
+            const emp = byEmployee[s.employee_id];
+            if (!emp) continue;
+            let fY = ymdOnly(s.date_from);
+            let tY = ymdOnly(s.date_to) || fY;
+            if (!fY) continue;
+            const list = infoByEmp[s.employee_id] || (infoByEmp[s.employee_id] = []);
+            eachYmd(fY, tY, (dayYmd) => {
+              // Своя смена или свой этап на эту дату — он главнее.
+              if (emp.days.some((d) => ymdOnly(d.date) === dayYmd)) return;
+              if (list.some((d) => d.date === dayYmd)) return;
+              list.push({
+                id: s.id,
+                stage_id: s.id,
+                kind: 'stage_info',
+                info: true,
+                date: dayYmd,
+                stage_type: s.stage_type,
+                shift: STAGE_SHIFT[s.stage_type] || 'road',
+                work_id: s.work_id,
+                work_title: s.work_title || null,
+                entered_by_fio: s.entered_by_fio || null,
+                entered_by_role: s.entered_by_role || null,
+                status: s.status
+              });
+            });
+          }
+        } catch (err) {
+          logError(fastify, '[field-manage] timesheet info-stages error', err, req);
+        }
+      }
+
       const timesheet = Object.values(byEmployee).map(emp => {
         const pdDays = emp.per_diem_days || 0;
+        const infoDays = (infoByEmp[emp.employee_id] || []).sort((a, b) => a.date.localeCompare(b.date));
         return {
           ...emp,
+          info_days: infoDays,
           per_diem_days: pdDays,
           per_diem_total: pdDays * perDiem,
           grand_total: Math.round((emp.total_earned + pdDays * perDiem) * 100) / 100,
@@ -1217,6 +1285,9 @@ async function routes(fastify, options) {
           const rowNum = dataStartRow + idx;
           const dayMap = {};
           (emp.days || []).forEach((d) => { dayMap[String(d.date).slice(0, 10)] = d; });
+          // D-295: отметки офиса без привязки к работе — только иконка, без баллов.
+          const infoMapX = {};
+          (emp.info_days || []).forEach((d) => { infoMapX[String(d.date).slice(0, 10)] = d; });
           const isEven = idx % 2 === 0;
           const rowBg = isEven ? 'FFFFFFFF' : 'FFF7FAFD';
 
@@ -1238,6 +1309,14 @@ async function routes(fastify, options) {
             if (day) {
               const pts = Math.round(parseFloat(day.day_rate || 0) / pointValue) || 0;
               tsExcelStyle.applyShiftCell(cell, pts, day.shift);
+            } else if (infoMapX[d]) {
+              // D-295: иконка отметки офиса — БЕЗ числа, чтобы не попасть в SUM(дни).
+              const inf = infoMapX[d];
+              const st = tsExcelStyle.styleForShift(inf.shift);
+              cell.value = STAGE_ICON_EXCEL[inf.stage_type] || '·';
+              cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: rowBg } };
+              cell.font = { size: 10, color: { argb: st.font } };
+              cell.alignment = { horizontal: 'center', vertical: 'middle' };
             } else {
               const dt = new Date(d + 'T00:00:00');
               const isWeekend = dt.getDay() === 0 || dt.getDay() === 6;

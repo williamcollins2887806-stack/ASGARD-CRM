@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useAuthStore } from '@/stores/authStore';
 import { toast } from 'sonner';
+import { PageShell } from '@/components/layout/PageShell';
 import { formatMoney as fmtMoney } from '@/lib/utils';
 
 export default function HeadToApprovals() {
@@ -62,15 +63,24 @@ export default function HeadToApprovals() {
   };
 
   if (!['HEAD_TO', 'ADMIN'].includes(user.role)) {
-    return <div className="p-4 text-red-400">Доступно только Рук. тендерного отдела.</div>;
+    return (
+      <PageShell title="Согласование ТО">
+        <div className="p-4 text-red-400">Доступно только Рук. тендерного отдела.</div>
+      </PageShell>
+    );
   }
-  if (loading) return <div className="p-4 text-gray-400">⏳ Загрузка очереди…</div>;
+  if (loading) {
+    return (
+      <PageShell title="Согласование ТО">
+        <div className="p-4 text-gray-400">⏳ Загрузка очереди…</div>
+      </PageShell>
+    );
+  }
 
   return (
-    <div className="p-3">
+    <PageShell title="Согласование просчётов ТО">
       <div className="bg-zinc-900 rounded-xl p-3 mb-3">
-        <h2 className="text-lg font-bold">📋 Согласование просчётов ТО</h2>
-        <p className="text-xs text-gray-400 mt-1">
+        <p className="text-xs text-gray-400">
           Только просчёты, которые ТО считал САМ. Обычные просчёты РП идут директорам.
         </p>
       </div>
@@ -97,6 +107,6 @@ export default function HeadToApprovals() {
           </div>
         ))
       )}
-    </div>
+    </PageShell>
   );
 }

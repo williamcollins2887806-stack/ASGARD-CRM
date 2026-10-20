@@ -8,7 +8,8 @@ import { BottomSheet } from '@/components/shared/BottomSheet';
 import { EmptyState } from '@/components/shared/EmptyState';
 import { SkeletonList } from '@/components/shared/SkeletonKit';
 import { PullToRefresh } from '@/components/shared/PullToRefresh';
-import { Check, X as XIcon, MessageCircle, Wallet, Clock, ChevronRight, AlertTriangle } from 'lucide-react';
+import { DocumentPreviewSheet } from '@/components/shared/DocumentPreviewSheet';
+import { Check, X as XIcon, MessageCircle, Wallet, Clock, ChevronRight, AlertTriangle, Paperclip, FileText } from 'lucide-react';
 import { formatMoney, relativeTime } from '@/lib/utils';
 
 /**
@@ -316,7 +317,12 @@ export default function DirectorApprovals() {
   useEffect(() => { if (tab === 'plan') loadPlan(); }, [tab, loadPlan]);
 
   /* ── V391: решения по счетам ───────────────────────────────── */
-  const invoiceDecide = useCallback(async (id, action) => {
+  /**
+   * Решение по счёту. `payTiming` приходит из деталки («Сразу» / «Отложенная»):
+   * бэкенд его читает (POST /:id/dir-approve → pay_timing), а десктоп шлёт.
+   * Раньше мобильный звал эндпоинт без тела, и выбор срока не сохранялся.
+   */
+  const invoiceDecide = useCallback(async (id, action, payTiming) => {
     if (invBusy) return;
     if (action === 'reject') {
       const reason = await openReasonSheet('Возврат счёта поставщику');
@@ -324,7 +330,7 @@ export default function DirectorApprovals() {
       setInvBusy(true);
       try {
         haptic.medium();
-        await api.post(`/payment-invoices/${id}/dir-reject`, { reason });
+        await api.post(`/payment-invoices/${id}/dir-reject`, { comment: reason });
         setInvoices((p) => p.filter((x) => x.id !== id));
       } catch (e) {
         haptic.error();
@@ -335,7 +341,9 @@ export default function DirectorApprovals() {
     setInvBusy(true);
     try {
       haptic.success();
-      await api.post(`/payment-invoices/${id}/dir-approve`);
+      await api.post(`/payment-invoices/${id}/dir-approve`, {
+        ...(payTiming ? { pay_timing: payTiming } : {}),
+      });
       setInvoices((p) => p.filter((x) => x.id !== id));
     } catch (e) {
       haptic.error();
@@ -546,8 +554,7 @@ export default function DirectorApprovals() {
             toPay={invoicesToPay}
             busy={invBusy}
             onDecide={invoiceDecide}
-          />
-        ) : (
+          />        ) : (
           <PlanTab plan={plan} />
         )}
       </PullToRefresh>
@@ -924,6 +931,10 @@ function ttlBadge(expiresAt) {
 
 function InvoicesTab({ items, toPay, busy, onDecide }) {
   const toPayList = Array.isArray(toPay) ? toPay : [];
+  /** 20.10.2026: раскрытый счёт для детального просмотра. */
+  const [opened, setOpened] = useState(null);
+  /** Срок оплаты, выбранный в деталке: уходит на бэкенд при согласовании. */
+  const [payTiming, setPayTiming] = useState('immediate');
   if ((!items || !items.length) && !toPayList.length) {
     return (
       <div className="pb-4">
@@ -959,29 +970,52 @@ function InvoicesTab({ items, toPay, busy, onDecide }) {
             animation: `fadeInUp var(--motion-normal) var(--ease-spring) ${i * 35}ms both`,
           }}
         >
-          <div className="flex items-start justify-between gap-2">
-            <div className="min-w-0">
-              <p style={{ fontSize: 15, fontWeight: 700, color: 'var(--text-primary)', lineHeight: 1.2 }}>
-                {inv.supplier_name || `Счёт #${inv.id}`}
-              </p>
-              <p style={{ fontSize: 11.5, color: 'var(--text-tertiary)', marginTop: 2 }}>
-                {inv.basis_text ? String(inv.basis_text).slice(0, 60) : 'Основание не указано'}
-              </p>
-              {/* 17.10: директору нужно больше контекста — от кого счёт и сколько осталось на решение (TTL 72ч). */}
-              <div className="flex items-center gap-2 mt-1.5 flex-wrap">
-                {inv.initiator_name && (
-                  <span style={{ fontSize: 10.5, color: 'var(--text-tertiary)' }}>от {String(inv.initiator_name).split(' ')[0]}</span>
-                )}
-                {inv.supplier_inn && (
-                  <span style={{ fontSize: 10.5, color: 'var(--text-tertiary)' }}>ИНН {inv.supplier_inn}</span>
-                )}
-                {ttlBadge(inv.approval_expires_at)}
+          {/* 20.10.2026: карточка счёта раскрывается. Раньше были только
+              «Согласовать»/«Вернуть» без возможности посмотреть счёт —
+              директор не видел ни реквизитов, ни файла (жалоба заказчика). */}
+          <button
+            type="button"
+            onClick={() => {
+              // Сброс срока оплаты под конкретный счёт: иначе выбор, сделанный
+              // для одного счёта, «протекал» в другой и уходил на бэкенд.
+              setPayTiming(inv.pay_timing === 'deferred' ? 'deferred' : 'immediate');
+              setOpened(inv);
+            }}
+            className="w-full text-left spring-tap"
+            aria-label={`Открыть счёт ${inv.supplier_name || inv.id}`}
+          >
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0">
+                <p style={{ fontSize: 15, fontWeight: 700, color: 'var(--text-primary)', lineHeight: 1.2 }}>
+                  {inv.supplier_name || `Счёт #${inv.id}`}
+                </p>
+                <p style={{ fontSize: 11.5, color: 'var(--text-tertiary)', marginTop: 2 }}>
+                  {inv.basis_text ? String(inv.basis_text).slice(0, 60) : 'Основание не указано'}
+                </p>
+                {/* 17.10: директору нужно больше контекста — от кого счёт и сколько осталось на решение (TTL 72ч). */}
+                <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+                  {inv.initiator_name && (
+                    <span style={{ fontSize: 10.5, color: 'var(--text-tertiary)' }}>от {String(inv.initiator_name).split(' ')[0]}</span>
+                  )}
+                  {inv.supplier_inn && (
+                    <span style={{ fontSize: 10.5, color: 'var(--text-tertiary)' }}>ИНН {inv.supplier_inn}</span>
+                  )}
+                  {inv.has_file && (
+                    <span className="inline-flex items-center gap-0.5" style={{ fontSize: 10.5, color: 'var(--blue-fill)' }}>
+                      <Paperclip size={10} /> файл
+                    </span>
+                  )}
+                  {ttlBadge(inv.approval_expires_at)}
+                </div>
+              </div>
+              <div className="flex items-center gap-1.5 shrink-0">
+                <span style={{ fontSize: 16, fontWeight: 800, color: 'var(--text-primary)' }}>
+                  {formatMoney(Number(inv.amount || 0))}
+                </span>
+                <ChevronRight size={16} style={{ color: 'var(--text-tertiary)' }} />
               </div>
             </div>
-            <span style={{ fontSize: 16, fontWeight: 800, color: 'var(--text-primary)' }}>
-              {formatMoney(Number(inv.amount || 0))}
-            </span>
-          </div>
+          </button>
           <div className="flex gap-2 mt-3">
             <button
               onClick={() => onDecide(inv.id, 'approve')}
@@ -989,9 +1023,8 @@ function InvoicesTab({ items, toPay, busy, onDecide }) {
               className="spring-tap flex-1"
               style={{
                 minHeight: 40, borderRadius: 12, fontWeight: 700, fontSize: 13,
-                background: 'color-mix(in srgb, var(--green) 18%, var(--bg-surface))',
-                border: '0.5px solid color-mix(in srgb, var(--green) 45%, var(--border-norse))',
-                color: 'var(--text-primary)', opacity: busy ? 0.6 : 1,
+                background: 'var(--ok)', color: 'var(--on-ok)',
+                border: 'none', opacity: busy ? 0.6 : 1,
               }}
             >
               Согласовать
@@ -999,10 +1032,10 @@ function InvoicesTab({ items, toPay, busy, onDecide }) {
             <button
               onClick={() => onDecide(inv.id, 'reject')}
               disabled={busy}
-              className="spring-tap"
+              className="spring-tap flex-1"
               style={{
-                minHeight: 40, padding: '0 16px', borderRadius: 12, fontWeight: 600, fontSize: 13,
-                background: 'transparent',
+                minHeight: 40, borderRadius: 12, fontWeight: 600, fontSize: 13,
+                background: 'var(--bg-elevated)',
                 border: '0.5px solid var(--border-norse)', color: 'var(--text-secondary)',
                 opacity: busy ? 0.6 : 1,
               }}
@@ -1016,7 +1049,248 @@ function InvoicesTab({ items, toPay, busy, onDecide }) {
       {/* 19.10.2026: счета, одобренные директором и ждущие оплаты бухгалтерией.
           Ровно то, что считает виджет «Счета к оплате» на главной. */}
       <InvoicesToPaySection list={toPayList} />
+
+      {/* 20.10.2026: деталка счёта с превью файла (на десктопе это есть). */}
+      {opened && (
+        <InvoiceDetailSheet
+          invoice={opened}
+          busy={busy}
+          payTiming={payTiming}
+          onPayTiming={setPayTiming}
+          onClose={() => setOpened(null)}
+          onDecide={(id, action) => { setOpened(null); onDecide(id, action, payTiming); }}
+        />
+      )}
     </div>
+  );
+}
+
+/* ══════════════════════════════════════════════════════════════
+   20.10.2026: карточка счёта для директора.
+   Догружает полную карточку GET /api/payment-invoices/:id — как десктоп
+   (public/assets/js/approval_payment.js). Показывает поставщика с реквизитами,
+   № и дату счёта, основание, договор с флагом «нет в CRM», объект, просьбу
+   инициатора, НДС, позиции и превью файла.
+   ══════════════════════════════════════════════════════════════ */
+function InvoiceDetailSheet({ invoice, busy, payTiming: payTimingProp, onPayTiming, onClose, onDecide }) {
+  const [full, setFull] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const payTiming = payTimingProp || invoice?.pay_timing || 'immediate';
+  const setPayTiming = onPayTiming || (() => {});
+
+  // Полная карточка: поставщик с реквизитами, registry_doc, work_label.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const d = await api.get(`/payment-invoices/${invoice.id}`);
+        if (!cancelled) setFull(d || null);
+      } catch {
+        if (!cancelled) setFull(null); // работаем на данных из списка
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [invoice.id]);
+
+  const pay = { ...invoice, ...(full || {}) };
+  const supplier = pay.supplier || {};
+  const reg = pay.registry_doc || {};
+
+  // Файл: сначала PNG-превью (лучше на iOS), оригинал — по кнопке.
+  const previewUrl = pay.has_file ? `/api/payment-invoices/preview/${pay.id}` : null;
+  const fileUrl = pay.has_file ? (pay.file_url || `/api/payment-invoices/${pay.id}/file`) : null;
+
+  /** Читаемое название просьбы инициатора. */
+  const intentRu = (v) => ({
+    urgent: 'Срочно', today: 'Сегодня', tomorrow: 'Завтра',
+    this_week: 'На этой неделе', planned: 'По плану', none: '',
+  }[v] || '');
+
+  const rows = [
+    ['Поставщик', pay.supplier_name],
+    supplier.inn ? ['ИНН / КПП', `${supplier.inn}${supplier.kpp ? ' / ' + supplier.kpp : ''}`] : null,
+    pay.initiator_name ? ['От кого счёт', pay.initiator_name] : null,
+    (reg.invoice_number || pay.invoice_number)
+      ? ['Счёт №', `${reg.invoice_number || pay.invoice_number}${(reg.invoice_date || pay.invoice_date) ? ' от ' + String(reg.invoice_date || pay.invoice_date).slice(0, 10) : ''}`]
+      : null,
+    ['Основание', pay.basis_text || pay.basis_type],
+    pay.contract_basis_number
+      ? ['Договор', `${pay.contract_basis_number}${pay.contract_missing ? ' · нет в CRM' : ' · есть в CRM'}`]
+      : null,
+    pay.work_hint ? ['Объект', `${pay.work_hint}${pay.work_id ? '' : ' · не привязан'}`] : null,
+    (pay.initiator_intent && intentRu(pay.initiator_intent))
+      ? ['Просьба инициатора', `${intentRu(pay.initiator_intent)}${pay.initiator_note ? ' — «' + pay.initiator_note + '»' : ''}`]
+      : null,
+    pay.vat_amount != null ? ['НДС', formatMoney(Number(pay.vat_amount))] : null,
+    ['Сумма', formatMoney(Number(pay.amount || 0))],
+  ].filter(Boolean);
+
+  const lines = Array.isArray(pay.line_items_json)
+    ? pay.line_items_json
+    : (() => { try { return JSON.parse(pay.line_items_json || '[]'); } catch { return []; } })();
+
+  return (
+    <>
+      <BottomSheet
+        open
+        onClose={onClose}
+        title={pay.supplier_name ? `Счёт · ${pay.supplier_name}` : `Счёт #${pay.id}`}
+        maxHeight="90vh"
+      >
+        <div className="flex flex-col gap-3 pb-4">
+          {loading && <SkeletonList count={3} />}
+
+          {!loading && (
+            <>
+              {/* Сумма и статус — крупно, первое, что смотрит директор */}
+              <div className="rounded-2xl px-4 py-3" style={{ background: 'var(--bg-surface-alt)' }}>
+                <p style={{ fontSize: 11.5, color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '.05em' }}>К оплате</p>
+                <p style={{ fontSize: 26, fontWeight: 800, color: 'var(--text-primary)', lineHeight: 1.15, marginTop: 2 }}>
+                  {formatMoney(Number(pay.amount || 0))}
+                </p>
+                <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+                  {pay.status_label && (
+                    <span className="px-2 py-0.5 rounded-full" style={{ fontSize: 11, fontWeight: 700, background: 'var(--soft-value)', color: 'var(--on-soft-value)' }}>
+                      {pay.status_label}
+                    </span>
+                  )}
+                  {ttlBadge(pay.approval_expires_at)}
+                </div>
+              </div>
+
+              {/* Реквизиты и контекст */}
+              <div className="rounded-2xl overflow-hidden" style={{ border: '0.5px solid var(--border-norse)' }}>
+                {rows.map(([label, value], i) => (
+                  <div
+                    key={label}
+                    className="flex items-start justify-between gap-3 px-3.5 py-2.5"
+                    style={{ borderTop: i ? '0.5px solid var(--border-norse)' : 'none' }}
+                  >
+                    <span style={{ fontSize: 12.5, color: 'var(--text-tertiary)', flexShrink: 0 }}>{label}</span>
+                    <span style={{ fontSize: 13.5, color: 'var(--text-primary)', textAlign: 'right', fontWeight: 600 }}>
+                      {value || '—'}
+                    </span>
+                  </div>
+                ))}
+              </div>
+
+              {/* Позиции счёта */}
+              {lines.length > 0 && (
+                <div className="rounded-2xl px-3.5 py-3" style={{ background: 'var(--bg-surface-alt)' }}>
+                  <p style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--text-secondary)', marginBottom: 8 }}>
+                    Позиции ({lines.length})
+                  </p>
+                  <div className="flex flex-col gap-1.5">
+                    {lines.slice(0, 12).map((l, i) => (
+                      <div key={i} className="flex items-start justify-between gap-2">
+                        <span style={{ fontSize: 12.5, color: 'var(--text-primary)' }} className="min-w-0 truncate">
+                          {l.name || l.title || l.description || `Позиция ${i + 1}`}
+                        </span>
+                        <span style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text-secondary)', flexShrink: 0 }}>
+                          {l.sum != null ? formatMoney(Number(l.sum)) : (l.amount != null ? formatMoney(Number(l.amount)) : '')}
+                        </span>
+                      </div>
+                    ))}
+                    {lines.length > 12 && (
+                      <span style={{ fontSize: 11.5, color: 'var(--text-tertiary)' }}>и ещё {lines.length - 12}…</span>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Файл счёта: превью на месте, без ухода в новую вкладку */}
+              {pay.has_file ? (
+                <button
+                  type="button"
+                  onClick={() => setPreviewOpen(true)}
+                  className="w-full flex items-center justify-between rounded-2xl px-4 py-3 spring-tap"
+                  style={{ background: 'var(--bg-elevated)', border: '0.5px solid var(--border-norse)' }}
+                >
+                  <span className="flex items-center gap-2" style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)' }}>
+                    <FileText size={17} style={{ color: 'var(--blue-fill)' }} />
+                    {pay.file_name || 'Открыть счёт'}
+                  </span>
+                  <span className="flex items-center gap-1" style={{ fontSize: 12.5, color: 'var(--blue-fill)', fontWeight: 600 }}>
+                    Просмотр <ChevronRight size={15} />
+                  </span>
+                </button>
+              ) : (
+                <div className="rounded-2xl px-4 py-3" style={{ background: 'var(--bg-elevated)', border: '0.5px solid var(--border-norse)' }}>
+                  <span style={{ fontSize: 13, color: 'var(--text-tertiary)' }}>Файл к счёту не приложен</span>
+                </div>
+              )}
+
+              {/* Срок оплаты: срочно или отложенно (как на десктопе) */}
+              <div className="rounded-2xl px-3.5 py-3" style={{ background: 'var(--bg-surface-alt)' }}>
+                <p style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--text-secondary)', marginBottom: 8 }}>Срок оплаты</p>
+                <div className="flex gap-2">
+                  {[['immediate', 'Сразу'], ['deferred', 'Отложенная']].map(([v, label]) => (
+                    <button
+                      key={v}
+                      type="button"
+                      onClick={() => setPayTiming(v)}
+                      className="spring-tap flex-1"
+                      style={{
+                        minHeight: 40, borderRadius: 12, fontSize: 13.5, fontWeight: 700,
+                        background: payTiming === v ? 'var(--blue-fill)' : 'var(--bg-elevated)',
+                        color: payTiming === v ? 'var(--text-on-accent)' : 'var(--text-secondary)',
+                        border: '0.5px solid var(--border-norse)',
+                      }}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Действия */}
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => onDecide(pay.id, 'approve')}
+                  disabled={busy}
+                  className="spring-tap flex-1"
+                  style={{
+                    minHeight: 48, borderRadius: 14, fontSize: 14.5, fontWeight: 800,
+                    background: 'var(--ok)', color: 'var(--on-ok)', border: 'none',
+                    opacity: busy ? 0.6 : 1,
+                  }}
+                >
+                  Согласовать
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onDecide(pay.id, 'reject')}
+                  disabled={busy}
+                  className="spring-tap flex-1"
+                  style={{
+                    minHeight: 48, borderRadius: 14, fontSize: 14.5, fontWeight: 700,
+                    background: 'var(--bg-elevated)', color: 'var(--text-secondary)',
+                    border: '0.5px solid var(--border-norse)', opacity: busy ? 0.6 : 1,
+                  }}
+                >
+                  Вернуть
+                </button>
+              </div>
+            </>
+          )}
+        </div>
+      </BottomSheet>
+
+      {/* Вьюер файла поверх деталки */}
+      <DocumentPreviewSheet
+        open={previewOpen}
+        onClose={() => setPreviewOpen(false)}
+        title={pay.file_name || `Счёт #${pay.id}`}
+        subtitle={pay.supplier_name}
+        fileName={pay.file_name || `invoice-${pay.id}.pdf`}
+        fileUrl={fileUrl}
+        previewUrl={previewUrl}
+      />
+    </>
   );
 }
 

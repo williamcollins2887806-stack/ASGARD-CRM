@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useAuthStore } from '@/stores/authStore';
 import { toast } from 'sonner';
+import { PageShell } from '@/components/layout/PageShell';
 import { formatMoney as fmtMoney } from '@/lib/utils';
 
 const STATUS_COLORS = {
@@ -166,10 +167,9 @@ export default function ToCalcs() {
   );
 
   return (
-    <div className="p-3">
+    <PageShell title="Мои просчёты (ТО)">
       <div className="bg-zinc-900 rounded-xl p-3 mb-3">
-        <h2 className="text-lg font-bold">📊 Мои просчёты (ТО)</h2>
-        <p className="text-xs text-gray-400 mt-1">
+        <p className="text-xs text-gray-400">
           Тендеры, которые вы считаете сами. Согласует Рук. тендерного отдела.
         </p>
       </div>
@@ -177,6 +177,6 @@ export default function ToCalcs() {
       <Section title="Готовы к ТКП" icon="⚡" items={groups.tkp} />
       <Section title="Готово к отправке КП" icon="✉️" items={groups.send} />
       <Section title="Прочее" icon="📦" items={groups.other} />
-    </div>
+    </PageShell>
   );
 }

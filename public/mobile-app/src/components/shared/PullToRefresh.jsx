@@ -1,31 +1,79 @@
 /**
  * PullToRefresh — кастомный PTR
- * Золотой Valknut-спиннер, threshold 60px, spring-back
+ * Золотой Valknut-спиннер, threshold 60px, spring-back.
+ *
+ * Важно (20.10.2026): компонент НЕ создаёт собственный скролл-контейнер.
+ * Раньше это был `overflow-y-auto` внутри `PageShell.main`, который тоже
+ * скроллится — двойной вложенный скролл ломал инерцию iOS и «дёргал» контент
+ * у нижнего тап-бара. Теперь жесты навешиваются на УЖЕ существующий скроллер
+ * (родительский), а этот компонент отвечает только за индикатор и смещение.
+ *
+ * Если родительского скролл-контейнера нет — компонент создаёт свой
+ * (обратная совместимость для экранов без PageShell).
  */
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 
 const THRESHOLD = 60;
 
-export function PullToRefresh({ onRefresh, children }) {
+export function PullToRefresh({ onRefresh, children, /** опционально: свой скроллер */ scrollRef }) {
   const [pulling, setPulling] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [pullDistance, setPullDistance] = useState(0);
   const startY = useRef(0);
   const containerRef = useRef(null);
+  /** Скроллер, к которому реально привязаны жесты. */
+  const scrollerRef = useRef(null);
+
+  const [ownScroller, setOwnScroller] = useState(false);
+
+  // Определяем скроллер: переданный, ближайший родительский (только реальные
+  // скролл-контейнеры проекта с классом scroll-container) или собственный.
+  // Ищем именно `.scroll-container`, чтобы не привязаться к случайному
+  // overflow-родителю с нулевым нижним отступом.
+  useEffect(() => {
+    const own = containerRef.current;
+    if (!own) return;
+    if (scrollRef?.current) { scrollerRef.current = scrollRef.current; setOwnScroller(false); return; }
+    const parentScroller = own.closest('.scroll-container');
+    if (parentScroller && parentScroller !== own) {
+      scrollerRef.current = parentScroller;
+      setOwnScroller(false);
+      return;
+    }
+    scrollerRef.current = own; // своего скроллера нет — работаем как раньше
+    setOwnScroller(true);
+  }, [scrollRef]);
 
   const handleTouchStart = useCallback((e) => {
-    if (containerRef.current?.scrollTop === 0) {
+    const sc = scrollerRef.current;
+    if ((sc ? sc.scrollTop : 0) <= 0) {
       startY.current = e.touches[0].clientY;
       setPulling(true);
     }
   }, []);
 
+  /**
+   * Тяга обрабатывается через requestAnimationFrame: раньше setPullDistance
+   * вызывался на КАЖДЫЙ touchmove, и React перерисовывал всё дерево страницы
+   * десятки раз в секунду — на списках это давало заметные «дёргания».
+   * Теперь состояние обновляется не чаще одного раза на кадр.
+   */
+  const rafRef = useRef(0);
+  const pendingDy = useRef(0);
+
   const handleTouchMove = useCallback((e) => {
     if (!pulling || refreshing) return;
     const dy = Math.max(0, e.touches[0].clientY - startY.current);
-    // Dampened pull (logarithmic feel)
-    setPullDistance(Math.min(dy * 0.5, 100));
+    pendingDy.current = dy;
+    if (rafRef.current) return; // кадр уже запланирован — не плодим обновления
+    rafRef.current = requestAnimationFrame(() => {
+      rafRef.current = 0;
+      setPullDistance(Math.min(pendingDy.current * 0.5, 100));
+    });
   }, [pulling, refreshing]);
+
+  /** Снимаем запланированный кадр при размонтировании. */
+  useEffect(() => () => { if (rafRef.current) cancelAnimationFrame(rafRef.current); }, []);
 
   const handleTouchEnd = useCallback(async () => {
     if (!pulling) return;
@@ -46,10 +94,11 @@ export function PullToRefresh({ onRefresh, children }) {
   return (
     <div
       ref={containerRef}
-      className="relative overflow-y-auto scroll-container h-full"
+      className={ownScroller ? 'relative overflow-y-auto scroll-container h-full' : 'relative'}
       onTouchStart={handleTouchStart}
       onTouchMove={handleTouchMove}
       onTouchEnd={handleTouchEnd}
+      style={{ WebkitOverflowScrolling: 'touch' }}
     >
       {/* Pull indicator */}
       <div

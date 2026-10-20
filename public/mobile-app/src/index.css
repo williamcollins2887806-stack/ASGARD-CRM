@@ -387,6 +387,36 @@ body {
   overscroll-behavior: none;
 }
 
+/* ─── PWA standalone (иконка с домашнего экрана) ─────────────────────────────
+   В standalone нет адресной строки Safari, поэтому:
+     • отключаем «пружину» документа (иначе страница оттягивается и оголяет фон);
+     • запрещаем случайный зум двойным тапом.
+   В обычном браузере (не standalone) выделение текста НЕ запрещаем: иначе
+   нельзя скопировать номер телефона, сумму или сообщение. */
+.is-standalone {
+  overscroll-behavior: none;
+  touch-action: manipulation;
+}
+.is-standalone .scroll-container {
+  overscroll-behavior-y: contain;
+}
+.is-standalone body {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* Документ не «пружинит» при протяжке — общее правило для обеих сред. */
+html, body {
+  position: fixed;
+  width: 100%;
+  overscroll-behavior: none;
+}
+/* Поля ввода и явно помеченный контент — всегда выделяемые. */
+input, textarea, [contenteditable], .selectable {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
 #root {
   isolation: isolate;
 }

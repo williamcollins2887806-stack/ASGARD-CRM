@@ -3,6 +3,7 @@ import { useAuthStore } from '@/stores/authStore';
 import { useThemeStore } from '@/stores/themeStore';
 import { useHaptic } from '@/hooks/useHaptic';
 import { hasPermission } from '@/config/rbac';
+import { isHiddenRoute } from '@/config/hiddenRoutes';
 import { PageShell } from '@/components/layout/PageShell';
 import {
   // Продажи
@@ -309,6 +310,8 @@ export default function More() {
       {/* ── Группы меню ───────────────────────────────────────────────── */}
       {GROUPS.map((group, gi) => {
         const visible = group.items.filter((item) => {
+          // Раздел скрыт на десктопе (20.10.2026) — не показываем и на мобильном.
+          if (isHiddenRoute(item.path)) return false;
           if (!hasPermission(role, item.section)) return false;
           // Доп. role-фильтр: пункт виден только указанным ролям
           if (Array.isArray(item.roles) && item.roles.length && !item.roles.includes(role)) return false;

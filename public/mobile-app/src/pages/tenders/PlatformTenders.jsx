@@ -1,6 +1,4 @@
 import { useState, useEffect, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { useAuthStore } from '@/stores/authStore';
 import { useHaptic } from '@/hooks/useHaptic';
 import {
   loadRegistry,
@@ -12,19 +10,19 @@ import { PageShell } from '@/components/layout/PageShell';
 import { EmptyState } from '@/components/shared/EmptyState';
 import { SkeletonList } from '@/components/shared/SkeletonKit';
 import { PullToRefresh } from '@/components/shared/PullToRefresh';
-import { Settings, ChevronRight } from 'lucide-react';
+import { Settings } from 'lucide-react';
 import { formatDate, formatMoney } from '@/lib/utils';
 
+/* 20.10.2026: экран настроек TenderGuru скрыт на мобильном (на десктопе —
+   MAINTENANCE_PAGES). Все входы удалены, чтобы не уводить на скрытый раздел.
+   Раз флаг и роль-проверка больше не нужны — удалены вместе с обработчиком. */
+
 export default function PlatformTenders() {
-  const user = useAuthStore((s) => s.user);
   const haptic = useHaptic();
-  const navigate = useNavigate();
   const [items, setItems] = useState([]);
   const [tg, setTg] = useState({});
   const [loading, setLoading] = useState(true);
   const [acting, setActing] = useState(null);
-
-  const canSettings = ['ADMIN', 'TO', 'HEAD_TO'].includes(user?.role);
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -77,16 +75,7 @@ export default function PlatformTenders() {
   return (
     <PageShell
       title="С площадок"
-      headerRight={canSettings ? (
-        <button
-          type="button"
-          onClick={() => navigate('/tenders/tenderguru-settings')}
-          className="flex items-center justify-center spring-tap"
-          style={{ width: 44, height: 44, color: 'var(--text-tertiary)' }}
-        >
-          <Settings size={20} />
-        </button>
-      ) : null}
+      headerRight={null}
     >
       <PullToRefresh onRefresh={refresh}>
         <p className="text-[12px] c-secondary mb-3 px-0.5">
@@ -149,17 +138,6 @@ export default function PlatformTenders() {
           </div>
         )}
 
-        {canSettings && (
-          <button
-            type="button"
-            onClick={() => navigate('/tenders/tenderguru-settings')}
-            className="w-full flex items-center justify-between rounded-2xl px-4 py-3 spring-tap mb-4"
-            style={{ background: 'var(--bg-elevated)', border: '0.5px solid var(--border-norse)' }}
-          >
-            <span className="text-[14px] font-semibold c-primary">⚙ Настройки TenderGuru</span>
-            <ChevronRight size={16} className="c-tertiary" />
-          </button>
-        )}
       </PullToRefresh>
     </PageShell>
   );

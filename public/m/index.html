@@ -4,32 +4,65 @@
   <meta charset="UTF-8" />
   <!-- D-267: interactive-widget=resizes-content — чтобы на Android клавиатура сжимала
        layout viewport, и нижние кнопки модалок не оставались под клавиатурой.
-       На iOS не поддерживается — там работаем через visualViewport. -->
+       На iOS не поддерживается — там работаем через visualViewport.
+
+       viewport-fit=cover обязателен: без него env(safe-area-inset-*) = 0 и
+       нижний тап-бар/шапки залезают под чёлку и домашний индикатор. -->
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content, maximum-scale=1, user-scalable=no" />
   <meta name="theme-color" content="#0a0a0c" />
+  <!-- Светлая тема: браузерная полоса и фон сплеша должны совпадать с темой приложения.
+       Значение обновляет themeStore при переключении темы. -->
+  <meta name="theme-color" media="(prefers-color-scheme: light)" content="#F2F2F7" />
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
+  <!-- black-translucent отдаёт весь экран приложению: контент уходит под статус-бар,
+       и мы компенсируем это через --safe-top. -->
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="ASGARD" />
-  <link rel="manifest" href="manifest.json" />
-  <link rel="icon" type="image/svg+xml" href="favicon.svg" />
-  <link rel="apple-touch-icon" href="apple-touch-icon.png" />
-  <link rel="apple-touch-icon" sizes="192x192" href="icon-192.png" />
+  <meta name="format-detection" content="telephone=no" />
+  <!-- D-310: абсолютные пути — см. комментарий в public/m/index.html.
+       Относительный href ломался на вложенных полевых роутах (/m/field/home). -->
+  <link rel="manifest" href="/m/manifest.json" />
+  <link rel="icon" type="image/svg+xml" href="/m/favicon.svg" />
+  <link rel="apple-touch-icon" href="/m/apple-touch-icon.png" />
+  <link rel="apple-touch-icon" sizes="192x192" href="/m/icon-192.png" />
+  <!-- iOS splash: набор стартовых изображений под распространённые экраны.
+       media-запросы повторяют логику Apple: устройство × плотность × ориентация.
+       Тёмный фон #0a0a0c — стартовый экран не «мигает» белым. -->
+  <link rel="apple-touch-startup-image" href="/assets/img/splash/splash-1290x2796.png"
+        media="(device-width: 430px) and (device-height: 932px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)" />
+  <link rel="apple-touch-startup-image" href="/assets/img/splash/splash-1179x2556.png"
+        media="(device-width: 393px) and (device-height: 852px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)" />
+  <link rel="apple-touch-startup-image" href="/assets/img/splash/splash-1284x2778.png"
+        media="(device-width: 428px) and (device-height: 926px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)" />
+  <link rel="apple-touch-startup-image" href="/assets/img/splash/splash-1170x2532.png"
+        media="(device-width: 390px) and (device-height: 844px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)" />
+  <link rel="apple-touch-startup-image" href="/assets/img/splash/splash-1125x2436.png"
+        media="(device-width: 375px) and (device-height: 812px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)" />
+  <link rel="apple-touch-startup-image" href="/assets/img/splash/splash-1242x2688.png"
+        media="(device-width: 414px) and (device-height: 896px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)" />
+  <link rel="apple-touch-startup-image" href="/assets/img/splash/splash-828x1792.png"
+        media="(device-width: 414px) and (device-height: 896px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)" />
+  <link rel="apple-touch-startup-image" href="/assets/img/splash/splash-750x1334.png"
+        media="(device-width: 375px) and (device-height: 667px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)" />
+  <link rel="apple-touch-startup-image" href="/assets/img/splash/splash-2048x2732.png"
+        media="(device-width: 1024px) and (device-height: 1366px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)" />
   <!-- Cinzel удалён: старый рунический шрифт больше не используется (редизайн 2026),
        а внешний <link> к Google Fonts блокировал рендер на ~12с в офлайне/сети РФ. -->
   <title>ASGARD CRM</title>
-  <script type="module" crossorigin src="/m/assets/index-BONZmh6Y.js"></script>
+  <script type="module" crossorigin src="/m/assets/index-CqCBO493.js"></script>
   <link rel="modulepreload" crossorigin href="/m/assets/rolldown-runtime-COnpUsM8.js">
-  <link rel="modulepreload" crossorigin href="/m/assets/vendor-icons-CbJ7Okxa.js">
-  <link rel="modulepreload" crossorigin href="/m/assets/vendor-router-ijmwzzZT.js">
-  <link rel="modulepreload" crossorigin href="/m/assets/vendor-misc-ReOTgvAi.js">
-  <link rel="modulepreload" crossorigin href="/m/assets/vendor-react-XUTaDBaU.js">
-  <link rel="modulepreload" crossorigin href="/m/assets/vendor-state-Bp9i_5LH.js">
+  <link rel="modulepreload" crossorigin href="/m/assets/vendor-icons-BCLOZt1L.js">
+  <link rel="modulepreload" crossorigin href="/m/assets/vendor-router-CLwnxQPn.js">
+  <link rel="modulepreload" crossorigin href="/m/assets/vendor-misc-Dsg7G2OG.js">
+  <link rel="modulepreload" crossorigin href="/m/assets/vendor-react-BhYjBMNy.js">
+  <link rel="modulepreload" crossorigin href="/m/assets/vendor-state-MLU-SwCV.js">
   <link rel="modulepreload" crossorigin href="/m/assets/reportClientError-D5CPcrE2.js">
-  <link rel="modulepreload" crossorigin href="/m/assets/client-DqHY5LxD.js">
-  <link rel="modulepreload" crossorigin href="/m/assets/authStore-Bnabj-3-.js">
-  <link rel="modulepreload" crossorigin href="/m/assets/fieldAuthStore-B2gTv_Mm.js">
-  <link rel="stylesheet" crossorigin href="/m/assets/index-B1UMtHqW.css">
+  <link rel="modulepreload" crossorigin href="/m/assets/client-DPQhmkPp.js">
+  <link rel="modulepreload" crossorigin href="/m/assets/useHaptic-q9rgBTGB.js">
+  <link rel="modulepreload" crossorigin href="/m/assets/authStore-CNj-CSfg.js">
+  <link rel="modulepreload" crossorigin href="/m/assets/fieldAuthStore-D2xYJcYc.js">
+  <link rel="stylesheet" crossorigin href="/m/assets/index-wgqNBCGx.css">
 </head>
 <body>
   <div id="root"></div>
@@ -40,6 +73,6 @@
   <!-- Единый формат телефона по всей СРМ (в т.ч. мобильная): +7 (916) 061-48-09.
        Файл копируется из public/assets/js/phone_mask.js шагом prebuild
        (tools/sync-phone-mask.mjs) — единый источник истины. -->
-  <script src="/m/phone_mask.js"></script>
+  <script src="/m/phone_mask.js"></script>
 </body>
 </html>

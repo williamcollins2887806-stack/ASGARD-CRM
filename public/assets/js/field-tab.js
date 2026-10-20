@@ -2757,6 +2757,9 @@ window.AsgardFieldTab = (function () {
       // 25.06.2026: чужие чекины — рендерим как «занят» с tooltip, клик блокируем
       const foreignMap = {};
       (emp.foreign_days || []).forEach(d => { foreignMap[String(d.date).slice(0,10)] = d; });
+      // D-295: отметки офиса (склад/МО/дорога) без привязки к этой работе — только иконка.
+      const infoMap = {};
+      (emp.info_days || []).forEach(d => { infoMap[String(d.date).slice(0,10)] = d; });
 
       dates.forEach(d => {
         const td = document.createElement('td');
@@ -2770,6 +2773,7 @@ window.AsgardFieldTab = (function () {
         }
         const day = dayMap[ymd] || dayMap[d];
         const foreign = !day ? (foreignMap[ymd] || foreignMap[d]) : null;
+        const info = !day ? (infoMap[ymd] || infoMap[d]) : null;
         const isPlanArrive = !!(planFrom && ymd === planFrom);
         const isPlanSpan = !!(planFrom && planTo && ymd > planFrom && ymd <= planTo && !day);
 
@@ -2842,7 +2846,8 @@ window.AsgardFieldTab = (function () {
             }
           }
         } else if (foreign) {
-          // Чужой чекин — замок + tooltip с РП/работой, клик не открывает попап
+          // Чужой чекин — замок + tooltip с РП/работой, клик не открывает попап.
+          // Приоритет ВЫШЕ info: занятость на другой работе важнее иконки офиса.
           td.textContent = '🔒';
           td.style.color = 'var(--t3)';
           td.style.background = 'rgba(245,158,11,0.10)';
@@ -2869,6 +2874,29 @@ window.AsgardFieldTab = (function () {
           td.addEventListener('click', () => {
             if (window.toast) window.toast('В плане', 'Смены появятся после назначения в бригаду.', 'warn');
           });
+        } else if (info) {
+          // D-295: отметка офиса (склад / МО / дорога / корабль), поставленная БЕЗ привязки
+          // к этой работе. Показываем только иконку — без баллов и без денег:
+          // они уже учтены в своей области, второй раз их складывать нельзя.
+          const si = _shiftIcon(info.shift);
+          td.textContent = si.icon;
+          td.style.color = 'var(--t2)';
+          td.style.background = 'color-mix(in srgb, var(--gold) 7%, transparent)';
+          td.style.border = '1px dashed color-mix(in srgb, var(--gold) 45%, transparent)';
+          td.style.borderRadius = '4px';
+          td.style.opacity = '0.85';
+          td.style.cursor = editMode ? 'pointer' : 'help';
+          const who = info.entered_by_fio ? (' · внёс ' + info.entered_by_fio) : '';
+          const where = info.work_title ? (' · объект «' + info.work_title + '»') : ' · вне объекта';
+          td.title = si.label + where + who + '. Отметка офиса: баллы в этом табеле не начисляются.'
+            + (editMode ? ' · клик — поставить свою смену' : '');
+          if (editMode) {
+            td.addEventListener('click', () => addCheckinCell(td, emp, d, work, pv));
+          } else {
+            td.addEventListener('click', () => {
+              if (window.toast) window.toast(si.label, td.title, 'info');
+            });
+          }
         } else if (editMode) {
           td.textContent = '+';
           td.style.cursor = 'pointer';

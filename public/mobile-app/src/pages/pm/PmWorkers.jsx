@@ -101,7 +101,7 @@ export default function PmWorkers() {
   };
 
   return (
-    <div style={{ minHeight: '100vh', background: C.bg, paddingBottom: 90 }}>
+    <div className="scroll-container" style={{ minHeight: '100vh', maxHeight: '100dvh', overflowY: 'auto', background: C.bg, paddingBottom: 'calc(var(--tabbar-total) + 16px)' }}>
       {/* Header */}
       <div style={{ padding: '48px 16px 16px', background: 'linear-gradient(180deg, #0d1a2e 0%, transparent 100%)' }}>
         <button onClick={() => navigate('/pm')}

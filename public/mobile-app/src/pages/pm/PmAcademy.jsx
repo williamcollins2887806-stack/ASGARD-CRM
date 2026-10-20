@@ -143,7 +143,7 @@ export default function PmAcademy() {
     const mimirMandatory = !!lesson.lesson?.is_mandatory;
 
     return (
-      <div style={{ minHeight: '100vh', background: C.bg, paddingBottom: 90 }}>
+      <div className="scroll-container" style={{ minHeight: '100vh', maxHeight: '100dvh', overflowY: 'auto', background: C.bg, paddingBottom: 'calc(var(--tabbar-total) + 16px)' }}>
         <div style={{ padding: '48px 16px 16px' }}>
           <button onClick={() => { setSelected(null); setLesson(null); }}
             style={{ background: 'none', border: 'none', color: C.muted, cursor: 'pointer', fontSize: 14, marginBottom: 10, padding: 0 }}>
@@ -350,7 +350,7 @@ export default function PmAcademy() {
 
   // ═══ Главный экран академии ═══
   return (
-    <div style={{ minHeight: '100vh', background: C.bg, paddingBottom: 90 }}>
+    <div className="scroll-container" style={{ minHeight: '100vh', maxHeight: '100dvh', overflowY: 'auto', background: C.bg, paddingBottom: 'calc(var(--tabbar-total) + 16px)' }}>
       <div style={{ padding: '48px 16px 16px', background: 'linear-gradient(180deg, #1a0d2e 0%, transparent 100%)' }}>
         <button onClick={() => navigate('/pm')}
           style={{ background: 'none', border: 'none', color: C.muted, cursor: 'pointer', fontSize: 14, marginBottom: 10, padding: 0 }}>

@@ -230,6 +230,11 @@ export default function MimirAutoEstimate() {
     return () => {
       cancelled = true;
       if (abortRef.current) abortRef.current.abort();
+      // Снимаем отложенную цепочку шагов прогресса: без этого setTimeout
+      // продолжал жить после ухода с экрана и дёргал setState по размонтированному
+      // компоненту (утечка таймера + предупреждения React).
+      if (staggerTimer.current) { clearTimeout(staggerTimer.current); staggerTimer.current = null; }
+      staggerQueue.current = [];
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workId]);

@@ -2874,9 +2874,32 @@ AsgardRouter.add("/assembly", () => {
   // SSE — Server-Sent Events для real-time уведомлений
   // ═══════════════════════════════════════════════════════════════
   let _sseSource = null;
+  // D-309: второй, независимый цикл переподключения (huginn_sse.js — первый).
+  // На протухшем токене EventSource уходит в CLOSED, здесь его поднимали
+  // каждые 10 с без ограничения: 20.10.2026 один IP держал поток отказов
+  // 401 до 240 в минуту. Теперь 401/403 = окончательный стоп.
+  let _sseAuthDead = false;
+  let _sseRetry = 0;
+
+  function stopGlobalSSE(reason) {
+    _sseAuthDead = true;
+    try { if (_sseSource) { _sseSource.close(); _sseSource = null; } } catch (_) {}
+    try { if (window._asgardSSE) window._asgardSSE = null; } catch (_) {}
+    console.warn('[SSE] поток остановлен: ' + (reason || 'auth'));
+    try { localStorage.removeItem('asgard_token'); } catch (_) {}
+    try {
+      if (window.AsgardAuth && typeof window.AsgardAuth.logout === 'function') window.AsgardAuth.logout();
+    } catch (_) {}
+  }
+
+  function sseRetryDelay() {
+    // 10 с → 20 → 40 → 80 → 300 (потолок)
+    return Math.min(300000, 10000 * Math.pow(2, Math.max(0, _sseRetry - 1)));
+  }
 
   function initGlobalSSE() {
     try {
+      if (_sseAuthDead) return;
       const token = localStorage.getItem('asgard_token');
       if (!token || _sseSource) return;
 
@@ -3018,13 +3041,29 @@ AsgardRouter.add("/assembly", () => {
       });
 
       _sseSource.addEventListener('error', () => {
-        if (_sseSource) { _sseSource.close(); _sseSource = null; }
-        setTimeout(initGlobalSSE, 10000);
+        // D-309: отличаем «токен мёртв» от «сеть дёрнулась». Сервер отдаёт
+        // 401 → EventSource закрывается навсегда; проверяем это дешёвым
+        // запросом и, если сессия мертва, больше не поднимаем поток.
+        if (_sseAuthDead) return;
+        try { if (_sseSource) { _sseSource.close(); _sseSource = null; } } catch (_) {}
+        try { if (window._asgardSSE) window._asgardSSE = null; } catch (_) {}
+        _sseRetry += 1;
+        const token = localStorage.getItem('asgard_token');
+        if (!token) { stopGlobalSSE('нет токена'); return; }
+        fetch('/api/version', { headers: { Authorization: 'Bearer ' + token }, cache: 'no-store' })
+          .then((r) => {
+            if (r.status === 401 || r.status === 403) { stopGlobalSSE('HTTP ' + r.status); return; }
+            setTimeout(initGlobalSSE, sseRetryDelay());
+          })
+          .catch(() => setTimeout(initGlobalSSE, sseRetryDelay()));
       });
     } catch(e) {
       console.warn('[SSE] Global init error:', e);
     }
   }
+
+  // D-309: даём auth.js точку остановки потока при logout.
+  window._sseSourceStop = () => { stopGlobalSSE('logout'); };
 
   // v8.0.0 — Push notification deep linking
   if ('serviceWorker' in navigator) {

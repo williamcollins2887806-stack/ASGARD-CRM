@@ -889,10 +889,16 @@ module.exports = async function registerHuginnExt(fastify, { db, uploadDir, getC
       return reply.code(403).send({ error: 'Нет доступа' });
     }
     const isDone = (request.body || {}).is_done !== false;
+    // D-308: явные касты обязательны. pg шлёт параметры без OID, поэтому в
+    // `CASE WHEN $1 THEN $2 ELSE NULL END` тип $2 выводится как text, а
+    // message_checklist_items.done_by — integer. Postgres отвечал
+    // 42804 «column "done_by" is of type integer but expression is of type text»,
+    // 47 раз 19.10.2026, и все галочки чек-листа Huginn падали с 500.
     const { rows } = await db.query(`
       UPDATE message_checklist_items
-         SET is_done = $1, done_by = CASE WHEN $1 THEN $2 ELSE NULL END,
-             done_at = CASE WHEN $1 THEN NOW() ELSE NULL END
+         SET is_done = $1::boolean,
+             done_by = CASE WHEN $1::boolean THEN $2::int ELSE NULL END,
+             done_at = CASE WHEN $1::boolean THEN NOW() ELSE NULL END
        WHERE id = $3
       RETURNING *
     `, [isDone, request.user.id, itemId]);

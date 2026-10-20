@@ -1,7 +1,7 @@
-import { useEffect, useCallback, useRef, lazy, Suspense } from 'react';
+import { useEffect, useCallback, useRef, lazy, Suspense, useState } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '@/stores/authStore';
-import { useThemeStore } from '@/stores/themeStore';
+import { useThemeStore, applyStandaloneClass } from '@/stores/themeStore';
 import { ProtectedRoute } from '@/components/layout/ProtectedRoute';
 import { TabBar } from '@/components/layout/TabBar';
 import { useSSE } from '@/hooks/useSSE';
@@ -309,8 +309,24 @@ function AppLayout() {
     location.pathname.startsWith('/pm')
   );
 
+  // Запущено ли как установленное PWA: от этого зависят отступы под чёлку/индикатор
+  // и нативные жесты. Класс вешаем на <html> (нужно для CSS `.is-standalone body`),
+  // а состояние дублируем в React — для возможной разметки.
+  const [standalone, setStandalone] = useState(() => applyStandaloneClass());
+  useEffect(() => {
+    if (typeof window.matchMedia !== 'function') return undefined;
+    const mq = window.matchMedia('(display-mode: standalone)');
+    const onChange = () => setStandalone(applyStandaloneClass());
+    mq.addEventListener?.('change', onChange);
+    window.addEventListener('appinstalled', onChange);
+    return () => {
+      mq.removeEventListener?.('change', onChange);
+      window.removeEventListener('appinstalled', onChange);
+    };
+  }, []);
+
   return (
-    <div className="h-full relative" style={{ backgroundColor: 'var(--bg-primary)' }}>
+    <div className={`h-full relative${standalone ? ' is-standalone' : ''}`} style={{ backgroundColor: 'var(--bg-primary)' }}>
       {showPresenceGate && <PresenceGateMobile />}
       {/* Баннер «выплата получена» — только рабочим/полевым, не директору */}
       {!isDirector && <PayoutStatementBanner />}

@@ -212,3 +212,7 @@ _draco_test/
 tmp-*.sql
 tools/_prod_audit/
 tools/_prod_blocks_backup/
+
+# Локальная диагностика: выгрузки писем, отладочные скрипты, скриншоты (не исходники).
+_audit/
+

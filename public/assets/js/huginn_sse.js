@@ -57,6 +57,52 @@
     // critical, but skewed reconnect timing).
   }
 
+  // ── D-309: смерть токена не должна превращаться в вечный цикл ─────────────
+  // Симптом 16.10.2026: с одного офисного IP ушло 52 391 ответ 401 за сутки
+  // (35 014 /api/chat-groups/events + 17 172 /api/sse/stream). Токен протух,
+  // а клиент каждые 800 мс переоткрывал поток: EventSource на 401 уходит в
+  // CLOSED, `scheduleReconnect()` поднимает его заново, `catchUp()` на 401
+  // делал только `noteFail()`. Токен из localStorage никто не удалял.
+  // Лечение: 401 = окончательный отказ. Гасим поток, чистим токен, зовём
+  // logout один раз; дальше — экспоненциальный backoff до 60 с.
+  let authDead = false;
+  let authRetryStreak = 0;
+
+  function backoffMs() {
+    // 800 мс → 1.6 → 3.2 → 6.4 → 12.8 → 25.6 → 60 (потолок)
+    const base = 800 * Math.pow(2, Math.max(0, authRetryStreak - 1));
+    return Math.min(60000, base);
+  }
+
+  function onAuthDead(reason) {
+    if (authDead) return;
+    authDead = true;
+    paused = true;
+    try { localStorage.removeItem('asgard_token'); } catch (_) {}
+    try { localStorage.removeItem('huginn_last_event_id'); } catch (_) {}
+    closeSource();
+    if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+    if (pingTimer) { clearInterval(pingTimer); pingTimer = null; }
+    if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
+    console.warn('[huginn_sse] сессия истекла (' + (reason || '401') + ') — поток остановлен');
+    emit('auth:expired', { reason: reason || '401' });
+    // Один раз зовём штатный logout, чтобы UI ушёл на форму входа.
+    try {
+      if (global.AsgardAuth && typeof global.AsgardAuth.logout === 'function') {
+        global.AsgardAuth.logout();
+      }
+    } catch (_) {}
+  }
+
+  /** Единая точка: любой ответ 401/403 от API означает смерть сессии. */
+  function inspectAuth(res) {
+    if (res && (res.status === 401 || res.status === 403)) {
+      onAuthDead('HTTP ' + res.status);
+      return true;
+    }
+    return false;
+  }
+
   function noteOk() {
     failStreak = 0;
   }
@@ -71,9 +117,13 @@
         headers: { Authorization: 'Bearer ' + token }
       });
       if (!res.ok) {
+        // D-309: 401/403 — сессия мертва, ретраить бессмысленно.
+        if (inspectAuth(res)) return;
+        authRetryStreak += 1;
         noteFail();
         return;
       }
+      authRetryStreak = 0;
       noteOk();
       const body = await res.json();
       const events = body.events || [];
@@ -117,8 +167,10 @@
       'call:incoming', 'call:accepted', 'call:declined', 'call:ended'].forEach(wire);
 
     source.addEventListener('error', () => {
-      // Уведомляем подписчиков (шапка чата показывает «соединение…»).
+      // Соединение дёрнулось (сервер закрыт, сеть, истёк токен). Подписчиков
+      // уведомляем, но перед реконнектом отличаем «токен мёртв» от «сеть легла».
       emit('error', {});
+      if (authDead) return;
       // CLOSED (2) — recreate fast. CONNECTING (0) — the browser retries itself.
       if (source.readyState === 2) { if (es === source) es = null; scheduleReconnect(); return; }
       scheduleReconnect();
@@ -127,6 +179,7 @@
   }
 
   function ensureSource() {
+    if (authDead) return;
     if (shouldSkipNetwork()) return;
     if (global._asgardSSE) {
       bindSource(global._asgardSSE);
@@ -146,10 +199,13 @@
   }
 
   /** Fast socket reconnect (instant delivery) — a dropped EventSource must be
-   *  restored in well under a second, not after a 15–120s backoff. */
+   *  restored in well under a second, not after a 15–120s backoff.
+   *  D-309: после первой же ошибки включается экспоненциальный backoff, чтобы
+   *  смерть токена не давала 400k запросов в сутки. */
   let reconnectTimer = null;
   function scheduleReconnect() {
     if (reconnectTimer) return;
+    if (authDead) return;
     reconnectTimer = setTimeout(() => {
       reconnectTimer = null;
       if (shouldSkipNetwork()) return;
@@ -157,7 +213,13 @@
       try { if (global._asgardSSE && global._asgardSSE.readyState === 2) global._asgardSSE = null; } catch (_) {}
       ensureSource();
       catchUp();
-    }, 800);
+    }, weakNetwork() ? 800 : backoffMs());
+  }
+
+  /** Пока соединений не рвали — держим быстрый реконнект (800 мс). Если уже
+   *  были отказы — растём экспоненциально. */
+  function weakNetwork() {
+    return authRetryStreak === 0 && failStreak === 0;
   }
 
   /** Safety catch-up cadence: the socket is the primary channel, this only
@@ -205,6 +267,10 @@
 
   function start(opts) {
     if (opts && typeof opts.getToken === 'function') tokenFn = opts.getToken;
+    // Новая сессия — снимаем блокировку, поставленную прошлым 401.
+    authDead = false;
+    authRetryStreak = 0;
+    failStreak = 0;
     paused = false;
     ensureSource();
     schedulePoll();
@@ -214,10 +280,12 @@
       const token = tokenFn();
       if (!token) return;
       try {
-        await fetch('/api/chat-groups/presence/ping', {
+        const pr = await fetch('/api/chat-groups/presence/ping', {
           method: 'POST',
           headers: { Authorization: 'Bearer ' + token }
         });
+        // D-309: пинг — такая же точка обнаружения мёртвого токена.
+        inspectAuth(pr);
       } catch (_) { noteFail(); }
     }, 25000);
     document.addEventListener('visibilitychange', onVisibility);
@@ -238,5 +306,9 @@
     window.removeEventListener('offline', onOffline);
   }
 
-  global.HuginnSSE = { start, stop, on, catchUp, getLastId, ensureSource };
+  global.HuginnSSE = {
+    start, stop, on, catchUp, getLastId, ensureSource,
+    // для тестов D-309: сколько раз мы уже отступили и мертва ли сессия
+    _state: () => ({ authDead, authRetryStreak, failStreak }),
+  };
 })(typeof window !== 'undefined' ? window : global);

@@ -28,6 +28,8 @@ const FOCUSABLE = 'a[href],button:not([disabled]),input:not([disabled]),select:n
 export function BottomSheet({ open, onClose, children, title, footer, maxHeight = '85vh' }) {
   const sheetRef = useRef(null);
   const grabberRef = useRef(null);
+  /** Зона свайп-закрытия: вся шапка шторки (грабер + заголовок). */
+  const dragZoneRef = useRef(null);
   const uid = useId();
   const titleId = `bs-title-${uid}`;
   const lastFocusedRef = useRef(null);
@@ -108,13 +110,19 @@ export function BottomSheet({ open, onClose, children, title, footer, maxHeight 
 
   /* Свайп-закрытие: нативные слушатели с { passive: false }, иначе preventDefault
      в пассивном обработчике не работает (и браузер ругается в консоль).
-     Навешены ТОЛЬКО на грабер. */
+
+     20.10.2026: зона свайпа расширена с узкого грабера на ВСЮ шапку (грабер +
+     заголовок + кнопка закрытия). Раньше жест ловился только за полоску 36px,
+     и на телефоне закрыть шторку свайпом было почти невозможно.
+     Контент по-прежнему не перехватываем — там вертикальный скролл.
+     Начало жеста на кнопке «Закрыть» игнорируем, чтобы не мешать тапу. */
   useEffect(() => {
     if (!open) return undefined;
-    const g = grabberRef.current;
-    if (!g) return undefined;
+    const zone = dragZoneRef.current;
+    if (!zone) return undefined;
 
     const onStart = (e) => {
+      if (e.target.closest('button')) return; // не мешаем кнопкам в шапке
       sheetStartY.current = e.touches[0].clientY;
       sheetCurrentY.current = e.touches[0].clientY;
       sheetDragging.current = true;
@@ -141,15 +149,15 @@ export function BottomSheet({ open, onClose, children, title, footer, maxHeight 
       sheetCurrentY.current = 0;
     };
 
-    g.addEventListener('touchstart', onStart, { passive: true });
-    g.addEventListener('touchmove', onMove, { passive: false });
-    g.addEventListener('touchend', onEnd);
-    g.addEventListener('touchcancel', onEnd);
+    zone.addEventListener('touchstart', onStart, { passive: true });
+    zone.addEventListener('touchmove', onMove, { passive: false });
+    zone.addEventListener('touchend', onEnd);
+    zone.addEventListener('touchcancel', onEnd);
     return () => {
-      g.removeEventListener('touchstart', onStart);
-      g.removeEventListener('touchmove', onMove);
-      g.removeEventListener('touchend', onEnd);
-      g.removeEventListener('touchcancel', onEnd);
+      zone.removeEventListener('touchstart', onStart);
+      zone.removeEventListener('touchmove', onMove);
+      zone.removeEventListener('touchend', onEnd);
+      zone.removeEventListener('touchcancel', onEnd);
     };
   }, [open, close]);
 
@@ -185,17 +193,19 @@ export function BottomSheet({ open, onClose, children, title, footer, maxHeight 
           paddingBottom: 'calc(var(--safe-bottom) + 8px)',
         }}
       >
-        {/* Грабер — единственная зона свайп-закрытия */}
-        <div
-          ref={grabberRef}
-          className="flex justify-center pt-3 pb-1 shrink-0"
-          style={{ touchAction: 'none', cursor: 'grab' }}
-        >
+        {/* Зона свайп-закрытия: грабер + шапка с заголовком.
+            Жест по шапке закрывает шторку; тап по кнопкам не перехватывается. */}
+        <div ref={dragZoneRef} style={{ touchAction: 'pan-y' }}>
           <div
-            className="w-9 h-1 rounded-full"
-            style={{ backgroundColor: 'var(--text-tertiary)', opacity: 0.4 }}
-          />
-        </div>
+            ref={grabberRef}
+            className="flex justify-center pt-3 pb-1 shrink-0"
+            style={{ cursor: 'grab' }}
+          >
+            <div
+              className="w-9 h-1 rounded-full"
+              style={{ backgroundColor: 'var(--text-tertiary)', opacity: 0.4 }}
+            />
+          </div>
 
         {/* Шапка: заголовок + ГАРАНТИРОВАННАЯ кнопка закрытия (всегда видна:
             шапка прижата к верху шторки, клавиатура приходит снизу). */}
@@ -213,6 +223,7 @@ export function BottomSheet({ open, onClose, children, title, footer, maxHeight 
           >
             <X size={20} strokeWidth={2.5} />
           </button>
+        </div>
         </div>
 
         <div className="px-5 overflow-y-auto scroll-container flex-1 min-h-0">

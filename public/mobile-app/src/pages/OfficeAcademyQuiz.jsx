@@ -48,7 +48,7 @@ function ResultScreen({ result, questions, answers, lessonId, navigate }) {
   const attemptsLeft = retry.attempts_left;
 
   return (
-    <div style={{ minHeight: '100vh', background: C.bg, paddingBottom: 40 }}>
+    <div className="scroll-container" style={{ minHeight: '100vh', maxHeight: '100dvh', overflowY: 'auto', background: C.bg, paddingBottom: 'calc(var(--tabbar-total) + 16px)' }}>
       {/* Hero */}
       <div style={{
         padding: '52px 16px 24px', textAlign: 'center',
@@ -333,7 +333,7 @@ export default function OfficeAcademyQuiz() {
   const progressPct = questions.length > 0 ? ((currentQ + 1) / questions.length) * 100 : 0;
 
   return (
-    <div style={{ minHeight: '100vh', background: C.bg, paddingBottom: 100 }}>
+    <div className="scroll-container" style={{ minHeight: '100vh', maxHeight: '100dvh', overflowY: 'auto', background: C.bg, paddingBottom: 'calc(var(--tabbar-total) + 16px)' }}>
       {/* Header */}
       <div style={{
         padding: '52px 16px 16px',

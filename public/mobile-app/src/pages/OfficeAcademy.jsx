@@ -506,7 +506,7 @@ export default function OfficeAcademy() {
   const { total = 0, passed = 0, mandatory_pending = 0 } = data || {};
 
   return (
-    <div style={{ minHeight: '100vh', background: C.bg, paddingBottom: 80 }}>
+    <div className="scroll-container" style={{ minHeight: '100vh', maxHeight: '100dvh', overflowY: 'auto', background: C.bg, paddingBottom: 'calc(var(--tabbar-total) + 16px)' }}>
       {/* Header */}
       <div style={{
         padding: '52px 16px 16px',

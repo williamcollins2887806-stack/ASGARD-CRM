@@ -3520,7 +3520,12 @@ window.AsgardDocHubPage = (function () {
         try {
           await api('/' + id, { method: 'PUT', body: JSON.stringify(patch) });
           toast('Сохранено', 'Карточка обновлена', 'ok');
-          await refresh();
+          // D-297: обновляем только строку в таблице, а не всю страницу.
+          // Раньше здесь был refresh() + openDrawer(id) — таблица перерисовывалась
+          // целиком, прокрутка сбрасывалась наверх, и приходилось листать заново.
+          const keep = captureScroll();
+          await refreshRow(id);
+          restoreScroll(keep);
           openDrawer(id);
         } catch (e) { toast('Ошибка', e.message || 'PUT failed', 'err'); }
       };
@@ -4185,6 +4190,69 @@ window.AsgardDocHubPage = (function () {
     update();
   }
 
+  /**
+   * D-297: перерисовка таблицы не должна «прыгать» наверх.
+   * `host.innerHTML = ...` уничтожает DOM, поэтому браузер теряет позицию
+   * прокрутки — приходилось листать вниз заново после каждой правки даты.
+   * Снимаем scrollTop/scrollLeft у всех прокручиваемых контейнеров и
+   * возвращаем их после перерисовки.
+   */
+  function captureScroll() {
+    const snap = [];
+    const nodes = [document.scrollingElement, document.getElementById('dhTableHost')]
+      .concat([...document.querySelectorAll('.dh-tablewrap, .dh-scroll, .dh-main, .dh-page__body')]);
+    for (const el of nodes) {
+      if (!el || typeof el.scrollTop !== 'number') continue;
+      if (el.scrollTop || el.scrollLeft) snap.push([el, el.scrollTop, el.scrollLeft]);
+    }
+    return snap;
+  }
+
+  function restoreScroll(snap) {
+    if (!snap || !snap.length) return;
+    const apply = () => {
+      for (const [el, top, left] of snap) {
+        if (!el || !el.isConnected) continue;
+        try { el.scrollTop = top; el.scrollLeft = left; } catch (_) { /* элемент мог исчезнуть */ }
+      }
+    };
+    apply();
+    // Повтор в следующем кадре: контент досчитывает высоту после вставки.
+    requestAnimationFrame(apply);
+  }
+
+  /**
+   * D-297: точечное обновление одной строки таблицы после сохранения карточки.
+   * Полный refresh() пересоздаёт всю таблицу и сбрасывает прокрутку — здесь
+   * перерисовывается только строка с нужным id, позиция списка сохраняется.
+   */
+  async function refreshRow(id) {
+    const host = document.getElementById('dhTableHost');
+    if (!host) { await refresh(); return; }
+
+    // Подтягиваем актуальные данные строки, не трогая остальную таблицу.
+    let fresh = null;
+    try { fresh = await api('/' + id); } catch (_) { fresh = null; }
+    if (fresh) {
+      const item = (fresh.row || fresh.document || fresh);
+      const idx = state.rows.findIndex((r) => Number(r.id) === Number(id));
+      if (idx >= 0) state.rows[idx] = Object.assign({}, state.rows[idx], item);
+    }
+
+    // Находим существующий <tr> и заменяем его HTML.
+    const tr = host.querySelector(`tr[data-id="${id}"]`);
+    if (!tr) { await refresh(); return; }
+
+    const tpl = document.createElement('tbody');
+    tpl.innerHTML = renderTable();
+    const newTr = tpl.querySelector(`tr[data-id="${id}"]`);
+    if (!newTr) { await refresh(); return; }
+
+    tr.replaceWith(newTr);
+    bindQuarterLive();
+    bindHScroll();
+  }
+
   async function refresh() {
     if (state.view === 'guide' || state.view === 'wizard') return;
     const host = document.getElementById('dhTableHost');
@@ -4195,9 +4263,11 @@ window.AsgardDocHubPage = (function () {
       const maxPage = Math.max(1, Math.ceil(state.rows.length / state.pageSize));
       if (state.page > maxPage) state.page = maxPage;
     }
+    const keepScroll = captureScroll();
     host.innerHTML = renderTable();
     bindQuarterLive();
     bindHScroll();
+    restoreScroll(keepScroll);
     // PERF: переключение страницы/размера без полного refresh() — только перерисовка таблицы.
     if (window.AsgardPagination) {
       AsgardPagination.attachHandlers('dhPagination',

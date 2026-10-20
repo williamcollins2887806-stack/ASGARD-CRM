@@ -173,6 +173,34 @@
       }
     } else if (_isPdf(fileUrl, mime)) {
       inner.innerHTML = `<iframe src="${esc(fileUrl)}" title="${esc(title)}" style="width:min(960px,92vw);height:78vh;border:0;border-radius:8px;background:#fff"></iframe>`;
+      // D-291: браузер не рендерит PDF (мобильный WebView, отключённый плагин)
+      // или сервер отдал ошибку — iframe остаётся белым. Через 2.5 с проверяем,
+      // ожил ли документ; если нет — показываем причину и кнопку скачать,
+      // чтобы пользователь не думал, что сломалось непонятно что.
+      const frame = inner.querySelector('iframe');
+      if (frame) {
+        setTimeout(() => {
+          let rendered = false;
+          try {
+            // Кросс-доменного доступа нет, но пустой about:blank читается.
+            rendered = !!(frame.contentDocument && frame.contentDocument.body
+              && frame.contentDocument.body.childElementCount > 0);
+          } catch (_) {
+            rendered = true; // есть содержимое, но читать нельзя — считаем, что ок
+          }
+          if (!rendered && inner.querySelector('iframe')) {
+            inner.innerHTML = `<div style="text-align:center;color:#ccc;padding:32px;max-width:520px">
+              <div style="font-size:32px;margin-bottom:10px">📄</div>
+              <div style="font-weight:700;margin-bottom:6px">Браузер не показал PDF</div>
+              <div style="font-size:13px;opacity:.8;margin-bottom:14px">
+                Встроенный просмотрщик PDF недоступен. Файл цел — его можно скачать или открыть в новой вкладке.
+              </div>
+              <a class="btn primary" href="${esc(fileUrl)}" target="_blank" rel="noreferrer">Открыть в новой вкладке</a>
+              <a class="btn ghost" href="${esc(downloadUrl)}" download style="margin-left:8px">Скачать</a>
+            </div>`;
+          }
+        }, 2500);
+      }
     } else if (_isText(fileUrl, mime)) {
       const txt = await _loadText(fileUrl);
       inner.innerHTML = `<textarea readonly style="width:min(800px,92vw);height:60vh;padding:12px;font-family:monospace;font-size:13px">${esc(txt)}</textarea>`;
@@ -194,14 +222,14 @@
         const p = row.getAttribute('data-arc-path') || '';
         if (!p) return;
         const sep = archiveEntryUrl.includes('?') ? '&' : '?';
-        const base = `${archiveEntryUrl}${sep}path=${encodeURIComponent(p)}`;
+        const base = `${archiveEntryUrl}${sep}path=${encodeURIComponent(p)}&inline=1`;
         const mimeByExt = _mimeByExt(p);
         const wantsPdf = _isOffice(p, mimeByExt);
         open({
           title: p.split('/').pop() || p,
           fileUrl: wantsPdf ? base + '&format=pdf' : base,
           mime: wantsPdf ? 'application/pdf' : mimeByExt,
-          downloadUrl: base,
+          downloadUrl: base.replace('&inline=1', ''),
         });
       });
     }

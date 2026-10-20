@@ -47,13 +47,17 @@ const SYSTEM_PROMPT = `Ты — старший аналитик тендерно
     { "name": "Промывка теплообменника", "volume": 12, "unit": "м³" }
   ],
   "extracted_data": {
-    "customer_name": "...",
+    "customer_name": "полное название организации",
+    "customer_short_name": "сокращение или null",
     "customer_inn": "... или null",
     "contact_person": "... или null",
     "contact_phone": "... или null",
+    "contact_phone2": "... или null",
     "work_description": "Что именно нужно сделать — 2-4 предложения деловым языком, НЕ копия письма",
     "work_location": "... или null",
-    "work_deadline": "YYYY-MM-DD или null",
+    "work_deadline": "YYYY-MM-DD или null (крайний срок подачи КП)",
+    "work_start_plan": "YYYY-MM-DD или null (начало работ)",
+    "work_end_plan": "YYYY-MM-DD или null (окончание работ)",
     "estimated_sum": число или null
   }
 }
@@ -71,10 +75,41 @@ const SYSTEM_PROMPT = `Ты — старший аналитик тендерно
   напиши то, что понятно, не выдумывай.
 
 ПРАВИЛА scope_items (объёмы работ):
+- Ищи объём ВЕЗДЕ: в тексте письма, в ТЗ, в спецификации, в ведомости объёмов,
+  в чертежах (в т.ч. внутри ZIP-архива с КД), в карточке клиента, в паспорте оборудования.
+- Если в заявке названа МОДЕЛЬ оборудования (например «котёл Viessmann Vitomax 100HS
+  тип М33А 1,3 т/ч», «АВО АВГ-75», «КУ-101») и объёма нет — ПОСЧИТАЙ его по
+  характеристикам этой модели из блока «СПРАВКА ПО ОБОРУДОВАНИЮ»:
+  площадь поверхности нагрева (м²), объём воды (м³), количество секций.
+  В поле name допиши «(по паспорту модели)», чтобы РП видел, что это оценка.
+- ВАЖНО: создавай ОТДЕЛЬНУЮ позицию на КАЖДЫЙ измеримый объём. Для промывки котла
+  это минимум ДВЕ строки: «Химическая промывка поверхностей нагрева — N м²
+  (по паспорту)» и «Промывка/заполнение водяного объёма — N м³ (по паспорту)».
+  Не сворачивай всё в одну строку «компл.» — тогда РП не видит объём и не может
+  оценить трудозатраты.
+- «компл.» допустим только как ДОПОЛНИТЕЛЬНАЯ строка (например «Промывочная
+  установка — 1 компл.»), но не вместо измеримых м²/м³.
 - Перечисли КАЖДУЮ работу отдельной позицией со СВОЕЙ единицей измерения.
-  Чистка ёмкости — м³. Мойка поверхности — м². Сварка — стыков. Трубы — п.м.
-  Оборудование — шт/компл. Если объём не указан — volume: null.
-- Если в письме объём не назван — верни пустой массив [].
+  Чистка ёмкости — м³. Мойка/травление поверхности — м². Сварка — стыков.
+  Трубы — п.м. Оборудование — шт/компл. Люди — чел·смен. Котёл целиком — компл.
+- volume — ЧИСЛО (например 400), unit — единица («м²»).
+- volume: null ТОЛЬКО если объёма нет нигде и модель не опознана. Не ставь 0.
+- Если объём не назван и модель не опознана — верни пустой массив [].
+
+ПРАВИЛА СРОКОВ (extracted_data.work_deadline / work_start_plan / work_end_plan):
+- work_deadline — крайний срок подачи КП/оценки (формат YYYY-MM-DD).
+  Фразы «в срок до 20.10.2026», «предоставить до …» → это work_deadline.
+- work_start_plan / work_end_plan — сроки ВЫПОЛНЕНИЯ работ, если названы.
+- Даты бери из текста письма и вложений. Ничего не выдумывай: нет даты — null.
+
+ПРАВИЛА КОНТАКТОВ:
+- contact_phone — основной телефон заказчика. Если в письме/карточке их
+  несколько — бери городской рабочий, а мобильный укажи в contact_phone2.
+- contact_person — ФИО контактного лица (не форвардера-сотрудника).
+- customer_name — НАЗВАНИЕ ОРГАНИЗАЦИИ из карточки клиента/подписи/ИНН-блока.
+  НЕ ФИО отправителя. Если есть полная форма («Общество с ограниченной
+  ответственностью «ДМИТРОВСКИЙ БЕЛКОВЫЙ КОМБИНАТ»») — используй её, а
+  сокращение («ООО «ДБК»») укажи в customer_short_name.
 
 ПРАВИЛА ТИПОВ РАБОТ (поле ai_work_type определяется из scope_items):
 используй термины профиля: «Химическая промывка», «Гидромеханическая очистка»,
@@ -294,10 +329,15 @@ async function createPreTenderFromEmail(emailId, options = {}) {
 
 // ── Извлечение текста из вложений (PDF, DOCX) ───────────────────────
 
-const MAX_TEXT_PER_FILE = 10000;  // chars per file (increased for detailed analysis)
-const MAX_TEXT_TOTAL = 30000;     // total chars for all attachments
+const MAX_TEXT_PER_FILE = 10000;  // chars per file
+const MAX_TEXT_TOTAL = 45000;     // D-292: было 30000 — ТЗ с объёмами не влезало в контекст
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
 const MAX_IMAGE_SIZE = 5 * 1024 * 1024; // 5 MB for vision
+// D-292: ZIP с КД/ТЗ — 13 МБ и больше. Раньше такой архив МОЛЧА выкидывался
+// (size > MAX_FILE_SIZE → null), и AI не видел объёмов, которые лежат внутри.
+const MAX_ZIP_SIZE = 40 * 1024 * 1024;
+const MAX_ZIP_ENTRIES = 8;
+const MAX_ZIP_ENTRY_TEXT = 7000;
 
 // Типы файлов, поддерживающие мультимодальную отправку (изображения)
 const IMAGE_MIMES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
@@ -307,7 +347,12 @@ async function extractTextFromFile(filePath, mimeType) {
     const absPath = path.join(__dirname, '..', '..', filePath);
     if (!fs.existsSync(absPath)) return null;
     const stats = fs.statSync(absPath);
-    if (stats.size > MAX_FILE_SIZE) return null;
+    const isZip = mimeType === 'application/zip' || String(filePath || '').toLowerCase().endsWith('.zip');
+    // D-292: ZIP до 40 МБ (КД с чертежами), остальное — прежний лимит 10 МБ.
+    if (stats.size > (isZip ? MAX_ZIP_SIZE : MAX_FILE_SIZE)) {
+      console.warn(`[PreTender] skip attachment (too big): ${filePath} ${stats.size} b`);
+      return null;
+    }
 
     const buf = fs.readFileSync(absPath);
     const lc = (filePath || '').toLowerCase();
@@ -319,12 +364,26 @@ async function extractTextFromFile(filePath, mimeType) {
       return result.text ? result.text.slice(0, MAX_TEXT_PER_FILE) : null;
     }
 
-    // DOCX / DOC
+    // DOCX — mammoth (быстро, без внешних процессов).
     if (mimeType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
-        || lc.endsWith('.docx') || mimeType === 'application/msword' || lc.endsWith('.doc')) {
-      const mammoth = require('mammoth');
-      const result = await mammoth.extractRawText({ buffer: buf });
-      return result.value ? result.value.slice(0, MAX_TEXT_PER_FILE) : null;
+        || lc.endsWith('.docx')) {
+      try {
+        const mammoth = require('mammoth');
+        const result = await mammoth.extractRawText({ buffer: buf });
+        if (result && result.value) return result.value.slice(0, MAX_TEXT_PER_FILE);
+      } catch (e) {
+        // битый docx — пробуем LibreOffice ниже
+        console.warn('[PreTender] mammoth failed, fallback to libreoffice:', e.message);
+      }
+    }
+
+    // D-297: старый .doc / .rtf / .odt. mammoth умеет ТОЛЬКО .docx — на .doc он
+    // падал с «Could not find the body element: are you sure this is a docx file?»
+    // и карточка клиента (название, ИНН, телефон) не читалась вообще.
+    // Конвертируем через LibreOffice: --convert-to txt.
+    if (mimeType === 'application/msword' || lc.endsWith('.doc')
+        || lc.endsWith('.rtf') || lc.endsWith('.odt')) {
+      return extractTextViaLibreOffice(absPath, 'txt:Text');
     }
 
     // XLSX / XLS — извлекаем данные из таблиц
@@ -358,9 +417,128 @@ async function extractTextFromFile(filePath, mimeType) {
       }
     }
 
+    // D-292: ZIP (КД, ТЗ, чертежи). Раньше архив вообще не читался — AI получал
+    // только имя файла, поэтому объёмы из чертежей не попадали в карточку.
+    if (mimeType === 'application/zip' || lc.endsWith('.zip')) {
+      return await extractTextFromZip(buf);
+    }
+
     return null;
   } catch (err) {
     console.warn('[PreTender] Text extraction error:', filePath, err.message);
+    return null;
+  }
+}
+
+/**
+ * D-297: извлечь текст старых форматов (.doc/.rtf/.odt) через LibreOffice.
+ * Отдельно от OfficeToPdf, потому что здесь нужен txt, а не PDF.
+ * Возвращает null при любой проблеме — вызывающий не падает.
+ */
+function extractTextViaLibreOffice(absPath, filter) {
+  const { spawnSync } = require('child_process');
+  const tmpDir = `/tmp/pkdoc_${Date.now()}_${Math.floor(Math.random() * 1e6)}`;
+  try {
+    fs.mkdirSync(tmpDir, { recursive: true });
+    const r = spawnSync('libreoffice',
+      ['--headless', `--convert-to`, filter || 'txt:Text', '--outdir', tmpDir, absPath],
+      { timeout: 60000, windowsHide: true, env: { ...process.env, HOME: '/tmp' } });
+    if (r.status !== 0) {
+      console.warn('[PreTender] libreoffice text convert failed:', (r.stderr || '').toString().slice(0, 200));
+      return null;
+    }
+    const baseNoExt = path.basename(absPath, path.extname(absPath));
+    let outFile = path.join(tmpDir, baseNoExt + '.txt');
+    if (!fs.existsSync(outFile)) {
+      const list = fs.readdirSync(tmpDir).filter((f) => /\.txt$/i.test(f));
+      if (!list.length) return null;
+      outFile = path.join(tmpDir, list[0]);
+    }
+    const text = fs.readFileSync(outFile, 'utf8');
+    // LibreOffice иногда пишет BOM — срезаем.
+    const clean = text.replace(/^\uFEFF/, '').trim();
+    return clean ? clean.slice(0, MAX_TEXT_PER_FILE) : null;
+  } catch (e) {
+    console.warn('[PreTender] libreoffice text convert error:', e.message);
+    return null;
+  } finally {
+    try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch (_) {}
+  }
+}
+
+/**
+ * D-292: текст из ZIP — по первым N файлам.
+ * Берём только извлекаемые расширения (PDF/DOCX/XLSX/TXT). Имена из CP866
+ * (русские архивы Windows) декодируются, иначе в промпт уходил мусор.
+ */
+async function extractTextFromZip(buf) {
+  let AdmZip;
+  try { AdmZip = require('adm-zip'); } catch (_) { return null; }
+
+  // Имя записи в cp866 (Windows-архивы без UTF-8-флага) → читаемый текст.
+  const decodeName = (entry) => {
+    const raw = entry.rawEntryName;
+    const flags = (entry.header && entry.header.flags) || 0;
+    if (raw && raw.length && !(flags & 0x800) && raw.some((b) => b >= 0x80)) {
+      try {
+        const d = new TextDecoder('ibm866').decode(raw);
+        if (d && !d.includes('\uFFFD')) return d;
+      } catch (_) { /* нет cp866 — оставляем как есть */ }
+    }
+    return entry.entryName || '';
+  };
+
+  try {
+    const zip = new AdmZip(buf);
+    const entries = zip.getEntries()
+      .filter((e) => !e.isDirectory)
+      .map((e) => ({ e, name: decodeName(e) }))
+      .filter((x) => /\.(pdf|docx?|xlsx?|txt|csv|md)$/i.test(x.name))
+      .filter((x) => ((x.e.header && x.e.header.size) || 0) <= MAX_FILE_SIZE)
+      .slice(0, MAX_ZIP_ENTRIES);
+
+    const chunks = [];
+    for (const { e, name } of entries) {
+      try {
+        const data = e.getData();
+        const ext = String(path.extname(name) || '').toLowerCase();
+        let text = null;
+
+        if (ext === '.pdf') {
+          const pdfParse = require('pdf-parse');
+          const parsed = await pdfParse(data);
+          text = parsed && parsed.text ? parsed.text : null;
+        } else if (ext === '.docx') {
+          const mammoth = require('mammoth');
+          const parsed = await mammoth.extractRawText({ buffer: data });
+          text = parsed && parsed.value ? parsed.value : null;
+        } else if (ext === '.xlsx' || ext === '.xls') {
+          const XLSX = require('xlsx');
+          const wb = XLSX.read(data, { type: 'buffer' });
+          const lines = [];
+          wb.SheetNames.slice(0, 3).forEach((sn) => {
+            const rows = XLSX.utils.sheet_to_json(wb.Sheets[sn], { header: 1, blankrows: false });
+            rows.slice(0, 150).forEach((r) => {
+              const line = (r || []).map((c) => (c == null ? '' : String(c))).join(' ').trim();
+              if (line) lines.push(line);
+            });
+          });
+          text = lines.length ? lines.join('\n') : null;
+        } else {
+          text = data.toString('utf8');
+        }
+
+        if (text && text.trim()) {
+          chunks.push(`--- «${name}» ---\n${String(text).slice(0, MAX_ZIP_ENTRY_TEXT)}`);
+        }
+      } catch (inner) {
+        console.warn('[PreTender] ZIP entry extract failed:', name, inner.message);
+      }
+    }
+
+    return chunks.length ? chunks.join('\n\n').slice(0, MAX_TEXT_PER_FILE) : null;
+  } catch (e) {
+    console.warn('[PreTender] ZIP extract failed:', e.message);
     return null;
   }
 }
@@ -460,6 +638,12 @@ async function analyzePreTender(preTenderId) {
   // Получаем загрузку
   const workloadInfo = await getWorkloadInfo();
 
+  // D-298: обогащение данными об оборудовании. Заявка часто содержит только
+  // модель («котёл Viessmann Vitomax 100HS», «АВО АВГ-75»), а объёмы (площадь
+  // поверхности нагрева, объём воды) есть в паспорте — его можно найти по модели.
+  // Раньше AI видел только текст письма и писал «объём не указан».
+  const equipResearch = await researchEquipment(pt);
+
   // Формируем сообщение
   const emailType = pt.email_type === 'direct_request' ? 'Прямой запрос' : 'Тендерная площадка';
   const userMessage = `ВХОДЯЩАЯ ЗАЯВКА:
@@ -475,6 +659,7 @@ ${pt.body_text || pt.work_description || 'Текст отсутствует'}
 ВЛОЖЕНИЯ:
 ${attachmentTexts}
 ${extractedTexts.length ? '\nСОДЕРЖИМОЕ ВЛОЖЕНИЙ:\n' + extractedTexts.join('\n\n') : ''}
+${equipResearch ? '\nСПРАВКА ПО ОБОРУДОВАНИЮ (найдено в открытых источниках):\n' + equipResearch + '\n' : ''}
 ЗАГРУЗКА КОМПАНИИ:
 ${workloadInfo}`;
 
@@ -538,13 +723,17 @@ ${workloadInfo}`;
         work_title = COALESCE(NULLIF($20, ''), work_title),
         ai_scope_items = COALESCE($21::jsonb, ai_scope_items),
         ai_work_type = COALESCE(NULLIF($22, ''), ai_work_type),
+        work_volume = COALESCE($25, work_volume),
+        work_volume_unit = COALESCE(NULLIF($26, ''), work_volume_unit),
         customer_name = COALESCE(NULLIF($11, ''), customer_name),
         customer_inn = COALESCE(NULLIF($12, ''), customer_inn),
         contact_person = COALESCE(NULLIF($13, ''), contact_person),
         contact_phone = COALESCE(NULLIF($14, ''), contact_phone),
         work_description = COALESCE(NULLIF($15, ''), work_description),
         work_location = COALESCE(NULLIF($16, ''), work_location),
-        work_deadline = COALESCE($17, work_deadline),
+        work_deadline = COALESCE($17::date, work_deadline),
+        work_start_plan = COALESCE($23::date, work_start_plan),
+        work_end_plan = COALESCE($24::date, work_end_plan),
         estimated_sum = COALESCE($18, estimated_sum),
         updated_at = NOW()
       WHERE id = $19
@@ -570,7 +759,14 @@ ${workloadInfo}`;
       preTenderId,
       result.work_title || '',
       result.scope_items && result.scope_items.length ? JSON.stringify(result.scope_items) : null,
-      result.work_type || ''
+      result.work_type || '',
+      // D-292: сроки ВЫПОЛНЕНИЯ работ (раньше терялись — РП видел пустые поля).
+      result.extracted_data?.work_start_plan || null,
+      result.extracted_data?.work_end_plan || null,
+      // Итоговый объём дублируем в work_volume/work_volume_unit — по ним
+      // «Объём (итого)» заполняется сразу, без ручного ввода.
+      result.volume_total != null ? result.volume_total : null,
+      result.volume_unit || null
     ]);
 
     // V416: телефон/ИНН, если ИИ не нашёл — достаём регэкспом из текста письма
@@ -615,10 +811,15 @@ function parseAIResult(text) {
             unit: it.unit ? String(it.unit).trim().slice(0, 30) : null
           }))
       : [];
+    // D-292: итоговый объём тоже не должен превращаться в 0 — это выглядит как
+    // «объём посчитан и равен нулю», хотя данных нет.
+    const firstVol = scopeItems.find((it) => it.volume != null);
     return {
       work_title: p.work_title ? String(p.work_title).trim().slice(0, 200) : null,
       work_type: p.work_type ? String(p.work_type).trim().slice(0, 200) : null,
       scope_items: scopeItems,
+      volume_total: firstVol ? firstVol.volume : null,
+      volume_unit: firstVol ? firstVol.unit : null,
       summary: p.summary || '',
       color,
       recommendation: p.recommendation || '',
@@ -683,25 +884,34 @@ function fallbackAnalysis(pt) {
 }
 
 /**
- * V416: дотягиваем контакты, которые ИИ не выделил.
- *  1. Телефон — регэкспом из тела письма (RU-форматы, +7/8, скобки, дефисы).
- *  2. ИНН — из справочника customers по точному совпадению названия.
+ * V416/D-297: дотягиваем контакты, которые ИИ не выделил.
+ *  1. Телефоны — регэкспом из текста письма. Берём ДО ДВУХ: раньше
+ *     сохранялся только первый, и «Телефон 2» оставался пустым, хотя номер
+ *     есть (мобильный в подписи, городской в карточке клиента).
+ *  2. ИНН — из справочника customers по нормализованному названию.
  * Пишем только если поле пустое: ручные правки РП не перетираем.
  */
 async function applyContactFallbacks(preTenderId, pt, result, dbc = db) {
   try {
     const text = String(pt.body_text || '') + '\n' + String(pt.work_description || '');
-    // Телефоны: +7 (495) 123-45-67, 8-800-555-35-35, 3446003396 — только с разделителями
-    // или префиксом, чтобы не выхватить ИНН/год/объём из текста.
+    // Телефоны: +7 (495) 123-45-67, 8-800-555-35-35, +7 (916) 598-08-61
     const phoneRe = /(?:\+7|8)[\s(-]*\d{3}[\s)-]*\d{3}[\s-]*\d{2}[\s-]*\d{2}(?!\d)/g;
     const phoneMatches = text.match(phoneRe) || [];
     // Отсекаем НАШИ номера (подпись Асгарда в пересылаемом письме), иначе клиенту
     // доставался телефон менеджера, а не заказчика.
     const OWN_PHONE_RE = /^(?:\+?7|8)?(?:499|495|800|812)\d{7}$/;
-    const firstPhone = phoneMatches
-      .map((p) => p.replace(/[^\d+]/g, ''))
-      .map((p) => (p.startsWith('8') ? '+7' + p.slice(1) : p))
-      .find((p) => p.replace(/\D/g, '').length >= 10 && !OWN_PHONE_RE.test(p)) || null;
+    const normPhone = (p) => {
+      const n = String(p).replace(/[^\d+]/g, '');
+      return n.startsWith('8') ? '+7' + n.slice(1) : n;
+    };
+    const phones = [];
+    for (const m of phoneMatches) {
+      const p = normPhone(m);
+      if (p.replace(/\D/g, '').length < 10) continue;
+      if (OWN_PHONE_RE.test(p)) continue;
+      if (!phones.includes(p)) phones.push(p);
+      if (phones.length >= 2) break;
+    }
 
     const updates = [];
     const vals = [];
@@ -712,13 +922,31 @@ async function applyContactFallbacks(preTenderId, pt, result, dbc = db) {
       [preTenderId]);
     const row = cur.rows[0] || {};
 
-    if (!row.contact_phone && !result.extracted_data?.contact_phone && firstPhone) {
+    // Второй телефон хранится в карточке канбана (contact_phone2 в personal_kanban
+    // нет — там meta), поэтому пишем в pre_tender только основной, а лишний
+    // отдаём фронту через extracted_data, чтобы РП видел оба номера.
+    if (phones.length > 1) {
+      result.extracted_data = result.extracted_data || {};
+      if (!result.extracted_data.contact_phone2) {
+        result.extracted_data.contact_phone2 = phones[1];
+      }
+    }
+
+    if (!row.contact_phone && !result.extracted_data?.contact_phone && phones.length) {
       updates.push(`contact_phone = $${i++}`);
-      vals.push(firstPhone.slice(0, 30));
+      vals.push(phones[0].slice(0, 30));
     }
 
     if (!row.customer_inn && !result.extracted_data?.customer_inn && row.work_title !== undefined) {
-      const name = String(result.extracted_data?.customer_name || pt.customer_name || '').trim();
+      // D-298: пробуем несколько вариантов названия — полное и сокращение
+      // («ООО «ДБК»» из письма vs «Общество с ограниченной ответственностью
+      // «ДМИТРОВСКИЙ БЕЛКОВЫЙ КОМБИНАТ»» в карточке/справочнике).
+      const names = [
+        result.extracted_data?.customer_name,
+        result.extracted_data?.customer_short_name,
+        pt.customer_name,
+      ].map((s) => String(s || '').trim()).filter(Boolean);
+      const name = names[0] || '';
       if (name) {
         // Названия сравниваем БЕЗ кавычек и регистра: в письмах «ОАО «Волгограднефтемаш»»,
         // в справочнике — ОАО "ВОЛГОГРАДНЕФТЕМАШ". Иначе ИНН никогда не подставлялся.
@@ -732,8 +960,12 @@ async function applyContactFallbacks(preTenderId, pt, result, dbc = db) {
             WHERE inn IS NOT NULL AND LENGTH(inn) IN (10,12)`
         );
         const target = norm(name);
-        const hit = all.rows.find((r) => norm(r.name) === target)
-          || all.rows.find((r) => target.length > 6 && (norm(r.name).includes(target) || target.includes(norm(r.name))));
+        const normAny = (s) => norm(s);
+        // Ищем по ВСЕМ вариантам названия: полное, сокращение, из письма.
+        const targets = names.map(normAny).filter((t) => t.length >= 4);
+        const hit = all.rows.find((r) => targets.includes(normAny(r.name)))
+          || all.rows.find((r) => targets.some((t) =>
+              t.length > 6 && (normAny(r.name).includes(t) || t.includes(normAny(r.name)))));
         if (hit?.inn) {
           updates.push(`customer_inn = $${i++}`);
           vals.push(hit.inn);
@@ -749,6 +981,105 @@ async function applyContactFallbacks(preTenderId, pt, result, dbc = db) {
       vals);
   } catch (e) {
     console.warn('[PreTender] contact fallback failed:', e.message);
+  }
+}
+
+/**
+ * D-298: справка по оборудованию для промпта.
+ * Ищем ТОЛЬКО если в тексте есть узнаваемая модель (латиница+цифры или «марка»).
+ *
+ * D-299: веб-поиск починен (был MALFORMED_FUNCTION_CALL из-за engine:'native'
+ * вместе с system-промптом). Теперь сначала пробуем сеть — там паспортные данные
+ * точнее, чем «знания» модели, и только если сеть пуста, спрашиваем модель.
+ */
+async function researchEquipment(pt) {
+  try {
+    // D-299: НЕ используем pt.subject — такой колонки у pre_tender_requests НЕТ
+    // (она есть только в JOIN с emails). Из-за этого запрос падал, ошибка глушилась
+    // catch'ем, и researchEquipment всегда возвращал '' — модель не находилась.
+    const text = [pt.subject, pt.body_text, pt.work_description, pt.ai_work_type]
+      .filter(Boolean).join(' ');
+
+    // D-299: модель оборудования. Токены — латиница/цифры: «100HS» начинается
+    // с цифры, поэтому прежняя регулярка \b[A-Z] его теряла и модель была null.
+    const latinTokens = (text.match(/\b[A-Z][A-Za-z0-9-]{2,}\b|\b\d{2,}[A-Za-z][A-Za-z0-9-]*\b/g) || [])
+      .filter((w) => !/^(ТКП|КП|ТЗ|ГОСТ|РФ|ИНН|КПП|ЭДО|FWD|RE|Тел|Email|Com|Www|Ru)$/i.test(w));
+    // Ищем «марка + модель»: слово с заглавной, за ним 1-3 токена, среди которых
+    // хотя бы один содержит цифру.
+    let model = null;
+    for (let i = 0; i < latinTokens.length; i++) {
+      const win = latinTokens.slice(i, i + 4);
+      const hasDigit = win.some((w) => /\d/.test(w));
+      if (win.length >= 2 && hasDigit) {
+        // берём до последнего токена с цифрой включительно
+        let end = win.length - 1;
+        while (end > 0 && !/\d/.test(win[end])) end--;
+        if (end >= 1) {
+          model = win.slice(0, end + 1).join(' ');
+          break;
+        }
+      }
+    }
+    // D-299: кириллические марки (АВГ-75, КУ-101, ВВД-1,6) — до латиницы,
+    // иначе «АВО АВГ-75» ловилось как латинский токен и теряло модель.
+    const cyrModel = text.match(/\b(\d?[А-ЯЁ]{2,5}[-–]\d+[\d.,/-]*[А-ЯЁA-Za-z]*)\b/);
+    if (cyrModel) model = cyrModel[1].trim();
+    // Дополняем типом/типоразмером, если он есть в тексте рядом.
+    const typeHit = text.match(/(?:тип|модель|типоразмер)\s*[:\s]*([A-ZА-Я][A-ZА-Я0-9-]{1,10})/i);
+    if (model && typeHit && !model.includes(typeHit[1])) {
+      model += ` ${typeHit[1]}`;
+    }
+    // Производительность — резко сужает поиск до нужного типоразмера.
+    const perfHit = text.match(/(\d+[.,]?\d*)\s*(т\/ч|кВт|Гкал)/i);
+    const perf = perfHit ? ` ${perfHit[1]} ${perfHit[2]}` : '';
+
+    if (!model) return '';
+
+    // 1) Сеть: паспорт/характеристики из открытых источников.
+    let webFacts = '';
+    try {
+      const res = await aiProvider.searchWeb({
+        query: `${model}${perf} паспорт площадь поверхности нагрева м2 объём воды м3`,
+        maxResults: 5
+      });
+      const answer = String(res && res.answer ? res.answer : '').trim();
+      if (answer && answer.length > 80 && !/^\[(пустой|Ошибка)/.test(answer)) {
+        webFacts = answer.slice(0, 2500);
+      }
+    } catch (e) {
+      console.warn('[PreTender] web research failed:', e.message);
+    }
+
+    // 2) Если сеть пуста — спрашиваем модель по её знаниям (страховка).
+    if (!webFacts) {
+      try {
+        const resp = await aiProvider.complete({
+          system: 'Ты инженер-теплотехник. Отвечай ТОЛЬКО фактами из паспортов оборудования. '
+            + 'Если точных данных нет — напиши "точных данных нет". Не выдумывай.',
+          messages: [{
+            role: 'user',
+            content: `Паспортные характеристики «${model}» для расчёта промывки/очистки: `
+              + 'площадь поверхности нагрева м², объём воды м³, количество секций, производительность. '
+              + 'Коротким списком «параметр: значение». Если модель неизвестна — так и напиши.'
+          }],
+          maxTokens: 600,
+          temperature: 0.1,
+          reasoning: { enabled: false }
+        });
+        const answer = String(resp && resp.text ? resp.text : '').trim();
+        if (answer && !/^точных данных нет/i.test(answer)) {
+          webFacts = answer.slice(0, 1500);
+        }
+      } catch (e) {
+        console.warn('[PreTender] model research failed:', e.message);
+      }
+    }
+
+    if (!webFacts) return '';
+    return `Модель: ${model}\n${webFacts}`;
+  } catch (e) {
+    console.warn('[PreTender] equipment research skipped:', e.message);
+    return '';
   }
 }
 
@@ -814,5 +1145,8 @@ module.exports = {
   assignPreTenderToPm,
   analyzePreTender,
   getWorkloadInfo,
-  SYSTEM_PROMPT
+  SYSTEM_PROMPT,
+  // Диагностика: что реально попадает в промпт из вложений (D-292).
+  __extractTextForDebug: extractTextFromFile,
+  __extractTextFromZip: extractTextFromZip
 };

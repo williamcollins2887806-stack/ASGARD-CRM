@@ -1425,7 +1425,9 @@ module.exports = async function (fastify) {
         return reply
           .header('Content-Type', 'application/pdf')
           .header('Content-Length', buf.length)
-          .header('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(dispName)}`)
+          // D-291: inline, иначе браузер СКАЧИВАЕТ файл вместо показа → пустой iframe
+          // и «белый экран» в предпросмотре. attachment здесь был дефектом.
+          .header('Content-Disposition', `inline; filename*=UTF-8''${encodeURIComponent(dispName)}`)
           .send(buf);
       }
 
@@ -1448,7 +1450,8 @@ module.exports = async function (fastify) {
             return reply
               .header('Content-Type', 'application/pdf')
               .header('Content-Length', buf.length)
-              .header('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(sibName)}`)
+              // D-291: inline — иначе PDF из сиблинга скачивался и не показывался.
+              .header('Content-Disposition', `inline; filename*=UTF-8''${encodeURIComponent(sibName)}`)
               .send(buf);
           }
           // сиблинг записан, но файла нет на диске — падаем в on-demand-convert.
@@ -1486,10 +1489,12 @@ module.exports = async function (fastify) {
     const dispName = (doc.original_name || doc.filename || 'document').replace(/[\r\n"]/g, '_');
     // D-220 (20.09): тип по расширению реального файла, не по client-supplied MIME.
     const { safeContentType: safeCtDoc } = require('../lib/upload-ext');
+    // D-291: ?inline=1 — показать в предпросмотре, иначе скачать.
+    const disposition = String(request.query.inline || '') === '1' ? 'inline' : 'attachment';
     reply
       .header('Content-Type', safeCtDoc(path.extname(absPath).toLowerCase(), doc.mime_type))
       .header('Content-Length', buf.length)
-      .header('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(dispName)}`)
+      .header('Content-Disposition', `${disposition}; filename*=UTF-8''${encodeURIComponent(dispName)}`)
       .send(buf);
   });
 
@@ -2054,10 +2059,14 @@ module.exports = async function (fastify) {
     const dispName = (att.original_filename || att.filename || 'attachment').replace(/[\r\n"]/g, '_');
     // D-220 (20.09): тип по расширению реального файла (белый список), не по client-supplied MIME.
     const { safeContentType: safeCtAtt } = require('../lib/upload-ext');
+    // D-291: ?inline=1 — отдаём для ПОКАЗА (предпросмотр), иначе браузер скачивает
+    // файл и iframe остаётся пустым («белый экран»). Без флага — прежнее поведение
+    // (attachment), это кнопка «Скачать».
+    const disposition = String(request.query.inline || '') === '1' ? 'inline' : 'attachment';
     reply
       .header('Content-Type', safeCtAtt(path.extname(absPath).toLowerCase(), att.mime_type))
       .header('Content-Length', buf.length)
-      .header('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(dispName)}`)
+      .header('Content-Disposition', `${disposition}; filename*=UTF-8''${encodeURIComponent(dispName)}`)
       .send(buf);
   });
 

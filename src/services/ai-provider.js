@@ -895,26 +895,53 @@ async function executeWebSearch(query, opts = {}) {
   const systemPrompt = 'Ты — поисковый ассистент. Выполни web search по запросу пользователя и верни ТОЛЬКО краткую сводку фактов с пометкой источников (URL). Без рассуждений, без воды. Если ничего не нашёл — так и напиши.';
 
   const t0 = Date.now();
+
+  // D-299: связка `engine: 'native'` + system-промпт у routerai даёт
+  // MALFORMED_FUNCTION_CALL / пустой content (проверено 20.10.2026:
+  // «столица Франции» → 0 символов). Без `engine` поиск работает стабильно.
+  // Поэтому: пробуем без engine, при пустом ответе — повтор без system-промпта.
+  const _callSearch = (withSystem, withEngine) => callOpenAI({
+    system: withSystem ? systemPrompt : undefined,
+    messages: [{ role: 'user', content: query }],
+    model: WEB_SEARCH_MODEL,         // gemini, НЕ Claude — Claude делегирует поиск назад
+    maxTokens: 1500,
+    temperature: 0.1,
+    plugins: [{
+      id: 'web',
+      ...(withEngine ? { engine: 'native' } : {}),
+      max_results: maxResults,
+      ...(includeDomains.length ? { include_domains: includeDomains } : {})
+    }]
+  });
+
   try {
-    const result = await callOpenAI({
-      system: systemPrompt,
-      messages: [{ role: 'user', content: query }],
-      model: WEB_SEARCH_MODEL,         // ВАЖНО: gemini, НЕ Claude — Claude делегирует поиск назад
-      maxTokens: 1500,
-      temperature: 0.1,
-      plugins: [{
-        id: 'web',
-        engine: 'native',
-        max_results: maxResults,
-        ...(includeDomains.length ? { include_domains: includeDomains } : {})
-      }]
-    });
+    let result = null;
+    const attempts = [
+      [true, false],   // system + плагин без engine — рабочий вариант
+      [false, false],  // без system — если system мешает
+      [false, true],   // legacy-вариант (engine native) — последняя попытка
+    ];
+    for (const [withSystem, withEngine] of attempts) {
+      try {
+        const r = await _callSearch(withSystem, withEngine);
+        if (r && typeof r.text === 'string' && r.text.trim().length > 20) {
+          result = r;
+          break;
+        }
+        console.warn(`[WebSearch] пустой ответ (system=${withSystem}, engine=${withEngine}), пробую иначе`);
+      } catch (e) {
+        console.warn(`[WebSearch] попытка (system=${withSystem}, engine=${withEngine}) упала: ${e.message}`);
+      }
+    }
+    if (!result) {
+      return `[пустой ответ от поиска по "${query}"]`;
+    }
     const ms = Date.now() - t0;
     console.log(`[WebSearch] "${query.substring(0, 80)}" → ${result.text?.length || 0} chars, ${ms}ms (model=${WEB_SEARCH_MODEL})`);
     if (result.annotations && result.annotations.length > 0) {
       console.log(`[WebSearch] annotations: ${result.annotations.length} URL citations`);
     }
-    return result.text || `[пустой ответ от поиска по "${query}"]`;
+    return result.text;
   } catch (e) {
     const ms = Date.now() - t0;
     console.warn(`[WebSearch] FAILED "${query.substring(0, 80)}" after ${ms}ms:`, e.message);

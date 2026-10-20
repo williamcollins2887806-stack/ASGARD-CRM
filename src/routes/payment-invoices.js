@@ -848,10 +848,21 @@ async function routes(fastify) {
     } else if (after.approved || after.rejected) {
       bstatus = 'partially_approved';
     }
-    await db.query(
-      `UPDATE payment_batches SET status=$2, dir_approved_at=CASE WHEN $2<>'awaiting_dir' THEN NOW() ELSE NULL END,
-              dir_approved_by=CASE WHEN $2<>'awaiting_dir' THEN $3 ELSE NULL END, updated_at=NOW()
-        WHERE id=$1`, [id, bstatus, req.user.id]).catch(() => {});
+    // D-308: касты обязательны. $2 связан дважды (SET status=$2 и CASE-сравнение),
+    // поэтому без ::text Postgres падал на 42P08 «inconsistent types deduced for
+    // parameter $2» (text vs varchar). Ошибка пряталась в .catch(()=>{}) — партии
+    // счетов молча не обновлялись: status и dir_approved_by оставались прежними.
+    try {
+      await db.query(
+        `UPDATE payment_batches SET status=$2::varchar,
+                dir_approved_at=CASE WHEN $2::text <> 'awaiting_dir' THEN NOW() ELSE NULL END,
+                dir_approved_by=CASE WHEN $2::text <> 'awaiting_dir' THEN $3::int ELSE NULL END,
+                updated_at=NOW()
+          WHERE id=$1`, [id, bstatus, req.user.id]);
+    } catch (err) {
+      request.log.error({ err, batchId: id }, '[payment-batches] статус партии не обновлён');
+      throw err;
+    }
     return { ok: true, batch_status: bstatus, ...done, summary: after };
   });
 

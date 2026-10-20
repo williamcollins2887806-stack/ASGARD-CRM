@@ -83,7 +83,7 @@ export default function PmWorkerProfile() {
   const activeAssignments = (assignments || []).filter(a => a.is_active);
 
   return (
-    <div style={{ minHeight: '100vh', background: C.bg, paddingBottom: 40 }}>
+    <div className="scroll-container" style={{ minHeight: '100vh', maxHeight: '100dvh', overflowY: 'auto', background: C.bg, paddingBottom: 'calc(var(--tabbar-total) + 16px)' }}>
       {/* Header */}
       <div style={{ padding: '48px 16px 16px', background: 'linear-gradient(180deg, #0d1429 0%, transparent 100%)' }}>
         <button onClick={() => navigate(-1)}

@@ -6,7 +6,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Shield, ChevronDown, ChevronUp,
-  LogOut, Sun, Moon, Edit3, Check, X, Briefcase, Award, Sparkles, ClipboardList, Calendar,
+  LogOut, Sun, Moon, Edit3, Check, X, Briefcase, Award, Sparkles, ClipboardList, Calendar, ArrowLeft,
 } from 'lucide-react';
 import { fieldApi } from '@/api/fieldClient';
 import { useFieldAuthStore } from '@/stores/fieldAuthStore';
@@ -757,6 +757,22 @@ export default function FieldProfile() {
       )}
       <div className="fs-root" style={{ paddingBottom: 'max(env(safe-area-inset-bottom), 24px)' }}>
         <div className="fs-scene" aria-hidden><span className="fs-orb fs-orb--a" /><span className="fs-orb fs-orb--b" /></div>
+
+        {/* Шапка: возврат в Зал Рабочих. Раньше на этом экране не было ни одной
+            кнопки «назад» — 1480 строк без выхода (жалоба заказчика).
+            ВАЖНО: paddingTop задаётся ПОСЛЕ shorthand padding, иначе safe-area
+            затирается и кнопка уезжает под чёлку. */}
+        <div className="fs-head" style={{ padding: '0 16px', paddingTop: 'max(env(safe-area-inset-top), 14px)', marginBottom: 4 }}>
+          <button
+            type="button"
+            className="fs-head__btn"
+            onClick={() => { haptic.light(); navigate('/field/home'); }}
+            aria-label="Назад в Зал Рабочих"
+          >
+            <ArrowLeft size={19} strokeWidth={2.4} />
+          </button>
+          <h1 className="fs-head__title">Профиль</h1>
+        </div>
 
         {/* ═══ HERO CARD ══════════════════════════════════════════════ */}
         <VikingHeroCard

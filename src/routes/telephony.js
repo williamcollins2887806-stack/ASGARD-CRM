@@ -388,10 +388,11 @@ module.exports = async function telephonyRoutes(fastify, opts) {
       const ac = await db.query('SELECT assigned_user_id FROM active_calls WHERE mango_call_id = $1', [callId]);
       void ac;
       await db.query("DELETE FROM active_calls WHERE mango_call_id = $1", [callId]);
-      // call:ended из Mango-контура не шлём (единственный источник — PBX).
+    // call:ended из Mango-контура не шлём (единственный источник — PBX).
     }
 
-    reply.send({ status: 'ok' });
+    // D-307: `return` обязателен — иначе ответ уходит дважды (onSend-хуки + send).
+    return reply.send({ status: 'ok' });
   });
 
   // --- events/summary ---
@@ -524,9 +525,14 @@ module.exports = async function telephonyRoutes(fastify, opts) {
 
     if (existing) {
       callHistoryId = existing.id;
+      // D-308: mango_entry_id — varchar, а $14 — integer (call_history.id).
+      // Один и тот же параметр стоял и в COALESCE, и в WHERE id=$14, поэтому
+      // Postgres не мог вывести тип: 42804 «COALESCE types character varying and
+      // integer cannot be matched» (5 раз 16.10.2026, Mango-вебхук events/call).
+      // Нужен отдельный параметр $15 — исходный entry_id из вебхука.
       await db.query(
         `UPDATE call_history SET
-          mango_entry_id = COALESCE(mango_entry_id, $14),
+          mango_entry_id = COALESCE(mango_entry_id, $15::text),
           direction = $1, call_type = $2, from_number = $3, to_number = $4,
           duration = $5, duration_seconds = $5, started_at = $6, ended_at = $7,
           recording_id = COALESCE(NULLIF($8, ''), recording_id),
@@ -536,7 +542,7 @@ module.exports = async function telephonyRoutes(fastify, opts) {
         WHERE id = $14`,
         [direction, callType, fromNum, toNum, talkTime, createTime, endTime,
          recFromLog, userId, clientInn, lineNumber, disconnectReason,
-         JSON.stringify(event), callHistoryId]
+         JSON.stringify(event), callHistoryId, entryId || null]
       );
     } else {
       const callIdStr = entryId || ('gen_' + Date.now());
@@ -610,7 +616,7 @@ module.exports = async function telephonyRoutes(fastify, opts) {
       await db.query('UPDATE user_call_status SET last_call_at = NOW(), updated_at = NOW() WHERE user_id = $1', [userId]).catch(() => {});
     }
 
-    reply.send({ status: 'ok' });
+    return reply.send({ status: 'ok' });
   });
 
   // --- events/recording ---
@@ -643,7 +649,7 @@ module.exports = async function telephonyRoutes(fastify, opts) {
       }
     }
 
-    reply.send({ status: 'ok' });
+    return reply.send({ status: 'ok' });
   });
 
   // --- SMS delivery status (shared handler) ---
@@ -711,7 +717,7 @@ module.exports = async function telephonyRoutes(fastify, opts) {
       fastify.log.error(`[telephony] SMS webhook error: ${e.message}`);
     }
 
-    reply.send({ status: 'ok' });
+    return reply.send({ status: 'ok' });
   }
 
   fastify.post('/webhook/events/sms', { config: { rawBody: true } }, handleSmsDeliveryWebhook);
@@ -728,12 +734,12 @@ module.exports = async function telephonyRoutes(fastify, opts) {
     if (!verifyMangoSignature(request, reply)) return;
     const event = typeof request.body.json === "string" ? JSON.parse(request.body.json) : request.body.json;
     await logEvent('dtmf', event);
-    reply.send({ status: 'ok' });
+    return reply.send({ status: 'ok' });
   });
 
   // --- result/stat (Mango sends this for call statistics — acknowledge silently) ---
   fastify.post('/webhook/result/stat', async (request, reply) => {
-    reply.send({ status: 'ok' });
+    return reply.send({ status: 'ok' });
   });
 
   // --- ping ---
@@ -741,7 +747,7 @@ module.exports = async function telephonyRoutes(fastify, opts) {
     if (!checkWebhookRate(request.ip)) {
       return reply.code(429).send({ error: 'Too many requests' });
     }
-    reply.send({ status: 'ok' });
+    return reply.send({ status: 'ok' });
   });
 
   // ========================================
@@ -752,7 +758,7 @@ module.exports = async function telephonyRoutes(fastify, opts) {
   fastify.get('/ping', {
     preHandler: [fastify.authenticate]
   }, async (request, reply) => {
-    reply.send({ ok: true, ts: Date.now(), user: request.user.id });
+    return reply.send({ ok: true, ts: Date.now(), user: request.user.id });
   });
 
   // --- Журнал звонков ---
@@ -832,7 +838,7 @@ module.exports = async function telephonyRoutes(fastify, opts) {
       [...params, limit, offset]
     );
 
-    reply.send({
+    return reply.send({
       items: await enrichCallRows(db, rows.rows.map(r => ({
         ...r,
         transcript: undefined, // Не отправляем полный транскрипт в списке
@@ -912,7 +918,7 @@ module.exports = async function telephonyRoutes(fastify, opts) {
       }));
     } catch (_) { call.transfers = []; }
 
-    reply.send(call);
+    return reply.send(call);
   });
 
   // --- Аудиозапись ---
@@ -1015,7 +1021,7 @@ module.exports = async function telephonyRoutes(fastify, opts) {
     await db.query("UPDATE call_history SET transcript_status='none',transcript=NULL,transcript_segments=NULL,updated_at=NOW() WHERE id=$1", [callId]);
     const p = getPipeline();
     if (p) setImmediate(() => p.processCall(callId).catch(e => console.error('[Telephony] Transcribe err:',e.message)));
-    reply.send({ status: 'queued', message: 'Транскрибация запущена' });
+    return reply.send({ status: 'queued', message: 'Транскрибация запущена' });
   });
 
   // --- Перезапуск ИИ-анализа ---
@@ -1032,7 +1038,7 @@ module.exports = async function telephonyRoutes(fastify, opts) {
     await db.query("UPDATE call_history SET ai_summary=NULL,ai_is_target=NULL,ai_lead_data=NULL,ai_sentiment=NULL,updated_at=NOW() WHERE id=$1", [callId]);
     const p = getPipeline();
     if (p) setImmediate(() => p.processCall(callId).catch(e => console.error('[Telephony] Analyze err:',e.message)));
-    reply.send({ status: 'queued', message: 'ИИ-анализ запущен' });
+    return reply.send({ status: 'queued', message: 'ИИ-анализ запущен' });
   });
 
   // --- Создать заявку из звонка ---
@@ -1157,7 +1163,7 @@ module.exports = async function telephonyRoutes(fastify, opts) {
       await db.query('UPDATE user_call_status SET last_call_at = NOW(), updated_at = NOW() WHERE user_id = $1', [request.user.id]).catch(() => {});
       console.log('[Telephony] Outbound call initiated: user=' + request.user.id + ' ext=' + ext + ' to=' + cleanNumber);
 
-      reply.send({ success: true, call_id: callHistoryId, command_id: commandId, extension: ext, to_number: cleanNumber, client_name: clientName, message: 'Звонок инициирован. Ожидайте соединения на вашем телефоне.' });
+      return reply.send({ success: true, call_id: callHistoryId, command_id: commandId, extension: ext, to_number: cleanNumber, client_name: clientName, message: 'Звонок инициирован. Ожидайте соединения на вашем телефоне.' });
     } catch (err) {
       console.error('[Telephony] Outbound call error:', err.message, 'code:', err.code);
       await logEvent('crm_outbound_call_error', { command_id: commandId, from_extension: ext, to_number: cleanNumber, user_id: request.user.id, error: err.message, error_code: err.code });
@@ -1233,7 +1239,7 @@ module.exports = async function telephonyRoutes(fastify, opts) {
     }
     const unackRes = await db.query(`SELECT COUNT(*) FROM call_history ch ${unackWhere}`, unackParams);
 
-    reply.send({
+    return reply.send({
       items: rows.rows,
       total,
       unacknowledged: parseInt(unackRes.rows[0].count),
@@ -1252,7 +1258,7 @@ module.exports = async function telephonyRoutes(fastify, opts) {
       'UPDATE call_history SET missed_acknowledged = true, updated_at = NOW() WHERE id = $1',
       [request.params.id]
     );
-    reply.send({ status: 'ok' });
+    return reply.send({ status: 'ok' });
   });
 
   // --- Сводка для мобильной телефонии (только свои) ---
@@ -1335,7 +1341,7 @@ module.exports = async function telephonyRoutes(fastify, opts) {
        ORDER BY 1`,
       [uid]
     );
-    reply.send({
+    return reply.send({
       missed_unack: missed.rows[0].n,
       today_total: todayTotal.rows[0].n,
       office_unack: officeUnack,
@@ -1393,7 +1399,7 @@ module.exports = async function telephonyRoutes(fastify, opts) {
       by_period: byPeriod.rows
     };
     setCachedStats(cacheKey, statsResult);
-    reply.send(statsResult);
+    return reply.send(statsResult);
   });
 
   // --- Статистика по менеджерам ---
@@ -1427,7 +1433,7 @@ module.exports = async function telephonyRoutes(fastify, opts) {
 
     const mgrResult = { managers: stats.rows };
     setCachedStats(mgrCacheKey, mgrResult);
-    reply.send(mgrResult);
+    return reply.send(mgrResult);
   });
 
   // --- Правила маршрутизации (CRUD) ---
@@ -1437,7 +1443,7 @@ module.exports = async function telephonyRoutes(fastify, opts) {
     const rules = await db.query(
       'SELECT r.*, u.name as created_by_name FROM call_routing_rules r LEFT JOIN users u ON u.id = r.created_by ORDER BY r.priority DESC, r.id'
     );
-    reply.send({ rules: rules.rows });
+    return reply.send({ rules: rules.rows });
   });
 
   fastify.post('/routing', {
@@ -1457,7 +1463,7 @@ module.exports = async function telephonyRoutes(fastify, opts) {
       [name, description || null, priority || 0, condition_type, JSON.stringify(condition_value || {}),
        action_type, JSON.stringify(action_value || {}), is_active !== false, request.user.id]
     );
-    reply.send(res.rows[0]);
+    return reply.send(res.rows[0]);
   });
 
   fastify.put('/routing/:id', {
@@ -1490,7 +1496,7 @@ module.exports = async function telephonyRoutes(fastify, opts) {
       params
     );
     if (!res.rows.length) return reply.code(404).send({ error: 'Rule not found' });
-    reply.send(res.rows[0]);
+    return reply.send(res.rows[0]);
   });
 
   fastify.delete('/routing/:id', {
@@ -1501,7 +1507,7 @@ module.exports = async function telephonyRoutes(fastify, opts) {
     }
     const res = await db.query('DELETE FROM call_routing_rules WHERE id = $1 RETURNING id', [request.params.id]);
     if (!res.rows.length) return reply.code(404).send({ error: 'Rule not found' });
-    reply.send({ status: 'deleted' });
+    return reply.send({ status: 'deleted' });
   });
 
   // --- Внутренние номера ---
@@ -1513,7 +1519,7 @@ module.exports = async function telephonyRoutes(fastify, opts) {
        JOIN users u ON u.id = ucs.user_id
        ORDER BY u.name`
     );
-    reply.send({ extensions: res.rows });
+    return reply.send({ extensions: res.rows });
   });
 
   fastify.post('/extensions', {
@@ -1539,7 +1545,7 @@ module.exports = async function telephonyRoutes(fastify, opts) {
       [user_id, mango_extension, fallback_user_id || null, fallback_mobile || null,
        work_schedule ? JSON.stringify(work_schedule) : null, is_duty]
     );
-    reply.send(res.rows[0]);
+    return reply.send(res.rows[0]);
   });
 
   // --- Синхронизация extensions из Mango Office ---
@@ -1647,7 +1653,7 @@ module.exports = async function telephonyRoutes(fastify, opts) {
       }
     }
 
-    reply.send({
+    return reply.send({
       status: 'ok',
       synced_count: synced.length,
       unmatched_count: unmatched.length,
@@ -1667,7 +1673,7 @@ module.exports = async function telephonyRoutes(fastify, opts) {
        LEFT JOIN users u ON u.id = ac.assigned_user_id
        ORDER BY ac.started_at DESC`
     );
-    reply.send({ calls: res.rows });
+    return reply.send({ calls: res.rows });
   });
 
   // --- Route/Transfer через API (D-252c: только админы телефонии; предпочтителен PBX API) ---
@@ -1683,9 +1689,9 @@ module.exports = async function telephonyRoutes(fastify, opts) {
 
     try {
       const result = await mango.route(call_id, to_number);
-      reply.send({ status: 'routed', result });
+      return reply.send({ status: 'routed', result });
     } catch (err) {
-      reply.code(500).send({ error: err.message });
+      return reply.code(500).send({ error: err.message });
     }
   });
 
@@ -1704,9 +1710,9 @@ module.exports = async function telephonyRoutes(fastify, opts) {
 
     try {
       const result = await mango.transfer(call_id, method, to_number, initiator);
-      reply.send({ status: 'transferred', result });
+      return reply.send({ status: 'transferred', result });
     } catch (err) {
-      reply.code(500).send({ error: err.message });
+      return reply.code(500).send({ error: err.message });
     }
   });
 
@@ -1722,9 +1728,9 @@ module.exports = async function telephonyRoutes(fastify, opts) {
 
     try {
       const result = await mango.hangup(call_id);
-      reply.send({ status: 'hangup', result });
+      return reply.send({ status: 'hangup', result });
     } catch (err) {
-      reply.code(500).send({ error: err.message });
+      return reply.code(500).send({ error: err.message });
     }
   });
 
@@ -1789,7 +1795,7 @@ module.exports = async function telephonyRoutes(fastify, opts) {
        AND u.role IN ('PM','HEAD_PM','TO','HEAD_TO','BUH','PROC','CHIEF_ENGINEER','OFFICE_MANAGER','WAREHOUSE')
        ORDER BY u.name`
     );
-    reply.send({ managers: res.rows });
+    return reply.send({ managers: res.rows });
   });
 
   // D-252a: AGI-event endpoint removed (LFI via recordingPath + fake localhost behind nginx).
@@ -1812,7 +1818,7 @@ module.exports = async function telephonyRoutes(fastify, opts) {
       [request.user.id]
     );
     const isMe = dispatcher.rows.length && dispatcher.rows[0].user_id === request.user.id;
-    reply.send({
+    return reply.send({
       active_dispatcher: dispatcher.rows.length ? { user_id: dispatcher.rows[0].user_id, name: dispatcher.rows[0].name } : null,
       current_dispatcher_name: dispatcher.rows.length ? dispatcher.rows[0].name : null,
       is_dispatcher: isMe,
@@ -1849,7 +1855,7 @@ module.exports = async function telephonyRoutes(fastify, opts) {
       phone: e.fallback_mobile || '',
       internal_phone: e.fallback_mobile || ''
     }));
-    reply.send({ employees });
+    return reply.send({ employees });
   });
 
   // --- AMI helper для управления звонками через Asterisk ---
@@ -1992,9 +1998,9 @@ module.exports = async function telephonyRoutes(fastify, opts) {
       });
 
       if (result.ok) {
-        reply.send({ success: true, message: 'Перевод инициирован' });
+        return reply.send({ success: true, message: 'Перевод инициирован' });
       } else {
-        reply.send({ success: false, error: result.error || 'Не удалось перевести' });
+        return reply.send({ success: false, error: result.error || 'Не удалось перевести' });
       }
     } catch (agiErr) {
       // AGI control server not available — try AMI fallback
@@ -2030,13 +2036,13 @@ module.exports = async function telephonyRoutes(fastify, opts) {
             Exten: cleanPhone,
             Priority: '1'
           });
-          reply.send({ success: true, message: 'Перевод через AMI инициирован' });
+          return reply.send({ success: true, message: 'Перевод через AMI инициирован' });
         } else {
-          reply.send({ success: false, error: 'Канал не найден — возможно звонок уже завершён' });
+          return reply.send({ success: false, error: 'Канал не найден — возможно звонок уже завершён' });
         }
       } catch (amiErr) {
         console.error('[Telephony] AMI transfer error:', amiErr.message);
-        reply.send({ success: false, error: 'Ошибка AMI: ' + amiErr.message });
+        return reply.send({ success: false, error: 'Ошибка AMI: ' + amiErr.message });
       }
     }
 
@@ -2093,9 +2099,9 @@ module.exports = async function telephonyRoutes(fastify, opts) {
       });
 
       if (result.ok) {
-        reply.send({ success: true, message: 'Звонок переведён на вас' });
+        return reply.send({ success: true, message: 'Звонок переведён на вас' });
       } else {
-        reply.send({ success: false, error: result.error || 'Не удалось перехватить' });
+        return reply.send({ success: false, error: result.error || 'Не удалось перехватить' });
       }
     } catch (agiErr) {
       console.log('[Telephony] AGI control unavailable for takeover, trying AMI...');
@@ -2121,13 +2127,13 @@ module.exports = async function telephonyRoutes(fastify, opts) {
             Exten: cleanPhone,
             Priority: '1'
           });
-          reply.send({ success: true, message: 'Перехват через AMI инициирован' });
+          return reply.send({ success: true, message: 'Перехват через AMI инициирован' });
         } else {
-          reply.send({ success: false, error: 'Канал не найден' });
+          return reply.send({ success: false, error: 'Канал не найден' });
         }
       } catch (amiErr) {
         console.error('[Telephony] AMI takeover error:', amiErr.message);
-        reply.send({ success: false, error: 'Ошибка AMI: ' + amiErr.message });
+        return reply.send({ success: false, error: 'Ошибка AMI: ' + amiErr.message });
       }
     }
 

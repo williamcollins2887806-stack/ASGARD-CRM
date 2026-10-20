@@ -1406,7 +1406,7 @@ async function routes(fastify, options) {
         'Content-Disposition',
         `attachment; filename="${asciiName}"; filename*=UTF-8''${encodeURIComponent(rawName)}`
       );
-      reply.send(buf);
+      return reply.send(buf);
     } catch (e) {
       request.log.error(e, '[preview-doc] failed');
       return reply.code(500).send({ error: 'Не удалось сгенерировать предпросмотр: ' + e.message });

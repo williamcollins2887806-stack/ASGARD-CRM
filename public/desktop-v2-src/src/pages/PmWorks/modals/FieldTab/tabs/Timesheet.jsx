@@ -227,6 +227,19 @@ export default function TimesheetTab({ work }) {
     return m;
   }, [rows]);
 
+  /* D-295: отметки офиса (склад/МО/дорога/корабль), поставленные БЕЗ привязки к этой
+   * работе. Показываем только иконкой — без баллов и сумм: деньги уже учтены
+   * в своей области, второй раз их складывать нельзя. */
+  const infoMap = useMemo(() => {
+    const m = new Map();
+    rows.forEach((emp) => {
+      const inner = {};
+      (emp.info_days || []).forEach((d) => { inner[String(d.date).slice(0, 10)] = d; });
+      m.set(emp.employee_id, inner);
+    });
+    return m;
+  }, [rows]);
+
   /* ─── CRUD: создать/обновить/удалить смену ─── */
   const saveCheckin = async ({ employee, date, day, payload }) => {
     // Stage cells have stage id, not checkin id — always POST new checkin (409→confirm).
@@ -440,6 +453,7 @@ export default function TimesheetTab({ work }) {
               {enrichedRows.map((emp, idx) => {
                 const inner = dayMap.get(emp.employee_id) || {};
                 const innerForeign = foreignMap.get(emp.employee_id) || {};
+                const innerInfo = infoMap.get(emp.employee_id) || {};
                 const planFrom = emp.planned_info?.planned_from
                   ? String(emp.planned_info.planned_from).slice(0, 10)
                   : null;
@@ -481,6 +495,7 @@ export default function TimesheetTab({ work }) {
                     {dates.map((d) => {
                       const day = inner[d];
                       const foreign = !day ? innerForeign[d] : null;
+                      const info = !day ? innerInfo[d] : null;
                       const isWeekend = (() => { const dw = dayOfWeek(d); return dw === 0 || dw === 6; })();
                       const isToday = d === todayStr;
                       const isPlanArrive = !!(planFrom && d === planFrom);
@@ -490,6 +505,7 @@ export default function TimesheetTab({ work }) {
                           key={d}
                           day={day}
                           foreign={foreign}
+                          info={info}
                           date={d}
                           isWeekend={isWeekend}
                           isToday={isToday}
@@ -502,6 +518,16 @@ export default function TimesheetTab({ work }) {
                           activeKey={popState ? popState.employee.employee_id + '|' + popState.date : null}
                           cellKey={emp.employee_id + '|' + d}
                           onClick={(e) => {
+                            if (info) {
+                              if (editMode) { openCell(e, emp, d, null); return; }
+                              toast('Отметка офиса',
+                                `${getShiftMeta(info.shift || info.stage_type).label}`
+                                + (info.work_title ? ` · «${info.work_title}»` : ' · вне объекта')
+                                + (info.entered_by_fio ? ` · внёс ${info.entered_by_fio}` : '')
+                                + '. Баллы в этом табеле не начисляются.',
+                                'info');
+                              return;
+                            }
                             if (foreign) {
                               toast('Занят на другой работе',
                                 'Работает у РП ' + (foreign.pm_fio || '—') + ' (работа: ' + (foreign.work_title || '—') + '). Свяжитесь с РП, чтобы перенести.',
@@ -606,7 +632,7 @@ export default function TimesheetTab({ work }) {
 
 /* ─── Ячейка одного дня ─── */
 function ShiftCell({
-  day, foreign, date, isWeekend, isToday, isPlanArrive, isPlanSpan, plannedOnly,
+  day, foreign, info, date, isWeekend, isToday, isPlanArrive, isPlanSpan, plannedOnly,
   pointValue, editMode, activeAnchor, cellKey, activeKey, onClick
 }) {
   const ref = useRef(null);
@@ -631,6 +657,16 @@ function ShiftCell({
     color = 'var(--t-3)';
     bg = 'rgba(245,158,11,0.10)';
     titleTxt = 'Занят на работе «' + (foreign.work_title || '—') + '» (РП ' + (foreign.pm_fio || '—') + '). Поставить чекин нельзя.';
+  } else if (info) {
+    // D-295: отметка офиса — только иконка, без баллов и денег.
+    // Идёт ПОСЛЕ foreign: занятость на чужой работе важнее иконки офиса.
+    const meta = getShiftMeta(info.shift || info.stage_type);
+    content = meta.icon;
+    color = 'var(--t2)';
+    bg = 'color-mix(in srgb, var(--gold) 7%, transparent)';
+    titleTxt = `${meta.label}${info.work_title ? ` · объект «${info.work_title}»` : ' · вне объекта'}`
+      + (info.entered_by_fio ? ` · внёс ${info.entered_by_fio}` : '')
+      + '. Отметка офиса: баллы в этом табеле не начисляются.';
   } else if (isPlanArrive) {
     content = <span className="ft-ts-plan-pin" aria-hidden="true">◆</span>;
     color = 'var(--gold)';
@@ -653,6 +689,7 @@ function ShiftCell({
     'ft-ts-cell',
     day ? 'ft-ts-cell--filled' : '',
     foreign ? 'ft-ts-cell--foreign' : '',
+    info ? 'ft-ts-cell--info' : '',
     editMode && !plannedOnly ? 'ft-ts-cell--edit' : '',
     isWeekend ? 'ft-ts-cell--we' : '',
     isToday ? 'ft-ts-cell--today' : '',
@@ -669,10 +706,13 @@ function ShiftCell({
       onClick={onClick}
       style={{
         color, background: bg,
-        cursor: foreign || plannedOnly
-          ? (isPlanArrive || plannedOnly ? 'help' : 'not-allowed')
-          : (editMode ? 'pointer' : 'default'),
-        opacity: foreign ? 0.65 : 1
+        cursor: info
+          ? 'help'
+          : (foreign || plannedOnly
+            ? (isPlanArrive || plannedOnly ? 'help' : 'not-allowed')
+            : (editMode ? 'pointer' : 'default')),
+        opacity: foreign ? 0.65 : (info ? 0.9 : 1),
+        ...(info ? { border: '1px dashed color-mix(in srgb, var(--gold) 45%, transparent)', borderRadius: 4 } : {})
       }}
       title={titleTxt || (isToday ? 'Сегодня' : '')}
     >

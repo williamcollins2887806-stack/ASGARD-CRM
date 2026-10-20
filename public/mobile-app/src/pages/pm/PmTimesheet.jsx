@@ -9,7 +9,7 @@ import PmTabBar from '@/components/pm/PmTabBar';
 
 export default function PmTimesheet() {
   return (
-    <div style={{ minHeight: '100vh', paddingBottom: 'calc(var(--tabbar-total) + 16px)' }}>
+    <div className="scroll-container" style={{ minHeight: '100vh', maxHeight: '100dvh', overflowY: 'auto', paddingBottom: 'calc(var(--tabbar-total) + 16px)' }}>
       <TimesheetMobile mode="pm" />
       <PmTabBar />
     </div>

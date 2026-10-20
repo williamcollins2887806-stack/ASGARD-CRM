@@ -152,6 +152,9 @@ export default function Home() {
 
               return (
                 <div
+                  // refreshKey в ключе обязателен: у виджетов эффекты с пустыми
+                  // зависимостями (`}, []);`), поэтому единственный способ
+                  // перечитать их данные при pull-to-refresh — ремоунт.
                   key={`${w.id}-${refreshKey}`}
                   style={{
                     animation: `${anim} var(--motion-normal) var(--ease-spring) ${i * 80}ms both`,

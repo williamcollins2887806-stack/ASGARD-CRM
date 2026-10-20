@@ -2285,11 +2285,17 @@ module.exports = async function routesWithExtensions(fastify, options) {
     if (!cardRows[0]) return reply.code(404).send({ error: 'Card not found' });
     const card = cardRows[0];
 
-    // 2) Источник: тендер или pre-тендер — для prefill контактов
-    let tenderId = null, preTenderId = null, workId = null;
-    let prefill = { customer_name: null, customer_inn: null, customer_address: null,
-                    contact_person: null, contact_phone: null, contact_email: null,
-                    subject: null, work_description: null };
+  // 2) Источник: тендер или pre-тендер — для prefill контактов
+  let tenderId = null, preTenderId = null, workId = null;
+  // D-295: расширенный prefill — заказчик, работы, сроки, оплата.
+  // Раньше ТКП создавалось полупустым: тема = простыня описания, сроки пустые,
+  // позиции пустые, оплата дефолтная. РП приходилось заполнять всё вручную.
+  let prefill = { customer_name: null, customer_inn: null, customer_address: null,
+                  contact_person: null, contact_phone: null, contact_email: null,
+                  subject: null, work_description: null,
+                  deadline: null, work_start: null, work_end: null,
+                  scope_items: [], work_type: null, work_volume: null,
+                  work_volume_unit: null, estimated_sum: null, payment_terms: null };
     if (card.entity_kind === 'tender' || card.flow_type === 'tender') {
       tenderId = card.entity_id;
       try {
@@ -2314,22 +2320,41 @@ module.exports = async function routesWithExtensions(fastify, options) {
       try {
         // FIX B1: реальные колонки pre_tender_requests (V001:1076-1106):
         //   work_description (НЕ request_description), customer_email (НЕТ contact_email).
+        // D-295: добираем work_title / ai_work_type / сроки / объёмы / оплату —
+        // без них ТКП выходило полупустым (тема-простыня, пустые сроки и позиции).
         const r = await db.query(
           `SELECT customer_name, customer_inn, work_description, work_location,
-                  contact_person, contact_phone, customer_email, estimated_sum
+                  contact_person, contact_phone, customer_email, estimated_sum,
+                  work_title, ai_work_type, ai_scope_items,
+                  work_deadline, work_start_plan, work_end_plan,
+                  work_volume, work_volume_unit,
+                  kp_price_without_vat, kp_price_with_vat
              FROM pre_tender_requests WHERE id = $1`,
           [preTenderId]
         );
         if (r.rows[0]) {
-          prefill.customer_name    = r.rows[0].customer_name;
-          prefill.customer_inn     = r.rows[0].customer_inn;
-          prefill.contact_person   = r.rows[0].contact_person;
-          prefill.contact_phone    = r.rows[0].contact_phone;
-          prefill.contact_email    = r.rows[0].customer_email;
-          prefill.subject          = (r.rows[0].work_description || '').slice(0, 200) || null;
-          prefill.work_description = r.rows[0].work_description;
-          prefill.work_location    = r.rows[0].work_location;
-          prefill.estimated_sum    = r.rows[0].estimated_sum;
+          const pt = r.rows[0];
+          prefill.customer_name    = pt.customer_name;
+          prefill.customer_inn     = pt.customer_inn;
+          prefill.contact_person   = pt.contact_person;
+          prefill.contact_phone    = pt.contact_phone;
+          prefill.contact_email    = pt.customer_email;
+          prefill.work_description = pt.work_description;
+          prefill.work_location    = pt.work_location;
+          prefill.estimated_sum    = pt.estimated_sum != null ? Number(pt.estimated_sum) : null;
+          prefill.deadline         = pt.work_deadline || null;
+          prefill.work_start       = pt.work_start_plan || null;
+          prefill.work_end         = pt.work_end_plan || null;
+          prefill.work_type        = pt.ai_work_type || null;
+          prefill.work_volume      = pt.work_volume != null ? Number(pt.work_volume) : null;
+          prefill.work_volume_unit = pt.work_volume_unit || null;
+          prefill.scope_items      = Array.isArray(pt.ai_scope_items) ? pt.ai_scope_items : [];
+          // Тема ТКП: короткое название работы, а НЕ первые 200 знаков описания
+          // (раньше в шапке КП стояла «простыня» из тела письма).
+          prefill.subject = pt.work_title
+            || [pt.ai_work_type, pt.customer_name].filter(Boolean).join(' — ')
+            || (pt.work_description || '').slice(0, 120)
+            || null;
         }
       } catch (e) { console.warn('[tkp from-card] pre_tender prefill error:', e.message); }
     } else if (card.entity_kind === 'work' || card.flow_type === 'work') {
@@ -2401,19 +2426,40 @@ module.exports = async function routesWithExtensions(fastify, options) {
         preTenderId ? 'direct_request' :
         workId      ? 'work'           : 'standalone';
 
+      // D-295: позиции из объёмов AI (ai_scope_items). Раньше items был '{}' —
+      // в ТКП не было ни одной строки, и РП вбивал работы руками. Сумму не
+      // выдумываем: quantity заполняем, price оставляем пустым (её вводит РП).
+      const scopeRows = Array.isArray(prefill.scope_items) && prefill.scope_items.length
+        ? prefill.scope_items
+            .filter((it) => it && (it.name || it.volume != null))
+            .map((it, i) => ({
+              id: 's' + (i + 1),
+              code: '',
+              name: String(it.name || '').slice(0, 500),
+              unit: it.unit || '',
+              // D-295: объём должен быть ЧИСЛОМ. Раньше пустая строка мешала
+              // посчитать строку: поле qty оставалось '' и итог не считался.
+              qty: it.volume != null && Number(it.volume) > 0 ? Number(it.volume) : null,
+              price: null,
+              total: null,
+              section: '',
+            }))
+        : [];
+      const initialItems = JSON.stringify({ items: scopeRows, vat_pct: 20 });
+
       const insRes = await client.query(`
         INSERT INTO tkp (
           subject, tender_id, work_id, pre_tender_id, link_type,
           customer_name, customer_inn, customer_address, work_description,
           contact_person, contact_phone, contact_email,
-          items, total_sum, validity_days,
+          items, total_sum, validity_days, deadline,
           author_id, source, status,
           template_kind, constructor_version, last_autosaved_at
         ) VALUES (
           $1, $2, $3, $4, $5,
           $6, $7, $8, $9,
           $10, $11, $12,
-          '{}'::jsonb, 0, 30,
+          $15::jsonb, 0, 30, $16,
           $13, 'kanban_constructor', 'draft',
           $14, 1, NOW()
         ) RETURNING *
@@ -2422,7 +2468,10 @@ module.exports = async function routesWithExtensions(fastify, options) {
         prefill.customer_name, prefill.customer_inn, prefill.customer_address, prefill.work_description,
         prefill.contact_person, prefill.contact_phone, prefill.contact_email,
         request.user.id,
-        template_kind
+        template_kind,
+        initialItems,
+        // D-295: дедлайн КП из заявки (крайний срок подачи), а не пустой.
+        prefill.deadline || null
       ]);
       newTkp = insRes.rows[0];
 
@@ -2437,7 +2486,19 @@ module.exports = async function routesWithExtensions(fastify, options) {
           customer_inn:  prefill.customer_inn,
           subject:       subj,
           author_name:   request.user.name || '',
-          ...(key === 'smeta' && smetaPrefill ? smetaPrefill : {})
+          // D-293: смету Мимира НЕ подставляем в блок «Смета» автоматически.
+          // Это ВНУТРЕННИЙ расчёт (себестоимость/ФОТ/накладные) — заказчик не должен
+          // его видеть, а в ТКП он попадал и выглядел как «наша смета внутри КП».
+          // D-295: зато заполняем позиции из объёмов AI и сроки из заявки —
+          // РП остаётся только проставить цены.
+          ...(key === 'smeta' ? { items: scopeRows, vat_pct: 20 } : {}),
+          ...(key === 'schedule' ? {
+            start_date: prefill.work_start || null,
+            end_date: prefill.work_end || null,
+            milestones: []
+          } : {})
+          // terms.custom не заполняем: в заявке нет поля условий оплаты,
+          // а выдумывать «Аванс 50%» нельзя — РП выбирает сам.
         };
         const data = _defaultBlockData(key, ctx);
         await client.query(`

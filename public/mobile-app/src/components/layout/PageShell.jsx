@@ -1,12 +1,20 @@
 import { useRef, useState, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { ChevronLeft } from 'lucide-react';
+import { useNavigate, useLocation, Link } from 'react-router-dom';
+import { ChevronLeft, Home as HomeIcon } from 'lucide-react';
+import { tabsForRole } from '@/components/layout/TabBar';
+import { useAuthStore } from '@/stores/authStore';
 
 /**
  * PageShell — обёртка страницы.
  * Glass-blur header при скролле, iOS large→compact title.
+ *
+ * Навигация (20.10.2026): в шапке ВСЕГДА есть выход — либо «назад», либо
+ * «на главную». Раньше showBack по умолчанию был false, и на листовых экранах
+ * пользователь оставался без кнопки (жалоба заказчика).
+ *
  * Props:
- *   showBack  — показать кнопку «Назад»
+ *   showBack  — принудительно показать «назад» (по умолчанию — авто)
+ *   isRoot    — экран является корневым (нижний тап-бар); вместо «назад» даём «домой»
  *   onBack    — кастомный обработчик; по умолчанию navigate(-1)
  */
 export function PageShell({
@@ -16,18 +24,36 @@ export function PageShell({
   scrollable = true,
   headerRight,
   largeTitle = true,
-  showBack = false,
+  showBack,
   onBack,
+  isRoot = false,
 }) {
   const mainRef = useRef(null);
   const [scrollY, setScrollY] = useState(0);
   const navigate = useNavigate();
+  const location = useLocation();
+  const role = useAuthStore((s) => s.user?.role);
 
   const handleScroll = useCallback((e) => {
     setScrollY(e.target.scrollTop);
   }, []);
 
-  const handleBack = onBack || (() => navigate(-1));
+  // Корневой ли экран: совпадает с вкладкой нижнего тап-бара (или задано явно).
+  const rootPaths = tabsForRole(role).map((t) => t.path);
+  const isTabRoot = isRoot || rootPaths.includes(location.pathname);
+
+  // Пришли ли на экран «внутрь» истории. Если истории нет (deep-link, push,
+  // закладка) — navigate(-1) выбросил бы из приложения, поэтому ведём на главную.
+  const canGoBack = (typeof window !== 'undefined' && window.history.length > 1);
+
+  const handleBack = onBack || (() => (canGoBack ? navigate(-1) : navigate('/')));
+
+  // Логика левой кнопки в шапке:
+  //   • showBack === false  → кнопки нет (явный запрет, напр. корневой экран)
+  //   • корневой экран      → «на главную» (на главной самой кнопки не нужно)
+  //   • вложенный экран     → «назад» (явный showBack или автоматически)
+  const backVisible = showBack !== false && !isTabRoot;
+  const homeVisible = showBack !== false && isTabRoot && location.pathname !== '/';
 
   const headerBlur = Math.min(scrollY / 60, 1);
   const isCompact  = scrollY > 40;
@@ -54,8 +80,8 @@ export function PageShell({
           />
 
           <div className="relative flex items-center justify-between pb-2">
-            {/* Левая сторона: кнопка назад или пустое место */}
-            {showBack ? (
+            {/* Левая сторона: «назад» на вложенных экранах, «домой» на корневых */}
+            {backVisible ? (
               <button
                 onClick={handleBack}
                 className="spring-tap flex items-center justify-center shrink-0"
@@ -69,6 +95,15 @@ export function PageShell({
               >
                 <ChevronLeft size={24} strokeWidth={2.5} />
               </button>
+            ) : homeVisible ? (
+              <Link
+                to="/"
+                className="spring-tap flex items-center justify-center shrink-0"
+                style={{ width: 44, height: 44, marginLeft: 4, color: 'var(--gold)' }}
+                aria-label="На главную"
+              >
+                <HomeIcon size={20} strokeWidth={2.2} />
+              </Link>
             ) : (
               <div style={{ width: 20, marginLeft: 20 }} />
             )}
@@ -81,7 +116,7 @@ export function PageShell({
                 transition: 'all var(--motion-normal) var(--ease-smooth-out)',
                 paddingTop:    isCompact && largeTitle ? '4px'  : '8px',
                 paddingBottom: isCompact && largeTitle ? '4px'  : '4px',
-                paddingLeft:   showBack ? 4 : 0,
+                paddingLeft:   (backVisible || homeVisible) ? 4 : 0,
               }}
             >
               {title}

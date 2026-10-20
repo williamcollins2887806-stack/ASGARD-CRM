@@ -24,6 +24,13 @@ const fastify = require('fastify')({
   // без объяснения). С этой опцией запрос доходит до приложения и получает наш
   // обычный JSON с message/hint (найдено верификатором 16.10.2026).
   http: { requireHostHeader: false },
+  // D-311: при остановке сервиса Fastify обязан рвать keep-alive и «висящие»
+  // соединения. Без этого nginx держал сокеты до SIGKILL: 20.10.2026 в 10:55
+  // сервис не успел закрыться за TimeoutStopSec=30s, systemd убил его
+  // (status=9/KILL, Failed with result 'timeout'), а в окне рестарта ушло
+  // 55 ответов 502. За неделю 65 рестартов и 1 518 ответов 502, из них 97% —
+  // в первые 120 с после старта.
+  forceCloseConnections: true,
   // ⚠️ ПРАВИЛО ПРОДУКТА (16.10.2026): пользователь должен видеть ЧТО случилось
   // и ЧТО делать, а не сырой английский JSON. Часть ошибок Fastify возникает
   // ДО маршрутизации и НЕ проходит через setErrorHandler/onSend (битый URL,
@@ -194,7 +201,9 @@ fastify.addHook('onRequest', async (request, reply) => {
   // запрос: @fastify/cors на ACRM без Origin отдаёт text/plain
   // «Invalid Preflight Request» (найдено верификатором 16.10.2026).
   if (hasAcrm && hasOrigin) return;
-  reply.code(400).send({
+  // D-307: `return` обязателен — без него onRequest продолжает цепочку после
+  // отправки ответа и Fastify пишет «Reply was already sent» (7× OPTIONS /).
+  return reply.code(400).send({
     error: 'bad_preflight',
     message: 'Некорректный предварительный запрос (preflight).',
     hint: 'Обновите страницу (F5) и повторите действие. Если ошибка повторяется — сообщите администратору.',
@@ -473,7 +482,13 @@ fastify.register(require('@fastify/static'), {
 
 // Intercept /m/index.html AFTER @fastify/static but BEFORE send (onSend hook)
 // This ensures we always serve the fresh SPA HTML from memory, not disk cache
-fastify.addHook('onSend', async (request, reply) => {
+// D-307: хук ОБЯЗАН быть done-style, а не `async`. В паре со вторым onSend-хуком
+// (`human-friendly errors`, ниже) async-форма давала двойной ответ: обработчик,
+// вызвавший `reply.send()` без `return`, получал «Reply was already sent» +
+// `Unhandled Promise Rejection / ERR_HTTP_HEADERS_SENT` со стеком
+// safeWriteHead → onSendEnd → wrapOnSendEnd → next → handleResolve.
+// 1 097 таких событий за 14–20.10.2026 (99% из них — /api/telephony/*).
+fastify.addHook('onSend', (request, reply, payload, done) => {
   const url = request.url.split('?')[0];
   if (url === '/m/index.html' && reactMobileHtml) {
     const match = reactMobileHtml.match(/index-([\w-]+)\.js/);
@@ -482,8 +497,9 @@ fastify.addHook('onSend', async (request, reply) => {
       .header('Cache-Control', 'no-cache, no-store, must-revalidate, max-age=0')
       .header('Pragma', 'no-cache')
       .header('Expires', '0');
-    return reactMobileHtml;
+    return done(null, reactMobileHtml);
   }
+  return done(null, payload);
 });
 
 // Uploads directory — served separately (uploads/ is outside public/)
@@ -1736,22 +1752,24 @@ fastify.setErrorHandler((error, request, reply) => {
 // теле нет человеческого message/hint — подставляем их (словарь известных
 // кодов + подсказка по HTTP-статусу). Полезная нагрузка успешных ответов не
 // трогается: работаем только с объектами, у которых есть error/message.
-fastify.addHook('onSend', async (request, reply, payload) => {
+// D-307: done-style вместо `async` — см. комментарий у первого onSend-хука.
+// Два async-хука в цепочке ломали ответ при `reply.send()` без `return`.
+fastify.addHook('onSend', (request, reply, payload, done) => {
   try {
     const status = reply.statusCode;
-    if (status < 400) return payload;
-    if (typeof payload !== 'string' || !payload) return payload;
-    if (!payload.startsWith('{')) return payload; // не JSON (HTML, файлы) — не трогаем
+    if (status < 400) return done(null, payload);
+    if (typeof payload !== 'string' || !payload) return done(null, payload);
+    if (!payload.startsWith('{')) return done(null, payload); // не JSON (HTML, файлы) — не трогаем
     const { ensureHumanFields } = require('./lib/human-error');
     const body = JSON.parse(payload);
     // Обрабатываем только объекты с признаком ошибки: error / message / hint.
-    if (!body || typeof body !== 'object' || Array.isArray(body)) return payload;
+    if (!body || typeof body !== 'object' || Array.isArray(body)) return done(null, payload);
     const hasErrMarker = body.error !== undefined || body.message !== undefined || body.hint !== undefined;
-    if (!hasErrMarker) return payload;
+    if (!hasErrMarker) return done(null, payload);
     const changed = ensureHumanFields(body, status);
-    return changed ? JSON.stringify(body) : payload;
+    return done(null, changed ? JSON.stringify(body) : payload);
   } catch (_) {
-    return payload; // никогда не ломаем ответ из-за косметики
+    return done(null, payload); // никогда не ломаем ответ из-за косметики
   }
 });
 
@@ -2265,24 +2283,62 @@ const start = async () => {
 // тихо лежит часами (инцидент 21.06.2026: прод лежал 2 часа из-за TLS-ECONNRESET).
 const shutdown = async (exitCode = 0) => {
   fastify.log.info(`Shutting down (exit=${exitCode})...`);
+  // D-311: systemd даёт TimeoutStopSec=30s, после чего SIGKILL. 20.10.2026
+  // остановка IMAP заняла 25 с из 30 (10:55:12 → 10:55:37), наш собственный
+  // forceExit на 8 с не успел — сервис убили (status=9/KILL), в окне рестарта
+  // ушло 55 ответов 502. Теперь каждый шаг ОГРАНИЧЕН по времени, а общий
+  // бюджет укладывается в TimeoutStopSec с запасом.
+  const START = Date.now();
+  const BUDGET_MS = 20000; // меньше TimeoutStopSec=30s, оставляем запас
+
+  /** Выполнить шаг, но не дольше ms. Зависший шаг не блокирует остановку. */
+  const bounded = async (label, ms, fn) => {
+    let timer;
+    try {
+      await Promise.race([
+        Promise.resolve().then(fn),
+        new Promise((resolve) => { timer = setTimeout(() => {
+          fastify.log.warn(`[shutdown] ${label}: не уложился в ${ms} мс — идём дальше`);
+          resolve();
+        }, ms); }),
+      ]);
+    } catch (e) {
+      fastify.log.warn(`[shutdown] ${label}: ${e && e.message}`);
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
+  };
+
   const forceExit = setTimeout(() => {
-    fastify.log.warn('Forced exit after 8s timeout');
+    fastify.log.warn(`Forced exit after ${BUDGET_MS}ms timeout`);
     process.exit(exitCode === 0 ? 0 : 1);
-  }, 8000);
+  }, BUDGET_MS);
   forceExit.unref();
-  // SSE — long-lived; без явного end() fastify.close() висит до force-exit,
-  // nginx отдаёт 502, десктоп «лагает» на каждом рестарте.
+
+  // 1. SSE — long-lived; без явного end() fastify.close() висит до force-exit,
+  //    nginx отдаёт 502, десктоп «лагает» на каждом рестарте.
   try { require('./routes/sse').closeAll(); } catch (_) {}
+  // 2. Рвём keep-alive и висящие соединения: без этого nginx держит сокет,
+  //    а fastify.close() ждёт их закрытия.
   try {
     const srv = fastify.server;
     if (srv && typeof srv.closeIdleConnections === 'function') srv.closeIdleConnections();
+    if (srv && typeof srv.closeAllConnections === 'function') srv.closeAllConnections();
   } catch (_) {}
-  // Останавливаем внешних потребителей ДО fastify.close() — иначе polling/cron
-  // успевают сделать запросы в закрытый пул.
-  try { const tg = require('./services/telegram'); if (tg.shutdown) await tg.shutdown(); } catch (_) {}
-  try { const imap = require('./services/imap'); await imap.shutdown(); } catch (_) {}
-  try { await fastify.close(); } catch (_) {}
-  try { await db.end(); } catch (_) {}
+  // 3. Внешние потребители — с ограничением, они не должны съедать весь бюджет.
+  await bounded('telegram', 3000, () => {
+    const tg = require('./services/telegram');
+    return tg.shutdown ? tg.shutdown() : null;
+  });
+  await bounded('imap', 5000, () => {
+    const imap = require('./services/imap');
+    return imap.shutdown ? imap.shutdown() : null;
+  });
+  // 4. Остаток бюджета — на закрытие HTTP и пула.
+  const left = () => Math.max(500, BUDGET_MS - 3000 - (Date.now() - START));
+  await bounded('fastify.close', left(), () => fastify.close());
+  await bounded('db.end', 2000, () => db.end());
+  clearTimeout(forceExit);
   process.exit(exitCode);
 };
 

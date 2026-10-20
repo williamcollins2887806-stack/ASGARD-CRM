@@ -1,6 +1,7 @@
 import { Navigate, useLocation } from 'react-router-dom';
 import { useAuthStore } from '@/stores/authStore';
 import { hasPermission, ROUTE_SECTIONS } from '@/config/rbac';
+import { isHiddenRoute } from '@/config/hiddenRoutes';
 
 export function ProtectedRoute({ children, section }) {
   const { user, token, loading } = useAuthStore();
@@ -33,6 +34,12 @@ export function ProtectedRoute({ children, section }) {
 
   if (!token || !user) {
     return <Navigate to="/welcome" state={{ from: location }} replace />;
+  }
+
+  // Раздел скрыт (как на десктопе, 20.10.2026) — прямой заход уводим на главную.
+  // Проверяем раньше прав, чтобы скрытое не «мигало» экраном «нет доступа».
+  if (isHiddenRoute(location.pathname)) {
+    return <Navigate to="/" replace />;
   }
 
   const requiredSection = section || ROUTE_SECTIONS[location.pathname] || null;

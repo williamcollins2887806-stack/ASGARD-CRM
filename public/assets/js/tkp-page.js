@@ -79,6 +79,8 @@ window.AsgardTkpPage = (function() {
   let _docClickBound = false;
   let _mimirStylesInjected = false;
   let _tkpAllItems = [];
+  // D-293: текущий вариант КП ('classic' | 'full'). Раньше всегда classic.
+  let currentKpVariant = 'classic';
 
   function injectMimirTkpStyles() {
     if (_mimirStylesInjected) return;
@@ -605,6 +607,14 @@ window.AsgardTkpPage = (function() {
       '</div></div>' +
       '<div class="formrow">' +
         '<div><label>Тип</label><div id="cr-tkpType-wrap"></div></div>' +
+        // D-293: явный выбор «короткое / полное». Раньше выбор был только в момент
+        // создания, а сохранение всегда ставило classic — «полное» молча терялось.
+        '<div><label>Формат КП</label>' +
+          '<select id="tkpKpVariant">' +
+            '<option value="classic"' + (o.kpVariant === 'classic' ? ' selected' : '') + '>Короткое (таблица работ)</option>' +
+            '<option value="full"' + (o.kpVariant === 'full' ? ' selected' : '') + '>Полное (с блоками)</option>' +
+          '</select>' +
+        '</div>' +
       '</div>' +
       '<div class="formrow"><div style="grid-column:1/-1">' +
         '<div style="display:flex;justify-content:space-between;align-items:center">' +
@@ -720,8 +730,14 @@ window.AsgardTkpPage = (function() {
     var checkedPay = document.querySelector('input[name="tkpPayType"]:checked');
     var payType = checkedPay ? checkedPay.value : 'advance';
 
+    // D-293: вариант КП больше не затирается на 'classic' при каждом сохранении.
+    // Раньше выбор «полное» терялся: форма всегда писала classic, и ТКП молча
+    // становилось коротким. Теперь берём выбранный вариант (или текущий у карточки).
+    var variantEl = $('#tkpKpVariant');
+    var variant = (variantEl && variantEl.value) || currentKpVariant || 'classic';
+
     return {
-      kp_variant: 'classic',
+      kp_variant: variant,
       subject: ($('#tkpSubject') || {}).value || '',
       customer_name: ($('#tkpCustomerSearch') || {}).value || '',
       customer_inn: ($('#tkpInn') || {}).value || '',
@@ -807,12 +823,15 @@ window.AsgardTkpPage = (function() {
     const authorName = parsed.author_name || 'Кудряшов О.С.';
     const authorPos = parsed.author_position || 'Генеральный директор';
     const desc = parsed.description || item.work_description || '';
+    // D-293: запоминаем вариант КП, чтобы сохранение его не затирало.
+    currentKpVariant = item.kp_variant || 'classic';
 
     const html = buildFormHtml({
       id: currentId, item: item, parsed: parsed, tenderTitle: tenderTitle,
       typeVal: typeVal, payType: payType, advancePct: advancePct,
       deferredDays: deferredDays, payText: payText,
-      authorName: authorName, authorPos: authorPos, desc: desc
+      authorName: authorName, authorPos: authorPos, desc: desc,
+      kpVariant: currentKpVariant
     });
 
     itemRows = [];
@@ -834,6 +853,16 @@ window.AsgardTkpPage = (function() {
       html: html,
       wide: true,
       onMount: function() {
+        // D-293: смена формата КП должна сразу запоминаться — иначе ближайшее
+        // сохранение вернёт прежний вариант.
+        var kpVarEl = document.getElementById('tkpKpVariant');
+        if (kpVarEl) {
+          currentKpVariant = kpVarEl.value || 'classic';
+          kpVarEl.addEventListener('change', function() {
+            currentKpVariant = kpVarEl.value || 'classic';
+          });
+        }
+
         // CRSelect: тип ТКП
         var tkpTypeWrap = document.getElementById('cr-tkpType-wrap');
         if (tkpTypeWrap) {
@@ -1122,7 +1151,17 @@ window.AsgardTkpPage = (function() {
                 }));
               } else {
                 const err = await resp.json().catch(function() { return {}; });
-                toast('Ошибка', err.error || 'Не удалось сохранить (HTTP ' + resp.status + ')', 'err');
+                // D-293: понятная причина вместо «Ошибка». Пользователь не должен
+                // гадать, сломано ли что-то: переводим коды в человеческий текст.
+                var reason = err.error || ('HTTP ' + resp.status);
+                var map = {
+                  forbidden: 'Нет прав на это действие',
+                  not_found: 'КП не найдено — возможно, его уже удалили',
+                  bad_request: 'Проверьте заполнение полей',
+                };
+                if (map[reason]) reason = map[reason];
+                if (err.message && err.message !== reason) reason += ': ' + err.message;
+                toast('Не сохранилось', reason, 'err');
               }
             } catch (ex) {
               toast('Ошибка', ex.message, 'err');

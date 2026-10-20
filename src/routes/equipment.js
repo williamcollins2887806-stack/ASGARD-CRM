@@ -2548,7 +2548,7 @@ async function equipmentRoutes(fastify, options) {
     await db.query("UPDATE equipment SET status='on_warehouse', warehouse_id=$2 WHERE id=$1", [id, wh]);
     await db.query(`INSERT INTO equipment_movements(equipment_id,movement_type,to_warehouse_id,created_by,notes)
        VALUES($1,'return',$2,$3,$4)`, [id, wh, req.user.id, notes || `Возврат${work_id ? ' с работы #'+work_id : ''}`]);
-    reply.send({ ok: true });
+    return reply.send({ ok: true });
   });
 
   // ============================================
@@ -2561,7 +2561,7 @@ async function equipmentRoutes(fastify, options) {
     await db.query("UPDATE equipment SET status='written_off' WHERE id=$1", [id]);
     await db.query(`INSERT INTO equipment_movements(equipment_id,movement_type,created_by,notes)
        VALUES($1,'write_off',$2,$3)`, [id, req.user.id, reason]);
-    reply.send({ ok: true });
+    return reply.send({ ok: true });
   });
 
 }

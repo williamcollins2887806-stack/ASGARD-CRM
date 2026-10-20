@@ -307,6 +307,10 @@ window.AsgardAuth = (function(){
     sessionStorage.clear();
     _cachedAuth = null;
     _cachedAuthTime = 0;
+    // D-309: поток событий обязан умереть вместе с сессией. Иначе закрытая
+    // вкладка/страница входа продолжает переподключаться старым токеном.
+    try { if (window.HuginnSSE && window.HuginnSSE.stop) window.HuginnSSE.stop(); } catch (_) {}
+    try { if (typeof window._sseSourceStop === 'function') window._sseSourceStop(); } catch (_) {}
   }
 
   // ============================================

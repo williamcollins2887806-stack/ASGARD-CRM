@@ -2287,7 +2287,20 @@ window.AsgardPersonalKanbanV3 = (function () {
 .pk3-scope-list { display: flex; flex-direction: column; gap: 5px; padding: 8px 10px; border: 1px solid var(--brd); border-radius: 9px; background: rgba(255,255,255,.02); }
 .pk3-scope-row { display: flex; justify-content: space-between; gap: 10px; font-size: 12.5px; line-height: 1.35; }
 .pk3-scope-name { color: var(--t2); }
+/* D-296: журнал «мыслей» Мимира в busy-overlay (как в DeepSeek) */
+.pk3-mimir-thoughts{width:min(560px,92%);max-height:150px;overflow-y:auto;margin-top:4px;
+  padding:10px 12px;border-radius:10px;background:rgba(255,255,255,.04);
+  border:1px solid rgba(255,255,255,.08);text-align:left;scrollbar-width:thin}
+.pk3-mimir-thoughts:empty{display:none}
+.pk3-thought-row{display:flex;gap:9px;font-size:11.5px;line-height:1.5;
+  color:rgba(255,255,255,.62);animation:pk3-thought-in .25s ease both}
+.pk3-thought-row:last-child{color:rgba(255,255,255,.9)}
+.pk3-thought-time{color:rgba(212,168,67,.75);font-variant-numeric:tabular-nums;
+  flex:0 0 auto;font-size:10.5px}
+.pk3-thought-text{flex:1;word-break:break-word}
+@keyframes pk3-thought-in{from{opacity:0;transform:translateY(3px)}to{opacity:1;transform:none}}
 .pk3-scope-vol { color: var(--gold-l); font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.pk3-scope-vol-empty { color: var(--t3); font-weight: 500; font-style: italic; font-size: 11.5px; }
 .pk3-scope-empty { font-size: 12px; color: var(--t3); font-style: italic; }
 .pk3-work-card { background: var(--bg3); border: 1px solid var(--brd-m); border-radius: 12px; padding: 12px 14px; }
 .pk3-row textarea.pk3-autogrow { resize: none; overflow-y: hidden; min-height: 72px; max-height: 280px; field-sizing: content; line-height: 1.45; }
@@ -3756,18 +3769,26 @@ html[data-theme="light"] .pk3-stk-float-bar { background: rgba(255,255,255,.94);
   const STK_SCALE_EXPAND = 2.15;
 
   const PK3_WORK_TYPES = [
-    'Гидромеханическая очистка', 'Химическая промывка', 'Очистка АВО',
+    'Гидромеханическая очистка', 'Химическая промывка', 'Химическая обработка оборудования',
+    'Травление', 'Пассивация', 'Очистка АВО',
     'Очистка теплообменников', 'Очистка резервуаров', 'Очистка трубопроводов',
     'Очистка котлов', 'Очистка градирен', 'Вентиляция и кондиционирование',
-    'Промывка систем отопления', 'Антикоррозионная обработка', 'ПНР (пуско-наладочные работы)',
+    'Промывка систем отопления', 'Антикоррозионная обработка', 'Теплоизоляция',
+    'Сварочные работы (НАКС)', 'ПНР (пуско-наладочные работы)',
     'Диагностика', 'Монтажные работы', 'Другое'
   ];
 
   // S-22: у каждого типа работ СВОИ единицы объёма. Раньше для всех был м³ —
   // мойку мерили кубометрами, сварку тоже. Теперь набор единиц зависит от типа.
+  // D-294: добавлены типы, которые реально возвращает ИИ ("Травление", "Пассивация",
+  // "Химическая обработка оборудования"). Без них тип падал в «Другое» и первой
+  // единицей подставлялся м³ — «Объём (итого)» выглядел неверным.
   const PK3_UNITS_BY_TYPE = {
     'Гидромеханическая очистка':   ['м³', 'м²', 'п.м.', 'шт'],
     'Химическая промывка':         ['м³', 'м²', 'тонн', 'шт'],
+    'Химическая обработка оборудования': ['м³', 'м²', 'шт'],
+    'Травление':                   ['м²', 'м³', 'шт'],
+    'Пассивация':                  ['м²', 'м³', 'шт'],
     'Очистка АВО':                 ['шт', 'секций', 'м²'],
     'Очистка теплообменников':     ['шт', 'м²', 'м³'],
     'Очистка резервуаров':         ['м³', 'м²', 'шт'],
@@ -3777,12 +3798,14 @@ html[data-theme="light"] .pk3-stk-float-bar { background: rgba(255,255,255,.94);
     'Вентиляция и кондиционирование': ['п.м.', 'м²', 'шт', 'компл'],
     'Промывка систем отопления':   ['п.м.', 'м³', 'точек'],
     'Антикоррозионная обработка':  ['м²', 'п.м.', 'шт'],
+    'Теплоизоляция':               ['м²', 'п.м.', 'шт'],
+    'Сварочные работы (НАКС)':     ['стыков', 'п.м.', 'шт'],
     'ПНР (пуско-наладочные работы)': ['точек', 'шт', 'часов'],
     'Диагностика':                 ['точек', 'п.м.', 'шт', 'часов'],
     'Монтажные работы':            ['тонн', 'шт', 'п.м.', 'компл'],
-    'Другое':                      ['м³', 'м²', 'п.м.', 'часов', 'точек', 'тонн', 'шт', 'компл']
+    'Другое':                      ['м³', 'м²', 'п.м.', 'часов', 'точек', 'стыков', 'секций', 'тонн', 'шт', 'компл']
   };
-  const PK3_VOLUME_UNITS = ['м³', 'м²', 'п.м.', 'часов', 'точек', 'секций', 'тонн', 'шт', 'компл'];
+  const PK3_VOLUME_UNITS = ['м³', 'м²', 'п.м.', 'часов', 'точек', 'секций', 'стыков', 'тонн', 'шт', 'компл'];
 
   function _unitsForWorkType(type) {
     return PK3_UNITS_BY_TYPE[type] || PK3_VOLUME_UNITS;
@@ -4344,7 +4367,11 @@ html[data-theme="light"] .pk3-stk-float-bar { background: rgba(255,255,255,.94);
       ? '<div class="pk3-scope-list">' + scopeItems.map((it) => `
           <div class="pk3-scope-row">
             <span class="pk3-scope-name">${esc(it.name || '—')}</span>
-            <span class="pk3-scope-vol">${it.volume != null ? esc(String(it.volume)) : '—'} ${esc(it.unit || '')}</span>
+            <span class="pk3-scope-vol${it.volume == null ? ' pk3-scope-vol-empty' : ''}">${
+              it.volume != null
+                ? esc(String(it.volume)) + ' ' + esc(it.unit || '')
+                : 'объём не указан'
+            }</span>
           </div>`).join('') + '</div>'
       : '<div class="pk3-scope-empty">ИИ не нашёл явных объёмов в заявке — заполните вручную.</div>';
     return _section('sec-work', _PK3_ICO.wrench, 'Что делать', null, `
@@ -5725,6 +5752,9 @@ html[data-theme="light"] .pk3-stk-float-bar { background: rgba(255,255,255,.94);
         || /\.docx?$/.test(nameLow) || /\.xlsx?$/.test(nameLow)
       );
       if (needsPdf) previewUrl += (url.indexOf('?') >= 0 ? '&' : '?') + 'format=pdf';
+      // D-291: явно просим INLINE. Без этого сервер отдавал Content-Disposition:
+      // attachment, браузер скачивал файл, а iframe оставался пустым — «белый экран».
+      previewUrl += (previewUrl.indexOf('?') >= 0 ? '&' : '?') + 'inline=1';
       // D-290: архивы из письма тоже открываются списком (раньше — только manual_documents).
       const isZipDoc = mimeLow.includes('zip') || nameLow.endsWith('.zip');
       let archiveListUrl = null;
@@ -8338,6 +8368,29 @@ window.AsgardPKv3Modals = (function () {
     };
 
     // ── Busy-overlay поверх модалки (спиннер + таймер секунд) ──
+    // D-296: журнал «мыслей» Мимира (как в DeepSeek) — видно, на каком шаге он,
+    // а не просто крутящийся спиннер. Строки копятся, старые тускнеют.
+    function _mimirThoughtsReset() {
+      const box = overlay.querySelector('.pk3-mimir-thoughts');
+      if (box) box.innerHTML = '';
+    }
+    function _mimirThought(text) {
+      const box = overlay.querySelector('.pk3-mimir-thoughts');
+      if (!box || !text) return;
+      const t = new Date();
+      const hh = String(t.getHours()).padStart(2, '0');
+      const mm = String(t.getMinutes()).padStart(2, '0');
+      const ss = String(t.getSeconds()).padStart(2, '0');
+      const row = document.createElement('div');
+      row.className = 'pk3-thought-row';
+      row.innerHTML = `<span class="pk3-thought-time">${hh}:${mm}:${ss}</span><span class="pk3-thought-text"></span>`;
+      row.querySelector('.pk3-thought-text').textContent = text;
+      box.appendChild(row);
+      // держим последние 8 строк, чтобы не разъезжалось
+      while (box.children.length > 8) box.removeChild(box.firstChild);
+      box.scrollTop = box.scrollHeight;
+    }
+
     function _setBusy(title, subtitle) {
       _ensureSpinKeyframes();
       const modalEl = overlay.querySelector('.pk3-modal');
@@ -8353,6 +8406,7 @@ window.AsgardPKv3Modals = (function () {
           <div class="pk3-busy-text"></div>
           <div class="pk3-busy-sub"></div>
           <div class="pk3-busy-sub pk3-busy-dots"></div>
+          <div class="pk3-mimir-thoughts" aria-live="polite"></div>
         `;
         modalEl.appendChild(busy);
       } else {
@@ -8458,7 +8512,19 @@ window.AsgardPKv3Modals = (function () {
         if (step === 0) {
           setProgress('Сессия найдена. Жми «▶ Запустить».', { keepBusy: false });
         } else if (step === 1) {
-          setProgress('Сессия в расчёте — можно дождаться или «🔄 С нуля».', { keepBusy: false });
+          // D-296: не «ошибка», а честный статус с прогрессом и авто-подхватом.
+          setProgress('⏳ Мимир уже считает этот просчёт на сервере.', { keepBusy: false });
+          _setBusy('Мимир считает смету', 'результат появится автоматически — можно не закрывать');
+          const recovered = await _pollSessionResult(0);
+          _clearBusy();
+          if (recovered) {
+            toast('Мимир-Quick', 'Расчёт готов', 'ok');
+            step = 2;
+            rerender();
+          } else {
+            setProgress('⏳ Расчёт ещё идёт. Подожди 2–5 мин и открой просчёт снова — результат подхватится сам.',
+              { keepBusy: false });
+          }
         }
       } catch (e) {
         const msg = (e && e.message) || 'Ошибка инициализации сессии';
@@ -8656,17 +8722,24 @@ window.AsgardPKv3Modals = (function () {
       }, 1000);
       try {
         setProgress('Подключаюсь к модели…');
+        // D-296: журнал «мыслей» Мимира — как в DeepSeek. Каждый шаг SSE
+        // дописывается строкой с отметкой времени, чтобы человек видел,
+        // что работа идёт, а не просто висел спиннер.
+        _mimirThoughtsReset();
         const ssr = await _streamSSE(`/api/tkp-quick/sessions/${encodeURIComponent(sessionUid)}/calculate`, {});
         ssr.onEach(ev => {
           const d = ev.data || {};
           if (d.type === 'start' || d.type === 'progress' || d.type === 'status') {
             const msg = d.message || 'AI работает…';
             setProgress(msg);
+            _mimirThought(msg);
             _setBusy(msg.length > 72 ? msg.slice(0, 70) + '…' : msg, calcLabel());
           } else if (d.type === 'done') {
             lastChatMd = d.chat_response_md || '';
             lastEstimate = d.estimate || null;
+            _mimirThought('Готово — смета собрана');
           } else if (d.type === 'error') {
+            _mimirThought('Ошибка: ' + (d.message || 'ошибка AI'));
             setProgress('❌ ' + (d.message || 'ошибка AI'));
           }
         });
@@ -8679,11 +8752,23 @@ window.AsgardPKv3Modals = (function () {
         const nice = /network|Failed to fetch|fetch|aborted|ECONNRESET/i.test(msg)
           ? 'Связь оборвалась (долгий расчёт). Закрой окно и запусти просчёт ещё раз — сессия могла сохраниться.'
           : msg;
-        toast('Мимир-Quick: расчёт не удался', nice, 'err');
-        setProgress('❌ ' + nice);
-        _clearBusy();
+        // D-296: расчёт НЕ потерян, даже если SSE оборвался/браузер закрыли.
+        // Backend продолжает и сохраняет результат в сессию. Раньше фронт показывал
+        // «ошибка» и на этом всё — директор видел отчёт только при повторном заходе
+        // через 5 минут. Теперь сами подхватываем результат с сервера.
+        setProgress('Связь с моделью прервалась — проверяю результат на сервере…');
+        const recovered = await _pollSessionResult(Math.max(0, Date.now() - calcStarted));
         clearInterval(calcIv);
+        _clearBusy();
         running = false;
+        if (recovered) {
+          toast('Мимир-Quick', 'Расчёт всё-таки готов — открываю смету', 'ok');
+          step = 2;
+          rerender();
+          return;
+        }
+        toast('Мимир-Quick: расчёт не удался', nice, 'err');
+        setProgress('❌ ' + nice + ' Результат на сервере не найден.');
         return;
       }
       clearInterval(calcIv);
@@ -8692,6 +8777,37 @@ window.AsgardPKv3Modals = (function () {
       running = false;
       step = 2;
       rerender();
+    }
+
+    /**
+     * D-296: подхватить результат расчёта с сервера, если SSE оборвался.
+     * Опрос сессии: 'calculating' → ждём; появился estimate_draft → забираем.
+     * Ждём до ~5 минут (как реальный расчёт), затем сдаёмся.
+     */
+    async function _pollSessionResult(alreadyWaitedMs) {
+      const deadline = Date.now() + Math.max(60000, 300000 - alreadyWaitedMs);
+      let attempt = 0;
+      while (Date.now() < deadline) {
+        attempt += 1;
+        const sec = Math.round((Date.now() - (deadline - 300000)) / 1000);
+        _setBusy('Мимир считает на сервере', `уже ~${Math.max(0, sec)} сек · не закрывай окно`);
+        await new Promise((r) => setTimeout(r, attempt <= 3 ? 3000 : 8000));
+        try {
+          const r = await api(`/api/tkp-quick/sessions/${encodeURIComponent(sessionUid)}`);
+          const sess = (r && r.ok && r.data) || {};
+          const st = sess.status || '';
+          const draft = sess.estimate_draft || null;
+          if (draft) {
+            lastEstimate = draft;
+            lastChatMd = sess.chat_response_md || sess.chat_md || lastChatMd;
+            return true;
+          }
+          if (st === 'error' || st === 'failed') {
+            return false;
+          }
+        } catch (_) { /* сеть мигнула — пробуем ещё */ }
+      }
+      return false;
     }
 
     async function _doSendReply() {

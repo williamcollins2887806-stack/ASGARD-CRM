@@ -1,16 +1,24 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '@/api/client';
+import { useAuthStore } from '@/stores/authStore';
 import { WidgetShell } from '@/widgets/WidgetShell';
 
 /**
  * ApprovalsWidget — количество ожидающих согласований
  * API: GET /data/bonus_requests + GET /data/estimates
+ *
+ * 20.10.2026: раздел `/approvals` скрыт на мобильном (как на десктопе —
+ * пункт NAV с navHide). Директоров уводим на их экран согласований,
+ * остальным роль не показывает счётчик решений — ведём в «Ещё».
  */
 export default function ApprovalsWidget() {
   const [count, setCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
+  const role = useAuthStore((s) => s.user?.role);
+  const isDirector = ['ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV'].includes(role);
+  const target = isDirector ? '/director-approvals' : '/more';
 
   useEffect(() => {
     (async () => {
@@ -42,7 +50,7 @@ export default function ApprovalsWidget() {
     <WidgetShell name="Согласования" icon="✍️" loading={loading}>
       <button
         className="w-full text-left spring-tap"
-        onClick={() => navigate('/approvals')}
+        onClick={() => navigate(target)}
       >
         <div className="flex items-baseline gap-2">
           <span

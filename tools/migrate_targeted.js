@@ -63,7 +63,26 @@ const TARGETS = [
   'V409__doc_ai_extract_seller_payee',          // doc_registry: seller_/payee_*, parse_engine/warnings (ИИ-разбор)
   'V410__user_email_aliases',                   // user_email_aliases (почта→сотрудник) + включение email_intake_enabled
   'V411__payment_batches',                      // payment_batches (партия счетов) + payment_invoices.batch_id
-  'V412__payment_invoice_vat_rate'              // payment_invoices.vat_rate + amount_net (ставки 22/20/10/7/5/0)
+  'V412__payment_invoice_vat_rate',             // payment_invoices.vat_rate + amount_net (ставки 22/20/10/7/5/0)
+  // D-302: V413…V426 добавлены 20.10.2026. До этого список кончался на V412,
+  // а деплой-скрипты заливали весь src и рестартовали сервис. Код обращался к
+  // office_vacations (V417) и work_calendar.kind (V418), которых на проде ещё
+  // не было: 12× 42P01 и 10× 42703 в журнале 19–20.10.2026, 19 ответов 500
+  // на /api/daily-presence/*. Список обязан догонять репозиторий.
+  'V413__d283_intake_backfill',                 // backfill intake (правка данных)
+  'V414__unify_ai_model',                       // единая модель ИИ
+  'V415__pre_tender_fields_backfill',           // pre_tenders: backfill полей
+  'V416__pre_tender_work_title_scope',          // pre_tenders: scope названия работ
+  'V417__office_vacations',                     // office_vacations + дни/аудит/согласования
+  'V418__work_calendar_prod_2026_2027',         // work_calendar: kind/title/source + производственный календарь
+  'V419__reset_receive_channel_email',          // канал получения: сброс на email
+  'V420__doc_owner_to_tumaeva',                 // doc_registry: владелец
+  'V421__emails_email_type_categories',         // email_type: категории
+  'V422__drop_invented_due_dates',              // снос выдуманных сроков (правка данных)
+  'V423__closing_doc_kinds',                    // closing_doc_kinds
+  'V424__fix_wrong_contract_links',             // исправление неверных связей договоров
+  'V425__etk_contract',                         // ЭТК: договор
+  'V426__fix_closing_sum_616'                   // исправление суммы закрытия 616
 ];
 
 const pool = new Pool({
