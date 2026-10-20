@@ -617,7 +617,15 @@ fastify.decorate('authenticate', async function(request, reply) {
     }
     if (huginnAcl.assertGuestApiAccess(request, reply)) return;
   } catch (err) {
-    return reply.code(401).send({ error: 'Unauthorized', message: 'Требуется авторизация' });
+    // D-313: НЕ отдавать сюда английское `Unauthorized` — клиенты показывают
+    // поле `error` как текст, и пользователь видел латиницу на экране PIN.
+    // Код 401 в статусе, текст — русский.
+    return reply.code(401).send({
+      error: 'Требуется авторизация',
+      message: 'Требуется авторизация',
+      hint: 'Войдите в систему заново.',
+      code: 'unauthorized',
+    });
   }
 });
 

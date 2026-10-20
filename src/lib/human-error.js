@@ -344,6 +344,26 @@ function ensureHumanFields(body, statusCode) {
       body.error = human;
       changed = true;
     }
+  } else if (errStr) {
+    // D-313: канонические английские фразы (`Unauthorized`, `Forbidden`,
+    // `Not Found`) приводятся к машинному коду ниже, но клиент показывает
+    // `error` — поэтому сразу подставляем русский текст по статусу.
+    const HUMAN_BY_STATUS = {
+      401: 'Требуется авторизация',
+      403: 'Доступ запрещён',
+      404: 'Запись не найдена',
+      409: 'Данные уже изменены — обновите страницу',
+      429: 'Слишком много попыток — подождите немного',
+    };
+    const human = HUMAN_BY_STATUS[statusCode];
+    if (human && looksTechnical(errStr)) {
+      if (body.code === undefined) {
+        body.code = { 401: 'unauthorized', 403: 'forbidden', 404: 'not_found' }[statusCode] || 'error';
+      }
+      if (typeof body.message !== 'string' || looksTechnical(body.message)) body.message = human;
+      body.error = human;
+      changed = true;
+    }
   }
 
   // ── message: должен быть человеческим ─────────────────────────────────
