@@ -40,7 +40,9 @@ const check = (n, ok, d) => { if (ok) { pass++; console.log('PASS ' + n); } else
     if (uu && uu.permissions) localStorage.setItem('asgard_permissions', JSON.stringify(uu.permissions));
   }, [token, u]);
   await page.goto(BASE + '/#/doc-hub', { waitUntil: 'commit' });
-  await page.waitForTimeout(3500);
+  await page.waitForTimeout(5000);
+  await page.waitForSelector('#dhTableHost, .dh-facet', { timeout: 20000 }).catch(() => {});
+  await page.waitForTimeout(800);
 
   const hasHub = await page.$('.dh-facet, #dhFacetIncomplete');
   check('страница документов открылась', !!hasHub);

@@ -4199,10 +4199,21 @@ window.AsgardDocHubPage = (function () {
    */
   function captureScroll() {
     const snap = [];
-    const nodes = [document.scrollingElement, document.getElementById('dhTableHost')]
-      .concat([...document.querySelectorAll('.dh-tablewrap, .dh-scroll, .dh-main, .dh-page__body')]);
-    for (const el of nodes) {
-      if (!el || typeof el.scrollTop !== 'number') continue;
+    // В этом приложении прокрутка живёт во внутренних контейнерах (body overflow:hidden),
+    // главный — #layout. Поэтому перебираем все реально прокручиваемые узлы, а не только document.
+    const preferred = [
+      document.getElementById('layout'),
+      document.getElementById('dhTableHost'),
+      document.querySelector('.main'),
+      document.querySelector('.main-content'),
+      document.querySelector('.dh-tablewrap'),
+      document.scrollingElement,
+    ];
+    const extra = [...document.querySelectorAll('#layout .dh-tablewrap, #layout .dh-scroll, .dh-main')];
+    const seen = new Set();
+    for (const el of preferred.concat(extra)) {
+      if (!el || seen.has(el) || typeof el.scrollTop !== 'number') continue;
+      seen.add(el);
       if (el.scrollTop || el.scrollLeft) snap.push([el, el.scrollTop, el.scrollLeft]);
     }
     return snap;
