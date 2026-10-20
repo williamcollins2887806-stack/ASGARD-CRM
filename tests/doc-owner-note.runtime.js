@@ -44,10 +44,18 @@ async function mint(id) {
   if (all.total > mine.total) ok(`«Показать все» (${all.total}) > «мои» (${mine.total})`);
   else bad(`«Показать все» не шире: all=${all.total} mine=${mine.total}`);
 
-  // 3) подпись: ставим и фильтруем
+  // 3) подпись: ставим ЧЕРЕЗ API (автор = сессия), затем фильтруем.
+  // D-306c: прямая запись в БД оставляет подпись «ничьей», и по контракту
+  // приватности её не должен видеть никто — поэтому только PUT.
   const ids = (await db.query(`SELECT id FROM doc_registry WHERE deleted_at IS NULL AND doc_owner_id=4698 ORDER BY id LIMIT 2`)).rows;
-  await db.query(`UPDATE doc_registry SET doc_owner_note='Пираев С.' WHERE id=$1`, [ids[0].id]);
-  await db.query(`UPDATE doc_registry SET doc_owner_note='Михайлушкин А.' WHERE id=$1`, [ids[1].id]);
+  const putNote = (docId, note) => fetch(`${BASE}/api/doc-registry/${docId}`, {
+    method: 'PUT', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + tOk },
+    body: JSON.stringify({ doc_owner_note: note })
+  });
+  const p1 = await putNote(ids[0].id, 'Пираев С.');
+  const p2 = await putNote(ids[1].id, 'Михайлушкин А.');
+  if (p1.status === 200 && p2.status === 200) ok('подписи поставлены через API (автор = сессия)');
+  else bad(`не удалось поставить подписи: ${p1.status}/${p2.status}`);
 
   const rf = await fetch(`${BASE}/api/doc-registry?limit=50&scope=all&owner_note=${encodeURIComponent('Пираев С.')}`, { headers: { Authorization: 'Bearer ' + tOk } });
   const jf = await rf.json();

@@ -1590,6 +1590,33 @@ body.hg-dock-open .dh-hscroll-bar {
 /* D-306: под-ответственный — свободная подпись. Шире обычного фасета,
    потому что ФИО вводятся руками и фильтруются мультивыбором. */
 .dh-facet--note { min-width: 200px; }
+/* D-306c: подпись под-ответственного приватна — помечаем это в UI. */
+.dh-facet__priv {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0;
+  color: var(--t3, #94a3b8);
+  border: 1px solid var(--brd, #334155);
+  text-transform: none;
+}
+.dh-note-empty {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-height: 34px;
+  justify-content: center;
+  padding: 6px 10px;
+  border: 1px dashed var(--brd, #334155);
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--t3, #94a3b8);
+}
+.dh-note-empty__hint { font-size: 11px; opacity: .75; }
 .dh-field__hint { font-weight: 400; font-size: 11px; color: var(--t3, #94a3b8); margin-left: 6px; }
 .dh-field--note input { font-size: 13px; }
 .dh-facet--check {

@@ -48,6 +48,10 @@ const WRITE_COLS = [
   'doc_owner_note'
 ];
 
+// D-306c: автор подписи НЕ принимается из тела запроса — только из сессии.
+// Иначе клиент мог бы подписаться чужим именем и увидеть чужие подсказки.
+const OWNER_NOTE_AUTHOR_COL = 'doc_owner_note_by';
+
 const JOIN_SQL = `SELECT d.*,
   COALESCE(w.work_title, w.object_name) AS work_title,
   w.work_number AS work_number,
@@ -257,7 +261,7 @@ function pickBody(b) {
   return out;
 }
 
-function decorate(row) {
+function decorate(row, viewerId) {
   if (!row) return row;
   const t = today();
   const payDue = row.payment_due_at ? String(row.payment_due_at).slice(0, 10) : null;
@@ -265,7 +269,7 @@ function decorate(row) {
   // Светофор — единое ядро (src/lib/doc-traffic.js). Если трафик уже посчитан
   // SQL-выражением (d.traffic), не дублируем; иначе считаем JS-зеркалом.
   const trafficInfo = row.traffic ? { color: row.traffic } : traffic.trafficOf({ ...row, ...(payDue ? { payment_due_at: payDue } : {}), ...(sfDue ? { sf_due_at: sfDue } : {}) }, { today: t });
-  return {
+  const out = {
     ...row,
     original_path_url: normPath(row.original_path_url),
     overdue_pay: !!(payDue && payDue < t && traffic.payDeadlineActive(row)),
@@ -273,6 +277,18 @@ function decorate(row) {
     traffic: trafficInfo.color,
     traffic_reason: trafficInfo.reason
   };
+  // D-306c (заказчик 20.10.2026): «эти фильтры другие не должны видеть —
+  // только пользователь их видит». Подпись под-ответственного приватна:
+  // чужую не отдаём наружу вовсе (ни в списке, ни в карточке), иначе коллега
+  // на общем аккаунте АГПЗ увидит ФИО соседа и сможет его подставить.
+  // Автор подписи тоже не уходит на фронт — это рабочая привязка, не данные.
+  if (viewerId != null) {
+    const mine = Number(row.doc_owner_note_by) === Number(viewerId);
+    if (!mine) out.doc_owner_note = null;
+    out.doc_owner_note_mine = mine;
+  }
+  delete out.doc_owner_note_by;
+  return out;
 }
 
 function linesOf(doc) {
@@ -482,6 +498,9 @@ function buildFilters(q, userId, role) {
   if (q.doc_owner_id) manyIds('d.doc_owner_id', q.doc_owner_id);
   if (q.pm_id) manyIds('d.pm_id', q.pm_id);
   // D-306: под-ответственный — свободная подпись внутри общего аккаунта.
+  // D-306c (заказчик 20.10.2026): «эти фильтры другие не должны видеть —
+  // только пользователь их видит». Поэтому фильтр идёт ТОЛЬКО по своим
+  // подписям: чужие «Пираев С.» на том же аккаунте в выдачу не подмешиваются.
   // Мультивыбор тех же значений, что в подсказках (см. /owner-notes).
   // Сравнение без регистра: «Пираев С.» == «пираев с.».
   // Разделитель в query — «||», потому что в ФИО бывает запятая
@@ -490,7 +509,10 @@ function buildFilters(q, userId, role) {
     const notes = String(q.owner_note).split('||').map((s) => s.trim()).filter(Boolean);
     if (notes.length) {
       params.push(notes.map((s) => s.toLowerCase()));
-      where += ` AND lower(BTRIM(COALESCE(d.doc_owner_note,''))) = ANY($${params.length}::text[])`;
+      const iP = params.length;
+      params.push(userId);
+      where += ` AND lower(BTRIM(COALESCE(d.doc_owner_note,''))) = ANY($${iP}::text[])`
+        + ` AND d.${OWNER_NOTE_AUTHOR_COL} = $${params.length}`;
     }
   }
   // Отдельный режим «мои строки» для подписи не нужен: фронт подставляет
@@ -594,7 +616,7 @@ module.exports = async function docRegistryRoutes(fastify) {
     // План §12: флаг отдаётся фронту, чтобы UI показывал светофор/корректировки
     // только когда фича включена. Данные (traffic) приходят всегда — их не жалко.
     const enabled = await isTrafficLightEnabled(db);
-    return { items: list.rows.map(decorate), total: cnt.rows[0].n, page, limit, sort, traffic_light: enabled };
+    return { items: list.rows.map((r) => decorate(r, req.user.id)), total: cnt.rows[0].n, page, limit, sort, traffic_light: enabled };
   });
 
   fastify.get('/kpi', auth, async (req) => {
@@ -656,13 +678,17 @@ module.exports = async function docRegistryRoutes(fastify) {
            FROM doc_registry d INNER JOIN works w ON w.id=d.work_id ${scopeSql}
            ORDER BY 2 NULLS LAST LIMIT 500`, params
         ),
-        // D-306: подсказки под-ответственных — уже введённые подписи с числом
-        // строк. Справочник не заводим: как в Excel, список растёт сам.
+        // D-306c: подсказки под-ответственных — ТОЛЬКО свои подписи.
+        // Заказчик: «эти фильтры другие не должны видеть». Поэтому в SQL
+        // жёстко автор = текущий пользователь: подпись, которую вписала
+        // коллега на том же аккаунте АГПЗ, сюда не попадает.
         db.query(
           `SELECT BTRIM(d.doc_owner_note) AS note, count(*)::int AS n
              FROM doc_registry d ${scopeSql}
               AND d.doc_owner_note IS NOT NULL AND BTRIM(d.doc_owner_note) <> ''
-            GROUP BY 1 ORDER BY 2 DESC, 1 LIMIT 300`, params
+              AND d.doc_owner_note_by = $${params.length + 1}
+            GROUP BY 1 ORDER BY 2 DESC, 1 LIMIT 300`,
+          [...params, req.user.id]
         )
       ]);
       return {
@@ -689,26 +715,37 @@ module.exports = async function docRegistryRoutes(fastify) {
   /**
    * D-306: подсказки под-ответственных для карточки документа.
    * Заказчик: «в следующий документ зашли и выбрали либо прошлое фио, либо
-   * новое написали — и уже стало 2». Поэтому список строится по ВСЕМ уже
-   * введённым подписям, приоритет — подписи того же владельца (АГПЗ).
+   * новое написали — и уже стало 2».
+   *
+   * D-306c (заказчик 20.10.2026): «эти фильтры другие не должны видеть —
+   * только внутри аккаунта, только пользователь их видит». Поэтому отдаём
+   * ТОЛЬКО подписи текущего пользователя (doc_owner_note_by = он из сессии).
+   * Подпись, которую вписала коллега на том же аккаунте АГПЗ, сюда не попадает.
+   * Приоритет в списке — подписи того же аккаунта; чужие аккаунты не скрываем,
+   * это его собственный рабочий список.
    * Свободный ввод не ограничиваем: чего нет в списке — вводится руками.
    */
   fastify.get('/owner-notes', auth, async (req) => {
     const p = [];
     const vis = visibilitySql(p, req.user.role, req.user.id, { scope: 'all' });
     const ownerId = parseInt((req.query || {}).doc_owner_id, 10);
+    // Автор подписи — только из сессии, никогда из query (иначе чужой список).
+    p.push(req.user.id);
+    const iAuthor = p.length;
+    p.push(Number.isFinite(ownerId) ? ownerId : null);
+    const iOwner = p.length;
     const { rows } = await db.query(
       `SELECT BTRIM(d.doc_owner_note) AS note,
               count(*)::int AS n,
-              bool_or(d.doc_owner_id = $${p.length + 1}) AS same_owner
+              bool_or(d.doc_owner_id = $${iOwner}) AS same_owner
          FROM doc_registry d
         WHERE d.deleted_at IS NULL
           AND d.doc_owner_note IS NOT NULL AND BTRIM(d.doc_owner_note) <> ''
+          AND d.doc_owner_note_by = $${iAuthor}
           ${vis}
         GROUP BY 1
-        ORDER BY bool_or(d.doc_owner_id = $${p.length + 1}) DESC, count(*) DESC, 1
-        LIMIT 200`,
-      [...p, Number.isFinite(ownerId) ? ownerId : null]
+        ORDER BY bool_or(d.doc_owner_id = $${iOwner}) DESC, count(*) DESC, 1
+        LIMIT 200`, p
     );
     return { notes: rows.map((r) => ({ note: r.note, count: r.n, same_owner: r.same_owner })) };
   });
@@ -1559,10 +1596,13 @@ module.exports = async function docRegistryRoutes(fastify) {
       updated_by: req.user.id
     };
     Object.assign(draft, calcIncomplete(draft));
+    // D-306c: при создании подпись, если её вписали, принадлежит автору —
+    // иначе она стала бы «ничьей» и не показалась бы даже ему.
+    if (String(draft.doc_owner_note || '').trim()) draft[OWNER_NOTE_AUTHOR_COL] = req.user.id;
     const dup = await findDup(db, draft);
     if (dup) return reply.code(409).send(await dupBody(db, req, dup));
 
-    const cols = [...Object.keys(draft).filter((k) => WRITE_COLS.includes(k) || k === 'created_by' || k === 'updated_by')];
+    const cols = [...Object.keys(draft).filter((k) => WRITE_COLS.includes(k) || k === 'created_by' || k === 'updated_by' || k === OWNER_NOTE_AUTHOR_COL)];
     const vals = cols.map((k) => bindVal(k, draft[k]));
     try {
       const { rows } = await db.query(
@@ -1571,7 +1611,7 @@ module.exports = async function docRegistryRoutes(fastify) {
       );
       await audit(db, rows[0].id, req.user.id, 'create', { id: rows[0].id });
       maybeScheduleParse(fastify, db, rows[0], req.user.id);
-      return decorate(rows[0]);
+      return decorate(rows[0], req.user.id);
     } catch (e) {
       if (e.code === '23505') {
         const again = await findDup(db, draft);
@@ -1585,7 +1625,7 @@ module.exports = async function docRegistryRoutes(fastify) {
     const id = parseInt(req.params.id, 10);
     const row = await loadVisibleDoc(req, reply, id);
     if (!row) return reply;
-    return decorate(row);
+    return decorate(row, req.user.id);
   });
 
   fastify.put('/:id', auth, async (req, reply) => {
@@ -1606,8 +1646,19 @@ module.exports = async function docRegistryRoutes(fastify) {
     if (dup) return reply.code(409).send(await dupBody(db, req, dup));
 
     const patch = { ...pickBody(b), ...computeAmounts({ ...cur.rows[0], ...b }), ...calcIncomplete(merged), updated_by: req.user.id };
+    // D-306c: автор подписи ставится из сессии, а не из тела. Если подпись
+    // изменили — автором становится тот, кто изменил (значит, он её и видит).
+    // Если подпись не трогали — автора не перезаписываем, иначе одна правка
+    // суммы «отбирала» бы у коллеги его собственный список ФИО.
+    if (patch.doc_owner_note !== undefined) {
+      const nextNote = String(patch.doc_owner_note == null ? '' : patch.doc_owner_note).trim();
+      const prevNote = String(cur.rows[0].doc_owner_note == null ? '' : cur.rows[0].doc_owner_note).trim();
+      if (nextNote !== prevNote) {
+        patch[OWNER_NOTE_AUTHOR_COL] = nextNote ? req.user.id : null;
+      }
+    }
     const keys = Object.keys(patch);
-    if (!keys.length) return decorate(cur.rows[0]);
+    if (!keys.length) return decorate(cur.rows[0], req.user.id);
     const vals = keys.map((k) => bindVal(k, patch[k]));
     vals.push(id);
     try {
@@ -1618,7 +1669,7 @@ module.exports = async function docRegistryRoutes(fastify) {
       );
       await audit(db, id, req.user.id, 'update', { keys });
       maybeScheduleParse(fastify, db, rows[0], req.user.id);
-      return decorate(rows[0]);
+      return decorate(rows[0], req.user.id);
     } catch (e) {
       if (e.code === '23505') {
         const again = await findDup(db, { ...merged, excludeId: id });
@@ -1773,7 +1824,7 @@ module.exports = async function docRegistryRoutes(fastify) {
     );
     await audit(db, id, req.user.id, 'upload', { url });
     if (rows[0].dir === 'in') maybeScheduleParse(fastify, db, rows[0], req.user.id);
-    return decorate(rows[0]);
+    return decorate(rows[0], req.user.id);
   });
 
   fastify.post('/:id/parse-catalog', auth, async (req, reply) => {
@@ -1864,7 +1915,7 @@ module.exports = async function docRegistryRoutes(fastify) {
              updated_by=$2, updated_at=NOW() WHERE id=$1 RETURNING *`, [id, req.user.id]);
         await audit(db, id, req.user.id, 'correction_resolved', {});
         await notifyDocOwner(db, rows[0], `✅ Корректировка снята: ${docLabel(rows[0])}`);
-        return { ok: true, state: 'resolved', doc: decorate(rows[0]) };
+        return { ok: true, state: 'resolved', doc: decorate(rows[0], req.user.id) };
       }
       const comment = sanitizeText(String(b.comment || '').trim(), 2000);
       if (!kind) return reply.code(400).send({ error: 'Укажите тип корректировки: sf | act | both' });
@@ -1876,7 +1927,7 @@ module.exports = async function docRegistryRoutes(fastify) {
       await audit(db, id, req.user.id, 'correction_requested', { kind });
       const label = kind === 'both' ? 'СФ и АКТ' : kind === 'act' ? 'АКТ' : 'СФ';
       await notifyDocOwner(db, rows[0], `🚩 ${label} НЕ КОРРЕКТЕН: ${docLabel(rows[0])}`, comment);
-      return { ok: true, state: 'requested', kind, doc: decorate(rows[0]) };
+      return { ok: true, state: 'requested', kind, doc: decorate(rows[0], req.user.id) };
     }
 
     // Блокировка действий при незакрытой корректировке.
@@ -2024,7 +2075,7 @@ module.exports = async function docRegistryRoutes(fastify) {
           fastify.log.warn('[doc-registry] buh sync work_expense: ' + (e && e.message));
         }
       }
-      return decorate(rows[0]);
+      return decorate(rows[0], req.user.id);
     }
 
     if (b.action === 'unmark_sf') {
@@ -2042,7 +2093,7 @@ module.exports = async function docRegistryRoutes(fastify) {
         [id, JSON.stringify(closing), ops, req.user.id]
       );
       await audit(db, id, req.user.id, 'quick_unmark_sf', { ops, removed: removed || null });
-      return decorate(rows[0]);
+      return decorate(rows[0], req.user.id);
     }
 
     if (b.action === 'mark_paid') {
@@ -2059,7 +2110,7 @@ module.exports = async function docRegistryRoutes(fastify) {
         [id, req.user.id]
       );
       await audit(db, id, req.user.id, 'quick_mark_paid', { manual: true, note: 'отмечено вручную, без согласования' });
-      return decorate(rows[0]);
+      return decorate(rows[0], req.user.id);
     }
 
     if (b.action === 'due') {
@@ -2077,7 +2128,7 @@ module.exports = async function docRegistryRoutes(fastify) {
       await db.query(`UPDATE doc_registry SET is_incomplete=$2, incomplete_reasons=$3::text[] WHERE id=$1`,
         [id, inc.is_incomplete, inc.incomplete_reasons]);
       await audit(db, id, req.user.id, 'quick_due', b);
-      return decorate({ ...rows[0], ...inc });
+      return decorate({ ...rows[0], ...inc }, req.user.id);
     }
 
     // V394: кладовщик отметил «СФ получена» (первый шаг двухшагового флоу).
@@ -2094,7 +2145,7 @@ module.exports = async function docRegistryRoutes(fastify) {
       await audit(db, id, req.user.id, 'wh_receive_sf', {});
       await notifyDocOwner(db, rows[0], `📦 Кладовщик отметил получение СФ: ${docLabel(rows[0])}`,
         'Требуется подтверждение ответственного за документы.');
-      return decorate(rows[0]);
+      return decorate(rows[0], req.user.id);
     }
 
     if (b.action === 'wh') {
@@ -2116,7 +2167,7 @@ module.exports = async function docRegistryRoutes(fastify) {
         [id, next, req.user.id]
       );
       await audit(db, id, req.user.id, 'quick_wh', { from: curWh, to: next });
-      return decorate(rows[0]);
+      return decorate(rows[0], req.user.id);
     }
 
     return reply.code(400).send({ error: 'action: sf|unmark_sf|due|wh|pay|mark_paid' });

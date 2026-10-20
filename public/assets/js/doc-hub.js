@@ -985,7 +985,13 @@ window.AsgardDocHubPage = (function () {
 
   function renderTable() {
     if (!state.rows.length) {
-      return `<div class="dh-empty"><div class="dh-empty__ico">◇</div><div class="dh-empty__t">Пока пусто</div><p>Нажмите «Внести документ» или включите «Показать все».</p></div>`;
+      // D-306c: частая причина пустоты — фильтр по своей подписи в режиме
+      // «только мои»: документы другого аккаунта в него не попадают.
+      const noteFilterOn = (state.facetOwnerNotes || []).length > 0;
+      const hint = (noteFilterOn && state.scope !== 'all')
+        ? 'Под-ответственный ищется только по вашим подписям. Чтобы увидеть документы, внесённые на других аккаунтах, включите «Показать все».'
+        : 'Нажмите «Внести документ» или включите «Показать все».';
+      return `<div class="dh-empty"><div class="dh-empty__ico">◇</div><div class="dh-empty__t">Пока пусто</div><p>${esc(hint)}</p></div>`;
     }
     const ico = qaIcons();
     // Keep API order (invoice_date DESC) so quarter separators work
@@ -1249,13 +1255,15 @@ window.AsgardDocHubPage = (function () {
           })}
         </div>
         <div class="dh-facet dh-facet--note">
-          <span>Под-ответственный</span>
-          ${dhMultiSelectHtml({
-            id: 'dhFacetNotes',
-            options: (state.facets.owner_notes || []).map((u) => ({ value: u.note, label: `${u.note} · ${u.n}` })),
-            selected: state.facetOwnerNotes,
-            placeholder: 'Все'
-          })}
+          <span>Под-ответственный <span class="dh-facet__priv" title="Видите только вы: подписи, которые вписали сами">только мои</span></span>
+          ${(state.facets.owner_notes || []).length
+            ? dhMultiSelectHtml({
+                id: 'dhFacetNotes',
+                options: (state.facets.owner_notes || []).map((u) => ({ value: u.note, label: `${u.note} · ${u.n}` })),
+                selected: state.facetOwnerNotes,
+                placeholder: 'Все'
+              })
+            : `<div class="dh-note-empty">нет своих подписей<span class="dh-note-empty__hint">впишите ФИО в карточке документа</span></div>`}
         </div>
         <div class="dh-facet">
           <span>Отв. за объект</span>
