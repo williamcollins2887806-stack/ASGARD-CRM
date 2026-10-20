@@ -24,7 +24,7 @@
 const { Client } = require('pg');
 const jwt = require('jsonwebtoken');
 
-const BASE = 'http://127.0.0.1:3101';
+const BASE = process.env.DH_BASE || 'http://127.0.0.1:3101';
 const SECRET = process.env.JWT_SECRET || 'asgard-jwt-secret-2026';
 const db = new Client({ host: '127.0.0.1', port: 5432, database: 'asgard_crm_test', user: 'asgard', password: '123456789' });
 
