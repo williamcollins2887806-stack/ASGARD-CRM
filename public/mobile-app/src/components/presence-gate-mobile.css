@@ -1,0 +1,484 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   НЕДЕЛЬНЫЙ ГЕЙТ ПРИСУТСТВИЯ — мобильный премиальный экран (/m/)
+   ───────────────────────────────────────────────────────────────────────────
+   Заменяет нативные <select> на bottom-sheet выбор статусов с иконками.
+   Иконки — lucide-react (в проекте уже есть), без эмодзи.
+   Все цвета — токены темы (--bg-surface, --gold, --text-primary и т.д.).
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ── Сцена ─────────────────────────────────────────────────────────────── */
+.pgm-scene {
+  position: fixed;
+  inset: 0;
+  z-index: 100000;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  background:
+    radial-gradient(90% 55% at 50% 0%, color-mix(in srgb, var(--gold) 12%, transparent), transparent 62%),
+    rgba(0, 0, 0, 0.72);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  animation: pgm-fade 0.24s ease-out;
+}
+
+@keyframes pgm-fade {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+/* ── Карточка (лист снизу) ─────────────────────────────────────────────── */
+.pgm-sheet {
+  position: relative;
+  width: 100%;
+  max-height: 94vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-surface, #141418);
+  border-radius: 22px 22px 0 0;
+  border-top: 1px solid color-mix(in srgb, var(--gold) 26%, transparent);
+  box-shadow:
+    0 -18px 48px rgba(0, 0, 0, 0.55),
+    0 1px 0 color-mix(in srgb, var(--gold) 14%, transparent) inset;
+  animation: pgm-up 0.34s cubic-bezier(0.22, 1, 0.36, 1);
+  padding-bottom: calc(var(--safe-bottom, 0px) + 10px);
+}
+
+@keyframes pgm-up {
+  from { transform: translateY(22px); opacity: 0; }
+  to   { transform: none; opacity: 1; }
+}
+
+/* Полоска-грабер: показывает, что это лист */
+.pgm-grab {
+  display: flex;
+  justify-content: center;
+  padding: 10px 0 4px;
+  flex-shrink: 0;
+}
+
+.pgm-grab span {
+  width: 38px;
+  height: 4px;
+  border-radius: 99px;
+  background: var(--text-tertiary, #8e8e93);
+  opacity: 0.4;
+}
+
+/* ── Шапка ─────────────────────────────────────────────────────────────── */
+.pgm-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 4px 18px 14px;
+  flex-shrink: 0;
+}
+
+.pgm-sigil {
+  width: 44px;
+  height: 44px;
+  flex-shrink: 0;
+  border-radius: 13px;
+  display: grid;
+  place-items: center;
+  color: var(--gold, #c8a84e);
+  background: color-mix(in srgb, var(--gold) 16%, transparent);
+  border: 1px solid color-mix(in srgb, var(--gold) 30%, transparent);
+}
+
+.pgm-head-tx { flex: 1; min-width: 0; }
+
+.pgm-kicker {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--gold, #c8a84e);
+  opacity: 0.9;
+  margin-bottom: 3px;
+}
+
+.pgm-title {
+  font-size: 19px;
+  font-weight: 800;
+  line-height: 1.2;
+  color: var(--text-primary, #f5f5f7);
+  letter-spacing: -0.01em;
+}
+
+.pgm-range {
+  flex-shrink: 0;
+  text-align: right;
+}
+
+.pgm-range-lbl {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-tertiary, #8e8e93);
+}
+
+.pgm-range-val {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-primary, #f5f5f7);
+  margin-top: 2px;
+  white-space: nowrap;
+}
+
+/* ── Тело ──────────────────────────────────────────────────────────────── */
+.pgm-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 0 18px;
+}
+
+.pgm-days { display: flex; flex-direction: column; gap: 8px; padding-bottom: 8px; }
+
+/* ── Строка дня ────────────────────────────────────────────────────────── */
+.pgm-row {
+  display: grid;
+  grid-template-columns: 52px 1fr;
+  align-items: center;
+  gap: 11px;
+  padding: 8px 9px;
+  border-radius: 14px;
+  border: 1px solid transparent;
+  background: color-mix(in srgb, var(--bg-surface-alt, #1c1c22) 60%, transparent);
+}
+
+.pgm-row.is-today {
+  border-color: color-mix(in srgb, var(--gold) 32%, transparent);
+  background: color-mix(in srgb, var(--gold) 9%, var(--bg-surface-alt, #1c1c22));
+}
+
+.pgm-day { display: flex; flex-direction: column; align-items: center; gap: 0; }
+
+.pgm-day-wd {
+  font-size: 9.5px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-tertiary, #8e8e93);
+}
+
+.pgm-row.is-today .pgm-day-wd { color: var(--gold, #c8a84e); }
+
+.pgm-day-num {
+  font-size: 17px;
+  font-weight: 800;
+  line-height: 1.1;
+  color: var(--text-primary, #f5f5f7);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Триггер выбора ────────────────────────────────────────────────────── */
+.pgm-trig {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 11px 12px;
+  border-radius: 12px;
+  cursor: pointer;
+  text-align: left;
+  font-family: inherit;
+  font-size: 14px;
+  color: var(--text-primary, #f5f5f7);
+  background: var(--bg-surface-alt, #1c1c22);
+  border: 1px solid var(--border-norse, #1f1f28);
+  transition: border-color 0.16s ease, background 0.16s ease;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.pgm-trig:active {
+  background: var(--bg-elevated, #242430);
+  transform: scale(0.99);
+}
+
+.pgm-trig.has-value {
+  border-color: color-mix(in srgb, var(--pgm-tone, var(--gold)) 42%, transparent);
+  background: color-mix(in srgb, var(--pgm-tone, var(--gold)) 10%, var(--bg-surface-alt, #1c1c22));
+}
+
+.pgm-trig-ic {
+  width: 28px;
+  height: 28px;
+  flex-shrink: 0;
+  border-radius: 9px;
+  display: grid;
+  place-items: center;
+  color: var(--pgm-tone, var(--text-tertiary, #8e8e93));
+  background: color-mix(in srgb, var(--pgm-tone, #8e8e93) 15%, transparent);
+  border: 1px solid color-mix(in srgb, var(--pgm-tone, #8e8e93) 26%, transparent);
+}
+
+.pgm-trig-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+}
+
+.pgm-trig.is-empty .pgm-trig-label {
+  color: var(--text-tertiary, #8e8e93);
+  font-weight: 500;
+}
+
+.pgm-chev {
+  flex-shrink: 0;
+  color: var(--text-tertiary, #8e8e93);
+  opacity: 0.7;
+}
+
+/* ── Отпуск (без выбора) ───────────────────────────────────────────────── */
+.pgm-row.is-vacation {
+  border-color: color-mix(in srgb, var(--gold) 30%, transparent);
+  background: color-mix(in srgb, var(--gold) 11%, transparent);
+}
+
+.pgm-vac {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid color-mix(in srgb, var(--gold) 30%, transparent);
+  background: color-mix(in srgb, var(--gold) 8%, transparent);
+}
+
+.pgm-vac-ic {
+  width: 28px;
+  height: 28px;
+  flex-shrink: 0;
+  border-radius: 9px;
+  display: grid;
+  place-items: center;
+  color: var(--gold, #c8a84e);
+  background: color-mix(in srgb, var(--gold) 18%, transparent);
+}
+
+.pgm-vac-tx { flex: 1; min-width: 0; }
+
+.pgm-vac-t {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--gold, #c8a84e);
+  line-height: 1.2;
+}
+
+.pgm-vac-s {
+  font-size: 11px;
+  color: var(--text-tertiary, #8e8e93);
+  margin-top: 1px;
+}
+
+/* ── Выбор работы ──────────────────────────────────────────────────────── */
+.pgm-work {
+  margin-top: 12px;
+  padding: 12px 13px;
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--bg-surface-alt, #1c1c22) 70%, transparent);
+  border: 1px solid var(--border-norse, #1f1f28);
+  animation: pgm-work-in 0.22s ease-out;
+}
+
+@keyframes pgm-work-in {
+  from { opacity: 0; transform: translateY(-5px); }
+  to   { opacity: 1; transform: none; }
+}
+
+.pgm-work-lbl {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--text-tertiary, #8e8e93);
+  margin-bottom: 8px;
+}
+
+/* ── Ошибка ────────────────────────────────────────────────────────────── */
+.pgm-err {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 16px;
+  padding: 0 18px;
+  margin-top: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--danger-ink, #ff5b52);
+}
+
+/* ── Подвал ────────────────────────────────────────────────────────────── */
+.pgm-foot {
+  flex-shrink: 0;
+  padding: 12px 18px 4px;
+  border-top: 1px solid var(--border-norse, #1f1f28);
+  margin-top: 10px;
+  background: var(--bg-surface, #141418);
+}
+
+.pgm-hint {
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--text-tertiary, #8e8e93);
+  margin-bottom: 10px;
+}
+
+.pgm-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 50px;
+  border: 0;
+  border-radius: 14px;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 15.5px;
+  font-weight: 800;
+  letter-spacing: 0.01em;
+  color: var(--text-on-gold, #1a1300);
+  background: linear-gradient(135deg, #e8c35a, var(--gold-fill, #c8a84e) 58%, #b8922e);
+  box-shadow: 0 4px 16px color-mix(in srgb, var(--gold) 32%, transparent);
+  transition: transform 0.12s ease, filter 0.16s ease;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.pgm-btn:active:not(:disabled) { transform: scale(0.985); filter: brightness(1.05); }
+.pgm-btn:disabled { opacity: 0.6; }
+
+/* ── Bottom-sheet выбора статуса ───────────────────────────────────────── */
+.pgm-pick {
+  position: fixed;
+  inset: 0;
+  z-index: 100010;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.62);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  animation: pgm-fade 0.18s ease-out;
+}
+
+.pgm-pick-sheet {
+  width: 100%;
+  max-height: 78vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-surface-alt, #1c1c22);
+  border-radius: 20px 20px 0 0;
+  border-top: 1px solid color-mix(in srgb, var(--gold) 22%, transparent);
+  padding-bottom: calc(var(--safe-bottom, 0px) + 8px);
+  animation: pgm-up 0.26s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.pgm-pick-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 18px 10px;
+  flex-shrink: 0;
+}
+
+.pgm-pick-title {
+  font-size: 15px;
+  font-weight: 800;
+  color: var(--text-primary, #f5f5f7);
+}
+
+.pgm-pick-x {
+  width: 36px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 50%;
+  cursor: pointer;
+  color: var(--text-secondary, #8e8e93);
+  background: var(--bg-elevated, #242430);
+}
+
+.pgm-pick-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 0 10px 6px;
+}
+
+.pgm-opt {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  width: 100%;
+  min-height: 50px;
+  padding: 9px 11px;
+  border: 0;
+  border-radius: 12px;
+  cursor: pointer;
+  text-align: left;
+  font-family: inherit;
+  font-size: 14.5px;
+  font-weight: 600;
+  color: var(--text-primary, #f5f5f7);
+  background: transparent;
+  transition: background 0.12s ease;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.pgm-opt:active { background: color-mix(in srgb, var(--pgm-tone, #8e8e93) 16%, transparent); }
+
+.pgm-opt.is-active {
+  background: color-mix(in srgb, var(--pgm-tone, var(--gold)) 14%, transparent);
+}
+
+.pgm-opt-ic {
+  width: 34px;
+  height: 34px;
+  flex-shrink: 0;
+  border-radius: 10px;
+  display: grid;
+  place-items: center;
+  color: var(--pgm-tone, var(--text-tertiary));
+  background: color-mix(in srgb, var(--pgm-tone, #8e8e93) 15%, transparent);
+  border: 1px solid color-mix(in srgb, var(--pgm-tone, #8e8e93) 26%, transparent);
+}
+
+.pgm-opt-label { flex: 1; min-width: 0; }
+
+.pgm-opt-check {
+  flex-shrink: 0;
+  color: var(--gold, #c8a84e);
+}
+
+/* Уважаем «меньше движения» */
+@media (prefers-reduced-motion: reduce) {
+  .pgm-scene,
+  .pgm-sheet,
+  .pgm-pick,
+  .pgm-pick-sheet,
+  .pgm-work { animation: none !important; }
+  .pgm-trig,
+  .pgm-btn { transition: none !important; }
+}
+
+/* Очень низкий экран — сжимаем шапку, чтобы кнопка осталась видна */
+@media (max-height: 640px) {
+  .pgm-head { padding-bottom: 10px; }
+  .pgm-sigil { width: 38px; height: 38px; }
+  .pgm-title { font-size: 17px; }
+  .pgm-row { padding: 6px 8px; }
+  .pgm-hint { display: none; }
+}
