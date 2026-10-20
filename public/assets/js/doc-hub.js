@@ -2336,6 +2336,10 @@ window.AsgardDocHubPage = (function () {
       d.classList.remove('is-on');
       d.setAttribute('aria-hidden', 'true');
       d.innerHTML = '';
+      // D-306b: сбрасываем идентификатор — иначе после закрытия повторное
+      // открытие той же карточки считалось бы «перерисовкой» и оставило бы
+      // её без оверлея (затемнения и клика по фону).
+      delete d.dataset.docId;
       /* Drawer порталится в <body> — иначе .sidenav (z-index 300+) перекрывает
          его внутри stacking-context #layout{z-index:1}. Возвращаем на место. */
       if (d.dataset.portaled === '1') {
@@ -3058,17 +3062,26 @@ window.AsgardDocHubPage = (function () {
         d.classList.add('dh-drawer--portal');
         d.dataset.portaled = '1';
       }
-      d.hidden = false;
-      d.classList.add('is-on');
-      d.setAttribute('aria-hidden', 'false');
       // D-306 (заказчик 20.10.2026): «во время сохранения у Вики бывает экран
       // мутнеет как будто глючит». Причина: saveDrawer вызывал openDrawer()
       // заново, а тот каждый раз заново включал полупрозрачный оверлей
       // (rgba(0,0,0,.55)) — экран на мгновение затемнялся.
-      // Теперь: если карточка уже открыта для ЭТОЙ ЖЕ строки, оверлей не трогаем.
-      const reopeningSame = !d.hidden && String(d.dataset.docId || '') === String(id);
+      //
+      // D-306b (верификатор 20.10.2026, FAIL D3/D4): снимать состояние надо
+      // ДО изменения `d.hidden`, иначе `!d.hidden` — мёртвое условие (`d.hidden
+      // = false` выполнено строкой выше) и флаг вырождается в «та же строка».
+      // Тогда после закрытия повторное открытие ТОЙ ЖЕ карточки шло по ветке
+      // «не трогать оверлей» — карточка открывалась без затемнения и без
+      // закрытия кликом по фону. Теперь `wasOpen` фиксируется заранее, а
+      // closeDrawer() сбрасывает docId, так что состояния не протекают.
+      const wasOpen = !d.hidden && d.classList.contains('is-on');
+      const sameDoc = String(d.dataset.docId || '') === String(id);
+      const reopeningSame = wasOpen && sameDoc;
       d.dataset.docId = String(id);
       if (ov && !reopeningSame) { ov.hidden = false; ov.classList.add('is-on'); ov.onclick = () => closeDrawer(); }
+      d.hidden = false;
+      d.classList.add('is-on');
+      d.setAttribute('aria-hidden', 'false');
 
       const sums = sumParts(row);
       const titleNo = row.invoice_number ? ('Счёт ' + row.invoice_number) : ('#' + row.id);
