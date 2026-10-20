@@ -26,6 +26,8 @@ function num(v) {
 }
 
 function statusLabel(status, paymentStatus, payTiming) {
+  // D-316: черновик инициатора — ещё НЕ отправлен директору.
+  if (status === 'draft') return 'Черновик';
   if (status === 'paid' || paymentStatus === 'paid') return 'Оплачен';
   if (status === 'rejected') return 'Отклонён';
   if (status === 'rework') return 'На доработке';
@@ -659,11 +661,13 @@ async function routes(fastify) {
       `INSERT INTO payment_invoices(
          status, supplier_name, supplier_id, amount, due_date, file_path, file_name,
          basis_type, basis_text, work_id, contract_id, line_items_json, requires_payment, created_by, pay_timing,
-         contract_basis_number, contract_missing, work_hint, invoice_number, invoice_date
+         contract_basis_number, contract_missing, work_hint, invoice_number, invoice_date,
+         draft_updated_at
        ) VALUES(
-         'awaiting_dir', $1, $2, $3, $4, $5, $6,
+         'draft', $1, $2, $3, $4, $5, $6,
          $7, $8, $9, $10, $11::jsonb, true, $12, $13,
-         $14, $15, $16, $17, $18
+         $14, $15, $16, $17, $18,
+         NOW()
        ) RETURNING *`,
       [
         b.supplier_name || null,
@@ -687,10 +691,15 @@ async function routes(fastify) {
       ]
     );
     const pay = rows[0];
-    // V398: TTL согласования (72ч) на новую заявку.
-    if (pay && pay.status === 'awaiting_dir') {
-      try { await stampExpiry(db, pay.id); } catch (_) { /* не критично */ }
-    }
+    // D-316 (заказчик 20.10.2026): «почему я закрыл и вышел, а счета ушли
+    // директору без подтверждения?». Здесь РАНЬШЕ было:
+    //   • stampExpiry() — TTL согласования 72ч
+    //   • paymentMail.sendDirectorMail() — письмо директору
+    //   • createNotification() — уведомления всем директорам
+    // То есть загрузка файла == отправка директору, а кнопка «Отправить»
+    // была бутафорией. Теперь карточка создаётся ЧЕРНОВИКОМ (status='draft'):
+    // ни письма, ни TTL, ни уведомлений. Отправка — POST /:id/submit после
+    // явного подтверждения пользователя.
     try {
       await enrichCatalogFromLines(db, {
         lines: lines.length ? lines : [],
@@ -704,18 +713,169 @@ async function routes(fastify) {
     } catch (e) {
       fastify.log.warn('[payment-invoices] catalog enrich: ' + e.message);
     }
-    const mail = await paymentMail.sendDirectorMail(db, pay.id);
-    const dirs = await db.query("SELECT id FROM users WHERE role IN('DIRECTOR_GEN','DIRECTOR_COMM','DIRECTOR_DEV') AND is_active=true");
-    for (const d of dirs.rows) {
-      createNotification(db, {
-        user_id: d.id,
-        title: `Счёт #${pay.id} к согласованию`,
-        message: `${sum} ₽ · ${pay.supplier_name || 'поставщик'}`,
-        type: 'payment',
-        link: `#/payment-invoices?id=${pay.id}`
+    return { ...decoratePayment(pay), mail: { sent: false, reason: 'draft' } };
+  });
+
+  /**
+   * D-316: отправить черновик (или пачку черновиков) директору.
+   * Единственная точка, где уходит письмо. Явное действие пользователя.
+   */
+  fastify.post('/submit', { preHandler: [fastify.requireRoles(CREATE_ROLES)] }, async (req, reply) => {
+    const b = req.body || {};
+    const ids = (Array.isArray(b.ids) ? b.ids : [b.id]).map((x) => parseInt(x, 10)).filter(Number.isFinite);
+    if (!ids.length) return reply.code(400).send({ error: 'Передайте id или ids — что отправлять' });
+    const role = String(req.user.role || '');
+    const isPriv = ['ADMIN', 'BUH', 'PROC'].includes(role) || /^DIRECTOR/.test(role);
+    // Только свои черновики (или привилегированные роли).
+    const found = await db.query(
+      `SELECT * FROM payment_invoices
+        WHERE id = ANY($1::int[]) AND ($2::bool OR created_by = $3)`,
+      [ids, isPriv, req.user.id]
+    );
+    if (!found.rows.length) return reply.code(404).send({ error: 'Черновики не найдены' });
+
+    const submitted = [];
+    const skipped = [];
+    for (const pay of found.rows) {
+      if (pay.status !== 'draft') { skipped.push({ id: pay.id, reason: 'not_draft' }); continue; }
+      // Без файла директору отправлять нечего — это была ошибка UX, а не смысл.
+      if (!pay.file_path && !pay.file_name && !(Array.isArray(pay.line_items_json) && pay.line_items_json.length)) {
+        skipped.push({ id: pay.id, reason: 'no_file' });
+        continue;
+      }
+      await db.query(
+        `UPDATE payment_invoices
+            SET status='awaiting_dir', submitted_at=NOW(), updated_at=NOW()
+          WHERE id=$1 AND status='draft'`, [pay.id]);
+      try { await stampExpiry(db, pay.id); } catch (_) { /* не критично */ }
+      // D-317: расписание эскалации — первое напоминание через 12 ч без решения.
+      try {
+        const esc = require('../services/approval-escalation');
+        await esc.scheduleForInvoice(db, pay.id);
+      } catch (_) { /* расписание не должно ломать отправку */ }
+      submitted.push(pay.id);
+    }
+
+    // Письмо: одно на партию (директору удобнее), как и раньше.
+    let mail = { sent: false, reason: 'nothing_to_send' };
+    if (submitted.length) {
+      try {
+        mail = submitted.length > 1
+          ? await paymentMail.sendDirectorMailBatch(db, submitted)
+          : await paymentMail.sendDirectorMail(db, submitted[0]);
+      } catch (e) {
+        fastify.log.warn('[payment-invoices] submit mail: ' + e.message);
+        mail = { sent: false, reason: 'mail_error', error: e.message };
+      }
+      const dirs = await db.query(`SELECT id FROM users WHERE role IN('DIRECTOR_GEN','DIRECTOR_COMM','DIRECTOR_DEV') AND is_active=true`);
+      const agg = await db.query(
+        `SELECT COALESCE(SUM(amount),0)::numeric AS total, count(*)::int AS n,
+                string_agg(DISTINCT COALESCE(supplier_name,'поставщик'), ', ') AS sups
+           FROM payment_invoices WHERE id = ANY($1::int[])`, [submitted]);
+      const a = agg.rows[0] || { total: 0, n: 0, sups: '' };
+      for (const d of dirs.rows) {
+        try {
+          await createNotification(db, {
+            user_id: d.id,
+            title: submitted.length > 1
+              ? `Счета к согласованию: ${a.n} шт.`
+              : `Счёт #${submitted[0]} к согласованию`,
+            message: `${a.total} ₽ · ${a.sups || 'поставщик'}`,
+            type: 'payment',
+            link: submitted.length > 1
+              ? `#/payment-invoices?batch=${submitted[0]}`
+              : `#/payment-invoices?id=${submitted[0]}`
+          });
+        } catch (_) { /* уведомление не критично */ }
+      }
+    }
+    return { ok: submitted.length > 0, submitted, skipped, mail };
+  });
+
+  /**
+   * D-316: сохранить правки черновика (без отправки).
+   * Раньше PATCH-роута не было ВООБЩЕ — модалка партии звала PATCH
+   * `/api/payment-invoices/:id` с намерением «сохранить правки», получала 404,
+   * а ошибку глотала `.catch(() => {})`. Пользователь правил сумму/поставщика
+   * «успешно», а в базу уходило распознанное.
+   */
+  fastify.patch('/:id', { preHandler: [fastify.requireRoles(CREATE_ROLES)] }, async (req, reply) => {
+    const id = parseInt(req.params.id, 10);
+    if (!Number.isFinite(id)) return reply.code(400).send({ error: 'Неверный ID' });
+    const b = req.body || {};
+    const { rows } = await db.query('SELECT * FROM payment_invoices WHERE id=$1', [id]);
+    const pay = rows[0];
+    if (!pay) return reply.code(404).send({ error: 'Счёт не найден' });
+    const role = String(req.user.role || '');
+    const isPriv = ['ADMIN', 'BUH', 'PROC'].includes(role) || /^DIRECTOR/.test(role);
+    if (!isPriv && Number(pay.created_by) !== Number(req.user.id)) {
+      return reply.code(403).send({ error: 'Можно править только свои счета' });
+    }
+    // Правим ТОЛЬКО черновик: согласованный счёт — через корректировку, чтобы
+    // не переписать то, что директор уже видел и подписал.
+    if (pay.status !== 'draft') {
+      return reply.code(409).send({
+        error: 'Счёт уже отправлен — правка недоступна',
+        hint: 'Согласованный счёт меняется через корректировку у бухгалтерии.'
       });
     }
-    return { ...decoratePayment(pay), mail };
+
+    const FIELDS = ['amount', 'supplier_name', 'supplier_id', 'invoice_number', 'invoice_date',
+      'due_date', 'vat_amount', 'vat_rate', 'amount_net', 'basis_type', 'basis_text',
+      'contract_basis_number', 'work_id', 'work_hint', 'pay_timing', 'comment_text',
+      'file_path', 'file_name', 'contract_id'];
+    const sets = [];
+    const params = [];
+    for (const k of FIELDS) {
+      if (b[k] === undefined) continue;
+      params.push(b[k]);
+      const cast = (k === 'invoice_date' || k === 'due_date') ? '::date'
+        : (k === 'amount' || k === 'vat_amount' || k === 'vat_rate' || k === 'amount_net') ? '::numeric'
+          : (k === 'supplier_id' || k === 'work_id' || k === 'contract_id') ? '::int' : '';
+      sets.push(`${k}=$${params.length}${cast}`);
+    }
+    if (!sets.length) return decoratePayment(pay);
+    params.push(id);
+    const upd = await db.query(
+      `UPDATE payment_invoices SET ${sets.join(', ')}, draft_updated_at=NOW(), updated_at=NOW()
+        WHERE id=$${params.length} AND status='draft' RETURNING *`, params);
+    return decoratePayment(upd.rows[0]);
+  });
+
+  /** D-316: удалить черновик (только свой и только неотправленный). */
+  fastify.delete('/:id', { preHandler: [fastify.requireRoles(CREATE_ROLES)] }, async (req, reply) => {
+    const id = parseInt(req.params.id, 10);
+    if (!Number.isFinite(id)) return reply.code(400).send({ error: 'Неверный ID' });
+    const { rows } = await db.query('SELECT id, status, created_by FROM payment_invoices WHERE id=$1', [id]);
+    const pay = rows[0];
+    if (!pay) return reply.code(404).send({ error: 'Счёт не найден' });
+    const role = String(req.user.role || '');
+    const isPriv = ['ADMIN', 'BUH', 'PROC'].includes(role) || /^DIRECTOR/.test(role);
+    if (!isPriv && Number(pay.created_by) !== Number(req.user.id)) {
+      return reply.code(403).send({ error: 'Можно удалять только свои счета' });
+    }
+    if (pay.status !== 'draft') {
+      return reply.code(409).send({
+        error: 'Счёт уже отправлен — удалить нельзя',
+        hint: 'Отправленный счёт можно только отклонить решением директора.'
+      });
+    }
+    await db.query('DELETE FROM payment_invoices WHERE id=$1 AND status=$2', [id, 'draft']);
+    return { ok: true, deleted: id };
+  });
+
+  /** D-316: мои черновики — «сохранил, вышел, вернулся». */
+  fastify.get('/drafts', { preHandler: [fastify.authenticate] }, async (req) => {
+    const role = String(req.user.role || '');
+    const isPriv = ['ADMIN', 'BUH', 'PROC'].includes(role) || /^DIRECTOR/.test(role);
+    const showAll = String((req.query && req.query.all) || '') === '1' && isPriv;
+    const { rows } = await db.query(
+      `SELECT pi.*, u.name AS initiator_name
+         FROM payment_invoices pi LEFT JOIN users u ON u.id=pi.created_by
+        WHERE pi.status='draft' ${showAll ? '' : 'AND pi.created_by=$1'}
+        ORDER BY pi.draft_updated_at DESC NULLS LAST, pi.id DESC LIMIT 200`,
+      showAll ? [] : [req.user.id]);
+    return { items: rows.map(decoratePayment) };
   });
 
   // ═══════════════════════════════════════════════════════════════════════════

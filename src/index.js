@@ -1244,6 +1244,21 @@ if ((process.env.DB_NAME || 'asgard_crm') !== 'asgard_crm' && process.env.NODE_E
   }
 }
 
+// ── D-317: Approval Escalation — каждые 15 мин, напоминания директору ──
+// «сразу при отправке → 12ч → 24ч → каждые 24ч», тихое окно 07:00–22:00 МСК.
+// Гард как у reminder-cron: на тест-БД не шлём реальные уведомления.
+if ((process.env.DB_NAME || 'asgard_crm') !== 'asgard_crm' && process.env.NODE_ENV !== 'test') {
+  fastify.log.warn(`[ApprovalEscalation] Skipped — non-prod DB (${process.env.DB_NAME})`);
+} else {
+  try {
+    const approvalEscalation = require('./services/approval-escalation');
+    fastify.addHook('onReady', async () => { approvalEscalation.start(fastify.db, fastify.log); });
+    fastify.addHook('onClose', async () => { approvalEscalation.stop(); });
+  } catch (cronErr) {
+    fastify.log.warn('[ApprovalEscalation] Init skipped: ' + cronErr.message);
+  }
+}
+
 // ── Personal Kanban Reminders Cron: every minute — пуш напоминаний по картам ──
 try {
   const personalKanbanRemindersCron = require('./services/personal-kanban-reminders-cron');

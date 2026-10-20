@@ -538,6 +538,12 @@ async function applyDecision(db, payment, action, actor) {
     client.release();
   }
 
+  // D-317: решение принято — напоминания больше не нужны.
+  try {
+    const esc = require('./approval-escalation');
+    await esc.clearForInvoice(db, payment.id);
+  } catch (_) { /* не критично */ }
+
   if (act === 'approve') {
     const buhs = await db.query("SELECT id FROM users WHERE role='BUH' AND is_active=true");
     for (const b of buhs.rows) {

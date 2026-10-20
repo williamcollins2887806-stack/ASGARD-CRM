@@ -608,8 +608,96 @@ window.AsgardPush = (function() {
       return;
     }
 
+    // D-317: без разрешения директор не получит ни одного пуша о заявке.
+    // Разрешение НЕЛЬЗЯ просить жестом — только по клику. Поэтому показываем
+    // заметную плашку для согласующих ролей, а не «вежливое» всплытие раз в
+    // сессию (его закрывали и забывали — в проде 0 подписок у всех директоров).
+    if (isApproverRole() && !isPushDismissedStrong()) {
+      showApproverBanner();
+      return;
+    }
+
     // First time: gentle prompt.
     showEnablePrompt();
+  }
+
+  /** Роль, для которой пуш о согласовании критичен. */
+  function isApproverRole() {
+    try {
+      var u = JSON.parse(localStorage.getItem('asgard_user') || '{}');
+      var r = String(u.role || '').toUpperCase();
+      return /^DIRECTOR/.test(r) || r === 'BUH' || r === 'ADMIN' || r === 'OFFICE_MANAGER';
+    } catch (e) { return false; }
+  }
+
+  /** «Не напоминать 7 дней» — отдельно от «Позже» (тот всего 3 раза). */
+  function isPushDismissedStrong() {
+    var until = parseInt(localStorage.getItem('asgard_push_snooze_until') || '0', 10);
+    return until && Date.now() < until;
+  }
+
+  /**
+   * D-317: ПЛАШКА «включите push» для тех, кому приходят заявки.
+   * Причина: у всех трёх директоров в проде было 0 подписок, хотя VAPID
+   * настроен и уведомления в CRM создаются. Мягкое всплытие они закрыли.
+   * Здесь — постоянная строка внизу с понятной ценой: «иначе не узнаете о
+   * новом счёте, пока не откроете CRM».
+   */
+  function showApproverBanner() {
+    if (document.getElementById('asgard-push-cta')) return;
+    var existing = document.getElementById('asgard-push-banner');
+    if (existing) return;
+
+    var host = document.createElement('div');
+    host.id = 'asgard-push-cta';
+    host.setAttribute('role', 'region');
+    host.setAttribute('aria-label', 'Push-уведомления');
+    host.style.cssText = [
+      'position:fixed', 'z-index:100040', 'left:16px', 'right:16px', 'bottom:16px',
+      'max-width:520px', 'margin:0 auto', 'padding:14px 16px', 'border-radius:14px',
+      'background:var(--bg2,#121a2b)', 'border:1px solid var(--brd,#334155)',
+      'box-shadow:0 14px 44px rgba(0,0,0,.4)', 'display:grid', 'gap:10px',
+      'font-family:inherit'
+    ].join(';');
+    host.innerHTML = ''
+      + '<div style="display:flex;gap:11px;align-items:flex-start">'
+      +   '<div aria-hidden="true" style="width:30px;height:30px;border-radius:9px;flex:0 0 auto;display:flex;align-items:center;justify-content:center;background:color-mix(in srgb,var(--blue,#1E4D8C) 18%,transparent);color:var(--blue-l,#4A90D9);font-size:15px">🔔</div>'
+      +   '<div style="min-width:0">'
+      +     '<div style="font-size:14px;font-weight:700;color:var(--t1,#e2e8f0);line-height:1.25">Включите уведомления о заявках</div>'
+      +     '<div style="font-size:12px;line-height:1.45;color:var(--t2,#94a3b8);margin-top:3px">'
+      +       'Без них вы не узнаете о новом счёте на согласование, пока не откроете CRM. Напомним через 12 ч и далее раз в сутки — но только если включено.'
+      +     '</div>'
+      +   '</div>'
+      + '</div>'
+      + '<div style="display:grid;gap:8px;grid-template-columns:1fr auto">'
+      +   '<button type="button" id="asgard-push-enable" style="height:38px;border:0;border-radius:10px;cursor:pointer;font-size:13px;font-weight:700;background:var(--blue,#1E4D8C);color:#fff">Включить уведомления</button>'
+      +   '<button type="button" id="asgard-push-snooze" style="height:38px;padding:0 14px;border-radius:10px;cursor:pointer;font-size:12.5px;font-weight:600;background:transparent;border:1px solid var(--brd,#334155);color:var(--t2,#94a3b8)">Через 7 дней</button>'
+      + '</div>';
+    document.body.appendChild(host);
+
+    var btn = host.querySelector('#asgard-push-enable');
+    var snooze = host.querySelector('#asgard-push-snooze');
+    if (btn) btn.addEventListener('click', async function () {
+      btn.disabled = true;
+      btn.textContent = 'Подключаем…';
+      var res = await subscribe();
+      if (res.success) {
+        host.remove();
+        if (window.AsgardUI && AsgardUI.toast) AsgardUI.toast('Уведомления', 'Включены — о заявках узнаете сразу', 'ok');
+      } else {
+        btn.disabled = false;
+        btn.textContent = 'Попробовать снова';
+        if (window.AsgardUI && AsgardUI.toast) {
+          AsgardUI.toast('Не удалось', res.reason === 'denied'
+            ? 'Разрешите уведомления в настройках сайта браузера'
+            : 'Причина: ' + (res.reason || 'неизвестна'), 'err');
+        }
+      }
+    });
+    if (snooze) snooze.addEventListener('click', function () {
+      localStorage.setItem('asgard_push_snooze_until', String(Date.now() + 7 * 86400000));
+      host.remove();
+    });
   }
 
   // ── Notification preferences UI (for settings page) ──
@@ -724,6 +812,8 @@ window.AsgardPush = (function() {
     stopBadgePolling: stopBadgePolling,
     init: init,
     showEnablePrompt: showEnablePrompt,
+    showApproverBanner: showApproverBanner,
+    isApproverRole: isApproverRole,
     renderSettingsSection: renderSettingsSection,
     bindSettingsEvents: bindSettingsEvents,
     isTypeEnabled: isTypeEnabled,
