@@ -525,26 +525,26 @@ async function intakeOne(db, { email, attachment, text, userId = null, dryRun = 
         : 'Счёт из письма';
       // V404: срок оплаты — приоритет у просьбы инициатора из письма, затем у счёта.
       const timing = intent.timing === 'deferred' ? 'deferred' : 'immediate';
-      // D-283 (аудит 19.10.2026): у 3 из 5 счетов срок оплаты оказался пустым —
-      // светофор не мог показать просрочку (счёт от 01.10 висел «без срока»).
-      // Если счёт срок не печатает, берём дату счёта + N дней (по умолчанию 10,
-      // настраивается в settings.doc_due_days). Это ОЦЕНКА, помечаем источником,
-      // чтобы бухгалтер видел: срок не из бумаги.
-      let dueDate = intent.due_date || parsed.payment_due_at || null;
-      let dueDerived = false;
-      if (!dueDate && parsed.invoice_date) {
-        try {
-          const cfg = await db.query(`SELECT value_json FROM settings WHERE key='doc_due_days' LIMIT 1`);
-          let days = 10;
-          if (cfg.rows[0]) { let v = cfg.rows[0].value_json; try { v = JSON.parse(v); } catch (_) {} const n = parseInt(v, 10); if (Number.isFinite(n) && n > 0 && n <= 90) days = n; }
-          const d0 = new Date(String(parsed.invoice_date) + 'T00:00:00Z');
-          if (!Number.isNaN(d0.getTime())) {
-            d0.setUTCDate(d0.getUTCDate() + days);
-            dueDate = d0.toISOString().slice(0, 10);
-            dueDerived = true;
-          }
-        } catch (_) { /* без настройки — срок останется пустым */ }
-      }
+      // ═══════════════════════════════════════════════════════════════════════
+      // D-294 (заказчик 20.10.2026, вариант C): СРОК НЕ ВЫДУМЫВАЕМ.
+      // ═══════════════════════════════════════════════════════════════════════
+      // Было: если счёт не печатает срок, писали invoice_date + 10 дней и
+      // выдавали это за срок из бумаги. Audit 20.10 подтвердил: у 4 из 6 заявок
+      // дельта ровно 10 при ПУСТОМ parse_raw.payment_due_at — в документе срока
+      // не было. Последствия были реальные: светофор (src/lib/doc-traffic.js) и
+      // напоминания (src/services/reminder-cron.js) считали по выдуманной дате,
+      // давали ложные просрочки и письма «оплата истекает».
+      //
+      // Теперь: срок берём ТОЛЬКО из документа (счёт) или из явной просьбы
+      // инициатора в письме («оплатить завтра», «до 25.10»). Если ни там, ни
+      // там — due_date = NULL, и инициатор ставит срок руками в карточке
+      // (как со «Способом получения закрывающих»).
+      //
+      // Таблица со сроками для исторических 1512 строк будет загружена заказчиком
+      // отдельно — тогда бэкфилл, а не генерация значений.
+      const dueDate = intent.due_date || parsed.payment_due_at || null;
+      const dueSource = intent.due_date ? 'email_intent'
+        : (parsed.payment_due_at ? 'invoice' : null);
       // V409 (проверка заказчика 18.10.2026): ФАЙЛ счёта не прикреплялся к заявке —
       // бухгалтерия и директор не могли открыть скан (GET /:id/file → 404), хотя
       // вложение в письме есть. Берём путь вложения письма и кладём в заявку:
