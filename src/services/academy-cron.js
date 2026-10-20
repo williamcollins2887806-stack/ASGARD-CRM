@@ -562,6 +562,46 @@ function curriculumEntryForWeek(weekNumber) {
  * срабатывает ТОЛЬКО когда published-урока на слот нет вовсе.
  */
 async function catchUpMissingLesson() {
+  // ── ПРИОРИТЕТ 0: любая published-лекция БЕЗ картинок ──────────────────────
+  // Проблема (19.10.2026): лекция, опубликованная ДО заливки генератора
+  // (напр. #160), не попадала в догон: он смотрел только НАЗАД-вперёд слот
+  // (maxWeek+1) и не замечал «лысые» лекции в прошлом. Теперь догон сначала
+  // закрывает все такие лекции, потом занимается новыми слотами.
+  const { rows: naked } = await db.query(`
+    SELECT al.id, al.week_number
+    FROM academy_lessons al
+    WHERE al.status = 'published'
+      AND NOT EXISTS (
+        SELECT 1 FROM jsonb_array_elements(al.blocks) b WHERE b->>'type' = 'illustration'
+      )
+    ORDER BY al.week_number
+    LIMIT 3`);
+  if (naked.length) {
+    let done = 0;
+    for (const n of naked) {
+      console.log(`[AcademyCron][catch-up] лекция #${n.id} (week ${n.week_number}) БЕЗ картинок — дорисовываю`);
+      try {
+        const { execFileSync } = require('child_process');
+        const pathMod = require('path');
+        const genScript = pathMod.join(__dirname, '..', '..', 'tools', 'academy-gen-images.js');
+        if (require('fs').existsSync(genScript)) {
+          execFileSync(process.execPath, [genScript, '--lesson', String(n.id), '--apply'], {
+            cwd: pathMod.join(__dirname, '..', '..'), encoding: 'utf8', timeout: 20 * 60 * 1000, stdio: 'pipe',
+          });
+          done++;
+          console.log(`[AcademyCron][catch-up] иллюстрации для #${n.id} готовы`);
+        } else {
+          console.log('[AcademyCron][catch-up] генератор не найден — пропуск');
+          break;
+        }
+      } catch (e) {
+        console.warn(`[AcademyCron][catch-up] #${n.id}: не удалось (${(e.message || '').slice(0, 100)}) — попробуем завтра`);
+      }
+    }
+    // Если что-то дорисовали — на этом запуске достаточно (не плодим нагрузку).
+    if (done > 0) return null;
+  }
+
   const { rows: [mx] } = await db.query(
     `SELECT COALESCE(MAX(week_number), 0)::int AS mx FROM academy_lessons WHERE status NOT IN ('rejected','archived')`
   );
