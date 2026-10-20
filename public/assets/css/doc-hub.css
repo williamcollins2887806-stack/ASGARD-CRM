@@ -512,23 +512,42 @@ a:hover { text-decoration: underline; }
 .dh-table tbody tr:hover { background: color-mix(in srgb, var(--bg4) 55%, transparent); }
 .dh-table tbody tr.is-selected { background: color-mix(in srgb, var(--gold) 10%, var(--bg2)); }
 
-/* ═══ V394: светофор Doc Hub — 4 цвета, единый с бэком (row.traffic) ═══
-   Классы взаимоисключающие (цвет приходит готовым), bar слева 3px. */
+/* ═══ V394 + D-305: светофор Doc Hub — ЗАЛИВКА СТРОКИ ═══
+   Заказчик 20.10.2026: «я просил чтобы неполные горели синим, всё ок зелёным,
+   что-то не так жёлтым, плохо красным. я его не вижу — строки не горят...
+   сделай именно заливку строки, но так чтобы всё было читаемо».
+   
+   Было: красный/синий/жёлтый — фон 5-6% прозрачности (почти невидим),
+   зелёный — ВООБЩЕ без фона, только полоса слева.
+   Стало: заливка на токенах --ok-bg / --warn-bg / --err-bg / --info-bg
+   (они уже подобраны под светлую и тёмную тему с нужным контрастом),
+   + цветная полоса слева 4px, + цвет текста заголовка.
+   Текст остаётся читаемым: заливка полупрозрачная, контраст не падает. */
 .dh-table tbody tr.is-traffic-red {
-  box-shadow: inset 3px 0 0 var(--red);
-  background: color-mix(in srgb, var(--red) 6%, transparent);
+  background: var(--err-bg);
+  box-shadow: inset 4px 0 0 var(--red);
 }
+.dh-table tbody tr.is-traffic-red:hover { background: color-mix(in srgb, var(--err-bg) 70%, var(--err) 30%); }
 .dh-table tbody tr.is-traffic-blue {
-  box-shadow: inset 3px 0 0 var(--blue-l);
-  background: color-mix(in srgb, var(--blue-l) 5%, transparent);
+  background: var(--info-bg);
+  box-shadow: inset 4px 0 0 var(--blue-l);
 }
+.dh-table tbody tr.is-traffic-blue:hover { background: color-mix(in srgb, var(--info-bg) 70%, var(--blue-l) 30%); }
 .dh-table tbody tr.is-traffic-yellow {
-  box-shadow: inset 3px 0 0 var(--amber);
-  background: color-mix(in srgb, var(--amber) 6%, transparent);
+  background: var(--warn-bg);
+  box-shadow: inset 4px 0 0 var(--amber);
 }
+.dh-table tbody tr.is-traffic-yellow:hover { background: color-mix(in srgb, var(--warn-bg) 70%, var(--amber) 30%); }
 .dh-table tbody tr.is-traffic-green {
-  box-shadow: inset 3px 0 0 color-mix(in srgb, var(--green, #4caf50) 45%, transparent);
+  background: var(--ok-bg);
+  box-shadow: inset 4px 0 0 var(--green, #2d8659);
 }
+.dh-table tbody tr.is-traffic-green:hover { background: color-mix(in srgb, var(--ok-bg) 70%, var(--green) 30%); }
+/* Читаемость: заголовок строки (контрагент) не тонет в заливке. */
+.dh-table tbody tr.is-traffic-red .dh-stack .a { color: var(--err-t, var(--red)); }
+.dh-table tbody tr.is-traffic-green .dh-stack .a { color: var(--t1); }
+/* Выбранная строка должна перекрывать заливку светофора, а не спорить с ней. */
+.dh-table tbody tr.is-selected { outline: 2px solid var(--gold); outline-offset: -2px; }
 /* U3(д): исходящие строки — класс ставился из JS, но CSS не было. */
 .dh-table tbody tr.is-out {
   border-left: 3px solid var(--gold);
@@ -2057,6 +2076,9 @@ body.hg-dock-open .dh-hscroll-bar {
 .dh-qa__sf:hover:not(:disabled) { color: var(--ok-t, #4ade80) !important; border-color: color-mix(in srgb, var(--ok) 45%, transparent) !important; }
 .dh-qa__paid { color: var(--ok-t, #4ade80) !important; }
 .dh-qa__undo { color: var(--warn-t, #fbbf24) !important; }
+/* D-305: удаление строки — красный только при наведении, чтобы не пугать. */
+.dh-qa__del { color: var(--t3) !important; }
+.dh-qa__del:hover:not(:disabled) { color: var(--err-t, #f87171) !important; border-color: color-mix(in srgb, var(--err) 45%, transparent) !important; }
 .dh-qa__corr.is-on {
   color: var(--err-t, #f87171) !important;
   background: color-mix(in srgb, var(--err) 16%, transparent);

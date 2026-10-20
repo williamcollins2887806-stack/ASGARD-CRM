@@ -884,9 +884,32 @@ window.AsgardDocHubPage = (function () {
     return `<span class="dh-muted">—</span>`;
   }
   function closingCell(row) {
-    const closing = Array.isArray(row.closing_json) && row.closing_json[0] ? row.closing_json[0] : null;
-    if (!closing) return '<span class="dh-pill dh-pill--warn">нет СФ/УПД</span>';
-    return `<div class="dh-stack"><span class="a">${esc((closing.kind || 'СФ') + ': ' + (closing.no || 'б/н'))}</span><span class="b">${fmtDate(closing.date)}</span></div>`;
+    // D-305: любой закрывающий документ закрывает этап — не только «СФ».
+    // УПД / Акт / Чек / СЗ / ТОРГ-12 считаются такими же, и мусорные заметки
+    // («нет», «запросила», ФИО вместо номера) документом НЕ считаются.
+    let arr = row.closing_json;
+    if (typeof arr === 'string') { try { arr = JSON.parse(arr); } catch (_) { arr = null; } }
+    if (!Array.isArray(arr) || !arr.length) {
+      return row.sf_received_at
+        ? '<span class="dh-pill dh-pill--ok">получено</span>'
+        : '<span class="dh-pill dh-pill--warn">нет СФ/УПД</span>';
+    }
+    const NOISE = /^(нет|не\s*т|запросила?|запрошен|в\s*процессе|ожидаем?|ждём|ждем|позже|потом|—|-|\.*)$/i;
+    const real = arr.filter((it) => {
+      if (it == null) return false;
+      const no = String((it && (it.no || it.number)) || (typeof it === 'string' ? it : '')).trim();
+      if (!no || no.length < 2) return false;
+      if (NOISE.test(no)) return false;
+      if (/^[А-ЯЁ][а-яё]+\s+[А-ЯЁ]\./.test(no)) return false;
+      return true;
+    });
+    if (!real.length) return '<span class="dh-pill dh-pill--warn">нет СФ/УПД</span>';
+    // Показываем первый реальный + счётчик остальных.
+    const c = real[0];
+    const kind = String((c && c.kind) || 'СФ');
+    const no = String((c && (c.no || c.number)) || (typeof c === 'string' ? c : 'б/н'));
+    const extra = real.length > 1 ? ` +${real.length - 1}` : '';
+    return `<div class="dh-stack"><span class="a">${esc(kind + ': ' + no + extra)}</span><span class="b">${fmtDate(c && c.date)}</span></div>`;
   }
   function whCell(row) {
     const w = whLabel(row);
@@ -921,6 +944,8 @@ window.AsgardDocHubPage = (function () {
       paid: `<svg ${S}><circle cx="12" cy="12" r="9"/><path d="M8.5 12.5l2.5 2.5 4.5-5"/></svg>`,
       // Корректировка
       corr: `<svg ${S}><path d="M12 3.5 21 20H3z"/><path d="M12 9.5v4.5"/><circle cx="12" cy="17" r=".9" fill="currentColor" stroke="none"/></svg>`,
+      // D-305: удаление строки — корзина (soft-delete на бэке, восстановимо).
+      del: `<svg ${S}><path d="M4 7h16"/><path d="M10 11v6M14 11v6"/><path d="M6 7l1 13h10l1-13"/><path d="M9 7V4h6v3"/></svg>`,
       // Комментарий
       cmt: `<svg ${S}><path d="M20.5 14.5a2 2 0 0 1-2 2H7.5L3.5 20.5V6a2 2 0 0 1 2-2h13a2 2 0 0 1 2 2z"/></svg>`
     };
@@ -1005,6 +1030,7 @@ window.AsgardDocHubPage = (function () {
             ${canWh() ? `<button type="button" data-qa="wh" title="Склад" aria-label="Склад">${ico.wh}</button>` : ''}
             ${canCorrect() ? `<button type="button" data-qa="corr" class="dh-qa__corr${r.correction_state === 'requested' ? ' is-on' : ''}" title="${r.correction_state === 'requested' ? 'Корректировка запрошена' : 'СФ/Акт не корректен'}" aria-label="Корректировка">${ico.corr}</button>` : ''}
             <button type="button" data-qa="open" title="Карточка" aria-label="Открыть карточку">${ico.open}</button>
+            ${(canWh() || canCorrect()) ? `<button type="button" class="dh-qa__del" data-qa="del" title="Удалить строку (в корзину, можно восстановить)" aria-label="Удалить">${ico.del || '✕'}</button>` : ''}
             <button type="button" class="dh-cmt-btn${r.comment_text ? ' is-filled' : ''}" data-cmt="${r.id}" data-comment="${esc(r.comment_text || '')}" title="${r.comment_text ? esc(String(r.comment_text).slice(0, 60)) : 'Комментарий'}" aria-label="Комментарий">${ico.cmt}</button>
           </div>
         </td>
@@ -4020,7 +4046,16 @@ window.AsgardDocHubPage = (function () {
         const qa = btn.getAttribute('data-qa');
         if (qa === 'open') openDrawer(id);
         else if (qa === 'corr') openCorrectionModal(id);
-        else quick(id, qa);
+        else if (qa === 'del') {
+          // D-305: удаление строки прямо из таблицы (заказчик: «а где кнопка
+          // удалить строку?»). Soft-delete на бэке → строка уходит в корзину
+          // (Архив → Корзина), откуда её можно восстановить.
+          if (!window.confirm('Удалить строку? Она переместится в корзину (Архив → Корзина), откуда её можно восстановить.')) return;
+          btn.disabled = true;
+          api(`/${id}`, { method: 'DELETE' })
+            .then(() => { toast('Удалено', 'Строка в корзине — можно восстановить', 'ok'); refresh(); })
+            .catch((err) => { btn.disabled = false; toast('Ошибка', err.message || 'Не удалось удалить', 'err'); });
+        } else quick(id, qa);
         return;
       }
       openDrawer(id);

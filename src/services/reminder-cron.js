@@ -18,6 +18,8 @@
  */
 
 const cron = require('node-cron');
+// D-305: «закрывающий документ получен» — единое правило с светофором.
+const { closingDocSql } = require('../lib/doc-traffic');
 
 let _job = null;
 
@@ -443,8 +445,11 @@ async function sendDailyDigests(db, log) {
               WHEN d.correction_state='requested' THEN 'correction'
               WHEN d.payment_due_at IS NOT NULL AND d.payment_due_at::date <= (NOW() + INTERVAL '1 day')::date
                    AND COALESCE(d.pay_status,'none') NOT IN ('paid','n_a') THEN 'pay_due'
+              -- D-305: «срок СФ» ставится, только если закрывающий документ
+              -- РЕАЛЬНО не получен. Учитываем closing_json (УПД/акт/чек/СЗ),
+              -- а не только флаг sf_received_at.
               WHEN d.sf_due_at IS NOT NULL AND d.sf_due_at::date <= (NOW() + INTERVAL '5 days')::date
-                   AND d.sf_received_at IS NULL THEN 'sf_due'
+                   AND NOT ${closingDocSql('d')} THEN 'sf_due'
               ELSE NULL END) AS kind,
            COALESCE(d.payment_due_at, d.sf_due_at)::date AS due_date,
            d.invoice_number, d.counterparty_name
@@ -455,7 +460,7 @@ async function sendDailyDigests(db, log) {
             OR (d.payment_due_at IS NOT NULL AND d.payment_due_at::date <= (NOW() + INTERVAL '1 day')::date
                 AND COALESCE(d.pay_status,'none') NOT IN ('paid','n_a'))
             OR (d.sf_due_at IS NOT NULL AND d.sf_due_at::date <= (NOW() + INTERVAL '5 days')::date
-                AND d.sf_received_at IS NULL))
+                AND NOT ${closingDocSql('d')}))
      LIMIT 1000`);
   if (!tasks.length) return 0;
 

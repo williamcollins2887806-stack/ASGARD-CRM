@@ -38,6 +38,43 @@ function payDeadlineActive(r) {
   return ps !== 'paid' && ps !== 'n_a';
 }
 
+/**
+ * D-305 (заказчик 20.10.2026): «почему если есть УПД, акт или чек, СЗ — всё
+ * равно система пишет что нет СФ? любой закрывающий документ должен закрывать
+ * этот этап».
+ *
+ * Раньше этап закрывался ТОЛЬКО по флагу `sf_received_at`. Но закрывающий
+ * документ можно завести и без него — через `closing_json` (УПД / Акт / Чек /
+ * СЗ / ТОРГ-12). На проде таких строк 206: документ есть, а система считает
+ * «СФ нет» и продолжает гонять задачу.
+ *
+ * Теперь «закрывающие получены» = sf_received_at ИЛИ непустой closing_json,
+ * где есть РЕАЛЬНЫЙ документ. Мусорные значения отсекаем: «нет», «запросила»,
+ * «в процессе», пустой номер, ФИО вместо номера — это не документ.
+ */
+function hasClosingDoc(r) {
+  if (r.sf_received_at) return true;
+  let arr = r.closing_json;
+  if (typeof arr === 'string') { try { arr = JSON.parse(arr); } catch (_) { arr = null; } }
+  if (!Array.isArray(arr) || !arr.length) return false;
+  const NOISE = /^(нет|не\s*т|запросила?|запрошен|в\s*процессе|ожидаем?|ждём|ждем|позже|потом|—|-|\.*)$/i;
+  return arr.some((it) => {
+    if (it == null) return false;
+    if (typeof it === 'string') {
+      const s = it.trim();
+      return s.length > 1 && !NOISE.test(s);
+    }
+    const no = String(it.no || it.number || '').trim();
+    const kind = String(it.kind || '').trim();
+    if (!no && !kind) return false;
+    if (!no) return false;                 // документ без номера — не считаем
+    if (NOISE.test(no)) return false;
+    // «Климакин Д.В.» вместо номера — это заметка, а не документ.
+    if (/^[А-ЯЁ][а-яё]+\s+[А-ЯЁ]\./.test(no)) return false;
+    return true;
+  });
+}
+
 /** Ближайший неоплаченный этап частичного графика (или null). */
 function nextScheduleDue(r) {
   if (String(r.payment_kind || '') !== 'partial') return null;
@@ -82,7 +119,9 @@ function activeDeadlines(r) {
     if (payDue && payDeadlineActive(r)) out.push({ kind: 'pay', date: payDue });
   }
   const sfDue = toYmd(r.sf_due_at);
-  if (sfDue && !r.sf_received_at && ['wait_sf', 'wait_closing'].includes(r.ops_status)) {
+  // D-305: этап закрывается ЛЮБЫМ закрывающим документом (УПД/акт/чек/СЗ),
+  // а не только флагом sf_received_at.
+  if (sfDue && !hasClosingDoc(r) && ['wait_sf', 'wait_closing'].includes(r.ops_status)) {
     out.push({ kind: 'sf', date: sfDue });
   }
   const reconDue = toYmd(r.recon_due_at);
@@ -173,7 +212,7 @@ function trafficSql(alias = 'd', yellowWorkdays = DEFAULT_YELLOW_WORKDAYS) {
   const payActive = `(${a}.no_payment_terms IS NOT TRUE AND COALESCE(${a}.pay_status,'none') NOT IN ('paid','n_a'))`;
   const payDeadline = `CASE WHEN ${a}.payment_kind='partial' THEN ${schedDue}
     WHEN ${a}.payment_due_at IS NOT NULL AND ${payActive} THEN ${a}.payment_due_at::date END`;
-  const sfDeadline = `CASE WHEN ${a}.sf_due_at IS NOT NULL AND ${a}.sf_received_at IS NULL
+  const sfDeadline = `CASE WHEN ${a}.sf_due_at IS NOT NULL AND NOT ${closingDocSql(a)}
     AND ${a}.ops_status IN ('wait_sf','wait_closing') THEN ${a}.sf_due_at::date END`;
   const reconDeadline = `CASE WHEN ${a}.recon_due_at IS NOT NULL AND ${a}.recon_received_at IS NULL
     THEN ${a}.recon_due_at::date END`;
@@ -187,6 +226,26 @@ function trafficSql(alias = 'd', yellowWorkdays = DEFAULT_YELLOW_WORKDAYS) {
     ELSE 'green' END`;
 }
 
+/**
+ * D-305: SQL-зеркало hasClosingDoc() — «закрывающий документ получен».
+ * sf_received_at ИЛИ closing_json содержит реальный документ (номер не мусорный).
+ * Должно совпадать с JS-версией, иначе светофор разойдётся с фильтром.
+ */
+function closingDocSql(alias = 'd') {
+  const a = alias;
+  const arr = `CASE WHEN jsonb_typeof(${a}.closing_json)='array' THEN ${a}.closing_json ELSE '[]'::jsonb END`;
+  return `(
+    ${a}.sf_received_at IS NOT NULL
+    OR EXISTS (
+      SELECT 1 FROM jsonb_array_elements(${arr}) e
+      WHERE COALESCE(trim(e->>'no'), '') <> ''
+        AND length(trim(e->>'no')) > 1
+        AND lower(trim(e->>'no')) !~ '^(нет|не т|запросила?|запрошен|в процессе|ожидаем?|жд[её]м|позже|потом|—|-|\\.*)$'
+        AND trim(e->>'no') !~ '^[А-ЯЁ][а-яё]+\\s+[А-ЯЁ]\\.'
+    )
+  )`;
+}
+
 /** WHERE-фильтр «просрочка» (для query-параметров overdue_pay/overdue_sf). */
 function overduePaySql(alias = 'd') {
   const a = alias;
@@ -196,7 +255,7 @@ function overduePaySql(alias = 'd') {
 function overdueSfSql(alias = 'd') {
   const a = alias;
   return `${a}.sf_due_at IS NOT NULL AND ${a}.sf_due_at::date < CURRENT_DATE
-    AND ${a}.sf_received_at IS NULL AND ${a}.ops_status IN ('wait_sf','wait_closing')`;
+    AND NOT ${closingDocSql(a)} AND ${a}.ops_status IN ('wait_sf','wait_closing')`;
 }
 
 module.exports = {
@@ -204,6 +263,8 @@ module.exports = {
   DEFAULT_YELLOW_WORKDAYS,
   activeDeadlines,
   payDeadlineActive,
+  hasClosingDoc,
+  closingDocSql,
   nextScheduleDue,
   workdaysBetween,
   trafficOf,
