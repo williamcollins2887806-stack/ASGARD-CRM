@@ -681,6 +681,24 @@ a:hover { text-decoration: underline; }
   color: var(--t2); font-size: 13px; cursor: pointer;
 }
 .dh-sf__chk input { accent-color: var(--gold, #d4a017); }
+/* D-291 (заказчик 20.10.2026): «ползунок СФ получена перекрывается текстом».
+   Колонка действий была sticky-right с полупрозрачным фоном (96%) — кнопка
+   и подпись «✔ отмечено» наезжали друг на друга. Для таблицы входящих СФ
+   делаем фон непрозрачным и не даём содержимому сжиматься. */
+.dh-sf__table .dh-actions,
+.dh-sf__table td.dh-actions {
+  background: var(--bg2, #0f172a);
+  min-width: 190px;
+  white-space: nowrap;
+}
+.dh-sf__table td.dh-actions .dh-qa {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: nowrap;
+}
+.dh-sf__table td.dh-actions .dh-btn { flex: 0 0 auto; }
+.dh-sf__table td.dh-actions .dh-sf__done { flex: 0 0 auto; }
 .dh-sf__done { font-size: 13px; white-space: nowrap; }
 .dh-act-balance {
   padding: 12px 16px; margin: 0; border-top: 1px solid var(--brd);
@@ -993,8 +1011,10 @@ a:hover { text-decoration: underline; }
   font-size: 11px;
 }
 .dh-attach__meta { flex: 1; min-width: 0; }
-.dh-attach__meta .a { font-weight: 700; font-size: 13px; }
+.dh-attach__meta .a { font-weight: 700; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dh-attach__meta .b { font-size: 11px; color: var(--t3); }
+/* D-291: кнопки «Открыть / Скачать» справа, не сжимаются. */
+.dh-attach__acts { display: flex; gap: 6px; flex: 0 0 auto; flex-wrap: wrap; }
 
 /* ── Modal ── */
 .dh-modal-root {
@@ -1397,7 +1417,18 @@ a:hover { text-decoration: underline; }
   padding: 4px 2px 12px;
 }
 .dh-app--embedded .dh-shell { margin: 0; max-width: none; }
-.dh-app--embedded .dh-top { position: sticky; top: 0; z-index: 5; }
+/* D-291 (заказчик 20.10.2026): «когда скроллишь, верхний блок с подписями
+   идёт вниз на прозрачном фоне». Sticky-шапка была объявлена без фона —
+   под ней просвечивала таблица. Теперь непрозрачный фон + разделитель. */
+.dh-app--embedded .dh-top {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  background: var(--bg1, var(--bg0, #0b0f1a));
+  border-bottom: 1px solid var(--brd-m, var(--brd, #334155));
+  padding-bottom: 10px;
+  box-shadow: 0 2px 10px -8px rgba(0, 0, 0, 0.6);
+}
 .dh-scope { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: var(--t2, #94a3b8); margin-left: 12px; }
 .dh-modal[hidden], .dh-drawer[hidden], .dh-overlay[hidden] { display: none !important; }
 .dh-modal { position: fixed; inset: 0; background: rgba(0,0,0,.45); z-index: 12000; display: flex; align-items: center; justify-content: center; padding: 24px; }
@@ -1516,15 +1547,27 @@ body.hg-dock-open .dh-hscroll-bar {
 }
 .dh-facet input,
 .dh-facet select {
-  height: 34px;
-  padding: 0 10px;
+  /* D-291 (заказчик 20.10.2026): «выпадающие списки сломаны — только пол текста
+     показывается». Причина: глобальное `input, select, textarea { padding:12px 16px }`
+     из app.css плюс `select { appearance:none; padding-right:36px }` не влезали
+     в жёсткий height:34px — текст обрезался по центру строки.
+     Теперь высота по содержимому, отступы безопасные, стрелка не наезжает. */
+  height: auto;
+  min-height: 34px;
+  padding: 7px 34px 7px 10px;
+  line-height: 1.25;
   border-radius: 8px;
   border: 1px solid var(--brd, var(--line, #334155));
-  background: var(--bg2, var(--panel, #0f172a));
+  background-color: var(--bg2, var(--panel, #0f172a));
   color: var(--t1, #e2e8f0);
   font-weight: 550;
+  font-size: 13px;
   min-width: 180px;
 }
+/* input без стрелки — отступ справа обычный. */
+.dh-facet input { padding-right: 10px; }
+/* Сортировка: длинные подписи не должны обрезаться многоточием. */
+.dh-facet--sort select { min-width: 250px; }
 .dh-facet--check {
   flex-direction: row;
   align-items: center;
@@ -2594,3 +2637,35 @@ html[data-theme="light"] .dh-cp-badge { color: #24503B; background: rgba(45,106,
 .dh-ms__item[hidden] { display: none; }
 .dh-ms__item:hover { background: var(--bg3, #1e293b); }
 .dh-ms__empty { padding: 10px; color: var(--t3, #94a3b8); font-size: 12px; text-align: center; }
+
+/* ═══ D-291: «График оплат» — календарь платежей ═══ */
+.dh-pdays {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 12px 14px 16px;
+}
+.dh-pday {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  min-width: 82px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px solid var(--brd);
+  background: var(--bg2);
+  color: var(--t1);
+  cursor: pointer;
+  font-family: inherit;
+  transition: border-color var(--base, .2s), background var(--base, .2s);
+}
+.dh-pday:hover { border-color: var(--gold); }
+.dh-pday.is-on { border-color: var(--gold); background: color-mix(in srgb, var(--gold) 12%, var(--bg2)); }
+.dh-pday.is-overdue { border-color: color-mix(in srgb, var(--err, #ef4444) 55%, var(--brd)); }
+.dh-pday__wd { font-size: 10px; text-transform: uppercase; letter-spacing: .06em; color: var(--t3); }
+.dh-pday__d { font-size: 13px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.dh-pday__sum { font-size: 11.5px; font-weight: 600; color: var(--t2); font-variant-numeric: tabular-nums; }
+.dh-pday__n { font-size: 10px; color: var(--t3); }
+.dh-pday.is-overdue .dh-pday__sum { color: var(--err-t, #f87171); }
+.dh-paysched { display: flex; flex-direction: column; gap: 12px; }

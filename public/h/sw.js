@@ -1,5 +1,5 @@
 /* Huginn PWA SW — network-first (fresh shell wins), cache as offline fallback */
-const SHELL_VERSION = '20.28.249';
+const SHELL_VERSION = '20.28.247';
 const CACHE = 'huginn-h-' + SHELL_VERSION;
 // ?v= обязателен: /assets/* и /h/app.js отдаются с immutable, max-age=30д.
 // Без версии в URL телефон держал старый JS месяцами (и старый SW, т.к.

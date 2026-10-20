@@ -406,6 +406,12 @@ async function intakeOne(db, { email, attachment, text, userId = null, dryRun = 
       try { parsed._warnings = [...(parsed._warnings || []), supplierMatchNote]; } catch (_) {}
       console.warn('[intake] ' + supplierMatchNote + ' (счёт ' + (parsed.invoice_number || '?') + ')');
     }
+    // D-291 (заказчик 20.10.2026): «Почему тут Вложения. Способ получения email
+    // это не правда. Там указывается способ получения ЗАКРЫВАЮЩИХ документов, а
+    // его проставит инициатор — не нужно ставить получение email, если счёт
+    // пришёл по email».
+    // Поле receive_channel = «как получим ЭДО/скан/оригинал», а не «как пришёл
+    // счёт». При intake ставим NULL — заполнит инициатор в карточке.
     const insDoc = await db.query(
       `INSERT INTO doc_registry(dir, package_type, ops_status, pay_status, invoice_number, invoice_date,
          counterparty_name, counterparty_inn, supplier_id, amount_gross, amount_net, vat_amount, has_vat,
@@ -414,7 +420,7 @@ async function intakeOne(db, { email, attachment, text, userId = null, dryRun = 
          seller_name, seller_inn, payee_name, payee_inn, payee_kpp, parse_engine, parse_warnings,
          original_path_url)
        VALUES ('in','invoice','wait_sf','wait',$1,$2::date,$3,$4,$5,$6,$7,$8,$9,
-               'other',$10,$10,$10,'email',$11,
+               'other',$10,$10,$10,NULL,$11,
                $12,$13,$14,$15::date,$16,$17::date,
                $18,$19,$20,$21,$22,$23,$24::jsonb,$25) RETURNING id`,
       [parsed.invoice_number, parsed.invoice_date, cpName, parsed.inn, supplierId,

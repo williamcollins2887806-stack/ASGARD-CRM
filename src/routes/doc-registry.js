@@ -747,6 +747,118 @@ module.exports = async function docRegistryRoutes(fastify) {
     return { year: y, series };
   });
 
+  /**
+   * D-291 (заказчик 20.10.2026): «Я не нашёл график оплат — ты его не сделал?»
+   * Верно, не было. Теперь: счета с известным сроком оплаты, сгруппированные
+   * по дням, плюс сводка KPI (просрочено / на этой неделе / в этом месяце).
+   * Источник срока: payment_due_at; для частичной оплаты — ближайший неоплаченный
+   * этап из payment_schedule.
+   */
+  fastify.get('/payment-schedule', auth, async (req) => {
+    const q = req.query || {};
+    const p = [];
+    const vis = visibilitySql(p, req.user.role, req.user.id, { scope: q.scope });
+    // Окно: по умолчанию — с начала прошлого месяца по конец следующего.
+    const now = new Date();
+    const from = q.from || new Date(now.getFullYear(), now.getMonth() - 1, 1).toISOString().slice(0, 10);
+    const to = q.to || new Date(now.getFullYear(), now.getMonth() + 2, 0).toISOString().slice(0, 10);
+    p.push(from, to);
+
+    const { rows } = await db.query(
+      `SELECT d.id, d.dir, d.counterparty_name, d.invoice_number, d.invoice_date,
+              d.amount_gross, d.pay_status, d.payment_kind, d.payment_due_at,
+              d.payment_schedule, d.doc_owner_id, d.correction_state,
+              u.name AS owner_name
+         FROM doc_registry d
+         LEFT JOIN users u ON u.id = d.doc_owner_id
+        WHERE d.deleted_at IS NULL
+          AND d.dir = 'in'
+          AND COALESCE(d.pay_status,'none') NOT IN ('paid','n_a')
+          AND d.no_payment_terms IS NOT TRUE
+          AND d.payment_due_at IS NOT NULL
+          AND d.payment_due_at BETWEEN $${p.length - 1}::date AND $${p.length}::date${vis}
+        ORDER BY d.payment_due_at ASC, d.id ASC`, p);
+
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const iso = (d) => (d instanceof Date ? d.toISOString().slice(0, 10) : String(d || '').slice(0, 10));
+
+    const items = rows.map((r) => {
+      // Для частичной оплаты берём ближайший неоплаченный этап.
+      let due = iso(r.payment_due_at);
+      let amount = Number(r.amount_gross) || 0;
+      if (String(r.payment_kind || '') === 'partial') {
+        let sched = r.payment_schedule;
+        if (typeof sched === 'string') { try { sched = JSON.parse(sched); } catch (_) { sched = null; } }
+        if (Array.isArray(sched)) {
+          const next = sched
+            .filter((s) => s && !s.paid_at && s.due_at)
+            .sort((a, b) => String(a.due_at).localeCompare(String(b.due_at)))[0];
+          if (next) {
+            due = iso(next.due_at);
+            amount = Number(next.amount) || amount;
+          }
+        }
+      }
+      const dueDate = new Date(due + 'T00:00:00');
+      const overdue = !Number.isNaN(dueDate.getTime()) && dueDate < today;
+      return {
+        id: r.id,
+        counterparty_name: r.counterparty_name,
+        invoice_number: r.invoice_number,
+        invoice_date: r.invoice_date,
+        amount,
+        amount_total: Number(r.amount_gross) || 0,
+        due_at: due,
+        overdue,
+        owner_name: r.owner_name || null,
+        payment_kind: r.payment_kind || null,
+        pay_status: r.pay_status || null
+      };
+    });
+
+    // Группировка по дням — для календарной сетки.
+    const byDay = {};
+    for (const it of items) {
+      const k = it.due_at;
+      if (!byDay[k]) byDay[k] = { date: k, count: 0, amount: 0, overdue: false, ids: [] };
+      byDay[k].count += 1;
+      byDay[k].amount += it.amount;
+      byDay[k].ids.push(it.id);
+      if (it.overdue) byDay[k].overdue = true;
+    }
+
+    // KPI.
+    const weekEnd = new Date(today); weekEnd.setDate(weekEnd.getDate() + 7);
+    const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+    const sum = (arr) => arr.reduce((a, x) => a + x.amount, 0);
+    const kpi = {
+      overdue: { count: items.filter((x) => x.overdue).length, amount: sum(items.filter((x) => x.overdue)) },
+      week: {
+        count: items.filter((x) => {
+          const d = new Date(x.due_at + 'T00:00:00');
+          return !Number.isNaN(d.getTime()) && d >= today && d <= weekEnd;
+        }).length,
+        amount: sum(items.filter((x) => {
+          const d = new Date(x.due_at + 'T00:00:00');
+          return !Number.isNaN(d.getTime()) && d >= today && d <= weekEnd;
+        }))
+      },
+      month: {
+        count: items.filter((x) => {
+          const d = new Date(x.due_at + 'T00:00:00');
+          return !Number.isNaN(d.getTime()) && d >= today && d <= monthEnd;
+        }).length,
+        amount: sum(items.filter((x) => {
+          const d = new Date(x.due_at + 'T00:00:00');
+          return !Number.isNaN(d.getTime()) && d >= today && d <= monthEnd;
+        }))
+      },
+      total: { count: items.length, amount: sum(items) }
+    };
+
+    return { from, to, today: iso(today), items, byDay: Object.values(byDay), kpi };
+  });
+
 
   const RECON_ROLES = new Set(['BUH', 'ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV', 'DIRECTOR', 'OFFICE_MANAGER']);
 
@@ -1453,6 +1565,66 @@ module.exports = async function docRegistryRoutes(fastify) {
       billing_act_id: rows[0].billing_act_id
     });
     return { ok: true, id };
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // D-291 (заказчик 20.10.2026): «И что за архив? туда попадают удалённые
+  // строки? и как удалить строку?» — раньше удалять было НЕЛЬЗЯ из интерфейса
+  // вовсе, а восстановления не существовало. DELETE делал soft-delete, но
+  // строка исчезала навсегда для пользователя.
+  // Теперь: корзина со списком удалённых и восстановление одной кнопкой.
+  // ═══════════════════════════════════════════════════════════════════════════
+  fastify.get('/trash', auth, async (req) => {
+    const p = [];
+    const vis = visibilitySql(p, req.user.role, req.user.id, { scope: 'all' });
+    const { rows } = await db.query(
+      `SELECT d.id, d.dir, d.counterparty_name, d.counterparty_inn, d.invoice_number, d.invoice_date,
+              d.amount_gross, d.deleted_at, d.doc_owner_id,
+              u.name AS owner_name, du.name AS deleted_by_name
+         FROM doc_registry d
+         LEFT JOIN users u  ON u.id = d.doc_owner_id
+         LEFT JOIN users du ON du.id = d.updated_by
+        WHERE d.deleted_at IS NOT NULL${vis}
+        ORDER BY d.deleted_at DESC
+        LIMIT 300`, p);
+    return {
+      items: rows.map((r) => ({
+        id: r.id,
+        dir: r.dir,
+        counterparty_name: r.counterparty_name,
+        counterparty_inn: r.counterparty_inn,
+        invoice_number: r.invoice_number,
+        invoice_date: r.invoice_date,
+        amount_gross: r.amount_gross,
+        deleted_at: r.deleted_at,
+        owner_name: r.owner_name || null,
+        deleted_by_name: r.deleted_by_name || null
+      })),
+      total: rows.length
+    };
+  });
+
+  fastify.post('/:id/restore', auth, async (req, reply) => {
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id)) return reply.code(400).send({ error: 'Неверный ID' });
+    // Строка удалена, поэтому assertDocVisible (он смотрит deleted_at IS NULL)
+    // не подходит — проверяем видимость по владельцу/РП вручную.
+    const cur = await db.query(
+      'SELECT id, doc_owner_id, pm_id, dir, counterparty_name FROM doc_registry WHERE id=$1 AND deleted_at IS NOT NULL',
+      [id]);
+    if (!cur.rows[0]) return reply.code(404).send({ error: 'В корзине такой строки нет' });
+    const fullVis = typeof canUseScopeAll === 'function' && canUseScopeAll(req.user.role);
+    const mine = Number(cur.rows[0].doc_owner_id) === Number(req.user.id)
+      || Number(cur.rows[0].pm_id) === Number(req.user.id);
+    if (!fullVis && !mine) return reply.code(403).send({ error: 'Нет прав на восстановление' });
+
+    const { rows } = await db.query(
+      `UPDATE doc_registry SET deleted_at=NULL, updated_by=$2, updated_at=NOW()
+        WHERE id=$1 AND deleted_at IS NOT NULL RETURNING id, dir, counterparty_name`,
+      [id, req.user.id]);
+    if (!rows[0]) return reply.code(404).send({ error: 'В корзине такой строки нет' });
+    await audit(db, id, req.user.id, 'restore', {});
+    return { ok: true, id, item: rows[0] };
   });
 
   fastify.post('/:id/upload', auth, async (req, reply) => {

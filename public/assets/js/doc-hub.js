@@ -83,6 +83,8 @@ window.AsgardDocHubPage = (function () {
     sort: 'invoice_desc',
     actsTab: false,      // V394: вкладка «Акты сверки»
     archiveTab: false,   // паритет с «Выплатами»: вкладка «Архив»
+    archTab: 'summary',  // D-291: внутри Архива — сводка по месяцам или корзина
+    payTab: false,       // D-291: вкладка «График оплат»
     sfTab: false,        // V394: экран «Входящие СФ» (кладовщик)
     sfOnlyPending: true, // на экране СФ по умолчанию только те, что ждут получения
     facets: { counterparties: [] },
@@ -565,7 +567,7 @@ window.AsgardDocHubPage = (function () {
       if (row.ops_status === 'wh_transfer') return map.await;
       return '—';
     }
-    return map[v] || String(v);
+    return map[v] || 'у склада';;
   }
 
   function statusLabel(row) {
@@ -584,18 +586,44 @@ window.AsgardDocHubPage = (function () {
     return map[row.ops_status] || 'В работе';
   }
 
+  /**
+   * D-291 (заказчик 20.10.2026): «contract_not_found не должно быть англицизмов,
+   * всё на русском и понятно пользователю».
+   * В базе `incomplete_reasons` — массив кодов (snake_case). Раньше словарь
+   * покрывал не всё, и непокрытые коды печатались КАК ЕСТЬ прямо в карточке
+   * («Дозаполните: contract_not_found»). Теперь:
+   *   • все известные коды переведены;
+   *   • неизвестный код НИКОГДА не показывается — «требует проверки»;
+   *   • технический код уходит в title (для поддержки).
+   */
+  function incompleteReasonLabel(code) {
+    const map = {
+      no_invoice_number: 'нет номера счёта',
+      no_invoice_date: 'нет даты счёта',
+      no_counterparty: 'нет контрагента',
+      no_contract: 'нет привязанного договора',
+      contract_not_found: 'договор из счёта не найден в справочнике договоров',
+      no_payment_due: 'нет срока оплаты',
+      no_payment_terms: 'не указаны условия оплаты (срок или «не требуется»)',
+      no_work: 'нет объекта работ',
+      no_amount: 'нет суммы',
+      no_vat: 'не указан НДС',
+      no_scan: 'нет скана документа',
+      duplicate_suspect: 'похоже на дубль — проверьте',
+      needs_manual: 'требует ручной проверки'
+    };
+    return map[code] || 'требует проверки';
+  }
+  /** Есть ли среди причин непереведённые коды (для title-подсказки). */
   function incompleteReasonsText(row) {
     const reasons = Array.isArray(row.incomplete_reasons) ? row.incomplete_reasons : [];
-    const labels = {
-      no_invoice_number: 'нет № счёта',
-      no_invoice_date: 'нет даты',
-      no_counterparty: 'нет контрагента',
-      no_contract: 'нет привязанного договора (режим «Привязать»)',
-      no_payment_due: 'нет срока оплаты',
-      no_work: 'нет объекта (для вида «Работы»)'
-    };
     if (!reasons.length) return 'дозаполните обязательные поля';
-    return reasons.map((r) => labels[r] || r).join(', ');
+    return reasons.map((r) => incompleteReasonLabel(r)).join(', ');
+  }
+  /** Технические коды — в подсказку, не в текст. */
+  function incompleteReasonsTitle(row) {
+    const reasons = Array.isArray(row.incomplete_reasons) ? row.incomplete_reasons : [];
+    return reasons.length ? reasons.join(', ') : '';
   }
 
   function nextActionText(row) {
@@ -791,12 +819,33 @@ window.AsgardDocHubPage = (function () {
     }
     return `<span class="dh-muted">${esc(mode)}</span>`;
   }
+  /**
+   * D-291 (заказчик 20.10.2026): в базе 20+ вариантов написания одного и того же
+   * канала («ЭДО+оригинал», «ЭДО (СБИС)», «эдо», «Оригинал у Антона», «Нарочно»).
+   * Приводим к трём каноническим значениям. Миграция V419 чистит старые данные,
+   * а эта функция страхует от новых ручных вводов.
+   */
+  function receiveChannelCanon(ch) {
+    const raw = String(ch || '').trim().toLowerCase();
+    if (!raw) return '';
+    if (/^(эдо|edo)(\s*\(.*\))?$/.test(raw)) return 'edo';
+    // Названия операторов ЭДО без слова «ЭДО» — это тот же канал.
+    if (/^(контур|сбис|sbis|диадок|ати-су|ати)$/.test(raw)) return 'edo';
+    if (/^эдо\s+\S+$/.test(raw)) return 'edo';           // «ЭДО сбис», «ЭДО контур»
+    if (/(эдо|edo)/.test(raw) && /(оригинал|ориг|скан)/.test(raw)) return 'edo';
+    if (/^(оригинал|оринигал|нарочн)/.test(raw) || /^оригинал\b/.test(raw)) return 'original';
+    if (/полис/.test(raw)) return 'original';
+    if (/^(скан|scan)/.test(raw)) return 'scan';
+    if (/^(---|—|-|__|нет)$/.test(raw)) return '';
+    return raw; // неизвестное — покажем как есть, но помеченным
+  }
   function receiveChannelLabel(ch) {
     const raw = String(ch || '').trim().toLowerCase();
     if (!raw) return '';
-    if (/^(edo|эдо)$/i.test(raw)) return 'ЭДО';
-    if (/scan|скан|скан\s*копи/i.test(raw)) return 'скан';
-    if (/original|оригинал/i.test(raw)) return 'оригинал';
+    const canon = receiveChannelCanon(ch);
+    if (canon === 'edo') return 'ЭДО';
+    if (canon === 'scan') return 'скан';
+    if (canon === 'original') return 'оригинал';
     return String(ch).trim();
   }
   function receiveCell(row) {
@@ -806,7 +855,10 @@ window.AsgardDocHubPage = (function () {
     if (label === 'ЭДО') kind = 'info';
     else if (label === 'скан') kind = 'warn';
     else if (label === 'оригинал') kind = 'ok';
-    return `<span class="dh-pill dh-pill--${kind}">${esc(label)}</span>`;
+    // Исходный текст — в подсказку: приведённое значение не теряет данные.
+    const raw = String(row.receive_channel || '').trim();
+    const title = raw && raw.toLowerCase() !== label.toLowerCase() ? ` title="${esc(raw)}"` : '';
+    return `<span class="dh-pill dh-pill--${kind}"${title}>${esc(label)}</span>`;
   }
   function ownersCell(row) {
     const owner = row.doc_owner_name || '—';
@@ -1234,6 +1286,7 @@ window.AsgardDocHubPage = (function () {
                 ? '<button class="dh-btn dh-btn--ghost" type="button" id="dhWizToRegistry">К реестру</button>'
                 : `<button class="dh-btn dh-btn--ghost ${state.actsTab ? 'is-on' : ''}" type="button" id="dhBtnActs">Акты сверки</button>
               <button class="dh-btn dh-btn--ghost ${state.sfTab ? 'is-on' : ''}" type="button" id="dhBtnSf">Входящие СФ</button>
+              <button class="dh-btn dh-btn--ghost ${state.payTab ? 'is-on' : ''}" type="button" id="dhBtnPay">График оплат</button>
               <button class="dh-btn dh-btn--ghost ${state.archiveTab ? 'is-on' : ''}" type="button" id="dhBtnArchive">Архив</button>
               <button class="dh-btn dh-btn--ghost ${isGuide ? 'is-on' : ''}" type="button" id="dhBtnGuide">${isGuide ? 'К реестру' : 'Справка'}</button>
               <button class="dh-btn dh-btn--ghost" type="button" id="dhBtnHelp" title="Подсказка">?</button>
@@ -1247,8 +1300,9 @@ window.AsgardDocHubPage = (function () {
             ${isGuide ? renderGuideView() : (isWizard ? '<div class="dh-wizard-page" id="dhWizardHost"></div>'
               : (state.actsTab ? '<div class="dh-acts" id="dhActsHost"><div class="dh-empty">Загрузка актов сверки…</div></div>'
                 : (state.sfTab ? '<div class="dh-sf" id="dhSfHost"><div class="dh-empty">Загрузка входящих СФ…</div></div>'
+                : (state.payTab ? '<div class="dh-paysched" id="dhPaySchedHost"><div class="dh-empty">Загрузка графика оплат…</div></div>'
                 : (state.archiveTab ? '<div class="dh-archive" id="dhArchiveHost"><div class="dh-empty">Загрузка архива…</div></div>'
-                  : registryMainHtml(scopeAll)))))}
+                  : registryMainHtml(scopeAll))))))}
           </main>
         </div>
         <div class="dh-overlay" id="dhOverlay" hidden></div>
@@ -2161,19 +2215,44 @@ window.AsgardDocHubPage = (function () {
     }
     if (!Array.isArray(atts)) atts = atts ? [atts] : [];
     if (row.original_path_url) {
-      atts = atts.concat([{ url: row.original_path_url, name: 'Оригинал / путь' }]);
+      atts = atts.concat([{ url: row.original_path_url, name: row.original_filename || null, _orig: true }]);
     }
     if (!atts.length) return '<div class="dh-empty dh-empty--sm"><div class="dh-empty__t">Нет вложений</div><p>Скан счёта или СФ можно приложить при создании документа или позже в этой карточке.</p></div>';
+    /**
+     * D-291 (заказчик 20.10.2026): «Почему тут Вложения …» — в блоке печатался
+     * СЫРОЙ путь (`uploads/mail/2026-10-19/uuid/Счёт.pdf`) вместо имени файла.
+     * Теперь: имя из URL, человеческая подпись типа, кнопки «Открыть»/«Скачать».
+     */
+    const fileExt = (u) => {
+      const clean = String(u || '').split('?')[0];
+      const m = clean.match(/\.([a-z0-9]{2,5})$/i);
+      return m ? m[1].toUpperCase() : '';
+    };
+    const niceName = (u, given) => {
+      if (given) return given;
+      const clean = String(u || '').split('?')[0];
+      const last = clean.split('/').pop() || '';
+      try { return decodeURIComponent(last) || 'файл'; } catch (_) { return last || 'файл'; }
+    };
+    const isPdf = (u) => /\.pdf($|\?)/i.test(String(u || ''));
+    const isImg = (u) => /\.(png|jpe?g|webp|gif)($|\?)/i.test(String(u || ''));
+
     return atts.map((a) => {
       const url = typeof a === 'string' ? a : (a.url || a.path || '');
-      const name = typeof a === 'string' ? a.split('/').pop() : (a.name || a.filename || url || 'файл');
+      const name = niceName(url, typeof a === 'string' ? null : (a.name || a.filename));
+      const ext = fileExt(url) || (typeof a === 'object' && a.kind ? String(a.kind).toUpperCase() : 'FILE');
+      const kindWord = isPdf(url) ? 'PDF-документ' : (isImg(url) ? 'изображение' : 'файл');
+      const openBtn = url
+        ? `<a class="dh-btn dh-btn--sm" href="${esc(url)}" target="_blank" rel="noopener">Открыть</a>
+           <a class="dh-btn dh-btn--sm dh-btn--ghost" href="${esc(url)}" download title="Скачать">Скачать</a>`
+        : '<button class="dh-btn dh-btn--sm" type="button" disabled>Нет ссылки</button>';
       return `<div class="dh-attach">
-        <div class="dh-attach__ico">PDF</div>
+        <div class="dh-attach__ico">${esc(ext.slice(0, 4))}</div>
         <div class="dh-attach__meta">
-          <div class="a">${esc(name)}</div>
-          <div class="b">${url ? esc(url) : 'локальный скан'}</div>
+          <div class="a" title="${esc(name)}">${esc(name)}</div>
+          <div class="b">${esc(kindWord)}</div>
         </div>
-        ${url ? `<a class="dh-btn dh-btn--sm" href="${esc(url)}" target="_blank" rel="noopener">Открыть</a>` : '<button class="dh-btn dh-btn--sm" type="button" disabled>Нет ссылки</button>'}
+        <div class="dh-attach__acts">${openBtn}</div>
       </div>`;
     }).join('');
   }
@@ -2534,16 +2613,151 @@ window.AsgardDocHubPage = (function () {
     let years = [y];
     try { years = (await api(`/archive/years?scope=${encodeURIComponent(state.scope)}`)).years || [y]; } catch (_) { /* необязательно */ }
     if (!years.includes(y)) years.unshift(y);
+    // D-291: у «Архива» теперь два режима — сводка по месяцам и КОРЗИНА
+    // удалённых строк (заказчик спросил: «что за архив, туда попадают удалённые?»).
+    const tab = state.archTab || 'summary';
     host.innerHTML = `
-      <div class="dh-arch__bar">
-        <label>Год: <select id="dhArchYear" class="input">${years.map((yy) => `<option ${yy === y ? 'selected' : ''}>${yy}</option>`).join('')}</select></label>
-        <label>Месяц: <select id="dhArchMonth" class="input">${MONTH_NAMES.map((mn, i) => `<option value="${i + 1}" ${i + 1 === m ? 'selected' : ''}>${mn}</option>`).join('')}</select></label>
+      <div class="dh-seg" id="dhArchSeg" style="margin-bottom:12px">
+        <button type="button" class="${tab === 'summary' ? 'is-on' : ''}" data-arch-tab="summary">Сводка по месяцам</button>
+        <button type="button" class="${tab === 'trash' ? 'is-on' : ''}" data-arch-tab="trash">Корзина (удалённые)</button>
       </div>
-      <div class="dh-arch__chart" id="dhArchChart"><div class="dh-empty dh-empty--sm">График…</div></div>
-      <div id="dhArchBody"><div class="dh-empty dh-empty--sm">Загрузка…</div></div>`;
-    host.querySelector('#dhArchYear').onchange = (e) => { state.archYear = parseInt(e.target.value, 10); renderArchiveTab(); };
-    host.querySelector('#dhArchMonth').onchange = (e) => { state.archMonth = parseInt(e.target.value, 10); renderArchiveTab(); };
+      <div id="dhArchSummary" ${tab === 'trash' ? 'hidden' : ''}>
+        <div class="dh-arch__bar">
+          <label>Год: <select id="dhArchYear" class="input">${years.map((yy) => `<option ${yy === y ? 'selected' : ''}>${yy}</option>`).join('')}</select></label>
+          <label>Месяц: <select id="dhArchMonth" class="input">${MONTH_NAMES.map((mn, i) => `<option value="${i + 1}" ${i + 1 === m ? 'selected' : ''}>${mn}</option>`).join('')}</select></label>
+        </div>
+        <div class="dh-arch__chart" id="dhArchChart"><div class="dh-empty dh-empty--sm">График…</div></div>
+        <div id="dhArchBody"><div class="dh-empty dh-empty--sm">Загрузка…</div></div>
+      </div>
+      <div id="dhTrashHost" ${tab === 'trash' ? '' : 'hidden'}></div>`;
+    host.querySelectorAll('[data-arch-tab]').forEach((b) => {
+      b.onclick = () => { state.archTab = b.getAttribute('data-arch-tab'); renderArchiveTab(); };
+    });
+    const yr = host.querySelector('#dhArchYear');
+    const mo = host.querySelector('#dhArchMonth');
+    if (yr) yr.onchange = (e) => { state.archYear = parseInt(e.target.value, 10); renderArchiveTab(); };
+    if (mo) mo.onchange = (e) => { state.archMonth = parseInt(e.target.value, 10); renderArchiveTab(); };
+    if (tab === 'trash') { await renderTrashTab(host); return; }
     await Promise.all([loadArchiveMonth(host, y, m), renderArchiveChart(host, y)]);
+  }
+
+  /**
+   * D-291 (заказчик 20.10.2026): вкладка «График оплат».
+   * Календарь платежей: какие счета и на какую сумму ждут оплаты по дням,
+   * с KPI «просрочено / на этой неделе / в этом месяце».
+   */
+  async function renderPayScheduleTab() {
+    const host = document.getElementById('dhPaySchedHost');
+    if (!host) return;
+    host.innerHTML = '<div class="dh-empty">Загрузка графика оплат…</div>';
+    let d;
+    try { d = await api('/payment-schedule?scope=' + encodeURIComponent(state.scope)); } catch (e) {
+      host.innerHTML = `<div class="dh-empty"><div class="dh-empty__t">Не удалось загрузить график</div><p>${esc(e.message || '')}</p></div>`;
+      return;
+    }
+    const items = d.items || [];
+    const byDay = (d.byDay || []).slice().sort((a, b) => String(a.date).localeCompare(String(b.date)));
+    const kpi = d.kpi || {};
+    const kpiCard = (label, o, cls) => `<div class="dh-kpi ${cls || ''}"><div class="k">${label}</div><div class="v">${money(o && o.amount || 0)}</div><div class="s">${o && o.count || 0} шт.</div></div>`;
+
+    if (!items.length) {
+      host.innerHTML = `<div class="dh-kpis">${kpiCard('Просрочено', kpi.overdue, 'is-err')}${kpiCard('На этой неделе', kpi.week, 'is-warn')}${kpiCard('В этом месяце', kpi.month, 'is-info')}</div>
+        <div class="dh-empty"><div class="dh-empty__t">Нет счетов со сроком оплаты</div><p>График появится, когда у документов будет заполнен срок оплаты.</p></div>`;
+      return;
+    }
+
+    // Сетка по дням: день недели, дата, сумма, число счетов.
+    const dayCell = (g) => {
+      const dt = new Date(g.date + 'T00:00:00');
+      const wd = Number.isNaN(dt.getTime()) ? '' : ['вс', 'пн', 'вт', 'ср', 'чт', 'пт', 'сб'][dt.getDay()];
+      const dd = g.date.slice(8, 10) + '.' + g.date.slice(5, 7);
+      return `<button type="button" class="dh-pday${g.overdue ? ' is-overdue' : ''}" data-pday="${esc(g.date)}">
+        <span class="dh-pday__wd">${wd}</span>
+        <span class="dh-pday__d">${dd}</span>
+        <span class="dh-pday__sum">${money(g.amount)}</span>
+        <span class="dh-pday__n">${g.count} сч.</span>
+      </button>`;
+    };
+
+    const rowsHtml = items.map((it) => `<tr>
+      <td>${fmtDate(it.due_at)}</td>
+      <td><div class="dh-stack"><span class="a">${esc(it.counterparty_name || '—')}</span><span class="b dh-muted">${esc(it.owner_name || 'без ответственного')}</span></div></td>
+      <td>${esc(it.invoice_number || 'б/н')}</td>
+      <td class="dh-money">${money(it.amount)}</td>
+      <td>${it.overdue ? '<span class="dh-pill dh-pill--err">просрочено</span>' : '<span class="dh-pill dh-pill--warn">ожидает</span>'}</td>
+      <td class="dh-actions"><button type="button" class="dh-btn dh-btn--sm" data-popen="${it.id}">Открыть</button></td>
+    </tr>`).join('');
+
+    host.innerHTML = `
+      <div class="dh-kpis">${kpiCard('Просрочено', kpi.overdue, 'is-err')}${kpiCard('На этой неделе', kpi.week, 'is-warn')}${kpiCard('В этом месяце', kpi.month, 'is-info')}${kpiCard('Всего в периоде', kpi.total, '')}</div>
+      <div class="dh-card"><div class="dh-card__head"><h2>Календарь платежей</h2><span>${esc(d.from)} — ${esc(d.to)}</span></div>
+        <div class="dh-pdays">${byDay.map(dayCell).join('')}</div>
+      </div>
+      <div class="dh-card" style="margin-top:14px"><div class="dh-card__head"><h2>Счета к оплате</h2><span>${items.length} шт.</span></div>
+        <div class="dh-table-wrap"><table class="dh-table dh-sf__table">
+          <thead><tr><th>Срок</th><th>Контрагент</th><th>Счёт</th><th>Сумма</th><th>Статус</th><th class="dh-actions">Открыть</th></tr></thead>
+          <tbody>${rowsHtml}</tbody>
+        </table></div>
+      </div>`;
+
+    host.querySelectorAll('[data-popen]').forEach((b) => {
+      b.addEventListener('click', () => openDrawer(Number(b.getAttribute('data-popen'))));
+    });
+    // Клик по дню — фильтруем список (прокручиваем к таблице и подсвечиваем).
+    host.querySelectorAll('[data-pday]').forEach((b) => {
+      b.addEventListener('click', () => {
+        const date = b.getAttribute('data-pday');
+        host.querySelectorAll('[data-pday]').forEach((x) => x.classList.toggle('is-on', x === b));
+        const rows = host.querySelectorAll('.dh-paysched tbody tr, table.dh-sf__table tbody tr');
+        rows.forEach((tr) => {
+          const first = tr.querySelector('td');
+          const hit = first && first.textContent.includes(date.slice(8, 10) + '.' + date.slice(5, 7));
+          tr.style.display = hit ? '' : 'none';
+        });
+      });
+    });
+  }
+
+  /** D-291: корзина удалённых строк с восстановлением. */
+  async function renderTrashTab(host) {    const box = host.querySelector('#dhTrashHost');
+    if (!box) return;
+    box.innerHTML = '<div class="dh-empty dh-empty--sm">Загрузка корзины…</div>';
+    let d;
+    try { d = await api('/trash'); } catch (e) {
+      box.innerHTML = `<div class="dh-empty"><div class="dh-empty__t">Не удалось загрузить корзину</div><p>${esc(e.message || '')}</p></div>`;
+      return;
+    }
+    const items = d.items || [];
+    if (!items.length) {
+      box.innerHTML = '<div class="dh-empty"><div class="dh-empty__t">Корзина пуста</div><p>Удалённые документы хранятся здесь и могут быть восстановлены.</p></div>';
+      return;
+    }
+    box.innerHTML = `<div class="dh-card"><div class="dh-card__head"><h2>Удалённые документы</h2><span>${items.length} шт. · восстановление доступно</span></div>
+      <div class="dh-table-wrap"><table class="dh-table dh-sf__table">
+        <thead><tr><th>Контрагент</th><th>Счёт</th><th>Сумма</th><th>Ответственный</th><th>Удалён</th><th class="dh-actions">Восстановить</th></tr></thead>
+        <tbody>${items.map((it) => `<tr>
+          <td><div class="dh-stack"><span class="a">${esc(it.counterparty_name || '—')}</span><span class="b dh-muted">${it.counterparty_inn ? 'ИНН ' + esc(it.counterparty_inn) : '—'}</span></div></td>
+          <td><div class="dh-stack"><span class="a">${esc(it.invoice_number || 'б/н')}</span><span class="b dh-muted">${fmtDate(it.invoice_date)}</span></div></td>
+          <td class="dh-money">${money(it.amount_gross)}</td>
+          <td>${esc(it.owner_name || '—')}</td>
+          <td><div class="dh-stack"><span class="a">${fmtDate(it.deleted_at)}</span><span class="b dh-muted">${esc(it.deleted_by_name || '')}</span></div></td>
+          <td class="dh-actions"><button type="button" class="dh-btn dh-btn--sm dh-btn--primary" data-restore="${it.id}">Восстановить</button></td>
+        </tr>`).join('')}</tbody>
+      </table></div></div>`;
+    box.querySelectorAll('[data-restore]').forEach((b) => {
+      b.addEventListener('click', async () => {
+        const id = Number(b.getAttribute('data-restore'));
+        b.disabled = true;
+        try {
+          await api(`/${id}/restore`, { method: 'POST' });
+          toast('Восстановлено', 'Документ вернулся в реестр', 'ok');
+          renderTrashTab(host);
+        } catch (e) {
+          b.disabled = false;
+          toast('Ошибка', e.message || 'Не удалось восстановить', 'err');
+        }
+      });
+    });
   }
 
   async function loadArchiveMonth(host, y, m) {
@@ -2612,8 +2826,8 @@ window.AsgardDocHubPage = (function () {
         return;
       }
       const today = new Date().toISOString().slice(0, 10);
-      body.innerHTML = `<div class="dh-card"><div class="dh-table-wrap"><table class="dh-table">
-        <thead><tr><th>Контрагент</th><th>Счёт</th><th>Сумма</th><th>Срок СФ</th><th>Статус</th><th class="dh-actions">Действия</th></tr></thead>
+      body.innerHTML = `<div class="dh-card"><div class="dh-table-wrap"><table class="dh-table dh-sf__table">
+        <thead><tr><th>Контрагент</th><th>Счёт</th><th>Сумма</th><th>Срок СФ</th><th>Статус</th><th class="dh-actions">Отметка</th></tr></thead>
         <tbody>${items.map((it) => {
           const overdue = it.sf_due_at && !it.sf_received_at && String(it.sf_due_at).slice(0, 10) < today;
           const st = it.sf_received_at
@@ -2767,7 +2981,8 @@ window.AsgardDocHubPage = (function () {
       const sumSub = sums.hasVat ? `НДС ${rateLabel} · нетто ${netTxt} · НДС ${vatTxt}` : `без НДС · ${grossTxt}`;
 
       const recv = String(row.receive_channel || '').toLowerCase();
-      const recvVal = /edo|эдо/.test(recv) ? 'edo' : (/scan|скан/.test(recv) ? 'scan' : (/original|оригинал/.test(recv) ? 'original' : ''));
+      const recvCanon = receiveChannelCanon(row.receive_channel);
+      const recvVal = recvCanon === 'edo' ? 'edo' : (recvCanon === 'scan' ? 'scan' : (recvCanon === 'original' ? 'original' : ''));
       const cmode = row.contract_mode || 'none';
       const sk = row.spend_kind || 'other';
       const payLink = row.payment_invoice_id
@@ -3027,6 +3242,7 @@ window.AsgardDocHubPage = (function () {
           </div>
           <footer class="dh-drawer__foot">
             <button type="button" class="dh-btn dh-btn--ghost" id="dhDrawerClose2">Закрыть</button>
+            ${canWh() || canCorrect() ? `<button type="button" class="dh-btn dh-btn--danger" id="dhDrawerDelete" title="Удалить документ (переместится в корзину)">Удалить</button>` : ''}
             <button type="button" class="dh-btn dh-btn--ghost" id="dhDrawerSave">💾 Сохранить</button>
             <button type="button" class="dh-btn dh-btn--ok" id="dhParseCatalog" ${row.dir !== 'in' ? 'disabled title="Только входящие"' : ''}>В каталог</button>
             <button type="button" class="dh-btn dh-btn--ghost" id="dhDrawerExpense" ${!row.work_id ? 'disabled title="Нет объекта"' : ''}>В расходы</button>
@@ -3273,6 +3489,18 @@ window.AsgardDocHubPage = (function () {
       d.querySelector('#dhDrawerClose')?.addEventListener('click', closeDrawer);
       d.querySelector('#dhDrawerClose2')?.addEventListener('click', closeDrawer);
       d.querySelector('#dhDrawerSave')?.addEventListener('click', saveDrawer);
+      // D-291: удаление документа → в корзину (soft-delete на бэке, восстановимо).
+      d.querySelector('#dhDrawerDelete')?.addEventListener('click', async () => {
+        if (!window.confirm('Удалить документ? Он переместится в корзину (Архив → Корзина), откуда его можно восстановить.')) return;
+        try {
+          await api(`/${row.id}`, { method: 'DELETE' });
+          toast('Удалено', 'Документ в корзине — можно восстановить', 'ok');
+          closeDrawer();
+          await refresh();
+        } catch (e) {
+          toast('Ошибка', e.message || 'Не удалось удалить', 'err');
+        }
+      });
       // V394: условия оплаты — переключение графика и добавление/удаление этапов.
       const payKind = d.querySelector('#drPayKind');
       const schedWrap = d.querySelector('#drScheduleWrap');
@@ -3653,11 +3881,23 @@ window.AsgardDocHubPage = (function () {
       if (location.hash !== hash) { location.hash = hash; return; }
       await paint(window.__docHubLayout || window.layout);
     });
+    // D-291: вкладка «График оплат».
+    root.querySelector('#dhBtnPay')?.addEventListener('click', async () => {
+      state.view = 'registry';
+      state.actsTab = false;
+      state.sfTab = false;
+      state.archiveTab = false;
+      state.payTab = !state.payTab;
+      const hash = state.payTab ? '#/doc-hub?tab=pay' : '#/doc-hub';
+      if (location.hash !== hash) { location.hash = hash; return; }
+      await paint(window.__docHubLayout || window.layout);
+    });
     // Паритет с «Выплатами»: вкладка «Архив».
     root.querySelector('#dhBtnArchive')?.addEventListener('click', async () => {
       state.view = 'registry';
       state.actsTab = false;
       state.sfTab = false;
+      state.payTab = false;
       state.archiveTab = !state.archiveTab;
       const hash = state.archiveTab ? '#/doc-hub?tab=archive' : '#/doc-hub';
       if (location.hash !== hash) { location.hash = hash; return; }
@@ -3957,6 +4197,9 @@ window.AsgardDocHubPage = (function () {
     if (state.sfTab) {
       await renderSfTab();
     }
+    if (state.payTab) {
+      await renderPayScheduleTab();
+    }
     if (state.archiveTab) {
       await renderArchiveTab();
     }
@@ -3993,6 +4236,7 @@ window.AsgardDocHubPage = (function () {
     state.actsTab = false;
     state.archiveTab = false;
     state.sfTab = false;
+    state.payTab = false;
     readHashFilters(); // scope/quarter/year from #/doc-hub?...
     // V394: вкладка актов сверки по #/doc-hub?tab=acts
     try {
@@ -4000,9 +4244,10 @@ window.AsgardDocHubPage = (function () {
       if (tab === 'acts') state.actsTab = true;
       if (tab === 'archive') state.archiveTab = true;
       if (tab === 'sf') state.sfTab = true;
+      if (tab === 'pay') state.payTab = true;
     } catch (_) { /* ignore */ }
     // Кладовщик живёт на экране «Входящие СФ» — это его рабочий стол (канонический доступ).
-    if (user.role === 'WAREHOUSE' && !state.actsTab && !state.archiveTab && !state.sfTab) {
+    if (user.role === 'WAREHOUSE' && !state.actsTab && !state.archiveTab && !state.sfTab && !state.payTab) {
       state.sfTab = true;
     }
     await paint(layoutFn || window.layout);
