@@ -457,6 +457,22 @@ window.AsgardFieldTab = (function () {
       value: category || CATEGORIES[0]?.value || '',
       onChange: () => _onCategoryChange()
     }));
+    // D-314: смена категории в панели раньше только фильтровала тарифы и НЕ
+    // сохранялась — после выхода/входа категория «прыгала» назад. Пишем сразу.
+    function persistCategory(value) {
+      if (!value) return;
+      fetch(`/api/field/manage/projects/${work.id}/activate`, {
+        method: 'POST', headers: hdr(),
+        body: JSON.stringify({
+          site_category: value,
+          per_diem: readPerDiemInput(),
+          per_diem_on_checkins: readPerDiemOnCheckins(),
+        }),
+      }).then((r) => {
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        settingsData = Object.assign({}, settingsData || {}, { site_category: value });
+      }).catch((e) => toast('Категория', 'Не сохранено: ' + (e.message || e), 'err'));
+    }
 
     // Per diem
     const pdLabel = document.createElement('span');
@@ -730,9 +746,12 @@ window.AsgardFieldTab = (function () {
     });
     applyCrewFioFilter();
 
-    // Category change → re-filter tariffs per row role
+    // Category change → re-filter tariffs per row role AND save to server.
+    // D-314: без сохранения выбор жил только в DOM: выход/вход — и категория
+    // возвращалась к прежней (жалоба «прыгает и слетает»).
     function _onCategoryChange() {
       const newCat = CRSelect.getValue('fieldCategory');
+      persistCategory(newCat);
       const newFiltered = allTariffs.filter(t => t.category === newCat);
       filteredTariffs.length = 0;
       filteredTariffs.push(...newFiltered);

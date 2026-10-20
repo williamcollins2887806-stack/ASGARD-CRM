@@ -1832,10 +1832,12 @@ const { computeAnalysisDeadline } = require('../lib/business-days');
     const registryStatus = syncRegistryStatus(newStatus);
 
     const updateRes = await db.query(
+      // D-308: $1 связан (SET tender_status=$1 и CASE WHEN $1='…'). Без каста —
+      // 42P08: смена статуса тендера не сохранялась, клиент получал 500.
       `UPDATE tenders
-          SET tender_status = $1,
+          SET tender_status = $1::varchar,
               registry_status = COALESCE($4, registry_status),
-              reject_reason = CASE WHEN $1 = 'Проиграли' AND $2::text IS NOT NULL THEN $2 ELSE reject_reason END,
+              reject_reason = CASE WHEN $1::text = 'Проиграли' AND $2::text IS NOT NULL THEN $2 ELSE reject_reason END,
               updated_at = NOW()
         WHERE id = $3
        RETURNING *`,

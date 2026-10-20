@@ -95,9 +95,12 @@ class TelephonyJobQueue {
         const retryDelay = Math.pow(2, job.attempts) * 10; // exponential backoff: 10s, 20s, 40s
 
         await this.db.query(
+          // D-308: $1 связан (SET status=$1 и CASE WHEN $1='retry'), поэтому без
+          // каста Postgres не может вывести тип: 42P08 «inconsistent types deduced
+          // for parameter $1» (text vs varchar). Задача молча не обновлялась.
           `UPDATE telephony_jobs
-           SET status = $1, error = $2,
-               scheduled_at = CASE WHEN $1 = 'retry' THEN NOW() + ($3 || ' seconds')::interval ELSE scheduled_at END
+           SET status = $1::varchar, error = $2,
+               scheduled_at = CASE WHEN $1::text = 'retry' THEN NOW() + ($3 || ' seconds')::interval ELSE scheduled_at END
            WHERE id = $4`,
           [newStatus, err.message, retryDelay, job.id]
         );

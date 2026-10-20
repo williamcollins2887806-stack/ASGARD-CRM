@@ -19,6 +19,11 @@ class ReportScheduler {
     this.notify = notifyFn;
     this.log = log || console;
     this.jobs = [];
+    // D-311: замки живут в БД (cron_locks), но stop() чистит и локальный Map.
+    // Поле не инициализировалось → `this._locks.clear()` падало на закрытии
+    // («Cannot read properties of undefined (reading 'clear')»), из-за чего
+    // fastify.close() на проде отваливался КАЖДЫЙ рестарт.
+    this._locks = new Map();
     // NOTE: Locks are now persistent in DB (see _acquireLock/_releaseLock)
     // to prevent duplicate sends when multiple node processes run simultaneously
   }
@@ -57,7 +62,9 @@ class ReportScheduler {
       try { job.stop(); } catch (_) {}
     }
     this.jobs = [];
-    this._locks.clear();
+    // D-311: защита на случай объекта, собранного не через конструктор
+    // (тесты, старые вызовы) — иначе снова упадёт на закрытии.
+    try { if (this._locks && typeof this._locks.clear === 'function') this._locks.clear(); } catch (_) {}
   }
 
   async _runDaily() {

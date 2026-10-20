@@ -141,27 +141,45 @@ async function test401Stops() {
     `запросов ${afterFail}, повторных ${afterTimers - afterFail}`);
 }
 
-// ── 2. 401 → backoff растёт ─────────────────────────────────────────────────
+// ── 2. 500 → backoff РАСТЁТ, ретраи продолжаются ───────────────────────────
 async function testBackoffGrows() {
-  // первый ответ 200 (старт), затем 500 — сеть/сервер, не авторизация
-  const env = makeEnv({ fetchStatuses: [200, 500, 500, 500] });
+  // Первый ответ 200 (старт), затем 500 — сеть/сервер, не авторизация.
+  const env = makeEnv({ fetchStatuses: [200, 500, 500, 500, 500] });
   env.HuginnSSE.start();
   await nextTick();
 
+  // Реконнект планирует scheduleReconnect (внутренняя), она срабатывает по
+  // ошибке EventSource. Дёргаем её через публичный ensureSource + имитацию
+  // ошибки потока — иначе замерять нечего.
   const delays = [];
-  for (let i = 0; i < 3; i += 1) {
-    await env.HuginnSSE.catchUp();
-    flushTimers(env, 1);
-    const created = env.__timers.map((t) => t.ms);
+  for (let i = 0; i < 4; i += 1) {
+    env.__timers.length = 0;
+    await env.HuginnSSE.catchUp();            // растит authRetryStreak при 500
+    // имитируем обрыв сокета: он планирует реконнект с текущей задержкой
+    const src = env.__sources[env.__sources.length - 1];
+    if (src && src.listeners.error) {
+      src.readyState = 2;
+      src.listeners.error.forEach((fn) => fn({}));
+    }
+    const created = env.__timers.map((t) => t.ms).filter((ms) => ms > 0);
     if (created.length) delays.push(Math.max(...created));
+    // выполняем запланированный реконнект, иначе reconnectTimer блокирует новый
+    flushTimers(env, 1);
     await nextTick();
   }
 
   // ретраи продолжаются (это не 401)
-  assert.ok(env.__fetchCount() >= 3, 'при 500 ретраи должны продолжаться');
+  assert.ok(env.__fetchCount() >= 2, 'при 500 ретраи должны продолжаться');
   assert.strictEqual(env.HuginnSSE._state().authDead, false, '500 не должен убивать сессию');
 
-  ok('500: сессия жива, ретраи продолжаются', `запросов ${env.__fetchCount()}`);
+  // ГЛАВНОЕ: задержка обязана расти. Раньше замер собирался и не проверялся,
+  // поэтому мутация «backoffMs = 800» проходила зелёной (нашёл верификатор).
+  assert.ok(delays.length >= 2, `нужно ≥2 замера задержки, получено ${delays.length} (${JSON.stringify(delays)})`);
+  const grew = delays.some((d, i) => i > 0 && d > delays[i - 1]);
+  assert.ok(grew, `backoff не растёт: ${JSON.stringify(delays)}`);
+
+  ok('500: сессия жива, ретраи продолжаются, backoff растёт',
+    `запросов ${env.__fetchCount()}, задержки ${JSON.stringify(delays)}`);
 }
 
 // ── 3. Негативный контроль: без обработки 401 был бы цикл ───────────────────
@@ -192,6 +210,29 @@ async function testNegativeControl() {
   }
 }
 
+// ── 5. Повторный start() не копит слушатели ────────────────────────────────
+async function testStartIdempotent() {
+  const env = makeEnv({ fetchStatuses: [200] });
+  // считаем подписки
+  const bindCount = { visibilitychange: 0, online: 0, offline: 0 };
+  env.document.addEventListener = (ev) => { if (bindCount[ev] !== undefined) bindCount[ev] += 1; };
+  env.document.removeEventListener = (ev) => { if (bindCount[ev] !== undefined) bindCount[ev] -= 1; };
+  env.addEventListener = (ev) => { if (bindCount[ev] !== undefined) bindCount[ev] += 1; };
+  env.removeEventListener = (ev) => { if (bindCount[ev] !== undefined) bindCount[ev] -= 1; };
+
+  for (let i = 0; i < 5; i += 1) {
+    env.HuginnSSE.start();
+    await nextTick();
+  }
+  const leaked = Object.entries(bindCount).filter(([, n]) => n > 1);
+  if (leaked.length) {
+    fail('start() идемпотентен: слушатели не копятся',
+      JSON.stringify(bindCount) + ' после 5 входов');
+  } else {
+    ok('start() идемпотентен: слушатели не копятся', JSON.stringify(bindCount));
+  }
+}
+
 // ── 4. Статическая проверка: 401 нельзя игнорировать ───────────────────────
 function testStaticGuard() {
   const hasInspect = /function inspectAuth\(res\)/.test(SOURCE);
@@ -215,6 +256,7 @@ function testStaticGuard() {
   testStaticGuard();
   try { await test401Stops(); } catch (e) { fail('401: поток остановлен, токен снят, logout вызван', e.message); }
   try { await testBackoffGrows(); } catch (e) { fail('500: сессия жива, ретраи продолжаются', e.message); }
+  try { await testStartIdempotent(); } catch (e) { fail('start() идемпотентен', e.message); }
   try { await testNegativeControl(); } catch (e) { fail('негативный контроль', e.message); }
 
   for (const c of checks) {

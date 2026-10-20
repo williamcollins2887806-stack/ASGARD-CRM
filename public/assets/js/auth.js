@@ -103,6 +103,12 @@ window.AsgardAuth = (function(){
     localStorage.setItem('asgard_token', data.token);
     localStorage.setItem('asgard_user', JSON.stringify(data.user));
 
+    // D-309: новый вход снимает блокировку, поставленную прошлым 401.
+    // Иначе после протухания сессии SSE (уведомления, всплывашка звонка)
+    // остаётся мёртвым до перезагрузки страницы: вход в SPA не грузит страницу.
+    try { if (typeof window._sseSourceReset === 'function') window._sseSourceReset(); } catch (_) {}
+    try { if (window.HuginnSSE && window.HuginnSSE.start) window.HuginnSSE.start(); } catch (_) {}
+
     // M1: Сохраняем пермишены и настройки меню
     if (data.user.permissions) {
       localStorage.setItem('asgard_permissions', JSON.stringify(data.user.permissions));
@@ -146,6 +152,11 @@ window.AsgardAuth = (function(){
     }
     
     if(data.token) localStorage.setItem('asgard_token', data.token);
+    // D-309: любой успешный вход снимает блокировку SSE после прошлого 401.
+    if (data.token) {
+      try { if (typeof window._sseSourceReset === 'function') window._sseSourceReset(); } catch (_) {}
+      try { if (window.HuginnSSE && window.HuginnSSE.start) window.HuginnSSE.start(); } catch (_) {}
+    }
     if(data.user) {
       localStorage.setItem('asgard_user', JSON.stringify(data.user));
       // M1: Сохраняем пермишены и настройки меню
@@ -181,6 +192,11 @@ window.AsgardAuth = (function(){
 
     // M1: Сохраняем токен, пермишены и настройки меню после верификации PIN
     if(data.token) localStorage.setItem('asgard_token', data.token);
+    // D-309: вход по PIN тоже снимает блокировку SSE после прошлого 401.
+    if (data.token) {
+      try { if (typeof window._sseSourceReset === 'function') window._sseSourceReset(); } catch (_) {}
+      try { if (window.HuginnSSE && window.HuginnSSE.start) window.HuginnSSE.start(); } catch (_) {}
+    }
     if(data.user) {
       localStorage.setItem('asgard_user', JSON.stringify(data.user));
       if (data.user.permissions) {

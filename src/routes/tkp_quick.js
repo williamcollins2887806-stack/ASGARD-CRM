@@ -917,6 +917,11 @@ async function routes(fastify, options) {
           sendEvent(ev);
           touchCalculating();
         },
+        // D-303: реальные токены рассуждений модели → в журнал «мыслей».
+        onReasoning: (chunk) => {
+          try { sendEvent({ type: 'reasoning', delta: chunk }); } catch (_) {}
+          touchCalculating();
+        },
         session_uid: request.params.uid,
         author_id: session.author_id || request.user.id,
         pre_tender_id: session.pre_tender_id || null,
@@ -1507,15 +1512,30 @@ async function routes(fastify, options) {
        session.tender_id      ? 'tender'   :
        session.pre_tender_id  ? 'direct_request' : 'standalone');
 
-    const itemsVal = JSON.stringify({ items: draft.items || [], vat_pct: draft.vat_pct || 20 });
+    // D-304: в ТКП уходят КЛИЕНТСКИЕ позиции — с наценкой и без внутренних
+    // статей (ФОТ-налог, накладные, пайковые, билеты). Итог = сумма строк.
+    const clientItems = mimirTkpQuick.buildClientItems(draft);
+    const itemsSubtotal = clientItems.reduce((s, i) => s + (Number(i.total) || 0), 0);
+    const vatPct = Number(draft.vat_pct) || 20;
+    const itemsVal = JSON.stringify({
+      items: clientItems,
+      vat_pct: vatPct,
+      subtotal: itemsSubtotal,
+      total_with_vat: Math.round(itemsSubtotal * (1 + vatPct / 100)),
+    });
+    // Итог ТКП считаем из строк, чтобы не расходился с таблицей.
+    const tkpTotal = itemsSubtotal;
 
+    // D-301: статус НЕ 'sent'. ТКП из Мимира — это ЧЕРНОВИК, который РП ещё
+    // должен проверить и отправить осознанно. Раньше он рождался «отправленным»,
+    // и директор видел «отправлено», хотя кнопку не нажимал.
     const { rows: [newTkp] } = await db.query(`
       INSERT INTO tkp (
         subject, tender_id, work_id, pre_tender_id, link_type,
         customer_name, customer_inn, work_description,
         items, total_sum, deadline, validity_days, payment_terms,
         source, status, mimir_quick_session_uid, purpose_reason, author_id
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,'sent',$15,$16,$17)
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,'draft',$15,$16,$17)
       RETURNING *
     `, [
       draft.subject || 'ТКП через Мимира',
@@ -1527,7 +1547,7 @@ async function routes(fastify, options) {
       session.customer_inn  || null,
       draft.work_description || null,
       itemsVal,
-      Number(draft.total_with_vat || draft.subtotal || 0),
+      tkpTotal,
       draft.deadline || null,
       Number(draft.validity_days || 30),
       draft.payment_terms || null,

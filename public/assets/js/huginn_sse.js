@@ -12,6 +12,7 @@
   let pingTimer = null;
   let failStreak = 0;
   let paused = false;
+  let _listenersBound = false;
   let tokenFn = () => localStorage.getItem('asgard_token') || '';
 
   function getLastId() {
@@ -272,6 +273,16 @@
     authRetryStreak = 0;
     failStreak = 0;
     paused = false;
+    // D-309: start() зовётся при КАЖДОМ входе (auth.js). Глобальные слушатели
+    // добавлялись повторно, а stop() при этом не звался — 5 входов без F5
+    // давали 5 подписок на visibilitychange/online/offline и 5×catchUp
+    // на каждый возврат во вкладку. Сначала снимаем старые.
+    if (_listenersBound) {
+      try { document.removeEventListener('visibilitychange', onVisibility); } catch (_) {}
+      try { window.removeEventListener('online', onOnline); } catch (_) {}
+      try { window.removeEventListener('offline', onOffline); } catch (_) {}
+      _listenersBound = false;
+    }
     ensureSource();
     schedulePoll();
     if (pingTimer) clearInterval(pingTimer);
@@ -291,6 +302,7 @@
     document.addEventListener('visibilitychange', onVisibility);
     window.addEventListener('online', onOnline);
     window.addEventListener('offline', onOffline);
+    _listenersBound = true;
     catchUp();
   }
 
@@ -304,6 +316,7 @@
     document.removeEventListener('visibilitychange', onVisibility);
     window.removeEventListener('online', onOnline);
     window.removeEventListener('offline', onOffline);
+    _listenersBound = false;
   }
 
   global.HuginnSSE = {

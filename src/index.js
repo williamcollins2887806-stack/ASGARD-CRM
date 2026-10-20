@@ -284,7 +284,9 @@ fastify.addHook('onRequest', async (request, reply) => {
       /\/Dockerfile/i.test(url) ||
       /\/(db|config|migrations|tests|scripts|src)\/?$/i.test(url) ||
       /\/(db|config|migrations|tests|scripts|src)\//i.test(url)) {
-    reply.code(403).send({ error: 'Forbidden', message: 'Доступ запрещён' });
+    // D-307: `return` обязателен — без него onRequest не прерывает цепочку,
+    // маршрут выполняется дальше и Fastify пишет ответ второй раз.
+    return reply.code(403).send({ error: 'Forbidden', message: 'Доступ запрещён' });
   }
 });
 
@@ -2289,7 +2291,10 @@ const shutdown = async (exitCode = 0) => {
   // ушло 55 ответов 502. Теперь каждый шаг ОГРАНИЧЕН по времени, а общий
   // бюджет укладывается в TimeoutStopSec с запасом.
   const START = Date.now();
-  const BUDGET_MS = 20000; // меньше TimeoutStopSec=30s, оставляем запас
+  // D-311: TimeoutStopSec=30s на проде. Бюджет 26s оставляет 4s на SIGTERM/
+  // systemd. Шаги ограничены так, чтобы СУММА укладывалась в бюджет:
+  // telegram 3 + imap 5 + fastify.close 12 + db.end 3 = 23s < 26s.
+  const BUDGET_MS = 26000;
 
   /** Выполнить шаг, но не дольше ms. Зависший шаг не блокирует остановку. */
   const bounded = async (label, ms, fn) => {
@@ -2335,9 +2340,13 @@ const shutdown = async (exitCode = 0) => {
     return imap.shutdown ? imap.shutdown() : null;
   });
   // 4. Остаток бюджета — на закрытие HTTP и пула.
-  const left = () => Math.max(500, BUDGET_MS - 3000 - (Date.now() - START));
+  // D-311: `left()` считался от 3000 (только telegram) и не учитывал imap 5s —
+  // худший путь давал 27s при бюджете 20s. Теперь лимит на fastify.close
+  // фиксирован, а db.end получает 3s и не обрезается forceExit.
+  const CLOSE_MS = 12000;
+  const left = () => Math.max(1000, CLOSE_MS - (Date.now() - START));
   await bounded('fastify.close', left(), () => fastify.close());
-  await bounded('db.end', 2000, () => db.end());
+  await bounded('db.end', 3000, () => db.end());
   clearTimeout(forceExit);
   process.exit(exitCode);
 };

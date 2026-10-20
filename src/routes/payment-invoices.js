@@ -860,7 +860,7 @@ async function routes(fastify) {
                 updated_at=NOW()
           WHERE id=$1`, [id, bstatus, req.user.id]);
     } catch (err) {
-      request.log.error({ err, batchId: id }, '[payment-batches] статус партии не обновлён');
+      req.log.error({ err, batchId: id }, '[payment-batches] статус партии не обновлён');
       throw err;
     }
     return { ok: true, batch_status: bstatus, ...done, summary: after };

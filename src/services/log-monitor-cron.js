@@ -24,8 +24,12 @@ let _task = null;
 /** Уровни pino, которые считаются дефектом: 40=warn, 50=error, 60=fatal. */
 const LEVEL_RE = /"level":(40|50|60)\b/;
 
-/** Текстовые признаки ошибки для строк БЕЗ pino-уровня (systemd, стектрейсы). */
-const ERROR_RE = /\b(fatal|crash|uncaught|unhandled rejection|ECONNREFUSED|ETIMEDOUT|Cannot find module|module not found|SIGTERM|out of memory|OOM|Failed with result|status=9\/KILL)\b/i;
+/**
+ * Текстовые признаки ошибки для строк БЕЗ pino-уровня: systemd, а также
+ * `console.error(...)` из сервисов (IMAP, Telephony) — такие строки идут
+ * без `"level"` и раньше были невидимы (37 за 3 часа, нашёл верификатор).
+ */
+const ERROR_RE = /\b(fatal|crash|uncaught|unhandled rejection|ECONNREFUSED|ETIMEDOUT|Cannot find module|module not found|SIGTERM|out of memory|OOM|Failed with result|status=9\/KILL)\b|\[[A-Za-z][\w-]*\]\s*(?:[A-Za-z ]{0,20})?error\b|:\s*Unexpected close\b|Reply was already sent|ERR_HTTP_HEADERS_SENT/i;
 
 /**
  * Известный шум. Каждая запись — обоснование, а не «чтобы не мешало»:
@@ -49,9 +53,11 @@ const NOISE_RE = new RegExp([
   'failed_ai=',
   '\\[client-error\\]',
   '\\[LogMonitor\\]',
-  'Reply was already sent',
-  // НЕ добавлять сюда ERR_HTTP_HEADERS_SENT: это серверная ошибка, её надо
-  // видеть. До D-307 она была массовой — но именно поэтому, а не «шум».
+  // ВАЖНО: `Reply was already sent` и `ERR_HTTP_HEADERS_SENT` НЕ глушим.
+  // Это серверные ошибки (двойной ответ), и гейт tests/fastify-onsend-guard.test.js
+  // реально ловит их причину — значит ночное уведомление не будет вечным шумом,
+  // а станет страховкой. Раньше здесь стоял только Reply-фильтр с обоснованием
+  // «поймает деплой-гейт», хотя гейт этого класса не видел (нашёл верификатор).
 ].join('|'), 'i');
 
 /** Разбор одной строки журнала. Возвращает 'error' | 'ignore'. */
@@ -82,10 +88,14 @@ function prettify(line) {
 
 async function checkAndNotify(db, log) {
   try {
-    // D-312: БЕЗ `-p warning` — pino пишет в journal с PRIORITY=6.
+    // D-312: БЕЗ `-p warning` — pino пишет в journal с PRIORITY=6, и `-p`
+    // отдавал за 3 часа «No entries» (за неделю 4 строки, все systemd).
+    // Без `tail -n 20000`: за 3 часа журнал даёт ~25 500 строк, хвост обрезал
+    // 9 577 из них, включая ~275 реальных ошибок. Читаем окно целиком,
+    // ограничение — только по времени (--since) и по объёму maxBuffer.
     const { stdout } = await execAsync(
-      'journalctl -u asgard-crm --since "3 hours ago" --no-pager -o short 2>/dev/null | tail -n 20000',
-      { timeout: 30000, maxBuffer: 80 * 1024 * 1024 }
+      'journalctl -u asgard-crm --since "3 hours ago" --no-pager -o short 2>/dev/null',
+      { timeout: 45000, maxBuffer: 256 * 1024 * 1024 }
     );
 
     const lines = stdout.split('\n').filter(Boolean);

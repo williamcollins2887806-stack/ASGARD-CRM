@@ -82,8 +82,21 @@ const TARGETS = [
   'V423__closing_doc_kinds',                    // closing_doc_kinds
   'V424__fix_wrong_contract_links',             // исправление неверных связей договоров
   'V425__etk_contract',                         // ЭТК: договор
-  'V426__fix_closing_sum_616'                   // исправление суммы закрытия 616
+  'V426__fix_closing_sum_616',                  // исправление суммы закрытия 616
+  'V427__agpz_owner_fix',                       // AGPZ: исправление владельца
+  'V428__cleanup_closing_and_stamp_sf',         // чистка closing_json (D-305, чужая сессия)
+  'V429__doc_owner_note'                       // примечание владельца документа (чужая сессия)
 ];
+
+/**
+ * Миграции, которые НАМЕРЕННО не входят в TARGETS: на проде они уже применены
+ * фактически (проверено по схеме 18.10.2026), но записи в `migrations` нет.
+ * Прогонять их повторно = платить за риск без пользы. Гейт sql-cast-guard знает
+ * про этот список и не считает их «пропуском» в середине диапазона.
+ */
+const SKIP_APPLIED = new Set([
+  'V385', 'V387', 'V388', 'V389', 'V390', 'V393',
+]);
 
 const pool = new Pool({
   host: process.env.DB_HOST || 'localhost',

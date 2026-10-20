@@ -127,6 +127,51 @@ function checkSameParamInCoalesceAndWhere() {
  * последней, которая в нём есть. Новая миграция без записи в TARGETS —
  * ровно тот дефект, что дал 42P01/42703 19–20.10.
  */
+/**
+ * ВАЖНО (урок): форму `SET col=$N ... CASE WHEN $N='x'` статически ловить
+ * НЕЛЬЗЯ надёжно. Postgres выводит тип из контекста, и без каста часть таких
+ * запросов работает, часть падает 42P08. Проверено на проде прогоном
+ * verbatim-запросов через pg-драйвер (20.10.2026, id=-1):
+ *   42P08 — job-queue.js:98 ($1), thing-pipeline.js:314 ($2), tenders.js:1835 ($1)
+ *   OK    — procurement.js:1285 ($1)
+ * Три первых исправлены явными кастами ($N::varchar + $N::text в сравнении).
+ * Гейт ниже проверяет только ту форму, которая гарантированно ломается
+ * (`$N::text` в присваивании varchar-колонке). Полная проверка — только
+ * прогоном на реальной схеме; ложный гейт хуже отсутствия гейта.
+ */
+
+/**
+ * Один параметр в `CASE`/сравнении `$N <> ...` и в `SET колонка=$N`.
+ * Форма `SET status=$2 ... CASE WHEN $2<>'x'` даёт 42P08
+ * «inconsistent types deduced for parameter $2» (text vs varchar).
+ * Ровно это было в payment_batches: обновление партии счетов молча падало.
+ */
+function checkParamSetAndCompare() {
+  const files = walk(path.join(ROOT, 'src'), []);
+  const offenders = [];
+  for (const file of files) {
+    const src = fs.readFileSync(file, 'utf8');
+    for (const { sql, line } of extractSqlLiterals(src)) {
+      // Ищем ТОЛЬКО случай, когда параметр уже приведён к text и одновременно
+      // присваивается varchar-колонке — именно это дало 42P08.
+      const setRe = /\bSET\b[^;]*?\b([a-z_][\w]*)\s*=\s*\$(\d+)\s*(?!::)/gi;
+      let m;
+      while ((m = setRe.exec(sql)) !== null) {
+        const num = m[2];
+        const castCmp = new RegExp(`\\$${num}::text\\s*(<>|!=|=)`);
+        if (castCmp.test(sql)) {
+          offenders.push(`${path.relative(ROOT, file)}:${line} ($${num}::text в SET-выражении)`);
+        }
+      }
+    }
+  }
+  if (offenders.length) {
+    fail('SQL: нет $N::text при записи в varchar-колонку', offenders.slice(0, 6).join(', '));
+  } else {
+    ok('SQL: нет $N::text при записи в varchar-колонку', `${files.length} файлов`);
+  }
+}
+
 function checkMigrationTargets() {
   const runnerPath = path.join(ROOT, 'tools', 'migrate_targeted.js');
   const runner = fs.readFileSync(runnerPath, 'utf8');
@@ -165,6 +210,28 @@ function checkMigrationTargets() {
   } else {
     ok('TARGETS: нет ссылок на отсутствующие файлы', `${listed.size} записей`);
   }
+
+  // Дырка в СЕРЕДИНЕ диапазона: раньше проверялось только «новее максимума»,
+  // поэтому удаление V420 из середины проходило зелёным (нашёл верификатор).
+  const listedNums = [...listed].map((n) => Number(/^V(\d+)/.exec(n)[1])).sort((a, b) => a - b);
+  const minListed = listedNums[0];
+  // V385/V387/V388/V389/V390/V393 уже применены на проде фактически —
+  // их отсутствие в TARGETS намеренно, см. SKIP_APPLIED в migrate_targeted.js.
+  const SKIP = new Set(['V385', 'V387', 'V388', 'V389', 'V390', 'V393']);
+  const gaps = files
+    .map((f) => ({ f, n: Number(/^V(\d+)__/.exec(f)[1]) }))
+    .filter(({ f, n }) => {
+      if (n < minListed || n > maxListed) return false;
+      if (listedNums.includes(n)) return false;
+      if (SKIP.has('V' + /^V(\d+)/.exec(f)[1])) return false;
+      return true;
+    })
+    .map(({ f }) => f);
+  if (gaps.length) {
+    fail('TARGETS: нет пропусков внутри диапазона', `${gaps.length}: ${gaps.slice(0, 6).join(', ')}`);
+  } else {
+    ok('TARGETS: нет пропусков внутри диапазона', `V${minListed}…V${maxListed} (кроме SKIP_APPLIED)`);
+  }
 }
 
 /**
@@ -191,6 +258,7 @@ function checkNegativeControl() {
 console.log('═══ sql-cast-guard (D-308) ═══');
 checkCaseWithoutCast();
 checkSameParamInCoalesceAndWhere();
+checkParamSetAndCompare();
 checkMigrationTargets();
 checkNegativeControl();
 

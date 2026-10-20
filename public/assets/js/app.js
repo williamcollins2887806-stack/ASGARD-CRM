@@ -2880,17 +2880,40 @@ AsgardRouter.add("/assembly", () => {
   // 401 до 240 в минуту. Теперь 401/403 = окончательный стоп.
   let _sseAuthDead = false;
   let _sseRetry = 0;
+  // Флаг входа в остановку: logout() сам зовёт _sseSourceStop(), и без этого
+  // получалась взаимная рекурсия stopGlobalSSE ↔ logout (верификатор D-309:
+  // 3370 вызовов и RangeError на каждый 401).
+  let _sseStopping = false;
 
-  function stopGlobalSSE(reason) {
+  function stopGlobalSSE(reason, opts) {
+    if (_sseStopping) return;
+    _sseStopping = true;
     _sseAuthDead = true;
     try { if (_sseSource) { _sseSource.close(); _sseSource = null; } } catch (_) {}
     try { if (window._asgardSSE) window._asgardSSE = null; } catch (_) {}
     console.warn('[SSE] поток остановлен: ' + (reason || 'auth'));
     try { localStorage.removeItem('asgard_token'); } catch (_) {}
-    try {
-      if (window.AsgardAuth && typeof window.AsgardAuth.logout === 'function') window.AsgardAuth.logout();
-    } catch (_) {}
+    // logout вызываем ТОЛЬКО когда остановку инициировал сам SSE.
+    // Если пришёл logout из auth.js — он уже делает всё нужное, рекурсия не нужна.
+    if (!(opts && opts.fromLogout)) {
+      try {
+        if (window.AsgardAuth && typeof window.AsgardAuth.logout === 'function') window.AsgardAuth.logout();
+      } catch (_) {}
+    }
+    _sseStopping = false;
   }
+
+  /** Сброс «сессия мертва» — вызывается при новом входе (без перезагрузки страницы). */
+  function resetGlobalSSE() {
+    _sseAuthDead = false;
+    _sseRetry = 0;
+    _sseStopping = false;
+    // D-309: мало сбросить флаги — поток надо ПОДНЯТЬ. Иначе после протухания
+    // токена и повторного входа (без F5) уведомления и всплывашка звонка
+    // остаются мёртвыми: initGlobalSSE зовётся только из boot().
+    try { initGlobalSSE(); } catch (_) {}
+  }
+  window._sseSourceReset = resetGlobalSSE;
 
   function sseRetryDelay() {
     // 10 с → 20 → 40 → 80 → 300 (потолок)
@@ -3041,16 +3064,18 @@ AsgardRouter.add("/assembly", () => {
       });
 
       _sseSource.addEventListener('error', () => {
-        // D-309: отличаем «токен мёртв» от «сеть дёрнулась». Сервер отдаёт
-        // 401 → EventSource закрывается навсегда; проверяем это дешёвым
-        // запросом и, если сессия мертва, больше не поднимаем поток.
+        // D-309: отличаем «токен мёртв» от «сеть дёрнулась». EventSource на 401
+        // закрывается навсегда; проверяем сессию дешёвым запросом.
+        // ВАЖНО: /api/version НЕ подходит — он публичный и отдаёт 200 даже с
+        // мусорным токеном (проверено на проде), поэтому проверка на нём была
+        // мёртвым кодом. /api/auth/me идёт через fastify.authenticate → 401.
         if (_sseAuthDead) return;
         try { if (_sseSource) { _sseSource.close(); _sseSource = null; } } catch (_) {}
         try { if (window._asgardSSE) window._asgardSSE = null; } catch (_) {}
         _sseRetry += 1;
         const token = localStorage.getItem('asgard_token');
         if (!token) { stopGlobalSSE('нет токена'); return; }
-        fetch('/api/version', { headers: { Authorization: 'Bearer ' + token }, cache: 'no-store' })
+        fetch('/api/auth/me', { headers: { Authorization: 'Bearer ' + token }, cache: 'no-store' })
           .then((r) => {
             if (r.status === 401 || r.status === 403) { stopGlobalSSE('HTTP ' + r.status); return; }
             setTimeout(initGlobalSSE, sseRetryDelay());
@@ -3063,7 +3088,8 @@ AsgardRouter.add("/assembly", () => {
   }
 
   // D-309: даём auth.js точку остановки потока при logout.
-  window._sseSourceStop = () => { stopGlobalSSE('logout'); };
+  // fromLogout: true — иначе logout() снова вызовет нас и получится рекурсия.
+  window._sseSourceStop = () => { stopGlobalSSE('logout', { fromLogout: true }); };
 
   // v8.0.0 — Push notification deep linking
   if ('serviceWorker' in navigator) {

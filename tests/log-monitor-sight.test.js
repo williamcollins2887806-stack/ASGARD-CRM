@@ -66,6 +66,9 @@ function fail(name, extra) {
       'systemd: SIGKILL (без JSON)'],
     ['Oct 20 10:55:43 cv5977357.novalocal systemd[1]: asgard-crm.service: Failed with result \'timeout\'.',
       'systemd: Failed with result'],
+    // D-312: console.error из сервисов — без pino-уровня, раньше были невидимы
+    ['Oct 20 12:00:00 host node[1]: [IMAP] Sync error account #112: Unexpected close',
+      'console.error сервиса (IMAP)'],
   ];
   const missed = [];
   for (const [line, label] of samples) {
@@ -87,8 +90,9 @@ function fail(name, extra) {
     ['{"level":50,"time":1,"source":"m","kind":"boundary","message":"BookOpen is not defined","msg":"[client-error]"}', 'client-error (ошибка браузера)'],
     ['{"level":30,"time":1,"msg":"[LogMonitor] Check passed"}', 'сам монитор'],
     ['{"level":40,"time":1,"msg":"[TournamentCron] tick"}', 'TournamentCron'],
+    // D-312: двойной ответ — серверная ошибка, НЕ шум. Должна будить.
+    ['Oct 20 12:00:00 host node[1]: Reply was already sent, did you forget to "return reply" in the "/api/telephony/missed" route?', 'Reply was already sent (серверная!)'],
   ];
-  // PmAnalysisStale НЕ в NOISE — это дефект бизнес-логики, его надо видеть.
   const expected = {
     'access-лог': 'ignore',
     'RecordingFetcher': 'ignore',
@@ -96,6 +100,7 @@ function fail(name, extra) {
     'client-error (ошибка браузера)': 'ignore',
     'сам монитор': 'ignore',
     'TournamentCron': 'ignore',
+    'Reply was already sent (серверная!)': 'error',
   };
   const wrong = [];
   for (const [line, label] of noise) {

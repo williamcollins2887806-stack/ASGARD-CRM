@@ -1950,6 +1950,9 @@ module.exports = async function telephonyRoutes(fastify, opts) {
   }, async (request, reply) => {
     const { call_id, employee_id, employee_phone } = request.body || {};
     const userId = request.user.id;
+    // D-307: тело ответа собираем в переменную, чтобы logEvent в конце
+    // обработчика оставался достижимым (см. комментарий у reply.send ниже).
+    let payload = null;
 
     // Проверяем что пользователь — диспетчер
     const disp = await db.query(
@@ -1978,12 +1981,14 @@ module.exports = async function telephonyRoutes(fastify, opts) {
     try {
       // Пробуем через AGI HTTP control
       const http = require('http');
-      const payload = JSON.stringify({ action: 'transfer', phone: cleanPhone, call_id });
+      // D-307: имя НЕ `payload` — оно занято внешней переменной тела ответа.
+      // Прежнее имя давало «Assignment to constant variable» на каждой ветке.
+      const agiBody = JSON.stringify({ action: 'transfer', phone: cleanPhone, call_id });
       const result = await new Promise((resolve, reject) => {
         const req = http.request({
           hostname: '127.0.0.1', port: 4574, path: '/transfer',
           method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(payload) },
+          headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(agiBody) },
           timeout: 5000
         }, (res) => {
           let data = '';
@@ -1993,14 +1998,17 @@ module.exports = async function telephonyRoutes(fastify, opts) {
           });
         });
         req.on('error', (e) => reject(e));
-        req.write(payload);
+        req.write(agiBody);
         req.end();
       });
 
       if (result.ok) {
-        return reply.send({ success: true, message: 'Перевод инициирован' });
+        // D-307: ответ уходит через переменную, чтобы журналирование ниже
+        // осталось достижимым. `return reply.send(...)` здесь делал
+        // await logEvent('crm_transfer') мёртвым кодом (нашёл верификатор).
+        payload = { success: true, message: 'Перевод инициирован' };
       } else {
-        return reply.send({ success: false, error: result.error || 'Не удалось перевести' });
+        payload = { success: false, error: result.error || 'Не удалось перевести' };
       }
     } catch (agiErr) {
       // AGI control server not available — try AMI fallback
@@ -2023,30 +2031,33 @@ module.exports = async function telephonyRoutes(fastify, opts) {
         }
 
         if (!callerNumber) {
-          return reply.send({ success: false, error: 'Не найден активный звонок' });
-        }
-
-        // AMI Redirect
-        const channel = await findActiveChannel(callerNumber);
-        if (channel) {
-          await sendAMI({
-            Action: 'Redirect',
-            Channel: channel,
-            Context: 'asgard-transfer',
-            Exten: cleanPhone,
-            Priority: '1'
-          });
-          return reply.send({ success: true, message: 'Перевод через AMI инициирован' });
+          payload = { success: false, error: 'Не найден активный звонок' };
         } else {
-          return reply.send({ success: false, error: 'Канал не найден — возможно звонок уже завершён' });
+          // AMI Redirect
+          const channel = await findActiveChannel(callerNumber);
+          if (channel) {
+            await sendAMI({
+              Action: 'Redirect',
+              Channel: channel,
+              Context: 'asgard-transfer',
+              Exten: cleanPhone,
+              Priority: '1'
+            });
+            payload = { success: true, message: 'Перевод через AMI инициирован' };
+          } else {
+            payload = { success: false, error: 'Канал не найден — возможно звонок уже завершён' };
+          }
         }
       } catch (amiErr) {
         console.error('[Telephony] AMI transfer error:', amiErr.message);
-        return reply.send({ success: false, error: 'Ошибка AMI: ' + amiErr.message });
+        payload = { success: false, error: 'Ошибка AMI: ' + amiErr.message };
       }
     }
 
     await logEvent('crm_transfer', { call_id, employee_id, target_phone: cleanPhone, user_id: userId });
+    // D-307: страховка — ни одна ветвь не должна оставить ответ пустым.
+    if (!payload) payload = { success: false, error: 'Перевод не выполнен' };
+    return reply.send(payload);
   });
 
   // --- Перехват звонка на себя (takeover) ---
@@ -2079,12 +2090,13 @@ module.exports = async function telephonyRoutes(fastify, opts) {
 
     try {
       const http = require('http');
-      const payload = JSON.stringify({ action: 'transfer', phone: cleanPhone, call_id });
+      // D-307: имя НЕ `payload` — см. комментарий в transfer.
+      const agiBody = JSON.stringify({ action: 'transfer', phone: cleanPhone, call_id });
       const result = await new Promise((resolve, reject) => {
         const req = http.request({
           hostname: '127.0.0.1', port: 4574, path: '/transfer',
           method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(payload) },
+          headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(agiBody) },
           timeout: 5000
         }, (res) => {
           let data = '';
@@ -2094,14 +2106,15 @@ module.exports = async function telephonyRoutes(fastify, opts) {
           });
         });
         req.on('error', (e) => reject(e));
-        req.write(payload);
+        req.write(agiBody);
         req.end();
       });
 
       if (result.ok) {
-        return reply.send({ success: true, message: 'Звонок переведён на вас' });
+        // D-307: через переменную — иначе logEvent ниже недостижим.
+        payload = { success: true, message: 'Звонок переведён на вас' };
       } else {
-        return reply.send({ success: false, error: result.error || 'Не удалось перехватить' });
+        payload = { success: false, error: result.error || 'Не удалось перехватить' };
       }
     } catch (agiErr) {
       console.log('[Telephony] AGI control unavailable for takeover, trying AMI...');
@@ -2115,29 +2128,32 @@ module.exports = async function telephonyRoutes(fastify, opts) {
         if (recent.rows.length) callerNumber = recent.rows[0].caller;
 
         if (!callerNumber) {
-          return reply.send({ success: false, error: 'Не найден активный звонок' });
-        }
-
-        const channel = await findActiveChannel(callerNumber);
-        if (channel) {
-          await sendAMI({
-            Action: 'Redirect',
-            Channel: channel,
-            Context: 'asgard-transfer',
-            Exten: cleanPhone,
-            Priority: '1'
-          });
-          return reply.send({ success: true, message: 'Перехват через AMI инициирован' });
+          payload = { success: false, error: 'Не найден активный звонок' };
         } else {
-          return reply.send({ success: false, error: 'Канал не найден' });
+          const channel = await findActiveChannel(callerNumber);
+          if (channel) {
+            await sendAMI({
+              Action: 'Redirect',
+              Channel: channel,
+              Context: 'asgard-transfer',
+              Exten: cleanPhone,
+              Priority: '1'
+            });
+            payload = { success: true, message: 'Перехват через AMI инициирован' };
+          } else {
+            payload = { success: false, error: 'Канал не найден' };
+          }
         }
       } catch (amiErr) {
         console.error('[Telephony] AMI takeover error:', amiErr.message);
-        return reply.send({ success: false, error: 'Ошибка AMI: ' + amiErr.message });
+        payload = { success: false, error: 'Ошибка AMI: ' + amiErr.message };
       }
     }
 
     await logEvent('crm_takeover', { call_id, target_phone: cleanPhone, user_id: userId });
+    // D-307: та же страховка, что и в transfer.
+    if (!payload) payload = { success: false, error: 'Перехват не выполнен' };
+    return reply.send(payload);
   });
 
 

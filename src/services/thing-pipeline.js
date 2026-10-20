@@ -311,11 +311,14 @@ function createThingWorker(db, log = console) {
       const max = Number(job.max_attempts) || 3;
       const failStatus = attempts >= max ? 'failed' : 'retry';
       await db.query(
+        // D-308: $2 связан (SET status=$2 и два CASE WHEN $2=...). Без каста —
+        // 42P08 «inconsistent types deduced for parameter $2»: упавшее задание
+        // не помечалось ни retry, ни failed.
         `UPDATE thing_jobs
-         SET status = $2,
+         SET status = $2::varchar,
              error = $3,
-             scheduled_at = CASE WHEN $2 = 'retry' THEN NOW() + interval '30 seconds' ELSE scheduled_at END,
-             completed_at = CASE WHEN $2 = 'failed' THEN NOW() ELSE NULL END
+             scheduled_at = CASE WHEN $2::text = 'retry' THEN NOW() + interval '30 seconds' ELSE scheduled_at END,
+             completed_at = CASE WHEN $2::text = 'failed' THEN NOW() ELSE NULL END
          WHERE id = $1`,
         [job.id, failStatus, String(e.message || e).slice(0, 2000)]
       );

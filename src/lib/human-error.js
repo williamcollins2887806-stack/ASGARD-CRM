@@ -307,6 +307,12 @@ function looksTechnical(msg) {
  * Гарантирует, что в теле ошибки есть понятные message и hint.
  * Возвращает новое тело (объект) — вызывающий сам решает, сериализовать ли.
  * Используется хуком onSend: одна точка на ВСЕ ручки.
+ *
+ * D-313: если `error` — одиночное латинское слово (машинный код вроде
+ * `unauthorized`), клиент показывал его пользователю как текст ошибки
+ * (на экране PIN вместо сообщения вылезало «unauthorized»).Теперь для такого
+ * поля всегда подставляется русский `message`; при наличии известного кода
+ * (`body.code`) он остаётся в `code`, а не в пользовательском тексте.
  */
 function ensureHumanFields(body, statusCode) {
   if (!body || typeof body !== 'object' || Array.isArray(body)) return null;
@@ -314,6 +320,31 @@ function ensureHumanFields(body, statusCode) {
   const isMachine = !!errStr && /^[a-z][a-z0-9_]*$/.test(errStr);
   const known = CODE_HINTS[errStr] || null;
   let changed = false;
+
+  // Русский текст для машинного кода: клиент показывает `error`, поэтому
+  // именно он (и `message`) должен быть читаемым.
+  const HUMAN_BY_CODE = {
+    unauthorized: 'Требуется авторизация',
+    forbidden: 'Доступ запрещён',
+    not_found: 'Запись не найдена',
+    bad_request: 'Некорректный запрос',
+    validation_failed: 'Проверьте заполненные поля',
+    rate_limited: 'Слишком много попыток — подождите немного',
+    server_error: 'Не удалось выполнить операцию',
+    unsupported_media_type: 'Неподдерживаемый формат файла',
+    conflict: 'Данные уже изменены — обновите страницу',
+  };
+  if (isMachine) {
+    const human = HUMAN_BY_CODE[errStr];
+    if (human) {
+      // Код сохраняем отдельно, пользователю — русский текст.
+      if (body.code === undefined) body.code = errStr;
+      if (typeof body.message !== 'string' || looksTechnical(body.message)) body.message = human;
+      // `error` тоже делаем читаемым: клиенты берут именно его.
+      body.error = human;
+      changed = true;
+    }
+  }
 
   // ── message: должен быть человеческим ─────────────────────────────────
   const cur = typeof body.message === 'string' ? body.message : '';
@@ -330,7 +361,9 @@ function ensureHumanFields(body, statusCode) {
   }
 
   // ── error: не оставляем англ./технотекст наружу ────────────────────────
-  if (typeof body.error === 'string' && body.error && looksTechnical(body.error) && !/^[a-z][a-z0-9_]*$/.test(body.error)) {
+  // D-313: машинные коды (`unauthorized`) уже заменены выше на русский текст.
+  // Здесь добиваем оставшийся англо-технотекст (PG-ошибки, `Bad Request`).
+  if (typeof body.error === 'string' && body.error && looksTechnical(body.error)) {
     const std = {
       'Bad Request': 'bad_request', 'Forbidden': 'forbidden', 'Unauthorized': 'unauthorized',
       'Not Found': 'not_found', 'Conflict': 'conflict', 'Too Many Requests': 'rate_limited',
