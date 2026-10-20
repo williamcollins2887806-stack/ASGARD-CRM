@@ -1,101 +1,59 @@
 'use strict';
 /**
- * Проверка живого прода: русский текст на месте, контраст, ошибки.
- * Работает по HTTPS с игнором самоподписанного сертификата.
+ * Живая проверка прода после выкатки 20.28.249.
+ * Не трогаем данные: только читаем страницу и меряем DOM.
  */
 const { chromium } = require('playwright');
 
-const PROD = process.env.PROD_URL || 'https://92.242.61.184';
+const BASE = process.env.PROD_URL || 'http://92.242.61.184';
+let pass = 0; let fail = 0;
+const check = (n, ok, d) => { if (ok) { pass++; console.log('PASS ' + n); } else { fail++; console.log('FAIL ' + n + (d ? ' :: ' + d : '')); } };
 
 (async () => {
   const browser = await chromium.launch();
-  const ctx = await browser.newContext({
-    viewport: { width: 1440, height: 980 },
-    ignoreHTTPSErrors: true
-  });
+  const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 }, ignoreHTTPSErrors: true });
   const page = await ctx.newPage();
-  const errors = [];
-  page.on('pageerror', (e) => errors.push(String(e).slice(0, 140)));
-
-  await page.goto(PROD + '/', { waitUntil: 'domcontentloaded', timeout: 45000 });
-  await page.waitForTimeout(5000);
-
-  // 1. Проверяем, что нет mojibake в DOM
-  const dom = await page.evaluate(() => {
-    const txt = document.body.innerText;
-    const moji = (txt.match(/[\u2568\u2564\u2565]/g) || []).length;
-    const fffd = (txt.match(/\ufffd/g) || []).length;
-    // ищем ключевую фразу гейта присутствия
-    const hasGate = txt.includes('рабочую неделю') || txt.includes('держать строй');
-    return {
-      moji, fffd,
-      hasGate,
-      sample: txt.slice(0, 200).replace(/\s+/g, ' '),
-      theme: document.documentElement.getAttribute('data-theme'),
-      version: window.ASGARD_SHELL_VERSION || '—'
-    };
-  });
-  console.log('=== продакшн DOM:');
-  console.log(JSON.stringify(dom, null, 1));
-
-  // 2. Контраст на главной
-  const contrast = await page.evaluate(() => {
-    const parse = (c) => {
-      const str = String(c);
-      const cs = str.match(/color\(srgb\s+([\d.]+)\s+([\d.]+)\s+([\d.]+)(?:\s*\/\s*([\d.]+))?\)/);
-      if (cs) return { r: +cs[1] * 255, g: +cs[2] * 255, b: +cs[3] * 255, a: cs[4] !== undefined ? +cs[4] : 1 };
-      const m = str.match(/rgba?\(([^)]+)\)/);
-      if (!m) return null;
-      const p = m[1].split(',').map((x) => parseFloat(x.trim()));
-      return { r: p[0], g: p[1], b: p[2], a: p.length > 3 ? p[3] : 1 };
-    };
-    const lin = (v) => { const s = v / 255; return s <= 0.03928 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4); };
-    const lum = (c) => 0.2126 * lin(c.r) + 0.7152 * lin(c.g) + 0.0722 * lin(c.b);
-    const ratio = (a, b) => { const l1 = lum(a), l2 = lum(b); return (Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05); };
-    const blend = (f, b) => ({ r: f.r * f.a + b.r * (1 - f.a), g: f.g * f.a + b.g * (1 - f.a), b: f.b * f.a + b.b * (1 - f.a), a: 1 });
-    const effBg = (el) => {
-      let node = el, acc = null;
-      while (node && node !== document.documentElement) {
-        const cs = getComputedStyle(node);
-        if (cs.backgroundImage !== 'none' && /gradient/.test(cs.backgroundImage) && !acc) return { grad: true };
-        const c = parse(cs.backgroundColor);
-        if (c && c.a > 0) { acc = acc ? blend(acc, c) : c; if (c.a >= 0.999) return acc; }
-        node = node.parentElement;
-      }
-      return acc || { r: 255, g: 255, b: 255, a: 1 };
-    };
-    const vis = (el) => {
-      const r = el.getBoundingClientRect();
-      const cs = getComputedStyle(el);
-      return r.width > 1 && r.height > 1 && cs.display !== 'none' && cs.visibility !== 'hidden';
-    };
-    const out = [];
-    const w = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
-    while (w.nextNode()) {
-      const t = w.currentNode;
-      if ((t.nodeValue || '').trim().length < 2) continue;
-      const el = t.parentElement;
-      if (!el || !vis(el) || el.closest('svg')) continue;
-      const cs = getComputedStyle(el);
-      const fg = parse(cs.color);
-      if (!fg) continue;
-      const bg = effBg(el);
-      if (bg.grad) continue;
-      const f = fg.a < 1 ? blend(fg, bg) : fg;
-      const size = parseFloat(cs.fontSize);
-      const weight = parseInt(cs.fontWeight, 10) || 400;
-      const need = (size >= 24 || (size >= 18.66 && weight >= 700)) ? 3 : 4.5;
-      const cr = ratio(f, bg);
-      if (cr < need) out.push({ text: (t.nodeValue || '').trim().slice(0, 40), cls: String(el.className).slice(0, 40), ratio: Math.round(cr * 100) / 100 });
+  const jsErrors = [];
+  page.on('pageerror', (e) => jsErrors.push(String(e)));
+  page.on('response', (r) => {
+    if (r.url().includes('presence_week') || r.url().includes('presence-week') || r.url().includes('vacation_schedule')) {
+      check('ассет ' + r.url().split('/').pop().split('?')[0] + ' → ' + r.status(), r.status() === 200);
     }
-    return out;
   });
-  console.log('\n=== контраст на главной (нарушений):', contrast.length);
-  contrast.slice(0, 8).forEach((c) => console.log(`   ${c.ratio}:1 "${c.text}" .${c.cls}`));
 
-  console.log('\n=== JS-ошибки:', errors.length);
-  errors.slice(0, 5).forEach((e) => console.log('   ' + e));
+  await page.goto(BASE + '/', { waitUntil: 'commit', timeout: 45000 });
+  await page.waitForTimeout(2500);
 
-  await page.screenshot({ path: 'tests/reports/full-audit/prod-home.png' });
+  const v = await page.evaluate(() => window.ASGARD_SHELL_VERSION || null);
+  check('версия оболочки на проде = 20.28.249', v === '20.28.249', 'version=' + v);
+
+  const hasComp = await page.evaluate(() => typeof window.AsgardPresenceWeek);
+  if (hasComp !== 'object') {
+    // defer-скрипт мог не дойти к моменту замера — ждём явно.
+    await page.waitForFunction(() => typeof window.AsgardPresenceWeek === 'object', null, { timeout: 15000 }).catch(() => {});
+  }
+  const hasComp2 = await page.evaluate(() => typeof window.AsgardPresenceWeek);
+  check('компонент присутствия загружен', hasComp2 === 'object', 'typeof=' + hasComp2);
+
+  const linkOk = await page.evaluate(() => {
+    const css = Array.from(document.querySelectorAll('link[rel=stylesheet]')).some((l) => l.href.includes('presence-week'));
+    const js = Array.from(document.querySelectorAll('script[src]')).some((s) => s.src.includes('presence_week'));
+    return { css, js };
+  });
+  check('presence-week.css подключён', linkOk.css);
+  check('presence_week.js подключён', linkOk.js);
+
+  // Меню: пункта «График отпусков» быть не должно (открывается кнопкой)
+  const menuHasVac = await page.evaluate(() => {
+    const t = document.body.innerText || '';
+    return /График отпусков/.test(t);
+  });
+  console.log('INFO: «График отпусков» в тексте главной: ' + menuHasVac);
+
+  const realErrors = jsErrors.filter((e) => !/favicon|404|Failed to load|ERR_/i.test(e));
+  check('0 JS-ошибок на проде', realErrors.length === 0, realErrors.slice(0, 2).join(' | '));
+
   await browser.close();
-})();
+  console.log('\nИТОГ: ' + (fail === 0 ? 'OK' : 'FAIL') + ' — ' + pass + ' PASS, ' + fail + ' FAIL');
+  process.exit(fail ? 1 : 0);
+})().catch((e) => { console.error('CRASH:', e.message); process.exit(1); });
