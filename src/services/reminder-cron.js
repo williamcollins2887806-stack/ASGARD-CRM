@@ -286,7 +286,7 @@ async function processDocRegistry(db, log) {
       d,
       'doc_pay_soon',
       `🔔 Счёт ${numLabel} скоро к оплате`,
-      `Оплата Doc Hub «${d.counterparty_name || ''}» до ${String(d.payment_due_at).slice(0, 10)}.`
+      `Оплата по счёту «${d.counterparty_name || ''}» до ${String(d.payment_due_at).slice(0, 10)}.`
     );
   }
 
@@ -304,7 +304,7 @@ async function processDocRegistry(db, log) {
       d,
       'doc_pay_overdue',
       `⚠️ Просрочена оплата ${numLabel}`,
-      `Срок оплаты Doc Hub «${d.counterparty_name || ''}» истёк (${String(d.payment_due_at).slice(0, 10)}).`
+      `Срок оплаты по счёту «${d.counterparty_name || ''}» истёк (${String(d.payment_due_at).slice(0, 10)}).`
     );
   }
 
@@ -322,7 +322,7 @@ async function processDocRegistry(db, log) {
       d,
       'doc_sf_overdue',
       `⚠️ Просрочена СФ ${numLabel}`,
-      `Ожидаем закрывающие по Doc Hub «${d.counterparty_name || ''}» (срок ${String(d.sf_due_at).slice(0, 10)}).`
+      `Ожидаем закрывающие по счёту «${d.counterparty_name || ''}» (срок ${String(d.sf_due_at).slice(0, 10)}).`
     );
   }
 
@@ -338,7 +338,7 @@ async function processDocRegistry(db, log) {
       d,
       'doc_incomplete',
       `📋 Неполная карточка ${numLabel}`,
-      `Doc Hub «${d.counterparty_name || ''}» требует дозаполнения.`
+      `Карточка счёта «${d.counterparty_name || ''}» требует дозаполнения.`
     );
   }
 
@@ -540,17 +540,21 @@ async function sendDailyDigests(db, log) {
       const badgeBg = l.overdue ? '#fef2f2' : (l.kind === 'correction' ? '#fff8e6' : '#eef2ff');
       const badgeTxt = l.overdue ? 'просрочено' : (l.kind === 'correction' ? 'корректировка' : l.kindTxt);
       const whereShort = escHtml(l.where.replace('Карточка документа → ', ''));
+      // D-303 (заказчик 20.10.2026): «посмотри, что на телефоне выглядит норм».
+      // Двухколоночная таблица на узком экране сжимала текст в узкий столбец
+      // рядом с бейджем. Теперь бейдж стоит НАД карточкой (в одной ячейке,
+      // без второй колонки) — на телефоне читается свободно.
       return `<tr>
         <td style="padding:12px 0;border-bottom:1px solid #eef1f6;vertical-align:top;">
-          <div style="font-size:14px;font-weight:700;color:${accent};">${escHtml(l.label)}</div>
-          <div style="font-size:13px;color:#6b7280;margin-top:2px;">${escHtml(l.cp)}${l.dueTxt ? ' · ' + escHtml(l.dueTxt) : ''}</div>
+          <div style="font-size:14px;font-weight:700;color:${accent};line-height:1.3;">${escHtml(l.label)}</div>
+          <div style="font-size:13px;color:#6b7280;margin-top:2px;line-height:1.35;">${escHtml(l.cp)}${l.dueTxt ? ' · ' + escHtml(l.dueTxt) : ''}</div>
+          <div style="margin-top:6px;">
+            <span style="display:inline-block;padding:2px 8px;border-radius:999px;font-size:10.5px;font-weight:700;background:${badgeBg};color:${accent};">${escHtml(badgeTxt)}</span>
+          </div>
           <div style="margin-top:7px;padding:8px 10px;border-left:3px solid ${accent};background:#f8fafc;border-radius:0 6px 6px 0;">
-            <div style="font-size:13px;font-weight:700;color:${accent};">${escHtml(l.action)}</div>
+            <div style="font-size:13px;font-weight:700;color:${accent};line-height:1.3;">${escHtml(l.action)}</div>
             <div style="font-size:12px;color:#6b7280;margin-top:3px;line-height:1.4;">${whereShort}</div>
           </div>
-        </td>
-        <td style="padding:12px 0 12px 10px;border-bottom:1px solid #eef1f6;text-align:right;white-space:nowrap;vertical-align:top;">
-          <span style="display:inline-block;padding:3px 9px;border-radius:999px;font-size:11px;font-weight:700;background:${badgeBg};color:${accent};">${escHtml(badgeTxt)}</span>
         </td>
       </tr>`;
     }).join('');
@@ -558,21 +562,18 @@ async function sendDailyDigests(db, log) {
     const html = wrapEmail(
       `Задачи по документам: ${fresh.length}`,
       `<div style="font-size:13px;color:#6b7280;margin-bottom:4px;">Здравствуйте, ${escHtml(u.name || '')}!</div>
-       <div style="font-size:15px;color:#1b2a4a;margin-bottom:6px;">
+       <div style="font-size:15px;color:#1b2a4a;margin-bottom:14px;">
          ${fresh.length} ${plural(fresh.length, 'задача', 'задачи', 'задач')} по реестру документов${overdueCount ? `, из них <b style="color:#b91c1c;">${overdueCount} ${plural(overdueCount, 'просрочена', 'просрочены', 'просрочено')}</b>` : ''}.
-       </div>
-       <div style="font-size:12.5px;color:#6b7280;margin-bottom:14px;">
-         По каждой задаче указано, что сделать и в каком месте карточки.
        </div>
        <table style="width:100%;border-collapse:collapse;margin-bottom:6px;">${rowHtml}</table>
        <a href="${escHtml(link)}" style="display:block;background:#15803d;color:#fff;text-decoration:none;text-align:center;padding:14px 16px;border-radius:10px;font-weight:700;font-size:16px;margin:18px 0 8px;">Открыть реестр документов</a>
        <p style="font-size:12px;color:#6b7280;margin:10px 0 0;line-height:1.45;">
-         Ссылка ведёт в CRM. Если кнопка не открывается — скопируйте адрес:<br>
+         Если кнопка не открывается — скопируйте адрес:<br>
          <span style="color:#1b2a4a;word-break:break-all;">${escHtml(link)}</span>
        </p>`,
       {
         kicker: 'АСГАРД · ДОКУМЕНТЫ',
-        footer: 'Сводка формируется автоматически один раз в день. Задача исчезает из неё, когда действие выполнено: оплата отмечена, СФ/акт получены, корректировка снята.'
+        footer: 'Задача исчезает из списка, когда действие выполнено: оплата отмечена, СФ или акт получены, корректировка снята.'
       });
 
     const text =
@@ -586,7 +587,7 @@ async function sendDailyDigests(db, log) {
     try {
       await sendCrmEmail(db, null, {
         to: u.email,
-        subject: `[Doc Hub] Задачи по документам: ${fresh.length}`,
+        subject: `Реестр документов: задачи на сегодня — ${fresh.length}`,
         html,
         text,
         skipBcc: true
