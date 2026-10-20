@@ -754,76 +754,107 @@ module.exports = async function docRegistryRoutes(fastify) {
    * Источник срока: payment_due_at; для частичной оплаты — ближайший неоплаченный
    * этап из payment_schedule.
    */
+  /**
+   * D-292 (заказчик 20.10.2026): «я рассчитывал, что график будет показывать
+   * ТОЛЬКО счета, которые согласовал директор».
+   *
+   * Было две ошибки:
+   *  1) Источником был doc_registry.payment_due_at. Но согласование живёт в
+   *     payment_invoices (awaiting_dir → pending_payment), а у реестра своя
+   *     жизнь: срок заполнен лишь у 2 из 1518 неоплаченных, и в него попадали
+   *     счета, которые директор ЕЩЁ НЕ согласовал (awaiting_dir).
+   *  2) В KPI/списке оказывались несогласованные счета на суммы, которые
+   *     никогда не пойдут в оплату.
+   *
+   * Теперь источник истины — payment_invoices:
+   *    • include approved=true (по умолчанию) → только status='pending_payment'
+   *      (директор согласовал, ждёт оплаты) + уже оплаченные, если запрошены;
+   *    • approved=false → режим «на согласовании» (awaiting_dir), чтобы было
+   *      видно, что ещё не подтверждено, — но НЕ смешивая с оплатой.
+   *
+   * Срок берём payment_invoices.due_date; если пусто — подтягиваем из
+   * реестра (doc_registry.payment_due_at) как фолбэк. Для частичной оплаты —
+   * ближайший неоплаченный этап payment_schedule.
+   */
   fastify.get('/payment-schedule', auth, async (req) => {
     const q = req.query || {};
-    // D-291: окно: по умолчанию — с начала прошлого месяца по конец следующего.
     const now = new Date();
     const from = q.from || new Date(now.getFullYear(), now.getMonth() - 1, 1).toISOString().slice(0, 10);
     const to = q.to || new Date(now.getFullYear(), now.getMonth() + 2, 0).toISOString().slice(0, 10);
-    // ВАЖНО: параметры окна добавляем ПЕРВЫМИ и запоминаем их номера, а
-    // visibilitySql вызываем ПОСЛЕ — иначе он займёт $1/$2 и условия
-    // «payment_due_at BETWEEN $1 AND $2» будут сравнивать границы с id
-    // пользователя (тихая пустая выдача вместо списка счетов).
-    const p = [from, to];
-    const pFrom = 1;
-    const pTo = 2;
-    const vis = visibilitySql(p, req.user.role, req.user.id, { scope: q.scope });
+    // Какие статусы показываем: только согласованные (по умолчанию) или только
+    // ожидающие решения директора.
+    const approvedOnly = String(q.approved == null ? 'true' : q.approved) !== 'false';
+    const inclPaid = String(q.paid || '') === '1';
+
+    const p = [];
+    const statuses = approvedOnly
+      ? (inclPaid ? ['pending_payment', 'paid'] : ['pending_payment'])
+      : ['awaiting_dir'];
+    p.push(statuses);
+    const pStatuses = 1;
+
+    // Общий круг видимости строк реестра (та же матрица, что в списке документов).
+    // Проверяем по doc_registry, потому что видимость описана для её колонок.
+    const visParams = [];
+    const vis = visibilitySql(visParams, req.user.role, req.user.id, { scope: 'all' });
 
     const { rows } = await db.query(
-      `SELECT d.id, d.dir, d.counterparty_name, d.invoice_number, d.invoice_date,
-              d.amount_gross, d.pay_status, d.payment_kind, d.payment_due_at,
-              d.payment_schedule, d.doc_owner_id, d.correction_state,
+      `SELECT pi.id, pi.status, pi.payment_status, pi.invoice_number, pi.amount,
+              pi.due_date, pi.supplier_name, pi.pay_timing,
+              pi.doc_registry_id, pi.created_by,
+              d.payment_due_at AS reg_due, d.payment_kind, d.payment_schedule,
               u.name AS owner_name
-         FROM doc_registry d
-         LEFT JOIN users u ON u.id = d.doc_owner_id
-        WHERE d.deleted_at IS NULL
-          AND d.dir = 'in'
-          AND COALESCE(d.pay_status,'none') NOT IN ('paid','n_a')
-          AND d.no_payment_terms IS NOT TRUE
-          AND d.payment_due_at IS NOT NULL
-          AND d.payment_due_at BETWEEN $${pFrom}::date AND $${pTo}::date${vis}
-        ORDER BY d.payment_due_at ASC, d.id ASC`, p);
+         FROM payment_invoices pi
+         LEFT JOIN doc_registry d ON d.id = pi.doc_registry_id AND d.deleted_at IS NULL
+         LEFT JOIN users u ON u.id = COALESCE(d.doc_owner_id, pi.created_by)
+        WHERE pi.status = ANY($${pStatuses}::text[])
+          AND COALESCE(pi.payment_status,'') <> 'rejected'
+          ${vis ? ` AND (d.id IS NULL OR (true${vis}))` : ''}
+        ORDER BY COALESCE(pi.due_date, d.payment_due_at) ASC NULLS LAST, pi.id ASC`,
+      [...p, ...visParams]);
 
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const iso = (d) => (d instanceof Date ? d.toISOString().slice(0, 10) : String(d || '').slice(0, 10));
 
+    // Счета БЕЗ срока — не прячем: показываем отдельной группой «срок не указан»,
+    // иначе согласованный счёт исчезает из графика и кажется потерянным.
     const items = rows.map((r) => {
-      // Для частичной оплаты берём ближайший неоплаченный этап.
-      let due = iso(r.payment_due_at);
-      let amount = Number(r.amount_gross) || 0;
-      if (String(r.payment_kind || '') === 'partial') {
+      let due = iso(r.due_date || r.reg_due);
+      let amount = Number(r.amount) || 0;
+      if (String(r.payment_kind || '') === 'partial' && r.payment_schedule) {
         let sched = r.payment_schedule;
         if (typeof sched === 'string') { try { sched = JSON.parse(sched); } catch (_) { sched = null; } }
         if (Array.isArray(sched)) {
           const next = sched
             .filter((s) => s && !s.paid_at && s.due_at)
             .sort((a, b) => String(a.due_at).localeCompare(String(b.due_at)))[0];
-          if (next) {
-            due = iso(next.due_at);
-            amount = Number(next.amount) || amount;
-          }
+          if (next) { due = iso(next.due_at); amount = Number(next.amount) || amount; }
         }
       }
-      const dueDate = new Date(due + 'T00:00:00');
-      const overdue = !Number.isNaN(dueDate.getTime()) && dueDate < today;
+      const dueDate = due ? new Date(due + 'T00:00:00') : null;
+      const overdue = !!(dueDate && !Number.isNaN(dueDate.getTime()) && dueDate < today);
       return {
         id: r.id,
-        counterparty_name: r.counterparty_name,
+        registry_id: r.doc_registry_id || null,
+        counterparty_name: r.supplier_name || '—',
         invoice_number: r.invoice_number,
-        invoice_date: r.invoice_date,
         amount,
-        amount_total: Number(r.amount_gross) || 0,
-        due_at: due,
+        amount_total: Number(r.amount) || 0,
+        due_at: due || null,
+        has_due: !!due,
         overdue,
         owner_name: r.owner_name || null,
         payment_kind: r.payment_kind || null,
-        pay_status: r.pay_status || null
+        status: r.status,
+        pay_status: r.payment_status || null,
+        approved: r.status === 'pending_payment' || r.status === 'paid'
       };
     });
 
-    // Группировка по дням — для календарной сетки.
+    // Группировка по дням — только счета С ДАТОЙ (бессрочные в календарь не лезут).
     const byDay = {};
     for (const it of items) {
+      if (!it.due_at) continue;
       const k = it.due_at;
       if (!byDay[k]) byDay[k] = { date: k, count: 0, amount: 0, overdue: false, ids: [] };
       byDay[k].count += 1;
@@ -836,32 +867,26 @@ module.exports = async function docRegistryRoutes(fastify) {
     const weekEnd = new Date(today); weekEnd.setDate(weekEnd.getDate() + 7);
     const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0);
     const sum = (arr) => arr.reduce((a, x) => a + x.amount, 0);
+    const withDue = items.filter((x) => x.has_due);
+    const inRange = (x, a, b) => {
+      if (!x.has_due) return false;
+      const d = new Date(x.due_at + 'T00:00:00');
+      return !Number.isNaN(d.getTime()) && d >= a && d <= b;
+    };
     const kpi = {
       overdue: { count: items.filter((x) => x.overdue).length, amount: sum(items.filter((x) => x.overdue)) },
-      week: {
-        count: items.filter((x) => {
-          const d = new Date(x.due_at + 'T00:00:00');
-          return !Number.isNaN(d.getTime()) && d >= today && d <= weekEnd;
-        }).length,
-        amount: sum(items.filter((x) => {
-          const d = new Date(x.due_at + 'T00:00:00');
-          return !Number.isNaN(d.getTime()) && d >= today && d <= weekEnd;
-        }))
-      },
-      month: {
-        count: items.filter((x) => {
-          const d = new Date(x.due_at + 'T00:00:00');
-          return !Number.isNaN(d.getTime()) && d >= today && d <= monthEnd;
-        }).length,
-        amount: sum(items.filter((x) => {
-          const d = new Date(x.due_at + 'T00:00:00');
-          return !Number.isNaN(d.getTime()) && d >= today && d <= monthEnd;
-        }))
-      },
+      week: { count: withDue.filter((x) => inRange(x, today, weekEnd)).length, amount: sum(withDue.filter((x) => inRange(x, today, weekEnd))) },
+      month: { count: withDue.filter((x) => inRange(x, today, monthEnd)).length, amount: sum(withDue.filter((x) => inRange(x, today, monthEnd))) },
+      no_due: { count: items.filter((x) => !x.has_due).length, amount: sum(items.filter((x) => !x.has_due)) },
       total: { count: items.length, amount: sum(items) }
     };
 
-    return { from, to, today: iso(today), items, byDay: Object.values(byDay), kpi };
+    return {
+      from, to, today: iso(today),
+      approved_only: approvedOnly,
+      items, byDay: Object.values(byDay).sort((a, b) => a.date.localeCompare(b.date)),
+      kpi
+    };
   });
 
 

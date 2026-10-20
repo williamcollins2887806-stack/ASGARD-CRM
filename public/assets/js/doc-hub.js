@@ -85,6 +85,7 @@ window.AsgardDocHubPage = (function () {
     archiveTab: false,   // паритет с «Выплатами»: вкладка «Архив»
     archTab: 'summary',  // D-291: внутри Архива — сводка по месяцам или корзина
     payTab: false,       // D-291: вкладка «График оплат»
+    payMode: 'approved', // D-292: 'approved' — только согласованные директором
     sfTab: false,        // V394: экран «Входящие СФ» (кладовщик)
     sfOnlyPending: true, // на экране СФ по умолчанию только те, что ждут получения
     facets: { counterparties: [] },
@@ -2651,11 +2652,12 @@ window.AsgardDocHubPage = (function () {
     if (!host) return;
     host.innerHTML = '<div class="dh-empty">Загрузка графика оплат…</div>';
     let d;
-    // D-291: для сводных экранов (график) «только мои» почти всегда даёт пусто —
-    // у администратора после передачи документов Тумаевой своих строк нет вовсе.
-    // Поэтому график ВСЕГДА смотрит все доступные роли строки; фильтр «Показать
-    // все» на реестре на него не влияет.
-    try { d = await api('/payment-schedule?scope=all'); } catch (e) {
+    // D-292: график показывает ТОЛЬКО счета, согласованные директором
+    // (status='pending_payment'). Несогласованные в оплату не попадают и в
+    // сумму графика не входят — их видно отдельным переключателем.
+    const mode = state.payMode || 'approved';   // 'approved' | 'pending'
+    const qs = mode === 'pending' ? 'approved=false' : 'approved=true&paid=1';
+    try { d = await api('/payment-schedule?' + qs); } catch (e) {
       host.innerHTML = `<div class="dh-empty"><div class="dh-empty__t">Не удалось загрузить график</div><p>${esc(e.message || '')}</p></div>`;
       return;
     }
@@ -2664,13 +2666,18 @@ window.AsgardDocHubPage = (function () {
     const kpi = d.kpi || {};
     const kpiCard = (label, o, cls) => `<div class="dh-kpi ${cls || ''}"><div class="k">${label}</div><div class="v">${money(o && o.amount || 0)}</div><div class="s">${o && o.count || 0} шт.</div></div>`;
 
+    const seg = `<div class="dh-seg" id="dhPaySeg" style="margin-bottom:12px">
+      <button type="button" class="${mode === 'approved' ? 'is-on' : ''}" data-paymode="approved">Согласованные директором</button>
+      <button type="button" class="${mode === 'pending' ? 'is-on' : ''}" data-paymode="pending">Ещё не согласованы</button>
+    </div>`;
+
     if (!items.length) {
-      host.innerHTML = `<div class="dh-kpis">${kpiCard('Просрочено', kpi.overdue, 'is-err')}${kpiCard('На этой неделе', kpi.week, 'is-warn')}${kpiCard('В этом месяце', kpi.month, 'is-info')}</div>
-        <div class="dh-empty"><div class="dh-empty__t">Нет счетов со сроком оплаты</div><p>График появится, когда у документов будет заполнен срок оплаты.</p></div>`;
+      host.innerHTML = seg + `<div class="dh-kpis">${kpiCard('Просрочено', kpi.overdue, 'is-err')}${kpiCard('На этой неделе', kpi.week, 'is-warn')}${kpiCard('В этом месяце', kpi.month, 'is-info')}</div>
+        <div class="dh-empty"><div class="dh-empty__t">${mode === 'approved' ? 'Нет согласованных счетов к оплате' : 'Нет счетов, ждущих решения директора'}</div><p>${mode === 'approved' ? 'Счета появятся здесь после согласования директором.' : 'Все счета либо согласованы, либо отклонены.'}</p></div>`;
+      bindPaySeg(host, mode);
       return;
     }
 
-    // Сетка по дням: день недели, дата, сумма, число счетов.
     const dayCell = (g) => {
       const dt = new Date(g.date + 'T00:00:00');
       const wd = Number.isNaN(dt.getTime()) ? '' : ['вс', 'пн', 'вт', 'ср', 'чт', 'пт', 'сб'][dt.getDay()];
@@ -2683,42 +2690,66 @@ window.AsgardDocHubPage = (function () {
       </button>`;
     };
 
+    // Статус: у согласованных — «ждёт оплаты», у несогласованных — «у директора».
+    const statusPill = (it) => {
+      if (it.pay_status === 'paid') return '<span class="dh-pill dh-pill--ok">оплачен</span>';
+      if (it.status === 'pending_payment') return '<span class="dh-pill dh-pill--info">ждёт оплаты</span>';
+      if (it.status === 'awaiting_dir') return '<span class="dh-pill dh-pill--warn">у директора</span>';
+      return `<span class="dh-pill dh-pill--muted">${esc(it.status || '—')}</span>`;
+    };
+    const dueCell = (it) => it.has_due
+      ? fmtDate(it.due_at)
+      : '<span class="dh-muted" title="Срок не указан в счёте и в реестре">без срока</span>';
+
     const rowsHtml = items.map((it) => `<tr>
-      <td>${fmtDate(it.due_at)}</td>
+      <td>${dueCell(it)}</td>
       <td><div class="dh-stack"><span class="a">${esc(it.counterparty_name || '—')}</span><span class="b dh-muted">${esc(it.owner_name || 'без ответственного')}</span></div></td>
       <td>${esc(it.invoice_number || 'б/н')}</td>
       <td class="dh-money">${money(it.amount)}</td>
-      <td>${it.overdue ? '<span class="dh-pill dh-pill--err">просрочено</span>' : '<span class="dh-pill dh-pill--warn">ожидает</span>'}</td>
-      <td class="dh-actions"><button type="button" class="dh-btn dh-btn--sm" data-popen="${it.id}">Открыть</button></td>
+      <td>${it.overdue ? '<span class="dh-pill dh-pill--err">просрочено</span>' : statusPill(it)}</td>
+      <td class="dh-actions"><button type="button" class="dh-btn dh-btn--sm" data-popen="${it.registry_id || ''}" ${it.registry_id ? '' : 'disabled title="Нет строки реестра"'}>Открыть</button></td>
     </tr>`).join('');
 
-    host.innerHTML = `
-      <div class="dh-kpis">${kpiCard('Просрочено', kpi.overdue, 'is-err')}${kpiCard('На этой неделе', kpi.week, 'is-warn')}${kpiCard('В этом месяце', kpi.month, 'is-info')}${kpiCard('Всего в периоде', kpi.total, '')}</div>
-      <div class="dh-card"><div class="dh-card__head"><h2>Календарь платежей</h2><span>${esc(d.from)} — ${esc(d.to)}</span></div>
+    host.innerHTML = seg + `
+      <div class="dh-kpis">${kpiCard('Просрочено', kpi.overdue, 'is-err')}${kpiCard('На этой неделе', kpi.week, 'is-warn')}${kpiCard('В этом месяце', kpi.month, 'is-info')}${kpiCard('Всего', kpi.total, '')}${(kpi.no_due && kpi.no_due.count) ? kpiCard('Без срока', kpi.no_due, 'is-warn') : ''}</div>
+      ${byDay.length ? `<div class="dh-card"><div class="dh-card__head"><h2>Календарь платежей</h2><span>${esc(mode === 'approved' ? 'Согласованные счета' : 'Ожидают согласования')}</span></div>
         <div class="dh-pdays">${byDay.map(dayCell).join('')}</div>
-      </div>
-      <div class="dh-card" style="margin-top:14px"><div class="dh-card__head"><h2>Счета к оплате</h2><span>${items.length} шт.</span></div>
+      </div>` : ''}
+      <div class="dh-card" style="margin-top:14px"><div class="dh-card__head"><h2>${mode === 'approved' ? 'Согласовано к оплате' : 'Ждут решения директора'}</h2><span>${items.length} шт. · ${money(kpi.total && kpi.total.amount || 0)}</span></div>
         <div class="dh-table-wrap"><table class="dh-table dh-sf__table">
           <thead><tr><th>Срок</th><th>Контрагент</th><th>Счёт</th><th>Сумма</th><th>Статус</th><th class="dh-actions">Открыть</th></tr></thead>
           <tbody>${rowsHtml}</tbody>
         </table></div>
       </div>`;
 
+    bindPaySeg(host, mode);
     host.querySelectorAll('[data-popen]').forEach((b) => {
-      b.addEventListener('click', () => openDrawer(Number(b.getAttribute('data-popen'))));
+      b.addEventListener('click', () => {
+        const id = Number(b.getAttribute('data-popen'));
+        if (id) openDrawer(id);
+      });
     });
-    // Клик по дню — фильтруем список (прокручиваем к таблице и подсвечиваем).
     host.querySelectorAll('[data-pday]').forEach((b) => {
       b.addEventListener('click', () => {
         const date = b.getAttribute('data-pday');
         host.querySelectorAll('[data-pday]').forEach((x) => x.classList.toggle('is-on', x === b));
-        const rows = host.querySelectorAll('.dh-paysched tbody tr, table.dh-sf__table tbody tr');
+        const rows = host.querySelectorAll('table.dh-sf__table tbody tr');
         rows.forEach((tr) => {
           const first = tr.querySelector('td');
           const hit = first && first.textContent.includes(date.slice(8, 10) + '.' + date.slice(5, 7));
           tr.style.display = hit ? '' : 'none';
         });
       });
+    });
+  }
+
+  /** Переключатель «Согласованные / Ещё не согласованы» на графике. */
+  function bindPaySeg(host, mode) {
+    host.querySelectorAll('[data-paymode]').forEach((b) => {
+      b.onclick = () => {
+        state.payMode = b.getAttribute('data-paymode');
+        renderPayScheduleTab();
+      };
     });
   }
 
