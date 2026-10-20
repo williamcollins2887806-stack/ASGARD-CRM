@@ -24,6 +24,30 @@ let _job = null;
 const WORK_CLOSED_STATUSES = ['Закрыт', 'Закрыта', 'Закрыто', 'Завершена', 'Отменена', 'Работы сдали'];
 const INVOICE_PAID_STATUSES = ['paid', 'cancelled', 'оплачен', 'отменён', 'отменен'];
 
+// ── Хелперы для письма-дайджеста (D-300) ─────────────────────────────────
+function escHtml(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+/** 2026-10-15 → 15.10.2026 (в письме читается лучше ISO). */
+function fmtDateRu(d) {
+  const s = String(d || '').slice(0, 10);
+  const m = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  return m ? `${m[3]}.${m[2]}.${m[1]}` : s;
+}
+function todayIso() {
+  return new Date().toISOString().slice(0, 10);
+}
+/** Русское склонение: 1 задача / 2 задачи / 5 задач. */
+function plural(n, one, few, many) {
+  const a = Math.abs(Number(n) || 0) % 100;
+  const b = a % 10;
+  if (a > 10 && a < 20) return many;
+  if (b > 1 && b < 5) return few;
+  if (b === 1) return one;
+  return many;
+}
+
 /**
  * Проверка дубля: ищем не-прочитанное reminder-уведомление по entity за последние 6ч.
  */
@@ -467,17 +491,68 @@ async function sendDailyDigests(db, log) {
     }
     const lines = fresh.map((f) => {
       const label = f.invoice_number ? `Счёт ${f.invoice_number}` : `Документ #${f.doc_id}`;
-      const kindTxt = f.kind === 'correction' ? '🚩 корректировка'
-        : f.kind === 'pay_due' ? '💳 срок оплаты' : '📄 ждём СФ';
-      return `${kindTxt}: ${label} · ${f.counterparty_name || ''}${f.due_date ? ' (до ' + String(f.due_date).slice(0, 10) + ')' : ''}`;
+      const kindTxt = f.kind === 'correction' ? 'корректировка'
+        : f.kind === 'pay_due' ? 'срок оплаты' : 'ждём СФ';
+      const dueTxt = f.due_date ? `до ${fmtDateRu(f.due_date)}` : '';
+      const overdue = f.due_date && String(f.due_date).slice(0, 10) < todayIso();
+      return { label, kindTxt, dueTxt, overdue, cp: f.counterparty_name || '', kind: f.kind, doc_id: f.doc_id };
     });
+
+    // D-300 (заказчик 20.10.2026): письмо было ПЛОСКИМ ТЕКСТОМ и со ссылкой
+    // «#/doc-hub» — якорь без домена. В почте такая ссылка не работает вовсе,
+    // а «сырой» вид вызывал вопрос «это не баг?».
+    // Теперь: премиальный HTML по общему шаблону (wrapEmail — тот же, что у
+    // писем-согласований), абсолютная ссылка через publicBaseUrl(), кнопка CTA,
+    // цветовая маркировка просрочки, и текстовая версия для клиентов без HTML.
+    const { wrapEmail, publicBaseUrl } = require('./payment-mail');
+    const base = publicBaseUrl();
+    const link = `${base}/?_v=${Date.now()}#/doc-hub`;
+    const overdueCount = lines.filter((l) => l.overdue).length;
+
+    const rowHtml = lines.map((l) => {
+      const accent = l.overdue ? '#b91c1c' : (l.kind === 'correction' ? '#b45309' : '#1b2a4a');
+      const badgeBg = l.overdue ? '#fef2f2' : (l.kind === 'correction' ? '#fff8e6' : '#eef2ff');
+      const badgeTxt = l.overdue ? 'просрочено' : (l.kind === 'correction' ? 'корректировка' : l.kindTxt);
+      return `<tr>
+        <td style="padding:10px 0;border-bottom:1px solid #eef1f6;vertical-align:top;">
+          <div style="font-size:14px;font-weight:700;color:${accent};">${escHtml(l.label)}</div>
+          <div style="font-size:13px;color:#6b7280;margin-top:2px;">${escHtml(l.cp)}${l.dueTxt ? ' · ' + escHtml(l.dueTxt) : ''}</div>
+        </td>
+        <td style="padding:10px 0;border-bottom:1px solid #eef1f6;text-align:right;white-space:nowrap;vertical-align:top;">
+          <span style="display:inline-block;padding:3px 9px;border-radius:999px;font-size:11px;font-weight:700;background:${badgeBg};color:${accent};">${escHtml(badgeTxt)}</span>
+        </td>
+      </tr>`;
+    }).join('');
+
+    const html = wrapEmail(
+      `Задачи по документам: ${fresh.length}`,
+      `<div style="font-size:13px;color:#6b7280;margin-bottom:4px;">Здравствуйте, ${escHtml(u.name || '')}!</div>
+       <div style="font-size:15px;color:#1b2a4a;margin-bottom:14px;">
+         ${fresh.length} ${plural(fresh.length, 'задача', 'задачи', 'задач')} по реестру документов${overdueCount ? `, из них <b style="color:#b91c1c;">${overdueCount} ${plural(overdueCount, 'просрочена', 'просрочены', 'просрочено')}</b>` : ''}.
+       </div>
+       <table style="width:100%;border-collapse:collapse;margin-bottom:6px;">${rowHtml}</table>
+       <a href="${escHtml(link)}" style="display:block;background:#15803d;color:#fff;text-decoration:none;text-align:center;padding:14px 16px;border-radius:10px;font-weight:700;font-size:16px;margin:18px 0 8px;">Открыть реестр документов</a>
+       <p style="font-size:12px;color:#6b7280;margin:10px 0 0;line-height:1.45;">
+         Ссылка ведёт в CRM. Если кнопка не открывается — скопируйте адрес:<br>
+         <span style="color:#1b2a4a;word-break:break-all;">${escHtml(link)}</span>
+       </p>`,
+      {
+        kicker: 'АСГАРД · ДОКУМЕНТЫ',
+        footer: 'Сводка формируется автоматически один раз в день. Задачи исчезают из неё после оплаты или получения закрывающих.'
+      });
+
+    const text =
+      `Здравствуйте, ${u.name || ''}!\n\n`
+      + `Задачи по реестру документов — ${fresh.length}:\n\n`
+      + lines.map((l) => `• ${l.kindTxt}: ${l.label} · ${l.cp}${l.dueTxt ? ' (' + l.dueTxt + ')' : ''}`).join('\n')
+      + `\n\nОткрыть реестр: ${link}\n`;
+
     try {
       await sendCrmEmail(db, null, {
         to: u.email,
-        subject: `[Doc Hub] Задачи на сегодня: ${fresh.length}`,
-        text: `Здравствуйте, ${u.name || ''}!\n\nЗадачи по реестру документов:\n\n`
-          + lines.map((l) => '• ' + l).join('\n')
-          + `\n\nОткрыть реестр: #/doc-hub\n`,
+        subject: `[Doc Hub] Задачи по документам: ${fresh.length}`,
+        html,
+        text,
         skipBcc: true
       });
       sent++;
