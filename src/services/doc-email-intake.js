@@ -606,6 +606,36 @@ async function intakeOne(db, { email, attachment, text, userId = null, dryRun = 
       } catch (e) { console.warn('[intake] applyPendingGrants: ' + (e && e.message)); }
       // TTL 72ч.
       try { require('./doc-approval-ttl').stampExpiry(db, paymentId); } catch (_) {}
+      // D-293 (аудит почты 20.10.2026): ЗАЯВКА СОЗДАВАЛАСЬ МОЛЧА.
+      // Intake не звал ни sendDirectorMail (письмо со счётом во вложении и
+      // кнопками), ни createNotification. Директор узнавал о счёте, только если
+      // сам заходил в очередь. На проде это подтвердилось: заявка #6 висела
+      // awaiting_dir с 09:31, notifications=0, payment_mail_tokens=0.
+      // Дальше срабатывал TTL — и счёт молча уезжал в архив.
+      // Теперь уведомляем так же, как это делают ручные пути создания заявки
+      // (src/routes/payment-invoices.js): письмо директору + запись в уведомления.
+      try {
+        const paymentMail = require('./payment-mail');
+        const payRow = (await db.query(`SELECT * FROM payment_invoices WHERE id=$1`, [paymentId])).rows[0];
+        if (payRow) {
+          // Письмо со счётом и кнопками согласования (не блокируем intake, если SMTP недоступен).
+          paymentMail.sendDirectorMail(db, paymentId).catch((e) => {
+            console.warn('[intake] sendDirectorMail failed: ' + (e && e.message));
+          });
+          const { createNotification } = require('./notify');
+          const dirs = await db.query(
+            `SELECT id FROM users WHERE role IN ('DIRECTOR_GEN','DIRECTOR_COMM','DIRECTOR_DEV') AND is_active=true`);
+          for (const dd of dirs.rows) {
+            Promise.resolve(createNotification(db, {
+              user_id: dd.id,
+              title: `Счёт #${paymentId} к согласованию`,
+              message: `${Math.round(Number(payRow.amount) || 0).toLocaleString('ru-RU')} ₽ · ${payRow.supplier_name || 'поставщик'}`,
+              type: 'payment',
+              link: `#/payment-invoices?id=${paymentId}`
+            })).catch(() => {});
+          }
+        }
+      } catch (e) { console.warn('[intake] director notify: ' + (e && e.message)); }
       // Обратная связь в реестре: строка ↔ заявка (иначе карточка и архив не видят оплату).
       try {
         await db.query(`UPDATE doc_registry SET payment_invoice_id=$2, updated_at=NOW() WHERE id=$1 AND payment_invoice_id IS NULL`, [docId, paymentId]);

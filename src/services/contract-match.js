@@ -42,8 +42,19 @@ async function matchContract(db, basis = {}) {
   // ВАЖНО: при дублях номеров выбор ОБЯЗАН быть детерминированным (LIMIT 1 без
   // ORDER BY давал то один, то другой договор между прогонами). Приоритет —
   // совпадение контрагента (ИНН, затем имя), далее самый ранний id.
+  //
+  // D-293 (аудит 20.10.2026): номер договора НЕ уникален между контрагентами.
+  // На проде счёт ООО «Электротехническая компания» (ИНН 3015042714) привязался
+  // к договору 56201 другого контрагента — ООО «ТМХ-ЭЛЕКТРОТЕХ» (ИНН 7704469592),
+  // только потому что номер совпал. Формально "ORDER BY" ставил совпадение ИНН
+  // первым, но при отсутствии такого договора всё равно возвращал ЧУЖОЙ —
+  // и код ставил зелёный флаг «договор найден».
+  // Теперь: если в счёте есть ИНН контрагента, а у найденного договора ИНН
+  // ДРУГОЙ — это НЕ совпадение. Возвращаем found:false с причиной, чтобы UI
+  // подсветил «договора нет», а не врал зелёным.
   const exact = await db.query(
-    `SELECT id, number, counterparty_name, customer_inn, start_date, end_date, status, work_id
+    `SELECT id, number, counterparty_name, customer_inn, start_date, end_date, status, work_id,
+            CASE WHEN $2 <> '' AND regexp_replace(coalesce(customer_inn,''), '\\D', '', 'g') = $2 THEN true ELSE false END AS inn_match
        FROM contracts
       WHERE lower(${NORM_SQL}) = $1
       ORDER BY
@@ -53,7 +64,21 @@ async function matchContract(db, basis = {}) {
       LIMIT 1`,
     [num, inn, cpName]
   );
-  if (exact.rows[0]) return { found: true, contract: exact.rows[0], reason: 'exact' };
+  if (exact.rows[0]) {
+    const hit = exact.rows[0];
+    // Если ИНН в счёте известен и в договоре известен, но НЕ совпадают —
+    // это чужой договор с тем же номером.
+    const contractInn = String(hit.customer_inn || '').replace(/\D/g, '');
+    if (inn && contractInn && contractInn !== inn) {
+      return {
+        found: false,
+        reason: 'number_taken_by_other_counterparty',
+        candidates: [hit],
+        conflict: { wanted_inn: inn, contract_inn: contractInn, contract_id: hit.id, number: hit.number }
+      };
+    }
+    return { found: true, contract: hit, reason: 'exact' };
+  }
 
   // 2. По вхождению номера (в счёте могут дописать «оплата по ДП-2025/01 от …»).
   // ВАЖНО (FAIL верификатора 17.10.2026): короткий обобщённый номер («26») давал

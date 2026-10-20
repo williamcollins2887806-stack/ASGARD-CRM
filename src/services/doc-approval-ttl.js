@@ -4,7 +4,7 @@
  * V398 (Часть II): TTL согласования директора — 72 часа.
  * ═══════════════════════════════════════════════════════════════════════════
  * Блокер B2 плана: заявка `awaiting_dir`, не подтверждённая директором за
- * `doc_approval_ttl_hours` (по умолчанию 72ч), уходит в архив.
+ * `doc_approval_ttl_hours` (по умолчанию 168ч = 7 дней), уходит в архив.
  *
  * Правила:
  *   • при создании заявки ставим `approval_expires_at = NOW() + TTL`;
@@ -16,9 +16,13 @@
  */
 
 const TTL_SETTING = 'doc_approval_ttl_hours';
-const DEFAULT_TTL_HOURS = 72;
+// D-293 (заказчик 20.10.2026): «увеличь срок согласования до 7 дней, а не 72 часа».
+// Было 72 ч (3 дня) — за выходные заявка протухала и молча уезжала в архив, так
+// и не показавшись директору. Теперь 168 ч. Значение живёт в настройке
+// doc_approval_ttl_hours; здесь — только fallback, если настройки нет.
+const DEFAULT_TTL_HOURS = 168;
 
-/** TTL в часах из настроек (fallback 72). */
+/** TTL в часах из настроек (fallback 168 = 7 дней). */
 async function ttlHours(db) {
   try {
     const r = await db.query(`SELECT value_json FROM settings WHERE key=$1 LIMIT 1`, [TTL_SETTING]);
