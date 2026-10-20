@@ -45,10 +45,10 @@
   --ok-h: #246B48;
 
   /* Локальные размеры сетки месяцев */
-  --vs-name-w: 250px;
+  --vs-name-w: 286px;
   --vs-mini-w: 26px;
-  --vs-day-h: 25px;
-  --vs-day-fs: 9.5px;
+  --vs-day-h: 30px;
+  --vs-day-fs: 10px;
 }
 
 html[data-theme="light"] {
@@ -291,9 +291,10 @@ html[data-theme="light"] {
   backdrop-filter: var(--glass-blur-sm); -webkit-backdrop-filter: var(--glass-blur-sm);
   box-shadow: var(--inset-hairline);
 }
-/* Раскрыт месяц: сжимаем колонку имени и «мини-месяцы», чтобы 31 день
-   помещался в ширину без горизонтальной прокрутки (в т.ч. 1280×720). */
-.vs-tablewrap.is-narrow { --vs-name-w: 116px; --vs-mini-w: 14px; --vs-day-h: 22px; --vs-day-fs: 8.5px; }
+/* Раскрыт месяц: сжимаем «мини-месяцы», чтобы 31 день помещался в ширину
+   без горизонтальной прокрутки (в т.ч. 1280×720). Колонку имени НЕ режем
+   в «116px» — фамилия с инициалами и должность должны читаться (заказчик, 20.10). */
+.vs-tablewrap.is-narrow { --vs-name-w: 214px; --vs-mini-w: 14px; --vs-day-h: 26px; --vs-day-fs: 9px; }
 .vs-tablewrap.is-narrow .vs-days__nm,
 .vs-tablewrap.is-narrow .vs-body .vs-days { grid-auto-columns: minmax(0, 1fr); }
 .vs-tablewrap.is-narrow .vs-days__wd { font-size: 7.5px; }
@@ -308,8 +309,9 @@ html[data-theme="light"] {
 .vs-tablewrap.is-narrow .vs-name { padding: 6px 8px; }
 .vs-tablewrap.is-narrow .vs-who { gap: 6px; }
 .vs-tablewrap.is-narrow .vs-ava { width: 24px; height: 24px; font-size: 9.5px; }
-.vs-tablewrap.is-narrow .vs-who__n { font-size: 10.5px; }
+.vs-tablewrap.is-narrow .vs-who__n { font-size: 11px; }
 .vs-tablewrap.is-narrow .vs-who__r { font-size: 9.5px; }
+.vs-tablewrap.is-narrow .vs-chips { display: none; }
 .vs-tablewrap.is-narrow .vs-hide { padding: 0 5px; min-width: 22px; height: 22px; }
 .vs-head, .vs-row { display: grid; align-items: stretch; }
 .vs-head {
@@ -343,6 +345,17 @@ html[data-theme="light"] {
 .vs-row.has-pending > .vs-name { box-shadow: inset 3px 0 0 var(--gold); }
 
 .vs-who { display: flex; align-items: center; gap: 9px; }
+.vs-who__tx { min-width: 0; flex: 1 1 auto; }
+/* ФИО полностью: фамилия + инициалы в одну строку, перенос разрешён —
+   иначе «Анд…» вместо «Андросов А.А.» (заказчик, 20.10.2026). */
+.vs-who__n {
+  font-size: 12.5px; font-weight: var(--fw-semi); color: var(--t1);
+  line-height: 1.25; overflow-wrap: anywhere; word-break: break-word;
+}
+.vs-who__r {
+  font-size: 10.5px; color: var(--t3); margin-top: 2px; line-height: 1.25;
+  overflow-wrap: anywhere; word-break: break-word;
+}
 .vs-ava {
   width: 30px; height: 30px; border-radius: 50%; flex-shrink: 0; position: relative;
   display: grid; place-items: center; font-size: 11px; font-weight: var(--fw-extra);
@@ -353,9 +366,6 @@ html[data-theme="light"] {
   background: linear-gradient(150deg, var(--gold), var(--gold-h)); color: var(--on-gold); border-color: transparent;
   box-shadow: var(--glow-gold);
 }
-.vs-who__tx { min-width: 0; flex: 1; }
-.vs-who__n { font-size: 12.5px; font-weight: var(--fw-semi); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.vs-who__r { font-size: 10.5px; color: var(--t3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .vs-you {
   font-size: 9.5px; font-weight: var(--fw-bold); color: var(--on-gold); background: var(--gold);
   border-radius: var(--r-full); padding: 1px 7px; margin-left: 4px;
@@ -438,19 +448,33 @@ button.vs-chip:hover { transform: translateY(-1px); box-shadow: var(--shadow-sm)
 .vs-cdn.has-mark.is-bad  { color: var(--err-t); }
 .vs-cdn.is-tight { font-size: 8.5px; }
 .vs-d {
-  height: var(--vs-day-h); display: grid; place-items: center; font-size: var(--vs-day-fs, 9.5px); color: var(--t3);
+  height: var(--vs-day-h); display: grid; place-items: center; font-size: var(--vs-day-fs, 10px); color: var(--t3);
+  /* Сетка в двух направлениях: видно, где какой день и к какому дню относится ячейка. */
   border-right: 1px solid var(--brd-m); border-top: 1px solid var(--brd-m);
   cursor: default; position: relative; transition: background var(--fast), box-shadow var(--fast);
+  line-height: 1; font-variant-numeric: tabular-nums;
 }
+/* Выходные и праздники — разными оттенками, чтобы не путались.
+   Праздник РФ: красная подложка + верхняя акцентная полоса.
+   Перенос/выходной: нейтральная подложка без акцента. */
 .vs-d--wd, .vs-d--hd { border-top: none; }
 .vs-d--wd { font-size: 9px; color: var(--t3); text-transform: lowercase; }
 .vs-d--hd { font-size: 10px; font-weight: var(--fw-semi); color: var(--t2); }
 .vs-d.is-wk { background: var(--bg3); color: var(--t3); }
-.vs-d--hd.is-wk { color: var(--err-t); }
-.vs-d.is-hol, .vs-d--hd.is-hol { background: var(--err-bg); color: var(--err-t); font-weight: var(--fw-bold); }
-.vs-d.is-shift { background: var(--bg4); color: var(--t2); }
+.vs-d--hd.is-wk { color: var(--t3); opacity: .75; }
+.vs-d.is-hol, .vs-d--hd.is-hol {
+  background: var(--err-bg); color: var(--err-t); font-weight: var(--fw-bold);
+  box-shadow: inset 0 2px 0 var(--err-t);
+}
+.vs-d.is-shift { background: var(--bg4); color: var(--t2); box-shadow: inset 0 2px 0 var(--blue-l); }
 .vs-d.is-mine[data-day] { cursor: pointer; }
 .vs-d.is-mine[data-day]:hover { background: var(--blue-bg); box-shadow: inset 0 0 0 1px var(--brd-info); }
+/* Своя строка в раскрытом месяце — лёгкая подсветка всей полосы дней,
+   чтобы сразу было видно, куда ставить отпуск. */
+.vs-row.is-me .vs-d { background-color: color-mix(in srgb, var(--blue-bg) 42%, transparent); }
+.vs-row.is-me .vs-d.is-wk { background-color: color-mix(in srgb, var(--bg3) 88%, var(--blue-bg)); }
+.vs-row.is-me .vs-d.is-hol { background-color: color-mix(in srgb, var(--err-bg) 85%, var(--blue-bg)); }
+.vs-row.is-me .vs-d.is-vac { background-color: unset; }
 .vs-d.is-sel {
   background: var(--gold-bg) !important; box-shadow: inset 0 0 0 1.5px var(--gold), var(--glow-gold);
   color: var(--gold); font-weight: var(--fw-bold);

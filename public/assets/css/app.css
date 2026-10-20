@@ -1396,18 +1396,20 @@ td .status.gold { background: var(--gold-bg); color: var(--gold); }
   color: var(--t3);
 }
 
-/* Перенос выходных — нейтральная подсветка */
+/* Перенос выходных — нейтральная подсветка с синей засечкой */
 .sched-day.shift {
   background: var(--bg3);
-  color: var(--t3);
-  box-shadow: inset 0 -2px 0 var(--brd);
+  color: var(--t2);
+  box-shadow: inset 0 -2px 0 var(--blue-l);
 }
 
-/* Праздник РФ (ст. 112 ТК) — красная подсветка */
+/* Праздник РФ (ст. 112 ТК) — красная подсветка с верхней засечкой.
+   Отличается от простого выходного и от переноса, чтобы график читался. */
 .sched-day.holiday {
   background: var(--err-bg);
   color: var(--err-t);
   font-weight: var(--fw-extra);
+  box-shadow: inset 0 2px 0 var(--err-t);
 }
 
 .sched-day.today {
@@ -8610,6 +8612,10 @@ label {
 .sched-day.holiday {
   background: var(--err-bg) !important;
   color: var(--err-t) !important;
+  box-shadow: inset 0 2px 0 var(--err-t) !important;
+}
+.sched-day.shift {
+  box-shadow: inset 0 -2px 0 var(--blue-l) !important;
 }
 
 .sched-day.today {

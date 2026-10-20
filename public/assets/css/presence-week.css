@@ -1,0 +1,595 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   НЕДЕЛЬНЫЙ ГЕЙТ ПРИСУТСТВИЯ — премиальный экран (класс «График отпусков»)
+   ───────────────────────────────────────────────────────────────────────────
+   Заменяет нативные <select> на кастомные выпадающие панели с иконками.
+   Никаких эмодзи: иконки — инлайновый SVG, тон 1.6.
+   Все цвета — токены темы (работает в Nordic Night и Soldag Light).
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ── Сцена ─────────────────────────────────────────────────────────────── */
+.pg-scene {
+  position: fixed;
+  inset: 0;
+  z-index: 100000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  overflow: auto;
+  background:
+    radial-gradient(1200px 700px at 50% -10%, rgba(212, 168, 67, 0.10), transparent 60%),
+    radial-gradient(900px 600px at 90% 110%, rgba(38, 86, 168, 0.12), transparent 55%),
+    rgba(6, 9, 16, 0.92);
+  backdrop-filter: blur(10px) saturate(120%);
+  -webkit-backdrop-filter: blur(10px) saturate(120%);
+  animation: pg-scene-in 0.32s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@keyframes pg-scene-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+/* Светлая тема: сцена из пергамента, а не из чёрного стекла */
+html[data-theme="light"] .pg-scene {
+  background:
+    radial-gradient(1100px 650px at 50% -12%, rgba(180, 140, 50, 0.14), transparent 62%),
+    radial-gradient(800px 520px at 92% 112%, rgba(70, 115, 180, 0.10), transparent 58%),
+    rgba(244, 240, 232, 0.90);
+  backdrop-filter: blur(14px) saturate(115%);
+  -webkit-backdrop-filter: blur(14px) saturate(115%);
+}
+
+/* ── Карточка ──────────────────────────────────────────────────────────── */
+.pg-card {
+  position: relative;
+  width: min(720px, 100%);
+  max-height: calc(100vh - 40px);
+  display: flex;
+  flex-direction: column;
+  border-radius: 22px;
+  overflow: hidden;
+  color: var(--text-primary);
+  background: linear-gradient(158deg, var(--bg-elevated, #10182b), var(--bg-card, #161019) 92%);
+  border: 1px solid var(--border-default, #2a3550);
+  box-shadow:
+    0 32px 80px rgba(0, 0, 0, 0.62),
+    0 2px 0 rgba(255, 255, 255, 0.04) inset,
+    0 0 0 1px rgba(212, 168, 67, 0.10) inset;
+  animation: pg-card-in 0.38s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@keyframes pg-card-in {
+  from { opacity: 0; transform: translateY(14px) scale(0.985); }
+  to   { opacity: 1; transform: none; }
+}
+
+html[data-theme="light"] .pg-card {
+  background: linear-gradient(158deg, #fffdf9, #f7f2e8 92%);
+  border-color: rgba(120, 100, 60, 0.22);
+  box-shadow:
+    0 30px 70px rgba(60, 48, 26, 0.18),
+    0 1px 0 rgba(255, 255, 255, 0.9) inset,
+    0 0 0 1px rgba(180, 140, 50, 0.10) inset;
+}
+
+/* Золотая нить по верхней кромке */
+.pg-card::before {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, var(--gold, #d4a843) 22%, var(--gold-l, #e8c35a) 50%, var(--gold, #d4a843) 78%, transparent);
+  opacity: 0.85;
+}
+
+/* ── Шапка ─────────────────────────────────────────────────────────────── */
+.pg-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  padding: 24px 26px 18px;
+}
+
+.pg-sigil {
+  flex: 0 0 auto;
+  width: 46px;
+  height: 46px;
+  border-radius: 14px;
+  display: grid;
+  place-items: center;
+  color: var(--gold, #d4a843);
+  background: linear-gradient(150deg, rgba(212, 168, 67, 0.18), rgba(212, 168, 67, 0.04));
+  border: 1px solid rgba(212, 168, 67, 0.30);
+  box-shadow: 0 2px 10px rgba(212, 168, 67, 0.14), 0 0 0 1px rgba(255, 255, 255, 0.03) inset;
+}
+
+.pg-sigil svg { width: 24px; height: 24px; }
+
+html[data-theme="light"] .pg-sigil {
+  color: #8a6a1e;
+  background: linear-gradient(150deg, rgba(180, 140, 50, 0.16), rgba(180, 140, 50, 0.03));
+  border-color: rgba(150, 115, 30, 0.28);
+}
+
+.pg-head-tx { min-width: 0; flex: 1; }
+
+.pg-kicker {
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--gold, #d4a843);
+  opacity: 0.85;
+  margin-bottom: 5px;
+}
+
+html[data-theme="light"] .pg-kicker { color: #8a6a1e; opacity: 0.9; }
+
+.pg-title {
+  font-size: 21px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  line-height: 1.2;
+  margin: 0;
+}
+
+.pg-sub {
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--text-muted);
+  margin-top: 5px;
+}
+
+.pg-range {
+  flex: 0 0 auto;
+  text-align: right;
+  padding-left: 8px;
+}
+
+.pg-range-lbl {
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.11em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  opacity: 0.75;
+}
+
+.pg-range-val {
+  font-size: 13px;
+  font-weight: 700;
+  margin-top: 3px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* ── Тело ──────────────────────────────────────────────────────────────── */
+.pg-body {
+  padding: 0 26px 4px;
+  overflow: auto;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.pg-days { display: flex; flex-direction: column; gap: 8px; padding-bottom: 6px; }
+
+/* ── Строка дня ────────────────────────────────────────────────────────── */
+.pg-row {
+  display: grid;
+  grid-template-columns: 76px 1fr;
+  align-items: center;
+  gap: 12px;
+  padding: 9px 10px;
+  border-radius: 13px;
+  border: 1px solid transparent;
+  transition: background 0.16s ease, border-color 0.16s ease;
+}
+
+.pg-row:hover { background: rgba(255, 255, 255, 0.028); border-color: rgba(255, 255, 255, 0.05); }
+
+html[data-theme="light"] .pg-row:hover {
+  background: rgba(120, 100, 60, 0.05);
+  border-color: rgba(120, 100, 60, 0.10);
+}
+
+/* Сегодняшний день — акцентная засечка */
+.pg-row.is-today {
+  background: linear-gradient(90deg, rgba(212, 168, 67, 0.10), transparent 70%);
+  border-color: rgba(212, 168, 67, 0.20);
+}
+
+.pg-day { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+
+.pg-day-wd {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  opacity: 0.8;
+}
+
+.pg-row.is-today .pg-day-wd { color: var(--gold, #d4a843); opacity: 1; }
+
+.pg-day-num {
+  font-size: 14px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Выпадающий селект ─────────────────────────────────────────────────── */
+.pg-select {
+  position: relative;
+  min-width: 0;
+}
+
+.pg-trigger {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 13px;
+  border-radius: 12px;
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+  font-size: 13.5px;
+  color: var(--text-primary);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.045), rgba(255, 255, 255, 0.015));
+  border: 1px solid var(--border-default, #2a3550);
+  transition: border-color 0.16s ease, background 0.16s ease, box-shadow 0.16s ease;
+}
+
+.pg-trigger:hover {
+  border-color: rgba(212, 168, 67, 0.38);
+  background: linear-gradient(180deg, rgba(212, 168, 67, 0.09), rgba(255, 255, 255, 0.02));
+}
+
+.pg-trigger:focus-visible {
+  outline: none;
+  border-color: var(--gold, #d4a843);
+  box-shadow: 0 0 0 3px rgba(212, 168, 67, 0.18);
+}
+
+.pg-select.is-open .pg-trigger {
+  border-color: var(--gold, #d4a843);
+  box-shadow: 0 0 0 3px rgba(212, 168, 67, 0.16);
+}
+
+html[data-theme="light"] .pg-trigger {
+  background: linear-gradient(180deg, #fff, #fbf8f2);
+  border-color: rgba(120, 100, 60, 0.22);
+}
+
+html[data-theme="light"] .pg-trigger:hover {
+  border-color: rgba(150, 115, 30, 0.45);
+  background: linear-gradient(180deg, #fff, #fdf6e6);
+}
+
+/* Иконка статуса в триггере */
+.pg-trig-ic {
+  flex: 0 0 auto;
+  width: 26px;
+  height: 26px;
+  border-radius: 8px;
+  display: grid;
+  place-items: center;
+  color: var(--text-muted);
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  transition: color 0.16s ease, background 0.16s ease;
+  pointer-events: none;
+}
+
+.pg-trig-ic svg { width: 15px; height: 15px; }
+
+html[data-theme="light"] .pg-trig-ic {
+  background: rgba(120, 100, 60, 0.07);
+  border-color: rgba(120, 100, 60, 0.12);
+}
+
+/* Когда статус выбран — плашка окрашивается в тон статуса */
+.pg-select.has-value .pg-trig-ic {
+  color: var(--pg-tone, var(--gold, #d4a843));
+  background: color-mix(in srgb, var(--pg-tone, #d4a843) 16%, transparent);
+  border-color: color-mix(in srgb, var(--pg-tone, #d4a843) 32%, transparent);
+}
+
+.pg-trig-label {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+  /* Клики принимает сама кнопка .pg-trigger: иначе подпись перехватывает их
+     и Playwright/пользователь «попадает» в span вместо кнопки. */
+  pointer-events: none;
+}
+
+.pg-select:not(.has-value) .pg-trig-label {
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+.pg-trig-where {
+  font-weight: 500;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+/* Шеврон */
+.pg-chev {
+  flex: 0 0 auto;
+  width: 15px;
+  height: 15px;
+  color: var(--text-muted);
+  opacity: 0.65;
+  transition: transform 0.2s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.16s ease;
+  pointer-events: none;
+}
+
+.pg-select.is-open .pg-chev { transform: rotate(180deg); opacity: 1; color: var(--gold, #d4a843); }
+
+/* ── Панель выбора ─────────────────────────────────────────────────────── */
+.pg-pop {
+  position: absolute;
+  z-index: 30;
+  top: calc(100% + 7px);
+  left: 0;
+  right: 0;
+  padding: 6px;
+  border-radius: 14px;
+  max-height: 292px;
+  overflow: auto;
+  background: var(--bg-elevated, #131c30);
+  border: 1px solid var(--border-default, #2a3550);
+  box-shadow: 0 20px 44px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(212, 168, 67, 0.08);
+  animation: pg-pop-in 0.17s cubic-bezier(0.22, 1, 0.36, 1);
+  transform-origin: top center;
+}
+
+.pg-pop.is-up { top: auto; bottom: calc(100% + 7px); transform-origin: bottom center; }
+
+@keyframes pg-pop-in {
+  from { opacity: 0; transform: translateY(-5px) scale(0.98); }
+  to   { opacity: 1; transform: none; }
+}
+
+html[data-theme="light"] .pg-pop {
+  background: #fffdf9;
+  border-color: rgba(120, 100, 60, 0.20);
+  box-shadow: 0 18px 40px rgba(60, 48, 26, 0.16), 0 0 0 1px rgba(180, 140, 50, 0.08);
+}
+
+.pg-opt {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 10px;
+  border: 0;
+  border-radius: 10px;
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+  font-size: 13.5px;
+  color: var(--text-primary);
+  background: transparent;
+  transition: background 0.13s ease, color 0.13s ease;
+}
+
+.pg-opt:hover,
+.pg-opt:focus-visible {
+  outline: none;
+  background: rgba(212, 168, 67, 0.12);
+}
+
+html[data-theme="light"] .pg-opt:hover,
+html[data-theme="light"] .pg-opt:focus-visible { background: rgba(150, 115, 30, 0.10); }
+
+.pg-opt.is-active { background: rgba(212, 168, 67, 0.16); }
+
+.pg-opt-ic {
+  flex: 0 0 auto;
+  width: 28px;
+  height: 28px;
+  border-radius: 9px;
+  display: grid;
+  place-items: center;
+  color: var(--pg-tone, var(--text-muted));
+  background: color-mix(in srgb, var(--pg-tone, #8899b8) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--pg-tone, #8899b8) 26%, transparent);
+}
+
+.pg-opt-ic svg { width: 15px; height: 15px; }
+
+.pg-opt-label { flex: 1 1 auto; min-width: 0; font-weight: 600; }
+
+.pg-opt-check {
+  flex: 0 0 auto;
+  width: 15px;
+  height: 15px;
+  color: var(--gold, #d4a843);
+  opacity: 0;
+  transform: scale(0.7);
+  transition: opacity 0.13s ease, transform 0.13s ease;
+}
+
+.pg-opt.is-active .pg-opt-check { opacity: 1; transform: none; }
+
+/* ── Отпуск: строка без выбора ─────────────────────────────────────────── */
+.pg-row.is-vacation {
+  background: linear-gradient(90deg, rgba(212, 168, 67, 0.13), rgba(212, 168, 67, 0.03) 60%);
+  border-color: rgba(212, 168, 67, 0.26);
+  cursor: default;
+}
+
+.pg-vac {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 13px;
+  border-radius: 12px;
+  border: 1px solid rgba(212, 168, 67, 0.30);
+  background: rgba(212, 168, 67, 0.09);
+}
+
+.pg-vac-ic {
+  width: 26px;
+  height: 26px;
+  border-radius: 8px;
+  display: grid;
+  place-items: center;
+  color: var(--gold, #d4a843);
+  background: rgba(212, 168, 67, 0.16);
+  border: 1px solid rgba(212, 168, 67, 0.30);
+}
+
+.pg-vac-ic svg { width: 15px; height: 15px; }
+
+.pg-vac-tx { flex: 1 1 auto; min-width: 0; }
+.pg-vac-t { font-size: 13.5px; font-weight: 700; color: var(--gold, #d4a843); }
+.pg-vac-s { font-size: 11px; color: var(--text-muted); margin-top: 1px; }
+
+/* ── Выбор работы (появляется при «На объекте») ────────────────────────── */
+.pg-work {
+  margin-top: 12px;
+  padding: 13px 14px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.028);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  animation: pg-work-in 0.22s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@keyframes pg-work-in {
+  from { opacity: 0; transform: translateY(-6px); }
+  to   { opacity: 1; transform: none; }
+}
+
+html[data-theme="light"] .pg-work {
+  background: rgba(120, 100, 60, 0.05);
+  border-color: rgba(120, 100, 60, 0.14);
+}
+
+.pg-work-lbl {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.10em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin-bottom: 8px;
+}
+
+.pg-work-lbl svg { width: 13px; height: 13px; }
+
+/* ── Ошибка ────────────────────────────────────────────────────────────── */
+.pg-err {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 18px;
+  padding: 0 26px;
+  margin-top: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #f87171;
+}
+
+html[data-theme="light"] .pg-err { color: #b42318; }
+
+.pg-err svg { width: 14px; height: 14px; flex: 0 0 auto; }
+
+/* ── Подвал ────────────────────────────────────────────────────────────── */
+.pg-foot {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 26px 22px;
+  border-top: 1px solid rgba(255, 255, 255, 0.055);
+  margin-top: 10px;
+}
+
+html[data-theme="light"] .pg-foot { border-top-color: rgba(120, 100, 60, 0.13); }
+
+.pg-hint {
+  flex: 1 1 auto;
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: var(--text-muted);
+}
+
+.pg-hint b { color: var(--text-primary); font-weight: 700; }
+
+/* ── Кнопка ────────────────────────────────────────────────────────────── */
+.pg-btn {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 22px;
+  border: 0;
+  border-radius: 12px;
+  cursor: pointer;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 800;
+  letter-spacing: 0.01em;
+  color: #1a1206;
+  background: linear-gradient(135deg, var(--gold-l, #e8c35a), var(--gold, #d4a843) 55%, #b8922e);
+  box-shadow: 0 4px 16px rgba(212, 168, 67, 0.30), 0 1px 0 rgba(255, 255, 255, 0.35) inset;
+  transition: transform 0.13s ease, box-shadow 0.16s ease, filter 0.16s ease;
+}
+
+.pg-btn:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 8px 24px rgba(212, 168, 67, 0.40), 0 1px 0 rgba(255, 255, 255, 0.35) inset;
+  filter: brightness(1.04);
+}
+
+.pg-btn:active:not(:disabled) { transform: translateY(0); }
+
+.pg-btn:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(212, 168, 67, 0.35), 0 6px 20px rgba(212, 168, 67, 0.32);
+}
+
+.pg-btn:disabled { opacity: 0.62; cursor: default; }
+
+.pg-btn svg { width: 15px; height: 15px; }
+
+/* ── Узкие экраны ──────────────────────────────────────────────────────── */
+@media (max-width: 620px) {
+  .pg-scene { padding: 10px; }
+  .pg-card { border-radius: 18px; max-height: calc(100vh - 20px); }
+  .pg-head { padding: 18px 18px 14px; gap: 11px; }
+  .pg-title { font-size: 18px; }
+  .pg-body { padding: 0 18px 2px; }
+  .pg-foot { padding: 12px 18px 18px; flex-direction: column; align-items: stretch; gap: 10px; }
+  .pg-err { padding: 0 18px; }
+  .pg-btn { justify-content: center; width: 100%; }
+  .pg-range { display: none; }
+  .pg-row { grid-template-columns: 64px 1fr; gap: 9px; }
+}
+
+/* Высокие, но узкие: не даём карточке вылезти */
+@media (max-height: 720px) {
+  .pg-head { padding: 16px 22px 12px; }
+  .pg-row { padding: 6px 8px; }
+  .pg-foot { padding: 10px 22px 16px; }
+}
+
+/* Уважаем системную настройку «меньше движения» */
+@media (prefers-reduced-motion: reduce) {
+  .pg-scene,
+  .pg-card,
+  .pg-pop,
+  .pg-work { animation: none !important; }
+  .pg-trigger,
+  .pg-chev,
+  .pg-btn { transition: none !important; }
+}

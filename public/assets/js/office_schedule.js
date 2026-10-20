@@ -330,7 +330,12 @@ window.AsgardOfficeSchedulePage=(function(){
         else if(info && info.kind === 'shift') cls.push('shift');
         else if(nonWorking) cls.push('weekend');
         if(isToday) cls.push('today');
-        const ttl = (info && info.title) ? `${iso} · ${info.title}` : iso;
+        // Тултип: отдельно праздник РФ, отдельно перенос и обычный выходной.
+        let ttl = `${d} ${MONTHS_RU[viewMonth]} · ${['вс','пн','вт','ср','чт','пт','сб'][dt.getDay()]}`;
+        if(info && info.kind === 'holiday') ttl += ` · Праздник РФ: ${info.title || 'нерабочий день'}`;
+        else if(info && info.kind === 'shift') ttl += ` · Перенос выходного: ${info.title || 'нерабочий день'}`;
+        else if(nonWorking) ttl += ' · выходной';
+        if(isToday) ttl += ' · сегодня';
         days.push(`<div class="${cls.join(' ')}" title="${esc(ttl)}">${d}</div>`);
       }
 

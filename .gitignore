@@ -206,3 +206,9 @@ tmp_*.py
 _model_backup/
 _model_tmp/
 _draco_test/
+
+# Временные артефакты аудита прода и бэкапы секретов (20.10.2026)
+.env.bak-*
+tmp-*.sql
+tools/_prod_audit/
+tools/_prod_blocks_backup/

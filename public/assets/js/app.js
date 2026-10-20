@@ -337,7 +337,6 @@ console.log('[ASGARD] Global period functions loaded');
     {r:"/training",l:"Обучение",d:"Заявки на обучение",roles:ALL_ROLES,i:"school",p:"training_applications",g:"personnel"},
     {r:"/office-academy",l:"Академия Асгарда",d:"Корпоративное обучение — уроки и квизы",roles:ALL_ROLES,i:"school",p:"office_academy",g:"personnel"},
     {r:"/office-schedule",l:"График: Офис",d:"Статусы по дням",roles:ALL_ROLES,i:"schedule",p:"office_schedule",g:"personnel"},
-    {r:"/vacation-schedule",l:"График отпусков",d:"Отпуска офиса",roles:ALL_ROLES,i:"calendar",p:"office_schedule",g:"personnel"},
     {r:"/workers-schedule",l:"График: Рабочие",d:"Бронь и доступность",roles:["ADMIN","HR","HR_MANAGER",...DIRECTOR_ROLES],i:"workers",p:"workers_schedule",g:"personnel"},
     {r:"/hr-rating",l:"Рейтинг Дружины",d:"Оценки и средний балл",roles:["ADMIN","HR","HR_MANAGER",...DIRECTOR_ROLES],i:"rating",p:"hr_rating",g:"personnel"},
     {r:"/travel",l:"Логистика дружины",d:"Жильё, билеты, направления, обучение",roles:["ADMIN","OFFICE_MANAGER","HR","HR_MANAGER","PM",...DIRECTOR_ROLES],i:"travel",p:"travel",g:"personnel"},
@@ -1650,140 +1649,23 @@ var _setupPinKeypad = null;
     try { if (window.AsgardSessionGuard) AsgardSessionGuard.init(); } catch(e) { console.warn("[SessionGuard] init error:", e); }
   }
 
-  // ─── ГЕЙТ присутствия «отметка в дружину» (блокирующая модалка для офиса) ───
-  // Источник = staff_plan (тот же, что у «Графика офиса»). Отметка сразу видна в графике.
+  // ─── ГЕЙТ присутствия: недельная отметка (премиальный экран) ───────────────
+  // Заказчик (18.10.2026): сотрудник заполняет РАБОЧУЮ НЕДЕЛЮ (пн–пт) целиком.
+  // UI — отдельный компонент public/assets/js/presence_week.js (кастомные селекты,
+  // SVG-иконки, токены темы). Контракт API прежний: GET/POST /api/daily-presence/week.
   async function showPresenceGate(){
     var auth = (window.AsgardAuth && AsgardAuth.getAuth) ? AsgardAuth.getAuth() : null;
     if (!auth || !auth.token) return;
-
-    // Заказчик (18.10.2026): сотрудник заполняет РАБОЧУЮ НЕДЕЛЮ (пн–пт) целиком,
-    // а не только сегодня. Зашёл не в понедельник — тоже спрашиваем про текущую неделю.
-    var week;
-    try {
-      var r = await fetch('/api/daily-presence/week', { headers: { 'Authorization': 'Bearer ' + auth.token } });
-      week = await r.json();
-    } catch (e) { return; }                 // сеть упала — не блокируем (fail-open)
-    if (!week || !week.required) return;    // неделя уже заполнена (или не офисная роль)
-
-    var serverDate = week.server_date || new Date().toISOString().slice(0, 10);
-    var weekKey = 'presence_week_done_' + (week.week_start || serverDate);
-    if (localStorage.getItem(weekKey) === '1') return;
-
-    var statuses = (week.statuses && week.statuses.length) ? week.statuses : [
-      { code: 'оф', label: 'В офисе' }, { code: 'уд', label: 'Удалёнка' },
-      { code: 'км', label: 'Командировка' }, { code: 'бн', label: 'Больничный' },
-      { code: 'сс', label: 'За свой счёт' }, { code: 'вх', label: 'Выходной' },
-    ];
-    var works = week.works || [];
-    var days = week.days || [];
-
-    function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]); }); }
-    var WD = ['вс', 'пн', 'вт', 'ср', 'чт', 'пт', 'сб'];
-    function dayLabel(iso) {
-      var p = iso.split('-').map(Number);
-      var dt = new Date(Date.UTC(p[0], p[1] - 1, p[2]));
-      return WD[dt.getUTCDay()] + ', ' + p[2] + '.' + String(p[1]).padStart(2, '0');
+    if (!window.AsgardPresenceWeek || !AsgardPresenceWeek.mount) {
+      // Компонент не загрузился — не блокируем работу (fail-open), как и при падении сети.
+      console.warn('[PresenceGate] presence_week.js не загружен — гейт пропущен');
+      return;
     }
-    var userName = (auth.user && auth.user.name) ? auth.user.name : '';
-    var firstName = userName ? userName.trim().split(/\s+/).slice(-1)[0] : '';
-    var greet = firstName ? ('Привет, ' + esc(firstName) + '!') : 'Доброго дня, воин!';
-
-    return new Promise(function (resolve) {
-      var ov = document.createElement('div');
-      ov.id = 'asgard-presence-gate';
-      ov.setAttribute('style',
-        'position:fixed;inset:0;z-index:100000;display:flex;align-items:center;justify-content:center;' +
-        'background:rgba(6,9,16,0.94);backdrop-filter:blur(6px);overflow:auto;padding:16px');
-      var workOpts = works.map(function (w) {
-        var place = w.place ? (' · ' + esc(w.place)) : '';
-        return '<option value="' + w.id + '">' + esc(w.title) + place + '</option>';
-      }).join('');
-
-      // Строка каждого рабочего дня недели: дата + выбор статуса.
-      var rowsHtml = days.map(function (d) {
-        if (d.on_vacation) {
-          return '<div style="display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:10px;background:#16233a">' +
-            '<span style="width:74px;font-size:12px;opacity:.7">' + esc(dayLabel(d.date)) + '</span>' +
-            '<span style="font-size:13px;font-weight:700;color:#e9c46a">Отпуск</span>' +
-            '<span style="margin-left:auto;font-size:11px;opacity:.55">уже согласовано</span></div>';
-        }
-        var opts = statuses.map(function (s) {
-          var sel = (d.status_code === s.code) ? ' selected' : '';
-          return '<option value="' + esc(s.code) + '"' + sel + '>' + esc(s.label) + '</option>';
-        }).join('');
-        return '<div style="display:flex;align-items:center;gap:10px;padding:6px 0" data-day-row="' + esc(d.date) + '">' +
-          '<span style="width:74px;font-size:12px;opacity:.7">' + esc(dayLabel(d.date)) + '</span>' +
-          '<select data-day="' + esc(d.date) + '" style="flex:1;padding:9px;border-radius:9px;background:#111726;color:#e9eff8;border:1px solid #2a3550">' +
-          '<option value="">— выбери —</option>' + opts +
-          '</select></div>';
-      }).join('');
-
-      ov.innerHTML =
-        '<div style="width:min(560px,95vw);background:linear-gradient(160deg,#10182b,#161019);border:1px solid #2a3550;border-radius:18px;' +
-        'padding:24px;box-shadow:0 20px 60px #000a, inset 0 0 0 1px #d8b15a22;font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;color:#e9eff8">' +
-        '<div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">' +
-        '<span style="font-size:22px">🛡️</span>' +
-        '<div style="font-size:19px;font-weight:900">' + greet + '</div></div>' +
-        '<div style="font-size:13.5px;opacity:.75;margin-bottom:4px">Заполни рабочую неделю — где ты будешь держать строй?</div>' +
-        '<div style="font-size:11.5px;opacity:.5;margin-bottom:14px">Только рабочие дни (пн–пт). Выходные и праздники пропущены. Запись попадёт в «График офиса».</div>' +
-        '<div id="pg-days">' + rowsHtml + '</div>' +
-        '<div id="pg-work-wrap" style="display:none;margin-top:12px">' +
-        '<label style="font-size:12px;opacity:.7">Работа (для «На объекте»)</label>' +
-        '<select id="pg-work" style="width:100%;margin-top:5px;padding:10px;border-radius:10px;background:#111726;color:#e9eff8;border:1px solid #2a3550">' + workOpts + '</select></div>' +
-        '<div id="pg-err" style="color:#f85149;font-size:12px;margin-top:10px;min-height:16px"></div>' +
-        '<button id="pg-save" style="width:100%;margin-top:6px;padding:13px;border:none;border-radius:11px;cursor:pointer;' +
-        'background:linear-gradient(135deg,#1f6fff,#7a3aff);color:#fff;font-size:15px;font-weight:800">⚔ В строй</button>' +
-        '</div>';
-      document.body.appendChild(ov);
-
-      // При «На объекте» где-то в неделе — показываем выбор работы.
-      function syncWorkVisibility() {
-        var anyObj = Array.prototype.some.call(ov.querySelectorAll('[data-day]'), function (s) { return s.value === 'об'; });
-        ov.querySelector('#pg-work-wrap').style.display = anyObj ? 'block' : 'none';
-      }
-      Array.prototype.forEach.call(ov.querySelectorAll('[data-day]'), function (s) {
-        s.addEventListener('change', syncWorkVisibility);
-      });
-      syncWorkVisibility();
-
-      // блокируем клик-вне — модалку нельзя закрыть без выбора
-      ov.addEventListener('click', function (e) { if (e.target === ov) e.stopPropagation(); });
-
-      ov.querySelector('#pg-save').addEventListener('click', async function () {
-        var errEl = ov.querySelector('#pg-err');
-        var payload = [];
-        var workId = null;
-        var objSel = ov.querySelector('#pg-work');
-        if (objSel) workId = parseInt(objSel.value, 10) || null;
-
-        Array.prototype.forEach.call(ov.querySelectorAll('[data-day]'), function (s) {
-          if (!s.value) return;
-          payload.push({ date: s.getAttribute('data-day'), status_code: s.value, work_id: s.value === 'об' ? workId : null });
-        });
-        if (!payload.length) { errEl.textContent = 'Отметь хотя бы один день'; return; }
-        if (payload.some(function (p) { return p.status_code === 'об'; }) && !workId) {
-          errEl.textContent = 'Выбери работу для «На объекте»'; return;
-        }
-
-        var btn = ov.querySelector('#pg-save');
-        btn.disabled = true; btn.textContent = 'Сохранение...';
-        try {
-          var resp = await fetch('/api/daily-presence/week', {
-            method: 'POST',
-            headers: { 'Authorization': 'Bearer ' + auth.token, 'Content-Type': 'application/json' },
-            body: JSON.stringify({ days: payload }),
-          });
-          var j = await resp.json().catch(function () { return {}; });
-          if (!resp.ok) throw new Error(j.message || 'save failed');
-          localStorage.setItem(weekKey, '1');
-          ov.remove();
-          resolve();
-        } catch (e) {
-          errEl.textContent = e.message || 'Не удалось сохранить. Повтори.';
-          btn.disabled = false; btn.textContent = '⚔ В строй';
-        }
-      });
-    });
+    try {
+      await AsgardPresenceWeek.mount({ auth: auth });
+    } catch (e) {
+      console.warn('[PresenceGate] error:', e);   // сеть/сервер упали — не блокируем
+    }
   }
 
 

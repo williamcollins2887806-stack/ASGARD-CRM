@@ -46,6 +46,7 @@ window.AsgardVacationSchedulePage = (function () {
   var MONTHS = ['Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь', 'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь'];
   var MONTHS_GEN = ['января', 'февраля', 'марта', 'апреля', 'мая', 'июня', 'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря'];
   var WEEKDAYS = ['пн', 'вт', 'ср', 'чт', 'пт', 'сб', 'вс'];
+  var WEEKDAY_FULL = ['воскресенье', 'понедельник', 'вторник', 'среда', 'четверг', 'пятница', 'суббота'];
   var MINI_W = '26px';
 
   /* ── Иконки: inline SVG, единый штрих (не эмодзи) ─────────────────────── */
@@ -231,14 +232,22 @@ window.AsgardVacationSchedulePage = (function () {
   function isTestRow(fio) { return /^(test|тест)\s/i.test(String(fio || '').trim()); }
 
   function groupsVisible(groups) {
-    if (S.hideAll) return [];
+    if (S.hideAll) {
+      // «Скрыть всех» скрывает КОЛЛЕГ, но не меня: своя строка должна остаться,
+      // иначе некуда ставить отпуск (заказчик, 20.10.2026).
+      return groups.map(function (g) {
+        // ВАЖНО: filter передаёт элемент, а не id — isMine(m) дал бы Number(object)=NaN
+        // и скрыл бы себя же. Передаём m.id явно.
+        return { key: g.key, title: g.title, members: g.members.filter(function (m) { return isMine(m.id); }) };
+      }).filter(function (g) { return g.members.length; });
+    }
     if (S.deptOnly) {
       var myGroup = groupKeyOf(S.myRole);
       return groups.filter(function (g) { return g.key === myGroup; });
     }
     return groups.filter(function (g) { return !S.hiddenGroups[g.key]; })
       .map(function (g) {
-        return { key: g.key, title: g.title, members: g.members.filter(function (m) { return !S.hiddenPeople[m.id]; }) };
+        return { key: g.key, title: g.title, members: g.members.filter(function (m) { return !S.hiddenPeople[m.id] || isMine(m.id); }) };
       })
       .filter(function (g) { return g.members.length; });
   }
@@ -352,7 +361,11 @@ window.AsgardVacationSchedulePage = (function () {
           '<div class="vs-days__wd">' + WEEKDAYS.map(function (w) { return '<div class="vs-d vs-d--wd">' + w + '</div>'; }).join('') + '</div>' +
           '<div class="vs-days__nm">' + dayCells(m).map(function (c) {
             var cls = 'vs-d vs-d--hd' + (c.wk ? ' is-wk' : '') + (c.hol ? ' is-hol' : '') + (c.shift ? ' is-shift' : '');
-            var tip = c.hol ? calTitle(c.iso) : (c.shift ? calTitle(c.iso) : '');
+            // Тултип: что за праздник / какой перенос / просто выходной.
+            var tip = '';
+            if (c.hol) tip = 'Праздник РФ: ' + (calTitle(c.iso) || 'нерабочий день') + ' — в отпуск не входит, продлевает его (ст. 120 ТК РФ)';
+            else if (c.shift) tip = 'Перенос выходного: ' + (calTitle(c.iso) || 'нерабочий день');
+            else if (c.wk) tip = 'Выходной день недели';
             return '<div class="' + cls + '"' + (tip ? ' title="' + esc(tip) + '"' : '') + '>' + c.d + '</div>';
           }).join('') + '</div></div>';
       } else {
@@ -416,19 +429,20 @@ window.AsgardVacationSchedulePage = (function () {
     var cmpYear = new Date().getFullYear();
     var cells = '';
     for (var m = 1; m <= 12; m++) {
-      // Моя строка в раскрытом месяце — 31 кликабельный день (нужен для выбора).
-      // У остальных в раскрытом месяце и у всех в прочих месяцах — значок с числом
-      // дней и тултипом с датами (даже когда месяц скрыт).
-      if (S.openMonth === m && mine) {
+      // В раскрытом месяце сетка дней видна У ВСЕХ сотрудников — иначе непонятно,
+      // когда коллега в отпуске и с кем можно совпасть. Редактировать можно только
+      // свою строку (canEditDays), у остальных ячейки — витрина.
+      if (S.openMonth === m) {
+        var mineRow = mine;
         cells += '<div class="vs-days">' + dayCells(m).map(function (c) {
           var r = cellPeriod(emp.id, c.iso);
-          var sel = canEditDays() && !!S.sel[c.iso];
-          var editable = canEditDays();
+          var sel = mineRow && canEditDays() && !!S.sel[c.iso];
+          var editable = mineRow && canEditDays();
           var blocked = S.blocked.indexOf(c.iso) >= 0;
           var cls = ['vs-d'];
           if (c.wk) cls.push('is-wk');
           if (c.hol) cls.push('is-hol'); else if (c.shift) cls.push('is-shift');
-          cls.push('is-mine');
+          if (mineRow) cls.push('is-mine');
           if (sel) cls.push('is-sel');
           if (r) {
             cls.push('is-vac');
@@ -438,10 +452,13 @@ window.AsgardVacationSchedulePage = (function () {
           var attrs = editable ? ' data-day="' + c.iso + '" data-emp="' + emp.id + '" role="button" tabindex="0"' : '';
           if (!editable && r) attrs += ' data-vs-why="График закрыт или период согласован — правка недоступна"';
           if (blocked) attrs += ' data-vs-blocked="' + c.iso + '"';
-          var tip = c.iso + (c.hol ? ' · ' + calTitle(c.iso) + ' (праздник, в отпуск не входит)' : '')
-            + (c.shift ? ' · ' + calTitle(c.iso) : '')
-            + (r ? ' · ' + stOf(r).label + ': ' + fmtRange(String(r.date_from), String(r.date_to)) : '')
-            + (blocked ? ' · снято директором — повторно нельзя' : '');
+          var fmtD = parseIso(c.iso);
+          var tip = fmtD.d + '.' + pad(fmtD.m) + ' · ' + (WEEKDAY_FULL[dow(S.year, m, c.d)] || '');
+          if (c.hol) tip += ' · Праздник РФ: ' + (calTitle(c.iso) || 'нерабочий день') + ' (в отпуск не входит, продлевает его)';
+          else if (c.shift) tip += ' · Перенос выходного: ' + (calTitle(c.iso) || 'нерабочий день');
+          else if (c.wk) tip += ' · выходной';
+          if (r) tip += ' · ' + stOf(r).label + ': ' + fmtRange(String(r.date_from), String(r.date_to));
+          if (blocked) tip += ' · снято директором — повторно нельзя';
           return '<div class="' + cls.join(' ') + '"' + attrs + ' title="' + esc(tip) + '">' +
             (r ? '<i class="vs-d__dot"></i>' : '') + c.d + '</div>';
         }).join('') + '</div>';
