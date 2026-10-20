@@ -2651,7 +2651,11 @@ window.AsgardDocHubPage = (function () {
     if (!host) return;
     host.innerHTML = '<div class="dh-empty">Загрузка графика оплат…</div>';
     let d;
-    try { d = await api('/payment-schedule?scope=' + encodeURIComponent(state.scope)); } catch (e) {
+    // D-291: для сводных экранов (график) «только мои» почти всегда даёт пусто —
+    // у администратора после передачи документов Тумаевой своих строк нет вовсе.
+    // Поэтому график ВСЕГДА смотрит все доступные роли строки; фильтр «Показать
+    // все» на реестре на него не влияет.
+    try { d = await api('/payment-schedule?scope=all'); } catch (e) {
       host.innerHTML = `<div class="dh-empty"><div class="dh-empty__t">Не удалось загрузить график</div><p>${esc(e.message || '')}</p></div>`;
       return;
     }
