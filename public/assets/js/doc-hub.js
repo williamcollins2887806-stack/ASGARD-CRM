@@ -24,6 +24,10 @@ window.AsgardDocHubPage = (function () {
     yellow: 'Жёлтый: срок ≤ 5 рабочих дней',
     green: 'Зелёный: действий не требуется'
   };
+  // D-298 (заказчик 20.10.2026): типы закрывающих документов.
+  // Было только СФ/УПД/Акт — не было чека и СЗ, хотя они встречаются.
+  // Дублируется справочником settings.doc_closing_kinds (V423) для бэка.
+  const CLOSING_KINDS = ['СФ', 'УПД', 'Акт', 'Чек', 'СЗ', 'ТОРГ-12', 'Иное'];
   // Selectable VAT rates: null = без НДС, 0 = 0%, 0.05/0.1/0.2/0.22 = ставка
   const VAT_RATES = [
     { label: 'Без НДС', value: null },
@@ -3174,11 +3178,11 @@ window.AsgardDocHubPage = (function () {
 
             <!-- ─── Закрывающие ─── -->
             <div class="dh-section">
-              <div class="dh-section__h">Закрывающие (СФ / УПД)</div>
+              <div class="dh-section__h">Закрывающие документы</div>
               <div class="dh-section__b">
                 <div id="drClosingList">${closingItems.map((cl, i) => `
                   <div class="dh-closing-row dr-closing-row" data-i="${i}">
-                    <select data-k="kind"><option value="СФ" ${(cl.kind||'СФ')==='СФ'?'selected':''}>СФ</option><option value="УПД" ${cl.kind==='УПД'?'selected':''}>УПД</option><option value="Акт" ${cl.kind==='Акт'?'selected':''}>Акт</option></select>
+                    <select data-k="kind" title="Тип документа">${CLOSING_KINDS.map((k) => `<option value="${esc(k)}" ${((cl.kind || 'СФ') === k) ? 'selected' : ''}>${esc(k)}</option>`).join('')}</select>
                     <input data-k="no" placeholder="Номер" value="${esc(cl.no||'')}"/>
                     <input type="date" data-k="date" value="${esc(String(cl.date||'').slice(0,10))}"/>
                     <input type="number" data-k="sum" step="0.01" placeholder="Сумма" value="${esc(String(cl.sum||''))}"/>
@@ -3451,7 +3455,7 @@ window.AsgardDocHubPage = (function () {
         const row2 = document.createElement('div');
         row2.className = 'dh-closing-row dr-closing-row';
         row2.innerHTML = `
-          <select data-k="kind"><option value="СФ">СФ</option><option value="УПД">УПД</option><option value="Акт">Акт</option></select>
+          <select data-k="kind" title="Тип документа">${CLOSING_KINDS.map((k) => `<option value="${esc(k)}">${esc(k)}</option>`).join('')}</select>
           <input data-k="no" placeholder="Номер" value="${esc((pre && pre.no) || '')}"/>
           <input type="date" data-k="date" value="${esc(pre && pre.date ? String(pre.date).slice(0, 10) : '')}"/>
           <input type="number" data-k="sum" step="0.01" placeholder="Сумма" value="${esc(pre && pre.sum != null ? String(pre.sum) : '')}"/>
