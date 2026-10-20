@@ -679,6 +679,10 @@ module.exports = {
   wrapEmail,
   ctaButtons,
   ctaButtonsDual,
+  // D-302: дайджест Doc Hub собирает абсолютную ссылку тем же базовым URL,
+  // что и письма-согласования. Без экспорта падало с «publicBaseUrl is not
+  // a function» — рассылка не уходила вовсе.
+  publicBaseUrl,
   createToken,
   createBatchToken,
   buildAttachment,
