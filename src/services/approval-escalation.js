@@ -160,6 +160,10 @@ async function runOnce(db, log, now) {
        LEFT JOIN users u ON u.id = p.created_by
       WHERE p.status = 'awaiting_dir'
         AND e.next_at <= $1
+        -- D-317: не будим директора из-за мусорных карточек. Старый поток
+        -- создавал заявку ДО распознавания (поставщик «Распознаётся…», сумма 0).
+        AND COALESCE(p.amount, 0) > 0
+        AND COALESCE(p.supplier_name, '') NOT IN ('', 'Распознаётся…')
       ORDER BY e.next_at ASC
       LIMIT 200`,
     [at]
