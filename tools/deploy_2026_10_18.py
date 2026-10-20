@@ -19,6 +19,7 @@ Git РЅР° РїСЂРѕРґРµ "РіСЂСЏР·РЅС‹Р№" (СЌС‚Р�
 from __future__ import annotations
 
 import io
+import re
 import subprocess
 import sys
 import tarfile
@@ -33,7 +34,19 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "tools"))
 import shell_guard  # noqa: E402
 
-VER = "20.28.232"
+def _read_shell_version() -> str:
+    """Версия оболочки читается ИЗ ФАЙЛА, а не хардкодится.
+
+    Класс дефекта: скрипт был зашит на 20.28.232, и после каждого бампа
+    deploy-gate падал с «получено 20.28.247, ожидалось 20.28.232». Теперь
+    ожидание всегда совпадает с тем, что реально лежит в index.html.
+    """
+    html = (ROOT / "public" / "index.html").read_text(encoding="utf-8", errors="replace")
+    m = re.search(r"ASGARD_SHELL_VERSION\s*=\s*['\"]([0-9.]+)['\"]", html)
+    return m.group(1) if m else "20.28.247"
+
+
+VER = _read_shell_version()
 HOST = "92.242.61.184"
 USER = "root"
 KEY = str(Path.home() / ".ssh" / "asgard_crm_deploy")

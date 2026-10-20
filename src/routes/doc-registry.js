@@ -756,13 +756,18 @@ module.exports = async function docRegistryRoutes(fastify) {
    */
   fastify.get('/payment-schedule', auth, async (req) => {
     const q = req.query || {};
-    const p = [];
-    const vis = visibilitySql(p, req.user.role, req.user.id, { scope: q.scope });
-    // Окно: по умолчанию — с начала прошлого месяца по конец следующего.
+    // D-291: окно: по умолчанию — с начала прошлого месяца по конец следующего.
     const now = new Date();
     const from = q.from || new Date(now.getFullYear(), now.getMonth() - 1, 1).toISOString().slice(0, 10);
     const to = q.to || new Date(now.getFullYear(), now.getMonth() + 2, 0).toISOString().slice(0, 10);
-    p.push(from, to);
+    // ВАЖНО: параметры окна добавляем ПЕРВЫМИ и запоминаем их номера, а
+    // visibilitySql вызываем ПОСЛЕ — иначе он займёт $1/$2 и условия
+    // «payment_due_at BETWEEN $1 AND $2» будут сравнивать границы с id
+    // пользователя (тихая пустая выдача вместо списка счетов).
+    const p = [from, to];
+    const pFrom = 1;
+    const pTo = 2;
+    const vis = visibilitySql(p, req.user.role, req.user.id, { scope: q.scope });
 
     const { rows } = await db.query(
       `SELECT d.id, d.dir, d.counterparty_name, d.invoice_number, d.invoice_date,
@@ -776,7 +781,7 @@ module.exports = async function docRegistryRoutes(fastify) {
           AND COALESCE(d.pay_status,'none') NOT IN ('paid','n_a')
           AND d.no_payment_terms IS NOT TRUE
           AND d.payment_due_at IS NOT NULL
-          AND d.payment_due_at BETWEEN $${p.length - 1}::date AND $${p.length}::date${vis}
+          AND d.payment_due_at BETWEEN $${pFrom}::date AND $${pTo}::date${vis}
         ORDER BY d.payment_due_at ASC, d.id ASC`, p);
 
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
