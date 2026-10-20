@@ -3077,7 +3077,10 @@ AsgardRouter.add("/assembly", () => {
         if (!token) { stopGlobalSSE('нет токена'); return; }
         fetch('/api/auth/me', { headers: { Authorization: 'Bearer ' + token }, cache: 'no-store' })
           .then((r) => {
-            if (r.status === 401 || r.status === 403) { stopGlobalSSE('HTTP ' + r.status); return; }
+            // D-309 (регресс входа): стоп — ТОЛЬКО 401. 403 = «сессия жива,
+            // но действие запрещено» (нужен PIN / нет прав / смена пароля).
+            // Ошибочный стоп на 403 стирал токен до ввода PIN и блокировал вход.
+            if (r.status === 401) { stopGlobalSSE('HTTP 401'); return; }
             setTimeout(initGlobalSSE, sseRetryDelay());
           })
           .catch(() => setTimeout(initGlobalSSE, sseRetryDelay()));
