@@ -439,16 +439,36 @@ async function routes(fastify) {
     const hint = String((req.query && req.query.hint) || '').trim();
     const limit = Math.min(parseInt((req.query && req.query.limit) || '20', 10) || 20, 50);
     const { matchWork } = require('../services/contract-match');
-    const map = (w) => ({
-      id: w.id,
-      label: w.work_title || w.object_name || ('Работа #' + w.id),
-      object_name: w.object_name || null,
-      address: w.address || w.object_address || null,
-      city: w.city || null,
-      customer: w.customer_name || null,
-      status: w.work_status || null,
-      score: w._score != null ? w._score : undefined
-    });
+    const map = (w) => {
+      // D-332b (заказчик 21.10.2026): «откуда эти работы? почему пропал
+      // нормальный список?». Часть работ получила мусорное `work_title` от
+      // ТОР-парсера: «Сроки работ: 2026-10-16 — 2026-10-18\n\nОбъём: 0.03 м³\n\n
+      // Пасивация маслопровода». В списке выбора это нечитаемо.
+      // Берём ПОСЛЕДНЮЮ содержательную строку (там и есть суть работы).
+      const clean = (v) => {
+        const raw = String(v || '');
+        if (!raw) return '';
+        const parts = raw.split(/\n\s*\n/).map((x) => x.trim()).filter(Boolean);
+        const meaningful = parts.filter((x) => !/^(сроки работ|объём|объем|стоимость|итого)\s*[:\-]/i.test(x));
+        const pick = meaningful.length ? meaningful[meaningful.length - 1] : raw;
+        return pick.replace(/\s+/g, ' ').trim();
+      };
+      const title = clean(w.work_title);
+      const obj = clean(w.object_name);
+      // object_name часто = город в нижнем регистре («краснодар») — это НЕ
+      // название. Предпочитаем work_title; объект — только если он содержательный.
+      const objLooksLikeName = obj.length >= 12 || /[А-ЯЁA-Z]/.test(obj.slice(0, 1));
+      return {
+        id: w.id,
+        label: title || (objLooksLikeName ? obj : '') || ('Работа #' + w.id),
+        object_name: obj || null,
+        address: w.address || w.object_address || null,
+        city: w.city || null,
+        customer: w.customer_name || null,
+        status: w.work_status || null,
+        score: w._score != null ? w._score : undefined
+      };
+    };
 
     // 1. Подсказка из счёта: используем тот же движок, что и авто-привязка.
     if (hint) {

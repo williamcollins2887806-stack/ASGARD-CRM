@@ -200,7 +200,35 @@ window.AsgardDocHubPage = (function () {
   }
   function workLabel(w) {
     if (!w) return '';
-    return w.work_title || w.title || w.name || w.object_name || ('Работа #' + w.id);
+    // D-332 (заказчик 21.10.2026): «откуда ты эти работы взял? почему пропал
+    // нормальный список работ?» — в списке были «краснодар», «Работа #1940»,
+    // «новошахтинск» вместо названий.
+    //
+    // ПРИЧИНА (мой дефект): список в карточке стал приходить из
+    // `/api/payment-invoices/work-search`, а он отдаёт поле `label`, тогда как
+    // `/api/works` отдаёт `work_title`. Функция искала только `work_title`,
+    // не находила его и падала на `object_name` (а там «краснодар») либо на
+    // «Работа #id» (когда object_name пустой).
+    // Теперь `label` — первый приоритет, `object_name` НЕ используется как
+    // замена названию (это географическая подсказка, а не имя работы).
+    let s = w.label || w.work_title || w.title || w.name || '';
+    // D-332b: в названии работы бывает служебный мусор из ТОР-парсера
+    // («Сроки работ: … Объём: … Пасивация маслопровода») — показываем только
+    // содержательную часть, иначе в списке выбора сплошная каша.
+    if (s) {
+      const tail = String(s).split(/\n\s*\n/).map((x) => x.trim()).filter(Boolean);
+      const meaningful = tail.filter((x) => !/^(сроки работ|объём|объем|стоимость|итого)\s*[:\-]/i.test(x));
+      if (meaningful.length) s = meaningful[meaningful.length - 1];
+      s = String(s).replace(/\s+/g, ' ').trim();
+    }
+    // Объект как запасной вариант — только если это похоже на НАЗВАНИЕ,
+    // а не на город («краснодар», «новошахтинск»).
+    if (!s && w.object_name) {
+      const obj = String(w.object_name).trim();
+      const looksLikeCity = obj.length < 12 && obj === obj.toLowerCase();
+      if (!looksLikeCity) s = obj;
+    }
+    return s ? s.slice(0, 160) : ('Работа #' + w.id);
   }
   function userLabel(u) {
     if (!u) return '';
