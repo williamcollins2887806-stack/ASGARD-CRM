@@ -823,8 +823,7 @@ async function routes(fastify) {
     const FIELDS = ['amount', 'supplier_name', 'supplier_id', 'invoice_number', 'invoice_date',
       'due_date', 'vat_amount', 'vat_rate', 'amount_net', 'basis_type', 'basis_text',
       'contract_basis_number', 'work_id', 'work_hint', 'pay_timing', 'comment_text',
-      'file_path', 'file_name', 'contract_id'];
-    const sets = [];
+      'file_path', 'file_name', 'contract_id'];    const sets = [];
     const params = [];
     for (const k of FIELDS) {
       if (b[k] === undefined) continue;

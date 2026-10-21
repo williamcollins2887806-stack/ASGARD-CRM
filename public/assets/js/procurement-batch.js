@@ -84,13 +84,18 @@ window.AsgardPaymentBatch = (function () {
           </div>
         </div>
 
+        <!-- Компактная зона загрузки: строка, а не экран. Пока счетов нет —
+             она главная; как только счёт загружен — становится тонкой полосой,
+             чтобы не отнимать рабочую площадь. -->
         <label class="pbm-drop" id="pbm-drop" for="pbm-file">
           <input type="file" id="pbm-file" multiple accept=".pdf,.png,.jpg,.jpeg,.webp">
           <span class="pbm-drop__ico" aria-hidden="true">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M12 16V4m0 0L7 9m5-5 5 5"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M12 16V4m0 0L7 9m5-5 5 5"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>
           </span>
-          <span class="pbm-drop__t">Перетащите счета или нажмите, чтобы выбрать</span>
-          <span class="pbm-drop__s">PDF, PNG, JPG · можно несколько сразу · файлы не уходят, пока вы не подтвердите</span>
+          <span class="pbm-drop__txt">
+            <span class="pbm-drop__t">Добавить счета</span>
+            <span class="pbm-drop__s">PDF, PNG, JPG · можно несколько сразу</span>
+          </span>
         </label>
 
         <div class="pbm__layout" id="pbm-layout" hidden>
@@ -390,21 +395,46 @@ window.AsgardPaymentBatch = (function () {
     const rate = f.vat_rate;
     const vat = Number(f.vat_amount) || 0;
     const net = rate && rate > 0 ? Math.round((gross - vat) * 100) / 100 : gross;
+    const sup = f.supplier_name && f.supplier_name !== 'Распознаётся…' ? f.supplier_name : '';
+    // Карточка контрагента из базы (если выбран из подсказки).
+    const card = it.supplierCard || null;
     return `
       <div class="pbm-sec">
         <div class="pbm-sec__h">
-          <span>Распознанные данные</span>
+          <span>Поставщик</span>
           ${conf ? `<span class="pbm-conf ${conf >= 70 ? 'is-ok' : 'is-warn'}">распознано ${conf}%${it.engine === 'ai' ? ' · ИИ' : ''}</span>` : ''}
         </div>
-        <div class="pbm-grid">
-          ${field('Поставщик', 'supplier_name', f.supplier_name === 'Распознаётся…' ? '' : f.supplier_name, 'text', { wide: true, req: true, placeholder: 'ООО …' })}
-          <div class="pbm-f pbm-f--wide">
-            <span class="pbm-f__l">Найти в базе</span>
-            <div class="pbm-cp">
-              <input class="pbm-in" data-cp-search placeholder="Название или ИНН — подскажем договоры и число счетов" autocomplete="off" />
-              <div class="pbm-cp__drop" data-cp-drop hidden></div>
-            </div>
+
+        <div class="pbm-cp" id="pbm-cp-${it.localId}">
+          <input class="pbm-in" data-cp-search autocomplete="off"
+                 value="${esc(sup)}"
+                 placeholder="Название или ИНН — подскажем из базы" />
+          <div class="pbm-cp__drop" data-cp-drop hidden></div>
+        </div>
+
+        ${card ? `
+        <div class="pbm-card">
+          <div class="pbm-card__top">
+            <div class="pbm-card__name">${esc(card.name)}</div>
+            ${card.inn ? `<div class="pbm-card__inn">ИНН ${esc(card.inn)}</div>` : ''}
           </div>
+          <div class="pbm-card__stats">
+            <span class="pbm-stat ${card.docs_count ? 'is-on' : ''}">
+              <b>${card.docs_count || 0}</b> ${plural(card.docs_count || 0, 'счёт', 'счёта', 'счетов')} в реестре
+            </span>
+            <span class="pbm-stat ${card.contracts_count ? 'is-on' : ''}">
+              <b>${card.contracts_count || 0}</b> ${plural(card.contracts_count || 0, 'договор', 'договора', 'договоров')}
+            </span>
+            ${card.contracts_count ? `<span class="pbm-badge-ok">работаем по договору</span>` : '<span class="pbm-badge-warn">договора в базе нет</span>'}
+          </div>
+          ${(card.phone || card.email) ? `<div class="pbm-card__contacts">${esc([card.phone, card.email].filter(Boolean).join(' · '))}</div>` : ''}
+        </div>` : (sup ? `<div class="pbm-card pbm-card--warn">
+          <div class="pbm-card__top"><div class="pbm-card__name">${esc(sup)}</div></div>
+          <div class="pbm-card__stats"><span class="pbm-badge-warn">нет в базе поставщиков — проверьте название или ИНН</span></div>
+        </div>` : '')}
+
+        <div class="pbm-grid">
+          ${field('ИНН', 'inn', f.inn, 'text', { placeholder: '10 или 12 цифр' })}
           ${field('Номер счёта', 'invoice_number', f.invoice_number, 'text', { placeholder: 'например 1185' })}
           ${field('Дата счёта', 'invoice_date', f.invoice_date, 'date')}
         </div>
@@ -445,8 +475,75 @@ window.AsgardPaymentBatch = (function () {
       </div>`;
   }
 
+  /** Склонение для счётчиков: 1 счёт / 2 счёта / 5 счетов. */
+  function plural(n, one, few, many) {
+    const a = Math.abs(Number(n) || 0) % 100;
+    const b = a % 10;
+    if (a > 10 && a < 20) return many;
+    if (b > 1 && b < 5) return few;
+    if (b === 1) return one;
+    return many;
+  }
+
   function tabTerms(it, f) {
+    const sk = f.spend_kind || it.spend_kind || 'work';
+    const ctype = f.contract_type || 'none';
+    const cfound = it.contractFound;
     return `
+      <div class="pbm-sec">
+        <div class="pbm-sec__h"><span>Вид расхода</span></div>
+        <div class="pbm-chips" data-spend-chips>
+          ${[['work', 'Работы / объект'], ['warehouse', 'Склад / материалы'], ['office', 'Офис / АХО'], ['other', 'Прочее']]
+            .map(([v, l]) => `<button type="button" class="pbm-chip ${sk === v ? 'is-on' : ''}" data-spend="${v}">${l}</button>`).join('')}
+        </div>
+        <span class="pbm-f__h">${sk === 'work'
+          ? 'Для работ объект обязателен — расход попадёт в смету объекта.'
+          : 'Офис/склад/прочее — объект не нужен, расход идёт в общий реестр.'}</span>
+      </div>
+
+      ${sk === 'work' ? `
+      <div class="pbm-sec" data-work-sec>
+        <div class="pbm-sec__h"><span>Объект / работа</span>${f.work_id ? '<span class="pbm-conf is-ok">выбран</span>' : '<span class="pbm-conf is-warn">не выбран</span>'}</div>
+        ${f.work_id ? `<div class="pbm-picked">
+          <div class="pbm-picked__main">
+            <b>${esc(f.work_label || ('#' + f.work_id))}</b>
+            ${f.work_object ? `<span>${esc(f.work_object)}</span>` : ''}
+            ${f.work_customer ? `<span>${esc(f.work_customer)}</span>` : ''}
+          </div>
+          <button type="button" class="pbm-btn pbm-btn--quiet pbm-btn--sm" data-work-clear>Сменить</button>
+        </div>` : `
+        <div class="pbm-cp"><input class="pbm-in" data-work-search placeholder="Название, адрес, город, номер или заказчик" autocomplete="off" />
+          <div class="pbm-cp__drop" data-work-drop hidden></div></div>
+        <span class="pbm-f__h">Начните вводить — покажем объекты из базы</span>`}
+      </div>` : `
+      <input type="hidden" data-f="work_id" value="" />
+      <input type="hidden" data-f="work_label" value="" />`}
+
+      <div class="pbm-sec">
+        <div class="pbm-sec__h"><span>Договор</span>${cfound === true ? '<span class="pbm-conf is-ok">найден в базе</span>' : (cfound === false ? '<span class="pbm-conf is-warn">не найден</span>' : '')}</div>
+        <div class="pbm-grid">
+          <label class="pbm-f pbm-f--wide">
+            <span class="pbm-f__l">Договор-основание</span>
+            <select class="pbm-in" data-f="contract_type">
+              <option value="none" ${ctype === 'none' ? 'selected' : ''}>Без договора</option>
+              <option value="general" ${ctype === 'general' ? 'selected' : ''}>Общий / рамочный (заявки без номера)</option>
+              <option value="once" ${ctype === 'once' ? 'selected' : ''}>Разовая поставка</option>
+              <option value="contract" ${ctype === 'contract' ? 'selected' : ''}>Есть договор — указать номер</option>
+            </select>
+          </label>
+          ${ctype === 'contract' ? `
+            ${field('Номер договора', 'contract_number', f.contract_number, 'text', { placeholder: 'например ДП-2025/14' })}
+            ${field('Дата договора', 'contract_date', f.contract_date, 'date')}
+            <div class="pbm-f pbm-f--wide">
+              <button type="button" class="pbm-btn pbm-btn--ghost pbm-btn--sm" data-contract-pick>
+                ${f.contract_id ? '✓ Договор выбран — сменить' : 'Выбрать договор из базы'}
+              </button>
+              ${cfound === false ? `<span class="pbm-warn-line">Договор с таким номером у этого поставщика не найден. Проверьте номер или выберите из базы.</span>` : ''}
+              ${cfound === true ? `<span class="pbm-ok-line">Договор есть в базе — расход привяжется к нему.</span>` : ''}
+            </div>` : ''}
+        </div>
+      </div>
+
       <div class="pbm-sec">
         <div class="pbm-sec__h"><span>Сроки</span></div>
         <div class="pbm-grid">
@@ -455,6 +552,7 @@ window.AsgardPaymentBatch = (function () {
           ${field('Услуга оказана', 'service_done_at', f.service_done_at, 'date')}
         </div>
       </div>
+
       <div class="pbm-sec">
         <div class="pbm-sec__h"><span>Порядок оплаты</span></div>
         <div class="pbm-grid">
@@ -465,20 +563,6 @@ window.AsgardPaymentBatch = (function () {
               <option value="deferred" ${f.pay_timing === 'deferred' ? 'selected' : ''}>Отложенная — к указанному сроку</option>
             </select>
           </label>
-          <label class="pbm-f">
-            <span class="pbm-f__l">Основание</span>
-            <select class="pbm-in" data-f="basis_type">
-              ${[['contract', 'Договор'], ['offer', 'Оферта'], ['once', 'Разовая поставка'], ['general', 'Общий / заявка'], ['none', 'Без договора'], ['other', 'Прочее']]
-                .map(([v, l]) => `<option value="${v}" ${(f.basis_type || '') === v ? 'selected' : ''}>${l}</option>`).join('')}
-            </select>
-          </label>
-          ${field('№ договора-основания', 'contract_number', f.contract_number, 'text', { placeholder: 'Например ДП-2025/01' })}
-          ${field('Объект / работа', 'work_hint', f.work_hint, 'text', { placeholder: 'Например ЖК Северный, корпус 3' })}
-        </div>
-      </div>
-      <div class="pbm-sec">
-        <div class="pbm-sec__h"><span>НДС и основание СФ</span></div>
-        <div class="pbm-grid">
           <label class="pbm-f">
             <span class="pbm-f__l">Основание СФ</span>
             <select class="pbm-in" data-f="sf_basis">
@@ -608,7 +692,255 @@ window.AsgardPaymentBatch = (function () {
         toast('Файл заменён', 'Счёт остался тем же черновиком', 'ok');
       };
     }
+    // ── Вид расхода: работы → нужен объект; офис/склад/прочее → нет ──
+    work.querySelectorAll('[data-spend]').forEach((b) => {
+      b.onclick = () => {
+        if (!it.fields) it.fields = {};
+        it.fields.spend_kind = b.getAttribute('data-spend');
+        // Смена вида расхода сбрасывает объект: для офиса он не нужен и
+        // унаследованный work_id дал бы ложную привязку в реестре.
+        if (it.fields.spend_kind !== 'work') {
+          it.fields.work_id = null;
+          it.fields.work_label = '';
+          it.fields.work_object = '';
+        }
+        S.dirty = true;
+        renderWork();
+      };
+    });
+    work.querySelector('[data-work-clear]')?.addEventListener('click', () => {
+      if (!it.fields) it.fields = {};
+      it.fields.work_id = null; it.fields.work_label = ''; it.fields.work_object = '';
+      S.dirty = true;
+      renderWork();
+    });
+
+    // ── Договор: смена типа ──
+    work.querySelector('[data-f="contract_type"]')?.addEventListener('change', (e) => {
+      if (!it.fields) it.fields = {};
+      const v = e.target.value;
+      it.fields.contract_type = v;
+      // basis_type — то, что уходит в заявку/реестр (совместимость с бэком).
+      it.fields.basis_type = v === 'contract' ? 'contract' : v;
+      if (v !== 'contract') {
+        it.fields.contract_number = null;
+        it.fields.contract_id = null;
+        it.contractFound = null;
+      }
+      S.dirty = true;
+      renderWork();
+    });
+    // ── Договор: проверка номера по базе + выбор ──
+    work.querySelector('[data-f="contract_number"]')?.addEventListener('change', () => {
+      checkContractNumber(it).then(() => renderWork());
+    });
+    work.querySelector('[data-contract-pick]')?.addEventListener('click', () => pickContract(it));
+
     bindSupplierSearch(work, it);
+    bindWorkSearch(work, it);
+  }
+
+  // ═══ ПОСТАВЩИК: подсказки с реальными счётчиками ═══════════════════════════
+  function bindSupplierSearch(work, it) {
+    const wrap = work.querySelector('.pbm-cp');
+    const inp = work.querySelector('[data-cp-search]');
+    const drop = work.querySelector('[data-cp-drop]');
+    if (!wrap || !inp || !drop) return;
+    let tmr = null;
+    let items = [];
+
+    const paint = () => {
+      if (!items.length) { drop.hidden = true; drop.innerHTML = ''; return; }
+      drop.hidden = false;
+      drop.innerHTML = items.map((c, i) => {
+        const docs = Number(c.docs_count) || 0;
+        const ctr = Number(c.contracts_count) || 0;
+        return `<button type="button" class="pbm-cp__item" data-ci="${i}">
+          <span class="pbm-cp__name">${esc(c.name)}</span>
+          <span class="pbm-cp__sub">
+            ${c.inn ? `ИНН ${esc(c.inn)} · ` : ''}${docs} ${plural(docs, 'счёт', 'счёта', 'счетов')} · ${ctr} ${plural(ctr, 'договор', 'договора', 'договоров')}
+          </span>
+        </button>`;
+      }).join('');
+      drop.querySelectorAll('[data-ci]').forEach((b) => {
+        b.onclick = () => {
+          const c = items[+b.getAttribute('data-ci')];
+          if (!c) return;
+          if (!it.fields) it.fields = {};
+          it.fields.supplier_name = c.name;
+          it.fields.supplier_id = c.id || null;
+          if (c.inn) it.fields.inn = c.inn;
+          if (c.phone) it.fields.counterparty_phone = c.phone;
+          if (c.email) it.fields.counterparty_email = c.email;
+          // Карточка «работаем по договору / N счетов» — из тех же данных.
+          it.supplierCard = {
+            name: c.name, inn: c.inn, phone: c.phone, email: c.email,
+            docs_count: Number(c.docs_count) || 0,
+            contracts_count: Number(c.contracts_count) || 0
+          };
+          S.dirty = true;
+          items = []; drop.hidden = true;
+          renderWork();
+        };
+      });
+    };
+
+    inp.oninput = () => {
+      const q = inp.value.trim();
+      clearTimeout(tmr);
+      if (q.length < 2) { items = []; paint(); return; }
+      tmr = setTimeout(async () => {
+        try {
+          const j = await api('/api/customers/registry-suggest?q=' + encodeURIComponent(q) + '&limit=10');
+          items = (j && j.suppliers) || [];
+        } catch (_) { items = []; }
+        paint();
+      }, 220);
+    };
+    // По Enter / потере фокуса без выбора — фиксируем введённое название как есть.
+    inp.addEventListener('change', () => {
+      const v = inp.value.trim();
+      if (!it.fields) it.fields = {};
+      if (v && v !== (it.fields.supplier_name || '')) {
+        it.fields.supplier_name = v;
+        it.supplierCard = null;     // выбранного из базы больше нет
+        S.dirty = true;
+        renderWork();
+      }
+    });
+    inp.onblur = () => { setTimeout(() => { drop.hidden = true; }, 180); };
+  }
+
+  // ═══ ОБЪЕКТ: выбор из базы, а не свободный текст ═══════════════════════════
+  function bindWorkSearch(work, it) {
+    const inp = work.querySelector('[data-work-search]');
+    const drop = work.querySelector('[data-work-drop]');
+    if (!inp || !drop) return;
+    let tmr = null;
+    let items = [];
+
+    const paint = () => {
+      if (!items.length) {
+        drop.hidden = false;
+        drop.innerHTML = '<div class="pbm-cp__empty">Ничего не нашлось. Уточните запрос.</div>';
+        return;
+      }
+      drop.hidden = false;
+      drop.innerHTML = items.map((w, i) => `<button type="button" class="pbm-cp__item" data-wi="${i}">
+        <span class="pbm-cp__name">${esc(w.label)}</span>
+        <span class="pbm-cp__sub">${esc([w.object_name, w.address, w.customer].filter(Boolean).join(' · ') || 'без адреса')}</span>
+      </button>`).join('');
+      drop.querySelectorAll('[data-wi]').forEach((b) => {
+        b.onclick = () => {
+          const w = items[+b.getAttribute('data-wi')];
+          if (!w) return;
+          if (!it.fields) it.fields = {};
+          it.fields.work_id = w.id;
+          it.fields.work_label = w.label;
+          it.fields.work_object = w.object_name || '';
+          it.fields.work_customer = w.customer || '';
+          S.dirty = true;
+          items = []; drop.hidden = true;
+          renderWork();
+        };
+      });
+    };
+
+    const search = async (term) => {
+      try {
+        const j = await api('/api/payment-invoices/work-search?limit=20' + (term ? '&q=' + encodeURIComponent(term) : ''));
+        items = (j && j.items) || [];
+      } catch (_) { items = []; }
+      paint();
+    };
+
+    inp.oninput = () => {
+      const q = inp.value.trim();
+      clearTimeout(tmr);
+      tmr = setTimeout(() => search(q), 250);
+    };
+    inp.onfocus = () => { if (!items.length) search(''); };
+    inp.onblur = () => { setTimeout(() => { drop.hidden = true; }, 200); };
+  }
+
+  // ═══ ДОГОВОР: проверка номера и выбор из базы ══════════════════════════════
+  async function checkContractNumber(it) {
+    const f = it.fields || {};
+    const num = String(f.contract_number || '').trim();
+    if (!num) { it.contractFound = null; return; }
+    try {
+      // Ищем договор по номеру у выбранного поставщика (или вообще, если
+      // поставщик ещё не выбран — тогда только подтверждаем существование).
+      const res = await api('/api/contracts?limit=300');
+      const list = Array.isArray(res) ? res : (res.items || []);
+      const cpName = String(f.supplier_name || '').toLowerCase().trim();
+      const norm = (s) => String(s || '').toLowerCase().replace(/\s+/g, '');
+      const hit = list.find((c) => norm(c.number) === norm(num)
+        && (!cpName || norm(c.counterparty_name || c.customer_name || '').includes(norm(cpName).slice(0, 12))));
+      if (hit) {
+        it.contractFound = true;
+        it.fields.contract_id = hit.id;
+        it.fields.contract_number = hit.number || num;
+        it.fields.contract_date = String(hit.signed_date || hit.start_date || '').slice(0, 10) || f.contract_date;
+      } else {
+        it.contractFound = false;
+        it.fields.contract_id = null;
+      }
+    } catch (_) { it.contractFound = null; }
+  }
+
+  async function pickContract(it) {
+    // Используем штатный реестр договоров CRM (тот же, что в Doc Hub).
+    try {
+      const res = await api('/api/contracts?limit=300');
+      const list = Array.isArray(res) ? res : (res.items || []);
+      const cpName = String((it.fields && it.fields.supplier_name) || '').toLowerCase();
+      const mine = cpName
+        ? list.filter((c) => String(c.counterparty_name || c.customer_name || '').toLowerCase().includes(cpName.slice(0, 12)))
+        : list;
+      const pool = (mine.length ? mine : list).slice(0, 200);
+      if (!pool.length) { toast('Договоры', 'В базе нет договоров — заполните номер вручную', 'warn'); return; }
+
+      const html = `<div class="pbm-pick">
+        <input class="pbm-in" id="pbm-pick-q" placeholder="Поиск по номеру, предмету, контрагенту" autocomplete="off" />
+        <div class="pbm-pick__list" id="pbm-pick-list"></div>
+      </div>`;
+      showModal({ title: 'Выберите договор', html, icon: '§' });
+      const root = document.querySelector('.pbm-pick');
+      if (!root) return;
+      const listEl = root.querySelector('#pbm-pick-list');
+      const qEl = root.querySelector('#pbm-pick-q');
+      const paint = (term) => {
+        const s = String(term || '').toLowerCase().trim();
+        const hit = pool.filter((c) => !s || [c.number, c.subject, c.counterparty_name, c.customer_name]
+          .filter(Boolean).join(' ').toLowerCase().includes(s));
+        listEl.innerHTML = hit.length ? hit.map((c) => `
+          <button type="button" class="pbm-pick__item" data-id="${c.id}" data-num="${esc(c.number || '')}"
+                  data-date="${esc(String(c.signed_date || c.start_date || '').slice(0, 10))}">
+            <span class="pbm-pick__n">№ ${esc(c.number || 'б/н')}</span>
+            <span class="pbm-pick__s">${esc([c.subject, c.counterparty_name || c.customer_name].filter(Boolean).join(' · ') || '—')}</span>
+          </button>`).join('') : '<div class="pbm-cp__empty">Ничего не найдено</div>';
+        listEl.querySelectorAll('[data-id]').forEach((b) => {
+          b.onclick = () => {
+            if (!it.fields) it.fields = {};
+            it.fields.contract_id = Number(b.getAttribute('data-id'));
+            it.fields.contract_number = b.getAttribute('data-num');
+            it.fields.contract_date = b.getAttribute('data-date') || null;
+            it.fields.contract_type = 'contract';
+            it.fields.basis_type = 'contract';
+            it.contractFound = true;
+            S.dirty = true;
+            closeModal();
+            renderWork();
+            toast('Договор выбран', 'Найден в базе — привяжется к заявке', 'ok');
+          };
+        });
+      };
+      paint('');
+      qEl.oninput = () => paint(qEl.value);
+    } catch (e) {
+      toast('Договоры', e.message || 'Не удалось открыть реестр', 'err');
+    }
   }
 
   function updateMoneyDom(work, it) {
@@ -622,53 +954,6 @@ window.AsgardPaymentBatch = (function () {
     if (vEl) vEl.textContent = money2(vat);
   }
 
-  function bindSupplierSearch(work, it) {
-    const wrap = work.querySelector('.pbm-cp');
-    const inp = work.querySelector('[data-cp-search]');
-    const drop = work.querySelector('[data-cp-drop]');
-    if (!wrap || !inp || !drop) return;
-    let tmr = null;
-    let items = [];
-    const paint = () => {
-      if (!items.length) { drop.hidden = true; drop.innerHTML = ''; return; }
-      drop.hidden = false;
-      drop.innerHTML = items.map((c, i) => {
-        const bits = [];
-        if (c.inn) bits.push('ИНН ' + c.inn);
-        if (c.docs_count) bits.push(c.docs_count + ' сч.');
-        if (c.contracts_count) bits.push(c.contracts_count + ' дог.');
-        return `<button type="button" class="pbm-cp__item" data-ci="${i}">
-          <span class="pbm-cp__name">${esc(c.name)}</span>
-          <span class="pbm-cp__sub">${esc(bits.join(' · ') || 'в базе')}</span>
-        </button>`;
-      }).join('');
-      drop.querySelectorAll('[data-ci]').forEach((b) => {
-        b.onclick = () => {
-          const c = items[+b.getAttribute('data-ci')];
-          if (!c) return;
-          if (!it.fields) it.fields = {};
-          it.fields.supplier_name = c.name;
-          if (c.inn) it.fields.inn = c.inn;
-          S.dirty = true;
-          items = []; drop.hidden = true; inp.value = '';
-          renderWork();
-        };
-      });
-    };
-    inp.oninput = () => {
-      const q = inp.value.trim();
-      clearTimeout(tmr);
-      if (q.length < 2) { items = []; paint(); return; }
-      tmr = setTimeout(async () => {
-        try {
-          const j = await api('/api/customers/registry-suggest?q=' + encodeURIComponent(q) + '&limit=10');
-          items = (j && j.suppliers) || [];
-        } catch (_) { items = []; }
-        paint();
-      }, 220);
-    };
-    inp.onblur = () => { setTimeout(() => { drop.hidden = true; }, 180); };
-  }
 
   function retryItem(idx) {
     const it = S.items[idx];
@@ -704,26 +989,10 @@ window.AsgardPaymentBatch = (function () {
     if (btn) { btn.disabled = true; btn.textContent = 'Сохраняем…'; }
     let okN = 0;
     for (const it of ready) {
-      const f = it.fields || {};
       try {
         await api('/api/payment-invoices/' + it.invoiceId, {
           method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            amount: Number(f.amount) || 0,
-            supplier_name: (f.supplier_name && f.supplier_name !== 'Распознаётся…') ? f.supplier_name : null,
-            invoice_number: f.invoice_number || null,
-            invoice_date: f.invoice_date || null,
-            due_date: f.payment_due_at || null,
-            vat_amount: f.vat_amount != null ? f.vat_amount : null,
-            vat_rate: f.vat_rate != null ? f.vat_rate : null,
-            amount_net: f.amount_net != null ? f.amount_net : null,
-            basis_type: f.basis_type || 'other',
-            basis_text: f.basis_text || null,
-            contract_basis_number: f.contract_number || null,
-            work_hint: f.work_hint || null,
-            pay_timing: f.pay_timing || 'immediate',
-            comment_text: f.comment_text || null
-          })
+          body: JSON.stringify(draftPayload(it))
         });
         okN++;
         it.savedAt = new Date();
@@ -790,6 +1059,8 @@ window.AsgardPaymentBatch = (function () {
       const d = await api('/api/payment-invoices/' + id);
       const fields = {
         supplier_name: d.supplier_name || '',
+        supplier_id: d.supplier_id || null,
+        inn: d.counterparty_inn || '',
         invoice_number: d.invoice_number || '',
         invoice_date: d.invoice_date ? String(d.invoice_date).slice(0, 10) : '',
         payment_due_at: d.due_date ? String(d.due_date).slice(0, 10) : '',
@@ -797,21 +1068,82 @@ window.AsgardPaymentBatch = (function () {
         vat_amount: d.vat_amount != null ? Number(d.vat_amount) : '',
         vat_rate: d.vat_rate != null ? Number(d.vat_rate) * (Number(d.vat_rate) <= 1 ? 100 : 1) : null,
         basis_type: d.basis_type || 'other',
+        contract_type: d.basis_type === 'contract' ? 'contract' : (d.basis_type || 'none'),
+        contract_id: d.contract_id || null,
         contract_number: d.contract_basis_number || '',
-        work_hint: d.work_hint || '',
-        pay_timing: d.pay_timing || 'immediate'
+        work_id: d.work_id || null,
+        work_label: d.work_hint || (d.work_id ? '#' + d.work_id : ''),
+        pay_timing: d.pay_timing || 'immediate',
+        spend_kind: d.work_id ? 'work' : (d.basis_type === 'other' ? 'other' : 'work')
       };
       const exists = S.items.some((x) => Number(x.invoiceId) === Number(id));
       if (!exists) {
-        S.items.push({
+        const item = {
           localId: 'd' + id, file: null, invoiceId: Number(id), draft: true,
           status: 'saved', progress: 100, fields, error: null, savedAt: new Date()
-        });
+        };
+        S.items.push(item);
+        S.activeIdx = S.items.length - 1;
+        S.tab = 'main'; S.zoom = 1; S.full = false;
+        // Сначала рисуем форму, ПОТОМ доливаем карточку контрагента — иначе
+        // renderWork() отработает по ещё не вставленному DOM и карточка
+        // потеряется (так и было: hasSupplierCard=false при живом API).
+        render();
+        if (d.supplier_id || d.supplier_name) {
+          hydrateSupplierCard(item, d.supplier_name, d.supplier_id).catch(() => {});
+        }
+        if (d.work_id) hydrateWorkLabel(item, d.work_id).catch(() => {});
+        return;
       }
       S.activeIdx = S.items.findIndex((x) => Number(x.invoiceId) === Number(id));
       S.tab = 'main'; S.zoom = 1; S.full = false;
       render();
     } catch (e) { toast('Ошибка', e.message || 'Не удалось открыть черновик', 'err'); }
+  }
+
+  /**
+   * Дозаполнить карточку контрагента реальными счётчиками (счетов/договоров)
+   * из той же точки, что и подсказки в реестре счетов.
+   */
+  async function hydrateSupplierCard(it, name, supplierId) {
+    const nm = String(name || '').trim();
+    if (!nm) return;
+    const j = await api('/api/customers/registry-suggest?q=' + encodeURIComponent(nm) + '&limit=10');
+    const list = (j && j.suppliers) || [];
+    const norm = (s) => String(s || '').toLowerCase().replace(/\s+/g, '');
+    const hit = list.find((c) => (supplierId && Number(c.id) === Number(supplierId)) || norm(c.name) === norm(nm));
+    if (!hit) { it.supplierCard = null; if (document.getElementById('pbm-work')) renderWork(); return; }
+    it.supplierCard = {
+      name: hit.name, inn: hit.inn, phone: hit.phone, email: hit.email,
+      docs_count: Number(hit.docs_count) || 0,
+      contracts_count: Number(hit.contracts_count) || 0
+    };
+    if (!it.fields.supplier_id) it.fields.supplier_id = hit.id;
+    if (!it.fields.inn && hit.inn) it.fields.inn = hit.inn;
+    if (document.getElementById('pbm-work')) renderWork();
+  }
+
+  /** Подтянуть название/объект выбранной работы (для блока «Объект»). */
+  async function hydrateWorkLabel(it, workId) {
+    try {
+      const j = await api('/api/payment-invoices/work-search?limit=50');
+      const items = (j && j.items) || [];
+      let hit = items.find((w) => Number(w.id) === Number(workId));
+      if (!hit) {
+        // Работа может быть вне первых 50 — ищем точечно.
+        const j2 = await api('/api/payment-invoices/work-search?q=' + encodeURIComponent('#' + workId) + '&limit=20');
+        hit = ((j2 && j2.items) || []).find((w) => Number(w.id) === Number(workId));
+      }
+      if (hit) {
+        it.fields.work_label = hit.label;
+        it.fields.work_object = hit.object_name || '';
+        it.fields.work_customer = hit.customer || '';
+      } else if (!it.fields.work_label) {
+        it.fields.work_label = '#' + workId;
+      }
+      // renderWork может не найти контейнер (карточку закрыли) — это не ошибка.
+      if (document.getElementById('pbm-work')) renderWork();
+    } catch (_) { /* подсказка не критична — не ломаем карточку */ }
   }
 
   // ═══ ОТПРАВКА С ПОДТВЕРЖДЕНИЕМ ════════════════════════════════════════════
@@ -865,30 +1197,45 @@ window.AsgardPaymentBatch = (function () {
     if (go && !bad.length) go.onclick = () => sendNow(ready);
   }
 
+  /**
+   * D-316b: ОДНА точка сборки тела для сохранения черновика.
+   * Раньше поля собирались в двух местах (saveDrafts и sendNow) копипастой —
+   * из-за этого новые поля (объект, тип договора, ИНН) терялись при отправке.
+   */
+  function draftPayload(it) {
+    const f = it.fields || {};
+    const num = (v) => (v != null && v !== '' ? Number(v) : null);
+    return {
+      amount: Number(f.amount) || 0,
+      supplier_name: (f.supplier_name && f.supplier_name !== 'Распознаётся…') ? f.supplier_name : null,
+      supplier_id: num(f.supplier_id),
+      invoice_number: f.invoice_number || null,
+      invoice_date: f.invoice_date || null,
+      due_date: f.payment_due_at || null,
+      vat_amount: num(f.vat_amount),
+      vat_rate: num(f.vat_rate),
+      amount_net: num(f.amount_net),
+      basis_type: f.basis_type || 'other',
+      contract_basis_number: f.contract_number || null,
+      contract_id: num(f.contract_id),
+      work_id: num(f.work_id),
+      // work_hint — человекочитаемая подсказка: нужна, если work_id не выбран.
+      work_hint: f.work_id ? (f.work_label || null) : (f.work_hint || null),
+      pay_timing: f.pay_timing || 'immediate',
+      comment_text: f.comment_text || null
+    };
+  }
+
   async function sendNow(ready) {
     const go = document.querySelector('.pbm-confirm [data-go]');
     if (go) { go.disabled = true; go.textContent = 'Отправляем…'; }
     try {
       // Сначала сохраняем правки (иначе директор увидит распознанное, а не ваше).
       for (const it of ready) {
-        const f = it.fields || {};
         try {
           await api('/api/payment-invoices/' + it.invoiceId, {
             method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              amount: Number(f.amount) || 0,
-              supplier_name: f.supplier_name || null,
-              invoice_number: f.invoice_number || null,
-              invoice_date: f.invoice_date || null,
-              due_date: f.payment_due_at || null,
-              vat_amount: f.vat_amount != null ? f.vat_amount : null,
-              vat_rate: f.vat_rate != null ? f.vat_rate : null,
-              amount_net: f.amount_net != null ? f.amount_net : null,
-              basis_type: f.basis_type || 'other',
-              contract_basis_number: f.contract_number || null,
-              work_hint: f.work_hint || null,
-              pay_timing: f.pay_timing || 'immediate'
-            })
+            body: JSON.stringify(draftPayload(it))
           });
         } catch (e) {
           // Черновик могли отправить в другой вкладке — не молчим.

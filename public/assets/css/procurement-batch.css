@@ -16,6 +16,10 @@
   color: var(--t1);
   font-size: 13px;
 }
+/* D-316b: ни один ребёнок не должен растягиваться по высоте — иначе зона
+   загрузки съедала экран (замер: 1180px вместо 56px). */
+.pbm > * { flex: 0 0 auto; }
+.pbm > .pbm__layout { flex: 1 1 auto; min-height: 0; }
 
 /* ── Шапка ─────────────────────────────────────────────────────────────────── */
 .pbm__hero { display: flex; justify-content: space-between; align-items: flex-start; gap: 18px; flex-wrap: wrap; }
@@ -69,23 +73,30 @@
 .pbm-ico:hover { background: var(--bg3); color: var(--t1); border-color: var(--brd); }
 .pbm-ico:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
 
-/* ── Зона загрузки ─────────────────────────────────────────────────────────── */
-.pbm-drop {
-  position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center;
-  gap: 6px; padding: 26px 18px; border-radius: var(--pbm-r); cursor: pointer; text-align: center;
+/* ── Зона загрузки: КОМПАКТНАЯ строка, а не пол-экрана ─────────────────────
+   Заказчик 21.10.2026: «зачем такое гигантское поле для перетаскивания? оно
+   перекрывает рабочую полость». Держим высоту ~56px.
+   ВАЖНО: селектор с `.pbm` в префиксе — глобальное `label { display:block }`
+   из app.css иначе перебивает `display:flex` и поле распухает на весь экран
+   (замер до фикса: 1180px вместо 56px). */
+.pbm .pbm-drop {
+  position: relative; display: flex; flex-direction: row; align-items: center; gap: 12px;
+  padding: 12px 16px; min-height: 0; height: auto; max-height: 64px;
+  border-radius: var(--pbm-r); cursor: pointer; overflow: hidden;
   border: 1.5px dashed color-mix(in srgb, var(--brd) 60%, var(--t3));
   background: color-mix(in srgb, var(--bg2) 55%, transparent);
   transition: border-color .16s ease, background .16s ease;
 }
-.pbm-drop:hover, .pbm-drop.is-over {
+.pbm .pbm-drop:hover, .pbm .pbm-drop.is-over {
   border-color: color-mix(in srgb, var(--blue) 55%, var(--brd));
   background: color-mix(in srgb, var(--bg2) 85%, transparent);
 }
-.pbm-drop input { position: absolute; width: 1px; height: 1px; opacity: 0; }
-.pbm-drop__ico { width: 30px; height: 30px; color: var(--t2); }
-.pbm-drop__ico svg { width: 100%; height: 100%; }
-.pbm-drop__t { font-size: 13.5px; font-weight: 650; color: var(--t1); }
-.pbm-drop__s { font-size: 11.5px; color: var(--t3); }
+.pbm .pbm-drop input { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+.pbm .pbm-drop__ico { width: 22px; height: 22px; flex: 0 0 auto; color: var(--t2); }
+.pbm .pbm-drop__ico svg { width: 22px; height: 22px; display: block; }
+.pbm .pbm-drop__txt { display: flex; flex-direction: column; gap: 1px; min-width: 0; flex: 1 1 auto; }
+.pbm .pbm-drop__t { font-size: 13px; font-weight: 650; color: var(--t1); line-height: 1.25; }
+.pbm .pbm-drop__s { font-size: 11px; color: var(--t3); }
 
 /* ── Раскладка: список / работа ────────────────────────────────────────────── */
 .pbm__layout { display: grid; grid-template-columns: minmax(232px, 296px) minmax(0, 1fr); gap: var(--pbm-gap); align-items: start; }
@@ -303,6 +314,52 @@ select.pbm-in {
   .pbm-drafts__row { grid-template-columns: minmax(0, 1fr) auto auto; }
   .pbm-drafts__sum { display: none; }
 }
+
+/* ── Карточка контрагента: «сколько счетов / договоров», как в реестре ──────── */
+.pbm-card {
+  border: 1px solid var(--brd); border-radius: var(--pbm-r-sm);
+  background: var(--bg2); padding: 11px 12px; display: flex; flex-direction: column; gap: 7px;
+}
+.pbm-card--warn { border-color: color-mix(in srgb, var(--warn) 42%, var(--brd)); }
+.pbm-card__top { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.pbm-card__name { font-size: 13px; font-weight: 650; color: var(--t1); }
+.pbm-card__inn { font-size: 11px; color: var(--t3); font-variant-numeric: tabular-nums; }
+.pbm-card__stats { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; font-size: 11.5px; color: var(--t3); }
+.pbm-card__contacts { font-size: 11px; color: var(--t3); }
+.pbm-stat b { color: var(--t2); font-variant-numeric: tabular-nums; font-weight: 700; }
+.pbm-stat.is-on b { color: var(--t1); }
+.pbm-badge-ok, .pbm-badge-warn {
+  font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 999px; white-space: nowrap;
+}
+.pbm-badge-ok { color: var(--ok-t); background: color-mix(in srgb, var(--ok) 16%, transparent); }
+.pbm-badge-warn { color: var(--warn-t); background: color-mix(in srgb, var(--warn) 16%, transparent); }
+
+/* Выбранный объект */
+.pbm-picked {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  padding: 10px 12px; border-radius: var(--pbm-r-sm);
+  border: 1px solid color-mix(in srgb, var(--ok) 35%, var(--brd)); background: var(--bg2);
+}
+.pbm-picked__main { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.pbm-picked__main b { font-size: 12.5px; color: var(--t1); }
+.pbm-picked__main span { font-size: 11px; color: var(--t3); }
+
+.pbm-ok-line, .pbm-warn-line { font-size: 11px; line-height: 1.4; }
+.pbm-ok-line { color: var(--ok-t); }
+.pbm-warn-line { color: var(--warn-t); }
+
+/* Модалка выбора договора */
+.pbm-pick { display: flex; flex-direction: column; gap: 10px; }
+.pbm-pick__list { display: flex; flex-direction: column; gap: 5px; max-height: min(52vh, 440px); overflow: auto; }
+.pbm-pick__item {
+  display: flex; flex-direction: column; gap: 2px; width: 100%; text-align: left;
+  padding: 9px 11px; border-radius: 9px; border: 1px solid var(--brd);
+  background: var(--bg1); color: var(--t1); cursor: pointer; font: inherit; transition: .14s;
+}
+.pbm-pick__item:hover { border-color: color-mix(in srgb, var(--blue) 45%, var(--brd)); background: var(--bg2); }
+.pbm-pick__n { font-size: 12.5px; font-weight: 650; }
+.pbm-pick__s { font-size: 11px; color: var(--t3); }
+.pbm-cp__empty { padding: 14px 10px; font-size: 12px; color: var(--t3); text-align: center; }
 
 /* ── Подвал ────────────────────────────────────────────────────────────────── */
 .pbm__foot { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap;
