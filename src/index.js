@@ -146,12 +146,21 @@ fs.watchFile(indexHtmlPath, { interval: process.env.NODE_ENV === 'production' ? 
   try { buildIndexVersions(); console.log('[Server] index.html reloaded'); }
   catch (e) { console.error('[Server] Failed to reload index.html:', e.message); }
 });
-if (process.env.NODE_ENV !== 'production') {
-  fs.watchFile(reactMobileHtmlPath, { interval: 2000 }, () => {
-    try { buildIndexVersions(); console.log('[Server] /m/index.html reloaded'); }
-    catch (e) { console.error('[Server] Failed to reload /m/index.html:', e.message); }
-  });
-}
+
+/**
+ * Мобильная оболочка /m/index.html — watcher ОБЯЗАТЕЛЕН и в production.
+ *
+ * Дефект F-C (21.10.2026): watcher висел под `if (NODE_ENV !== 'production')`,
+ * поэтому после выкатки новой мобильной сборки сервис продолжал держать в памяти
+ * СТАРЫЙ хэш бандла. Файла с этим хэшем на диске уже не было → все вложенные
+ * маршруты /m/* (SPA-fallback отдаётся из памяти) получали 404 → белый экран
+ * у живых пользователей (14 записей 404 в nginx error.log, 3 IP).
+ * Тот же интервал, что и у desktop-оболочки: в проде 5 с.
+ */
+fs.watchFile(reactMobileHtmlPath, { interval: process.env.NODE_ENV === 'production' ? 5000 : 2000 }, () => {
+  try { buildIndexVersions(); console.log('[Server] /m/index.html reloaded'); }
+  catch (e) { console.error('[Server] Failed to reload /m/index.html:', e.message); }
+});
 
 function isMobileUA(userAgent) {
   if (!userAgent) return false;
