@@ -1,4 +1,5 @@
 import { useNavigate, useLocation } from 'react-router-dom';
+import { useVisualViewportBottom } from '@/hooks/useVisualViewportBottom';
 
 const TABS = [
   { path: '/pm',          icon: '🏠', label: 'Главная' },
@@ -11,10 +12,12 @@ const TABS = [
 export default function PmTabBar() {
   const navigate  = useNavigate();
   const location  = useLocation();
+  // Тот же приём, что и в основном TabBar: прижимаем к видимому низу.
+  useVisualViewportBottom();
 
   return (
     <div style={{
-      position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 50,
+      position: 'fixed', bottom: 'var(--vv-bottom, 0px)', left: 0, right: 0, zIndex: 50,
       background: '#16161f',
       borderTop: '1px solid #ffffff12',
       display: 'flex',
