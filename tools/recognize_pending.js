@@ -25,12 +25,17 @@ const APPLY = process.argv.includes('--apply');
   await c.connect();
   const q = async (s, p) => (await c.query(s, p)).rows;
 
-  const rows = await q(`SELECT id, supplier_name, amount, file_path, file_name, supplier_id, status
-      FROM payment_invoices
-      WHERE status IN ('awaiting_dir','draft')
-        AND (supplier_name ILIKE '%Распознаётся%' OR supplier_name IS NULL
-             OR NOT (amount > 0) OR supplier_id IS NULL)
-      ORDER BY id`);
+  // D-322: критерий — не только «нет supplier_id», но и «карточка без реквизитов».
+  // Иначе заявка, привязанная к пустой карточке (#6 «Сатурн» без БИК), больше
+  // никогда не дозаполнится: файл есть, реквизиты в нём есть, а прохода нет.
+  const rows = await q(`SELECT p.id, p.supplier_name, p.amount, p.file_path, p.file_name,
+        p.supplier_id, p.status, s.bik s_bik, s.rs s_rs
+      FROM payment_invoices p LEFT JOIN suppliers s ON s.id = p.supplier_id
+      WHERE p.status IN ('awaiting_dir','draft')
+        AND (p.supplier_name ILIKE '%Распознаётся%' OR p.supplier_name IS NULL
+             OR NOT (p.amount > 0) OR p.supplier_id IS NULL
+             OR s.bik IS NULL OR s.rs IS NULL)
+      ORDER BY p.id`);
   console.log(`к дозаполнению: ${rows.length}`);
   for (const r of rows) console.log(`  #${r.id} «${r.supplier_name}» ${r.amount} ₽ — ${(r.file_name || '-').slice(0, 55)}`);
 
@@ -102,8 +107,16 @@ const APPLY = process.argv.includes('--apply');
       if (parsed.work_hint && !r.work_id) setIf('work_hint', parsed.work_hint);
 
       if (parsed.inn && String(parsed.inn) !== ownInnStr) {
-        const s = await q(`SELECT id FROM suppliers WHERE inn=$1 AND deleted_at IS NULL LIMIT 1`, [parsed.inn]);
-        if (s[0]) setIf('supplier_id', s[0].id, '::int');
+        // D-322: находим ИЛИ заводим карточку поставщика по реквизитам счёта.
+        try {
+          const { ensureSupplier } = require(path + '/src/services/supplier-resolve');
+          const sup = await ensureSupplier(c, parsed, { ownInn: ownInnStr });
+          if (sup.id) {
+            if (!r.supplier_id) setIf('supplier_id', sup.id, '::int');
+            if (sup.created) console.log(`     → заведён поставщик #${sup.id} «${parsed.counterparty_name}» ИНН ${parsed.inn}`);
+            else if (sup.filled) console.log(`     → карточка #${sup.id} дозаполнена реквизитами (${sup.filled} полей)`);
+          }
+        } catch (e) { console.log(`     → ensureSupplier: ${e.message}`); }
       }
       if (parsed.work_hint) {
         const wm = await matchWork(parsed.work_hint).catch(() => ({ found: false }));

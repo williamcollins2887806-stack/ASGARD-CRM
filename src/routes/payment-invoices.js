@@ -691,6 +691,28 @@ async function routes(fastify) {
       ]
     );
     const pay = rows[0];
+    // D-322 (заказчик 21.10.2026): «когда человек на вкладке согласования
+    // отправляет заявку — должен добавить поставщика, если такого нет».
+    // Если поставщик не выбран из справочника, а имя/ИНН есть — находим или
+    // заводим карточку сразу, иначе в платёжке не будет реквизитов.
+    if (!pay.supplier_id) {
+      try {
+        const { ensureSupplier } = require('../services/supplier-resolve');
+        const dcOwn = require('../services/doc-classifier');
+        const ownInnStr2 = await dcOwn.ownInn(db).catch(() => '');
+        const sup = await ensureSupplier(db, {
+          inn: b.counterparty_inn || null,
+          counterparty_name: b.supplier_name || null
+        }, { ownInn: ownInnStr2, createdBy: req.user.id });
+        if (sup.id) {
+          await db.query('UPDATE payment_invoices SET supplier_id=$2, updated_at=NOW() WHERE id=$1', [pay.id, sup.id]);
+          pay.supplier_id = sup.id;
+          if (sup.created) fastify.log.info(`[payment-invoices] заведён поставщик #${sup.id} «${b.supplier_name}»`);
+        }
+      } catch (e) {
+        fastify.log.warn('[payment-invoices] ensureSupplier on create: ' + (e && e.message));
+      }
+    }
     // D-316 (заказчик 20.10.2026): «почему я закрыл и вышел, а счета ушли
     // директору без подтверждения?». Здесь РАНЬШЕ было:
     //   • stampExpiry() — TTL согласования 72ч
@@ -838,11 +860,19 @@ async function routes(fastify) {
     if (!pay.work_hint && parsed.work_hint) setIf('work_hint', parsed.work_hint);
 
     // Поставщик по ИНН (если он есть и это не наш ИНН — D-319).
+    // D-322 (заказчик 21.10.2026): «если поставщика нет — пусть он заводит
+    // карточку сам». Раньше при отсутствии карточки supplier_id оставался пуст,
+    // и в платёжке не было реквизитов (бухгалтерия вбивала руками). Теперь
+    // создаём карточку из распознанных реквизитов счёта.
     if (parsed.inn && String(parsed.inn) !== String(ownInnStr || '')) {
       try {
-        const s = await db.query(`SELECT id FROM suppliers WHERE inn=$1 AND deleted_at IS NULL LIMIT 1`, [parsed.inn]);
-        if (s.rows[0] && !pay.supplier_id) setIf('supplier_id', s.rows[0].id, '::int');
-      } catch (_) { /* не критично */ }
+        const { ensureSupplier } = require('../services/supplier-resolve');
+        const sup = await ensureSupplier(db, parsed, { ownInn: ownInnStr, createdBy: pay.created_by });
+        if (sup.id && !pay.supplier_id) setIf('supplier_id', sup.id, '::int');
+        if (sup.created) log?.info?.(`[recognize] #${paymentId}: заведён поставщик #${sup.id} «${parsed.counterparty_name}»`);
+      } catch (e) {
+        log?.warn?.('[payment-invoices] ensureSupplier: ' + (e && e.message));
+      }
     }
 
     // Объект и договор — тем же сопоставителем, что в intake.

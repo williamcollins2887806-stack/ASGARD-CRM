@@ -249,14 +249,45 @@ function extractInvoice(text, opts) {
   if (kppM && validKpp(kppM[1])) { out.kpp = kppM[1]; found(); }
 
   // Банк / БИК / счета.
-  const bikM = t.match(/БИК[\s:№]*(\d{9})/i);
+  // D-322 (заказчик 21.10.2026): «надо делать повторный проход, там есть
+  // реквизиты?». Проверка показала: реквизиты В СКАНЕ ЕСТЬ, но OCR отдаёт их
+  // markdown-таблицей платежного поручения:
+  //   «| АО "ТБанк" г. Москва | БИК | 044525974 | | | Сч. № | 30101810145250000974 |
+  //    | ИНН 3017052355 | КПП 302501001 | Сч. № | 40702810610000992876 |»
+  // Прежние регулярки требовали «БИК: 044525974» и «р/с 40702…» слитно, поэтому
+  // давали null — и поставщик не заводился (не из чего взять реквизиты).
+  const flat = t.replace(/\|/g, ' ').replace(/\*+/g, ' ').replace(/[ \t]+/g, ' ');
+
+  const bikM = flat.match(/БИК[\s:№]*(\d{9})/i) || t.match(/БИК\s*\|?\s*(\d{9})/i);
   if (bikM && validBik(bikM[1])) { out.bik = bikM[1]; found(); }
-  const rsM = t.match(/(?:р\/?с|расч[её]тн\S*\s+сч[её]т)[\s:]*(\d{20})/i);
-  if (rsM && validAccount(rsM[1])) { out.rs = rsM[1]; found(); }
-  const ksM = t.match(/(?:к\/?с|корр\S*\s+сч[её]т)[\s:]*(\d{20})/i);
-  if (ksM && validAccount(ksM[1])) { out.ks = ksM[1]; found(); }
-  const bankM = t.match(/(ПАО|АО|ООО|ОАО|БАНК|ФИЛИАЛ)[^\n]{0,60}банк[^\n]{0,40}/i);
-  if (bankM) { out.bank_name = bankM[0].trim().slice(0, 120); found(); }
+
+  // В таблице платёжки р/с и к/с идут после «Сч. №» — различаем по позиции:
+  // к/с (корсчёт) начинается с 301.., р/с — с 407..; плюс явные подписи.
+  const labelledRs = flat.match(/(?:р\/?с|расч[её]тн\S*\s+сч[её]т)[\s:]*(\d{20})/i);
+  const labelledKs = flat.match(/(?:к\/?с|корр\S*\s+сч[её]т)[\s:]*(\d{20})/i);
+  if (labelledRs && validAccount(labelledRs[1])) { out.rs = labelledRs[1]; found(); }
+  if (labelledKs && validAccount(labelledKs[1])) { out.ks = labelledKs[1]; found(); }
+
+  // Без подписей: все 20-значные счета в тексте, раскладываем по префиксу.
+  if (!out.rs || !out.ks) {
+    const accounts = [...flat.matchAll(/\b(\d{20})\b/g)].map((m) => m[1]).filter(validAccount);
+    if (!out.ks) {
+      const ks = accounts.find((a) => /^301/.test(a));
+      if (ks) { out.ks = ks; found(); }
+    }
+    if (!out.rs) {
+      const rs = accounts.find((a) => /^40[0-9]/.test(a) && a !== out.ks);
+      if (rs) { out.rs = rs; found(); }
+    }
+  }
+
+  // Банк: «АО "ТБанк" г. Москва», «АО «АЛЬФА-БАНК»», «ПАО БАНК ...» — из таблицы
+  // или строки «Банк получателя».
+  if (!out.bank_name) {
+    const bankM = flat.match(/(?:^|\s)((?:ПАО|АО|ООО|ОАО|ЗАО|КБ)\s*[«"'“]?[^|\n]{2,60}?(?:банк|Банк)[^|\n]{0,40})/m)
+      || flat.match(/Банк\s+получателя[:\s]*([^|\n]{3,80})/i);
+    if (bankM) { out.bank_name = String(bankM[1]).replace(/\s+/g, ' ').trim().slice(0, 120); found(); }
+  }
 
   // Номер и дата счёта. Реальные форматы: «Счёт на оплату № 1185 от 14.07.26»,
   // «Счёт № 45 от 13.10.2026», «Счёт-договор № 20261006-05». Берём первую строку
