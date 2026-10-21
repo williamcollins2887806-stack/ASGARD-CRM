@@ -176,6 +176,38 @@ async function autoWorkExpense(db, payment, docRow) {
   if (docRow && docRow.work_expense_id) return docRow.work_expense_id; // ручная запись уже есть
   try {
     const { insertWorkExpense } = require('../services/work-expense-writer');
+
+    // D-328 (заказчик 21.10.2026): «проверь, что все счета идут в расходы по
+    // проектам, сверяясь с дублями, чтобы не занести два раза одно и то же».
+    //
+    // Защита по source_key ловит только ПОВТОР того же счёта. Но на проде нашлись
+    // 4 пары, где по ОДНОМУ счёту в реестре есть ДВЕ строки (разные id, напр.
+    // #505 и #506, счет №5560) — каждая даёт свой source_key, и расход
+    // создавался дважды: 166 398 ₽ лишних. Поэтому перед вставкой проверяем
+    // «уже есть расход по этому объекту с тем же номером документа и суммой».
+    const invNo = docRow && docRow.invoice_number ? String(docRow.invoice_number).trim() : '';
+    const amt = num(payment.amount);
+    if (invNo && amt > 0) {
+      const dup = await db.query(
+        `SELECT id FROM work_expenses
+          WHERE work_id = $1
+            AND lower(trim(coalesce(doc_number,''))) = lower($2)
+            AND abs(amount - $3) < 0.01
+            AND COALESCE(status,'') <> 'rejected'
+          LIMIT 1`,
+        [payment.work_id, invNo, amt]
+      );
+      if (dup.rows[0]) {
+        // Расход уже есть — связываем карточку с ним, второй не создаём.
+        if (docRow && docRow.id) {
+          await db.query(
+            `UPDATE doc_registry SET work_expense_id=$2, updated_at=NOW()
+              WHERE id=$1 AND work_expense_id IS NULL`, [docRow.id, dup.rows[0].id]);
+        }
+        return dup.rows[0].id;
+      }
+    }
+
     // ЕДИНЫЙ ключ расхода по счёту (expense-dedup-object, 17.10.2026): до этого
     // link-expense писал 'doc_registry:<id>', а здесь — '<payId>' → один счёт давал
     // ДВА расхода по объекту. Когда есть карточка реестра — ключ по её id.

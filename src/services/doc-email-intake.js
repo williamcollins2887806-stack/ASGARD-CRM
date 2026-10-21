@@ -74,11 +74,11 @@ function extractWorkHintFromSubject(subject) {
   if (s.length < 3) return null;
   if (/^(сч[её]т|оплата|invoice|без темы|no subject)$/i.test(s)) return null;
   // D-325 (21.10.2026): служебные префиксы НЕ являются объектом.
-  // «Офис: Счет …» давал подсказку «Офис», «МЛСП: Счета …» — «МЛСП». Такая
-  // подсказка либо не находится (теряем объект), либо находит чужую работу.
-  // ВАЖНО: аббревиатуры объектов (АГПЗ, МЛСП, АГХК, НЗНП) сюда НЕ входят —
-  // это настоящие объекты («АГПЗ» → работа #417), их терять нельзя.
-  const GENERIC = /^(офис|офисные|склад|склады|ахо|прочее|разное|закупка|закупки|материалы|услуги|работы|договор|договоры|объект|счёт|счет|оплата|счета|счета на оплату|re|fw)$/i;
+  // «Офис: Счет …» — это ОФИСНЫЕ РАСХОДЫ (spend_kind='office'), а не объект.
+  // Такая подсказка либо не находится (теряем объект), либо находит чужую
+  // работу. ВАЖНО: аббревиатуры объектов (АГПЗ, МЛСП, АГХК, НЗНП) сюда НЕ
+  // входят — это настоящие объекты («АГПЗ» → работа #417).
+  const GENERIC = /^(офис|офисные|офисный|склад|складские|ахо|прочее|разное|закупка|закупки|материалы|услуги|работы|договор|договоры|объект|счёт|счет|оплата|счета|счета на оплату|re|fw)$/i;
   if (GENERIC.test(s.trim())) return null;
   // Одиночное слово без цифр и без второй части — почти всегда категория.
   // НО аббревиатуры объектов (АГПЗ, МЛСП, АГХК, НЗНП) — настоящие названия:
@@ -492,26 +492,36 @@ async function intakeOne(db, { email, attachment, text, userId = null, dryRun = 
     // пришёл по email».
     // Поле receive_channel = «как получим ЭДО/скан/оригинал», а не «как пришёл
     // счёт». При intake ставим NULL — заполнит инициатор в карточке.
-    const insDoc = await db.query(
-      `INSERT INTO doc_registry(dir, package_type, ops_status, pay_status, invoice_number, invoice_date,
-         counterparty_name, counterparty_inn, supplier_id, amount_gross, amount_net, vat_amount, has_vat,
-         spend_kind,          doc_owner_id, created_by, updated_by, receive_channel, comment_text,
-         contract_mode, contract_id, contract_label, payment_due_at, work_id, delivery_due_at,
-         seller_name, seller_inn, payee_name, payee_inn, payee_kpp, parse_engine, parse_warnings,
-         original_path_url)
-       VALUES ('in','invoice','wait_sf','wait',$1,$2::date,$3,$4,$5,$6,$7,$8,$9,
-               'other',$10,$10,$10,NULL,$11,
-               $12,$13,$14,$15::date,$16,$17::date,
-               $18,$19,$20,$21,$22,$23,$24::jsonb,$25) RETURNING id`,
-      [parsed.invoice_number, parsed.invoice_date, cpName, parsed.inn, supplierId,
-        gross, net, vat, parsed.has_vat !== false,
-        senderUserId, lowConfidence
-          ? 'Требует ручной проверки (не распознаны сумма или контрагент)'
-          : (needsReview ? 'Распознано, проверьте реквизиты (банк не найден)' : null),
-        // V404: договор-основание из счёта. Есть в CRM → linked, нет → once (подсветим).
-        parsed.contract_basis ? (contractInfo.found ? 'linked' : 'once') : 'none',
-        contractInfo.found ? contractInfo.contract.id : null,
-        parsed.contract_basis ? (parsed.contract_basis.number || parsed.contract_basis.raw) : null,
+  // D-325 (заказчик 21.10.2026): «Офис — это офисные расходы».
+  // Раньше spend_kind был жёстко 'other', из-за чего офисный счёт с темой
+  // «Офис: Счет …» попадал в общую кучу, а не в офисные расходы.
+  // Определяем по теме письма и по подсказке из счёта.
+  const kindHint = `${String(emailSubject || '')} ${String(parsed.work_hint || '')}`.toLowerCase();
+  let spendKind = 'other';
+  if (/(^|\W)(офис|офисн|ахо|канцеляр|хозтовар|бытов)/i.test(kindHint)) spendKind = 'office';
+  else if (/(^|\W)(склад|материал|расходник|запчаст|спецодежд|инструмент)/i.test(kindHint)) spendKind = 'warehouse';
+  else if (parsed.work_hint || workInfo.found) spendKind = 'work';
+
+  const insDoc = await db.query(
+    `INSERT INTO doc_registry(dir, package_type, ops_status, pay_status, invoice_number, invoice_date,
+       counterparty_name, counterparty_inn, supplier_id, amount_gross, amount_net, vat_amount, has_vat,
+       spend_kind,          doc_owner_id, created_by, updated_by, receive_channel, comment_text,
+       contract_mode, contract_id, contract_label, payment_due_at, work_id, delivery_due_at,
+       seller_name, seller_inn, payee_name, payee_inn, payee_kpp, parse_engine, parse_warnings,
+       original_path_url)
+     VALUES ('in','invoice','wait_sf','wait',$1,$2::date,$3,$4,$5,$6,$7,$8,$9,
+             $26,$10,$10,$10,NULL,$11,
+             $12,$13,$14,$15::date,$16,$17::date,
+             $18,$19,$20,$21,$22,$23,$24::jsonb,$25) RETURNING id`,
+    [parsed.invoice_number, parsed.invoice_date, cpName, parsed.inn, supplierId,
+      gross, net, vat, parsed.has_vat !== false,
+      senderUserId, lowConfidence
+        ? 'Требует ручной проверки (не распознаны сумма или контрагент)'
+        : (needsReview ? 'Распознано, проверьте реквизиты (банк не найден)' : null),
+      // V404: договор-основание из счёта. Есть в CRM → linked, нет → once (подсветим).
+      parsed.contract_basis ? (contractInfo.found ? 'linked' : 'once') : 'none',
+      contractInfo.found ? contractInfo.contract.id : null,
+      parsed.contract_basis ? (parsed.contract_basis.number || parsed.contract_basis.raw) : null,
         parsed.payment_due_at || null,
         workInfo.found ? workInfo.work.id : null,
         (parsed._delivery && parsed._delivery.date) || null,
@@ -525,7 +535,9 @@ async function intakeOne(db, { email, attachment, text, userId = null, dryRun = 
         JSON.stringify(parsed._ai_warnings || []),
         // ДЕФЕКТ (заказчик 19.10.2026): «счёт не приложен» — путь к файлу не писался,
         // хотя вложение физически есть. Теперь строка реестра ссылается на скан.
-        parsed._filePath || null]);
+        parsed._filePath || null,
+        // D-325: вид расхода (офис / склад / работы / прочее).
+        spendKind]);
     docId = insDoc.rows[0].id;
     createdDoc = true;
     // Если договор не найден, но номер указан — пометим строку неполной (жёлтый/синий).

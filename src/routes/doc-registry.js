@@ -1704,6 +1704,27 @@ module.exports = async function docRegistryRoutes(fastify) {
     if (!(await assertDocVisible(db, { role: req.user.role, userId: req.user.id }, id))) {
       return reply.code(404).send({ error: 'Не найдено' });
     }
+    // D-327 (заказчик 21.10.2026): «удалить можно только те позиции, где ты
+    // стоишь ответственным за документы». Раньше удаление было доступно лишь
+    // складу/корректировкам, а РП — ответственному за строку — нет.
+    // Правило: привилегированные роли (ведут реестр) ИЛИ ответственный за
+    // документ (doc_owner_id) ИЛИ автор ещё не проведённой строки.
+    {
+      const who = await db.query(
+        'SELECT doc_owner_id, created_by, ops_status FROM doc_registry WHERE id=$1', [id]);
+      const row = who.rows[0];
+      const r = String(req.user.role || '').toUpperCase();
+      const priv = ['ADMIN', 'BUH', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV', 'DIRECTOR', 'OFFICE_MANAGER', 'WAREHOUSE'];
+      const isOwner = row && Number(row.doc_owner_id) === Number(req.user.id);
+      const isAuthorDraft = row && Number(row.created_by) === Number(req.user.id)
+        && ['draft', 'new', ''].includes(String(row.ops_status || ''));
+      if (!priv.includes(r) && !isOwner && !isAuthorDraft) {
+        return reply.code(403).send({
+          error: 'Удалять можно только свои документы',
+          hint: 'Строку может удалить её ответственный за документы, автор черновика, склад, бухгалтерия или админ.'
+        });
+      }
+    }
     const {
       assertSafeBillingDelete,
       hardDeleteBillingForDoc

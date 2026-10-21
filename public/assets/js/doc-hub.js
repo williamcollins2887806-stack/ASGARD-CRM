@@ -157,6 +157,28 @@ window.AsgardDocHubPage = (function () {
   // Акты сверки ведёт бухгалтерия/офис/директора — зеркало RECON_ROLES на бэке.
   function canReconAct() { return ['BUH', 'ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV', 'DIRECTOR', 'OFFICE_MANAGER'].includes(role()); }
   function canCorrect() { return CORR_ROLES.includes(role()); }
+  /**
+   * D-327 (заказчик 21.10.2026): «кнопка удалить строку почему-то есть только
+   * у админа, как РП я её не вижу. Сделай так, что удалить можно только те
+   * позиции, где ты стоишь ответственным за документы».
+   *
+   * Правило: удалять может тот, кто ОТВЕТСТВЕННЫЙ за эту строку
+   * (doc_owner_id === я), либо привилегированные роли (склад/бухгалтерия/
+   * админ/директора — они ведут реестр). Инициатор строки (created_by) тоже
+   * может удалить свою, если она ещё не согласована.
+   */
+  function canDeleteRow(row) {
+    if (!row) return false;
+    const r = role();
+    if (['ADMIN', 'BUH', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV', 'DIRECTOR', 'OFFICE_MANAGER'].includes(r)) return true;
+    if (canWh() || canCorrect()) return false;   // у склада/корректировок своя логика — ниже
+    const me = Number(currentUserId());
+    if (!me) return false;
+    if (Number(row.doc_owner_id) === me) return true;
+    // Свою свежую строку (не проведённую по деньгам) автор тоже может убрать.
+    if (Number(row.created_by) === me && ['draft', 'new', ''].includes(String(row.ops_status || ''))) return true;
+    return false;
+  }
 
   /** API GET /api/users → { users: [...] }; never return a bare object. */
   function parseUsersList(j) {
@@ -1050,7 +1072,7 @@ window.AsgardDocHubPage = (function () {
             ${canWh() ? `<button type="button" data-qa="wh" title="Склад" aria-label="Склад">${ico.wh}</button>` : ''}
             ${canCorrect() ? `<button type="button" data-qa="corr" class="dh-qa__corr${r.correction_state === 'requested' ? ' is-on' : ''}" title="${r.correction_state === 'requested' ? 'Корректировка запрошена' : 'СФ/Акт не корректен'}" aria-label="Корректировка">${ico.corr}</button>` : ''}
             <button type="button" data-qa="open" title="Карточка" aria-label="Открыть карточку">${ico.open}</button>
-            ${(canWh() || canCorrect()) ? `<button type="button" class="dh-qa__del" data-qa="del" title="Удалить строку (в корзину, можно восстановить)" aria-label="Удалить">${ico.del || '✕'}</button>` : ''}
+            ${canDeleteRow(r) ? `<button type="button" class="dh-qa__del" data-qa="del" title="Удалить строку (в корзину, можно восстановить)" aria-label="Удалить">${ico.del || '✕'}</button>` : ''}
             <button type="button" class="dh-cmt-btn${r.comment_text ? ' is-filled' : ''}" data-cmt="${r.id}" data-comment="${esc(r.comment_text || '')}" title="${r.comment_text ? esc(String(r.comment_text).slice(0, 60)) : 'Комментарий'}" aria-label="Комментарий">${ico.cmt}</button>
           </div>
         </td>
@@ -3371,7 +3393,7 @@ window.AsgardDocHubPage = (function () {
           </div>
           <footer class="dh-drawer__foot">
             <button type="button" class="dh-btn dh-btn--ghost" id="dhDrawerClose2">Закрыть</button>
-            ${canWh() || canCorrect() ? `<button type="button" class="dh-btn dh-btn--danger" id="dhDrawerDelete" title="Удалить документ (переместится в корзину)">Удалить</button>` : ''}
+            ${canDeleteRow(row) ? `<button type="button" class="dh-btn dh-btn--danger" id="dhDrawerDelete" title="Удалить документ (переместится в корзину)">Удалить</button>` : ''}
             <button type="button" class="dh-btn dh-btn--ghost" id="dhDrawerSave">💾 Сохранить</button>
             <button type="button" class="dh-btn dh-btn--ok" id="dhParseCatalog" ${row.dir !== 'in' ? 'disabled title="Только входящие"' : ''}>В каталог</button>
             <button type="button" class="dh-btn dh-btn--ghost" id="dhDrawerExpense" ${!row.work_id ? 'disabled title="Нет объекта"' : ''}>В расходы</button>
