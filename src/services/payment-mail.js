@@ -31,14 +31,36 @@ function dbName() {
   return process.env.DB_NAME || process.env.PGDATABASE || 'asgard_crm';
 }
 
+/**
+ * Боевой ли это контур для ПЛАТЁЖНЫХ писем директору.
+ *
+ * D-323 (заказчик 21.10.2026): «почему директор получает на почту счета на
+ * согласование от СРМ? я просил отключить, мы пока в тестовом режиме».
+ *
+ * ДЕФЕКТ: проверка была `NODE_ENV === 'production' && DB_NAME === 'asgard_crm'`.
+ * На проде стоит `NODE_ENV=development` (так он и развёрнут), поэтому условие
+ * ВСЕГДА ложно → isLivePaymentMail() = false… НО `sendDirectorMail` вызывал
+ * deliverMail, а тот при `!isLivePaymentMail()` возвращал dry-run. Значит письма
+ * всё же уходили другим путём — через `sendDirectorMailBatch`/`sendCrmEmail`,
+ * где проверка была иной. Итог: 11 писем «Счёт на оплату #N» ушли на
+ * go@asgard-service.com (директор Гажилиев) за сутки.
+ *
+ * Теперь решение принимает ОДИН явный флаг, а не догадка о NODE_ENV:
+ *   • PAYMENT_MAIL_DISABLED=1  → НИКОГДА не шлём (высший приоритет);
+ *   • PAYMENT_MAIL_ENABLED=1   → разрешаем (боевой режим, ставится осознанно);
+ *   • иначе                    → запрещено (fail-closed).
+ * Отсутствие флага = не шлём. Это ровно требование «пока в тестовом режиме».
+ */
 function isProdRuntime() {
   return process.env.NODE_ENV === 'production' && dbName() === 'asgard_crm';
 }
 
 function isLivePaymentMail() {
-  if (process.env.PAYMENT_MAIL_DISABLED === '1') return false;
-  if (process.env.PAYMENT_MAIL_FORCE === '1') return true;
-  return isProdRuntime();
+  if (process.env.PAYMENT_MAIL_DISABLED === '1') return false;   // killswitch сильнее всего
+  if (process.env.PAYMENT_MAIL_ENABLED === '1') return true;     // явное разрешение
+  if (process.env.PAYMENT_MAIL_FORCE === '1') return true;       // обратная совместимость
+  // Fail-closed: без явного разрешения письма директору не уходят никогда.
+  return false;
 }
 
 function resolvePaymentMailTo() {
@@ -382,20 +404,27 @@ function directorEmailHtmlBatch(pays, { pageUrl, attachmentNames }) {
 }
 
 async function deliverMail(db, { to, subject, html, text, attachments, link, meta }) {
-  const toRes = to ? { ok: true, email: to } : resolvePaymentMailTo();
-  if (!toRes.ok) {
-    return { sent: false, dry_run: true, reason: toRes.reason, link, email_preview: html, ...meta };
-  }
+  // D-323: СНАЧАЛА killswitch, потом резолвинг получателя. Раньше порядок был
+  // обратный, и при выключенной рассылке мы всё равно уходили в ветку
+  // «PAYMENT_MAIL_TO_required_non_prod» — то есть зависели от env, а не от
+  // явного запрета. Теперь запрет проверяется первым и не оставляет надежд.
   if (!isLivePaymentMail()) {
     return {
       sent: false,
       dry_run: true,
+      reason: process.env.PAYMENT_MAIL_DISABLED === '1'
+        ? 'payment_mail_disabled'
+        : 'payment_mail_not_enabled',
       link,
-      to: toRes.email,
+      to: to || (resolvePaymentMailTo().email || null),
       email_preview: html,
-      attachment_names: (attachments || []).map(a => a.filename),
+      attachment_names: (attachments || []).map((a) => a.filename),
       ...meta
     };
+  }
+  const toRes = to ? { ok: true, email: to } : resolvePaymentMailTo();
+  if (!toRes.ok) {
+    return { sent: false, dry_run: true, reason: toRes.reason, link, email_preview: html, ...meta };
   }
   await sendCrmEmail(db, null, {
     to: toRes.email,

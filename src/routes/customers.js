@@ -215,7 +215,8 @@ async function routes(fastify, options) {
     if (!inn) return reply.code(400).send({ error: 'ИНН обязателен' });
     try {
       const sup = (await db.query(
-        `SELECT id, name, COALESCE(TRIM(phone), '') AS phone, COALESCE(TRIM(email), '') AS email
+        `SELECT id, name, inn, kpp, bik, rs, ks, bank_name,
+                COALESCE(TRIM(phone), '') AS phone, COALESCE(TRIM(email), '') AS email
            FROM suppliers WHERE deleted_at IS NULL AND inn = $1 LIMIT 1`, [inn])).rows[0] || null;
       // N3: контакты и docs_count — только из видимых роли документов.
       // visibilitySql нумерует от начала массива → единый массив с запросом.
@@ -245,7 +246,18 @@ async function routes(fastify, options) {
         `SELECT count(*)::int AS n FROM contracts WHERE COALESCE(TRIM(counterparty_name), '') <> ''
            AND lower(TRIM(counterparty_name)) = lower(TRIM($1))`, [sup.name]
       )).rows[0].n : 0;
-      return { inn, name: sup ? sup.name : '', phone, email, docs_count: docs, contracts_count: contracts };
+      return {
+        inn,
+        name: sup ? sup.name : '',
+        phone, email, docs_count: docs, contracts_count: contracts,
+        // D-324: реквизиты для платёжки — из карточки контрагента.
+        kpp: (sup && sup.kpp) || '',
+        bik: (sup && sup.bik) || '',
+        rs: (sup && sup.rs) || '',
+        ks: (sup && sup.ks) || '',
+        bank_name: (sup && sup.bank_name) || '',
+        has_requisites: !!(sup && sup.bik && sup.rs)
+      };
     } catch (e) {
       logError(fastify, 'registry-contacts error', e, request);
       return { inn, phone: '', email: '', docs_count: 0, contracts_count: 0 };
