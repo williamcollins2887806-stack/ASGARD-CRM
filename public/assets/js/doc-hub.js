@@ -3235,8 +3235,16 @@ window.AsgardDocHubPage = (function () {
                   ).join('')}
                 </div>
                 <input type="hidden" id="drSpendKind" value="${esc(sk)}"/>
-                <div class="dh-field" id="drWorkField" ${sk !== 'work' ? 'style="display:none"' : ''}>
-                  <label>Работа / объект</label>
+                <!-- D-331 (заказчик 21.10.2026): «у Вити (закупщик) в реестре счетов
+                     при открытии модалки нет выбора объекта».
+                     ПРИЧИНА: блок скрывался при spend_kind != 'work', а до сегодняшней
+                     правки ВСЕ счета из почты получали 'other' → объекта не было.
+                     Кроме того объект нужен и складу/офису: расход по объекту бывает
+                     и материалом, и офисной закупкой для площадки.
+                     Теперь поле видно ВСЕГДА; скрываем только если у строки уже
+                     явно «Прочее» без объекта — но и там можно выбрать. -->
+                <div class="dh-field" id="drWorkField">
+                  <label>Работа / объект <span class="dh-help">(куда отнести расход)</span></label>
                   <input type="hidden" id="drWorkId" value="${esc(String(row.work_id || ''))}" /><div id="drWork_w" class="dh-crselect-host"></div>
                 </div>
               </div>
@@ -3410,9 +3418,27 @@ window.AsgardDocHubPage = (function () {
         if (!wWrap) return;
         if (window.CRSelect) { try { CRSelect.destroy('drWork'); } catch (_) {} }
         try {
-          const r2 = await fetch('/api/works?limit=300', { headers: authHeaders() });
-          const j2 = await r2.json();
-          const wlist = parseWorksList(j2);
+          // D-329 (заказчик 21.10.2026): «Витя говорит, что в реестре счетов при
+          // открытии карточки нет выбора объекта. Проверь, все ли роли могут
+          // выбирать проект для счёта».
+          //
+          // ПРИЧИНА: карточка грузила `/api/works?limit=300`, а он ФИЛЬТРУЕТ по
+          // роли (РП видит только свои объекты, у иных ролей список короче).
+          // Расходы по счёту нужно относить на ЛЮБОЙ объект, поэтому берём
+          // полный список из `/api/payment-invoices/work-search` — он не режет
+          // по роли и отдаёт тот же набор, что выбор объекта в заявке.
+          let wlist = [];
+          try {
+            const r2 = await fetch('/api/payment-invoices/work-search?limit=200', { headers: authHeaders() });
+            const j2 = await r2.json();
+            wlist = (j2 && j2.items) || [];
+          } catch (_) { wlist = []; }
+          // Фолбэк: если новый эндпоинт недоступен — старый путь.
+          if (!wlist.length) {
+            const r2 = await fetch('/api/works?limit=300', { headers: authHeaders() });
+            const j2 = await r2.json();
+            wlist = parseWorksList(j2);
+          }
           const curWid = String(row.work_id || '');
           const wopts = [{ value: '', label: '— выбрать объект —' }].concat(
             wlist.map((w) => ({ value: String(w.id), label: workLabel(w) }))
@@ -3571,8 +3597,9 @@ window.AsgardDocHubPage = (function () {
           const v = btn.getAttribute('data-spend');
           d.querySelector('#drSpendKind').value = v;
           d.querySelectorAll('#drSpendCards .dh-spend-card').forEach((b) => b.classList.toggle('is-on', b === btn));
-          const wf = d.querySelector('#drWorkField');
-          if (wf) wf.style.display = v === 'work' ? '' : 'none';
+          // D-331: блок объекта больше НЕ скрываем — расход по объекту бывает
+          // и материалом, и офисной закупкой для площадки. Поле остаётся
+          // доступным при любом виде расхода.
         };
       });
 

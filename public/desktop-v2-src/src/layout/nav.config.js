@@ -76,7 +76,7 @@ export const NAV_ITEMS = [
   { r: '/tkp-followup', l: 'Контроль ТКП',        d: 'Решение клиента по отправленным', i: '🎯', g: 'resources', roles: ['ADMIN','PM','HEAD_PM','TO','HEAD_TO','BUH', ...DIRECTOR_ROLES] },
   { r: '/pass-requests',l: 'Заявки на пропуск',   d: 'Оформление пропусков',  i: '🔑', g: 'resources', roles: ['ADMIN','PM','HEAD_PM','TO','HEAD_TO','HR','HR_MANAGER', ...DIRECTOR_ROLES] },
   { r: '/procurement',  l: 'Закупки',             d: 'Реестр заявок',         i: '🛒', g: 'resources', roles: ['ADMIN','PROC','BUH', ...DIRECTOR_ROLES] },
-  { r: '/my-procurement', l: 'Мои заявки',        d: 'На закупку',            i: '🛒', g: 'resources', roles: ['PM','HEAD_PM','WAREHOUSE'] },
+  { r: '/my-procurement', l: 'Мои заявки',        d: 'На закупку',            i: '🛒', g: 'resources', roles: ['PM','HEAD_PM','WAREHOUSE','PROC','TO','HEAD_TO','BUH','OFFICE_MANAGER','ADMIN', ...DIRECTOR_ROLES] },
   { r: '/suppliers-catalog', l: 'Поставщики',     d: 'Каталог и цены',        i: '🏪', g: 'resources', roles: ['ADMIN','PROC','PM','HEAD_PM','BUH', ...DIRECTOR_ROLES] },
   { r: '/assembly',     l: 'Сбор на складе',      d: 'Ведомости сборки',      i: '📦', g: 'resources', roles: ['ADMIN','PM','HEAD_PM','WAREHOUSE', ...DIRECTOR_ROLES] },
   { r: '/warehouse-v2', l: 'Склад',               d: 'Каталог, наличие',      i: '🏭', g: 'resources', roles: ALL_ROLES },
