@@ -149,6 +149,22 @@ function calcIncomplete(row) {
   if (row.dir === 'in' && needsWork && !row.work_id && !row.purpose_asgard && !row.purpose_consumables) {
     r.push('no_work');
   }
+  // D-333 (заказчик 21.10.2026): «если стоит расход на проект, но не заполнен сам
+  // проект — просим дозаполнить, чтобы расходы не пропустились и точно упали в проект».
+  //
+  // Проблема реальная: `autoWorkExpense` при пустом work_id МОЛЧА возвращал null —
+  // счёт оплачивался, расход в проект не попадал и нигде не подсвечивался.
+  //
+  // НО подсвечивать надо ТОЛЬКО платежи, а не весь архив: на проде 203 строки без
+  // объекта, из них 196 — исторический импорт БЕЗ заявки на оплату (расхода по ним
+  // не будет в принципе). Их синение — ложный шум (класс D-238).
+  // Условие: есть привязанная заявка (значит счёт реально идёт в оплату) и
+  // расход по объекту ожидается.
+  if (row.dir === 'in' && !row.work_id && row.payment_invoice_id) {
+    const exempt = row.purpose_asgard || row.purpose_consumables
+      || String(row.spend_kind || '') === 'office';
+    if (!exempt && !r.includes('no_work')) r.push('no_work_for_expense');
+  }
   return { is_incomplete: r.length > 0, incomplete_reasons: r };
 }
 
@@ -2013,6 +2029,24 @@ module.exports = async function docRegistryRoutes(fastify) {
         return reply.code(400).send({
           error: 'Прикрепите скан счёта (вложение) перед отправкой на оплату'
         });
+      }
+      // D-333 (заказчик 21.10.2026): «если стоит расход на проект, но не заполнен
+      // сам проект — просим дозаполнить, чтобы расходы не пропустились».
+      //
+      // Отправка счёта в оплату БЕЗ объекта означала бы: деньги уйдут, а расход
+      // в проект не создастся (autoWorkExpense молча возвращал null). Поэтому
+      // требуем объект — либо явную отметку, что это не проектный расход.
+      {
+        const exemptKind = String(doc.spend_kind || '') === 'office';
+        const exemptFlag = doc.purpose_asgard === true || doc.purpose_consumables === true;
+        if (!doc.work_id && !exemptKind && !exemptFlag) {
+          return reply.code(409).send({
+            error: 'no_work',
+            message: 'Укажите объект (работу) — иначе расход не попадёт в проект',
+            hint: 'В карточке документа выберите «Работа / объект». Если расход не проектный — отметьте «Собственность АСГАРД» или «Расходники».',
+            code: 'no_work_for_expense'
+          });
+        }
       }
       const basisType = doc.work_id ? 'work' : (doc.purpose_asgard || doc.purpose_consumables ? 'other' : 'other');
       const basisText = [

@@ -172,7 +172,23 @@ async function afterPaid(db, payment) {
  * (`doc_registry.work_expense_id`) — ручная запись главнее, у неё своя категория.
  */
 async function autoWorkExpense(db, payment, docRow) {
-  if (!payment || !payment.work_id) return null; // без работы расход некуда писать — карточка остаётся «неполной»
+  if (!payment || !payment.work_id) {
+    // D-333 (заказчик 21.10.2026): раньше здесь был МОЛЧАЛИВЫЙ `return null` —
+    // счёт оплачивался, расход в проект не создавался и нигде не подсвечивался.
+    // Теперь помечаем карточку реестра неполной с понятной причиной, чтобы
+    // инициатор дозаполнил объект, и расход не потерялся.
+    try {
+      if (docRow && docRow.id) {
+        await db.query(
+          `UPDATE doc_registry
+              SET is_incomplete = true,
+                  incomplete_reasons = (SELECT array_agg(DISTINCT x) FROM unnest(
+                    COALESCE(incomplete_reasons,'{}'::text[]) || ARRAY['no_work_for_expense']) AS x)
+            WHERE id=$1 AND work_id IS NULL`, [docRow.id]);
+      }
+    } catch (_) { /* пометка не должна ломать оплату */ }
+    return null;
+  }
   if (docRow && docRow.work_expense_id) return docRow.work_expense_id; // ручная запись уже есть
   try {
     const { insertWorkExpense } = require('../services/work-expense-writer');
