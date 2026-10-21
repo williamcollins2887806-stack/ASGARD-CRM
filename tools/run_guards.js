@@ -27,6 +27,8 @@ const GUARDS = [
   ['tests/huginn-sse-401.test.js', 'HUGINN_SSE_401_OK'],
   // D-310: PWA-ассеты резолвятся с вложенных роутов /m/
   ['tools/verify_mobile_pwa_assets.js', 'MOBILE_PWA_ASSETS_OK'],
+  // D-320: целостность бандла /m (битая ссылка = белый экран у рабочих)
+  ['tools/verify_m_bundle_integrity.js', 'M_BUNDLE_INTEGRITY_OK'],
   // D-312: LogMonitor видит ошибки приложения, а не только systemd
   ['tests/log-monitor-sight.test.js', 'LOG_MONITOR_SIGHT_OK'],
 ];

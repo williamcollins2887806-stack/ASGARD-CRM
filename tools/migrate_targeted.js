@@ -86,7 +86,9 @@ const TARGETS = [
   'V427__agpz_owner_fix',                       // AGPZ: исправление владельца
   'V428__cleanup_closing_and_stamp_sf',         // чистка closing_json (D-305, чужая сессия)
   'V429__doc_owner_note',                      // примечание владельца документа (чужая сессия)
-  'V430__doc_owner_note_privacy'               // приватность примечания владельца (чужая сессия)
+  'V430__doc_owner_note_privacy',               // приватность примечания владельца (чужая сессия)
+  'V431__payment_drafts',                       // черновики платежей (D-316, чужая сессия)
+  'V432__approval_escalation'                   // эскалация согласований (D-317, чужая сессия)
 ];
 
 /**

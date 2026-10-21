@@ -813,8 +813,17 @@ fastify.addHook('onResponse', (request, reply, done) => {
         };
         if (request.fieldEmployee?.id) meta.field_employee_id = request.fieldEmployee.id;
 
+        // D-319: 401 на /api/field/* — ШТАТНОЕ поведение, а не ошибка.
+        // Приложение при старте проверяет, жива ли сессия: нет токена → 401 →
+        // показывается экран входа. За сутки таких 188 строк (по 47 на четыре
+        // ручки) — это засоряло журнал и мешало искать настоящие сбои.
+        // Понижено до debug: при NODE_ENV=production (level=info) не пишется,
+        // при отладке видно.
+        const isRoutineAuth = status === 401 && status < 500;
         if (status >= 500) {
           fastify.log.error(meta, '[field-api]');
+        } else if (isRoutineAuth) {
+          fastify.log.debug(meta, '[field-api] 401 — нет сессии (штатно)');
         } else {
           fastify.log.warn(meta, '[field-api]');
         }
