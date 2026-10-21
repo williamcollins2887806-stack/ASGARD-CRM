@@ -189,8 +189,17 @@ function extractInvoiceLines(text) {
  *   amount_gross:number|null,amount_net:number|null,vat_amount:number|null,has_vat:boolean|null,
  *   counterparty_name:string|null,confidence:number}}
  */
-function extractInvoice(text) {
+function extractInvoice(text, opts) {
   const t = String(text || '');
+  // D-319 (верификатор 21.10.2026): ИНН НАШЕЙ организации не может быть ИНН
+  // поставщика. На 204 из 981 реальных PDF `extractInvoice` возвращал наш ИНН —
+  // потому что в счёте-НПД и в наших письмах блок «Покупатель ООО АСГАРД-СЕРВИС
+  // ИНН 7736244785» напечатан ВЫШЕ продавца. Из-за этого ломался дедуп
+  // (сравнение шло по неверному ИНН) и рождались дубли строк реестра.
+  // ВАЖНО: не обнуляем ИНН в null — это реактивировало бы D-293 (matchContract
+  // при пустом ИНН привязывал ЧУЖОЙ договор). Просто пропускаем наш ИНН и
+  // берём следующий валидный, а если других нет — оставляем null + флаг.
+  const ownInn = String((opts && opts.ownInn) || '').replace(/\D/g, '');
   const out = {
     inn: null, kpp: null, bik: null, rs: null, ks: null, bank_name: null,
     invoice_number: null, invoice_date: null,
@@ -198,10 +207,12 @@ function extractInvoice(text) {
     counterparty_name: null, confidence: 0,
     contract_basis: null,   // «Основание: Договор № … от …» из счёта
     payment_due_at: null,   // «Оплата до 20.10.2026»
-    work_hint: null         // объект/работа, если явно указан в счёте
+    work_hint: null,        // объект/работа, если явно указан в счёте
+    inn_is_own: false       // true → в документе был только наш ИНН
   };
   let score = 0;
   const found = () => { score++; };
+  const isOwn = (v) => !!ownInn && String(v || '').replace(/\D/g, '') === ownInn;
 
   // ИНН / КПП (приоритет — поставщик).
   // V411: на живом скане ПЕРВЫМ в тексте идёт ИНН из банковской таблицы
@@ -210,16 +221,28 @@ function extractInvoice(text) {
   // сначала ищем ИНН в строке «Поставщик:», затем реквизиты ПОСЛЕ блока банка.
   const suppLine = t.match(/Поставщик[^\n]{0,300}/i);
   let inn = null;
+  let sawOwn = false;
   if (suppLine) {
     const m = suppLine[0].match(/ИНН[\s:№]*(\d{10,12})/i);
-    if (m && validInn(m[1])) inn = m[1];
+    if (m && validInn(m[1])) {
+      if (isOwn(m[1])) sawOwn = true; else inn = m[1];
+    }
   }
   if (!inn) {
     for (const m of t.matchAll(/ИНН[\s:№]*(\d{10,12})/gi)) {
-      if (validInn(m[1])) { inn = m[1]; break; }
+      if (!validInn(m[1])) continue;
+      if (isOwn(m[1])) { sawOwn = true; continue; }   // наш — пропускаем, ищем дальше
+      inn = m[1];
+      break;
     }
   }
   if (inn) { out.inn = inn; found(); }
+  else if (sawOwn) out.inn_is_own = true;
+  // Если чужой ИНН не нашли, но наш есть где-то в тексте (в т.ч. в слитной
+  // форме «ИНН / КПП: 7736244785 / 770101001») — помечаем документ как «свой».
+  if (!out.inn && !out.inn_is_own && ownInn && t.replace(/\D/g, '').includes(ownInn)) {
+    out.inn_is_own = true;
+  }
   // КПП — из строки поставщика, иначе первый валидный.
   const kppFromSupp = suppLine && suppLine[0].match(/КПП[\s:№]*(\d{9})/i);
   const kppM = (kppFromSupp && kppFromSupp) || t.match(/КПП[\s:№]*(\d{9})/i);
@@ -435,10 +458,15 @@ function extractInvoice(text) {
   }
 
   // ── Объект / работа: «Объект: …», «На объект …» (подтянется к work_id) ────
+  // D-319 (верификатор 21.10.2026): регекс ловил «на объекте ЗАКАЗЧИКА» и делал
+  // из этого work_hint='Заказчика' — мусор, который потом не находил работу
+  // (matchWork('Заказчика') → not_found), хотя в том же счёте был «АГПЗ» (work 417).
+  // Отсекаем ролевые слова: это НЕ название объекта.
+  const OBJ_STOP = /^(заказчик|заказчика|подрядчик|подрядчика|исполнител|поставщик|покупател|генподрядчик|площадк|территори|предприяти|организаци)/i;
   const objM = t.match(/(?:объект|на\s+объект[е]?)[\s:]*([^\n]{3,90})/i);
   if (objM) {
-    const v = objM[1].trim().replace(/[.,;]+$/, '');
-    if (v.length >= 3) { out.work_hint = v.slice(0, 120); }
+    const v = objM[1].trim().replace(/[.,;]+$/, '').replace(/^(?:а\s+|в\s+|на\s+)/i, '').trim();
+    if (v.length >= 3 && !OBJ_STOP.test(v)) { out.work_hint = v.slice(0, 120); }
   }
 
   // Контрагент: строка с организационной формой, но НЕ банк.

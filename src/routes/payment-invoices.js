@@ -713,8 +713,164 @@ async function routes(fastify) {
     } catch (e) {
       fastify.log.warn('[payment-invoices] catalog enrich: ' + e.message);
     }
-    return { ...decoratePayment(pay), mail: { sent: false, reason: 'draft' } };
+
+    // D-320 (заказчик 21.10.2026): «что за "Распознаётся…"? Если счёт не успел
+    // распознаться до отправки — распознавать в фоне и добирать данные, а не
+    // показывать его сырым».
+    //
+    // Раньше карточка с файлом создавалась с заглушкой «Распознаётся…»/0 ₽, и
+    // если инициатор сразу нажимал «Отправить», директор видел мусор в очереди.
+    // Теперь OCR+разбор запускаются СРАЗУ после создания (не блокируя ответ) и
+    // добирают поставщика, ИНН, сумму, номер, дату, срок и объект.
+    // Отправка директору без ключевых полей блокируется отдельно (см. /submit).
+    if (!b.supplier_name || b.supplier_name === 'Распознаётся…' || !(sum > 0)) {
+      scheduleRecognize(fastify, pay.id);
+    }
+    return { ...decoratePayment(pay), mail: { sent: false, reason: 'draft' }, recognizing: true };
   });
+
+  /**
+   * D-320: фоновое распознавание только что загруженного счёта.
+   * Не блокирует HTTP-ответ, ошибки не ломают создание карточки.
+   * Идемпотентно: повторный запуск перезаписывает только «пустые»/заглушечные поля.
+   */
+  function scheduleRecognize(fastify, paymentId) {
+    const run = async () => {
+      try {
+        await recognizeAndFill(db, fastify.log, paymentId);
+      } catch (e) {
+        fastify.log.warn('[payment-invoices] background recognize #' + paymentId + ': ' + (e && e.message));
+      }
+    };
+    // setImmediate: ответ уходит пользователю первым, OCR — после.
+    if (typeof setImmediate === 'function') setImmediate(() => { run(); });
+    else setTimeout(() => { run(); }, 0);
+  }
+
+  /**
+   * Распознать файл заявки и добрать данные. Используется и в фоне, и из
+   * POST /:id/recognize (кнопка «Распознать заново»).
+   * @returns {Promise<{ok:boolean, fields?:object, reason?:string}>}
+   */
+  async function recognizeAndFill(db, log, paymentId) {
+    const pay = (await db.query('SELECT * FROM payment_invoices WHERE id=$1', [paymentId])).rows[0];
+    if (!pay) return { ok: false, reason: 'not_found' };
+    if (!pay.file_path) return { ok: false, reason: 'no_file' };
+
+    // Текст файла: тот же конвейер, что у почтового intake (PDF → OCR/слой, картинки → OCR).
+    let text = '';
+    try {
+      const nodePath = require('node:path');
+      const fs = require('fs');
+      const baseUploads = nodePath.resolve(process.env.UPLOAD_DIR || process.env.UPLOADS_DIR || nodePath.join(process.cwd(), 'uploads'));
+      // D-320: путь бывает абсолютным (/uploads/…), относительным (uploads/…) или
+      // без префикса — пробуем все варианты, иначе файл «не находится».
+      const rawPath = String(pay.file_path || '');
+      const rel = rawPath.replace(/^\/?uploads\//i, '').replace(/^[\\/]+/, '');
+      const candidates = [
+        rawPath,
+        nodePath.join(process.cwd(), rawPath.replace(/^\/+/, '')),
+        nodePath.join(baseUploads, rel),
+        nodePath.join(process.cwd(), 'public', rawPath.replace(/^\/+/, ''))
+      ];
+      const full = candidates.find((p) => { try { return fs.existsSync(p); } catch (_) { return false; } });
+      if (!full) return { ok: false, reason: 'file_missing' };
+      const ocr = require('../services/pdf-ocr');
+      const mime = String(pay.file_name || '').toLowerCase();
+      if (/\.pdf$/i.test(mime) || /pdf/i.test(mime)) {
+        const res = await ocr.ocrPdfPath(full, pay.file_name);
+        text = (res && res.text) || '';
+      } else if (/\.(png|jpe?g|webp)$/i.test(mime)) {
+        const res = await ocr.ocrImageBuffer(fs.readFileSync(full), 'image/jpeg', pay.file_name);
+        text = (res && res.text) || '';
+      } else {
+        return { ok: false, reason: 'unsupported_type' };
+      }
+    } catch (e) {
+      return { ok: false, reason: 'ocr_error: ' + (e && e.message) };
+    }
+    if (!String(text).trim()) return { ok: false, reason: 'no_text' };
+
+    // Тип документа: наше исходящее письмо счётом не считаем (D-319).
+    const dc = require('../services/doc-classifier');
+    const ownInnStr = await dc.ownInn(db).catch(() => '');
+    const cls = dc.classifyDocument(text, { ownInn: ownInnStr });
+    if (cls.kind === 'letter') {
+      // Помечаем карточку: это не счёт. Отправлять директору её нельзя.
+      await db.query(
+        `UPDATE payment_invoices SET supplier_name=COALESCE(NULLIF(supplier_name,'Распознаётся…'),
+            'Документ без счёта (письмо)'), updated_at=NOW() WHERE id=$1`, [paymentId]);
+      return { ok: false, reason: 'not_invoice', kind: cls.kind, fields: {} };
+    }
+
+    const { extractInvoice } = require('../services/invoice-extract');
+    let parsed = extractInvoice(text, { ownInn: ownInnStr });
+    // ИИ-разбор — как в почтовом intake (основной путь), если доступен.
+    try {
+      const aiEx = require('../services/invoice-ai-extract');
+      const ai = await aiEx.extractByAI(text, { db });
+      if (ai && ai.ok && ai.data) {
+        const merged = aiEx.mergeWithRegex(ai.data, parsed);
+        parsed = merged.parsed;
+      }
+    } catch (_) { /* регулярки уже дали что смогли */ }
+
+    // Добираем ТОЛЬКО пустые/заглушечные поля: ручные правки не затираем.
+    const isStub = !pay.supplier_name || pay.supplier_name === 'Распознаётся…';
+    const patch = [];
+    const vals = [];
+    const setIf = (col, val, cast) => {
+      if (val == null || val === '') return;
+      vals.push(val);
+      patch.push(`${col}=$${vals.length}${cast || ''}`);
+    };
+    if (isStub && parsed.counterparty_name) setIf('supplier_name', parsed.counterparty_name);
+    if (!(Number(pay.amount) > 0) && parsed.amount_gross != null) setIf('amount', parsed.amount_gross, '::numeric');
+    if (!pay.invoice_number && parsed.invoice_number) setIf('invoice_number', parsed.invoice_number);
+    if (!pay.invoice_date && parsed.invoice_date) setIf('invoice_date', parsed.invoice_date, '::date');
+    if (!pay.due_date && parsed.payment_due_at) setIf('due_date', parsed.payment_due_at, '::date');
+    if (pay.vat_amount == null && parsed.vat_amount != null) setIf('vat_amount', parsed.vat_amount, '::numeric');
+    if (pay.vat_rate == null && parsed.vat_rate != null) setIf('vat_rate', parsed.vat_rate, '::numeric');
+    if (pay.amount_net == null && parsed.amount_net != null) setIf('amount_net', parsed.amount_net, '::numeric');
+    if (!pay.contract_basis_number && parsed.contract_basis && parsed.contract_basis.number) {
+      setIf('contract_basis_number', parsed.contract_basis.number);
+    }
+    if (!pay.work_hint && parsed.work_hint) setIf('work_hint', parsed.work_hint);
+
+    // Поставщик по ИНН (если он есть и это не наш ИНН — D-319).
+    if (parsed.inn && String(parsed.inn) !== String(ownInnStr || '')) {
+      try {
+        const s = await db.query(`SELECT id FROM suppliers WHERE inn=$1 AND deleted_at IS NULL LIMIT 1`, [parsed.inn]);
+        if (s.rows[0] && !pay.supplier_id) setIf('supplier_id', s.rows[0].id, '::int');
+      } catch (_) { /* не критично */ }
+    }
+
+    // Объект и договор — тем же сопоставителем, что в intake.
+    try {
+      const { matchWork, matchContract } = require('../services/contract-match');
+      const hint = pay.work_hint || parsed.work_hint;
+      if (!pay.work_id && hint) {
+        const wm = await matchWork(hint);
+        if (wm.found && wm.work) setIf('work_id', wm.work.id, '::int');
+      }
+      const cnum = pay.contract_basis_number || (parsed.contract_basis && parsed.contract_basis.number);
+      if (!pay.contract_id && cnum) {
+        const cm = await matchContract(db, {
+          number: cnum,
+          counterpartyInn: parsed.inn,
+          counterpartyName: parsed.counterparty_name || pay.supplier_name
+        });
+        if (cm.found && cm.contract) setIf('contract_id', cm.contract.id, '::int');
+      }
+    } catch (_) { /* не критично */ }
+
+    if (patch.length) {
+      vals.push(paymentId);
+      await db.query(`UPDATE payment_invoices SET ${patch.join(', ')}, updated_at=NOW() WHERE id=$${vals.length}`, vals);
+    }
+    log?.info?.(`[recognize] #${paymentId}: обновлено полей ${patch.length}, текст ${String(text).length} симв.`);
+    return { ok: true, fields: parsed, updated: patch.length, engine: parsed._ai_used ? 'ai' : 'regex' };
+  }
 
   /**
    * D-316: отправить черновик (или пачку черновиков) директору.
@@ -736,11 +892,22 @@ async function routes(fastify) {
 
     const submitted = [];
     const skipped = [];
+    const recognizing = [];
     for (const pay of found.rows) {
       if (pay.status !== 'draft') { skipped.push({ id: pay.id, reason: 'not_draft' }); continue; }
       // Без файла директору отправлять нечего — это была ошибка UX, а не смысл.
       if (!pay.file_path && !pay.file_name && !(Array.isArray(pay.line_items_json) && pay.line_items_json.length)) {
         skipped.push({ id: pay.id, reason: 'no_file' });
+        continue;
+      }
+      // D-320 (заказчик 21.10.2026): не показывать директору «Распознаётся…» и 0 ₽.
+      // Если ключевые поля пусты — НЕ отправляем, а сначала распознаём в фоне.
+      // Директор получает только счёт с поставщиком и суммой.
+      const stub = !pay.supplier_name || pay.supplier_name === 'Распознаётся…' || !(Number(pay.amount) > 0);
+      if (stub) {
+        scheduleRecognize(fastify, pay.id);
+        recognizing.push(pay.id);
+        skipped.push({ id: pay.id, reason: 'recognizing' });
         continue;
       }
       await db.query(
@@ -789,7 +956,12 @@ async function routes(fastify) {
         } catch (_) { /* уведомление не критично */ }
       }
     }
-    return { ok: submitted.length > 0, submitted, skipped, mail };
+    return {
+      ok: submitted.length > 0, submitted, skipped, mail,
+      // D-320: эти счёта распознаются в фоне — отправятся, когда появятся
+      // поставщик и сумма (пользователю показываем «распознаём, подождите»).
+      recognizing
+    };
   });
 
   /**

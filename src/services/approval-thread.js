@@ -94,8 +94,47 @@ async function handleApprovalReply(db, email) {
         WHERE e.thread_id = $1`, [threadKey]);
     for (const r of q.rows) ids.add(r.id);
   }
-  // 3) фолбэк: заявки без source_email_id, но awaiting_dir с недавним апдейтом и
-  //    тем же контрагентом из темы — НЕ трогаем (неоднозначно) → needs_manual.
+  // 3) Фолбэк (D-321, заказчик 21.10.2026): «проверь, разве Гажилиев не присылал
+  //    добро по этим счетам?». Заявки #9-#13 созданы через ЗАГРУЗКУ ФАЙЛА, а не
+  //    из письма → у них НЕТ source_email_id, поэтому поиск по треду их не видит,
+  //    и «Добро» директора уходило в needs_manual.
+  //    Матчим по контрагенту из темы письма, но ТОЛЬКО когда кандидат ровно один:
+  //    если подходящих заявок несколько — не угадываем (needs_manual), иначе
+  //    согласовали бы чужой счёт. Дополнительно ограничиваем свежестью.
+  if (!ids.size) {
+    try {
+      const subj = String(email.subject || '');
+      // Убираем Re/Fwd и служебные префиксы, оставляем «тело» темы.
+      const cleaned = subj.replace(/^\s*((re|fw|fwd|ответ|пересл)\s*:\s*)+/gi, '').trim();
+      const tokens = cleaned.split(/[^\p{L}\p{N}]+/u)
+        .map((w) => w.trim())
+        .filter((w) => w.length >= 4 && !/^(счёт|счет|счета|счёта|счетов|оплата|оплатить|прошу|офис|согласовать|добро|срочно|письмо|входящий|исходящий)$/i.test(w));
+      if (tokens.length) {
+        // Кандидаты: awaiting_dir без source_email_id, созданные за последние 14 дней.
+        // Сравнение — по вхождению значимого слова темы в имя контрагента.
+        const params = [];
+        let where = `p.status='awaiting_dir' AND p.source_email_id IS NULL
+                     AND p.created_at >= NOW() - INTERVAL '14 days'`;
+        const likes = tokens.slice(0, 3).map((t) => {
+          params.push('%' + t.toLowerCase() + '%');
+          return `lower(p.supplier_name) LIKE $${params.length}`;
+        });
+        where += ` AND (${likes.join(' OR ')})`;
+        const cand = await db.query(`SELECT p.id FROM payment_invoices p WHERE ${where}`, params);
+        if (cand.rows.length === 1) {
+          ids.add(cand.rows[0].id);
+          try {
+            console.log(`[approval-thread] «Добро» привязано по контрагенту к заявке ${cand.rows[0].id} (тема: ${cleaned.slice(0, 60)})`);
+          } catch (_) {}
+        } else if (cand.rows.length > 1) {
+          console.warn(`[approval-thread] «Добро»: ${cand.rows.length} кандидатов по контрагенту — не угадываю`);
+        }
+      }
+    } catch (e) {
+      console.warn('[approval-thread] fallback по контрагенту: ' + (e && e.message));
+    }
+  }
+  // 4) Всё ещё пусто — сохраняем отложенное согласие (V406).
   const idArr = [...ids];
   if (!idArr.length) {
     // V406 (проверка заказчика 18.10.2026): согласующий мог ответить РАНЬШЕ, чем
@@ -109,7 +148,6 @@ async function handleApprovalReply(db, email) {
       reason: 'thread_not_matched', deferred: !!saved, grant_id: saved || null
     };
   }
-
   const actorId = await approverId(db);
   const actor = (await db.query(`SELECT id, name, role FROM users WHERE id=$1`, [actorId])).rows[0]
     || { id: actorId, name: 'Согласующий (по email)', role: 'DIRECTOR_COMM' };

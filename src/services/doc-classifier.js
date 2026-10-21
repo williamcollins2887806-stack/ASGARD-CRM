@@ -46,14 +46,67 @@ function headLines(text, n = 6) {
   return String(text || '').split(/\r?\n/).map((l) => l.trim()).filter((l) => l.length > 2).slice(0, n).join('\n');
 }
 
+// ── D-319: наши собственные ИСХОДЯЩИЕ письма (информационные) ────────────────
+// Инцидент 21.10.2026: Дмитрий Путков прислал «Исх. №261021-03» — наше
+// информационное письмо заказчику. В нём есть «выставлен счёт на оплату
+// № УТ-2360» (мы ЦИТИРУЕМ чужой счёт), поэтому срабатывал INVOICE_STRONG,
+// а банк/р-с были наши — и письмо становилось «счётом» на 19 460 ₽ с нашим
+// ИНН в роли поставщика. Создались лишняя заявка #20 и строка реестра #1587.
+//
+// ПОЧЕМУ ОТДЕЛЬНАЯ ПРОВЕРКА, А НЕ NON_INVOICE_HEAD (замер верификатора на
+// 981 реальном PDF): «Исх. №» стоит 11-й строкой (первые 6 заняты бланком с
+// реквизитами), а headLines() смотрит только 6 → паттерн там НИКОГДА не
+// сработает. Переставлять NON_INVOICE_HEAD ВЫШЕ INVOICE_STRONG нельзя:
+// реальный счёт «СЧЁТ на оплату № 7. См. коммерческое предложение…» уедет в
+// offer (этот кейс закреплён тестом doc-classifier.test).
+//
+// Условие строгое: исходящий номер «Исх. №» И наш ИНН где-то в тексте.
+// На 981 документе: 5 попаданий, все 5 — наши письма, ложных 0.
+const OUTGOING_LETTER_RE = /^\s*Исх\.?\s*№/im;
+
+/** Наш собственный ИНН (кэш на процесс) — чтобы не звать settings на каждый файл. */
+let _ownInnCache = null;
+async function ownInn(db) {
+  if (_ownInnCache !== null) return _ownInnCache;
+  try {
+    const r = await db.query("SELECT (value_json::jsonb)->>'inn' AS inn FROM settings WHERE key='company_profile' LIMIT 1");
+    _ownInnCache = String((r.rows[0] && r.rows[0].inn) || '').replace(/\D/g, '') || '';
+  } catch (_) { _ownInnCache = ''; }
+  return _ownInnCache;
+}
+function resetOwnInnCache() { _ownInnCache = null; }
+
+/**
+ * Это НАШЕ исходящее письмо, а не счёт поставщика?
+ * @param {string} text
+ * @param {string} ownInnStr — ИНН нашей организации (пусто → проверяем только «Исх. №»)
+ */
+function isOwnOutgoingLetter(text, ownInnStr) {
+  const t = String(text || '');
+  if (!OUTGOING_LETTER_RE.test(t)) return false;
+  const inn = String(ownInnStr || '').replace(/\D/g, '');
+  if (!inn) return true;   // «Исх. №» + валидный банк уже достаточно редки
+  return t.includes(inn);
+}
+
 /**
  * Определить тип документа по тексту.
  * @param {string} text
+ * @param {{ownInn?: string}} [opts] — ИНН нашей организации: по нему узнаём
+ *   собственные исходящие письма (D-319).
  * @returns {{kind:string, is_invoice:boolean, confidence:number, reason:string}}
  */
-function classifyDocument(text) {
+function classifyDocument(text, opts) {
   const t = String(text || '');
   if (t.trim().length < 20) return { kind: 'unknown', is_invoice: false, confidence: 0, reason: 'too_short' };
+
+  // 0. D-319: НАШЕ исходящее письмо («Исх. №» + наш ИНН) — не счёт, даже если
+  //    внутри цитируется чужой счёт. Проверяем ДО INVOICE_STRONG: именно
+  //    цитата «выставлен счёт на оплату» и давала ложный invoice.
+  const own = (opts && opts.ownInn) || '';
+  if (isOwnOutgoingLetter(t, own)) {
+    return { kind: 'letter', is_invoice: false, confidence: 0.9, reason: 'own_outgoing_letter' };
+  }
 
   // 1. СНАЧАЛА — явные признаки счёта (стандартные фразы РФ).
   const strong = INVOICE_STRONG.some((re) => re.test(t));
@@ -79,4 +132,4 @@ function classifyDocument(text) {
   return { kind: 'other', is_invoice: false, confidence: 0.35, reason: 'no_markers' };
 }
 
-module.exports = { classifyDocument };
+module.exports = { classifyDocument, isOwnOutgoingLetter, ownInn, resetOwnInnCache };

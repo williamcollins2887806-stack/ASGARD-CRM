@@ -1250,6 +1250,7 @@ window.AsgardPaymentBatch = (function () {
       });
       const sent = (res.submitted || []).length;
       const skipped = res.skipped || [];
+      const recognizing = res.recognizing || [];
       S.sent = true;
       S.dirty = false;
       closeModal();   // закрываем подтверждение
@@ -1257,9 +1258,15 @@ window.AsgardPaymentBatch = (function () {
       if (sent) {
         toast('Отправлено директору', `${sent} ${sent === 1 ? 'счёт' : 'счетов'} · заявка ушла на согласование`, 'ok');
       }
-      if (skipped.length) {
-        const why = skipped.map((s) => s.reason === 'no_file' ? 'нет файла' : 'уже отправлен').join(', ');
-        toast('Часть не ушла', `${skipped.length} шт. пропущено: ${why}`, 'warn');
+      // D-320: счёт ещё распознаётся — директор его не увидит, пока не появятся
+      // поставщик и сумма. Говорим прямо, а не молча пропускаем.
+      if (recognizing.length) {
+        toast('Распознаём', `${recognizing.length} ${recognizing.length === 1 ? 'счёт ещё распознаётся' : 'счетов ещё распознаются'} — директор увидит ${recognizing.length === 1 ? 'его' : 'их'} после распознавания поставщика и суммы. Откройте «Мои черновики» и отправьте, когда данные появятся.`, 'warn');
+      }
+      const rest = skipped.filter((s) => s.reason !== 'recognizing');
+      if (rest.length) {
+        const why = rest.map((s) => s.reason === 'no_file' ? 'нет файла' : 'уже отправлен').join(', ');
+        toast('Часть не ушла', `${rest.length} шт. пропущено: ${why}`, 'warn');
       }
     } catch (e) {
       toast('Ошибка отправки', e.message, 'err');

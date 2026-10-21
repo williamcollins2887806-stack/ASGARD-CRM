@@ -211,12 +211,19 @@ async function intakeOne(db, { email, attachment, text, userId = null, dryRun = 
   // Замечание заказчика 17.10: в папке были НЕ только счета (сертификаты,
   // заявки, счёта-договоры). Сначала определяем ТИП — платёжные документы
   // идут в заявку и реестр, остальное НЕ попадает в очередь оплаты.
-  const cls = classifyDocument(text || '');
+  // D-319: передаём наш ИНН — по нему узнаём собственные исходящие письма
+  // (в них цитируется чужой счёт, из-за чего они становились «счётом»).
+  let ownInnStr = '';
+  try {
+    const dc = require('./doc-classifier');
+    ownInnStr = await dc.ownInn(db);
+  } catch (_) { /* без него — только мягкая проверка по «Исх. №» */ }
+  const cls = classifyDocument(text || '', { ownInn: ownInnStr });
   // V412 (заказчик 18.10.2026): «нужен не костыль с регулярками, а система, которая
   // ПОНИМАЕТ, что к чему относится». Основной путь — ИИ-извлечение по строгому
   // JSON-контракту; регулярки (`extractInvoice`) остаются ФОЛБЭКОМ (когда ИИ недоступен
   // или не дал поля) и перекрёстной проверкой расхождений.
-  let parsed = extractInvoice(text || '');
+  let parsed = extractInvoice(text || '', { ownInn: ownInnStr });
   let aiUsed = false;
   try {
     const aiEx = require('./invoice-ai-extract');
@@ -308,15 +315,51 @@ async function intakeOne(db, { email, attachment, text, userId = null, dryRun = 
   const needsReview = hasCore && parsed.confidence < confMin;
   if (dryRun) return { status: lowConfidence ? 'needs_manual' : 'ok', parsed, needs_review: needsReview, dry_run: true };
 
-  // Слой 2: есть ли уже такая строка в реестре (по ИНН+номер+дата+сумма)?
+  // Слой 2: есть ли уже такая строка в реестре?
+  // D-319 (верификатор 21.10.2026). Раньше ключ был «сумма + номер + ИНН», причём
+  // ИНН был ОБЯЗАТЕЛЬНЫМ условием. Последствия на живых данных:
+  //   • неверный ИНН (наш, 7736244785) → существующая строка с ИНН 3017052355
+  //     не находилась → создавался дубль (именно так родились #1587 и заявка #20);
+  //   • при этом без ИНН дедуп склеивал бы разные счёта: на проде есть пары
+  //     «№74 / 20 000 ₽» от РАЗНЫХ контрагентов и «№1003 / 25 800 ₽» за разные
+  //     месяцы — простой ключ «номер+сумма» дал бы ложную склейку.
+  // Теперь ключ: номер + сумма + ДАТА счёта; ИНН работает как VETO (если у обеих
+  // сторон ИНН известен и различается — не связываем, а просим вычитку).
   let docId = null;
   if (parsed.invoice_number && parsed.amount_gross != null) {
     const dupParams = [parsed.amount_gross];
     let dupWhere = `deleted_at IS NULL AND amount_gross=$1 AND dir='in'`;
-    if (parsed.invoice_number) { dupParams.push(String(parsed.invoice_number).toLowerCase()); dupWhere += ` AND lower(trim(coalesce(invoice_number,''))) = $${dupParams.length}`; }
-    if (parsed.inn) { dupParams.push(parsed.inn); dupWhere += ` AND counterparty_inn = $${dupParams.length}`; }
+    dupParams.push(String(parsed.invoice_number).toLowerCase());
+    dupWhere += ` AND lower(trim(coalesce(invoice_number,''))) = $${dupParams.length}`;
+    if (parsed.invoice_date) {
+      dupParams.push(parsed.invoice_date);
+      dupWhere += ` AND invoice_date = $${dupParams.length}::date`;
+    }
+    // Сравниваем и с нормализованным названием (см. V-миграцию нормализации),
+    // чтобы «ООО "X"» и «Общество с ограниченной ответственностью "X"» сходились.
+    if (parsed.inn) {
+      dupParams.push(parsed.inn);
+      const iInn = dupParams.length;
+      // ИНН как вето: строка подходит, если ИНН совпал ИЛИ он не заполнен.
+      dupWhere += ` AND (counterparty_inn IS NULL OR trim(counterparty_inn)='' OR counterparty_inn = $${iInn})`;
+    }
     const dup = await db.query(`SELECT id FROM doc_registry WHERE ${dupWhere} LIMIT 1`, dupParams);
-    if (dup.rows[0]) docId = dup.rows[0].id;
+    if (dup.rows[0]) {
+      docId = dup.rows[0].id;
+    } else if (parsed.inn || parsed.invoice_date) {
+      // Кандидат есть, но с ДРУГИМ ИНН/датой. Не склеиваем молча — помечаем
+      // на вычитку, иначе рождается дубль (класс дефекта #1587).
+      try {
+        const loose = [parsed.amount_gross, String(parsed.invoice_number).toLowerCase()];
+        const cands = await db.query(
+          `SELECT id, counterparty_inn FROM doc_registry
+            WHERE deleted_at IS NULL AND dir='in' AND amount_gross=$1
+              AND lower(trim(coalesce(invoice_number,''))) = $2 LIMIT 3`, loose);
+        if (cands.rows.length) {
+          parsed._dedup_ambiguous = cands.rows.map((r) => ({ id: r.id, inn: r.counterparty_inn }));
+        }
+      } catch (_) { /* не критично */ }
+    }
   }
 
   let createdDoc = false;
