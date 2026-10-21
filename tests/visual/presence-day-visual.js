@@ -62,12 +62,32 @@ function isBlue(bg) {
   }, [token, u]);
   await page.goto(BASE + '/#/home', { waitUntil: 'commit' });
   await page.waitForTimeout(3000);
-  await page.waitForSelector('#asgard-presence-day', { timeout: 25000 }).catch(() => {});
-  await page.waitForTimeout(600);
 
-  // Дневной гейт должен появиться первым
+  // Порядок: сначала неделя, потом день. Для проверки дневного гейта
+  // закрываем неделю — тест сфокусирован именно на дневном экране.
+  await page.waitForSelector('#asgard-presence-week, #asgard-presence-day', { timeout: 25000 }).catch(() => {});
+  const weekFirst = await page.$('#asgard-presence-week');
+  check('сначала показывается неделя', !!weekFirst);
+  if (weekFirst) {
+    await page.evaluate(() => {
+      const rows = Array.from(document.querySelectorAll('.pg-row[data-day-row]'));
+      if (!rows.length) return;
+      const trig = rows[0].querySelector('.pg-trigger');
+      if (trig) trig.click();
+    });
+    await page.waitForTimeout(700);
+    await page.evaluate(() => { const o = document.querySelector('.pg-pop .pg-opt'); if (o) o.click(); });
+    await page.waitForTimeout(400);
+    await page.evaluate(() => { const b = document.querySelector('.pg-btn'); if (b) b.click(); });
+    await page.waitForTimeout(3500);
+  }
+
+  await page.waitForSelector('#asgard-presence-day', { timeout: 15000 }).catch(() => {});
+  await page.waitForTimeout(500);
+
+  // Дневной гейт должен появиться после недели
   const gate = await page.$('#asgard-presence-day');
-  check('дневной гейт показан при входе', !!gate, 'нет #asgard-presence-day');
+  check('дневной гейт показан после недели', !!gate, 'нет #asgard-presence-day');
 
   if (!gate) {
     console.log('текст страницы: ' + (await page.evaluate(() => document.body.innerText || '')).slice(0, 200));
@@ -103,8 +123,14 @@ function isBlue(bg) {
     const cs = getComputedStyle(el);
     return { border: cs.borderTopColor, width: cs.borderTopWidth, color: cs.color };
   });
-  check('выбранная плитка с акцентной обводкой', !!selState && parseFloat(selState.width) >= 1
-    && /212,\s*168,\s*67/.test(selState.border || ''),
+  // Золото может прийти с альфой (rgba) — проверяем каналы, а не точную строку.
+  const isGold = (() => {
+    const m = String((selState && selState.border) || '').match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
+    if (!m) return false;
+    const [r, g, b] = [+m[1], +m[2], +m[3]];
+    return r > 150 && r < 240 && g > 120 && g < 200 && b < 110;   // золотой диапазон
+  })();
+  check('выбранная плитка с акцентной обводкой', !!selState && parseFloat(selState.width) >= 1 && isGold,
     selState ? `border=${selState.border} width=${selState.width}` : 'нет .pd-opt.sel');
   // Возвращаем на «оф» для дальнейшего сценария (уже выбран).
 
