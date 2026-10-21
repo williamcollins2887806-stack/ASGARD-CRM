@@ -553,6 +553,40 @@ async function intakeOne(db, { email, attachment, text, userId = null, dryRun = 
     }
     // Запоминаем supplier_id для заявки.
     if (supplierId) parsed._supplierId = supplierId;
+
+    // D-335 (заказчик 21.10.2026): офисный счёт должен сразу попасть в реестр
+    // офисных расходов, иначе расход не виден директору в картине по компании.
+    // Расход по объекту создаётся отдельно (work_expenses) при появлении work_id.
+    if (spendKind === 'office' && gross > 0) {
+      try {
+        const { classifyOfficeCategory } = require('./office-category');
+        const category = classifyOfficeCategory({ counterparty: cpName, description: emailSubject });
+        const { rows: oe } = await db.query(
+          `INSERT INTO office_expenses
+             (category, description, amount, total_amount, vat_amount, date, supplier, counterparty,
+              status, source, created_by, created_at, doc_number, document_number)
+           VALUES ($8, $1, $2, $2, $3, COALESCE($4::date, CURRENT_DATE), $5, $5,
+                   'pending', 'doc_hub', $6, NOW(), $7, $7)
+           RETURNING id`,
+          [
+            emailSubject || `Счёт ${parsed.invoice_number || ('#' + docId)}`,
+            Number(gross) || 0,
+            Number(vat) || 0,
+            parsed.invoice_date || null,
+            cpName || null,
+            senderUserId || null,
+            parsed.invoice_number || null,
+            category
+          ]
+        );
+        await db.query(
+          `UPDATE doc_registry SET office_expense_id=$2, updated_at=NOW() WHERE id=$1`,
+          [docId, oe[0].id]
+        );
+      } catch (e) {
+        console.warn('[intake] офисный расход не создан: ' + (e && e.message));
+      }
+    }
   } else {
     // V408 (живой тест 18.10.2026): документ УЖЕ был в реестре (пришёл ранее),
     // поэтому ветка создания пропускалась — и вместе с ней терялись объект,

@@ -580,6 +580,164 @@ module.exports = async function docRegistryRoutes(fastify) {
   const auth = { preHandler: [fastify.requireRoles(ALLOWED)] };
 
   /**
+   * D-334: создать/связать расход проекта для строки реестра, если появился объект.
+   * ═══════════════════════════════════════════════════════════════════════════
+   * Вызывается при сохранении карточки (PUT) и при привязке объекта в заявке.
+   *
+   * ПОРЯДОК (как просил заказчик — «сначала проверяем, потом привязываем»):
+   *   1. уже есть work_expense_id → ничего не делаем;
+   *   2. есть расход с ключом `invoice:<docId>` → связываем;
+   *   3. есть расход по тому же объекту с тем же номером документа и суммой
+   *      (защита от дублей, D-328) → связываем;
+   *   4. иначе создаём новый расход.
+   *
+   * @returns {Promise<number|null>} id расхода
+   */
+  async function ensureExpenseForDoc(db2, log, doc, userId) {
+    if (!doc || !doc.id || !doc.work_id) return null;
+    if (doc.work_expense_id) return doc.work_expense_id;
+    if (String(doc.dir || '') !== 'in') return null;          // исходящие — не расход
+    if (!(Number(doc.amount_gross) > 0)) return null;
+
+    // 2. Расход уже создан по этому счёту (любой путь: оплата или ручная привязка).
+    const byKey = await db2.query(
+      `SELECT id FROM work_expenses
+        WHERE source_table='doc_registry' AND source_key=$1
+          AND COALESCE(status,'') <> 'rejected'
+        LIMIT 1`, [`invoice:${doc.id}`]);
+    if (byKey.rows[0]) {
+      await db2.query(
+        `UPDATE doc_registry SET work_expense_id=$2, updated_at=NOW()
+          WHERE id=$1 AND work_expense_id IS NULL`, [doc.id, byKey.rows[0].id]);
+      return byKey.rows[0].id;
+    }
+
+    // 3. Тот же счёт мог быть заведён под другой строкой реестра (дубль-строка).
+    const invNo = String(doc.invoice_number || '').trim();
+    if (invNo) {
+      const byMatch = await db2.query(
+        `SELECT id FROM work_expenses
+          WHERE work_id=$1
+            AND lower(trim(coalesce(doc_number,''))) = lower($2)
+            AND abs(amount - $3) < 0.01
+            AND COALESCE(status,'') <> 'rejected'
+          LIMIT 1`, [doc.work_id, invNo, Number(doc.amount_gross)]);
+      if (byMatch.rows[0]) {
+        await db2.query(
+          `UPDATE doc_registry SET work_expense_id=$2, updated_at=NOW()
+            WHERE id=$1 AND work_expense_id IS NULL`, [doc.id, byMatch.rows[0].id]);
+        log?.info?.(`[doc-registry] расход для #${doc.id} связан с существующим #${byMatch.rows[0].id}`);
+        return byMatch.rows[0].id;
+      }
+    }
+
+    // 4. Создаём.
+    const { insertWorkExpense } = require('../services/work-expense-writer');
+    const hasVat = doc.has_vat !== false && Number(doc.vat_amount) > 0;
+    const expense = await insertWorkExpense(db2, {
+      work_id: doc.work_id,
+      category: doc.spend_kind === 'office' ? 'office'
+        : doc.spend_kind === 'warehouse' ? 'materials' : 'materials',
+      subcategory: 'other',
+      amount: Number(doc.amount_gross) || 0,
+      date: doc.invoice_date ? String(doc.invoice_date).slice(0, 10) : new Date().toISOString().slice(0, 10),
+      description: `Счёт ${doc.invoice_number || ('#' + doc.id)}${doc.counterparty_name ? ': ' + doc.counterparty_name : ''}`,
+      supplier: doc.counterparty_name || null,
+      doc_number: doc.invoice_number || null,
+      payment_method: 'bank',
+      vat_rate: hasVat ? Number(doc.vat_rate) : null,
+      vat_amount: hasVat ? Number(doc.vat_amount) : null,
+      source_table: 'doc_registry',
+      source_id: doc.id,
+      source_key: `invoice:${doc.id}`,
+      created_by: userId || doc.created_by || null
+    });
+    if (expense && expense.id) {
+      await db2.query(
+        `UPDATE doc_registry SET work_expense_id=$2, updated_at=NOW()
+          WHERE id=$1 AND work_expense_id IS NULL`, [doc.id, expense.id]);
+      log?.info?.(`[doc-registry] создан расход #${expense.id} по счёту #${doc.id} (объект ${doc.work_id})`);
+      return expense.id;
+    }
+    return null;
+  }
+
+  /**
+   * D-335: офисный/складской счёт без объекта не должен теряться из картины компании.
+   * Создаёт запись в office_expenses (реестр офисных расходов) и связывает её со строкой.
+   *
+   * Правила:
+   *   1. только входящие, только spend_kind='office' (офис/АХО), без work_id;
+   *   2. уже связан → возвращаем id;
+   *   3. та же сумма + номер документа уже есть в реестре → связываем, не дублируем;
+   *   4. статус: документ уже оплачен/в оплате → 'approved' (согласование пройдено),
+   *      иначе 'pending' (попадёт директору на согласование, как обычный офисный расход).
+   *
+   * @returns {Promise<number|null>} id офисного расхода
+   */
+  async function ensureOfficeExpenseForDoc(db2, log, doc, userId) {
+    if (!doc || !doc.id) return null;
+    if (doc.office_expense_id) return doc.office_expense_id;
+    if (String(doc.dir || '') !== 'in') return null;
+    if (doc.work_id) return null;
+    if (String(doc.spend_kind || '') !== 'office') return null;
+    const amount = Number(doc.amount_gross) || 0;
+    if (!(amount > 0)) return null;
+
+    // 3. Дубль по номеру + сумме (+дата, если известна).
+    const invNo = String(doc.invoice_number || '').trim();
+    const dup = await db2.query(
+      `SELECT id FROM office_expenses
+        WHERE abs(amount - $1) < 0.01
+          AND COALESCE(doc_number,'') = COALESCE($2,'')
+          AND ($3::date IS NULL OR date = $3::date)
+        LIMIT 1`, [amount, invNo, doc.invoice_date || null]);
+    if (dup.rows[0]) {
+      await db2.query(
+        `UPDATE doc_registry SET office_expense_id=$2, updated_at=NOW()
+          WHERE id=$1 AND office_expense_id IS NULL`, [doc.id, dup.rows[0].id]);
+      log?.info?.(`[doc-registry] офисный расход #${doc.id} связан с существующим #${dup.rows[0].id}`);
+      return dup.rows[0].id;
+    }
+
+    // 4. Создаём. Историю (документ уже в оплате/оплачен) не гоним через согласование повторно.
+    const alreadyApproved = ['wait_pay', 'wait_closing', 'wait_sf', 'paid'].includes(String(doc.ops_status || ''))
+      || ['paid', 'wait', 'in_progress'].includes(String(doc.pay_status || ''));
+    // D-336: категория по контрагенту, а не «прочее по умолчанию» — иначе расход
+    // не виден в разрезе реестра офисных расходов.
+    const { classifyOfficeCategory } = require('../services/office-category');
+    const category = classifyOfficeCategory({
+      counterparty: doc.counterparty_name,
+      description: doc.comment_text
+    });
+    const { rows } = await db2.query(
+      `INSERT INTO office_expenses
+         (category, description, amount, total_amount, vat_amount, date, supplier, counterparty,
+          status, source, created_by, created_at, doc_number, document_number)
+       VALUES ($9, $1, $2, $2, $3, COALESCE($4::date, CURRENT_DATE), $5, $5,
+               $6, 'doc_hub', $7, NOW(), $8, $8)
+       RETURNING id`,
+      [
+        doc.comment_text || `Счёт ${invNo || ('#' + doc.id)}${doc.counterparty_name ? ': ' + doc.counterparty_name : ''}`,
+        amount,
+        Number(doc.vat_amount) || 0,
+        doc.invoice_date || null,
+        doc.counterparty_name || null,
+        alreadyApproved ? 'approved' : 'pending',
+        userId || doc.created_by || null,
+        invNo || null,
+        category
+      ]
+    );
+    const oeId = rows[0].id;
+    await db2.query(
+      `UPDATE doc_registry SET office_expense_id=$2, updated_at=NOW()
+        WHERE id=$1 AND office_expense_id IS NULL`, [doc.id, oeId]);
+    log?.info?.(`[doc-registry] создан офисный расход #${oeId} по счёту #${doc.id} (${amount} ₽)`);
+    return oeId;
+  }
+
+  /**
    * N3: ответ о дубле не раскрывает id чужой строки (оракул существования).
    * Факт дубля сообщаем всегда, id — только если строка видна роли.
    */
@@ -1704,6 +1862,44 @@ module.exports = async function docRegistryRoutes(fastify) {
       );
       await audit(db, id, req.user.id, 'update', { keys });
       maybeScheduleParse(fastify, db, rows[0], req.user.id);
+
+      // D-334 (заказчик 21.10.2026): «если объект подставит пользователь —
+      // расход автоматически привяжется? Нужно так: сначала проверить, и если
+      // такой счёт не привязан, то привязать автоматически».
+      //
+      // Было: расход создавался ТОЛЬКО при оплате (autoWorkExpense в
+      // payment-invoices). Если объект дозаполняли в карточке позже — расход
+      // не появлялся до оплаты, а если счёт уже был оплачен без объекта,
+      // расход не создавался ВООБЩЕ.
+      // Теперь: как только у строки появляется объект, сразу проверяем, есть ли
+      // расход по этому счёту, и если нет — создаём/связываем автоматически.
+      // Идемпотентно: повторное сохранение второй расход не сделает.
+      if (rows[0].work_id && !rows[0].work_expense_id && rows[0].dir === 'in') {
+        try {
+          await ensureExpenseForDoc(db, fastify.log, rows[0], req.user.id);
+          // Перечитываем — мог появиться work_expense_id.
+          const fresh = await db.query('SELECT * FROM doc_registry WHERE id=$1', [id]);
+          if (fresh.rows[0]) return decorate(fresh.rows[0], req.user.id);
+        } catch (e) {
+          fastify.log.warn('[doc-registry] ensureExpenseForDoc: ' + (e && e.message));
+        }
+      }
+
+      // D-335 (заказчик 21.10.2026): «если офис — эти расходы попадают в реестр
+      // офисных расходов? их тоже нельзя терять, директору важна картина по
+      // компании в целом». Офисный счёт без объекта раньше не попадал никуда:
+      // work_expenses создаётся только с work_id, а office_expenses — только
+      // вручную. Теперь офисный счёт сразу заводит запись в реестре офисных
+      // расходов и связывается с ней. Идемпотентно, дубль по номеру+сумме.
+      if (rows[0].spend_kind === 'office' && !rows[0].office_expense_id && rows[0].dir === 'in') {
+        try {
+          await ensureOfficeExpenseForDoc(db, fastify.log, rows[0], req.user.id);
+          const fresh = await db.query('SELECT * FROM doc_registry WHERE id=$1', [id]);
+          if (fresh.rows[0]) return decorate(fresh.rows[0], req.user.id);
+        } catch (e) {
+          fastify.log.warn('[doc-registry] ensureOfficeExpenseForDoc: ' + (e && e.message));
+        }
+      }
       return decorate(rows[0], req.user.id);
     } catch (e) {
       if (e.code === '23505') {
