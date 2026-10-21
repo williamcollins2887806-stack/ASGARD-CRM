@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useHaptic } from '@/hooks/useHaptic';
+import { toast } from 'sonner';
 import { api } from '@/api/client';
 import { PageShell } from '@/components/layout/PageShell';
 import { BottomSheet } from '@/components/shared/BottomSheet';

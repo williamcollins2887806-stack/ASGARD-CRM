@@ -890,7 +890,7 @@ function TimesheetTable({ employees, days, year, month, mode, viewer, locked, fo
   }, [year, month]);
 
   return (
-    <div className="overflow-x-auto -mx-4 px-4" style={{ WebkitOverflowScrolling: 'touch', maxHeight: 'calc(100vh - 320px)', overflowY: 'auto' }}>
+    <div className="overflow-x-auto -mx-4 px-4" style={{ WebkitOverflowScrolling: 'touch', maxHeight: 'calc(100dvh - 320px)', overflowY: 'auto' }}>
       {/* FIX 6 — клетки 40×40 (было 32×40) → минимальная ширина больше */}
       <table style={{ borderCollapse: 'separate', borderSpacing: 0, minWidth: days * 44 + 240 }}>
         <thead style={{ position: 'sticky', top: 0, zIndex: 4, background: 'var(--bg-primary)' }}>

@@ -9,6 +9,8 @@ import { useChatStore } from '@/stores/chatStore';
 import { features } from '@/config/features';
 import { normalizeMobileNavUrl, savePinReturnTo } from '@/lib/navUrl';
 import PresenceGateMobile from '@/components/PresenceGateMobile';
+import MobileDiagnostics from '@/components/MobileDiagnostics';
+import { AppSplash } from '@/components/AppSplash';
 import PayoutStatementBanner from '@/components/PayoutStatementBanner';
 import FieldLayout from '@/layouts/FieldLayout';
 import DirectorHome from '@/components/layout/DirectorHome';
@@ -295,7 +297,10 @@ function AppLayout() {
     location.pathname.startsWith('/mimir-estimate/') ||
     location.pathname.startsWith('/huginn-chat/') ||
     location.pathname.startsWith('/field') ||
-    location.pathname.startsWith('/pm');
+    location.pathname.startsWith('/pm') ||
+    // /my-timesheet — табель РП, живёт на своём <PmTabBar />. Без этой строки
+    // рисовались ДВА бара разом (общий + PmTabBar), и нижний перекрывал контент.
+    location.pathname === '/my-timesheet';
 
   // Гейт присутствия — только для офисных ролей, и НЕ для директоров.
   // V391: у директора на мобильном остаётся ТОЛЬКО экран согласований
@@ -313,6 +318,38 @@ function AppLayout() {
   // и нативные жесты. Класс вешаем на <html> (нужно для CSS `.is-standalone body`),
   // а состояние дублируем в React — для возможной разметки.
   const [standalone, setStandalone] = useState(() => applyStandaloneClass());
+
+  /**
+   * Возврат к экрану после навигации/свайпа-назад (21.10.2026).
+   *
+   * Симптом: после edge-swipe («назад» свайпом вправо) нижний тап-бар оказывался
+   * выше низа экрана, пока не выйдешь и не зайдёшь заново.
+   *
+   * Почему так: iOS при возврате из bfcache/истории не пересчитывает layout
+   * viewport, и `dvh` остаётся «старым». Высоту через JS НЕ подменяем: проверено
+   * (tools/verify-vh-tabbar.js) — если уменьшить корень, fixed-тап-бар остаётся
+   * по низу вьюпорта и вылезает за корень, то есть бар отрезается.
+   * Поэтому только ПРОСИМ движок пересчитать: сбрасываем остаточный скролл и
+   * заставляем перечитать layout (чтение offsetHeight сбрасывает кэш раскладки).
+   */
+  useEffect(() => {
+    const resync = () => {
+      window.scrollTo(0, 0);
+      // Принудительный reflow: движок пересчитывает dvh и позицию fixed-элементов.
+      void document.documentElement.offsetHeight;
+      window.dispatchEvent(new Event('resize'));
+    };
+    const onShow = () => resync();
+    const onVis = () => { if (document.visibilityState === 'visible') resync(); };
+
+    window.addEventListener('pageshow', onShow);
+    document.addEventListener('visibilitychange', onVis);
+    return () => {
+      window.removeEventListener('pageshow', onShow);
+      document.removeEventListener('visibilitychange', onVis);
+    };
+  }, []);
+
   useEffect(() => {
     if (typeof window.matchMedia !== 'function') return undefined;
     const mq = window.matchMedia('(display-mode: standalone)');
@@ -327,7 +364,10 @@ function AppLayout() {
 
   return (
     <div className={`h-full relative${standalone ? ' is-standalone' : ''}`} style={{ backgroundColor: 'var(--bg-primary)' }}>
-      {showPresenceGate && <PresenceGateMobile />}
+      {/* 20.10.2026: временная диагностика для iOS (?diag=1). Показывает реальные
+          innerHeight / visualViewport / safe-area / позицию тап-бара. Нужна, чтобы
+          поймать полосу под тап-баром, которую локальные движки не воспроизводят. */}
+      <MobileDiagnostics />{showPresenceGate && <PresenceGateMobile />}
       {/* Баннер «выплата получена» — только рабочим/полевым, не директору */}
       {!isDirector && <PayoutStatementBanner />}
       <OfficePushBootstrap />
@@ -564,6 +604,8 @@ export default function App() {
   const fetchUser = useAuthStore((s) => s.fetchUser);
   const token = useAuthStore((s) => s.token);
   const initTheme = useThemeStore((s) => s.initTheme);
+  /** Готовность инициализации: заставка уходит, когда bootstrap завершён. */
+  const bootDone = useAuthStore((s) => !s.loading);
 
   useEffect(() => {
     initTheme();
@@ -575,8 +617,14 @@ export default function App() {
   }, []);
 
   return (
-    <BrowserRouter basename="/m">
-      <AppLayout />
-    </BrowserRouter>
+    <>
+      {/* Заставка (21.10.2026): премиальный интерактив вместо сухого открытия.
+          Лежит ПОВЕРХ приложения и уходит по готовности bootstrap, поэтому при
+          плохой сети пользователь видит прогресс, а не пустой экран. */}
+      <AppSplash ready={bootDone} />
+      <BrowserRouter basename="/m">
+        <AppLayout />
+      </BrowserRouter>
+    </>
   );
 }

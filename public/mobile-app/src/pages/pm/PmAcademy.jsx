@@ -127,7 +127,7 @@ export default function PmAcademy() {
   }
 
   if (loading) return (
-    <div style={{ minHeight: '100vh', background: C.bg, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+    <div style={{ minHeight: '100dvh', background: C.bg, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
       <div style={{ fontSize: 36, color: C.rune }}>🏛️</div>
     </div>
   );
@@ -143,8 +143,8 @@ export default function PmAcademy() {
     const mimirMandatory = !!lesson.lesson?.is_mandatory;
 
     return (
-      <div className="scroll-container" style={{ minHeight: '100vh', maxHeight: '100dvh', overflowY: 'auto', background: C.bg, paddingBottom: 'calc(var(--tabbar-total) + 16px)' }}>
-        <div style={{ padding: '48px 16px 16px' }}>
+      <div className="scroll-container" style={{ minHeight: '100dvh', maxHeight: '100dvh', overflowY: 'auto', background: C.bg, paddingBottom: 'calc(var(--tabbar-total) + 16px)' }}>
+        <div style={{ padding: 'calc(var(--safe-top) + 4px) 16px 16px' }}>
           <button onClick={() => { setSelected(null); setLesson(null); }}
             style={{ background: 'none', border: 'none', color: C.muted, cursor: 'pointer', fontSize: 14, marginBottom: 10, padding: 0 }}>
             ← Назад
@@ -350,8 +350,8 @@ export default function PmAcademy() {
 
   // ═══ Главный экран академии ═══
   return (
-    <div className="scroll-container" style={{ minHeight: '100vh', maxHeight: '100dvh', overflowY: 'auto', background: C.bg, paddingBottom: 'calc(var(--tabbar-total) + 16px)' }}>
-      <div style={{ padding: '48px 16px 16px', background: 'linear-gradient(180deg, #1a0d2e 0%, transparent 100%)' }}>
+    <div className="scroll-container" style={{ minHeight: '100dvh', maxHeight: '100dvh', overflowY: 'auto', background: C.bg, paddingBottom: 'calc(var(--tabbar-total) + 16px)' }}>
+      <div style={{ padding: 'calc(var(--safe-top) + 4px) 16px 16px', background: 'linear-gradient(180deg, #1a0d2e 0%, transparent 100%)' }}>
         <button onClick={() => navigate('/pm')}
           style={{ background: 'none', border: 'none', color: C.muted, cursor: 'pointer', fontSize: 14, marginBottom: 10, padding: 0 }}>
           ← Назад

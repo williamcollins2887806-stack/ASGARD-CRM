@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuthStore } from '@/stores/authStore';
 import { useHaptic } from '@/hooks/useHaptic';
+import { toast } from 'sonner';
 import { api } from '@/api/client';
 import { PageShell } from '@/components/layout/PageShell';
 import { BottomSheet } from '@/components/shared/BottomSheet';
@@ -232,7 +233,7 @@ export default function DirectorApprovals() {
       window.dispatchEvent(new CustomEvent('asgard:cash:changed'));
     } catch (e) {
       haptic.error();
-      window.alert('Ошибка: ' + (e.message || 'не удалось выполнить'));
+      toast.error(e.message || 'не удалось выполнить');
     } finally {
       setActionBusy(false);
     }
@@ -259,7 +260,7 @@ export default function DirectorApprovals() {
         setPayBatch((p) => p.filter((x) => x.item_id !== itemId));
       } catch (e) {
         haptic.error();
-        window.alert('Ошибка: ' + (e.message || 'не удалось выполнить'));
+        toast.error(e.message || 'не удалось выполнить');
       } finally { setPayBusy(false); }
       return;
     }
@@ -270,7 +271,7 @@ export default function DirectorApprovals() {
       setPayBatch((p) => p.filter((x) => x.item_id !== itemId));
     } catch (e) {
       haptic.error();
-      window.alert('Ошибка: ' + (e.message || 'не удалось выполнить'));
+      toast.error(e.message || 'не удалось выполнить');
     } finally { setPayBusy(false); }
   }, [payBusy, haptic]);
 
@@ -283,7 +284,7 @@ export default function DirectorApprovals() {
       setPayBatch([]);
     } catch (e) {
       haptic.error();
-      window.alert('Ошибка: ' + (e.message || 'не удалось утвердить'));
+      toast.error(e.message || 'не удалось утвердить');
     } finally { setPayBusy(false); }
   }, [payBatch, payBusy, haptic]);
 
@@ -299,7 +300,7 @@ export default function DirectorApprovals() {
       setPayBatch([]);
     } catch (e) {
       haptic.error();
-      window.alert('Ошибка: ' + (e.message || 'не удалось вернуть'));
+      toast.error(e.message || 'не удалось вернуть');
     } finally { setPayBusy(false); }
   }, [payBatch, payBusy, haptic, openReasonSheet]);
 
@@ -334,7 +335,7 @@ export default function DirectorApprovals() {
         setInvoices((p) => p.filter((x) => x.id !== id));
       } catch (e) {
         haptic.error();
-        window.alert('Ошибка: ' + (e.message || 'не удалось выполнить'));
+        toast.error(e.message || 'не удалось выполнить');
       } finally { setInvBusy(false); }
       return;
     }
@@ -347,7 +348,7 @@ export default function DirectorApprovals() {
       setInvoices((p) => p.filter((x) => x.id !== id));
     } catch (e) {
       haptic.error();
-      window.alert('Ошибка: ' + (e.message || 'не удалось выполнить'));
+      toast.error(e.message || 'не удалось выполнить');
     } finally { setInvBusy(false); }
   }, [invBusy, haptic, openReasonSheet]);
 

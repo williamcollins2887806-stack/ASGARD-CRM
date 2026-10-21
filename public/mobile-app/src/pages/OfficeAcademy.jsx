@@ -482,7 +482,7 @@ export default function OfficeAcademy() {
   }, [filteredLessons]);
 
   if (loading) return (
-    <div style={{ minHeight: '100vh', background: C.bg, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+    <div style={{ minHeight: '100dvh', background: C.bg, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
       <div style={{ textAlign: 'center' }}>
         <div style={{ fontSize: 48, marginBottom: 8 }}>🏛️</div>
         <div style={{ fontSize: 13, color: C.muted }}>Загружаю Залы Асгарда...</div>
@@ -491,7 +491,7 @@ export default function OfficeAcademy() {
   );
 
   if (loadError) return (
-    <div style={{ minHeight: '100vh', background: C.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+    <div style={{ minHeight: '100dvh', background: C.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
       <div style={{ textAlign: 'center', color: C.red }}>
         <div style={{ fontSize: 32, marginBottom: 8 }}>⚠️</div>
         <div style={{ fontSize: 14, marginBottom: 16 }}>{loadError}</div>
@@ -506,10 +506,10 @@ export default function OfficeAcademy() {
   const { total = 0, passed = 0, mandatory_pending = 0 } = data || {};
 
   return (
-    <div className="scroll-container" style={{ minHeight: '100vh', maxHeight: '100dvh', overflowY: 'auto', background: C.bg, paddingBottom: 'calc(var(--tabbar-total) + 16px)' }}>
+    <div className="scroll-container" style={{ minHeight: '100dvh', maxHeight: '100dvh', overflowY: 'auto', background: C.bg, paddingBottom: 'calc(var(--tabbar-total) + 16px)' }}>
       {/* Header */}
       <div style={{
-        padding: '52px 16px 16px',
+        padding: 'calc(var(--safe-top) + 8px) 16px 16px',
         background: `linear-gradient(180deg, ${C.darkPurple} 0%, transparent 100%)`,
       }}>
         <button onClick={() => navigate(-1)}

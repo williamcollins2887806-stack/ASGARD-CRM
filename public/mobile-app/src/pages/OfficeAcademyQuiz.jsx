@@ -48,10 +48,10 @@ function ResultScreen({ result, questions, answers, lessonId, navigate }) {
   const attemptsLeft = retry.attempts_left;
 
   return (
-    <div className="scroll-container" style={{ minHeight: '100vh', maxHeight: '100dvh', overflowY: 'auto', background: C.bg, paddingBottom: 'calc(var(--tabbar-total) + 16px)' }}>
+    <div className="scroll-container" style={{ minHeight: '100dvh', maxHeight: '100dvh', overflowY: 'auto', background: C.bg, paddingBottom: 'calc(var(--tabbar-total) + 16px)' }}>
       {/* Hero */}
       <div style={{
-        padding: '52px 16px 24px', textAlign: 'center',
+        padding: 'calc(var(--safe-top) + 8px) 16px 24px', textAlign: 'center',
         background: `linear-gradient(180deg, ${passed ? '#0d1a0d' : '#1a0d0d'} 0%, transparent 100%)`,
       }}>
         <div style={{ fontSize: 64, marginBottom: 12 }}>
@@ -305,7 +305,7 @@ export default function OfficeAcademyQuiz() {
   const allAnswered = answeredCount >= questions.length;
 
   if (loading) return (
-    <div style={{ minHeight: '100vh', background: C.bg, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+    <div style={{ minHeight: '100dvh', background: C.bg, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
       <div style={{ textAlign: 'center' }}>
         <div style={{ fontSize: 36 }}>⚔️</div>
         <div style={{ fontSize: 12, color: C.muted, marginTop: 8 }}>Загружаю испытание...</div>
@@ -333,10 +333,10 @@ export default function OfficeAcademyQuiz() {
   const progressPct = questions.length > 0 ? ((currentQ + 1) / questions.length) * 100 : 0;
 
   return (
-    <div className="scroll-container" style={{ minHeight: '100vh', maxHeight: '100dvh', overflowY: 'auto', background: C.bg, paddingBottom: 'calc(var(--tabbar-total) + 16px)' }}>
+    <div className="scroll-container" style={{ minHeight: '100dvh', maxHeight: '100dvh', overflowY: 'auto', background: C.bg, paddingBottom: 'calc(var(--tabbar-total) + 16px)' }}>
       {/* Header */}
       <div style={{
-        padding: '52px 16px 16px',
+        padding: 'calc(var(--safe-top) + 8px) 16px 16px',
         background: `linear-gradient(180deg, #1a0d2e 0%, transparent 100%)`,
       }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>

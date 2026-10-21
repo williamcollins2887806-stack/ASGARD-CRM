@@ -25,7 +25,7 @@ export default function Welcome() {
 
   return (
     <div
-      className="relative flex flex-col items-center justify-between min-h-screen overflow-hidden"
+      className="relative flex flex-col items-center justify-between app-min-h overflow-hidden"
       style={{
         backgroundColor: '#050508',
         paddingTop: 'var(--safe-top)',

@@ -546,13 +546,13 @@ export default function OfficeLesson() {
   }, [id]);
 
     if (loading) return (
-    <div style={{ minHeight: '100vh', background: C.bg, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+    <div style={{ minHeight: '100dvh', background: C.bg, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
       <div style={{ fontSize: 36 }}>📖</div>
     </div>
   );
 
   if (error && !data) return (
-    <div style={{ minHeight: '100vh', background: C.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+    <div style={{ minHeight: '100dvh', background: C.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
       <div style={{ color: C.red, textAlign: 'center' }}>
         <div style={{ fontSize: 32, marginBottom: 8 }}>⚠️</div>
         <div style={{ fontSize: 14 }}>{error}</div>
@@ -574,11 +574,11 @@ export default function OfficeLesson() {
   const canTakeQuiz = !needsReread && completed && readSeconds >= minReadSeconds;
 
   return (
-    <div className="scroll-container" style={{ minHeight: '100vh', maxHeight: '100dvh', overflowY: 'auto', background: C.bg, paddingBottom: 'calc(var(--tabbar-total) + 16px)' }}>
+    <div className="scroll-container" style={{ minHeight: '100dvh', maxHeight: '100dvh', overflowY: 'auto', background: C.bg, paddingBottom: 'calc(var(--tabbar-total) + 16px)' }}>
       {/* Cover */}
       <div style={{
         background: `linear-gradient(180deg, ${lesson.cover_color || '#1e1e3a'} 0%, ${C.bg} 100%)`,
-        padding: '52px 16px 24px', position: 'relative',
+        padding: 'calc(var(--safe-top) + 8px) 16px 24px', position: 'relative',
       }}>
         <button onClick={() => navigate('/office-academy')}
           style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,.6)', cursor: 'pointer', fontSize: 14, marginBottom: 16, padding: 0 }}>

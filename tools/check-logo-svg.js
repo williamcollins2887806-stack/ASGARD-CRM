@@ -1,0 +1,15 @@
+const fs = require('fs');
+const s = fs.readFileSync('public/mobile-app/src/assets/asgard-logo.svg', 'utf8');
+console.log('размер:', s.length, 'байт');
+const vb = /viewBox="([^"]*)"/.exec(s);
+console.log('viewBox:', vb ? vb[1] : 'НЕТ');
+const stops = (s.match(/<stop/g) || []).length;
+console.log('остановок градиента:', stops);
+const curves = (s.match(/C/g) || []).length;
+const lines = (s.match(/L/g) || []).length;
+console.log('кривых Безье (C):', curves, '| отрезков (L):', lines);
+console.log('U+FFFD:', (s.match(/\uFFFD/g) || []).length);
+console.log('есть fill-rule evenodd:', s.includes('evenodd'));
+console.log('есть анимация блика:', s.includes('animate attributeName="x"'));
+const paths = [...s.matchAll(/ d="([^"]*)"/g)];
+console.log('путей:', paths.length);

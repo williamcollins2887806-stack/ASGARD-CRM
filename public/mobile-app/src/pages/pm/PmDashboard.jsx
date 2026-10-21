@@ -24,13 +24,13 @@ export default function PmDashboard() {
   }, []);
 
   if (loading) return (
-    <div style={{ minHeight: '100vh', background: C.bg, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+    <div style={{ minHeight: '100dvh', background: C.bg, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
       <div style={{ fontSize: 36, color: C.gold }}>⚡</div>
     </div>
   );
 
   if (error) return (
-    <div style={{ minHeight: '100vh', background: C.bg, padding: '60px 20px', color: C.red, textAlign: 'center' }}>
+    <div style={{ minHeight: '100dvh', background: C.bg, padding: '60px 20px', color: C.red, textAlign: 'center' }}>
       {error}
     </div>
   );
@@ -53,9 +53,9 @@ export default function PmDashboard() {
   ];
 
   return (
-    <div className="scroll-container" style={{ minHeight: '100vh', maxHeight: '100dvh', overflowY: 'auto', background: C.bg, paddingBottom: 'calc(var(--tabbar-total) + 16px)' }}>
+    <div className="scroll-container" style={{ minHeight: '100dvh', maxHeight: '100dvh', overflowY: 'auto', background: C.bg, paddingBottom: 'calc(var(--tabbar-total) + 16px)' }}>
       {/* Header */}
-      <div style={{ padding: '48px 16px 20px', background: 'linear-gradient(180deg, #0d1a2e 0%, transparent 100%)' }}>
+      <div style={{ padding: 'calc(var(--safe-top) + 4px) 16px 20px', background: 'linear-gradient(180deg, #0d1a2e 0%, transparent 100%)' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 4 }}>
           <div style={{ fontSize: 28 }}>🛡️</div>
           <div>

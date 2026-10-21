@@ -45,6 +45,12 @@ export function PullToRefresh({ onRefresh, children, /** опционально:
   }, [scrollRef]);
 
   const handleTouchStart = useCallback((e) => {
+    // Отсечка: жест пришёл из портала (модалка/шторка в #modal-root). React
+    // шлёт события по REACT-дереву, а не по DOM, поэтому касание внутри
+    // BottomSheet всё равно всплывало сюда: PTR ставил pulling=true, на каждом
+    // touchmove перерисовывал дерево ради «тяги» и гасил тап. Симптом — шторка
+    // «зависла», кнопки не нажимаются, свайп не работает (баг 21.10.2026).
+    if (e.target && e.target.closest && e.target.closest('#modal-root')) return;
     const sc = scrollerRef.current;
     if ((sc ? sc.scrollTop : 0) <= 0) {
       startY.current = e.touches[0].clientY;
@@ -63,6 +69,9 @@ export function PullToRefresh({ onRefresh, children, /** опционально:
 
   const handleTouchMove = useCallback((e) => {
     if (!pulling || refreshing) return;
+    // Та же отсечка, что и в touchstart: движение внутри портала (шторка/модалка)
+    // не должно крутить индикатор обновления и перерисовывать страницу под ней.
+    if (e.target && e.target.closest && e.target.closest('#modal-root')) return;
     const dy = Math.max(0, e.touches[0].clientY - startY.current);
     pendingDy.current = dy;
     if (rafRef.current) return; // кадр уже запланирован — не плодим обновления

@@ -61,7 +61,7 @@ export default function PinEntry() {
 
   return (
     <div
-      className="flex flex-col items-center justify-between min-h-screen"
+      className="flex flex-col items-center justify-between app-min-h"
       style={{
         backgroundColor: 'var(--bg-primary)',
         paddingTop: 'calc(var(--safe-top) + 48px)',

@@ -274,7 +274,7 @@ export default function PersonalKanbanV3() {
         <div
           onTouchStart={onTouchStart}
           onTouchEnd={onTouchEnd}
-          style={{padding:'12px',minHeight:'calc(100vh - 260px)'}}
+          style={{padding:'12px',minHeight:'calc(100dvh - 260px)'}}
         >
           {loading ? <SkeletonList count={4}/> : (
             cardsHere.length === 0 ? (

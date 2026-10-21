@@ -18,12 +18,22 @@
  * и фокус «убегает» из поля на «×» (ровно жалоба «вводим — выкидывает»).
  * Поэтому `onClose` держим в ref и не включаем в зависимости эффекта фокуса.
  */
-import { useEffect, useRef, useCallback, useId } from 'react';
+import { useEffect, useRef, useCallback, useId, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
 import { getModalRoot } from '@/lib/modalRoot';
 
 const FOCUSABLE = 'a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])';
+
+/**
+ * Стек шторок (21.10.2026). Раньше все шторки имели один и тот же zIndex 10060,
+ * поэтому вложенная шторка (например «Причина возврата» поверх деталки счёта)
+ * ложилась «по порядку DOM»: при неверном порядке она оказывалась ПОД нижней, и
+ * тапы уходили в подложку — выглядело как зависшая модалка, кнопки не нажимаются.
+ * Теперь каждая открытая шторка получает zIndex выше предыдущей.
+ */
+const BASE_Z = 10060;
+let zStack = 0;
 
 export function BottomSheet({ open, onClose, children, title, footer, maxHeight = '85vh' }) {
   const sheetRef = useRef(null);
@@ -34,6 +44,19 @@ export function BottomSheet({ open, onClose, children, title, footer, maxHeight 
   const titleId = `bs-title-${uid}`;
   const lastFocusedRef = useRef(null);
   const initialFocusDoneRef = useRef(false);
+
+  /**
+   * Свой уровень в стеке шторок. Выделяется при открытии и освобождается при
+   * закрытии/размонтировании — так вложенная шторка гарантированно выше нижней,
+   * независимо от порядка монтирования в DOM.
+   */
+  const [zIndex, setZIndex] = useState(BASE_Z);
+  useEffect(() => {
+    if (!open) return undefined;
+    zStack += 1;
+    setZIndex(BASE_Z + zStack);
+    return () => { zStack = Math.max(0, zStack - 1); };
+  }, [open]);
 
   // onClose в ref: эффекты не должны перезапускаться от смены идентичности колбэка.
   const onCloseRef = useRef(onClose);
@@ -167,7 +190,7 @@ export function BottomSheet({ open, onClose, children, title, footer, maxHeight 
   if (!root) return null;
 
   const content = (
-    <div className="fixed inset-0 flex flex-col justify-end" style={{ zIndex: 10060 }}>
+    <div className="fixed inset-0 flex flex-col justify-end" style={{ zIndex }}>
       <div
         className="absolute inset-0"
         onClick={close}

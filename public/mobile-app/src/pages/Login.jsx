@@ -63,7 +63,7 @@ export default function Login() {
 
   return (
     <div
-      className="relative flex flex-col items-center justify-center min-h-screen px-6 overflow-hidden"
+      className="relative flex flex-col items-center justify-center app-min-h px-6 overflow-hidden"
       style={{
         backgroundColor: '#050508',
         paddingTop: 'var(--safe-top)',

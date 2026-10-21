@@ -47,7 +47,7 @@ export default function FieldPinSetup() {
 
   return (
     <div
-      className="min-h-screen flex flex-col items-center justify-center px-6"
+      className="app-min-h flex flex-col items-center justify-center px-6"
       style={{ backgroundColor: 'var(--bg-primary)' }}
     >
       <div className="mb-8 text-center">
