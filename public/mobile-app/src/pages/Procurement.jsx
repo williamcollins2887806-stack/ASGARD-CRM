@@ -115,7 +115,7 @@ export default function Procurement() {
 
   // Получаем роль один раз
   useEffect(() => {
-    api.get('/api/users/me')
+    api.get('/users/me')
       .then((res) => {
         const u = res?.user || res;
         setUserRole(u?.role || null);
@@ -129,7 +129,7 @@ export default function Procurement() {
     if (append) setLoadingMore(true); else setLoading(true);
     try {
       const qs = `limit=${PAGE_LIMIT}&offset=${nextOffset}${cacheBust ? `&_t=${Date.now()}` : ''}`;
-      const res = await api.get(`/api/procurement?${qs}`);
+      const res = await api.get(`/procurement?${qs}`);
       const rows = res?.items || api.extractRows(res) || [];
       setRequests((prev) => (append ? [...prev, ...rows] : rows));
       setOffset(nextOffset + rows.length);
@@ -342,7 +342,7 @@ function ProcDetailSheet({ request, onClose, userRole, onRefresh }) {
   useEffect(() => {
     if (!request) { setFull(null); return; }
     setLoading(true);
-    api.get(`/api/procurement/${request.id}`)
+    api.get(`/procurement/${request.id}`)
       .then((res) => setFull(res?.item ? res : { item: res, items: res.items || [], history: res.history || [] }))
       .catch(() => setFull(null))
       .finally(() => setLoading(false));
@@ -403,9 +403,9 @@ function ProcDetailSheet({ request, onClose, userRole, onRefresh }) {
       return { ...prev, items: (prev.items || []).map((x) => x.id === it.id ? { ...x, item_status: 'cancelled' } : x) };
     });
     try {
-      await api.put(`/api/procurement/${item.id}/items/${it.id}`, { item_status: 'cancelled' });
+      await api.put(`/procurement/${item.id}/items/${it.id}`, { item_status: 'cancelled' });
       haptic.success();
-      const res = await api.get(`/api/procurement/${item.id}`);
+      const res = await api.get(`/procurement/${item.id}`);
       setFull(res?.item ? res : { item: res, items: res.items || [], history: res.history || [] });
       onRefresh();
     } catch (err) {
@@ -413,7 +413,7 @@ function ProcDetailSheet({ request, onClose, userRole, onRefresh }) {
       window.alert('Не удалось отменить позицию: ' + (err?.message || err));
       // Откат
       try {
-        const res = await api.get(`/api/procurement/${item.id}`);
+        const res = await api.get(`/procurement/${item.id}`);
         setFull(res?.item ? res : { item: res, items: res.items || [], history: res.history || [] });
       } catch {/* ignore */}
     } finally {
@@ -425,7 +425,7 @@ function ProcDetailSheet({ request, onClose, userRole, onRefresh }) {
   const handleReceiveDone = async () => {
     setShowReceive(false);
     try {
-      const res = await api.get(`/api/procurement/${item.id}`);
+      const res = await api.get(`/procurement/${item.id}`);
       setFull(res?.item ? res : { item: res, items: res.items || [], history: res.history || [] });
     } catch {/* ignore */}
     onRefresh();
@@ -435,9 +435,9 @@ function ProcDetailSheet({ request, onClose, userRole, onRefresh }) {
     haptic.light();
     setActing(endpoint);
     try {
-      await api.put(`/api/procurement/${item.id}/${endpoint}`, body || {});
+      await api.put(`/procurement/${item.id}/${endpoint}`, body || {});
       haptic.success();
-      const res = await api.get(`/api/procurement/${item.id}`);
+      const res = await api.get(`/procurement/${item.id}`);
       setFull(res?.item ? res : { item: res, items: res.items || [], history: res.history || [] });
       onRefresh();
     } catch {
@@ -485,7 +485,7 @@ function ProcDetailSheet({ request, onClose, userRole, onRefresh }) {
     try {
       const res = await api.post(`/procurement/${item.id}/invoice/${invoice.import_id}/apply`, { rows, supplier_id: invoice.supplier_id, supplier_name: invoice.supplier_name || invSupName.trim() || null, delivery_days: invoice.delivery_days || invDays || null });
       haptic.success(); setInvoice(null); setInvSupName(''); setInvDays('');
-      const r = await api.get(`/api/procurement/${item.id}`);
+      const r = await api.get(`/procurement/${item.id}`);
       setFull(r?.item ? r : { item: r, items: r.items || [], history: r.history || [] });
       onRefresh();
       window.alert(`Цены проставлены: ${res.applied}`);
@@ -497,7 +497,7 @@ function ProcDetailSheet({ request, onClose, userRole, onRefresh }) {
     haptic.light();
     setActing('clone');
     try {
-      await api.post(`/api/procurement/${item.id}/clone`, {});
+      await api.post(`/procurement/${item.id}/clone`, {});
       haptic.success();
       onClose();
       onRefresh();
@@ -513,7 +513,7 @@ function ProcDetailSheet({ request, onClose, userRole, onRefresh }) {
     haptic.light();
     setActing('template');
     try {
-      await api.post(`/api/procurement/templates/from-request/${item.id}`, { name: tplName.trim() });
+      await api.post(`/procurement/templates/from-request/${item.id}`, { name: tplName.trim() });
       haptic.success();
       setShowTplInput(false);
       setTplName('');
@@ -651,7 +651,7 @@ function ProcDetailSheet({ request, onClose, userRole, onRefresh }) {
                   procId={item.id}
                   onDone={async () => {
                     setShowAddItem(false);
-                    const res = await api.get(`/api/procurement/${item.id}`);
+                    const res = await api.get(`/procurement/${item.id}`);
                     setFull(res?.item ? res : { item: res, items: res.items || [], history: res.history || [] });
                     onRefresh();
                   }}
@@ -989,7 +989,7 @@ function ReceiveSheet({ open, procId, items, onClose, onDone }) {
     if (!open) return;
     let cancelled = false;
     setLocLoading(true);
-    api.get('/api/warehouse/locations?is_active=true&limit=500')
+    api.get('/warehouse/locations?is_active=true&limit=500')
       .then((r) => {
         if (cancelled) return;
         const list = r?.items || r?.rows || r?.locations || (Array.isArray(r) ? r : []) || [];
@@ -1029,7 +1029,7 @@ function ReceiveSheet({ open, procId, items, onClose, onDone }) {
       const locId = perItemLoc[itemId] || globalLoc || null;
       const body = locId ? { location_id: parseInt(locId, 10) } : {};
       try {
-        const r = await api.put(`/api/procurement/${procId}/items/${itemId}/deliver`, body);
+        const r = await api.put(`/procurement/${procId}/items/${itemId}/deliver`, body);
         accepted++;
         if (r?.item?.equipment_id) eqCreated++;
         haptic.success();
@@ -1271,7 +1271,7 @@ function AddItemForm({ procId, onDone, onCancel }) {
     if (!val.trim() || val.trim().length < 3) { setHint(null); return; }
     debounceRef.current = setTimeout(async () => {
       try {
-        const res = await api.get(`/api/price-records/hint?name=${encodeURIComponent(val.trim())}`);
+        const res = await api.get(`/price-records/hint?name=${encodeURIComponent(val.trim())}`);
         if (res?.last || res?.stats) setHint(res); else setHint(null);
       } catch { setHint(null); }
     }, 400);
@@ -1283,7 +1283,7 @@ function AddItemForm({ procId, onDone, onCancel }) {
     if (!val.trim() || val.trim().length < 2) { setCatalog([]); return; }
     catRef.current = setTimeout(async () => {
       try {
-        const res = await api.get(`/api/products/catalog-procurement?search=${encodeURIComponent(val.trim())}&limit=8`);
+        const res = await api.get(`/products/catalog-procurement?search=${encodeURIComponent(val.trim())}&limit=8`);
         setCatalog((res?.items || []).slice(0, 8));
       } catch { setCatalog([]); }
     }, 350);
@@ -1305,7 +1305,7 @@ function AddItemForm({ procId, onDone, onCancel }) {
     haptic.light();
     setSaving(true);
     try {
-      await api.post(`/api/procurement/${procId}/items`, {
+      await api.post(`/procurement/${procId}/items`, {
         name: name.trim(),
         quantity: Number(qty),
         unit: unit.trim() || 'шт',
@@ -1563,7 +1563,7 @@ function CreateMethodSheet({ open, onClose, onCreated }) {
 function useWorks() {
   const [works, setWorks] = useState([]);
   useEffect(() => {
-    api.get('/api/works?limit=200')
+    api.get('/works?limit=200')
       .then((res) => {
         const rows = res?.items || api.extractRows(res) || [];
         setWorks(rows.map((w) => ({ value: w.id, label: w.work_title || `Работа #${w.id}` })));
@@ -1592,7 +1592,7 @@ function CreateByTextForm({ onCreated, onBack }) {
     setSaving(true);
     try {
       // 1. Создаём заявку
-      const createRes = await api.post('/api/procurement', {
+      const createRes = await api.post('/procurement', {
         title: title.trim(),
         work_id: Number(workId),
         priority,
@@ -1601,7 +1601,7 @@ function CreateByTextForm({ onCreated, onBack }) {
       const newId = createRes?.item?.id || createRes?.id;
 
       // 2. Импортируем позиции из текста
-      const importRes = await api.post(`/api/procurement/${newId}/items/import-text`, {
+      const importRes = await api.post(`/procurement/${newId}/items/import-text`, {
         text: itemsText.trim(),
       });
       const count = importRes?.count ?? importRes?.items?.length ?? 0;
@@ -1722,9 +1722,9 @@ function CreateByAIForm({ onCreated, onBack }) {
     haptic.light();
     setSaving(true); setInfo('AI анализирует техзадание, это может занять до минуты...');
     try {
-      const createRes = await api.post('/api/procurement', { title: title.trim(), work_id: Number(workId), priority, notes: '' });
+      const createRes = await api.post('/procurement', { title: title.trim(), work_id: Number(workId), priority, notes: '' });
       const newId = createRes?.item?.id || createRes?.id;
-      const aiRes = await api.post(`/api/procurement/${newId}/items/ai-parse`, { text: tz.trim() });
+      const aiRes = await api.post(`/procurement/${newId}/items/ai-parse`, { text: tz.trim() });
       const count = aiRes?.count ?? 0;
       if (count > 0) { haptic.success(); setResult({ count, id: newId }); }
       else {
@@ -1797,7 +1797,7 @@ function CreateFromTemplateForm({ onCreated, onBack }) {
 
   useEffect(() => {
     setLoadingTpl(true);
-    api.get('/api/procurement/templates')
+    api.get('/procurement/templates')
       .then((res) => setTemplates(res?.items || api.extractRows(res) || []))
       .catch(() => setTemplates([]))
       .finally(() => setLoadingTpl(false));
@@ -1808,7 +1808,7 @@ function CreateFromTemplateForm({ onCreated, onBack }) {
     haptic.light();
     setSaving(true);
     try {
-      await api.post(`/api/procurement/from-template/${selectedTpl.id}`, { work_id: Number(workId) });
+      await api.post(`/procurement/from-template/${selectedTpl.id}`, { work_id: Number(workId) });
       haptic.success();
       onCreated();
     } catch {
@@ -1925,7 +1925,7 @@ function CreateManualForm({ onCreated, onBack }) {
     haptic.light();
     setSaving(true);
     try {
-      const res = await api.post('/api/procurement', {
+      const res = await api.post('/procurement', {
         title: title.trim(),
         work_id: Number(workId),
         priority,
