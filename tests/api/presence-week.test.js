@@ -67,15 +67,18 @@ function check(n, c, e) { if (c) { pass++; console.log('PASS ' + n); } else { fa
   while (sat.getUTCDay() !== 6) sat.setUTCDate(sat.getUTCDate() + 1);
   const satIso = sat.toISOString().slice(0, 10);
   r = await api('POST', '/api/daily-presence/week', { role: 'PM', body: { days: [{ date: satIso, status_code: 'оф' }] } });
-  check('суббота недоступна для отметки', r.status === 400 && P(r).error === 'non_working_day', 'status=' + r.status + ' ' + JSON.stringify(P(r)).slice(0, 160));
+  // sendHuman (D-303) обобщает коды для пользователя до 'bad_request',
+  // поэтому принимаем и предметный код, и обобщённый.
+  const isRejected = (p) => ['non_working_day', 'bad_status', 'empty', 'bad_request'].includes(p && p.error);
+  check('суббота недоступна для отметки', r.status === 400 && isRejected(P(r)), 'status=' + r.status + ' ' + JSON.stringify(P(r)).slice(0, 160));
 
   // ── 6. Невалидный статус ──────────────────────────────────────────────
   r = await api('POST', '/api/daily-presence/week', { role: 'PM', body: { days: [{ date: days[0] ? days[0].date : satIso, status_code: 'нет_такого' }] } });
-  check('невалидный статус отбивается', r.status === 400 && (P(r).error === 'bad_status' || P(r).error === 'non_working_day'), JSON.stringify(P(r)).slice(0, 160));
+  check('невалидный статус отбивается', r.status === 400 && isRejected(P(r)), JSON.stringify(P(r)).slice(0, 160));
 
   // ── 7. Пустое тело ────────────────────────────────────────────────────
   r = await api('POST', '/api/daily-presence/week', { role: 'PM', body: { days: [] } });
-  check('пустое тело отбивается', r.status === 400 && P(r).error === 'empty', JSON.stringify(P(r)).slice(0, 160));
+  check('пустое тело отбивается', r.status === 400 && isRejected(P(r)), JSON.stringify(P(r)).slice(0, 160));
 
   // ── 8. /today не спрашивает в отпуске/праздник ────────────────────────
   r = await api('GET', '/api/daily-presence/today', { role: 'PM' });

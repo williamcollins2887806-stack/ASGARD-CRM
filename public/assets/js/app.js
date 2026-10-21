@@ -1653,18 +1653,26 @@ var _setupPinKeypad = null;
   // Заказчик (18.10.2026): сотрудник заполняет РАБОЧУЮ НЕДЕЛЮ (пн–пт) целиком.
   // UI — отдельный компонент public/assets/js/presence_week.js (кастомные селекты,
   // SVG-иконки, токены темы). Контракт API прежний: GET/POST /api/daily-presence/week.
+  // ─── ГЕЙТ присутствия: ДВА уровня ─────────────────────────────────────────
+  // 1) ДНЕВНОЙ (presence_day.js) — «где ты сегодня» + сверка с табелем.
+  //    Спрашиваем каждый день при первом входе (заказчик, 21.10.2026).
+  // 2) НЕДЕЛЬНЫЙ (presence_week.js) — раскладка пн–пт на неделю вперёд.
+  //    Спрашиваем раз в неделю, если неделя ещё не заполнена.
+  // Оба — fail-open: если сеть/модуль недоступны, вход не блокируем.
   async function showPresenceGate(){
     var auth = (window.AsgardAuth && AsgardAuth.getAuth) ? AsgardAuth.getAuth() : null;
     if (!auth || !auth.token) return;
-    if (!window.AsgardPresenceWeek || !AsgardPresenceWeek.mount) {
-      // Компонент не загрузился — не блокируем работу (fail-open), как и при падении сети.
-      console.warn('[PresenceGate] presence_week.js не загружен — гейт пропущен');
-      return;
+
+    // 1. Сначала день — это то, что человеку нужно ежедневно.
+    if (window.AsgardPresenceDay && AsgardPresenceDay.mount) {
+      try { await AsgardPresenceDay.mount({ auth: auth }); }
+      catch (e) { console.warn('[PresenceGate/day] error:', e); }
     }
-    try {
-      await AsgardPresenceWeek.mount({ auth: auth });
-    } catch (e) {
-      console.warn('[PresenceGate] error:', e);   // сеть/сервер упали — не блокируем
+
+    // 2. Затем неделя — только если ещё не заполнена.
+    if (window.AsgardPresenceWeek && AsgardPresenceWeek.mount) {
+      try { await AsgardPresenceWeek.mount({ auth: auth }); }
+      catch (e) { console.warn('[PresenceGate/week] error:', e); }
     }
   }
 

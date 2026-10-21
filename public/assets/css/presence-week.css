@@ -47,7 +47,7 @@ html[data-theme="light"] .pg-scene {
   max-height: calc(100vh - 40px);
   display: flex;
   flex-direction: column;
-  border-radius: 22px;
+  border-radius: 18px;
   overflow: hidden;
   color: var(--text-primary);
   background: linear-gradient(158deg, var(--bg-elevated, #10182b), var(--bg-card, #161019) 92%);
@@ -539,16 +539,17 @@ html[data-theme="light"] .pg-foot { border-top-color: rgba(120, 100, 60, 0.13); 
   font-size: 14px;
   font-weight: 800;
   letter-spacing: 0.01em;
-  color: #1a1206;
-  background: linear-gradient(135deg, var(--gold-l, #e8c35a), var(--gold, #d4a843) 55%, #b8922e);
-  box-shadow: 0 4px 16px rgba(212, 168, 67, 0.30), 0 1px 0 rgba(255, 255, 255, 0.35) inset;
+  color: #fff;
+  /* Синяя в обеих темах — как в старом окне присутствия (заказчик, 21.10). */
+  background: linear-gradient(135deg, var(--blue-l), var(--blue));
+  box-shadow: 0 4px 16px color-mix(in srgb, var(--blue-l) 26%, transparent);
   transition: transform 0.13s ease, box-shadow 0.16s ease, filter 0.16s ease;
 }
 
 .pg-btn:hover:not(:disabled) {
   transform: translateY(-1px);
-  box-shadow: 0 8px 24px rgba(212, 168, 67, 0.40), 0 1px 0 rgba(255, 255, 255, 0.35) inset;
-  filter: brightness(1.04);
+  box-shadow: 0 8px 24px color-mix(in srgb, var(--blue-l) 34%, transparent);
+  filter: brightness(1.06);
 }
 
 .pg-btn:active:not(:disabled) { transform: translateY(0); }
