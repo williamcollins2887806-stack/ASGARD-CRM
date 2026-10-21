@@ -894,8 +894,27 @@ module.exports = async function docRegistryRoutes(fastify) {
 
     // Общий круг видимости строк реестра (та же матрица, что в списке документов).
     // Проверяем по doc_registry, потому что видимость описана для её колонок.
-    const visParams = [];
-    const vis = visibilitySql(visParams, req.user.role, req.user.id, { scope: 'all' });
+    //
+    // D-318: $1 уже занят массивом статусов, а `visibilitySql` нумерует свои
+    // параметры ОТ НАЧАЛА переданного массива. Если дать ей отдельный массив,
+    // для РП/HEAD_PM/HEAD_TO получалось `d.doc_owner_id = $1`, где $1 — это
+    // `["pending_payment"]::text[]`, и Postgres отвечал 42883
+    // «operator does not exist: integer = text[]» → график отдавал 503.
+    //
+    // Правильно (как во всех остальных роутах файла): передать ТОТ ЖЕ массив
+    // `p`, в который уйдут параметры запроса, — тогда нумерация сквозная.
+    const vis = visibilitySql(p, req.user.role, req.user.id, { scope: 'all' });
+
+    // D-318b (верификатор 21.10.2026): прежняя клауза `(d.id IS NULL OR …)`
+    // пускала ЛЮБУЮ заявку без привязанной строки реестра всем ролям. В режиме
+    // «не согласованные» это отдавало РП чужие суммы (проверено: 5 заявок на
+    // 505 790 ₽). Заявка без реестра принадлежит своему инициатору — по нему и
+    // ограничиваем. Если видимость полная (`vis === ''`), ограничения нет.
+    let linkClause = '';
+    if (vis) {
+      p.push(req.user.id);
+      linkClause = ` AND ((d.id IS NOT NULL AND (true${vis})) OR (d.id IS NULL AND pi.created_by = $${p.length}))`;
+    }
 
     const { rows } = await db.query(
       `SELECT pi.id, pi.status, pi.payment_status, pi.invoice_number, pi.amount,
@@ -908,9 +927,9 @@ module.exports = async function docRegistryRoutes(fastify) {
          LEFT JOIN users u ON u.id = COALESCE(d.doc_owner_id, pi.created_by)
         WHERE pi.status = ANY($${pStatuses}::text[])
           AND COALESCE(pi.payment_status,'') <> 'rejected'
-          ${vis ? ` AND (d.id IS NULL OR (true${vis}))` : ''}
+          ${linkClause}
         ORDER BY COALESCE(pi.due_date, d.payment_due_at) ASC NULLS LAST, pi.id ASC`,
-      [...p, ...visParams]);
+      p);
 
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const iso = (d) => (d instanceof Date ? d.toISOString().slice(0, 10) : String(d || '').slice(0, 10));

@@ -61,14 +61,34 @@ const APPLY = process.argv.includes('--apply');
 
   let made = 0;
   for (const r of missing.rows) {
+    // D-318c (верификатор 21.10.2026): шаг НЕЛЬЗЯ фиксировать в 0.
+    // Заявка возрастом 44 ч должна быть на step≈2-3, иначе «догоняющие»
+    // напоминания (12ч → 24ч → 24ч) никогда не уйдут: backfill ставил
+    // step=0 и next_at=NOW(), и первое же напоминание сдвигало счётчик на 1,
+    // теряя шаги 2–3.
+    // Считаем ожидаемый шаг от возраста: 12ч → step 1, 36ч → step 2, 60ч → step 3.
     const res = await c.query(
-      `INSERT INTO approval_escalation (payment_invoice_id, step, next_at, created_at, updated_at)
-       VALUES ($1, 0, GREATEST(COALESCE($2::timestamptz, $3::timestamptz) + INTERVAL '12 hours', NOW()), NOW(), NOW())
+      `WITH aged AS (
+         SELECT $1::int AS pid,
+                COALESCE($2::timestamptz, $3::timestamptz, NOW()) AS base
+       ), calc AS (
+         SELECT pid, base,
+                GREATEST(0, FLOOR((EXTRACT(EPOCH FROM (NOW() - base)) - 12*3600) / (24*3600)) + 1)::int AS step_due
+           FROM aged
+       )
+       INSERT INTO approval_escalation (payment_invoice_id, step, next_at, created_at, updated_at)
+       SELECT pid, step_due, NOW(), NOW(), NOW()
+         FROM calc
        ON CONFLICT (payment_invoice_id) DO NOTHING
-       RETURNING id`,
+       RETURNING id, step`,
       [r.id, r.submitted_at, r.created_at]
     );
-    if (res.rowCount) made++;
+    if (res.rowCount) {
+      made++;
+      if (res.rows[0].step > 0) {
+        console.log(`  #${r.id}: возраст большой → сразу step=${res.rows[0].step} (догоняющие напоминания не потеряны)`);
+      }
+    }
   }
   console.log(`\nсоздано расписаний: ${made}`);
 
