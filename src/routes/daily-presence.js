@@ -90,9 +90,11 @@ module.exports = async function (fastify, options) {
   // Прочитать отметку за сегодня (status_code + work_id) по staff_id
   async function todayPlan(staffId) {
     const { rows } = await db.query(
-      `SELECT id, status_code, work_id FROM staff_plan
-       WHERE staff_id = $1 AND date = CURRENT_DATE AND status_code IS NOT NULL AND status_code <> ''
-       ORDER BY id DESC LIMIT 1`, [staffId]);
+      `SELECT id, status_code, work_id, updated_at,
+              (updated_at::date = CURRENT_DATE) AS touched_today
+         FROM staff_plan
+        WHERE staff_id = $1 AND date = CURRENT_DATE AND status_code IS NOT NULL AND status_code <> ''
+        ORDER BY id DESC LIMIT 1`, [staffId]);
     return rows[0] || null;
   }
 
@@ -358,8 +360,14 @@ module.exports = async function (fastify, options) {
       // «На объекте» доступно только если есть активные работы
       const statuses = STATUS_DEFS.filter(s => !s.needsWork || works.length > 0);
 
+      // D-327: спрашиваем каждый день, даже если статус пришёл из недельного
+      // графика. Отметка считается «сегодняшней», только если её реально
+      // трогали сегодня (updated_at::date = CURRENT_DATE). Если понедельник
+      // проставил неделю — во вторник спросим подтверждение этой отметки.
+      const confirmedToday = !!(current && current.touched_today);
+
       return {
-        required: !current,
+        required: !confirmedToday,
         current: current ? { status_code: current.status_code, work_id: current.work_id } : null,
         statuses,
         works,
