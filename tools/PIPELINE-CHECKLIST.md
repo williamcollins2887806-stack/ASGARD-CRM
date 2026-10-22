@@ -148,3 +148,44 @@ node tools/test_dedup_live_clone.js #  8 — дедуп на живых данн
 ## Дата последней проверки
 
 **22.10.2026, 19:56** — PASS 16, FAIL 0, WARN 9.
+
+---
+
+## Автоматическая проверка (cron)
+
+Поставлена **22.10.2026**: каждый день в **09:00 MSK**, пользователь `root`.
+
+```
+0 9 * * * cd /var/www/asgard-crm && /usr/bin/node tools/pipeline_alert.js >> /var/log/asgard-pipeline.log 2>&1 # ASGARD_PIPELINE_CHECK
+```
+
+**Что происходит:**
+
+| Ситуация | Действие |
+|---|---|
+| FAIL нет | молчит (письма не будет) |
+| FAIL появились | письмо на `n.androsov@asgard-service.com` |
+| То же состояние < 12ч | молчит (антиспам) |
+| Было FAIL, стало чисто | **одно** письмо «проблема устранена» |
+
+**Файлы:**
+
+| Что | Где |
+|---|---|
+| Скрипт | `tools/pipeline_alert.js` |
+| Сам чек-лист | `tools/pipeline_check.js` |
+| Лог | `/var/log/asgard-pipeline.log` |
+| Состояние (антиспам) | `/var/lib/asgard/pipeline-state.json` |
+| Установка/переустановка | `bash tools/install_pipeline_cron.sh` |
+
+**Сменить расписание:** `SCHEDULE="30 8 * * *" bash tools/install_pipeline_cron.sh`
+**Сменить получателя:** `PIPELINE_ALERT_EMAIL=другой@asgard-service.com` (или в cron-строке).
+**Проверить сейчас:** `cd /var/www/asgard-crm && node tools/pipeline_alert.js --force`
+**Тест без отправки:** `node tools/pipeline_alert.js --dry-run`
+
+**Важно про честность алерта:** письмо формируется по FAIL, а FAIL — это только
+деньги и целостность (дубли, наш ИНН, НДС, файлы, позиции, битые договоры,
+зависшее «Добро»). Предупреждения (`!`) в письмо попадают списком, но **не**
+считаются провалом — иначе алерт каждый день горел бы из-за 9 счетов без
+объекта и перестал читаться.
+
