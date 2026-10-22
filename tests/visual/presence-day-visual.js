@@ -85,6 +85,27 @@ function isBlue(bg) {
   await page.waitForSelector('#asgard-presence-day', { timeout: 15000 }).catch(() => {});
   await page.waitForTimeout(500);
 
+  // Дневное окно появляется НЕ в день заполнения недели (D-326: сегодняшний
+  // день уже отмечен). Для проверки дневного экрана эмулируем следующий день —
+  // стареем updated_at в базе, ставим флаг недели, перезагружаем.
+  if (!(await page.$('#asgard-presence-day'))) {
+    const wkStart = await page.evaluate(async () => {
+      const a = AsgardAuth.getAuth();
+      const r = await fetch('/api/daily-presence/week', { headers: { Authorization: 'Bearer ' + a.token } });
+      const j = await r.json();
+      return j.week_start;
+    });
+    await db.query(`
+      UPDATE staff_plan sp SET updated_at = NOW() - INTERVAL '1 day'
+        FROM staff s, users u
+       WHERE sp.staff_id = s.id AND s.user_id = u.id AND u.login = 'test_buh'
+         AND sp.date = CURRENT_DATE`);
+    await page.evaluate((k) => localStorage.setItem(k, '1'), 'presence_week_done_' + wkStart);
+    await page.reload({ waitUntil: 'commit' });
+    await page.waitForSelector('#asgard-presence-day', { timeout: 25000 }).catch(() => {});
+    await page.waitForTimeout(1200);
+  }
+
   // Дневной гейт должен появиться после недели
   const gate = await page.$('#asgard-presence-day');
   check('дневной гейт показан после недели', !!gate, 'нет #asgard-presence-day');
@@ -111,17 +132,19 @@ function isBlue(bg) {
   });
   check('нет эмодзи', emoji === 0, 'найдено: ' + emoji);
 
-  // Обводка выбранной плитки — проверяем, кликнув по статусу.
+  // Кликаем по плитке, которая ЕЩЁ НЕ выбрана, затем читаем ЛЮБУЮ выбранную.
   await page.evaluate(() => {
-    const b = document.querySelector('.pd-opt[data-code="оф"]');
-    if (b) b.click();
+    const tiles = Array.from(document.querySelectorAll('.pd-opt'));
+    const target = tiles.find((t) => !t.classList.contains('sel'));
+    if (target) target.click();
   });
-  await page.waitForTimeout(300);
+  await page.waitForTimeout(500);
+
   const selState = await page.evaluate(() => {
     const el = document.querySelector('.pd-opt.sel');
     if (!el) return null;
     const cs = getComputedStyle(el);
-    return { border: cs.borderTopColor, width: cs.borderTopWidth, color: cs.color };
+    return { border: cs.borderTopColor, width: cs.borderTopWidth, color: cs.color, code: el.getAttribute('data-code') };
   });
   // Золото может прийти с альфой (rgba) — проверяем каналы, а не точную строку.
   const isGold = (() => {
@@ -132,7 +155,12 @@ function isBlue(bg) {
   })();
   check('выбранная плитка с акцентной обводкой', !!selState && parseFloat(selState.width) >= 1 && isGold,
     selState ? `border=${selState.border} width=${selState.width}` : 'нет .pd-opt.sel');
-  // Возвращаем на «оф» для дальнейшего сценария (уже выбран).
+  // Возвращаем на «оф» — остальной сценарий проверяет сохранение этого статуса.
+  await page.evaluate(() => {
+    const b = document.querySelector('.pd-opt[data-code="оф"]');
+    if (b) b.click();
+  });
+  await page.waitForTimeout(250);
 
   // 3. Кнопка синяя (тёмная тема)
   const btnDark = await page.$eval('.pd-btn', (el) => getComputedStyle(el).backgroundImage);

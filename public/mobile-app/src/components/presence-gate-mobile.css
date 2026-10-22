@@ -6,6 +6,62 @@
    Все цвета — токены темы (--bg-surface, --gold, --text-primary и т.д.).
    ═══════════════════════════════════════════════════════════════════════════ */
 
+/* ── Режим подтверждения дня (D-327) ──────────────────────────────────── */
+.pgm-confirm { margin-bottom: 10px; }
+
+.pgm-confirm-q {
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-secondary, #8e8e93);
+}
+.pgm-confirm-q b { color: var(--text-primary, #f5f5f7); font-weight: 600; }
+
+/* Сетка статусов 2 колонки — как в старом окне присутствия */
+.pgm-daypick {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.pgm-tile {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 10px;
+  border-radius: 11px;
+  cursor: pointer;
+  text-align: left;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary, #8e8e93);
+  background: var(--bg-surface-alt, #1c1c22);
+  border: 1.5px solid var(--border-norse, #1f1f28);
+  transition: border-color 0.15s ease, background 0.15s ease, color 0.15s ease;
+  -webkit-tap-highlight-color: transparent;
+  min-height: 48px;
+}
+
+.pgm-tile:active { background: var(--bg-elevated, #242430); }
+
+.pgm-tile.sel {
+  border-color: var(--gold, #c8a84e);
+  background: var(--bg-elevated, #242430);
+  color: var(--text-primary, #f5f5f7);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--gold) 30%, transparent);
+}
+
+.pgm-tile-ic {
+  width: 20px; height: 20px; flex-shrink: 0;
+  display: grid; place-items: center; color: inherit;
+}
+.pgm-tile.sel .pgm-tile-ic { color: var(--gold, #c8a84e); }
+
+.pgm-tile-t {
+  flex: 1; min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
 /* ── Сцена ─────────────────────────────────────────────────────────────── */
 .pgm-scene {
   position: fixed;
@@ -137,6 +193,9 @@
 }
 
 .pgm-days { display: flex; flex-direction: column; gap: 8px; padding-bottom: 8px; }
+/* В режиме подтверждения дня сетка прижата к верху, без лишнего отступа —
+   иначе между плитками и кнопкой остаётся визуальная пустота. */
+.pgm-body > .pgm-days:has(.pgm-confirm) { gap: 10px; padding-bottom: 0; }
 
 /* ── Строка дня ────────────────────────────────────────────────────────── */
 .pgm-row {
@@ -312,7 +371,7 @@
   gap: 7px;
   min-height: 16px;
   padding: 0 18px;
-  margin-top: 8px;
+  margin-top: 4px;
   font-size: 12px;
   font-weight: 600;
   color: var(--danger-ink, #ff5b52);
