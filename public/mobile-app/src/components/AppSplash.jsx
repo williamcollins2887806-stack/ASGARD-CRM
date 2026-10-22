@@ -146,7 +146,11 @@ export function AppSplash({ ready = false }) {
       style={{
         position: 'fixed', inset: 0, zIndex: 20000,
         display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-        background: 'radial-gradient(ellipse 130% 90% at 50% -12%, #17213f 0%, #0a0e1c 44%, #04050a 100%)',
+        // Светлая и тёмная сцены. Раньше фон был ТОЛЬКО тёмный, и в светлой теме
+        // заставка выглядела чужеродно (жалоба 22.10.2026). Класс темы вешает
+        // themeStore на <html> (`.light`) ДО монтирования React, поэтому переменная
+        // уже верна на первом кадре.
+        background: 'var(--splash-bg)',
         opacity: fading ? 0 : 1,
         transform: fading ? 'scale(1.04)' : 'scale(1)',
         transition: 'opacity 480ms cubic-bezier(0.4,0,0.2,1), transform 480ms cubic-bezier(0.4,0,0.2,1)',
@@ -155,10 +159,46 @@ export function AppSplash({ ready = false }) {
         paddingBottom: 'env(safe-area-inset-bottom, 0px)',
         userSelect: 'none',
         WebkitTapHighlightColor: 'transparent',
-        overflow: 'hidden',
+        // БЕЗ overflow:hidden и без height: элемент занимает ровно вьюпорт
+        // (position: fixed; inset: 0). Обрезка содержимого тут не нужна и мешала
+        // «прыжкам»: при смене высоты вьюпорта контент пересчитывался.
       }}
     >
       <style>{`
+        /* ── Сцены заставки: тёмная и светлая ───────────────────────────────
+           Переменные читаются из класса темы на <html>, который ставит themeStore.
+           Тёмная: глубокая синева с золотом. Светлая: тёплый перламутр с золотом —
+           заставка должна продолжать тему, а не спорить с ней. */
+        :root {
+          --splash-bg: radial-gradient(ellipse 130% 90% at 50% -12%, #17213f 0%, #0a0e1c 44%, #04050a 100%);
+          --splash-title-a: #a08030;
+          --splash-title-b: #c8a84e;
+          --splash-title-hi: #FFF9E4;
+          --splash-sub: rgba(214,224,240,0.50);
+          --splash-quote: rgba(230,237,248,0.82);
+          --splash-quote-shadow: 0 1px 12px rgba(0,0,0,0.55);
+          --splash-track: rgba(214,224,240,0.09);
+          --splash-bar: rgba(214,224,240,0.36);
+          --splash-hint: rgba(214,224,240,0.22);
+          --splash-glow: rgba(255,236,180,0.30);
+          --splash-logo-glow: rgba(200,168,78,0.30);
+        }
+        html.light {
+          /* Светлая сцена: почти белый с тёплым оттенком и золотым ореолом.
+             Тексты — тёмные, иначе на светлом фоне их не видно. */
+          --splash-bg: radial-gradient(ellipse 130% 90% at 50% -12%, #FFFFFF 0%, #F7F4EC 42%, #EFEAE0 100%);
+          --splash-title-a: #8A5E0B;
+          --splash-title-b: #B8860B;
+          --splash-title-hi: #FFF6D8;
+          --splash-sub: rgba(60,60,67,0.62);
+          --splash-quote: rgba(40,42,50,0.86);
+          --splash-quote-shadow: 0 1px 0 rgba(255,255,255,0.7);
+          --splash-track: rgba(60,60,67,0.12);
+          --splash-bar: rgba(90,90,100,0.55);
+          --splash-hint: rgba(60,60,67,0.34);
+          --splash-glow: rgba(200,168,78,0.34);
+          --splash-logo-glow: rgba(160,120,30,0.26);
+        }
         @keyframes sx-orb {
           0%,100% { transform: translate3d(0,0,0) scale(1); }
           33%     { transform: translate3d(16px,-12px,0) scale(1.08); }
@@ -288,7 +328,7 @@ export function AppSplash({ ready = false }) {
       }}>
         <div style={{
           fontSize: 30, fontWeight: 800, letterSpacing: 11, paddingLeft: 11, lineHeight: 1,
-          backgroundImage: 'linear-gradient(100deg, var(--gold-dim, #a08030) 0%, var(--gold, #c8a84e) 26%, #FFF9E4 46%, var(--gold, #c8a84e) 62%, var(--gold-dim, #a08030) 84%, #6B4909 100%)',
+          backgroundImage: `linear-gradient(100deg, var(--splash-title-a) 0%, var(--splash-title-b) 26%, var(--splash-title-hi) 46%, var(--splash-title-b) 62%, var(--splash-title-a) 84%, #6B4909 100%)`,
           WebkitBackgroundClip: 'text', backgroundClip: 'text', color: 'transparent',
           WebkitTextFillColor: 'transparent',
           filter: 'drop-shadow(0 1px 0 rgba(0,0,0,.5))',
@@ -296,7 +336,7 @@ export function AppSplash({ ready = false }) {
 
         <div style={{
           marginTop: 9, fontSize: 9.5, letterSpacing: 5, paddingLeft: 5,
-          color: 'rgba(214,224,240,0.50)', textTransform: 'uppercase', fontWeight: 600,
+          color: 'var(--splash-sub)', textTransform: 'uppercase', fontWeight: 600,
         }}>Система управления</div>
       </div>
 
@@ -311,8 +351,8 @@ export function AppSplash({ ready = false }) {
           key={qi}
           style={{
             fontSize: 14.5, letterSpacing: 0.2, textAlign: 'center', fontStyle: 'italic',
-            color: 'rgba(230,237,248,0.82)',
-            textShadow: '0 1px 12px rgba(0,0,0,0.55)',
+            color: 'var(--splash-quote)',
+            textShadow: 'var(--splash-quote-shadow)',
             animation: reduceMotion ? 'none' : 'sx-quoteIn 620ms cubic-bezier(0.22,1,0.36,1) both',
           }}
         >«{QUOTES[qi]}»</span>
@@ -327,12 +367,12 @@ export function AppSplash({ ready = false }) {
       }}>
         <div style={{
           position: 'relative', width: 180, height: 2.5, borderRadius: 999,
-          background: 'rgba(214,224,240,0.09)', overflow: 'hidden',
+          background: 'var(--splash-track)', overflow: 'hidden',
         }}>
           <div style={{
             width: `${pct}%`, height: '100%', borderRadius: 999,
-            background: 'linear-gradient(90deg, var(--gold-dim, #a08030), var(--gold, #c8a84e) 45%, #FFF3CF)',
-            boxShadow: '0 0 12px rgba(206,168,74,.65)',
+            background: 'linear-gradient(90deg, var(--splash-title-a), var(--splash-title-b) 45%, var(--splash-title-hi))',
+            boxShadow: '0 0 12px color-mix(in srgb, var(--splash-title-b) 65%, transparent)',
             transition: 'width 320ms cubic-bezier(0.4,0,0.2,1)',
           }} />
           {!reduceMotion && (
@@ -346,7 +386,7 @@ export function AppSplash({ ready = false }) {
 
         <div style={{
           fontSize: 10, letterSpacing: 2, paddingLeft: 2,
-          color: 'rgba(214,224,240,0.36)', minHeight: 13,
+          color: 'var(--splash-bar)', minHeight: 13,
         }}>
           {pct >= 100 ? 'Готово' : 'Загрузка'}
         </div>
@@ -354,7 +394,7 @@ export function AppSplash({ ready = false }) {
 
       <div style={{
         position: 'absolute', bottom: 'calc(env(safe-area-inset-bottom, 0px) + 18px)',
-        fontSize: 9.5, letterSpacing: 1.3, color: 'rgba(214,224,240,0.22)',
+        fontSize: 9.5, letterSpacing: 1.3, color: 'var(--splash-hint)',
         opacity: at(3) ? 1 : 0,
       }}>коснитесь, чтобы пропустить</div>
     </div>

@@ -2,7 +2,6 @@ import { useState, useRef, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useHaptic } from '@/hooks/useHaptic';
 import { useAuthStore } from '@/stores/authStore';
-import { useVisualViewportBottom } from '@/hooks/useVisualViewportBottom';
 
 /**
  * SVG иконки для TabBar — filled (active) vs outlined (inactive)
@@ -88,10 +87,6 @@ export function TabBar() {
   const haptic = useHaptic();
   const navRef = useRef(null);
   const [indicator, setIndicator] = useState({ left: 0, width: 0 });
-  // Прижимаем бар к низу ВИДИМОЙ области: iOS считает fixed от layout viewport,
-  // поэтому при показанных панелях Safari бар оказывался выше низа экрана
-  // (жалоба 21.10.2026: «то поднимется, то снова вверху после обновления»).
-  useVisualViewportBottom();
   // V391: состав вкладок зависит от роли (у директора — только согласования).
   const role = useAuthStore((s) => s.user?.role) || '';
   const tabs = tabsForRole(role);
@@ -128,9 +123,13 @@ export function TabBar() {
       style={{
         zIndex: 50,
         borderTop: '0.5px solid color-mix(in srgb, var(--gold) 15%, var(--border-norse))',
-        // --vv-bottom компенсирует расхождение layout/visual viewport на iOS
-        // (панели Safari, свайп-возврат). В норме переменная = 0px, вид не меняется.
-        bottom: 'var(--vv-bottom, 0px)',
+        // ВАЖНО (22.10.2026): bottom строго 0. Раньше здесь стояло
+        // `var(--vv-bottom)`, и это САМО создавало «прыжки»: значение меняется
+        // на каждом скролле iOS (панели Safari сворачиваются/разворачиваются),
+        // бар поднимался вверх и под ним проступала полоса фона.
+        // Для fixed-элемента у низа экрана смещение не нужно: браузер сам держит
+        // его относительно видимой области. Проблема «полосы» решается фоном
+        // html/body, а не сдвигом бара (см. index.css).
         height: 'var(--tabbar-total)',
         paddingBottom: 'var(--safe-bottom)',
       }}

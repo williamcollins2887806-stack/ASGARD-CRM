@@ -138,21 +138,48 @@ export default function PresenceGateMobile() {
   const [err, setErr] = useState('');
   const [pickerFor, setPickerFor] = useState(null);   // дата, для которой открыт выбор
   const [workPicker, setWorkPicker] = useState(false);
+  const [mode, setMode] = useState('week');           // 'week' — план на неделю, 'day' — подтверждение дня
 
   const check = useCallback(async () => {
     if (!token || !user) return;
-    let res;
-    try { res = await api.get('/daily-presence/week'); }
+
+    // 1. Сначала неделя — раз в неделю спрашиваем план на пн–пт.
+    let weekRes = null;
+    try { weekRes = await api.get('/daily-presence/week'); }
     catch { return; }                           // сеть упала — не блокируем
-    const weekStart = res?.week_start || res?.server_date || new Date().toISOString().slice(0, 10);
-    const lsKey = 'presence_week_done_' + weekStart;
-    if (localStorage.getItem(lsKey) === '1') return;
-    if (!res?.required) { localStorage.setItem(lsKey, '1'); return; }
-    setInfo({ ...res, lsKey });
-    // Предзаполняем тем, что уже отмечено
-    const init = {};
-    (res.days || []).forEach((d) => { if (d.status_code && !d.on_vacation) init[d.date] = d.status_code; });
-    setPicked(init);
+
+    const weekStart = weekRes?.week_start || weekRes?.server_date || new Date().toISOString().slice(0, 10);
+    const weekKey = 'presence_week_done_' + weekStart;
+    const weekFilled = localStorage.getItem(weekKey) === '1' || !weekRes?.required;
+
+    if (!weekFilled) {
+      setMode('week');
+      setInfo({ ...weekRes, lsKey: weekKey });
+      const init = {};
+      (weekRes.days || []).forEach((d) => { if (d.status_code && !d.on_vacation) init[d.date] = d.status_code; });
+      setPicked(init);
+      setOpen(true);
+      return;
+    }
+
+    // 2. Затем день — каждый день подтверждаем или меняем.
+    //    Бэкенд отдаёт required=true, если отметку сегодня ещё не подтверждали
+    //    (D-327: запись могла прийти из недельного графика в понедельник).
+    let dayRes = null;
+    try { dayRes = await api.get('/daily-presence/today'); }
+    catch { return; }
+
+    if (!dayRes || !dayRes.required) return;
+
+    const serverDate = dayRes.server_date || new Date().toISOString().slice(0, 10);
+    const dayKey = 'presence_done_' + serverDate;
+    if (localStorage.getItem(dayKey) === '1') return;
+
+    setMode('day');
+    setInfo({ ...dayRes, lsKey: dayKey });
+    const cur = dayRes.current && dayRes.current.status_code;
+    setPicked(cur && cur !== 'отп' ? { [serverDate]: cur } : {});
+    setWorkId(dayRes.current && dayRes.current.work_id ? String(dayRes.current.work_id) : '');
     setOpen(true);
   }, [token, user]);
 
@@ -193,7 +220,13 @@ export default function PresenceGateMobile() {
 
     setSaving(true); setErr('');
     try {
-      await api.post('/daily-presence/week', { days: payload });
+      if (mode === 'day') {
+        // Режим подтверждения дня: сохраняем ОДИН статус на сегодня.
+        const item = payload[0];
+        await api.post('/daily-presence', { status_code: item.status_code, work_id: item.work_id });
+      } else {
+        await api.post('/daily-presence/week', { days: payload });
+      }
       localStorage.setItem(info.lsKey, '1');
       setOpen(false);
     } catch (e) {
@@ -217,20 +250,66 @@ export default function PresenceGateMobile() {
         <div className="pgm-head">
           <div className="pgm-sigil"><ShieldCheck size={22} strokeWidth={1.9} /></div>
           <div className="pgm-head-tx">
-            <div className="pgm-kicker">Дружина · неделя вперёд</div>
+            <div className="pgm-kicker">
+              {mode === 'day' ? 'Отметка на сегодня' : 'Дружина · неделя вперёд'}
+            </div>
             <div className="pgm-title" id="pgmTitle">
               {firstName ? `Привет, ${firstName}!` : 'Доброго дня!'}
             </div>
           </div>
-          {rangeLbl && (
+          {mode === 'day' ? (
+            <div className="pgm-range">
+              <div className="pgm-range-lbl">Сегодня</div>
+              <div className="pgm-range-val">{fmtRange(serverDate, serverDate)}</div>
+            </div>
+          ) : rangeLbl ? (
             <div className="pgm-range">
               <div className="pgm-range-lbl">Неделя</div>
               <div className="pgm-range-val">{rangeLbl}</div>
             </div>
-          )}
+          ) : null}
         </div>
 
         <div className="pgm-body">
+          {mode === 'day' ? (
+            /* Режим подтверждения дня: показываем статус из табеля и сетку
+               выбора. Без этого блока экран был бы пустым (дыра) — у /today
+               нет массива days, он приходит только у /week. */
+            <div className="pgm-days">
+              {info.current && info.current.status_code ? (
+                <div className="pgm-confirm">
+                  <div className="pgm-confirm-q">
+                    В табеле на сегодня стоит{' '}
+                    <b>«{(statuses.find((s) => s.code === info.current.status_code) || {}).label || info.current.status_code}»</b>.
+                    Подтверждаешь или меняем?
+                  </div>
+                </div>
+              ) : (
+                <div className="pgm-confirm">
+                  <div className="pgm-confirm-q">Отметься — где ты сегодня держишь строй?</div>
+                </div>
+              )}
+
+              <div className="pgm-daypick">
+                {statuses.map((s) => {
+                  const code = s.code;
+                  const Icon = ICON_BY_CODE[code] || ShieldCheck;
+                  const isSel = (picked[serverDate] || '') === code;
+                  return (
+                    <button
+                      key={code}
+                      type="button"
+                      className={'pgm-tile' + (isSel ? ' sel' : '')}
+                      onClick={() => { setPicked((p) => ({ ...p, [serverDate]: code })); setErr(''); }}
+                    >
+                      <span className="pgm-tile-ic"><Icon size={16} strokeWidth={1.9} /></span>
+                      <span className="pgm-tile-t">{s.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          ) : (
           <div className="pgm-days">
             {days.map((d) => {
               if (d.on_vacation) {
@@ -264,6 +343,7 @@ export default function PresenceGateMobile() {
               );
             })}
           </div>
+          )}
 
           {needsWork && (
             <div className="pgm-work">

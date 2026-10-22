@@ -46,6 +46,36 @@ export function BottomSheet({ open, onClose, children, title, footer, maxHeight 
   const initialFocusDoneRef = useRef(false);
 
   /**
+   * Высота клавиатуры (22.10.2026). Без этого на iOS клавиатура НАКРЫВАЛА шторку:
+   * футер с кнопками «Отмена» / «Вернуть с причиной» уходил под неё, и завершить
+   * действие было нельзя (жалоба директора: «клавиатура перекрывает модалку»).
+   *
+   * Клавиатура уменьшает `visualViewport.height`, не меняя layout viewport.
+   * Считаем разницу и поднимаем шторку на неё — футер остаётся доступным.
+   */
+  const [kbHeight, setKbHeight] = useState(0);
+  useEffect(() => {
+    if (!open) { setKbHeight(0); return undefined; }
+    const vv = window.visualViewport;
+    if (!vv) return undefined;
+
+    const measure = () => {
+      // Высота, которую перекрывает клавиатура (снизу вверх).
+      const overlap = window.innerHeight - (vv.height + vv.offsetTop);
+      // Игнорируем мелочь (0..60 px): это не клавиатура, а округления/панели.
+      setKbHeight(overlap > 60 ? Math.round(overlap) : 0);
+    };
+
+    measure();
+    vv.addEventListener('resize', measure);
+    vv.addEventListener('scroll', measure);
+    return () => {
+      vv.removeEventListener('resize', measure);
+      vv.removeEventListener('scroll', measure);
+    };
+  }, [open]);
+
+  /**
    * Свой уровень в стеке шторок. Выделяется при открытии и освобождается при
    * закрытии/размонтировании — так вложенная шторка гарантированно выше нижней,
    * независимо от порядка монтирования в DOM.
@@ -201,7 +231,8 @@ export function BottomSheet({ open, onClose, children, title, footer, maxHeight 
       />
 
       {/* Шторка — flex-колонка фиксированной max-высоты: футер/содержимое не могут
-          вытолкнуть кнопки за пределы экрана (иначе «Отмена» уезжала на длинных формах). */}
+          вытолкнуть кнопки за пределы экрана (иначе «Отмена» уезжала на длинных формах).
+          marginBottom = высота клавиатуры: футер с кнопками остаётся видимым над ней. */}
       <div
         ref={sheetRef}
         role="dialog"
@@ -212,6 +243,7 @@ export function BottomSheet({ open, onClose, children, title, footer, maxHeight 
         style={{
           maxHeight,
           height: 'auto',
+          marginBottom: kbHeight ? `${kbHeight}px` : undefined,
           animation: 'sheetSlideUp var(--motion-normal) var(--ease-spring) forwards',
           paddingBottom: 'calc(var(--safe-bottom) + 8px)',
         }}

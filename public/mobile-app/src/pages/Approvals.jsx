@@ -307,7 +307,8 @@ function CommentSheet({ data, onClose, onSubmit }) {
             onChange={(e) => setComment(e.target.value)}
             placeholder="Обязательный комментарий..."
             rows={3}
-            autoFocus
+            // Без autoFocus: иначе клавиатура открывалась сразу и перекрывала кнопку
+            // отправки (та же причина, что и в шторке «Причина возврата»).
             className="input-field resize-none"
           />
         </div>

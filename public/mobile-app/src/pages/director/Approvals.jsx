@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuthStore } from '@/stores/authStore';
 import { useHaptic } from '@/hooks/useHaptic';
@@ -192,19 +192,38 @@ export default function DirectorApprovals() {
     role === 'ADMIN';
 
   /* ── V391: шторка причины (замена window.prompt) ───────────── */
+  /**
+   * ДИАГНОЗ зависания (22.10.2026). Раньше было так:
+   *
+   *   const closeReasonSheet = (value) => {
+   *     setAskReason((cur) => { if (cur) cur.resolve(value); return null; });
+   *   };
+   *
+   * `resolve()` внутри апдейтера — это ПОБОЧНЫЙ ЭФФЕКТ В ФАЗЕ РЕНДЕРА. React
+   * может вызвать апдейтер дважды или во время отрисовки другого компонента;
+   * обещание разрешается «не в тот момент», его продолжение запускает setState и
+   * сетевой запрос прямо в рендере — планировщик встаёт, кнопки перестают
+   * отвечать. Это и есть «нажимаю Вернуть, и всё зависает».
+   *
+   * Теперь resolve живёт в ref и вызывается ВНЕ React — в обработчике события.
+   */
+  const reasonResolveRef = useRef(null);
   const openReasonSheet = useCallback((title) => {
     setReasonText('');
     return new Promise((resolve) => {
-      setAskReason({ title, resolve });
+      reasonResolveRef.current = resolve;
+      setAskReason({ title });
     });
   }, []);
 
   const closeReasonSheet = useCallback((value) => {
-    setAskReason((cur) => {
-      if (cur) cur.resolve(value);
-      return null;
-    });
+    // Сначала снимаем сам ref и закрываем шторку — чисто, без side-effect в апдейтере.
+    const resolve = reasonResolveRef.current;
+    reasonResolveRef.current = null;
+    setAskReason(null);
     setReasonText('');
+    // Разрешаем обещание последним и вне рендера — вызывающий код продолжит работу.
+    if (resolve) resolve(value);
   }, []);
 
   /* ── Действия ──────────────────────────────────────────────── */
@@ -615,7 +634,12 @@ export default function DirectorApprovals() {
             value={reasonText}
             onChange={(e) => setReasonText(e.target.value)}
             rows={3}
-            autoFocus
+            // БЕЗ autoFocus (22.10.2026): он поднимал клавиатуру сразу при открытии
+            // шторки, и на iOS она перекрывала кнопки «Отмена» / «Вернуть с причиной» —
+            // директор не мог завершить действие. Теперь клавиатура появляется только
+            // по осознанному тапу в поле, а шторка сама поднимается над ней (см. BottomSheet).
+            inputMode="text"
+            enterKeyHint="done"
             placeholder="Например: уточните сумму, нет лимита НПД, неверный получатель"
             style={{
               width: '100%', minHeight: 96, padding: 12, borderRadius: 12, fontSize: 15,
