@@ -150,14 +150,18 @@ function note(section, name, detail) {
   if (!brokenContract.n) ok('5. Договоры', 'ссылки на договоры целы', '0 битых');
   else bad('5. Договоры', 'битые ссылки на договоры', `${brokenContract.n}`);
 
-  // Договоры-мусор, к которым привязаны документы.
+  // Договоры-мусор: номер, в котором НЕТ ни одной цифры и он не похож на номер
+  // («+», «да», «ещё нет», «Услуги гостиницы»). Короткие ЧИСЛОВЫЕ номера
+  // («1», «42») — законные номера договоров у ИП, их мусором не считаем.
   const junkContract = await q(`
       SELECT c.id, c.number, count(d.id)::int n
         FROM contracts c JOIN doc_registry d ON d.contract_id = c.id AND d.deleted_at IS NULL
-       WHERE length(regexp_replace(coalesce(c.number,''), '[^0-9a-zA-Zа-яА-Я]', '', 'g')) < 3
+       WHERE coalesce(c.number,'') !~ '[0-9]'
+         AND length(trim(coalesce(c.number,''))) > 0
        GROUP BY 1,2 ORDER BY 3 DESC LIMIT 5`);
-  if (!junkContract.length) ok('5. Договоры', 'нет документов на договорах-мусоре', '');
-  else note('5. Договоры', 'документы на договорах без номера', junkContract.map((x) => `#${x.id} «${x.number}» ×${x.n}`).join('; '));
+  if (!junkContract.length) ok('5. Договоры', 'нет документов на договорах без номера', '');
+  else note('5. Договоры', 'документы на договорах без цифр в номере',
+    junkContract.map((x) => `#${x.id} «${x.number}» ×${x.n}`).join('; '));
 
   const noContract = await one(`SELECT count(*)::int n FROM doc_registry
       WHERE deleted_at IS NULL AND dir='in' AND payment_invoice_id IS NOT NULL
@@ -182,15 +186,24 @@ function note(section, name, detail) {
   else note('6. Согласование', 'заявки ждут >48ч', old.map((x) => `#${x.id}`).join(', '));
 
   // ═══ 7. РАСХОДЫ ════════════════════════════════════════════════════════
+  // Двойной расход = одна работа + одна сумма + ОДИН И ТОТ ЖЕ номер документа.
+  // ВАЖНО (22.10.2026): проверка «работа + сумма» давала ложные срабатывания.
+  // У ГК «Якуттрансарго» семь РАЗНЫХ счетов по 42 000 ₽ (номера 628, 638, 1045,
+  // 1233, 1282, 1287, 1298) — это разные перевозки по одинаковому тарифу.
+  // Сравнивать без номера документа нельзя: получим вечный шум и перестанем
+  // замечать реальные дубли.
   const dupExp = await q(`
-      SELECT work_id, amount, count(*)::int n, array_agg(id ORDER BY id) ids
+      SELECT work_id, amount, lower(trim(coalesce(doc_number,''))) dn,
+             count(*)::int n, array_agg(id ORDER BY id) ids
         FROM work_expenses
        WHERE COALESCE(status,'') <> 'rejected' AND work_id IS NOT NULL
          AND source_key LIKE 'doc_registry:%'
-       GROUP BY work_id, amount
-      HAVING count(*) > 1 AND count(DISTINCT source_key) > 1`);
-  if (!dupExp.length) ok('7. Расходы', 'нет двойных расходов по одному счёту', '0 пар');
-  else note('7. Расходы', 'возможные двойные расходы', dupExp.slice(0, 5).map((x) => `раб.${x.work_id}/${x.amount}: ${x.ids.join(',')}`).join('; '));
+         AND coalesce(doc_number,'') <> ''
+       GROUP BY work_id, amount, lower(trim(coalesce(doc_number,'')))
+      HAVING count(*) > 1`);
+  if (!dupExp.length) ok('7. Расходы', 'нет двойных расходов по одному счёту', '0 пар (сверка по номеру документа)');
+  else note('7. Расходы', 'ДВОЙНОЙ расход по одному документу',
+    dupExp.slice(0, 5).map((x) => `раб.${x.work_id}/${x.amount}/№${x.dn}: ${x.ids.join(',')}`).join('; '));
 
   const expTot = await one(`SELECT count(*)::int n, COALESCE(SUM(amount),0)::float8 s
       FROM work_expenses WHERE COALESCE(status,'') <> 'rejected'`);
