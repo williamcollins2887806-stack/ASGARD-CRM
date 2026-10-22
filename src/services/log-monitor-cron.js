@@ -70,6 +70,10 @@ const NOISE_RE = new RegExp([
   '\\[IMAP\\] Sync error[^\\n]*:\\s*$',
   'Async client error account=[^\\n]*(?:ECONNRESET|NoConnection|Already logged out|ETIMEOUT|ETIMEDOUT)',
   'Async client error account=',
+  // Тот же класс: сетевой таймаут IMAP на инициализации сортировщика папок.
+  // Яндекс.Почта на 77.88.21.125:993 то отвечает, то нет; сортировщик
+  // ретраит сам. Это не наш код и не влияет на приём писем.
+  '\\[FolderSorter\\][^\\n]*(?:ETIMEDOUT|ENETUNREACH|ECONNRESET|ECONNREFUSED)',
   // ВАЖНО: `Reply was already sent` и `ERR_HTTP_HEADERS_SENT` НЕ глушим.
   // Это серверные ошибки (двойной ответ), и гейт tests/fastify-onsend-guard.test.js
   // реально ловит их причину — значит ночное уведомление не будет вечным шумом,
