@@ -21,6 +21,12 @@ const execAsync = promisify(exec);
 
 let _task = null;
 
+/**
+ * D-322: отпечаток видов ошибок прошлого уведомления. Живёт в памяти процесса:
+ * после рестарта пуш придёт один раз, дальше — только при НОВОМ виде ошибки.
+ */
+let lastFingerprint = '';
+
 /** Уровни pino, которые считаются дефектом: 40=warn, 50=error, 60=fatal. */
 const LEVEL_RE = /"level":(40|50|60)\b/;
 
@@ -53,6 +59,17 @@ const NOISE_RE = new RegExp([
   'failed_ai=',
   '\\[client-error\\]',
   '\\[LogMonitor\\]',
+  // D-322: СЕТЕВЫЕ обрывы IMAP к Яндекс.Почте — шум, а не наш баг. За 3 дня
+  // 92 обрыва (`Command failed`, `Unexpected close`, `Connection not available`,
+  // `read ECONNRESET`), при этом 4 059 УСПЕШНЫХ синков и письма приходят:
+  // клиент сам переподключается. Именно они занимали 2-3 слота из 3-5
+  // в каждом уведомлении. Глушим ТОЛЬКО эти формулировки по отдельности,
+  // а не весь IMAP: любая другая ошибка почты (исключение в парсере, падение
+  // поллера, ошибка авторизации) по-прежнему приходит в уведомлении.
+  '\\[IMAP\\] Sync error[^\\n]*: (?:read )?(?:ECONNRESET|ETIMEDOUT|EPIPE|Unexpected close|Connection not available|Command failed|NoConnection)',
+  '\\[IMAP\\] Sync error[^\\n]*:\\s*$',
+  'Async client error account=[^\\n]*(?:ECONNRESET|NoConnection|Already logged out|ETIMEOUT|ETIMEDOUT)',
+  'Async client error account=',
   // ВАЖНО: `Reply was already sent` и `ERR_HTTP_HEADERS_SENT` НЕ глушим.
   // Это серверные ошибки (двойной ответ), и гейт tests/fastify-onsend-guard.test.js
   // реально ловит их причину — значит ночное уведомление не будет вечным шумом,
@@ -125,6 +142,17 @@ async function checkAndNotify(db, log) {
       const key = prettify(line);
       counts.set(key, (counts.get(key) || 0) + 1);
     }
+
+    // D-322: не будим админа, если набор ошибок ТОТ ЖЕ, что в прошлый раз
+    // (окно 3 часа). Иначе повторяющийся шум превращался в пуш каждые 3 часа.
+    // Сравниваем отпечаток видов: НОВЫЙ вид ошибки всегда проходит.
+    const fingerprint = [...counts.keys()].sort().join('|');
+    if (fingerprint === lastFingerprint) {
+      log.info(`[LogMonitor] ${errors.length} errors — тот же набор, что и в прошлый раз, пуш не шлём`);
+      return;
+    }
+    lastFingerprint = fingerprint;
+
     const preview = [...counts.entries()]
       .sort((a, b) => b[1] - a[1])
       .slice(0, 5)

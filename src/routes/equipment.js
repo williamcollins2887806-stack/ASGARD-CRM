@@ -1603,7 +1603,7 @@ async function equipmentRoutes(fastify, options) {
 
     const result = await db.query(`
       UPDATE equipment_requests SET
-        status = 'rejected', reject_reason = $1, processed_by = $2, processed_at = NOW()
+        status = 'rejected', rejection_reason = $1, processed_by = $2, processed_at = NOW()
       WHERE id = $3 AND status = 'pending'
       RETURNING *
     `, [reason || 'Отклонено', user.id, id]);
@@ -2216,10 +2216,13 @@ async function equipmentRoutes(fastify, options) {
     const ExcelJS = require("exceljs");
     const { category_id, status, warehouse_id, search } = request.query;
     let where = "WHERE 1=1"; const params = []; let idx = 1;
-    if (category_id) { where += ` AND e.category_id = ${idx++}`; params.push(category_id); }
-    if (status) { where += ` AND e.status = ${idx++}`; params.push(status); }
-    if (warehouse_id) { where += ` AND e.warehouse_id = ${idx++}`; params.push(warehouse_id); }
-    if (search) { where += ` AND (e.name ILIKE ${idx} OR e.inventory_number ILIKE ${idx})`; params.push("%" + search + "%"); idx++; }
+    // D-321: перед ${idx++} стоял потерянный `$` — получалось `e.category_id = 1`,
+    // то есть сравнение varchar-колонки с числом (42883 «operator does not exist:
+    // character varying = integer»). Экспорт оборудования в Excel падал с 500.
+    if (category_id) { where += ` AND e.category_id = $${idx++}`; params.push(category_id); }
+    if (status) { where += ` AND e.status = $${idx++}`; params.push(status); }
+    if (warehouse_id) { where += ` AND e.warehouse_id = $${idx++}`; params.push(warehouse_id); }
+    if (search) { where += ` AND (e.name ILIKE $${idx} OR e.inventory_number ILIKE $${idx})`; params.push("%" + search + "%"); idx++; }
 
     const result = await db.query(`
       SELECT e.*, c.name as category_name, w.name as warehouse_name,

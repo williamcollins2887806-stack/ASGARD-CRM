@@ -66,16 +66,22 @@ function fail(name, extra) {
       'systemd: SIGKILL (без JSON)'],
     ['Oct 20 10:55:43 cv5977357.novalocal systemd[1]: asgard-crm.service: Failed with result \'timeout\'.',
       'systemd: Failed with result'],
-    // D-312: console.error из сервисов — без pino-уровня, раньше были невидимы
-    ['Oct 20 12:00:00 host node[1]: [IMAP] Sync error account #112: Unexpected close',
-      'console.error сервиса (IMAP)'],
+    // D-322: сетевой обрыв IMAP — шум (клиент сам переподключается)
+    ['Oct 22 12:00:00 host node[1]: [IMAP] Sync error account #112: read ECONNRESET',
+      'сеть: ECONNRESET (шум)'],
+    ['Oct 22 12:00:00 host node[1]: [IMAP] Sync error account #112: Unexpected close',
+      'сеть: Unexpected close (шум)'],
+    // D-322: НАСТОЯЩАЯ ошибка почты должна остаться error
+    ['Oct 22 12:00:00 host node[1]: [IMAP] Sync error account #112: Authentication failed',
+      'реал: IMAP auth failed'],
   ];
   const missed = [];
   for (const [line, label] of samples) {
-    if (mod.classify(line) !== 'error') missed.push(label);
+    const want = /\(шум\)/.test(label) ? 'ignore' : 'error';
+    if (mod.classify(line) !== want) missed.push(label);
   }
   if (missed.length) {
-    fail('ловятся все реальные ошибки прод-журнала', 'пропущено: ' + missed.join('; '));
+    fail('ловятся все реальные ошибки прод-журнала', 'неверно: ' + missed.join('; '));
   } else {
     ok('ловятся все реальные ошибки прод-журнала', `${samples.length}/${samples.length}`);
   }
