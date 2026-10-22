@@ -1012,6 +1012,33 @@ async function routes(fastify) {
         `UPDATE payment_invoices
             SET status='awaiting_dir', submitted_at=NOW(), updated_at=NOW()
           WHERE id=$1 AND status='draft'`, [pay.id]);
+      // D-341 (заказчик 22.10.2026): «работу пусть проставит инициатор,
+      // ответственный за доки — либо работу, либо другой тип расхода».
+      // Раньше флаг `no_work_for_expense` появлялся только ПОСЛЕ оплаты
+      // (в autoWorkExpense), то есть когда деньги уже ушли. Теперь он ставится
+      // в момент отправки на согласование — инициатор видит синюю строку в реестре
+      // и успевает дозаполнить объект или сменить тип расхода до оплаты.
+      // Офисные/складские и с явным назначением (purpose_*) не трогаем: им объект
+      // не нужен по определению.
+      try {
+        await db.query(
+          `UPDATE doc_registry d
+              SET is_incomplete = true,
+                  incomplete_reasons = (SELECT array_agg(DISTINCT x) FROM unnest(
+                    COALESCE(d.incomplete_reasons,'{}'::text[]) || ARRAY['no_work_for_expense']) AS x),
+                  updated_at = NOW()
+            WHERE d.deleted_at IS NULL
+              AND d.dir = 'in'
+              AND d.work_id IS NULL
+              AND COALESCE(d.purpose_asgard,false) = false
+              AND COALESCE(d.purpose_consumables,false) = false
+              AND COALESCE(d.spend_kind,'') <> 'office'
+              AND (d.id = $1 OR d.payment_invoice_id = $2)`,
+          [pay.doc_registry_id || null, pay.id]
+        );
+      } catch (e) {
+        fastify.log.warn('[payment-invoices] флаг no_work_for_expense: ' + (e && e.message));
+      }
       try { await stampExpiry(db, pay.id); } catch (_) { /* не критично */ }
       // D-317: расписание эскалации — первое напоминание через 12 ч без решения.
       try {

@@ -22,6 +22,23 @@ function normPath(p) {
 
 async function findDup(db, row) {
   if (!row.invoice_number || !row.invoice_date) return null;
+  // D-338 (22.10.2026): сначала общий ключ (номер+сумма+дата, с нормализацией
+  // номера и отбрасыванием нашего ИНН). Прежний запрос требовал ТОЧНОГО
+  // совпадения `counterparty_name` — «ООО "X"» и «Общество ... "X"» не сходились,
+  // и Excel-импорт создавал дубли.
+  try {
+    const dedup = require('./doc-dedup');
+    const hit = await dedup.findDuplicate(db, {
+      invoice_number: row.invoice_number,
+      amount_gross: num(row.amount_gross),
+      invoice_date: row.invoice_date,
+      counterparty_inn: row.counterparty_inn || row.inn,
+      counterparty_name: row.counterparty_name,
+      dir: row.dir || 'in'
+    });
+    if (hit) return hit;
+  } catch (_) { /* модуль недоступен — падаем на старую проверку */ }
+
   const params = [
     String(row.counterparty_name || '').trim().toLowerCase(),
     String(row.invoice_number || '').trim().toLowerCase(),

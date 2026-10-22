@@ -143,6 +143,13 @@ async function handleApprovalReply(db, email) {
     // Теперь СОХРАНЯЕМ решение и применим его, когда заявка появится
     // (см. applyPendingGrants — вызывается после создания заявки в intake).
     const saved = await saveDeferredGrant(db, email, 'approve');
+    // D-342: «Добро» не должно пропадать молча. Раньше при несматченном треде
+    // согласие просто лежало в базе, и никто (ни директор, ни бухгалтерия) не
+    // знал, что счёт ждёт решения. Теперь пишем явное предупреждение в лог —
+    // оно видно в журнале и в мониторинге.
+    console.warn(`[approval-thread] «Добро» НЕ применено (тред не сопоставлен): ` +
+      `email=${email.id} from=${sender} subject="${String(email.subject || '').slice(0, 60)}" ` +
+      `grant=${saved || 'не сохранён'} — требует ручной привязки`);
     return {
       action: 'approve', matched: 0, applied: 0, needs_manual: true,
       reason: 'thread_not_matched', deferred: !!saved, grant_id: saved || null
@@ -215,23 +222,70 @@ async function saveDeferredGrant(db, email, action = 'approve', comment = null) 
  * V406: применить ранее сохранённые согласия к НОВОЙ заявке.
  * Вызывается сразу после создания заявки из письма: если согласующий уже
  * ответил «Добро» (по треду или по References на письмо-заявку), согласуем.
- * @returns {Promise<{applied:boolean, grant_id?:number}>}
+ *
+ * D-342 (заказчик 22.10.2026): «проверь, что директорское ДОБРО обрабатывается
+ * идеально и не пропадает». Найдено ДВА дефекта, оба чинятся здесь:
+ *
+ *   1. СРОК ГОДНОСТИ. Отложенное согласие жило вечно. «Добро» от 20.10 по
+ *      «Удачному Выбору» (#4932) не применилось (письмо пришло в отдельном
+ *      треде, а заявка #8 родилась из другого письма) и осталось висеть.
+ *      Любой следующий счёт от того же контрагента в том же треде согласовался
+ *      бы МОЛЧА — деньгами рисковали без ведома директора. Теперь согласие
+ *      действительно 72 часа (тот же TTL, что у заявок), потом не применяется.
+ *
+ *   2. ПОГАШЕНИЕ. Раньше `applied_at` ставился только при успешном применении.
+ *      Если заявка к тому моменту уже была решена (согласована другим письмом),
+ *      согласие оставалось «неприменённым» и могло сработать позже. Теперь
+ *      согласие помечается использованным, даже когда применять уже нечего.
+ *
+ * @returns {Promise<{applied:boolean, grant_id?:number, expired?:number}>}
  */
 async function applyPendingGrants(db, { paymentId, sourceEmailId, threadKey }) {
   try {
     if (!paymentId) return { applied: false };
-    // Ищем неприменённые согласия: по треду письма-заявки ИЛИ по его message_id.
+    // Срок годности: «Добро» не может висеть дольше TTL заявки.
+    const TTL_HOURS = 72;
     const q = await db.query(
       `SELECT g.* FROM doc_approval_grant g
         WHERE g.applied_at IS NULL AND g.action = 'approve'
+          AND g.created_at > NOW() - ($3 || ' hours')::interval
           AND (($1::text IS NOT NULL AND g.thread_key = $1)
                OR ($2::integer IS NOT NULL AND g.email_id IN (
-                     SELECT id FROM emails WHERE message_id = (SELECT message_id FROM emails WHERE id = $2)))) 
+                     SELECT id FROM emails WHERE message_id = (SELECT message_id FROM emails WHERE id = $2))))
         ORDER BY g.id ASC LIMIT 5`,
-      [threadKey || null, sourceEmailId || null]);
+      [threadKey || null, sourceEmailId || null, String(TTL_HOURS)]);
+    // Просроченные согласия гасим отдельно — чтобы не всплыли через полгода
+    // при совпадении треда.
+    try {
+      const dead = await db.query(
+        `UPDATE doc_approval_grant
+            SET applied_at = NOW(), comment = COALESCE(comment,'') || ' [просрочено, не применено]'
+          WHERE applied_at IS NULL AND action='approve'
+            AND created_at <= NOW() - ($1 || ' hours')::interval
+          RETURNING id`, [String(TTL_HOURS)]);
+      if (dead.rows.length) {
+        console.warn(`[approval-thread] просрочено согласий: ${dead.rows.length} (${dead.rows.map((r) => '#' + r.id).join(',')})`);
+      }
+    } catch (e) { console.warn('[approval-thread] гашение просроченных: ' + e.message); }
+
     if (!q.rows.length) return { applied: false };
     const pay = (await db.query(`SELECT * FROM payment_invoices WHERE id=$1`, [paymentId])).rows[0];
-    if (!pay || pay.status !== 'awaiting_dir') return { applied: false };
+    // D-342: заявка уже решена (согласована другим письмом) — согласие всё равно
+    // ГАСИМ. Иначе оно останется «неприменённым» и сработает на будущий счёт.
+    if (!pay || pay.status !== 'awaiting_dir') {
+      try {
+        for (const g of q.rows) {
+          await db.query(
+            `UPDATE doc_approval_grant
+                SET applied_at = NOW(),
+                    comment = COALESCE(comment,'') || ' [заявка уже решена: ' || COALESCE($2,'') || ']'
+              WHERE id = $1 AND applied_at IS NULL`,
+            [g.id, pay ? pay.status : 'нет заявки']);
+        }
+        console.warn(`[approval-thread] согласия погашены без применения: заявка ${paymentId} в статусе ${pay ? pay.status : 'нет'}`);
+      } catch (e) { console.warn('[approval-thread] гашение: ' + e.message); }
+      return { applied: false };
+    }
     // applyDecision открывает транзакцию через .connect(). Если пришёл «сырой» Client
     // (как в тестах), подменяем адаптером: транзакция выполняется на самом клиенте.
     let dbp = db;

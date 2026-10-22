@@ -230,6 +230,44 @@ async function intakeOne(db, { email, attachment, text, userId = null, dryRun = 
       }
     } catch (_) { /* не критично */ }
   }
+  // D-343 (заказчик 22.10.2026): «все счета видно, позиции, реквизиты — проверить».
+  //
+  // ДЕФЕКТ НА ПРОДЕ. Заявка #27 «Комус» (34 313,65 ₽) была создана из письма-
+  // ОТВЕТА #4999 («Re: АГПЗ: Счет на оплату ООО "Комус"»), у которого НЕТ
+  // вложений — сам счёт лежал в ПЕРВОМ письме треда (#4992). Документ в реестре
+  // получился без файла и без позиций: директору нечего открыть, бухгалтерии
+  // нечего платить по документу.
+  //
+  // Теперь: если у письма нет вложения, ищем счёт-вложение в РОДСТВЕННЫХ
+  // письмах того же треда (и по in_reply_to) и подтягиваем его как источник.
+  // Ищем только PDF/картинки и только если файл реально существует.
+  if (!attachFilePath && emailId) {
+    try {
+      const rel = await db.query(
+        `SELECT a.id, a.filename, a.original_filename, a.file_path, a.mime_type, e.id AS src_email
+           FROM emails e
+           JOIN email_attachments a ON a.email_id = e.id
+          WHERE e.id <> $1
+            AND (
+              ($2::text IS NOT NULL AND e.thread_id = $2)
+              OR ($3::text IS NOT NULL AND e.message_id = $3)
+            )
+          ORDER BY e.email_date DESC
+          LIMIT 10`,
+        [emailId,
+          (email && email.thread_id) || null,
+          (email && email.in_reply_to ? String(email.in_reply_to).replace(/[<>]/g, '') : null)]
+      ).catch(() => ({ rows: [] }));
+      const hit = (rel.rows || []).find((r) => /pdf|image\//i.test(String(r.mime_type || '')) && r.file_path);
+      if (hit) {
+        attachFilePath = String(hit.file_path);
+        attachFileName = hit.original_filename || hit.filename || null;
+        console.log(`[intake] файл счёта взят из родственного письма #${hit.src_email} (своё письмо #${emailId} без вложений): ${attachFileName}`);
+      }
+    } catch (e) {
+      console.warn('[intake] поиск вложения в треде: ' + (e && e.message));
+    }
+  }
   // Замечание заказчика 17.10: в папке были НЕ только счета (сертификаты,
   // заявки, счёта-договоры). Сначала определяем ТИП — платёжные документы
   // идут в заявку и реестр, остальное НЕ попадает в очередь оплаты.
@@ -337,51 +375,60 @@ async function intakeOne(db, { email, attachment, text, userId = null, dryRun = 
   const needsReview = hasCore && parsed.confidence < confMin;
   if (dryRun) return { status: lowConfidence ? 'needs_manual' : 'ok', parsed, needs_review: needsReview, dry_run: true };
 
+  // D-345 (заказчик 22.10.2026): «Письмо-ответ без вложений не должно создавать
+  // заявку по цитате. Если в треде есть письмо с настоящим PDF — брать его.
+  // Если нет — только строка "требует ручной проверки", БЕЗ заявки на оплату».
+  //
+  // ПРИЧИНА. Заявка #27 «Комус» родилась из ОТВЕТА Сторожева без вложений: в теле
+  // была процитирована переписка со словами «Счет на оплату», классификатор
+  // принял цитату за счёт, регулярки вытащили из неё номер и сумму. Документ
+  // получился без файла и без позиций.
+  //
+  // Правило: если СВОЕГО вложения-счёта нет, а текст — в основном цитата,
+  // заявку на оплату НЕ создаём. Строку реестра создаём, но помечаем
+  // `quote_only_reply` — инициатор увидит и разберётся (либо подтянет файл из
+  // треда, либо заведёт вручную).
+  let quoteOnlyReply = false;
+  if (!attachmentId) {
+    try {
+      const { detectQuotedReply } = require('./quoted-reply');
+      const qr = detectQuotedReply(text || '');
+      if (qr.quoted) {
+        quoteOnlyReply = true;
+        parsed._ai_warnings = (parsed._ai_warnings || []).concat(['quote_only_reply:' + (qr.reason || 'quoted')]);
+        console.warn(`[intake] письмо ${emailId}: текст — цитата (${qr.reason}), ` +
+          `заявку на оплату НЕ создаю, только строку на ручную проверку`);
+      }
+    } catch (e) {
+      console.warn('[intake] detectQuotedReply: ' + (e && e.message));
+    }
+  }
+
   // Слой 2: есть ли уже такая строка в реестре?
-  // D-319 (верификатор 21.10.2026). Раньше ключ был «сумма + номер + ИНН», причём
-  // ИНН был ОБЯЗАТЕЛЬНЫМ условием. Последствия на живых данных:
-  //   • неверный ИНН (наш, 7736244785) → существующая строка с ИНН 3017052355
-  //     не находилась → создавался дубль (именно так родились #1587 и заявка #20);
-  //   • при этом без ИНН дедуп склеивал бы разные счёта: на проде есть пары
-  //     «№74 / 20 000 ₽» от РАЗНЫХ контрагентов и «№1003 / 25 800 ₽» за разные
-  //     месяцы — простой ключ «номер+сумма» дал бы ложную склейку.
-  // Теперь ключ: номер + сумма + ДАТА счёта; ИНН работает как VETO (если у обеих
-  // сторон ИНН известен и различается — не связываем, а просим вычитку).
+  // D-338 (заказчик 22.10.2026): ПОЧЕМУ БЫЛО СЛОМАНО. Дедуп был завязан на
+  // `parsed.inn` как на VETO: если ИИ извлёк наш собственный ИНН (7736244785 —
+  // «Покупатель» в счёте), вето не совпадало с ИНН реального контрагента, строка
+  // «не находилась» и создавался дубль. Именно так родились #1597 (дубль #1523)
+  // и ранее #1587 (дубль #4960).
+  //
+  // Теперь ключ и правила — в ОДНОМ месте (`doc-dedup.js`), общем для всех путей
+  // создания документа: наш ИНН и наше имя отбрасываются как реквизит покупателя,
+  // работает тройной ключ «номер + сумма + дата», а «разные ИНН» и «разные даты
+  // при одном номере» запрещают склейку.
   let docId = null;
-  if (parsed.invoice_number && parsed.amount_gross != null) {
-    const dupParams = [parsed.amount_gross];
-    let dupWhere = `deleted_at IS NULL AND amount_gross=$1 AND dir='in'`;
-    dupParams.push(String(parsed.invoice_number).toLowerCase());
-    dupWhere += ` AND lower(trim(coalesce(invoice_number,''))) = $${dupParams.length}`;
-    if (parsed.invoice_date) {
-      dupParams.push(parsed.invoice_date);
-      dupWhere += ` AND invoice_date = $${dupParams.length}::date`;
-    }
-    // Сравниваем и с нормализованным названием (см. V-миграцию нормализации),
-    // чтобы «ООО "X"» и «Общество с ограниченной ответственностью "X"» сходились.
-    if (parsed.inn) {
-      dupParams.push(parsed.inn);
-      const iInn = dupParams.length;
-      // ИНН как вето: строка подходит, если ИНН совпал ИЛИ он не заполнен.
-      dupWhere += ` AND (counterparty_inn IS NULL OR trim(counterparty_inn)='' OR counterparty_inn = $${iInn})`;
-    }
-    const dup = await db.query(`SELECT id FROM doc_registry WHERE ${dupWhere} LIMIT 1`, dupParams);
-    if (dup.rows[0]) {
-      docId = dup.rows[0].id;
-    } else if (parsed.inn || parsed.invoice_date) {
-      // Кандидат есть, но с ДРУГИМ ИНН/датой. Не склеиваем молча — помечаем
-      // на вычитку, иначе рождается дубль (класс дефекта #1587).
-      try {
-        const loose = [parsed.amount_gross, String(parsed.invoice_number).toLowerCase()];
-        const cands = await db.query(
-          `SELECT id, counterparty_inn FROM doc_registry
-            WHERE deleted_at IS NULL AND dir='in' AND amount_gross=$1
-              AND lower(trim(coalesce(invoice_number,''))) = $2 LIMIT 3`, loose);
-        if (cands.rows.length) {
-          parsed._dedup_ambiguous = cands.rows.map((r) => ({ id: r.id, inn: r.counterparty_inn }));
-        }
-      } catch (_) { /* не критично */ }
-    }
+  const dedup = require('./doc-dedup');
+  try {
+    const dup = await dedup.findDuplicate(db, {
+      invoice_number: parsed.invoice_number,
+      amount_gross: parsed.amount_gross,
+      invoice_date: parsed.invoice_date,
+      counterparty_inn: parsed.inn,
+      counterparty_name: parsed.counterparty_name,
+      ownInn: ownInnStr
+    });
+    if (dup) docId = dup.id;
+  } catch (e) {
+    console.warn('[intake] дедуп не сработал: ' + (e && e.message));
   }
 
   let createdDoc = false;
@@ -407,6 +454,35 @@ async function intakeOne(db, { email, attachment, text, userId = null, dryRun = 
       counterpartyInn: parsed.inn,
       counterpartyName: parsed.counterparty_name
     }).catch(() => ({ found: false, reason: 'error' }));
+
+    // D-340 (заказчик 22.10.2026): «если в счёте есть договор, а в СРМ его нет —
+    // значит нужно создавать договор в СРМ и подставлять, главное проверить, что
+    // такого договора точно нет».
+    // Создаём только при reason='not_found' и наличии ИНН+имени: `contract-auto`
+    // сам отказывается в неоднозначных случаях (номер занят другим лицом,
+    // несколько кандидатов, нет ИНН) — ложный договор хуже отсутствующего.
+    if (!contractInfo.found && contractInfo.reason === 'not_found') {
+      try {
+        const { ensureContractFromInvoice } = require('./contract-auto');
+        const auto = await ensureContractFromInvoice(db, {
+          number: parsed.contract_basis.number,
+          date: parsed.contract_basis.date || parsed.invoice_date || null,
+          counterpartyInn: parsed.inn,
+          counterpartyName: parsed.counterparty_name,
+          amount: parsed.amount_gross,
+          docId: docId || null,
+          userId: senderUserId || null
+        }, { log: console });
+        if (auto.action === 'created' && auto.contract) {
+          contractInfo = { found: true, contract: auto.contract, reason: 'auto_created' };
+          parsed._ai_warnings = (parsed._ai_warnings || []).concat(['contract_auto_created:' + auto.contract.id]);
+        } else if (auto.action === 'skipped') {
+          parsed._ai_warnings = (parsed._ai_warnings || []).concat(['contract_auto_skipped:' + auto.reason]);
+        }
+      } catch (e) {
+        console.warn('[intake] автосоздание договора: ' + (e && e.message));
+      }
+    }
   }
   let workInfo = { found: false, reason: 'none' };
   // D-325 (заказчик 21.10.2026): «в письме был указан объект? почему не подтянулся».
@@ -417,7 +493,10 @@ async function intakeOne(db, { email, attachment, text, userId = null, dryRun = 
   // служебных слов «счёт», номера, даты, названия контрагента).
   let workHint = parsed.work_hint || null;
   if (!workHint && email && email.subject) {
-    const cleanedSubject = subjectToWorkHint(email.subject, parsed.counterparty_name);
+    // D-337: здесь стоял вызов несуществующей subjectToWorkHint — письма с
+    // объектом только в теме падали с ReferenceError, и строка не создавалась.
+    // Функция называется extractWorkHintFromSubject (см. выше в этом файле).
+    const cleanedSubject = extractWorkHintFromSubject(email.subject, parsed.counterparty_name);
     if (cleanedSubject) {
       workHint = cleanedSubject;
       parsed.work_hint = cleanedSubject;
@@ -485,6 +564,26 @@ async function intakeOne(db, { email, attachment, text, userId = null, dryRun = 
     if (supplierMatchNote) {
       try { parsed._warnings = [...(parsed._warnings || []), supplierMatchNote]; } catch (_) {}
       console.warn('[intake] ' + supplierMatchNote + ' (счёт ' + (parsed.invoice_number || '?') + ')');
+    }
+
+    // D-344 (FAIL верификатора 22.10.2026, п.7): НАШ СОБСТВЕННЫЙ ИНН не может быть
+    // контрагентом. Дедуп его уже отбрасывал (normInn → null), но при СОЗДАНИИ
+    // строки `parsed.inn` писался напрямую — отсюда и появились #1587, #1597
+    // («ООО Асгард-Сервис» как поставщик). Лечим причину, а не следствие:
+    // если ИИ извлёк наш ИНН (это «Покупатель» в счёте) — обнуляем его и помечаем
+    // строку на вычитку, чтобы инициатор выбрал настоящего поставщика.
+    if (ownInnStr && parsed.inn && String(parsed.inn).replace(/\D/g, '') === String(ownInnStr).replace(/\D/g, '')) {
+      console.warn(`[intake] ИИ извлёк НАШ ИНН ${parsed.inn} как контрагента — обнуляю (счёт ${parsed.invoice_number || '?'})`);
+      parsed.inn = null;
+      parsed.inn_is_own = true;
+      // Если имя тоже наше — снимаем и его, иначе в реестре снова «ООО Асгард-Сервис».
+      try {
+        const dedupMod = require('./doc-dedup');
+        const ownName = dedupMod.normOrgName(await dedupMod.ownCompanyName(db));
+        const cpName = dedupMod.normOrgName(parsed.counterparty_name);
+        if (cpName && ownName && cpName === ownName) parsed.counterparty_name = null;
+      } catch (_) { /* не критично */ }
+      parsed._ai_warnings = (parsed._ai_warnings || []).concat(['counterparty_is_own_company']);
     }
     // D-291 (заказчик 20.10.2026): «Почему тут Вложения. Способ получения email
     // это не правда. Там указывается способ получения ЗАКРЫВАЮЩИХ документов, а
@@ -587,6 +686,26 @@ async function intakeOne(db, { email, attachment, text, userId = null, dryRun = 
         console.warn('[intake] офисный расход не создан: ' + (e && e.message));
       }
     }
+
+    // D-338: safety net — ловим ГОНКУ. Два письма с одним счётом могут
+    // обрабатываться параллельно и не видеть друг друга при проверке ДО вставки.
+    // Здесь, после вставки, ещё раз сверяем ключ: если рядом появился тот же счёт,
+    // свежий помечается `duplicate_suspect` и не уйдёт молча в оплату. Ничего не
+    // удаляем и суммы не трогаем — решение за человеком, деньги не теряются.
+    try {
+      const fresh = await db.query(
+        `SELECT id, invoice_number, amount_gross, invoice_date, counterparty_inn,
+                counterparty_name, payment_invoice_id, work_expense_id, office_expense_id
+           FROM doc_registry WHERE id=$1`, [docId]);
+      if (fresh.rows[0]) {
+        const net = await dedup.safetyNet(db, fresh.rows[0], { log: console, ownInn: ownInnStr });
+        if (net.duplicate) {
+          parsed._ai_warnings = (parsed._ai_warnings || []).concat(['duplicate_of:' + net.keepId]);
+        }
+      }
+    } catch (e) {
+      console.warn('[intake] safety-net дедупа: ' + (e && e.message));
+    }
   } else {
     // V408 (живой тест 18.10.2026): документ УЖЕ был в реестре (пришёл ранее),
     // поэтому ветка создания пропускалась — и вместе с ней терялись объект,
@@ -628,7 +747,30 @@ async function intakeOne(db, { email, attachment, text, userId = null, dryRun = 
   }
 
   // Заявка на оплату — только при приемлемой уверенности.
+  // D-345: НЕ создаём заявку, если текст письма — только цитата и своего
+  // вложения-счёта нет. Иначе деньги пойдут в согласование по чужому тексту.
   let paymentId = null;
+  if (quoteOnlyReply) {
+    // Строка реестра уже создана выше — помечаем её как требующую ручного разбора.
+    try {
+      await db.query(
+        `UPDATE doc_registry
+            SET is_incomplete = true,
+                incomplete_reasons = (SELECT array_agg(DISTINCT x) FROM unnest(
+                  COALESCE(incomplete_reasons,'{}'::text[]) || ARRAY['quote_only_reply']) AS x),
+                comment_text = COALESCE(NULLIF(comment_text,''),
+                  'Письмо-ответ без вложения: данные взяты из цитаты — нужен оригинал счёта'),
+                updated_at = NOW()
+          WHERE id = $1`, [docId]);
+    } catch (e) { console.warn('[intake] пометка quote_only_reply: ' + (e && e.message)); }
+    return {
+      status: 'needs_manual',
+      doc_id: docId,
+      payment_invoice_id: null,
+      reason: 'quote_only_reply',
+      parsed
+    };
+  }
   if (!lowConfidence) {
     const existPay = await db.query(`SELECT id FROM payment_invoices WHERE doc_registry_id=$1`, [docId]);
     if (existPay.rows[0]) {

@@ -215,6 +215,28 @@ function validate(data) {
   if (d.ks && !validAccount(d.ks)) { warnings.push('ks_invalid'); d.ks = null; }
 
   // 2. Арифметика счёта: нетто + НДС = сумма с НДС.
+  // D-339 (22.10.2026): сначала отсекаем ФИЗИЧЕСКИ невозможный НДС.
+  // НДС не может быть равен всей сумме или больше неё — это значит, что модель
+  // (или регулярка) приняла итог «Всего к оплате» за строку НДС. На проде так
+  // вышло у двух счетов Ozon: vat = 79 905 ₽ при нетто 79 905 ₽, из-за чего
+  // бухгалтерия видела двойной НДС.
+  if (d.vat_amount != null && d.amount_gross != null
+      && (d.vat_amount >= d.amount_gross || d.vat_amount > d.amount_gross * 0.5)) {
+    // НДС больше половины суммы — почти всегда не НДС. Если нетто известно и
+    // меньше суммы, восстановим НДС как разницу (это корректно); иначе НДС нет.
+    if (d.amount_net != null && d.amount_net > 0 && d.amount_net < d.amount_gross) {
+      d.vat_amount = R(d.amount_gross - d.amount_net);
+      warnings.push('vat_from_diff_extreme');
+    } else {
+      d.vat_amount = 0;
+      d.has_vat = false;
+      d.vat_rate = 0;   // NOT NULL в doc_registry: «нет ставки» кодируем нулём
+      // Нетто = сумме: это счёт без НДС (Ozon выставляет на физлиц/без НДС).
+      d.amount_net = d.amount_gross;
+      warnings.push('vat_impossible_dropped');
+    }
+  }
+
   if (d.amount_gross != null && d.amount_net != null && d.vat_amount != null) {
     const diff = Math.abs(R(d.amount_net + d.vat_amount) - d.amount_gross);
     if (diff > 0.02) {
@@ -271,7 +293,10 @@ function validate(data) {
     warnings.push('vat_rate_derived');
   }
   // «Без НДС» — ставки нет вовсе (это НЕ 0%).
-  if (d.has_vat === false) d.vat_rate = null;
+  // ВАЖНО (D-339, 22.10.2026): в `doc_registry.vat_rate` стоит NOT NULL с
+  // default 0.22, поэтому NULL в этом поле валит INSERT. «Нет ставки»
+  // кодируем нулём — он же и означает «не облагается».
+  if (d.has_vat === false) d.vat_rate = 0;
 
   // 3c. Нетто: gross − НДС. Заполняем, если не пришло.
   if (d.amount_net == null && d.amount_gross != null) {
@@ -391,6 +416,18 @@ function mergeWithRegex(ai, rx) {
   const pick = (aiVal, rxVal) => (aiVal != null && aiVal !== '' ? aiVal : rxVal);
   const pickPos = (aiVal, rxVal) => (aiVal != null && aiVal > 0 ? aiVal : rxVal);
 
+  // D-339 (заказчик 22.10.2026): ДЛЯ НДС НОЛЬ — ЗНАЧИМОЕ ЗНАЧЕНИЕ.
+  // «Без НДС» (ставка 0 / не облагается) — это не «не знаю», а утверждение.
+  // Прежний `pickPos` отбрасывал ИИ-ноль и брал что попало из регулярок:
+  // у счёта Ozon «0212923137-0055» регулярки насчитали vat = ВСЯ СУММА
+  // (79 905 ₽ при нетто 79 905 ₽), и в бухгалтерию ушёл счёт с НДС, равным
+  // сумме. Флаг has_vat=true при vat=0 от ИИ тоже обязан побеждать.
+  const pickVat = (aiVal, rxVal) => (aiVal != null && aiVal >= 0 ? aiVal : rxVal);
+  // Если ИИ прямо сказал «НДС нет» — регулярную выдумку отбрасываем целиком.
+  const aiSaysNoVat = ai.has_vat === false
+    || (ai.vat_amount != null && Number(ai.vat_amount) === 0 && ai.amount_net != null
+        && Number(ai.amount_net) === Number(ai.amount_gross));
+
   // Маркетплейс: ПЛАТИМ получателю платежа (у него банковские реквизиты в счёте),
   // а продавец товара может быть другим лицом. Для платёжки/реестра контрагент =
   // получатель платежа; продавца храним отдельно (история закупок «что почём»).
@@ -445,7 +482,18 @@ function mergeWithRegex(ai, rx) {
   out.amount_net = pickPos(ai.amount_net, base.amount_net);
   // Дыра №2 (верификатор 19.10.2026): НДС тоже через pickPos — ИИ-ноль не должен
   // перетирать найденный НДС (иначе бухгалтерия получит счёт без НДС).
-  out.vat_amount = pickPos(ai.vat_amount, base.vat_amount);
+  // D-339 (22.10.2026): обратное тоже верно — ИИ-НОЛЬ («без НДС») обязан
+  // перетирать регулярную выдумку. У счёта Ozon регулярки приняли итоговую сумму
+  // за НДС, и документ ушёл с vat = gross при net = gross.
+  if (aiSaysNoVat) {
+    out.vat_amount = 0;
+    out.has_vat = false;
+    out.vat_rate = 0;   // NOT NULL в doc_registry
+    if (Number(ai.amount_net) > 0) out.amount_net = Number(ai.amount_net);
+    if (!conflicts.includes('vat_no_vat_by_ai')) conflicts.push('vat_no_vat_by_ai');
+  } else {
+    out.vat_amount = pickVat(ai.vat_amount, base.vat_amount);
+  }
   // V412: ставка НДС — от ИИ, фолбэк из регулярок (если те её нашли).
   if (ai.vat_rate != null) out.vat_rate = ai.vat_rate;
   else if (base.vat_rate != null) out.vat_rate = base.vat_rate;
@@ -471,8 +519,25 @@ function mergeWithRegex(ai, rx) {
   }
   // has_vat: ИИ-флаг принимаем, только если он подтверждён числом НДС или нетто≠сумма
   // (иначе «НДС есть» без суммы — FAIL-6). Иначе — флаг из регулярок.
-  if (ai.has_vat != null && (ai.vat_amount != null || base.has_vat == null)) out.has_vat = ai.has_vat;
-  else if (ai.has_vat == null) out.has_vat = base.has_vat;
+  //
+  // ВАЖНО (FAIL верификатора 22.10.2026, п.3b): этот блок НЕ должен перетирать
+  // решение `aiSaysNoVat` выше. Раньше при `ai.has_vat=true` (модель сказала
+  // «НДС есть», но суммы не дала) флаг возвращался в true уже ПОСЛЕ того, как
+  // мы поставили `has_vat=false, vat_amount=0`. Итог: в реестре «НДС 0%» при
+  // нулевом НДС — несогласованное состояние, бухгалтерия видит неверную ставку.
+  if (aiSaysNoVat) {
+    out.has_vat = false;   // решение уже принято — не пересматриваем
+  } else if (ai.has_vat != null && (ai.vat_amount != null || base.has_vat == null)) {
+    out.has_vat = ai.has_vat;
+  } else if (ai.has_vat == null) {
+    out.has_vat = base.has_vat;
+  }
+  // Инвариант: нулевой НДС не может стоять с флагом «НДС есть».
+  if (Number(out.vat_amount) === 0 && out.has_vat === true
+      && Number(out.amount_gross) > 0 && Number(out.amount_net) === Number(out.amount_gross)) {
+    out.has_vat = false;
+    out.vat_rate = 0;
+  }
   out.payment_due_at = pick(ai.payment_due_at, base.payment_due_at);
   // Договор: ИИ отдаёт строку «номер», регулярки — объект {number,date,raw}.
   if (ai.contract_basis) {

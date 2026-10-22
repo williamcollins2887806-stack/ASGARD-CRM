@@ -93,12 +93,23 @@ async function matchContract(db, basis = {}) {
   if (!fuzzyOk) {
     // Отдельно: если номер целиком из цифр — ищем точное совпадение с нормализованным
     // номером, а не подстроку (иначе «26» цепляет «.../26/...»).
+    //
+    // FAIL верификатора 22.10.2026, п.4a: у номера без цифр («б/н», «АКТ», «ABC»)
+    // `replace(/\D/g,'')` даёт ПУСТУЮ строку, и запрос `= ''` возвращал ПЕРВЫЙ
+    // договор, у которого в номере тоже нет цифр — на проде это «Счет-оферта»
+    // ООО «РВБ» (#30). Счёт с основанием «б/н» привязывался к ЧУЖОМУ договору
+    // (11 документов уже привязано). Пустой номер — не ключ: не ищем вовсе.
+    const digitsOnly = num.replace(/\D/g, '');
+    if (!digitsOnly) return { found: false, reason: 'not_found', candidates: [] };
     const exactNum = await db.query(
       `SELECT id, number, counterparty_name, customer_inn, status
          FROM contracts
         WHERE regexp_replace(coalesce(number,''), '\\D', '', 'g') = $1
+          AND $2 <> ''
+          AND ($2 = '' OR regexp_replace(coalesce(customer_inn,''), '\\D', '', 'g') = $2
+               OR coalesce(customer_inn,'') = '')
         ORDER BY id ASC LIMIT 1`,
-      [num.replace(/\D/g, '')]
+      [digitsOnly, inn]
     );
     if (exactNum.rows[0]) return { found: true, contract: exactNum.rows[0], reason: 'exact_digits' };
     return { found: false, reason: 'not_found', candidates: [] };
