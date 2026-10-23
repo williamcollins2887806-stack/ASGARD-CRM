@@ -370,10 +370,30 @@ async function intakeOne(db, { email, attachment, text, userId = null, dryRun = 
         `SELECT id, filename, original_filename, file_path, mime_type, size
            FROM email_attachments WHERE email_id=$1 ORDER BY id`, [emailId])).rows;
       if (files.length) {
-        attachResult = await docAtt.attachFilesToDoc(db, targetDoc.id, emailId, files, {
-          kind: cls.is_invoice ? 'scan' : 'justification',
-          log: console
+        // D-357 (23.10.2026): kind определяем ПО ФАЙЛУ, а не по типу письма.
+        // Раньше всё письмо получало один kind: если классификатор считал письмо
+        // счётом, наши Исх. письма помечались 'scan' — то есть «это скан счёта»,
+        // хотя это обоснование. Теперь: файл с «счёт/invoice» в имени и с
+        // extracted-текстом счёта = scan, остальное (Исх., договор, ТЗ) =
+        // justification. Так карточка честно показывает, что где.
+        const perFile = files.map((f) => {
+          const nm = String(f.original_filename || f.filename || '').toLowerCase();
+          // «Исх. №… — счёт № УТ-2372.pdf» содержит «счёт», но это НАШЕ
+          // сопроводительное письмо. Приоритет: «исх.» → обоснование.
+          const isOutgoing = /(^|\s)исх\.?\s*№|исходящ/.test(nm);
+          const looksInvoiceFile = !isOutgoing
+            && /(сч[её]т|invoice|createpayment)/.test(nm)
+            && /pdf|image\//i.test(String(f.mime_type || ''));
+          return { ...f, __kind: looksInvoiceFile ? 'scan' : 'justification' };
         });
+        // Прикрепляем группами, чтобы у каждого файла был свой kind.
+        for (const kind of ['scan', 'justification']) {
+          const group = perFile.filter((f) => f.__kind === kind);
+          if (!group.length) continue;
+          const r = await docAtt.attachFilesToDoc(db, targetDoc.id, emailId, group, { kind, log: console });
+          if (!attachResult) attachResult = r;
+          else { attachResult.added += r.added; attachResult.total = r.total; }
+        }
       }
     }
   } catch (e) {
