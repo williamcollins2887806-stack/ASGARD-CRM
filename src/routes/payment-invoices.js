@@ -974,6 +974,44 @@ async function routes(fastify) {
    * D-316: отправить черновик (или пачку черновиков) директору.
    * Единственная точка, где уходит письмо. Явное действие пользователя.
    */
+  /**
+   * D-366 (заказчик 23.10.2026): «когда пользователь от балды начнёт тестировать
+   * систему и создавать черновики — он засорит мусором реестр».
+   *
+   * Проверено: черновик заявки строку реестра НЕ создаёт (реестр появляется
+   * только после отправки заявки или ручного ввода). Но сами черновики копятся
+   * в очереди и мешают: человек видит «черновик заявки» и не понимает, работает
+   * это или нет.
+   *
+   * Правило: черновик без движения дольше DOC_DRAFT_TTL_HOURS (по умолчанию 7
+   * суток) помечается 'rejected' с причиной «заброшен». НЕ удаляем: файл и
+   * данные остаются, при необходимости бухгалтерия восстановит.
+   *
+   * Вызывается ежедневно кроном и вручную: POST /api/payment-invoices/cleanup-drafts
+   */
+  fastify.post('/cleanup-drafts', { preHandler: [fastify.requireRoles(['ADMIN', 'BUH', 'PROC'])] }, async (req, reply) => {
+    const hours = parseInt(req.body && req.body.hours, 10) || parseInt(process.env.DOC_DRAFT_TTL_HOURS || '168', 10);
+    const dry = !!(req.body && req.body.dry);
+    const q = `
+      SELECT id, supplier_name, amount, created_by, created_at
+        FROM payment_invoices
+       WHERE status='draft'
+         AND COALESCE(doc_registry_id, 0) = 0
+         AND created_at < NOW() - ($1 || ' hours')::interval
+       ORDER BY created_at`;
+    const { rows } = await db.query(q, [String(hours)]);
+    if (dry) return { dry: true, hours, would_close: rows.length, items: rows };
+
+    let closed = 0;
+    for (const r of rows) {
+      await db.query(
+        `UPDATE payment_invoices SET status='rejected', updated_at=NOW()
+          WHERE id=$1 AND status='draft'`, [r.id]).then(() => { closed++; }).catch(() => {});
+    }
+    if (closed) fastify.log.info(`[payment-invoices] заброшенных черновиков закрыто: ${closed} (старше ${hours}ч)`);
+    return { ok: true, hours, closed };
+  });
+
   fastify.post('/submit', { preHandler: [fastify.requireRoles(CREATE_ROLES)] }, async (req, reply) => {
     const b = req.body || {};
     const ids = (Array.isArray(b.ids) ? b.ids : [b.id]).map((x) => parseInt(x, 10)).filter(Number.isFinite);

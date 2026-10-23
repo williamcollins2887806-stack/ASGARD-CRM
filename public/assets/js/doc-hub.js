@@ -772,6 +772,12 @@ window.AsgardDocHubPage = (function () {
     if (row.is_incomplete) {
       return 'Дозаполните: ' + incompleteReasonsText(row);
     }
+    // D-364: архивные счета (согласование пройдено до автоматизации). Их нельзя
+    // гонять в очередь оплаты повторно — это старые, уже отработанные документы.
+    if (row.pay_status === 'approved_by_dir') {
+      return 'Счёт из архива: согласование пройдено, оплата в CRM не подтверждена. '
+        + 'Действий не требуется — при необходимости уточните статус в бухгалтерии.';
+    }
     if (row.overdue_pay || (row.pay_status === 'overdue')) {
       return 'Просрочена оплата — отправьте в очередь согласования («К оплате»).';
     }
@@ -1038,6 +1044,12 @@ window.AsgardDocHubPage = (function () {
     if (row.overdue_pay || row.pay_status === 'overdue') {
       return `<span class="dh-pill dh-pill--err">просрочен</span><div class="dh-subline">срок был ${due}</div>`;
     }
+    // D-364: исторические счета (архив до автоматизации) — согласование пройдено,
+    // но оплата в CRM не подтверждена. Не выдаём их за «ждём оплаты»: это
+    // создавало ложную работу бухгалтерии по 1510 строкам.
+    if (row.pay_status === 'approved_by_dir') {
+      return '<span class="dh-pill dh-pill--muted">согласован</span><div class="dh-subline">архив, оплата не подтверждена</div>';
+    }
     if (row.pay_status === 'wait') {
       return hasDue
         ? `<span class="dh-pill dh-pill--warn">ждём оплаты</span><div class="dh-subline">до ${due}</div>`
@@ -1054,13 +1066,24 @@ window.AsgardDocHubPage = (function () {
     return '<span class="dh-muted">не требуется</span>';
   }
   /**
-   * D-363: можно ли отправить строку в очередь оплаты.
-   * Если у счёта уже есть ЖИВАЯ заявка (черновик/у директора/ждаёт оплаты/
-   * оплачено) — нельзя: вторая заявка = двойная оплата.
-   * @returns {{allowed:boolean, reason:string, label:string}}
+   * D-365: можно ли ПОКАЗЫВАТЬ кнопку «В очередь оплаты».
+   *
+   * Заказчик: «показывать только там, где заявки точно нет и где нет статуса
+   * отправлено директору / согласовано директором / ждём оплаты».
+   *
+   * Почему скрываем, а не только блокируем. Заявка создаётся АВТОМАТИЧЕСКИ при
+   * импорте счёта — значит для новых строк кнопка не нужна вовсе: действие уже
+   * произошло. Она должна быть видна ТОЛЬКО у исторических строк, которые
+   * завели в реестр вручную, до автоматизации:
+   *   • заявки нет (payment_invoice_id пуст);
+   *   • по документу живой заявки тоже нет;
+   *   • и это НЕ архивный счёт с уже пройденным согласованием.
+   *
+   * @returns {{show:boolean, allowed:boolean, reason:string, label:string}}
    */
-  function canSendToPay(row) {
+  function payActionState(row) {
     const st = String(row.payment_invoice_status || '');
+    // Есть живая заявка → кнопка не нужна совсем (действие уже сделано).
     if (st && st !== 'rejected') {
       const label = {
         draft: 'черновик заявки',
@@ -1068,10 +1091,27 @@ window.AsgardDocHubPage = (function () {
         pending_payment: 'согласовано, ждёт оплаты',
         paid: 'оплачено'
       }[st] || st;
-      return { allowed: false, reason: 'already', label };
+      return { show: false, allowed: false, reason: 'already', label };
     }
-    if (row.pay_status === 'paid') return { allowed: false, reason: 'paid', label: 'оплачено' };
-    return { allowed: true, reason: '', label: '' };
+    // Архив с пройденным согласованием → повторно в очередь не отправляем.
+    if (row.pay_status === 'approved_by_dir') {
+      return { show: false, allowed: false, reason: 'archive', label: 'согласован' };
+    }
+    if (row.pay_status === 'paid') {
+      return { show: false, allowed: false, reason: 'paid', label: 'оплачено' };
+    }
+    // Заявки нет вовсе → показываем и разрешаем.
+    return { show: true, allowed: true, reason: '', label: '' };
+  }
+
+  /**
+   * D-363: можно ли отправить строку в очередь оплаты (для обработчика).
+   * Оставлено для совместимости — использует payActionState.
+   * @returns {{allowed:boolean, reason:string, label:string}}
+   */
+  function canSendToPay(row) {
+    const s = payActionState(row);
+    return { allowed: s.allowed, reason: s.reason, label: s.label };
   }
   function closingCell(row) {
     // D-305: любой закрывающий документ закрывает этап — не только «СФ».
@@ -1219,7 +1259,7 @@ window.AsgardDocHubPage = (function () {
         <td class="dh-col-sf">${closingCell(r)}</td>
         <td class="dh-actions">
           <div class="dh-qa" aria-label="Действия">
-            <button type="button" class="dh-qa__pay" data-qa="pay" title="${canSendToPay(row).allowed ? 'В очередь оплаты (со сканом)' : esc(canSendToPay(row).label)}" aria-label="В очередь оплаты" ${canSendToPay(row).allowed ? '' : 'disabled'}>${ico.pay}</button>
+            ${payActionState(row).show ? `<button type="button" class="dh-qa__pay" data-qa="pay" title="В очередь оплаты (со сканом)" aria-label="В очередь оплаты">${ico.pay}</button>` : ''}
             <button type="button" class="dh-qa__sf" data-qa="sf" title="СФ получена" aria-label="СФ получена">${ico.sf}</button>
             ${(Array.isArray(r.closing_json) && r.closing_json.length) ? `<button type="button" data-qa="unmark_sf" title="Снять отметку «СФ получена»" aria-label="Снять отметку СФ" class="dh-qa__undo">${ico.undo}</button>` : ''}
             ${(canWh() && row.pay_status !== 'paid') ? `<button type="button" data-qa="mark_paid" title="Отметить оплачено без согласования — только для старых оплат прошлых периодов" aria-label="Отметить оплачено" class="dh-qa__paid" hidden>${ico.paid}</button>` : ''}
@@ -3574,7 +3614,7 @@ window.AsgardDocHubPage = (function () {
             <button type="button" class="dh-btn dh-btn--ghost" id="dhDrawerExpense" ${!row.work_id ? 'disabled title="Нет объекта"' : ''}>В расходы</button>
             ${canWh() ? '<button type="button" class="dh-btn dh-btn--ghost" data-qa="wh">Склад</button>' : ''}
             ${(Array.isArray(row.closing_json) && row.closing_json.length) ? '<button type="button" class="dh-btn dh-btn--ghost" data-qa="unmark_sf" title="Убрать последний закрывающий, вернуть статус">↩ Снять СФ</button>' : ''}
-            <button type="button" class="dh-btn dh-btn--primary" data-qa="pay" ${canSendToPay(row).allowed ? '' : 'disabled title="' + esc(canSendToPay(row).label) + '"'}>${canSendToPay(row).allowed ? 'В очередь оплаты' : esc(canSendToPay(row).label)}</button>
+            ${payActionState(row).show ? '<button type="button" class="dh-btn dh-btn--primary" data-qa="pay">В очередь оплаты</button>' : ''}
           </footer>
         </div>`;
 
