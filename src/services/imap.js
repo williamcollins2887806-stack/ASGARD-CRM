@@ -571,6 +571,18 @@ async function runDocIntakeForEmail(db, emailId) {
       }
       if (!text) console.warn(`[IMAP] intake: нет текста из вложения ${a.filename} (путь ${full})`);
     } catch (e) { console.warn('[IMAP] intake OCR: ' + e.message); }
+
+    // D-337: пустой OCR — это НЕ «не счёт». Файл может быть счётом, который
+    // модель не прочитала (блокировка ответа, битый рендер, скан без текста).
+    // Молча выбрасывать вложение нельзя — деньги теряются. Такой файл отдаём
+    // в intake с пустым текстом: строка создастся с пометкой «требует ручной
+    // проверки», и человек увидит её в реестре.
+    if (!text && a.mime_type && /pdf|image\//i.test(a.mime_type)) {
+      console.warn(`[IMAP] intake: вложение «${a.filename}» не распознано — ставлю на ручной разбор`);
+      invoices.push({ attachment: a, text: '[НЕ РАСПОЗНАНО АВТОМАТИЧЕСКИ — проверьте вложение вручную]' });
+      continue;
+    }
+
     if (!looksLikeInvoice(text)) continue;
     invoices.push({ attachment: a, text });
   }
@@ -592,6 +604,9 @@ const AI_BATCH_SIZE = 5;       // process N emails concurrently
 const AI_PROCESS_INTERVAL = 30000; // run every 30 sec
 // D-204: после стольких неудачных попыток письмо перестаём крутить и отдаём людям.
 const AI_MAX_ATTEMPTS = parseInt(process.env.AI_MAX_ATTEMPTS || '3', 10);
+// D-347: политика повторов — инфраструктурные сбои (нет денег, 5xx, таймаут)
+// НЕ тратят попытки, иначе одно пополнение баланса «съедает» письма навсегда.
+const aiRetry = require('./ai-retry-policy');
 let aiProcessorTimer = null;
 let aiProcessorRunning = false;
 
@@ -1051,23 +1066,45 @@ async function analyzeOneEmail(email) {
       needsReview = true;
     }
 
-    // ── D-204: сбой разбора JSON/провайдера ──────────────────────────────
+    // ── D-204 + D-347: сбой разбора JSON/провайдера ──────────────────────
     // НЕ помечаем письмо обработанным (ai_processed_at = NULL), иначе заявка
-    // потеряется навсегда. Считаем попытку; после AI_MAX_ATTEMPTS — уведомляем
-    // руководство и отдаём письмо людям как needs_review.
+    // потеряется навсегда.
+    //
+    // D-347 (23.10.2026): РАЗДЕЛЯЕМ ошибки. Инфраструктурный сбой (нет денег,
+    // провайдер 5xx, таймаут, пустой ответ) — НЕ вина письма. Раньше три таких
+    // подряд убивали письмо навсегда: закончились деньги → 4 счёта выпали из
+    // очереди без возможности восстановления. Теперь инфраструктурные сбои
+    // не жгут лимит: письмо ждёт (до 7 суток), остальные считаются как раньше.
     if (analysis._parse_failed) {
+      const errClass = aiRetry.classifyAiError(analysis._parse_error);
+      const isInfra = errClass === 'infra';
       const attemptRes = await db.query(`
         UPDATE emails
            SET ai_summary = $1,
-               ai_color = 'red',
-               ai_attempts = COALESCE(ai_attempts, 0) + 1,
+               ai_color = ${isInfra ? "'amber'" : "'red'"},
+               ai_attempts = COALESCE(ai_attempts, 0) + ${isInfra ? '0' : '1'},
+               ai_infra_failures = COALESCE(ai_infra_failures, 0) + ${isInfra ? '1' : '0'},
+               ai_last_error_class = $3,
                ai_last_error_at = NOW(),
                updated_at = NOW()
          WHERE id = $2
-        RETURNING COALESCE(ai_attempts, 0) AS ai_attempts
-      `, ['[Разбор не удался: ' + (analysis._parse_error || 'parse_failed') + ']', emailId]).catch(() => ({ rows: [{ ai_attempts: 0 }] }));
+        RETURNING COALESCE(ai_attempts, 0) AS ai_attempts,
+                  COALESCE(ai_infra_failures, 0) AS ai_infra_failures
+      `, ['[' + (isInfra ? 'Временно не удалось (провайдер ИИ): ' : 'Разбор не удался: ')
+        + (analysis._parse_error || 'parse_failed') + ']', emailId, errClass])
+        .catch(() => ({ rows: [{ ai_attempts: 0, ai_infra_failures: 0 }] }));
 
       const attempts = attemptRes.rows?.[0]?.ai_attempts || 0;
+      const infraFails = attemptRes.rows?.[0]?.ai_infra_failures || 0;
+
+      if (isInfra) {
+        // Попытки НЕ тратятся. Письмо останется в очереди и будет повторено,
+        // когда провайдер оживёт. Потолок — по возрасту (7 суток).
+        console.warn(`[IMAP-AI] #${emailId} инфраструктурный сбой (${analysis._parse_error}) ` +
+          `— попытки НЕ тратятся (инфра-сбоев: ${infraFails}), письмо ждёт восстановления провайдера`);
+        return false;
+      }
+
       console.warn(`[IMAP-AI] #${emailId} _parse_failed (${analysis._parse_error}) — ai_processed_at НЕ выставлен, попытка ${attempts}/${AI_MAX_ATTEMPTS}`);
 
       if (attempts >= AI_MAX_ATTEMPTS) {
@@ -1724,22 +1761,38 @@ async function analyzeOneEmail(email) {
     return true;
   } catch (err) {
     console.error(`[IMAP-AI] Error processing email #${emailId}:`, err.message);
-    console.error(`[IMAP-AI] Stack trace:`, err.stack);
-    // D-204: НЕ ставим ai_processed_at при сбое — иначе письмо навсегда «обработано»
-    // и заявка потеряна (ствол 18.09.2026). Пишем маркер ошибки и инкрементим
-    // счётчик попыток, чтобы processUnanalyzedEmails не крутил письмо бесконечно
-    // и в итоге отдал его людям как needs_review.
+    if (process.env.AI_DEBUG_STACK === '1') console.error('[IMAP-AI] Stack:', err.stack);
+    // D-347: класс ошибки определяем по тексту — в catch приходят сетевые сбои,
+    // таймауты, 5xx и «нет денег». Это НЕ вина письма: попытки не тратим.
+    const rawMsg = String(err.message || '');
+    const looksInfra = /(timeout|ETIMEDOUT|ECONNRESET|ENOTFOUND|socket hang up|fetch failed|50[0-4]\b|429|402|insufficient|credit|quota|rate.?limit|unauthorized|401)/i.test(rawMsg);
+    const errClass = looksInfra ? 'infra' : aiRetry.classifyAiError('provider_error');
+    const isInfra = errClass === 'infra';
+
     const errAttemptRes = await db.query(
       `UPDATE emails
           SET ai_summary = $1,
-              ai_color = 'red',
-              ai_attempts = COALESCE(ai_attempts, 0) + 1,
+              ai_color = ${isInfra ? "'amber'" : "'red'"},
+              ai_attempts = COALESCE(ai_attempts, 0) + ${isInfra ? '0' : '1'},
+              ai_infra_failures = COALESCE(ai_infra_failures, 0) + ${isInfra ? '1' : '0'},
+              ai_last_error_class = $3,
               ai_last_error_at = NOW(),
               updated_at = NOW()
         WHERE id = $2
-      RETURNING COALESCE(ai_attempts, 0) AS ai_attempts`,
-      ['[Ошибка AI-анализа: ' + err.message.slice(0, 200) + ']', emailId]
+      RETURNING COALESCE(ai_attempts, 0) AS ai_attempts,
+                COALESCE(ai_infra_failures, 0) AS ai_infra_failures`,
+      ['[' + (isInfra ? 'Временно не удалось (провайдер ИИ): ' : 'Ошибка AI-анализа: ')
+        + err.message.slice(0, 200) + ']', emailId, errClass]
     ).catch(() => ({ rows: [] }));
+
+    // D-347: при инфраструктурном сбое письмо остаётся в очереди — попытки не
+    // тратятся, уведомление не нужно (это наша проблема, а не потеря письма).
+    if (isInfra) {
+      const n = errAttemptRes.rows?.[0]?.ai_infra_failures || 0;
+      console.warn(`[IMAP-AI] #${emailId} инфраструктурный сбой — попытки НЕ тратятся ` +
+        `(инфра-сбоев: ${n}), письмо ждёт восстановления провайдера: ${rawMsg.slice(0, 100)}`);
+      return false;
+    }
 
     // D-204 (дефект E): раньше уведомление уходило только из ветки `_parse_failed`.
     // Если письмо исчерпало попытки в этой catch-ветке, оно молча выпадало из выборки
@@ -1782,17 +1835,35 @@ async function processUnanalyzedEmails() {
     // Find ALL inbound emails that need AI analysis (без фильтрации по типу — AI сам решает)
     // D-204: письма, у которых исчерпан лимит попыток, в выборку не попадают —
     // они уже отданы людям (needs_review) и не крутятся бесконечно.
+    //
+    // D-347 (23.10.2026): лимит тратится ТОЛЬКО контентными сбоями. Письма с
+    // инфраструктурными сбоями (нет денег / 5xx / таймаут) остаются в очереди —
+    // для них ограничение по ВОЗРАСТУ (AI_INFRA_MAX_AGE_HOURS, 7 суток), а не
+    // по числу попыток. Раньше одно «провайдер лёг» лишало нас счетов навсегда.
     const res = await db.query(`
       SELECT id, subject, body_text, body_html, from_email, from_name, email_type, attachment_count,
-             in_reply_to, references_header
+             in_reply_to, references_header, ai_attempts, ai_infra_failures,
+             ai_last_error_class, ai_needs_manual, email_date
       FROM emails
       WHERE ai_processed_at IS NULL
         AND direction = 'inbound'
         AND is_deleted = false
-        AND COALESCE(ai_attempts, 0) < $2
+        AND COALESCE(ai_needs_manual, false) = false
+        AND (
+          -- контентные сбои: до AI_MAX_ATTEMPTS
+          (COALESCE(ai_last_error_class, 'infra') <> 'content' OR COALESCE(ai_attempts, 0) < $2)
+          OR
+          -- инфраструктурные: не старше потолка по возрасту
+          (COALESCE(ai_last_error_class, 'infra') <> 'content'
+           AND email_date > NOW() - ($3 || ' hours')::interval)
+        )
       ORDER BY email_date DESC
       LIMIT $1
-    `, [AI_BATCH_SIZE, AI_MAX_ATTEMPTS]);
+    `, [AI_BATCH_SIZE, AI_MAX_ATTEMPTS, String(aiRetry.INFRA_MAX_AGE_HOURS)]);
+    // Дополнительная страховка в JS — та же политика, что и в SQL, но
+    // переиспользуемая функция (её же используют тесты).
+    const filtered = res.rows.filter((r) => aiRetry.canRetry(r, AI_MAX_ATTEMPTS));
+    res.rows = filtered;
 
     if (res.rows.length === 0) {
       // Diagnostic: log why there are 0 emails to process (run every ~5 minutes)
@@ -1847,6 +1918,12 @@ function startAiProcessor() {
       const resetCount = await resetSkippedEmails();
       if (resetCount > 0) {
         console.log(`[IMAP-AI] Auto-reset ${resetCount} previously skipped/errored emails on startup`);
+      }
+      // D-347: вернуть в очередь письма, потерянные из-за инфраструктурных
+      // сбоев (нет денег на ИИ, провайдер лежал). Без этого они висят мёртвыми.
+      const revived = await reviveInfraFailedEmails();
+      if (revived > 0) {
+        console.log(`[IMAP-AI] Revived ${revived} emails lost to provider failures on startup`);
       }
     } catch (e) {
       console.warn('[IMAP-AI] Reset skipped emails error:', e.message);
@@ -2091,20 +2168,72 @@ async function shutdown() {
  * они не сбой, а осознанный skip.
  */
 async function resetSkippedEmails() {
+  // D-347 (23.10.2026): раньше сброс требовал `ai_attempts < AI_MAX_ATTEMPTS`,
+  // то есть письма, исчерпавшие лимит, НЕ оживали никогда. Если лимит был
+  // израсходован из-за инфраструктурного сбоя (закончились деньги на ИИ),
+  // счета терялись безвозвратно — руками через SQL.
+  //
+  // Теперь оживляем три категории, кроме явно отданных людям:
+  //   1) контентные сбои с остатком попыток;
+  //   2) ЛЮБЫЕ инфраструктурные сбои (попытки не тратились, но пусть будет);
+  //   3) исчерпавшие лимит, если у них НЕ выставлен ai_needs_manual.
+  // Явно помеченные `ai_needs_manual = true` не трогаем — человек уже взял.
   const result = await db.query(`
-    UPDATE emails SET ai_processed_at = NULL, ai_summary = NULL, ai_classification = NULL, ai_color = NULL, updated_at = NOW()
+    UPDATE emails SET ai_processed_at = NULL, ai_summary = NULL, ai_classification = NULL,
+           ai_color = NULL, updated_at = NOW()
     WHERE direction = 'inbound'
       AND is_deleted = false
       AND ai_processed_at IS NOT NULL
-      AND COALESCE(ai_attempts, 0) < $1
+      AND COALESCE(ai_needs_manual, false) = false
       AND (
         ai_summary LIKE '%Ошибка AI-анализа%'
         OR ai_summary LIKE '%Разбор не удался%'
+        OR ai_summary LIKE '%провайдер ИИ%'
         OR ai_summary LIKE '%parse_error%'
         OR (ai_summary LIKE '%Ошибка%' AND ai_summary NOT LIKE '%Пропущено%')
       )
-  `, [AI_MAX_ATTEMPTS]);
-  console.log(`[IMAP-AI] Reset ${result.rowCount} errored emails for reprocessing (max attempts ${AI_MAX_ATTEMPTS})`);
+  `);
+  console.log(`[IMAP-AI] Reset ${result.rowCount} errored emails for reprocessing`);
+  return result.rowCount;
+}
+
+/**
+ * D-347: разовое «оживление» писем, уже потерянных из-за инфраструктурных
+ * сбоев (инцидент 23.10.2026 — кончились деньги на ИИ).
+ *
+ * Условия: письмо не обработано, стоит маркер ошибки, и это НЕ контентный сбой
+ * (контентные честно отдали людям). `ai_attempts` обнуляем — иначе они снова
+ * выпадут из выборки.
+ *
+ * @returns {Promise<number>} сколько писем вернули в очередь
+ */
+async function reviveInfraFailedEmails() {
+  const result = await db.query(`
+    UPDATE emails
+       SET ai_attempts = 0,
+           ai_infra_failures = 0,
+           ai_last_error_class = 'infra',
+           ai_summary = NULL,
+           ai_color = NULL,
+           ai_processed_at = NULL,
+           updated_at = NOW()
+     WHERE direction = 'inbound'
+       AND is_deleted = false
+       AND ai_processed_at IS NULL
+       AND COALESCE(ai_needs_manual, false) = false
+       AND (
+         COALESCE(ai_last_error_class, '') = 'infra'
+         OR ai_summary LIKE '%провайдер ИИ%'
+         OR ai_summary LIKE '%provider_error%'
+         OR ai_summary LIKE '%empty_response%'
+         OR (ai_summary LIKE '%Разбор не удался%'
+             AND ai_summary NOT LIKE '%json_parse_error%'
+             AND ai_summary NOT LIKE '%missing_classification%')
+       )
+  `);
+  if (result.rowCount) {
+    console.log(`[IMAP-AI] Оживлено ${result.rowCount} писем после инфраструктурных сбоев (D-347)`);
+  }
   return result.rowCount;
 }
 
@@ -2403,6 +2532,7 @@ module.exports = {
   decrypt,
   processUnanalyzedEmails,
   resetSkippedEmails,
+  reviveInfraFailedEmails,
   syncUserAccount,
   startPersonalPolling,
   stopPersonalPolling,

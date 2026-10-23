@@ -130,6 +130,12 @@ function computeAmounts(b = {}) {
 function calcIncomplete(row) {
   const r = [];
   if (!(row.invoice_number || '').toString().trim()) r.push('no_invoice_number');
+  // D-350 (23.10.2026): сумма 0 — это НЕ «полная карточка».
+  // На проде документ #1608 («Учебный комбинат Магистр») имел amount_gross=0,
+  // is_incomplete=false и пустые причины: ИИ не нашёл сумму, а валидация
+  // промолчала. Такой счёт нельзя ни оплатить, ни сверить — он обязан быть
+  // помечен, иначе молча уйдёт в работу.
+  if (!(Number(row.amount_gross) > 0)) r.push('no_amount');
   if (!row.invoice_date) r.push('no_invoice_date');
   if (!(row.counterparty_name || '').toString().trim()) r.push('no_counterparty');
   const mode = row.contract_mode || 'none';

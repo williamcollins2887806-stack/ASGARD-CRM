@@ -56,12 +56,24 @@ function note(section, name, detail) {
   ok('1. Почта', 'письма за 24ч разобраны', `всего ${mails.n}, из них рассылки CRM ${crmCopy.n}, по делу ${inbound}`);
 
   // Вложения-счета, до которых не дошёл разбор.
+  // D-354: файл мог быть прикреплён НЕ через intake, а как вложение к строке
+  // (`doc_registry.attachments`) — например, когда OCR падал и письмо разобрали
+  // вручную. Это не «потеря», поэтому учитываем оба места.
   const lostAtt = await q(`
       SELECT e.id email_id, a.id att, a.filename, a.mime_type
         FROM emails e JOIN email_attachments a ON a.email_id = e.id
        WHERE e.email_date > NOW() - INTERVAL '24 hours'
          AND a.mime_type = 'application/pdf'
-         AND NOT EXISTS (SELECT 1 FROM doc_email_intake i WHERE i.attachment_id = a.id)`);
+         AND NOT EXISTS (SELECT 1 FROM doc_email_intake i WHERE i.attachment_id = a.id)
+         AND NOT EXISTS (
+           SELECT 1 FROM doc_registry d
+            WHERE d.deleted_at IS NULL
+              AND jsonb_array_length(COALESCE(d.attachments,'[]'::jsonb)) > 0
+              AND EXISTS (
+                SELECT 1 FROM jsonb_array_elements(COALESCE(d.attachments,'[]'::jsonb)) x
+                 WHERE x->>'attachment_id' = a.id::text
+                    OR x->>'path' = a.file_path)
+         )`);
   if (!lostAtt.length) ok('1. Почта', 'все PDF прошли разбор', 'вложений без intake: 0');
   else bad('1. Почта', 'PDF без разбора', `${lostAtt.length}: ` + lostAtt.map((x) => `#${x.email_id}/att${x.att}`).join(', '));
 
@@ -91,10 +103,13 @@ function note(section, name, detail) {
   if (!ownAsCp.n) ok('2. Счета', 'наш ИНН не фигурирует как контрагент', `0 строк`);
   else bad('2. Счета', 'НАШ ИНН как контрагент', `${ownAsCp.n} строк — ложные поставщики`);
 
+  // D-354: «файл есть» = путь в original_path_url ИЛИ файл в attachments
+  // (ручной разбор прикрепляет именно туда).
   const noFile = await q(`SELECT id, invoice_number, counterparty_name, payment_invoice_id, incomplete_reasons
         FROM doc_registry
        WHERE deleted_at IS NULL AND dir='in' AND payment_invoice_id IS NOT NULL
          AND (original_path_url IS NULL OR original_path_url='')
+         AND jsonb_array_length(COALESCE(attachments,'[]'::jsonb)) = 0
          AND NOT (COALESCE(incomplete_reasons,'{}'::text[]) && ARRAY['no_scan']::text[])`);
   if (!noFile.length) ok('2. Счета', 'у счетов в оплате есть файл (или помечен no_scan)', '0 без файла');
   else bad('2. Счета', 'счета в оплате БЕЗ файла и без пометки', noFile.map((x) => `#${x.id}`).join(', '));

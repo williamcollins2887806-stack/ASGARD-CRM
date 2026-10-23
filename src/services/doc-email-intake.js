@@ -341,6 +341,63 @@ async function intakeOne(db, { email, attachment, text, userId = null, dryRun = 
   }
   const confMin = await confidenceMin(db);
 
+  // ═══════════════════════════════════════════════════════════════════════
+  // D-348 (заказчик 23.10.2026): «все письма исх по этому счёту, которые пишет
+  // Путков или кто-то ещё для обоснования зачем этот счёт, должны идти
+  // ВЛОЖЕНИЯМИ к этой строке, а не создавать новую строку».
+  //
+  // Проверяем ДО ветки «не счёт»: письмо может быть обычным сопроводительным
+  // (kind='letter'), но его файлы — обоснование к уже существующему счёту.
+  //
+  // Ищем строку реестра по номеру счёта (или сумме+контрагенту). Если нашли —
+  // прикрепляем файлы письма к ней и НИЧЕГО не создаём.
+  // ═══════════════════════════════════════════════════════════════════════
+  let attachResult = null;
+  let targetDoc = null;
+  try {
+    const docAtt = require('./doc-attachments');
+    targetDoc = await docAtt.findTargetDoc(db, {
+      invoice_number: parsed.invoice_number,
+      amount_gross: parsed.amount_gross,
+      counterparty_inn: parsed.inn,
+      counterparty_name: parsed.counterparty_name
+    });
+
+    // Собираем файлы ЭТОГО письма (все, не только PDF-счёт): договор, ТЗ,
+    // согласование, скан — всё это обоснование.
+    if (targetDoc && emailId) {
+      const files = (await db.query(
+        `SELECT id, filename, original_filename, file_path, mime_type, size
+           FROM email_attachments WHERE email_id=$1 ORDER BY id`, [emailId])).rows;
+      if (files.length) {
+        attachResult = await docAtt.attachFilesToDoc(db, targetDoc.id, emailId, files, {
+          kind: cls.is_invoice ? 'scan' : 'justification',
+          log: console
+        });
+      }
+    }
+  } catch (e) {
+    console.warn('[intake] прикрепление обоснования: ' + (e && e.message));
+  }
+
+  // Если файлы прикрепились к существующему счёту, а само письмо — НЕ счёт
+  // (сопроводительное/обоснование), то новую строку не создаём вовсе.
+  if (targetDoc && attachResult && attachResult.added > 0 && !cls.is_invoice) {
+    console.log(`[intake] письмо ${emailId}: обоснование к счёту #${targetDoc.id} ` +
+      `(${attachResult.added} файл(ов)) — новая строка НЕ создаётся`);
+    if (emailId && attachmentId) {
+      await db.query(
+        `INSERT INTO doc_email_intake(email_id, attachment_id, status, parse_raw, doc_id, error)
+         VALUES ($1,$2,'attached',$3::jsonb,$4,'justification_for:' || $4)
+         ON CONFLICT (email_id, attachment_id) WHERE email_id IS NOT NULL AND attachment_id IS NOT NULL
+         DO NOTHING`, [emailId, attachmentId, JSON.stringify(parsed), targetDoc.id]).catch(() => {});
+    }
+    return {
+      status: 'attached', doc_id: targetDoc.id, payment_invoice_id: targetDoc.payment_invoice_id || null,
+      attached: attachResult.added, kind: cls.kind, parsed
+    };
+  }
+
   // Не счёт (сертификат/акт/договор/УПД/накладная) — не создаём заявку.
   if (!cls.is_invoice && cls.kind !== 'unknown') {
     if (dryRun) return { status: 'skipped', kind: cls.kind, parsed, dry_run: true };
@@ -396,11 +453,39 @@ async function intakeOne(db, { email, attachment, text, userId = null, dryRun = 
       if (qr.quoted) {
         quoteOnlyReply = true;
         parsed._ai_warnings = (parsed._ai_warnings || []).concat(['quote_only_reply:' + (qr.reason || 'quoted')]);
-        console.warn(`[intake] письмо ${emailId}: текст — цитата (${qr.reason}), ` +
-          `заявку на оплату НЕ создаю, только строку на ручную проверку`);
+      console.warn(`[intake] письмо ${emailId}: текст — цитата (${qr.reason}), ` +
+        `заявку на оплату НЕ создаю, только строку на ручную проверку`);
       }
     } catch (e) {
       console.warn('[intake] detectQuotedReply: ' + (e && e.message));
+    }
+  }
+
+  // D-349 (23.10.2026): НАШЕ ИСХОДЯЩЕЕ ПИСЬМО НЕ МОЖЕТ БЫТЬ СЧЁТОМ НА ОПЛАТУ.
+  //
+  // ИНЦИДЕНТ: письмо #5016 от Путкова с вложениями «Исх. №261023-07 … счёт
+  // УТ-2372» создало документы #1603–1606 и заявки #37–40 на 72 063 ₽ в очередь
+  // директора. Контрагент — «ООО Асгард-Сервис» (мы), продавец — наш ИНН.
+  // Классификатор такой текст распознаёт верно (`own_outgoing_letter`), но
+  // документы создались в обход: ИИ-ветка отдала `is_invoice=true`, и проверка
+  // классификатора не сработала.
+  //
+  // Правило (fail-closed): если в тексте есть наш ИНН — это НЕ входящий счёт
+  // поставщика, независимо от того, что решила модель. Счёт нам выставляет
+  // поставщик, а не мы себе.
+  let ownCompanyLetter = false;
+  if (ownInnStr && String(text || '').replace(/\D/g, '').includes(String(ownInnStr).replace(/\D/g, ''))) {
+    // Наш ИНН встречается почти в каждом счёте (мы — «Покупатель»), поэтому
+    // одного ИНН мало. Признак СВОЕГО документа: исходящий номер «Исх. №»
+    // ИЛИ мы в роли продавца/поставщика.
+    const outgoingNo = /^\s*Исх\.?\s*№/im.test(String(text || ''));
+    const weAreSeller = String(parsed.seller_inn || '') === String(ownInnStr)
+      || String(parsed._we_are_seller || '') === 'true';
+    if (outgoingNo || weAreSeller) {
+      ownCompanyLetter = true;
+      parsed._ai_warnings = (parsed._ai_warnings || []).concat(['own_company_document']);
+      console.warn(`[intake] письмо ${emailId}: НАШ документ (Исх.№=${outgoingNo}, мы продавец=${weAreSeller}) ` +
+        `— счёт на оплату не создаю, прикреплю как обоснование к найденному счёту`);
     }
   }
 
@@ -749,7 +834,20 @@ async function intakeOne(db, { email, attachment, text, userId = null, dryRun = 
   // Заявка на оплату — только при приемлемой уверенности.
   // D-345: НЕ создаём заявку, если текст письма — только цитата и своего
   // вложения-счёта нет. Иначе деньги пойдут в согласование по чужому тексту.
+  // D-349: НЕ создаём заявку по НАШЕМУ собственному документу.
   let paymentId = null;
+  if (ownCompanyLetter) {
+    // Своё письмо — не счёт. Файлы уже прикреплены к найденному счёту (если он
+    // есть) блоком выше. Строку реестра не создаём и заявку не создаём.
+    return {
+      status: 'own_document',
+      doc_id: targetDoc ? targetDoc.id : null,
+      payment_invoice_id: null,
+      attached: attachResult ? attachResult.added : 0,
+      reason: 'own_company_document',
+      parsed
+    };
+  }
   if (quoteOnlyReply) {
     // Строка реестра уже создана выше — помечаем её как требующую ручного разбора.
     try {
