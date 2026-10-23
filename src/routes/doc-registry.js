@@ -55,11 +55,21 @@ const OWNER_NOTE_AUTHOR_COL = 'doc_owner_note_by';
 const JOIN_SQL = `SELECT d.*,
   COALESCE(w.work_title, w.object_name) AS work_title,
   w.work_number AS work_number,
-  uo.name AS doc_owner_name, up.name AS pm_name
+  uo.name AS doc_owner_name, up.name AS pm_name,
+  -- D-362 (заказчик 23.10.2026): «реестр не видит, что счёт уже в оплате или у
+  -- директора». Реестр отдавал только payment_invoice_id — по нему нельзя было
+  -- отличить «заявки нет» от «ждёт директора» от «ждёт оплаты». Теперь статус
+  -- заявки едет вместе со строкой: список и карточка показывают этап, а кнопка
+  -- «В очередь оплаты» не даёт создать вторую заявку.
+  pi.status AS payment_invoice_status,
+  pi.payment_status AS payment_invoice_pay_status,
+  pi.amount AS payment_invoice_amount,
+  pi.due_date AS payment_invoice_due
  FROM doc_registry d
  LEFT JOIN works w ON w.id = d.work_id
  LEFT JOIN users uo ON uo.id = d.doc_owner_id
- LEFT JOIN users up ON up.id = d.pm_id`;
+ LEFT JOIN users up ON up.id = d.pm_id
+ LEFT JOIN payment_invoices pi ON pi.id = d.payment_invoice_id AND COALESCE(pi.status,'') <> 'rejected'`;
 
 function num(v) { const n = parseFloat(v); return Number.isFinite(n) ? n : 0; }
 function today() { return new Date().toISOString().slice(0, 10); }
@@ -2201,15 +2211,60 @@ module.exports = async function docRegistryRoutes(fastify) {
 
     if (b.action === 'pay') {
       // E2/E2b: создать payment_invoices из карточки хаба (не только redirect в пустую очередь)
+      //
+      // D-363 (заказчик 23.10.2026): «счёт попадает в очередь сам, через заявку;
+      // нужно, чтобы два раза не отправить». Защита в ТРИ уровня:
+      //   1) у строки уже есть ЖИВАЯ заявка (draft/awaiting_dir/pending_payment/paid)
+      //      → НЕ создаём вторую, только переходим к ней. Раньше проверялось лишь
+      //      «status !== rejected», но не «а если она уже в оплате?» — кнопка
+      //      молча открывала её, и человек думал, что отправил заново.
+      //   2) ищем заявку по ДОКУМЕНТУ (doc_registry_id), даже если ссылка в строке
+      //      потерялась: так ловим рассинхрон после ручных правок.
+      //   3) режим БЕЗ СОГЛАСОВАНИЯ запрещён: нельзя создать сразу pending_payment,
+      //      минуя директора — деньги уходят без контроля.
       if (doc.payment_invoice_id) {
         const { rows: existingPay } = await db.query(
           `SELECT id, status FROM payment_invoices WHERE id=$1`,
           [doc.payment_invoice_id]
         );
         if (existingPay[0] && existingPay[0].status !== 'rejected') {
+          const st = String(existingPay[0].status || '');
           const redirect = `#/approval-payment?id=${existingPay[0].id}`;
-          await audit(db, id, req.user.id, 'quick_pay', { redirect, reused: true });
-          return { redirect, payment_invoice_id: existingPay[0].id };
+          await audit(db, id, req.user.id, 'quick_pay', { redirect, reused: true, status: st });
+          // Говорим ЧЕСТНО, на каком этапе счёт: иначе кажется, что отправили снова.
+          const label = {
+            draft: 'черновик заявки',
+            awaiting_dir: 'на согласовании у директора',
+            pending_payment: 'согласовано, ждёт оплаты бухгалтерией',
+            paid: 'оплачено'
+          }[st] || st;
+          return {
+            redirect,
+            payment_invoice_id: existingPay[0].id,
+            reused: true,
+            already: true,
+            status: st,
+            message: `Счёт уже в оплате: ${label}. Вторая заявка не создаётся.`
+          };
+        }
+      }
+      // 2) По документу: живая заявка могла остаться без ссылки в строке.
+      {
+        const { rows: byDoc } = await db.query(
+          `SELECT id, status FROM payment_invoices
+            WHERE doc_registry_id=$1 AND status NOT IN ('rejected')
+            ORDER BY (status='paid') DESC, id DESC LIMIT 1`, [id]).catch(() => ({ rows: [] }));
+        if (byDoc[0]) {
+          await db.query(`UPDATE doc_registry SET payment_invoice_id=$2, updated_at=NOW()
+                           WHERE id=$1 AND payment_invoice_id IS NULL`, [id, byDoc[0].id]).catch(() => {});
+          return {
+            redirect: `#/approval-payment?id=${byDoc[0].id}`,
+            payment_invoice_id: byDoc[0].id,
+            reused: true,
+            already: true,
+            status: byDoc[0].status,
+            message: 'Счёт уже в оплате — вторая заявка не создаётся.'
+          };
         }
       }
       const amount = num(doc.amount_gross);

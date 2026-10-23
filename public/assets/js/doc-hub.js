@@ -1019,16 +1019,25 @@ window.AsgardDocHubPage = (function () {
   function payCell(row) {
     const due = fmtDate(row.payment_due_at);
     const hasDue = !!row.payment_due_at;
-    if (row.pay_status === 'paid') {
+    // D-362: этап ЗАЯВКИ на оплату — главный признак, где счёт сейчас.
+    // Раньше реестр его не знал и показывал только «ждём»/«оплачен».
+    const st = String(row.payment_invoice_status || '');
+    if (st === 'awaiting_dir') {
+      return '<span class="dh-pill dh-pill--warn">у директора</span><div class="dh-subline">ждёт согласования</div>';
+    }
+    if (st === 'pending_payment') {
+      return '<span class="dh-pill dh-pill--info">ждёт оплаты</span><div class="dh-subline">согласовано</div>';
+    }
+    if (st === 'draft') {
+      return '<span class="dh-pill dh-pill--muted">черновик заявки</span><div class="dh-subline">не отправлен</div>';
+    }
+    if (st === 'paid' || row.pay_status === 'paid') {
       return `<span class="dh-pill dh-pill--ok">оплачен</span>`
         + (hasDue ? `<div class="dh-subline">оплачен ${due}</div>` : '');
     }
     if (row.overdue_pay || row.pay_status === 'overdue') {
       return `<span class="dh-pill dh-pill--err">просрочен</span><div class="dh-subline">срок был ${due}</div>`;
     }
-    // D-361 (заказчик 23.10.2026): раньше при пустом сроке рисовалось «до —»,
-    // а «ждём» показывалось даже когда срок не задан вовсе. Нестыковка: строка
-    // выглядела как «ждёт оплаты к дате», хотя даты нет.
     if (row.pay_status === 'wait') {
       return hasDue
         ? `<span class="dh-pill dh-pill--warn">ждём оплаты</span><div class="dh-subline">до ${due}</div>`
@@ -1043,6 +1052,26 @@ window.AsgardDocHubPage = (function () {
       return `<span class="dh-pill dh-pill--warn">срок ${due}</span>`;
     }
     return '<span class="dh-muted">не требуется</span>';
+  }
+  /**
+   * D-363: можно ли отправить строку в очередь оплаты.
+   * Если у счёта уже есть ЖИВАЯ заявка (черновик/у директора/ждаёт оплаты/
+   * оплачено) — нельзя: вторая заявка = двойная оплата.
+   * @returns {{allowed:boolean, reason:string, label:string}}
+   */
+  function canSendToPay(row) {
+    const st = String(row.payment_invoice_status || '');
+    if (st && st !== 'rejected') {
+      const label = {
+        draft: 'черновик заявки',
+        awaiting_dir: 'на согласовании у директора',
+        pending_payment: 'согласовано, ждёт оплаты',
+        paid: 'оплачено'
+      }[st] || st;
+      return { allowed: false, reason: 'already', label };
+    }
+    if (row.pay_status === 'paid') return { allowed: false, reason: 'paid', label: 'оплачено' };
+    return { allowed: true, reason: '', label: '' };
   }
   function closingCell(row) {
     // D-305: любой закрывающий документ закрывает этап — не только «СФ».
@@ -1190,7 +1219,7 @@ window.AsgardDocHubPage = (function () {
         <td class="dh-col-sf">${closingCell(r)}</td>
         <td class="dh-actions">
           <div class="dh-qa" aria-label="Действия">
-            <button type="button" class="dh-qa__pay" data-qa="pay" title="В очередь оплаты (со сканом)" aria-label="В очередь оплаты" ${r.pay_status === 'paid' ? 'disabled' : ''}>${ico.pay}</button>
+            <button type="button" class="dh-qa__pay" data-qa="pay" title="${canSendToPay(row).allowed ? 'В очередь оплаты (со сканом)' : esc(canSendToPay(row).label)}" aria-label="В очередь оплаты" ${canSendToPay(row).allowed ? '' : 'disabled'}>${ico.pay}</button>
             <button type="button" class="dh-qa__sf" data-qa="sf" title="СФ получена" aria-label="СФ получена">${ico.sf}</button>
             ${(Array.isArray(r.closing_json) && r.closing_json.length) ? `<button type="button" data-qa="unmark_sf" title="Снять отметку «СФ получена»" aria-label="Снять отметку СФ" class="dh-qa__undo">${ico.undo}</button>` : ''}
             ${(canWh() && row.pay_status !== 'paid') ? `<button type="button" data-qa="mark_paid" title="Отметить оплачено без согласования — только для старых оплат прошлых периодов" aria-label="Отметить оплачено" class="dh-qa__paid" hidden>${ico.paid}</button>` : ''}
@@ -2408,6 +2437,15 @@ window.AsgardDocHubPage = (function () {
     if (!ok) return;
     try {
       const res = await api('/' + id + '/quick', { method: 'POST', body: JSON.stringify({ action }) });
+      // D-363: сервер сам говорит, что счёт уже в оплате — показываем это как
+      // информацию, а не как ошибку (вторая заявка не создана, и это правильно).
+      if (res && res.already) {
+        toast('Уже отправлено', res.message || 'Счёт уже в оплате — вторая заявка не создаётся.', 'info');
+        if (res.redirect) {
+          location.hash = res.redirect.startsWith('#') ? res.redirect : ('#' + res.redirect);
+          return;
+        }
+      }
       if (action === 'pay' && res && res.redirect) {
         location.hash = res.redirect.startsWith('#') ? res.redirect : ('#' + res.redirect);
         return;
@@ -3536,7 +3574,7 @@ window.AsgardDocHubPage = (function () {
             <button type="button" class="dh-btn dh-btn--ghost" id="dhDrawerExpense" ${!row.work_id ? 'disabled title="Нет объекта"' : ''}>В расходы</button>
             ${canWh() ? '<button type="button" class="dh-btn dh-btn--ghost" data-qa="wh">Склад</button>' : ''}
             ${(Array.isArray(row.closing_json) && row.closing_json.length) ? '<button type="button" class="dh-btn dh-btn--ghost" data-qa="unmark_sf" title="Убрать последний закрывающий, вернуть статус">↩ Снять СФ</button>' : ''}
-            <button type="button" class="dh-btn dh-btn--primary" data-qa="pay">В очередь оплаты</button>
+            <button type="button" class="dh-btn dh-btn--primary" data-qa="pay" ${canSendToPay(row).allowed ? '' : 'disabled title="' + esc(canSendToPay(row).label) + '"'}>${canSendToPay(row).allowed ? 'В очередь оплаты' : esc(canSendToPay(row).label)}</button>
           </footer>
         </div>`;
 
