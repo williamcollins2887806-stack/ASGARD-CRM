@@ -150,11 +150,43 @@ async function checkAndNotify(db, log) {
     // D-322: не будим админа, если набор ошибок ТОТ ЖЕ, что в прошлый раз
     // (окно 3 часа). Иначе повторяющийся шум превращался в пуш каждые 3 часа.
     // Сравниваем отпечаток видов: НОВЫЙ вид ошибки всегда проходит.
-    const fingerprint = [...counts.keys()].sort().join('|');
-    if (fingerprint === lastFingerprint) {
+    //
+    // D-323: отпечаток храним В БД, а не в памяти процесса. 23.10 сервис
+    // рестартовал 22 раза за сутки, память каждый раз обнулялась — и один
+    // и тот же `[field-api]` прилетал снова. Таблица settings уже есть,
+    // отдельная миграция не нужна.
+    const fingerprint = [...counts.keys()].sort().join('|').slice(0, 4000);
+    let prevFingerprint = '';
+    try {
+      const { rows } = await db.query(
+        "SELECT value_json FROM settings WHERE key = 'log_monitor_fingerprint' LIMIT 1"
+      );
+      // value_json — текст, но пишем мы JSON.stringify: снимаем кавычки и
+      // экранирование, иначе сравнение всегда даёт «другой набор».
+      let raw = rows[0] ? rows[0].value_json : '';
+      try { raw = typeof raw === 'string' ? JSON.parse(raw) : raw; } catch (_) {}
+      prevFingerprint = raw == null ? '' : String(raw);
+    } catch (_) { prevFingerprint = lastFingerprint; }
+
+    if (fingerprint === prevFingerprint) {
       log.info(`[LogMonitor] ${errors.length} errors — тот же набор, что и в прошлый раз, пуш не шлём`);
       return;
     }
+    lastFingerprint = fingerprint;
+    // ON CONFLICT (key) не годится: PK таблицы settings — по `id`, а `key`
+    // не уникален (проверено на проде 23.10). Делаем update-then-insert.
+    try {
+      const upd = await db.query(
+        "UPDATE settings SET value_json = $1, updated_at = NOW() WHERE key = 'log_monitor_fingerprint'",
+        [JSON.stringify(fingerprint)]
+      );
+      if (upd.rowCount === 0) {
+        await db.query(
+          "INSERT INTO settings (key, value_json) VALUES ('log_monitor_fingerprint', $1)",
+          [JSON.stringify(fingerprint)]
+        );
+      }
+    } catch (_) { /* не критично: в худшем случае пришлём лишний пуш */ }
     lastFingerprint = fingerprint;
 
     const preview = [...counts.entries()]

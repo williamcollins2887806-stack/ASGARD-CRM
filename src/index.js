@@ -826,13 +826,20 @@ fastify.addHook('onResponse', (request, reply, done) => {
         // Приложение при старте проверяет, жива ли сессия: нет токена → 401 →
         // показывается экран входа. За сутки таких 188 строк (по 47 на четыре
         // ручки) — это засоряло журнал и мешало искать настоящие сбои.
-        // Понижено до debug: при NODE_ENV=production (level=info) не пишется,
-        // при отладке видно.
-        const isRoutineAuth = status === 401 && status < 500;
+        //
+        // D-323 (будильник 23.10): 404 на /api/field/auth/check-phone —
+        // рабочий опечатался в номере, сервер честно ответил «не найден»,
+        // через 5 секунд он вошёл с правильным номером. Это НЕ ошибка сервера,
+        // но 404 шёл уровнем warn и попал в пуш.
+        //
+        // Правило: 5xx — error; 401 и 404 — debug (штатный ответ, клиент
+        // показывает «неверный номер/нет сессии»); остальные 4xx (400/403/409) —
+        // warn, потому что это чаще реальный дефект валидации или прав.
+        const isRoutine = status === 401 || status === 404;
         if (status >= 500) {
           fastify.log.error(meta, '[field-api]');
-        } else if (isRoutineAuth) {
-          fastify.log.debug(meta, '[field-api] 401 — нет сессии (штатно)');
+        } else if (isRoutine) {
+          fastify.log.debug(meta, '[field-api] штатный ответ клиенту');
         } else {
           fastify.log.warn(meta, '[field-api]');
         }

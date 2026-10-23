@@ -89,7 +89,9 @@ const TARGETS = [
   'V430__doc_owner_note_privacy',               // приватность примечания владельца (чужая сессия)
   'V431__payment_drafts',                       // черновики платежей (D-316, чужая сессия)
   'V432__approval_escalation',                  // эскалация согласований (D-317, чужая сессия)
-  'V433__recalc_no_work_for_expense'            // пересчёт «нет работ» для расходов (чужая сессия)
+  'V433__recalc_no_work_for_expense',           // пересчёт «нет работ» для расходов (чужая сессия)
+  'V434__ai_error_classes',                     // классы ошибок ИИ (чужая сессия)
+  'V435__equipment_requests_schema_align'       // D-340: схема equipment_requests = прод
 ];
 
 /**
