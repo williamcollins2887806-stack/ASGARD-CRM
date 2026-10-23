@@ -125,6 +125,83 @@ window.AsgardDocHubPage = (function () {
   function moneyFine(n) {
     return money(n, { fraction: 2 });
   }
+  /**
+   * D-359 (заказчик 23.10.2026): «суммы везде выглядят как простые числа,
+   * нужно формат именно рублей завести денежный».
+   *
+   * `<input type="number">` показывает `130000` — без разрядов и без знака ₽.
+   * На экране это читается как «какое-то число», а не как деньги.
+   *
+   * Здесь — текстовый инпут с денежным форматом:
+   *   • на экране:     130 000,00 ₽
+   *   • в значении:    130000.00  (для сервера — только цифры и точка)
+   * Формат сохраняется при вводе (переформатирование на blur/input),
+   * каретка не прыгает: при фокусе показываем «сырое» число для удобства правки.
+   */
+  function moneyInputValue(n) {
+    const x = Number(String(n).replace(/\s/g, '').replace(',', '.'));
+    return Number.isFinite(x) ? x : 0;
+  }
+  /** Текст для показа в поле: 130 000,00 ₽ */
+  function moneyDisplay(n) {
+    const x = moneyInputValue(n);
+    if (!x) return '';
+    return x.toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' ₽';
+  }
+  /** Разобрать ввод пользователя: «130 000,00 ₽» → 130000.00 */
+  function moneyParse(s) {
+    const t = String(s || '').replace(/[^\d,.\-]/g, '').replace(/\s/g, '').replace(',', '.');
+    if (!t) return null;
+    const x = Number(t);
+    return Number.isFinite(x) ? Math.round(x * 100) / 100 : null;
+  }
+  /**
+   * Разметка денежного поля. data-money="1" — маркер для обработчика ниже.
+   * @param {{id:string, value:*, label?:string, readonly?:boolean}} o
+   */
+  function moneyFieldHtml(o) {
+    const id = esc(o.id);
+    const raw = moneyInputValue(o.value);
+    return `<input type="text" inputmode="decimal" id="${id}" data-money="1"`
+      + ` data-raw="${raw}"`
+      + ` value="${esc(moneyDisplay(o.value))}"`
+      + (o.readonly ? ' readonly' : '')
+      + ` placeholder="0,00 ₽" autocomplete="off"/>`;
+  }
+  /**
+   * Навесить поведение на все data-money внутри контейнера:
+   * при фокусе — «сырое» число (легко править), при blur — денежный формат.
+   */
+  function bindMoneyInputs(root) {
+    const host = root || document;
+    host.querySelectorAll('input[data-money="1"]').forEach((el) => {
+      if (el.__moneyBound) return;
+      el.__moneyBound = true;
+      el.addEventListener('focus', () => {
+        const raw = el.getAttribute('data-raw');
+        if (raw !== null && raw !== '') el.value = String(raw);
+      });
+      el.addEventListener('blur', () => {
+        const v = moneyParse(el.value);
+        el.setAttribute('data-raw', v == null ? '' : String(v));
+        el.value = v == null ? '' : moneyDisplay(v);
+        el.dispatchEvent(new CustomEvent('money-change', { detail: { value: v }, bubbles: true }));
+      });
+      el.addEventListener('input', () => {
+        // Разрешаем печатать только цифры, точку/запятую и минус.
+        const cleaned = el.value.replace(/[^\d,.\s]/g, '');
+        if (cleaned !== el.value) el.value = cleaned;
+      });
+    });
+  }
+  /** Значение денежного поля (число) — по id. */
+  function readMoney(id) {
+    const el = document.getElementById(id);
+    if (!el) return null;
+    // Если поле в фокусе и ещё не переформатировано — парсим как есть.
+    const v = moneyParse(el.value);
+    return v;
+  }
   function fmtDate(d) {
     if (!d) return '—';
     const s = String(d).slice(0, 10);
@@ -699,7 +776,11 @@ window.AsgardDocHubPage = (function () {
       return 'Просрочена оплата — отправьте в очередь согласования («К оплате»).';
     }
     if (row.dir === 'in' && row.pay_status !== 'paid' && row.pay_status !== 'n_a') {
-      return 'Оплата только через очередь #/approval-payment, не «отметить оплаченным» здесь.';
+      // D-360 (заказчик 23.10.2026): убрал технический роут и англицизм —
+      // «Оплата только через очередь #/approval-payment» непонятно человеку.
+      // Говорим по-русски и по делу: кто и что делает дальше.
+      return 'Отправьте счёт на согласование кнопкой «В очередь оплаты». '
+        + 'Отметка «оплачено» здесь не ставится — платёж проводит бухгалтерия.';
     }
     if (row.overdue_sf || ['wait_sf', 'wait_closing'].includes(row.ops_status)) {
       return 'Ждём закрывающие: отметьте СФ/УПД после получения скана или ЭДО.';
@@ -937,16 +1018,31 @@ window.AsgardDocHubPage = (function () {
   }
   function payCell(row) {
     const due = fmtDate(row.payment_due_at);
+    const hasDue = !!row.payment_due_at;
     if (row.pay_status === 'paid') {
-      return `<span class="dh-pill dh-pill--ok">оплачен</span><div class="dh-subline">${due}</div>`;
+      return `<span class="dh-pill dh-pill--ok">оплачен</span>`
+        + (hasDue ? `<div class="dh-subline">оплачен ${due}</div>` : '');
     }
     if (row.overdue_pay || row.pay_status === 'overdue') {
-      return `<span class="dh-pill dh-pill--err">просрочен</span><div class="dh-subline">до ${due}</div>`;
+      return `<span class="dh-pill dh-pill--err">просрочен</span><div class="dh-subline">срок был ${due}</div>`;
     }
-    if (row.pay_status === 'wait' || row.ops_status === 'wait_pay' || row.payment_due_at) {
-      return `<span class="dh-pill dh-pill--warn">ждём</span><div class="dh-subline">до ${due}</div>`;
+    // D-361 (заказчик 23.10.2026): раньше при пустом сроке рисовалось «до —»,
+    // а «ждём» показывалось даже когда срок не задан вовсе. Нестыковка: строка
+    // выглядела как «ждёт оплаты к дате», хотя даты нет.
+    if (row.pay_status === 'wait') {
+      return hasDue
+        ? `<span class="dh-pill dh-pill--warn">ждём оплаты</span><div class="dh-subline">до ${due}</div>`
+        : '<span class="dh-pill dh-pill--warn">ждём оплаты</span><div class="dh-subline">срок не задан</div>';
     }
-    return `<span class="dh-muted">—</span>`;
+    if (row.ops_status === 'wait_pay') {
+      return hasDue
+        ? `<span class="dh-pill dh-pill--warn">к оплате</span><div class="dh-subline">до ${due}</div>`
+        : '<span class="dh-pill dh-pill--warn">к оплате</span><div class="dh-subline">срок не задан</div>';
+    }
+    if (hasDue) {
+      return `<span class="dh-pill dh-pill--warn">срок ${due}</span>`;
+    }
+    return '<span class="dh-muted">не требуется</span>';
   }
   function closingCell(row) {
     // D-305: любой закрывающий документ закрывает этап — не только «СФ».
@@ -1097,7 +1193,7 @@ window.AsgardDocHubPage = (function () {
             <button type="button" class="dh-qa__pay" data-qa="pay" title="В очередь оплаты (со сканом)" aria-label="В очередь оплаты" ${r.pay_status === 'paid' ? 'disabled' : ''}>${ico.pay}</button>
             <button type="button" class="dh-qa__sf" data-qa="sf" title="СФ получена" aria-label="СФ получена">${ico.sf}</button>
             ${(Array.isArray(r.closing_json) && r.closing_json.length) ? `<button type="button" data-qa="unmark_sf" title="Снять отметку «СФ получена»" aria-label="Снять отметку СФ" class="dh-qa__undo">${ico.undo}</button>` : ''}
-            ${(canWh() && r.pay_status !== 'paid') ? `<button type="button" data-qa="mark_paid" title="Отметить оплачено без согласования" aria-label="Отметить оплачено" class="dh-qa__paid">${ico.paid}</button>` : ''}
+            ${(canWh() && row.pay_status !== 'paid') ? `<button type="button" data-qa="mark_paid" title="Отметить оплачено без согласования — только для старых оплат прошлых периодов" aria-label="Отметить оплачено" class="dh-qa__paid" hidden>${ico.paid}</button>` : ''}
             ${canWh() ? `<button type="button" data-qa="wh" title="Склад" aria-label="Склад">${ico.wh}</button>` : ''}
             ${canCorrect() ? `<button type="button" data-qa="corr" class="dh-qa__corr${r.correction_state === 'requested' ? ' is-on' : ''}" title="${r.correction_state === 'requested' ? 'Корректировка запрошена' : 'СФ/Акт не корректен'}" aria-label="Корректировка">${ico.corr}</button>` : ''}
             <button type="button" data-qa="open" title="Карточка" aria-label="Открыть карточку">${ico.open}</button>
@@ -2476,10 +2572,13 @@ window.AsgardDocHubPage = (function () {
     let sched = row.payment_schedule;
     if (typeof sched === 'string') { try { sched = JSON.parse(sched); } catch (_) { sched = null; } }
     if (!Array.isArray(sched) || !sched.length) sched = [{ pct: 50, amount: null, due_at: '', paid_at: null }];
+    // D-359: сумма этапа — денежный формат, не «простое число».
+    // Заголовки колонок подписаны в шапке блока (процент/сумма/срок), чтобы
+    // человек не гадал, что за «50» в поле.
     return sched.map((st, i) => `<div class="dh-stage" data-stage="${i}">
-      <input type="number" class="dh-stage__pct" min="0" max="100" step="1" placeholder="%" value="${st.pct != null ? esc(String(st.pct)) : ''}" title="Процент"/>
-      <input type="number" class="dh-stage__amt" min="0" step="0.01" placeholder="Сумма ₽" value="${st.amount != null ? esc(String(st.amount)) : ''}" title="Сумма"/>
-      <input type="date" class="dh-stage__due" value="${esc(String(st.due_at || '').slice(0, 10))}" title="Срок"/>
+      <input type="number" class="dh-stage__pct" min="0" max="100" step="1" placeholder="%" value="${st.pct != null ? esc(String(st.pct)) : ''}" title="Доля от суммы, %" aria-label="Доля от суммы, процент"/>
+      <input type="text" inputmode="decimal" class="dh-stage__amt" data-money="1" data-raw="${st.amount != null ? esc(String(st.amount)) : ''}" placeholder="0,00 ₽" value="${esc(moneyDisplay(st.amount))}" title="Сумма этапа" aria-label="Сумма этапа в рублях"/>
+      <input type="date" class="dh-stage__due" value="${esc(String(st.due_at || '').slice(0, 10))}" title="Срок оплаты этапа" aria-label="Срок оплаты этапа"/>
       <label class="dh-stage__paid"><input type="checkbox" ${st.paid_at ? 'checked' : ''}/> оплачен</label>
       <button type="button" class="dh-stage__x" data-stage-del="${i}" aria-label="Удалить этап">✕</button>
     </div>`).join('');
@@ -2492,7 +2591,7 @@ window.AsgardDocHubPage = (function () {
       const paid = !!r.querySelector('.dh-stage__paid input')?.checked;
       return {
         pct: parseFloat(r.querySelector('.dh-stage__pct')?.value) || null,
-        amount: parseFloat(r.querySelector('.dh-stage__amt')?.value) || null,
+        amount: moneyParse(r.querySelector('.dh-stage__amt')?.value),
         due_at: r.querySelector('.dh-stage__due')?.value || null,
         paid_at: paid ? new Date().toISOString() : null
       };
@@ -3156,7 +3255,7 @@ window.AsgardDocHubPage = (function () {
       const cmode = row.contract_mode || 'none';
       const sk = row.spend_kind || 'other';
       const payLink = row.payment_invoice_id
-        ? `<p class="dh-pay-link"><a href="#/approval-payment?id=${row.payment_invoice_id}">Очередь оплаты #${row.payment_invoice_id}</a></p>`
+        ? `<p class="dh-pay-link"><a href="#/approval-payment?id=${row.payment_invoice_id}">Открыть заявку на оплату</a></p>`
         : '';
 
       // Closing JSON editor rows
@@ -3198,8 +3297,8 @@ window.AsgardDocHubPage = (function () {
                   <div class="dh-sum-hero__due">Срок оплаты: ${fmtDate(row.payment_due_at) || 'не указан'}</div>
                 </div>
                 <div class="dh-grid2" style="margin-top:12px">
-                  <div class="dh-field"><label>Сумма с НДС</label><input type="number" id="drGross" step="0.01" min="0" value="${esc(String(sums.gross))}"/></div>
-                  <div class="dh-field"><label>Сумма без НДС</label><input type="number" id="drNet" step="0.01" min="0" value="${esc(String(sums.net))}"/></div>
+                  <div class="dh-field"><label>Сумма с НДС</label>${moneyFieldHtml({ id: 'drGross', value: sums.gross })}</div>
+                  <div class="dh-field"><label>Сумма без НДС</label>${moneyFieldHtml({ id: 'drNet', value: sums.net })}</div>
                 </div>
                 <div class="dh-field"><label>Ставка НДС</label>
                   <div class="dh-vat-rate-chips" id="drVatChips">${vatRateChipsHtml(sums.rate)}</div>
@@ -3324,7 +3423,7 @@ window.AsgardDocHubPage = (function () {
                     <select data-k="kind" title="Тип документа">${CLOSING_KINDS.map((k) => `<option value="${esc(k)}" ${((cl.kind || 'СФ') === k) ? 'selected' : ''}>${esc(k)}</option>`).join('')}</select>
                     <input data-k="no" placeholder="Номер" value="${esc(cl.no||'')}"/>
                     <input type="date" data-k="date" value="${esc(String(cl.date||'').slice(0,10))}"/>
-                    <input type="number" data-k="sum" step="0.01" placeholder="Сумма" value="${esc(String(cl.sum||''))}"/>
+                    <input type="text" inputmode="decimal" data-k="sum" data-money="1" data-raw="${esc(String(cl.sum || ''))}" placeholder="0,00 ₽" value="${esc(moneyDisplay(cl.sum))}"/>
                     <button type="button" class="dr-closing-del dh-line__x">✕</button>
                   </div>`).join('')}
                 </div>
@@ -3363,8 +3462,9 @@ window.AsgardDocHubPage = (function () {
                     </select>
                   </div>
                   <div class="dh-field"><label>Услуга оказана</label><input type="date" id="drServiceDone" value="${esc(String(row.service_done_at || '').slice(0, 10))}"/></div>
-                  <div class="dh-field"><label>Уже оплачено (без очереди)</label>
+                  <div class="dh-field"><label>Срок оплаты</label>
                     <label class="dh-check"><input type="checkbox" id="drNoPaymentTerms" ${row.no_payment_terms ? 'checked' : ''}/> срок оплаты не требуется</label>
+                    <div class="dh-help">Это НЕ значит «оплачено». Оплату проводит бухгалтерия через очередь.</div>
                   </div>
                 </div>
                 <div class="dh-field" id="drScheduleWrap" ${row.payment_kind === 'partial' ? '' : 'hidden'}>
@@ -3391,8 +3491,8 @@ window.AsgardDocHubPage = (function () {
                          value="${esc(row.doc_owner_note || '')}" autocomplete="off"/>
                   <datalist id="drOwnerNoteList"></datalist>
                 </div>
-                <div class="dh-field"><label>РП / объект</label><input type="hidden" id="drPmId" value="${esc(String(row.pm_id || ''))}" /><div id="drPm_w" class="dh-crselect-host"></div></div>
-                <div class="dh-field"><label>Код 1С</label><input id="drOnecId" value="${esc(row.onec_id || '')}"/></div>
+                <div class="dh-field"><label>Руководитель проекта (РП)</label><input type="hidden" id="drPmId" value="${esc(String(row.pm_id || ''))}" /><div id="drPm_w" class="dh-crselect-host"></div><div class="dh-help">Объект выбирается выше — в поле «Работа / объект».</div></div>
+                <div class="dh-field"><label>Код в 1С <span class="dh-field__hint">для бухгалтерии</span></label><input id="drOnecId" value="${esc(row.onec_id || '')}" placeholder="заполнит бухгалтерия"/></div>
               </div>
             </div>
 
@@ -3436,10 +3536,12 @@ window.AsgardDocHubPage = (function () {
             <button type="button" class="dh-btn dh-btn--ghost" id="dhDrawerExpense" ${!row.work_id ? 'disabled title="Нет объекта"' : ''}>В расходы</button>
             ${canWh() ? '<button type="button" class="dh-btn dh-btn--ghost" data-qa="wh">Склад</button>' : ''}
             ${(Array.isArray(row.closing_json) && row.closing_json.length) ? '<button type="button" class="dh-btn dh-btn--ghost" data-qa="unmark_sf" title="Убрать последний закрывающий, вернуть статус">↩ Снять СФ</button>' : ''}
-            ${(canWh() && row.pay_status !== 'paid') ? '<button type="button" class="dh-btn dh-btn--ghost" data-qa="mark_paid" title="Ручная отметка для старых оплат, без очереди и скана">₽ Отметить оплачено</button>' : ''}
             <button type="button" class="dh-btn dh-btn--primary" data-qa="pay">В очередь оплаты</button>
           </footer>
         </div>`;
+
+      // D-359: денежные поля — формат «130 000,00 ₽», правка в «сыром» виде.
+      bindMoneyInputs(d);
 
       // Load works → CRSelect in drawer (async)
       (async () => {
@@ -3642,7 +3744,7 @@ window.AsgardDocHubPage = (function () {
           <select data-k="kind" title="Тип документа">${CLOSING_KINDS.map((k) => `<option value="${esc(k)}">${esc(k)}</option>`).join('')}</select>
           <input data-k="no" placeholder="Номер" value="${esc((pre && pre.no) || '')}"/>
           <input type="date" data-k="date" value="${esc(pre && pre.date ? String(pre.date).slice(0, 10) : '')}"/>
-          <input type="number" data-k="sum" step="0.01" placeholder="Сумма" value="${esc(pre && pre.sum != null ? String(pre.sum) : '')}"/>
+          <input type="text" inputmode="decimal" data-k="sum" data-money="1" data-raw="${pre && pre.sum != null ? esc(String(pre.sum)) : ''}" placeholder="0,00 ₽" value="${esc(moneyDisplay(pre && pre.sum))}"/>
           <button type="button" class="dr-closing-del dh-line__x">✕</button>`;
         if (pre && pre.kind) row2.querySelector('[data-k="kind"]').value = pre.kind;
         row2.querySelector('.dr-closing-del').onclick = () => row2.remove();
@@ -3655,13 +3757,15 @@ window.AsgardDocHubPage = (function () {
       const saveDrawer = async () => {
         const drVatRaw = d.querySelector('#drVatRate')?.value;
         const drVatRate = drVatRaw === '' || drVatRaw === 'null' ? null : parseFloat(drVatRaw);
-        const grossVal = parseFloat(d.querySelector('#drGross')?.value);
-        const netVal = parseFloat(d.querySelector('#drNet')?.value);
+        // D-359: суммы теперь в денежных полях («130 000,00 ₽») — читаем через
+        // moneyParse, иначе parseFloat вернул бы 130.
+        const grossVal = moneyParse(d.querySelector('#drGross')?.value);
+        const netVal = moneyParse(d.querySelector('#drNet')?.value);
         const closingRows = [...d.querySelectorAll('.dr-closing-row')].map((row2) => ({
           kind: row2.querySelector('[data-k="kind"]')?.value || 'СФ',
           no: row2.querySelector('[data-k="no"]')?.value || '',
           date: row2.querySelector('[data-k="date"]')?.value || null,
-          sum: parseFloat(row2.querySelector('[data-k="sum"]')?.value) || null
+          sum: moneyParse(row2.querySelector('[data-k="sum"]')?.value)
         })).filter((cl) => cl.no || cl.date);
         const patch = {
           counterparty_name: d.querySelector('#drCpName')?.value || '',
