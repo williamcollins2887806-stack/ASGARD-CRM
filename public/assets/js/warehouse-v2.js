@@ -528,9 +528,7 @@ window.AsgardWarehouseV2 = (function () {
       .wh2{padding:12px}
       .wh2-kpis{grid-template-columns:1fr 1fr;gap:10px}
       .wh2-cart-dr{width:100vw}
-      /* На узком экране угол занят круглой кнопкой поиска «Хугинн» (.hg-nav-search:
-         64px, right 12, bottom 14) — корзина встаёт НАД ней, а не под ней. */
-      .wh2-fab{bottom:calc(14px + var(--hg-tg-fab-size,64px) + 10px);right:12px}
+      .wh2-fab{bottom:16px;right:16px}
       .wh2-fab__btn{width:58px;height:58px;font-size:25px}
       .wh2-stp{height:38px}
       .wh2-stp__b{width:36px;font-size:20px}
