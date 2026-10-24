@@ -1048,7 +1048,21 @@ async function applyInvoiceFields(db, pay, docId) {
                                      ELSE d.vat_amount END,
               -- D-369: ставку НДС тоже переносим. Раньше ветки «уже есть строка»
               -- её не трогали: НДС-сумма есть, ставки нет — противоречивая карточка.
-              vat_rate        = CASE WHEN COALESCE(d.vat_rate,0) = 0 AND $11::numeric > 0 THEN $11::numeric ELSE d.vat_rate END,
+              -- D-377 (24.10.2026): при создании карточки vat_rate по умолчанию
+              -- 0.22, поэтому условие «= 0» никогда не срабатывало и верная
+              -- ставка не записывалась: у #1592/#1607 суммы посчитаны по 5 %,
+              -- а в реестре стояло 22 % (Doc Hub показывал неверный НДС).
+              -- Теперь правим ставку, когда она ПРОТИВОРЕЧИТ собственным суммам
+              -- документа, а пришедшая ставка с ними сходится. Ручную правку,
+              -- которая с суммами согласуется, не трогаем.
+              vat_rate        = CASE
+                                    WHEN COALESCE(d.vat_rate,0) = 0 AND $11::numeric > 0 THEN $11::numeric
+                                    WHEN COALESCE(d.amount_net,0) > 0 AND COALESCE(d.vat_amount,0) > 0
+                                         AND ABS(COALESCE(d.vat_amount,0) / d.amount_net - COALESCE(d.vat_rate,0)) > 0.01
+                                         AND ABS(COALESCE(d.vat_amount,0) / d.amount_net - $11::numeric) <= 0.01
+                                         THEN $11::numeric
+                                    ELSE d.vat_rate
+                                  END,
               -- D-369 (раунд 11): флаг НДС ставим ТОЛЬКО когда сумма НДС реально
               -- есть. Было: флаг переключался, а vat_amount не заполнялась
               -- (её ветка требовала ещё и net = 0) → карточка #1598 имела
