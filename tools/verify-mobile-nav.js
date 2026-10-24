@@ -16,7 +16,34 @@ const { chromium } = require('playwright');
 const jwt = require('jsonwebtoken');
 
 const SECRET = 'asgard-jwt-secret-2026';
+
+/**
+ * Адрес стенда.
+ *
+ * D-371 (24.10.2026). Раньше дефолт был жёстко `http://127.0.0.1:5173` (vite dev).
+ * Если vite не запущен, все страницы молча не открывались, каждый маршрут
+ * считался «тупиком», и гейт выдавал «FAIL — 71 тупиков» — то есть ЛОЖНЫЙ
+ * провал, не связанный с кодом. Теперь пробуем известные порты по порядку и
+ * явно падаем, если ни один не отвечает.
+ */
 const BASE = process.env.BASE || 'http://127.0.0.1:5173';
+const FALLBACK_PORTS = ['5173', '3000', '3100'];
+
+async function resolveBase() {
+  // Явно заданный BASE уважаем: никакого «подбора вместо пользователя».
+  // Иначе проверка могла уйти на другой стенд, и результат ничего не значил бы.
+  const explicit = !!process.env.BASE;
+  const candidates = explicit
+    ? [BASE]
+    : [BASE, ...FALLBACK_PORTS.map((p) => `http://127.0.0.1:${p}`)];
+  for (const url of [...new Set(candidates)]) {
+    try {
+      const r = await fetch(url + '/api/health', { signal: AbortSignal.timeout(3000) });
+      if (r.ok) return url;
+    } catch (_) { /* порт молчит */ }
+  }
+  return null;
+}
 
 /** Публичные экраны: выход не нужен по определению. */
 const PUBLIC = ['/welcome', '/login', '/pin'];
@@ -37,6 +64,8 @@ const ROUTES = [
   '/personal-kanban-config', '/office-academy', '/integrations', '/diag', '/tenders/platform',
   '/payroll', '/payroll-dashboard', '/official-employees', '/travel', '/tmc-requests',
   '/procurement', '/seals', '/proxies', '/my-equipment', '/gantt', '/training-board', '/hr-requests',
+  // D-369 (23.10.2026): «Мои заявки» — счета на согласование с телефона.
+  '/my-requests',
   '/staff-requests', '/pm-calcs',
   '/field', '/field/profile', '/field/timesheet', '/field/money', '/field/inventory',
   '/field/quests', '/field/shop', '/field/leaderboard', '/field/achievements', '/field/hall',
@@ -49,6 +78,22 @@ let fails = 0;
 const bad = (m) => { console.log('  FAIL ' + m); fails++; };
 
 (async () => {
+  // Сначала убеждаемся, что стенд вообще отвечает: иначе гейт выдаёт ложный
+  // FAIL по всем маршрутам сразу (это уже случалось — «71 тупиков»).
+  const base = await resolveBase();
+  if (!base) {
+    const tried = process.env.BASE
+      ? process.env.BASE
+      : [BASE, ...FALLBACK_PORTS.map((p) => 'http://127.0.0.1:' + p)].join(', ');
+    console.error('ОШИБКА: стенд не отвечает (' + tried + ').');
+    console.error('Поднимите стенд (node src/index.js) или задайте BASE=<url>.');
+    // Важно: это НЕ провал проверки навигации, а отсутствие стенда. Отдельный
+    // код 2, чтобы в конвейере было видно разницу между «код плохой» и «не на чем проверять».
+    process.exit(2);
+  }
+  if (base !== BASE) console.log('стенд: ' + base + ' (BASE не задан, подобран автоматически)');
+  else console.log('стенд: ' + base);
+
   const b = await chromium.launch();
   console.log('=== verify-mobile-nav ===');
   console.log('правило: на каждом экране есть «назад», «на главную» или тап-бар\n');
@@ -68,7 +113,7 @@ const bad = (m) => { console.log('  FAIL ' + m); fails++; };
     console.log('--- ' + u.label + ' ---');
     let okCount = 0;
     for (const path of ROUTES) {
-      await p.goto(BASE + '/m' + path, { waitUntil: 'domcontentloaded' }).catch(() => {});
+      await p.goto(base + '/m' + path, { waitUntil: 'domcontentloaded' }).catch(() => {});
       await p.waitForTimeout(1900);
 
       const r = await p.evaluate(() => {

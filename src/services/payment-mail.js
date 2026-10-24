@@ -602,28 +602,48 @@ async function applyDecision(db, payment, action, actor) {
 
 /**
  * Часть II плана: после dir-approve создать/связать строку реестра документов
- * со статусом «дозаполнить». Идемпотентно: повторный вызов не создаёт дубль
- * (сначала проверяем doc_registry_id и совпадение по реквизитам).
+ * со статусом «дозаполнить». Идемпотентно: повторный вызов не создаёт дубль.
+ *
+ * D-369 (23.10.2026, третий раунд верификации). РАНЬШЕ поля заявки переносились
+ * ТОЛЬКО в ветке INSERT. Если строка реестра уже была (связана по
+ * `payment_invoice_id`, по `pay.doc_registry_id` или найдена антидублем по
+ * контрагенту и сумме), функция делала короткий UPDATE и выходила — без
+ * `spend_kind`, сроков СФ и работы. На проде это реальный путь: 6 пар
+ * «заявка ↔ готовая строка реестра», из них 2 живых черновика. Офисный счёт
+ * ложился в реестр как «работы».
+ *
+ * ТЕПЕРЬ перенос вынесен в `applyInvoiceFields()` и вызывается во ВСЕХ ветках.
+ * Плюс в INSERT передаются номер, дата, НДС, нетто и комментарий пользователя:
+ * раньше НДС молча обнулялся, `comment_text` заменялся именем файла, а причины
+ * «нет номера/даты» ставились константой даже при заполненных полях.
+ *
  * @returns {Promise<number|null>} id строки реестра
  */
-async function ensureRegistryDoc(db, paymentId) {  try {
+async function ensureRegistryDoc(db, paymentId) {
+  try {
     const pay = (await db.query(`SELECT * FROM payment_invoices WHERE id=$1`, [paymentId])).rows[0];
     if (!pay) return null;
-    // Уже связана или уже есть строка из этой заявки?
+
+    // ── Ветка 1: строка уже связана через payment_invoice_id ──────────────
     const linked = await db.query(
       `SELECT id FROM doc_registry WHERE payment_invoice_id=$1 AND deleted_at IS NULL LIMIT 1`, [paymentId]);
     if (linked.rows[0]) {
       await db.query(`UPDATE payment_invoices SET doc_registry_id=$2 WHERE id=$1 AND doc_registry_id IS NULL`, [paymentId, linked.rows[0].id]).catch(() => {});
+      await applyInvoiceFields(db, pay, linked.rows[0].id);
       return linked.rows[0].id;
     }
+
+    // ── Ветка 2: у заявки уже есть doc_registry_id ────────────────────────
     if (pay.doc_registry_id) {
       const d = await db.query(`SELECT id FROM doc_registry WHERE id=$1 AND deleted_at IS NULL`, [pay.doc_registry_id]);
       if (d.rows[0]) {
         await db.query(`UPDATE doc_registry SET payment_invoice_id=$2, updated_at=NOW() WHERE id=$1 AND payment_invoice_id IS NULL`, [pay.doc_registry_id, paymentId]).catch(() => {});
+        await applyInvoiceFields(db, pay, pay.doc_registry_id);
         return pay.doc_registry_id;
       }
     }
-    // Совпадение по реквизитам (антидубль с ручным вводом) — только СВЯЗАТЬ.
+
+    // ── Ветка 3: антидубль по реквизитам (тот же контрагент и сумма) ───────
     if (pay.supplier_name && pay.amount != null) {
       const dup = await db.query(
         `SELECT id FROM doc_registry WHERE deleted_at IS NULL AND dir='in'
@@ -632,34 +652,168 @@ async function ensureRegistryDoc(db, paymentId) {  try {
       if (dup.rows[0]) {
         await db.query(`UPDATE doc_registry SET payment_invoice_id=$2, updated_at=NOW() WHERE id=$1`, [dup.rows[0].id, paymentId]);
         await db.query(`UPDATE payment_invoices SET doc_registry_id=$2 WHERE id=$1`, [paymentId, dup.rows[0].id]).catch(() => {});
+        await applyInvoiceFields(db, pay, dup.rows[0].id);
         return dup.rows[0].id;
       }
     }
-    // Создаём новую строку «дозаполнить» (синий — не хватает полей для полного вида).
+
+    // ── Ветка 3b: тот же счёт уже в реестре (строгий дедуп) ──────────────
+    //
+    // D-370. Есть ДВА уникальных ограничения:
+    //   • `uq_doc_registry_dedup` — (контрагент, номер, дата, сумма, dir):
+    //     один и тот же счёт нельзя завести в реестр дважды;
+    //   • `uq_pi_doc_registry` — одна строка реестра обслуживает ОДНУ заявку.
+    //
+    // Поэтому «связать дубль с существующей строкой» нельзя: если она уже
+    // занята другой заявкой, UPDATE падает с 23505, ошибка глоталась, и заявка
+    // уходила к бухгалтерии БЕЗ документа.
+    //
+    // Правильное поведение: если строка свободна — связать; если занята —
+    // создать СВОЮ строку с уточнённым номером, чтобы дедуп-индекс пропустил
+    // (например «1460-2»). Так у каждой заявки есть свой документ, а реестр
+    // не теряет исходный.
+    let dupWasTaken = false;
+    if (pay.invoice_number) {
+      const same = await db.query(
+        `SELECT id, payment_invoice_id FROM doc_registry
+          WHERE deleted_at IS NULL AND dir='in'
+            AND lower(trim(counterparty_name)) = lower(trim($1))
+            AND lower(trim(COALESCE(invoice_number,''))) = lower(trim($2))
+            AND ($3::date IS NULL OR invoice_date = $3::date)
+            AND amount_gross = $4
+          ORDER BY (payment_invoice_id IS NULL) DESC, id ASC
+          LIMIT 1`,
+        [pay.supplier_name || '', pay.invoice_number, pay.invoice_date || null, pay.amount || 0]);
+      const hit = same.rows[0];
+      if (hit && !hit.payment_invoice_id) {
+        await db.query(`UPDATE doc_registry SET payment_invoice_id=$2, updated_at=NOW() WHERE id=$1`,
+          [hit.id, paymentId]);
+        await db.query(`UPDATE payment_invoices SET doc_registry_id=$2 WHERE id=$1`,
+          [paymentId, hit.id]).catch(() => {});
+        await applyInvoiceFields(db, pay, hit.id);
+        return hit.id;
+      }
+      if (hit && hit.payment_invoice_id) dupWasTaken = true;
+    }
+
+    // ── Ветка 4: создаём новую строку ─────────────────────────────────────
     // supplier_id ищем по ИНН из реквизитов заявки/строки — иначе реквизиты для
     // платёжки не подтянутся в модалку бухгалтера.
     let supplierId = pay.supplier_id || null;
     if (!supplierId) {
       try {
-        const rd = await db.query(
-          `SELECT counterparty_inn FROM doc_registry WHERE payment_invoice_id=$1 AND counterparty_inn IS NOT NULL LIMIT 1`, [paymentId]);
-        const inn = rd.rows[0] && rd.rows[0].counterparty_inn;
+        const inn = pay.counterparty_inn || (await db.query(
+          `SELECT counterparty_inn FROM doc_registry WHERE payment_invoice_id=$1 AND counterparty_inn IS NOT NULL LIMIT 1`, [paymentId]
+        ).catch(() => ({ rows: [] }))).rows[0]?.counterparty_inn;
         if (inn) {
           const s = await db.query(`SELECT id FROM suppliers WHERE inn=$1 AND deleted_at IS NULL LIMIT 1`, [inn]);
           if (s.rows[0]) supplierId = s.rows[0].id;
         }
       } catch (_) { /* не критично */ }
     }
-    const basis = pay.basis_text || (pay.file_name ? ('Счёт: ' + pay.file_name) : 'Счёт из заявки');
+
+    const sk = String(pay.spend_kind || '');
+    const spendKind = ['work', 'warehouse', 'office', 'other'].includes(sk) ? sk : 'other';
+
+    // Суммы и НДС. D-369 (раунд 12): считаем ЕДИНОЙ функцией — той же, что
+    // использует перенос в существующую строку. Раньше здесь была своя копия
+    // с условием «оба поля нулевые», поэтому заявка с распознанным НДС и пустым
+    // нетто (живая #13: 45 197,04 / NULL / 8 150,29) давала нетто 0 при сумме
+    // 45 197 и ни одной метки неполноты.
+    const amounts = splitInvoiceAmounts(pay);
+    const gross = amounts.gross;
+    const vatAmount = amounts.vat;
+    const netAmount = amounts.net;
+    const hasVat = !amounts.miscalc && (vatAmount > 0 || (amounts.rate > 0 && !amounts.miscalc));
+
+    // Причины «неполноты» — по ФАКТУ, а не константой. Раньше no_invoice_number
+    // и no_invoice_date ставились всегда, даже когда номер и дата есть.
+    const reasons = [...new Set(computeInvoiceReasons(pay, spendKind))];
+    // D-369 (раунд 12): НДС больше суммы — данные битые, нетто записать нельзя.
+    // Метку ставим здесь, в ветке создания. Дедуплицируем: computeInvoiceReasons
+    // уже мог добавить amount_mismatch, и без Set в карточке было бы
+    // «сумма расходится…, сумма расходится…».
+    if (amounts.miscalc && !reasons.includes('amount_mismatch')) reasons.push('amount_mismatch');
+
+    // D-370: если дедуп-строка занята другой заявкой, создаём свою — с
+    // уточнённым номером, иначе `uq_doc_registry_dedup` не даст вставить.
+    let insertNumber = pay.invoice_number || null;
+    if (dupWasTaken && insertNumber) {
+      const cnt = await db.query(
+        `SELECT count(*)::int n FROM doc_registry
+          WHERE deleted_at IS NULL AND dir='in'
+            AND lower(trim(COALESCE(invoice_number,''))) LIKE lower(trim($1)) || '%'`,
+        [insertNumber]).catch(() => ({ rows: [{ n: 0 }] }));
+      insertNumber = `${insertNumber}-${(cnt.rows[0].n || 1) + 1}`;
+    }
+
     const ins = await db.query(
-      `INSERT INTO doc_registry(dir, package_type, ops_status, pay_status, counterparty_name, supplier_id,
-         amount_gross, amount_net, vat_amount, has_vat, spend_kind, doc_owner_id, created_by, updated_by,
-         receive_channel, comment_text, payment_invoice_id, is_incomplete, incomplete_reasons)
-       VALUES ('in','invoice','wait_closing','wait',$1,$2,$3,$3,0,false,'other',$4,$4,$4,'email',$5,$6,true,
-               ARRAY['no_invoice_number','no_invoice_date']::text[]) RETURNING id`,
-      [pay.supplier_name || 'Контрагент из заявки', supplierId, pay.amount,
-        pay.created_by || 1, basis, paymentId]);
-    const docId = ins.rows[0].id;
+      `INSERT INTO doc_registry(dir, package_type, ops_status, pay_status,         counterparty_name, counterparty_inn, supplier_id,
+         amount_gross, amount_net, vat_amount, vat_rate, has_vat, spend_kind,
+         doc_owner_id, created_by, updated_by, receive_channel, comment_text,
+         payment_invoice_id, is_incomplete, incomplete_reasons,
+         invoice_number, invoice_date,
+         work_id, sf_due_at, service_done_at, sf_basis)
+       VALUES ('in','invoice','wait_closing','wait',
+         $1, $2, $3,
+         $4, $5, $6, $7, $8, $9,
+         $10, $10, $10, 'email', $11,
+         $12, $13, $14::text[],
+         $15, $16::date,
+         $17, $18::date, $19::date, $20)
+       ON CONFLICT DO NOTHING
+       RETURNING id`,
+      [
+        pay.supplier_name || 'Контрагент из заявки',
+        pay.counterparty_inn || null,
+        supplierId,
+        gross, netAmount, vatAmount,
+        // D-369: `vat_rate` объявлен NOT NULL — при null INSERT падал 23502 и
+        // согласование молча не создавало строку. И главное: в реестре ставка
+        // хранится в ДОЛЯХ (0.22), а в заявке — в ПРОЦЕНТАХ (22). Без конвертации
+        // Doc Hub показывал «НДС 2200%» и пересчитывал нетто 120 000 → 5 217.
+        toRegistryVatRate(pay.vat_rate),
+        hasVat, spendKind,
+        pay.created_by || 1,
+        // Комментарий пользователя; имя файла — только если он пуст.
+        pay.comment_text || (pay.basis_text || (pay.file_name ? ('Счёт: ' + pay.file_name) : null)) || 'Счёт из заявки',
+        paymentId,
+        reasons.length > 0, reasons,
+        insertNumber,
+        pay.invoice_date || null,
+        pay.work_id || null,
+        pay.sf_due_at || null,
+        pay.service_done_at || null,
+        ['invoice', 'service'].includes(String(pay.sf_basis || '')) ? pay.sf_basis : null
+      ]);
+
+    // D-370: при `ON CONFLICT DO NOTHING` строк может не быть — значит строка
+    // реестра уже существует (дедуп-индекс). Тогда находим её и связываем,
+    // иначе заявка ушла бы к бухгалтерии без документа.
+    let docId = ins.rows[0] ? ins.rows[0].id : null;
+    if (!docId) {
+      // Строка не создана (например, гонка с параллельной вставкой того же
+      // счёта). Ищем свободную и связываем; если все заняты — честно логируем,
+      // чтобы дефект не потерялся молча.
+      const again = await db.query(
+        `SELECT id FROM doc_registry
+          WHERE deleted_at IS NULL AND dir='in'
+            AND lower(trim(counterparty_name)) = lower(trim($1))
+            AND amount_gross = $2
+            AND payment_invoice_id IS NULL
+          ORDER BY id ASC LIMIT 1`,
+        [pay.supplier_name || '', pay.amount || 0]);
+      docId = again.rows[0] ? again.rows[0].id : null;
+      if (docId) {
+        await db.query(`UPDATE doc_registry SET payment_invoice_id=$2, updated_at=NOW() WHERE id=$1`,
+          [docId, paymentId]).catch(() => {});
+        await applyInvoiceFields(db, pay, docId);
+      }
+    }
+    if (!docId) {
+      console.error('[payment-mail] ensureRegistryDoc: строка реестра не создана и не найдена для #' + paymentId);
+      return null;
+    }
     if (supplierId && !pay.supplier_id) {
       await db.query(`UPDATE payment_invoices SET supplier_id=$2 WHERE id=$1`, [paymentId, supplierId]).catch(() => {});
     }
@@ -669,6 +823,336 @@ async function ensureRegistryDoc(db, paymentId) {  try {
     // Запись в реестр не должна валить согласование.
     console.error('[payment-mail] ensureRegistryDoc failed:', e.message);
     return null;
+  }
+}
+
+/**
+ * D-369: ставка НДС в ДВУХ таблицах хранится по-разному.
+ *   • `payment_invoices.vat_rate` — ПРОЦЕНТЫ (22, 20, 10, 5, 7, 0);
+ *   • `doc_registry.vat_rate`     — ДОЛИ (0.22, 0.20 …), numeric(6,4).
+ * Проверено по данным: в реестре min 0.0000 / max 0.2200 на 1606 строках.
+ *
+ * Первая версия переноса клала проценты как есть → Doc Hub показывал «НДС 2200%»,
+ * а при пустых суммах пересчитывал нетто 120 000 → 5 217 вместо 98 361.
+ * Это деньги и вычет, поэтому конвертация обязательна на входе в реестр.
+ */
+function toRegistryVatRate(v) {
+  const n = Number(v);
+  if (!Number.isFinite(n) || n <= 0) return 0;
+  // >1 — значит проценты (22), иначе уже доля (0.22). Идемпотентно.
+  const frac = n > 1 ? n / 100 : n;
+  return Math.round(frac * 10000) / 10000; // numeric(6,4)
+}
+
+/**
+ * D-369 (раунд 12): ЕДИНЫЙ расчёт сумм счёта с НДС.
+ *
+ * Зачем отдельной функцией. Логика раскладки появлялась постепенно и дважды
+ * разъезжалась: сначала её добавили только в перенос (ветки «уже есть строка»),
+ * и создание нового счёта вело себя иначе; потом наоборот. Верификатор ловил это
+ * на живых формах: заявка #13 (45 197,04 / нетто NULL / НДС 8 150,29) в переносе
+ * лечилась, а в создании давала нетто 0 при сумме 45 197.
+ *
+ * Правила (все данные берём из заявки):
+ *   • есть НДС, нет нетто  → нетто = сумма − НДС;
+ *   • нет ни НДС, ни нетто → раскладываем по ставке (НДС «в том числе»);
+ *   • нетто равно сумме, НДС 0, но ставка задана → раскладываем по ставке
+ *     (так лечится старая строка #1598: 79 905 = 79 905 + 0 при ставке 22 %);
+ *   • НДС ≥ суммы → нетто не может быть отрицательным: это ошибка данных,
+ *     поэтому нетто = max(0, …) и возвращаем флаг miscalc для метки.
+ *
+ * @returns {{gross:number, net:number, vat:number, rate:number, miscalc:boolean}}
+ */
+function splitInvoiceAmounts(pay) {
+  const gross = Math.max(0, Number(pay && pay.amount) || 0);
+  const rate = toRegistryVatRate(pay && pay.vat_rate);
+  let net = Math.max(0, Number(pay && pay.amount_net) || 0);
+  let vat = Math.max(0, Number(pay && pay.vat_amount) || 0);
+  let miscalc = false;
+
+  if (gross > 0) {
+    if (vat > 0 && net === 0) {
+      // Частичные суммы: НДС распознан отдельной строкой, нетто нет.
+      if (vat >= gross) {
+        // НДС больше суммы — данные битые (реальный #14: 5 654 при НДС 98 278,68).
+        // Отрицательное нетто писать нельзя (CHECK нет, платёжка бессмысленна),
+        // а НДС 98 278,68 при сумме 5 654 не сойдётся никогда. Единственное
+        // осмысленное состояние: считаем, что НДС не выделен (нетто = сумма),
+        // и ставим метку amount_mismatch — бухгалтер сверит по скану.
+        net = Math.round(gross * 100) / 100;
+        vat = 0;
+        miscalc = true;
+      } else {
+        net = Math.round((gross - vat) * 100) / 100;
+      }
+    } else if (net === 0 && vat === 0) {
+      if (rate > 0) {
+        vat = Math.round(gross * rate / (1 + rate) * 100) / 100;
+        net = Math.round((gross - vat) * 100) / 100;
+      } else {
+        net = Math.round(gross * 100) / 100; // без НДС: нетто = брутто
+      }
+    } else if (rate > 0 && vat === 0 && net > 0 && net < gross - 0.02) {
+      // D-369 (раунд 13): есть нетто, НДС-суммы нет, но ставка задана и нетто
+      // меньше суммы. Данных достаточно: НДС = сумма − нетто.
+      vat = Math.round((gross - net) * 100) / 100;
+    } else if (net > gross + 0.02 && vat === 0) {
+      // D-369 (раунд 14-15): нетто БОЛЬШЕ суммы — данные битые. Считать
+      // `vat = gross − net` нельзя: получался отрицательный НДС, который реально
+      // записывался в реестр (подтверждено: −1000), а по vat_amount считаются
+      // агрегаты вычета. Приводим к «нетто = сумма, НДС 0» и ставим метку.
+      //
+      // ВАЖНО (регрессия, найденная верификатором): условие должно быть СТРОГО
+      // больше. При `net >= gross` сюда попадали:
+      //   • обычный счёт БЕЗ НДС (net = gross, vat = 0) → ложная метка
+      //     «сумма расходится» на корректных счетах (8 таких на проде);
+      //   • форма #1598 (net = gross, vat = 0, ставка 22 %) → перехватывалась
+      //     ветка раскладки по ставке, и НДС переставал выделяться.
+      net = Math.round(gross * 100) / 100;
+      vat = 0;
+      miscalc = true;
+    } else if (rate > 0 && vat === 0 && Math.abs(net - gross) < 0.02) {
+      // «Нетто = брутто, НДС 0», но ставка задана — противоречие (#1598).
+      // Лечим раскладкой, а не меткой: НДС выделяется, арифметика сходится.
+      vat = Math.round(gross * rate / (1 + rate) * 100) / 100;
+      net = Math.round((gross - vat) * 100) / 100;
+    }
+  }
+  return { gross, net, vat, rate, miscalc };
+}
+
+/**
+ * D-369: «чего не хватает» для строки реестра.
+ * Раньше в ветке создания причины собирались по факту, а в ветках «уже есть
+ * строка» не пересчитывались вовсе: номер переносился, а метка «нет номера
+ * счёта» оставалась — бухгалтерия шла искать несуществующую проблему.
+ *
+ * @returns {string[]} причины; пустой массив = строка заполнена
+ */
+function computeInvoiceReasons(pay, spendKind) {
+  const reasons = [];
+  if (!pay.invoice_number) reasons.push('no_invoice_number');
+  if (!pay.invoice_date) reasons.push('no_invoice_date');
+  // Нулевая сумма — тоже неполнота: строка «зелёная» с нулём не должна
+  // выглядеть готовой (в словаре UI есть готовый код no_amount).
+  if (!(Number(pay.amount) > 0)) reasons.push('no_amount');
+  // D-369 (раунд 9): сумма внутри самой заявки должна сходиться с нетто+НДС.
+  // На живом черновике #14 было: amount 5 654, а net+vat = 545 000 — карточка
+  // показывала брутто 5 654 ₽ при НДС 98 278,68 ₽ (в 17 раз больше суммы) и
+  // считалась «заполненной». Такое нельзя выпускать в платёжку молча.
+  const g = Number(pay.amount), n = Number(pay.amount_net), v = Number(pay.vat_amount);
+  if (Number.isFinite(g) && g > 0 && Number.isFinite(n) && n > 0
+    && Math.abs(g - (n + (Number.isFinite(v) ? v : 0))) >= 0.02) {
+    reasons.push('amount_mismatch');
+  }
+  // Объект нужен только расходам по работам (как calcIncomplete
+  // doc-registry.js:180-183). Складу и «прочему» объект не нужен.
+  if (spendKind === 'work' && !pay.work_id) reasons.push('no_work_for_expense');
+  return reasons;
+}
+
+/**
+ * D-369: единый перенос полей заявки в УЖЕ СУЩЕСТВУЮЩУЮ строку реестра.
+ *
+ * Зачем отдельной функцией: `ensureRegistryDoc` находит готовую строку тремя
+ * разными способами, и раньше поля переносились только при создании новой.
+ * Теперь все три ветки «уже есть» вызывают этот код.
+ *
+ * Правила:
+ *   • `spend_kind` и `work_id` — только если в заявке они заполнены. Если
+ *     пользователь явно выбрал вид расхода, его выбор главнее того, что стоит
+ *     в реестре (часто там дефолтное 'work' от NOT NULL DEFAULT).
+ *   • Сроки и основание СФ — через COALESCE: уже проставленное вручную не
+ *     перетираем.
+ *   • Номер, дата, НДС, нетто — заполняем только пустые: ручная правка в реестре
+ *     не должна затираться согласованием.
+ *   • Метку `no_work_for_expense` снимаем, если объект есть или расход не по
+ *     работам; ставим — только для работ без объекта.
+ */
+async function applyInvoiceFields(db, pay, docId) {
+  if (!docId || !pay) return;
+  try {
+    const sk = String(pay.spend_kind || '');
+    const spendKind = ['work', 'warehouse', 'office', 'other'].includes(sk) ? sk : null;
+    // D-369 (раунд 8): если в заявке заполнена только сумма, а нетто/НДС пустые,
+    // надо РАЗЛОЖИТЬ её по ставке. Иначе карточка получала противоречивый набор:
+    // gross 50 000, vat 0, has_vat false, но vat_rate 22 % — и метки неполноты нет.
+    // Бухгалтер видел ставку и нулевой НДС, вычет принять нельзя.
+    const rateFracCalc = toRegistryVatRate(pay.vat_rate);
+    // D-369 (раунд 12): единый расчёт — та же функция, что в ветке создания.
+    // Раньше здесь была копия, и она при НДС больше суммы давала ОТРИЦАТЕЛЬНОЕ
+    // нетто (-92 624,68 при сумме 5 654 и НДС 98 278,68): CHECK на неотрицательность
+    // в doc_registry нет, значение записалось бы.
+    const calc = splitInvoiceAmounts(pay);
+    const grossForSplit = calc.gross;
+    // Передаём в SQL только то, что реально пересчитано: если сумма из заявки
+    // совпадает с уже посчитанными нетто/НДС, ничего не меняем (ручное главнее).
+    const payVat = Math.max(0, Number(pay.vat_amount) || 0);
+    const payNet = Math.max(0, Number(pay.amount_net) || 0);
+    const needNet = grossForSplit > 0 && calc.net > 0
+      && (payNet === 0 || calc.miscalc
+        || (calc.vat > 0 && payVat === 0 && Math.abs(payNet - grossForSplit) < 0.02));
+    const needVat = grossForSplit > 0
+      && (calc.miscalc || (calc.vat > 0
+        && (payVat === 0 || (payNet === 0 && payVat > 0 && Math.abs(payVat - calc.vat) > 0.02))));    const netFromRate = needNet ? calc.net : null;
+    const vatFromRate = needVat ? calc.vat : null;
+
+    await db.query(
+      `UPDATE doc_registry d
+          SET spend_kind      = COALESCE($2, d.spend_kind),
+              work_id         = COALESCE(d.work_id, $3),
+              sf_due_at       = COALESCE(d.sf_due_at, $4::date),
+              service_done_at = COALESCE(d.service_done_at, $5::date),
+              sf_basis        = COALESCE(NULLIF(d.sf_basis,''), $6),
+              invoice_number  = COALESCE(NULLIF(d.invoice_number,''), $7),
+              invoice_date    = COALESCE(d.invoice_date, $8::date),
+              -- D-369 (раунды 5-6): БРУТТО-СУММА переносится, но ТОЛЬКО КОГДА
+              -- её нельзя потерять.
+              --
+              -- История. Сначала сумма не переносилась вовсе → карточка
+              -- отставала от заявки. Потом сделали перенос при любом раскладе —
+              -- и это оказалось ХУЖЕ: на живом счёте #19 в заявке поле amount
+              -- содержал НЕТТО (114 737,70), а в карточке правильно лежало
+              -- брутто (139 980,00). Безусловная перезапись занижала документ
+              -- на 25 242,30 ₽ — ровно на сумму НДС — и бухгалтерия получила бы
+              -- неверную платёжку.
+              --
+              -- Итоговое правило (раунд 7, самое консервативное): заполняем сумму
+              -- ТОЛЬКО если в карточке её нет (0). Заполненную сумму НЕ ТРОГАЕМ
+              -- никогда — ни вверх, ни вниз.
+              --
+              -- Почему так. Проверка «amount = net + vat» не спасает: на #19
+              -- запись заявки ВНУТРЕННЕ СОГЛАСОВАНА (114 737,70 = 89 495,40 +
+              -- 25 242,30), просто OCR положил туда НЕТТО как сумму к оплате.
+              -- Отличить это от корректного брутто по полям невозможно.
+              --
+              -- Карточка реестра — то, по чему бухгалтерия платит; её сумму
+              -- правит человек. Поэтому заявка может только ЗАПОЛНИТЬ пустое.
+              -- Расхождение не теряется: оно видно как причина amount_mismatch
+              -- в метках строки (см. ниже), а не молчаливая перезапись.
+              amount_gross    = CASE WHEN COALESCE(d.amount_gross,0) = 0
+                                     THEN COALESCE($14::numeric, d.amount_gross) ELSE d.amount_gross END,
+              amount_net      = CASE WHEN COALESCE(d.amount_gross,0) = 0
+                                          OR (COALESCE(d.amount_net,0) IN (0, d.amount_gross)
+                                              AND COALESCE(d.vat_amount,0) < d.amount_gross
+                                              AND d.amount_gross > 0)
+                                     THEN CASE WHEN $15::numeric IS NOT NULL THEN $15::numeric
+                                               ELSE COALESCE($10::numeric, d.amount_net) END
+                                     ELSE d.amount_net END,
+              vat_amount      = CASE WHEN COALESCE(d.amount_gross,0) = 0
+                                          OR (COALESCE(d.amount_net,0) IN (0, d.amount_gross)
+                                              AND COALESCE(d.vat_amount,0) < d.amount_gross
+                                              AND d.amount_gross > 0)
+                                     THEN CASE WHEN $16::numeric IS NOT NULL THEN $16::numeric
+                                               ELSE COALESCE($9::numeric, d.vat_amount) END
+                                     ELSE d.vat_amount END,
+              -- D-369: ставку НДС тоже переносим. Раньше ветки «уже есть строка»
+              -- её не трогали: НДС-сумма есть, ставки нет — противоречивая карточка.
+              vat_rate        = CASE WHEN COALESCE(d.vat_rate,0) = 0 AND $11::numeric > 0 THEN $11::numeric ELSE d.vat_rate END,
+              -- D-369 (раунд 11): флаг НДС ставим ТОЛЬКО когда сумма НДС реально
+              -- есть. Было: флаг переключался, а vat_amount не заполнялась
+              -- (её ветка требовала ещё и net = 0) → карточка #1598 имела
+              -- has_vat=true при vat_amount=0, и Doc Hub дорисовывал 14 409,10 ₽
+              -- НДС, которых в базе нет.
+              has_vat         = CASE
+                                    WHEN COALESCE(d.vat_amount,0) > 0 THEN d.has_vat
+                                    WHEN $17::boolean THEN false
+                                    WHEN COALESCE($9::numeric,0) > 0 THEN true
+                                    WHEN COALESCE($16::numeric,0) > 0 THEN true
+                                    ELSE d.has_vat
+                                  END,
+              counterparty_inn= COALESCE(NULLIF(d.counterparty_inn,''), $12),
+              comment_text    = CASE WHEN COALESCE(TRIM(d.comment_text),'') = '' THEN $13 ELSE d.comment_text END,
+              updated_at      = NOW()
+        WHERE d.id = $1 AND d.deleted_at IS NULL`,
+      [docId, spendKind, pay.work_id || null,
+        pay.sf_due_at || null, pay.service_done_at || null,
+        ['invoice', 'service'].includes(String(pay.sf_basis || '')) ? pay.sf_basis : null,
+        pay.invoice_number || null, pay.invoice_date || null,
+        pay.vat_amount != null ? Number(pay.vat_amount) : null,
+        pay.amount_net != null ? Number(pay.amount_net) : null,
+        // В реестре ставка — ДОЛИ (0.22), в заявке — ПРОЦЕНТЫ (22).
+        toRegistryVatRate(pay.vat_rate),
+        pay.counterparty_inn || null,
+        pay.comment_text || null,
+        // $14 = сумма из заявки. Перезаписываем карточку ТОЛЬКО когда там 0:
+        // на #19 в заявке лежало нетто (114 737,70), а в карточке верное брутто
+        // (139 980,00) — перезапись занизила бы платёжку на 25 242,30 ₽.
+        pay.amount != null ? Number(pay.amount) : 0,
+        // $15/$16 — нетто и НДС, вычисленные из суммы по ставке. Применяются,
+        // только если в заявке эти поля не заполнены. Мастера шлют ЯВНЫЕ нули
+        // (recalcVat(0,22) = {vat:0, net:0}), поэтому в SQL стоит
+        // «if $15 is not null then $15 else coalesce($10, ...)»: считаем, что
+        // 0 — это «не заполнено», иначе НДС оставался бы нулевым при ставке 22 %.
+        netFromRate,
+        vatFromRate,
+        // $17 — «данные битые» (НДС ≥ суммы). Тогда НДС не пишем и флаг не ставим:
+        // иначе карточка = «сумма 5 654, НДС 0, has_vat=true» и Doc Hub дорисует
+        // НДС, которого нет.
+        calc.miscalc]
+    );
+
+    // Причины «неполноты» пересчитываются ПО ФАКТУ после переноса. Раньше
+    // снималась только метка «нужен объект», а «нет номера счёта» оставалась
+    // даже когда номер только что перенесли. Читаем фактическое состояние
+    // строки: там может быть проставлено вручную, и это главнее.
+    const row = (await db.query(
+      `SELECT invoice_number, invoice_date, amount_gross, amount_net, vat_amount,
+              work_id, spend_kind,
+              COALESCE(purpose_asgard,false) AS purpose_asgard,
+              COALESCE(purpose_consumables,false) AS purpose_consumables,
+              COALESCE(incomplete_reasons,'{}'::text[]) AS incomplete_reasons
+         FROM doc_registry WHERE id=$1`, [docId])).rows[0];
+    if (!row) return;
+
+    // D-369 (раунд 7): сумму карточки НЕ перезаписываем (см. комментарий в SET).
+    // Но расхождение с заявкой не должно теряться: на #19 в заявке 114 737,70
+    // (нетто из OCR), а в карточке 139 980,00 (брутто из строки «Всего на сумму»).
+    // Молчаливая перезапись занизила бы платёжку на 25 242,30 ₽. Вместо этого
+    // помечаем строку причиной amount_mismatch — бухгалтер сверит и решит.
+    const payAmount = Number(pay.amount);
+    const docAmount = Number(row.amount_gross);
+    const mismatch = Number.isFinite(payAmount) && payAmount > 0
+      && Number.isFinite(docAmount) && docAmount > 0
+      && Math.abs(payAmount - docAmount) >= 0.02;
+
+    const effKind = spendKind || row.spend_kind || 'other';
+    // Единая функция: та же, что в ветке создания. Раньше здесь была КОПИЯ
+    // условий — два источника правды, которые неизбежно расходятся (именно так
+    // возник дефект с ложной меткой).
+    const reasons = computeInvoiceReasons(
+      { invoice_number: row.invoice_number, invoice_date: row.invoice_date,
+        amount: row.amount_gross, work_id: row.work_id }, effKind);
+
+    // D-369 (раунд 10): проверяем, что в САМОЙ карточке сумма сходится с net+vat.
+    // На #14 было: брутто 5 654 при НДС 98 278,68 (в 17 раз больше суммы).
+    // Отдельно ловим «отравленный» случай gross > 0, а net = 0 и vat = 0:
+    // раньше условие требовало cn > 0, поэтому такая строка молчала — сумма
+    // есть, ставка 22 %, а НДС к вычету не выделен.
+    const cg = Number(row.amount_gross), cn = Number(row.amount_net) || 0, cv = Number(row.vat_amount) || 0;
+    const cardMismatch = Number.isFinite(cg) && cg > 0
+      && Math.abs(cg - (cn + cv)) >= 0.02;
+    if (cardMismatch && !reasons.includes('amount_mismatch')) reasons.push('amount_mismatch');
+
+    // purpose_* — явное назначение расхода: объект для них не нужен.
+    const filtered = reasons.filter((r) => !(r === 'no_work_for_expense'
+      && (row.purpose_asgard || row.purpose_consumables)));
+
+    // Причины, которые ставит не этот код (ошибки разбора, кривой контрагент,
+    // ручные пометки), не теряем — убираем только те, что пересчитали сами.
+    const OWNED = ['no_invoice_number', 'no_invoice_date', 'no_amount', 'no_work_for_expense',
+      'amount_mismatch'];
+    const foreign = (row.incomplete_reasons || []).filter((r) => !OWNED.includes(r));
+    // Расхождение суммы с заявкой — повод сверить, а не «ошибка». Ставим метку,
+    // чтобы разница была видна в реестре, а не всплыла в платёжке.
+    if (mismatch) filtered.push('amount_mismatch');
+    const all = [...new Set([...foreign, ...filtered])];
+
+    await db.query(
+      `UPDATE doc_registry SET incomplete_reasons=$2::text[], is_incomplete=$3, updated_at=NOW()
+        WHERE id=$1`, [docId, all, all.length > 0]);
+  } catch (e) {
+    console.error('[payment-mail] applyInvoiceFields failed:', e.message);
   }
 }
 
@@ -707,6 +1191,7 @@ module.exports = {
   applyDecision,
   applyBatchDecision,
   ensureRegistryDoc,
+  applyInvoiceFields,
   landingMessageHtml,
   landingActionHtml,
   landingBatchActionHtml,

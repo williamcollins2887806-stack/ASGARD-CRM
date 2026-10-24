@@ -16,9 +16,45 @@ const { normalizeUploadUrl, uploadFsPath } = require('../utils/upload-url');
 const { enrichCatalogFromLines } = require('../services/catalog-from-invoice');
 
 const DIR_ROLES = ['ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV'];
-const CREATE_ROLES = ['PROC', 'ADMIN', 'PM', 'HEAD_PM', 'HEAD_TO', 'TO', ...DIR_ROLES];
+// D-369 (23.10.2026): заказчик попросил «Мои заявки» на мобильном ДЛЯ ВСЕХ
+// ролей, у кого страница есть на десктопе. Проверка на проде показала: эти роли
+// получали 403 на каждом шаге мастера (создание черновика, отправка, скан) —
+// кнопка «Загрузить счёт» у офис-менеджера всегда давала «Недостаточно прав»,
+// хотя живые счета в базе у неё есть (заводила через Doc Hub).
+// Правило: кто видит раздел «Мои заявки» — тот может подать счёт.
+// WAREHOUSE добавлен: склад закупает расходники и обязан уметь это с телефона.
+const CREATE_ROLES = ['PROC', 'ADMIN', 'PM', 'HEAD_PM', 'HEAD_TO', 'TO',
+  'OFFICE_MANAGER', 'WAREHOUSE', 'BUH', ...DIR_ROLES];
 const BUH_ROLES = ['BUH', 'ADMIN'];
-const FILE_ROLES = [...new Set([...DIR_ROLES, ...BUH_ROLES, 'PROC', 'PM', 'HEAD_PM', 'HEAD_TO', 'TO'])];
+// Роли, которым доступен файл счёта. OFFICE_MANAGER и WAREHOUSE добавлены по той
+// же причине: иначе человек не может открыть скан СВОЕГО ЖЕ счёта (403).
+const FILE_ROLES = [...new Set([...DIR_ROLES, ...BUH_ROLES, 'PROC', 'PM', 'HEAD_PM', 'HEAD_TO', 'TO',
+  'OFFICE_MANAGER', 'WAREHOUSE'])];
+
+/**
+ * D-369: допустимые ставки НДС по НК РФ.
+ *
+ * Вынесено из обработчика в общий хелпер, потому что проверка нужна в НЕСКОЛЬКИХ
+ * местах. В первой версии она стояла только в `PATCH /:id`, и `POST /` с
+ * `vat_rate=12345` отдавал 500 («внутренняя ошибка») вместо понятного 400:
+ * колонка `numeric(6,2)`, значение не влезало, а пользователь не понимал, что
+ * не так. Любой импорт со ставкой 18 % (старые бумаги) попадал в ту же яму.
+ *
+ * @returns {object|null} тело ошибки для 400 или null, если ставка допустима
+ */
+const VALID_VAT_RATES = [0, 5, 7, 10, 20, 22];
+function validateVatRate(v) {
+  if (v === undefined || v === null || v === '') return null; // «без НДС» — законно
+  const n = Number(v);
+  if (!Number.isFinite(n) || !VALID_VAT_RATES.includes(n)) {
+    return {
+      error: 'Недопустимая ставка НДС',
+      hint: 'Разрешены: 0, 5, 7, 10, 20, 22 (или пусто — без НДС)',
+      allowed: VALID_VAT_RATES
+    };
+  }
+  return null;
+}
 
 function num(v) {
   const n = parseFloat(v);
@@ -298,52 +334,21 @@ async function routes(fastify) {
    * Раньше бэк был, а списка для инициатора НЕ было — он не знал результата.
    */
   fastify.get('/my', { preHandler: [fastify.authenticate] }, async (req) => {
-    const r = String(req.user.role || '');
-    const isPriv = ['ADMIN', 'BUH', 'PROC', 'HEAD_PM', 'HEAD_TO'].includes(r) || /^DIRECTOR/.test(r);
-    // Привилегированные видят все (им нужна сводка), остальные — только свои.
-    const all = String((req.query && req.query.all) || '') === '1' && isPriv;
-    const params = [];
-    let where = '';
-    if (!all) { params.push(req.user.id); where = ` WHERE pi.created_by = $1`; }
-    const { rows } = await db.query(
-      `SELECT pi.id, pi.supplier_name, pi.amount, pi.status, pi.payment_status, pi.pay_timing,
-              pi.due_date, pi.created_at, pi.updated_at, pi.invoice_number, pi.invoice_date,
-              pi.basis_text, pi.file_path, pi.file_name, pi.doc_registry_id,
-              pi.contract_basis_number, pi.contract_missing, pi.work_hint, pi.vat_amount, pi.vat_rate, pi.amount_net,
-              pi.initiator_intent, pi.pp_number, pi.payee_requisites,
-              pi.approval_expires_at, pi.dir_approved_at, pi.buh_acted_at,
-              pi.batch_id,
-              u.name AS initiator_name,
-              d.work_id AS registry_work_id, w.work_title AS work_title,
-              (SELECT count(*)::int FROM price_records pr WHERE pr.doc_registry_id = pi.doc_registry_id) AS lines_count
-         FROM payment_invoices pi
-         LEFT JOIN users u ON u.id = pi.created_by
-         LEFT JOIN doc_registry d ON d.id = pi.doc_registry_id
-         LEFT JOIN works w ON w.id = d.work_id
-         ${where}
-        ORDER BY
-          CASE pi.status WHEN 'awaiting_dir' THEN 0 WHEN 'pending_payment' THEN 1
-                         WHEN 'rejected' THEN 2 WHEN 'paid' THEN 3 ELSE 4 END,
-          pi.id DESC
-        LIMIT 200`, params);
-    // Человеческий статус для карточки инициатора.
-    const stage = (x) => {
-      if (x.status === 'awaiting_dir') return { code: 'dir', label: 'У директора', cls: 'warn' };
-      if (x.status === 'rejected') return { code: 'rejected', label: 'Возвращён', cls: 'err' };
-      if (x.status === 'expired' || x.status === 'archived') return { code: 'expired', label: 'В архиве (не согласован)', cls: 'muted' };
-      if (x.payment_status === 'paid' || x.status === 'paid') return { code: 'paid', label: 'Оплачен', cls: 'ok' };
-      if (x.status === 'pending_payment') return { code: 'buh', label: 'У бухгалтерии', cls: 'info' };
-      return { code: 'other', label: x.status || '—', cls: 'muted' };
-    };
+    // D-369 (23.10.2026): тело вынесено в services/my-invoices.js — тот же код
+    // использует мобильный эндпоинт /api/my-requests. Иначе десктоп и телефон
+    // разъедутся при любой правке фильтра или нового поля.
+    const { myInvoices } = require('../services/my-invoices');
+    const all = String((req.query && req.query.all) || '') === '1';
+    const res = await myInvoices(db, req.user, { all });
+    // D-369 (дефект, найденный верификатором): сервис отдаёт «сырые» строки,
+    // а десктоп ждёт вычисляемые поля от decoratePayment — has_file, file_url,
+    // status_label. Без них на десктопе пропали кнопка «Скачать счёт» и подпись
+    // статуса (procurement-page.js:1878, :498, :570-582).
     return {
-      items: rows.map((x) => ({
-        ...decoratePayment(x),
-        stage: stage(x),
-        work_title: x.work_title || null,
-        lines_count: x.lines_count || 0,
-        is_mine: Number(x.created_by) === Number(req.user.id)
-      })),
-      total: rows.length
+      items: res.items.map((x) => decoratePayment(x)),
+      total: res.total,
+      kpi: res.kpi,
+      scope: res.scope
     };
   });
 
@@ -352,11 +357,20 @@ async function routes(fastify) {
   // «preview» за id (роут '/:id' перехватывает и отдаёт 404 «не найдено»).
   // ═══════════════════════════════════════════════════════════════════════════
   fastify.get('/preview/:id', async (req, reply) => {
-    // Авторизация: заголовок ИЛИ ?token (для <img src>, который не шлёт заголовки).
+    // D-370: авторизация ДВУМЯ способами — заголовок ИЛИ `?token`.
+    //
+    // Раньше работал только `?token`: у роута нет `preHandler: [authenticate]`,
+    // поэтому `req.user` всегда пуст, и запрос с обычным `Authorization:
+    // Bearer ...` получал 401. Мобильный просмотрщик подставляет токен в URL и
+    // потому работал, а любой код, который шлёт заголовок (десктоп, тесты,
+    // fetch из скрипта), — нет.
     let user = req.user;
     if (!user) {
+      const hdr = String(req.headers.authorization || '');
+      const bearer = hdr.startsWith('Bearer ') ? hdr.slice(7).trim() : '';
       const qt = String((req.query && req.query.token) || '');
-      if (qt) { try { user = fastify.jwt.verify(qt); } catch (_) { user = null; } }
+      const raw = bearer || qt;
+      if (raw) { try { user = fastify.jwt.verify(raw); } catch (_) { user = null; } }
     }
     if (!user) return reply.code(401).send({ error: 'Token required' });
     if (!FILE_ROLES.includes(user.role)) return reply.code(403).send({ error: 'Нет доступа' });
@@ -450,6 +464,58 @@ async function routes(fastify) {
    * либо список кандидатов с оценкой. Это гарантирует, что ручной выбор и
    * автопривязка видят ОДНИ и те же варианты.
    */
+  /**
+   * D-369 (23.10.2026): поиск договора-основания для счёта.
+   *
+   * ЗАЧЕМ ОТДЕЛЬНЫЙ ЭНДПОИНТ. Десктоп (`procurement-batch.js:874`) и мобилка
+   * звали `/api/contracts?limit=300` — такого роута НЕТ (проверено: 404
+   * «Endpoint не найден»), договоры живут в таблице `contracts` и доступны
+   * только через `/api/data/contracts`, который открыт не всем ролям. Поэтому:
+   *   • на десктопе подпись «Проверяем по реестру договоров» висела вечно,
+   *     а договор к счёту не привязывался;
+   *   • на мобилке поле договора было мёртвым, ошибка проглатывалась в catch.
+   *
+   * Здесь тот же поиск, но под авторизацией счёта и без лишних прав на data-API:
+   * ищем по номеру или контрагенту, отдаём `contract_id` для PATCH.
+   *
+   * ПОРЯДОК РЕГИСТРАЦИИ: этот роут объявлен ПОСЛЕ `/:id` (строка 381), и это
+   * работает только потому, что fastify/find-my-way отдаёт приоритет статическому
+   * сегменту над параметром. Если роутер когда-нибудь поменяют на «первый совпал»,
+   * поиск договоров сломается. Безопаснее держать его выше `/:id`.
+   */
+  fastify.get('/contract-search', { preHandler: [fastify.authenticate] }, async (req) => {
+    const q = String((req.query && req.query.q) || '').trim();
+    const limit = Math.min(Math.max(parseInt((req.query && req.query.limit), 10) || 8, 1), 30);
+    if (q.length < 2) return { items: [], reason: 'short_query' };
+    try {
+      const { rows } = await db.query(
+        `SELECT id, number, counterparty_name, subject,
+                COALESCE(signed_date, start_date) AS contract_date,
+                amount, status
+           FROM contracts
+          WHERE COALESCE(TRIM(number), '') <> ''
+            AND (number ILIKE $1 OR counterparty_name ILIKE $1 OR COALESCE(subject,'') ILIKE $1)
+          ORDER BY COALESCE(signed_date, start_date) DESC NULLS LAST, id DESC
+          LIMIT $2`,
+        ['%' + q + '%', limit]
+      );
+      return {
+        items: rows.map((c) => ({
+          id: c.id,
+          number: c.number,
+          counterparty_name: c.counterparty_name || null,
+          subject: c.subject || null,
+          contract_date: c.contract_date || null,
+          amount: c.amount != null ? Number(c.amount) : null,
+          status: c.status || null
+        }))
+      };
+    } catch (e) {
+      // Таблицы может не быть на старых стендах — не роняем мастер.
+      return { items: [], reason: 'db_error', detail: e && e.message };
+    }
+  });
+
   fastify.get('/work-search', { preHandler: [fastify.authenticate] }, async (req) => {
     const q = String((req.query && req.query.q) || '').trim();
     const hint = String((req.query && req.query.hint) || '').trim();
@@ -708,6 +774,11 @@ async function routes(fastify) {
     }
     const lines = Array.isArray(b.line_items) ? b.line_items : [];
     const sum = amount > 0 ? amount : lines.reduce((s, l) => s + num(l.unit_price) * num(l.qty || l.quantity || 1), 0);
+    // D-369: та же проверка ставки, что в PATCH. POST с vat_rate=18 отдавал
+    // 500 от numeric-overflow — импорты и интеграции получали «внутреннюю
+    // ошибку» вместо понятного «ставка должна быть 0/5/7/10/20/22».
+    const vatErr = validateVatRate(b.vat_rate);
+    if (vatErr) return reply.code(400).send(vatErr);
     const timing = b.pay_timing === 'deferred' ? 'deferred' : 'immediate';
     // V404: автоподбор договора-основания из реестра + объект/работа.
     // Заказчик: «договора в счёте нет в CRM — как подсветится?» → помечаем
@@ -730,11 +801,17 @@ async function routes(fastify) {
          status, supplier_name, supplier_id, amount, due_date, file_path, file_name,
          basis_type, basis_text, work_id, contract_id, line_items_json, requires_payment, created_by, pay_timing,
          contract_basis_number, contract_missing, work_hint, invoice_number, invoice_date,
+         spend_kind, sf_due_at, service_done_at, sf_basis,
+         counterparty_inn, comment_text,
+         vat_amount, vat_rate, amount_net,
          draft_updated_at
        ) VALUES(
          'draft', $1, $2, $3, $4, $5, $6,
          $7, $8, $9, $10, $11::jsonb, true, $12, $13,
          $14, $15, $16, $17, $18,
+         $19, $20::date, $21::date, $22,
+         $23, $24,
+         $25::numeric, $26::numeric, $27::numeric,
          NOW()
        ) RETURNING *`,
       [
@@ -755,7 +832,21 @@ async function routes(fastify) {
         contractMissing,
         b.work_hint || null,
         b.invoice_number || null,
-        b.invoice_date || null
+        b.invoice_date || null,
+        // D-368: вид расхода и условия закрывающих. Валидируем белым списком —
+        // CHECK-констрейнт иначе отклонит вставку.
+        ['work', 'warehouse', 'office', 'other'].includes(String(b.spend_kind || '')) ? b.spend_kind : null,
+        b.sf_due_at || null,
+        b.service_done_at || null,
+        ['invoice', 'service'].includes(String(b.sf_basis || '')) ? b.sf_basis : null,
+        b.counterparty_inn || null,
+        b.comment_text || null,
+        // D-369: НДС сохраняем уже при создании черновика. Раньше INSERT его не
+        // принимал — если пользователь закрывал шторку между POST и PATCH (или
+        // PATCH падал по сети), НДС терялся навсегда и счёт уходил с НДС 0.
+        b.vat_amount != null ? Number(b.vat_amount) : null,
+        b.vat_rate != null ? Number(b.vat_rate) : null,
+        b.amount_net != null ? Number(b.amount_net) : null
       ]
     );
     const pay = rows[0];
@@ -763,7 +854,19 @@ async function routes(fastify) {
     // отправляет заявку — должен добавить поставщика, если такого нет».
     // Если поставщик не выбран из справочника, а имя/ИНН есть — находим или
     // заводим карточку сразу, иначе в платёжке не будет реквизитов.
-    if (!pay.supplier_id) {
+    //
+    // D-370 (найдено на сквозном прогоне). При потоковой загрузке сюда
+    // приходит заглушка `supplier_name = 'Распознаётся…'` и пустой ИНН.
+    // Раньше из неё заводилась НАСТОЯЩАЯ карточка поставщика «Распознаётся…»
+    // (id=28 на стенде), после чего ВСЕ счета с неустановленным контрагентом
+    // привязывались к ней: в платёжке оказывались реквизиты чужого поставщика,
+    // а поля ИНН/КПП оставались пустыми. Распознавание потом заполняло имя,
+    // но `supplier_id` уже указывал на мусорную карточку.
+    //
+    // Поэтому заглушку и пустой ИНН в справочник не пускаем: поставщика
+    // заведёт распознавание (recognizeAndFill) или сама отправка.
+    const isStubSupplier = !b.supplier_name || b.supplier_name === 'Распознаётся…';
+    if (!pay.supplier_id && !isStubSupplier && (b.supplier_name || b.counterparty_inn)) {
       try {
         const { ensureSupplier } = require('../services/supplier-resolve');
         const dcOwn = require('../services/doc-classifier');
@@ -915,6 +1018,14 @@ async function routes(fastify) {
       patch.push(`${col}=$${vals.length}${cast || ''}`);
     };
     if (isStub && parsed.counterparty_name) setIf('supplier_name', parsed.counterparty_name);
+    // D-370: ИНН распознаётся (parsed.inn), но в карточку не попадал — поле
+    // оставалось пустым, и бухгалтерия не видела реквизит в заявке.
+    // Раньше ИНН жил только в `suppliers`, куда его писала ensureSupplier.
+    // Условие через `!pay.counterparty_inn` недостаточно: после POST там может
+    // лежать пустая строка, и `!''` === true даёт запись, а вот проверка
+    // `pay.counterparty_inn` в других местах ведёт себя иначе. Сравниваем строго.
+    const curInn = String(pay.counterparty_inn || '').trim();
+    if (!curInn && parsed.inn) setIf('counterparty_inn', String(parsed.inn));
     if (!(Number(pay.amount) > 0) && parsed.amount_gross != null) setIf('amount', parsed.amount_gross, '::numeric');
     if (!pay.invoice_number && parsed.invoice_number) setIf('invoice_number', parsed.invoice_number);
     if (!pay.invoice_date && parsed.invoice_date) setIf('invoice_date', parsed.invoice_date, '::date');
@@ -936,7 +1047,18 @@ async function routes(fastify) {
       try {
         const { ensureSupplier } = require('../services/supplier-resolve');
         const sup = await ensureSupplier(db, parsed, { ownInn: ownInnStr, createdBy: pay.created_by });
-        if (sup.id && !pay.supplier_id) setIf('supplier_id', sup.id, '::int');
+        // D-370: перепривязываем и тогда, когда стоит МУСОРНАЯ карточка
+        // «Распознаётся…» (раньше её заводил POST /). Без этого счёт навсегда
+        // оставался с поставщиком-заглушкой и без реквизитов в платёжке.
+        let stale = false;
+        if (pay.supplier_id) {
+          const cur = await db.query('SELECT name, inn FROM suppliers WHERE id=$1', [pay.supplier_id]).catch(() => ({ rows: [] }));
+          const cn = cur.rows[0];
+          stale = !!cn && (!cn.inn && (!cn.name || cn.name === 'Распознаётся…'));
+        }
+        if (sup.id && (!pay.supplier_id || (stale && sup.id !== pay.supplier_id))) {
+          setIf('supplier_id', sup.id, '::int');
+        }
         if (sup.created) log?.info?.(`[recognize] #${paymentId}: заведён поставщик #${sup.id} «${parsed.counterparty_name}»`);
       } catch (e) {
         log?.warn?.('[payment-invoices] ensureSupplier: ' + (e && e.message));
@@ -1050,32 +1172,28 @@ async function routes(fastify) {
         `UPDATE payment_invoices
             SET status='awaiting_dir', submitted_at=NOW(), updated_at=NOW()
           WHERE id=$1 AND status='draft'`, [pay.id]);
-      // D-341 (заказчик 22.10.2026): «работу пусть проставит инициатор,
-      // ответственный за доки — либо работу, либо другой тип расхода».
-      // Раньше флаг `no_work_for_expense` появлялся только ПОСЛЕ оплаты
-      // (в autoWorkExpense), то есть когда деньги уже ушли. Теперь он ставится
-      // в момент отправки на согласование — инициатор видит синюю строку в реестре
-      // и успевает дозаполнить объект или сменить тип расхода до оплаты.
-      // Офисные/складские и с явным назначением (purpose_*) не трогаем: им объект
-      // не нужен по определению.
+      // D-341 / D-369 (23.10.2026): переносим вид расхода, сроки и метку
+      // «не хватает данных» из заявки в строку реестра.
+      //
+      // Раньше здесь было ДВА независимых блока (флаг и перенос), и они
+      // расходились с `ensureRegistryDoc` — тот писал `'other'` литералом.
+      // Теперь вся логика в одной функции `applyInvoiceFields`, которую
+      // вызывает и согласование директором. Один код — одно поведение.
+      //
+      // Правило объекта: метка `no_work_for_expense` нужна только расходам по
+      // РАБОТАМ без объекта. Складу и «прочему» объект не нужен — раньше они
+      // получали ложное требование «выберите объект», что расходилось со штатным
+      // `calcIncomplete` (doc-registry.js:180-183).
       try {
-        await db.query(
-          `UPDATE doc_registry d
-              SET is_incomplete = true,
-                  incomplete_reasons = (SELECT array_agg(DISTINCT x) FROM unnest(
-                    COALESCE(d.incomplete_reasons,'{}'::text[]) || ARRAY['no_work_for_expense']) AS x),
-                  updated_at = NOW()
-            WHERE d.deleted_at IS NULL
-              AND d.dir = 'in'
-              AND d.work_id IS NULL
-              AND COALESCE(d.purpose_asgard,false) = false
-              AND COALESCE(d.purpose_consumables,false) = false
-              AND COALESCE(d.spend_kind,'') <> 'office'
-              AND (d.id = $1 OR d.payment_invoice_id = $2)`,
-          [pay.doc_registry_id || null, pay.id]
-        );
+        const { applyInvoiceFields } = require('../services/payment-mail');
+        const docId = pay.doc_registry_id || (await db.query(
+          `SELECT id FROM doc_registry WHERE payment_invoice_id=$1 AND deleted_at IS NULL LIMIT 1`, [pay.id]
+        )).rows[0]?.id || null;
+        // Если строки реестра ещё нет (обычный черновик из мастера) — она
+        // появится только после согласования, и там поля заберутся из заявки.
+        if (docId) await applyInvoiceFields(db, pay, docId);
       } catch (e) {
-        fastify.log.warn('[payment-invoices] флаг no_work_for_expense: ' + (e && e.message));
+        fastify.log.warn('[payment-invoices] перенос spend_kind/сроков: ' + (e && e.message));
       }
       try { await stampExpiry(db, pay.id); } catch (_) { /* не критично */ }
       // D-317: расписание эскалации — первое напоминание через 12 ч без решения.
@@ -1158,12 +1276,35 @@ async function routes(fastify) {
     const FIELDS = ['amount', 'supplier_name', 'supplier_id', 'invoice_number', 'invoice_date',
       'due_date', 'vat_amount', 'vat_rate', 'amount_net', 'basis_type', 'basis_text',
       'contract_basis_number', 'work_id', 'work_hint', 'pay_timing', 'comment_text',
-      'file_path', 'file_name', 'contract_id'];    const sets = [];
+      'file_path', 'file_name', 'contract_id',
+      // D-368 (23.10.2026): поля, которые модалка уже рисовала, но не сохраняла.
+      // Вид расхода критичен: без него офисный счёт не попадал в реестр офисных
+      // расходов, а проектный — не привязывался к объекту (спенд-категория
+      // определяла, куда именно упадёт расход). Сроки и основание СФ нужны
+      // бухгалтерии для планирования закрывающих.
+      'spend_kind', 'sf_due_at', 'service_done_at', 'sf_basis',
+      // D-369: ИНН — введённое в мастере раньше терялось (колонки не было).
+      // `comment_text` уже есть в списке выше — второй раз добавлять нельзя:
+      // PostgreSQL падает с 42601 «multiple assignments to same column».
+      'counterparty_inn'];
+    const sets = [];
     const params = [];
+    // D-369 (найдено верификатором): ставки вне НК РФ отбивались 500 от
+    // numeric-overflow, а не понятной 400. Колонка numeric(6,2), API открыт —
+    // любой клиент или импорт мог прислать 12345 и получить «server_error».
+    const vatErr = validateVatRate(b.vat_rate);
+    if (vatErr) return reply.code(400).send(vatErr);
     for (const k of FIELDS) {
       if (b[k] === undefined) continue;
+      // Белый список видов расхода: мусорное значение сломало бы CHECK-констрейнт.
+      if (k === 'spend_kind' && b[k] != null && !['work', 'warehouse', 'office', 'other'].includes(String(b[k]))) {
+        continue;
+      }
+      if (k === 'sf_basis' && b[k] != null && !['invoice', 'service'].includes(String(b[k]))) {
+        continue;
+      }
       params.push(b[k]);
-      const cast = (k === 'invoice_date' || k === 'due_date') ? '::date'
+      const cast = (k === 'invoice_date' || k === 'due_date' || k === 'sf_due_at' || k === 'service_done_at') ? '::date'
         : (k === 'amount' || k === 'vat_amount' || k === 'vat_rate' || k === 'amount_net') ? '::numeric'
           : (k === 'supplier_id' || k === 'work_id' || k === 'contract_id') ? '::int' : '';
       sets.push(`${k}=$${params.length}${cast}`);

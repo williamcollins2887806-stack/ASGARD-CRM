@@ -638,6 +638,21 @@ window.AsgardPaymentBatch = (function () {
         if (!it.fields) it.fields = {};
         it.fields[k] = inp.type === 'number' ? (parseFloat(inp.value) || 0) : inp.value;
         S.dirty = true;
+        // D-369 (раунд 14): при правке СУММЫ пересчитываем нетто/НДС, если ставка
+        // уже выбрана. Иначе «ввёл 1000 → нажал 22 % → исправил на 500» оставляло
+        // net/vat от 1000, и в реестр уходила карточка «нетто 819,67 при сумме 500»:
+        // нетто больше брутто, числа не сходятся ни в карточке, ни в платёжке.
+        if (k === 'amount' && it.fields.vat_rate != null) {
+          const g = Number(it.fields.amount) || 0;
+          const r = Number(it.fields.vat_rate);
+          if (g > 0 && r >= 0) {
+            const v = Math.round(g * r / (100 + r) * 100) / 100;
+            it.fields.vat_amount = v;
+            it.fields.amount_net = Math.round((g - v) * 100) / 100;
+            const vInp = work.querySelector('[data-f="vat_amount"]');
+            if (vInp) vInp.value = it.fields.vat_amount;
+          }
+        }
         // Пересчёт сумм на месте, без перерисовки (чтобы не терять фокус).
         if (k === 'amount' || k === 'vat_amount') updateMoneyDom(work, it);
       });
@@ -871,12 +886,16 @@ window.AsgardPaymentBatch = (function () {
     try {
       // Ищем договор по номеру у выбранного поставщика (или вообще, если
       // поставщик ещё не выбран — тогда только подтверждаем существование).
-      const res = await api('/api/contracts?limit=300');
+      // D-370: идём на РЕАЛЬНЫЙ эндпоинт. Раньше здесь был `/api/contracts`,
+      // которого не существует (404) — ошибка глоталась, и подпись «Проверяем
+      // по реестру договоров» висела вечно, а договор к счёту не привязывался.
+      const res = await api('/api/payment-invoices/contract-search?q=' + encodeURIComponent(num) + '&limit=20');
       const list = Array.isArray(res) ? res : (res.items || []);
       const cpName = String(f.supplier_name || '').toLowerCase().trim();
       const norm = (s) => String(s || '').toLowerCase().replace(/\s+/g, '');
       const hit = list.find((c) => norm(c.number) === norm(num)
-        && (!cpName || norm(c.counterparty_name || c.customer_name || '').includes(norm(cpName).slice(0, 12))));
+        && (!cpName || norm(c.counterparty_name || c.customer_name || '').includes(norm(cpName).slice(0, 12))))
+        || list.find((c) => norm(c.number) === norm(num));
       if (hit) {
         it.contractFound = true;
         it.fields.contract_id = hit.id;
@@ -892,7 +911,10 @@ window.AsgardPaymentBatch = (function () {
   async function pickContract(it) {
     // Используем штатный реестр договоров CRM (тот же, что в Doc Hub).
     try {
-      const res = await api('/api/contracts?limit=300');
+      // D-370: тот же реальный эндпоинт. Пустой `q` не принимается сервером
+      // (там минимум 2 символа), поэтому ищем по началу названия контрагента.
+      const seed = String((it.fields && it.fields.supplier_name) || '').trim().slice(0, 24) || 'ДП';
+      const res = await api('/api/payment-invoices/contract-search?q=' + encodeURIComponent(seed) + '&limit=50');
       const list = Array.isArray(res) ? res : (res.items || []);
       const cpName = String((it.fields && it.fields.supplier_name) || '').toLowerCase();
       const mine = cpName
@@ -1074,7 +1096,18 @@ window.AsgardPaymentBatch = (function () {
         work_id: d.work_id || null,
         work_label: d.work_hint || (d.work_id ? '#' + d.work_id : ''),
         pay_timing: d.pay_timing || 'immediate',
-        spend_kind: d.work_id ? 'work' : (d.basis_type === 'other' ? 'other' : 'work')
+        // D-369 (дефект найден верификатором): вид расхода УГАДЫВАЛСЯ по work_id
+        // и basis_type. Сотрудник заполнял «Офис/АХО» с телефона, открывал тот же
+        // черновик на компьютере, нажимал «Сохранить» — и вид расхода молча
+        // превращался в «работы»/«прочее». Теперь берём реальное значение.
+        spend_kind: d.spend_kind
+          || (d.work_id ? 'work' : (d.basis_type === 'other' ? 'other' : 'work')),
+        // Остальные поля, которые мобилка уже заполняет, а десктоп не
+        // восстанавливал: пересохранение обнуляло их (тот же класс дефекта).
+        sf_due_at: d.sf_due_at ? String(d.sf_due_at).slice(0, 10) : '',
+        service_done_at: d.service_done_at ? String(d.service_done_at).slice(0, 10) : '',
+        sf_basis: d.sf_basis || 'invoice',
+        comment_text: d.comment_text || ''
       };
       const exists = S.items.some((x) => Number(x.invoiceId) === Number(id));
       if (!exists) {
@@ -1222,7 +1255,17 @@ window.AsgardPaymentBatch = (function () {
       // work_hint — человекочитаемая подсказка: нужна, если work_id не выбран.
       work_hint: f.work_id ? (f.work_label || null) : (f.work_hint || null),
       pay_timing: f.pay_timing || 'immediate',
-      comment_text: f.comment_text || null
+      comment_text: f.comment_text || null,
+      // D-368 (23.10.2026): ЭТИ ПОЛЯ РАНЬШЕ ТЕРЯЛИСЬ.
+      // Пользователь выбирал «Офис / АХО», а до сервера вид расхода не доезжал:
+      // в реестр счёт падал как «работы». Офисный расход не попадал в свой
+      // реестр, а проектный привязывался не туда. Сроки и основание СФ тоже
+      // нужны бухгалтерии, чтобы планировать закрывающие документы.
+      spend_kind: ['work', 'warehouse', 'office', 'other'].includes(String(f.spend_kind || ''))
+        ? f.spend_kind : null,
+      sf_due_at: f.sf_due_at || null,
+      service_done_at: f.service_done_at || null,
+      sf_basis: ['invoice', 'service'].includes(String(f.sf_basis || '')) ? f.sf_basis : null
     };
   }
 

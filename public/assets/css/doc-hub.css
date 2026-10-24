@@ -599,7 +599,7 @@ a:hover { text-decoration: underline; }
   background: color-mix(in srgb, var(--red) 85%, #000);
   color: #fff; border-color: transparent;
 }
-.dh-btn--danger:hover { background: var(--red); }
+.dh-btn--danger:hover { background: var(--bsys-danger-2); }
 
 /* ═══ V394: условия оплаты в карточке ═══ */
 .dh-check { display: flex; align-items: center; gap: 8px; font-size: 13px; cursor: pointer; }

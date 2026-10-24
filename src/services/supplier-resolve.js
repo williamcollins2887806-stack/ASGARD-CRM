@@ -88,6 +88,13 @@ async function ensureSupplier(db, parsed, opts) {
   // Наш ИНН поставщиком быть не может — иначе рождается «мы сами себе поставщик».
   if (own && inn === own) return { id: null, created: false, reason: 'own_inn' };
   if (!name && !inn) return { id: null, created: false, reason: 'no_data' };
+  // D-370: заглушка потоковой загрузки («Распознаётся…») — НЕ контрагент.
+  // Раньше из неё заводилась настоящая карточка поставщика, и все счета с
+  // неопределённым контрагентом привязывались к ней: в платёжке оказывались
+  // реквизиты чужого поставщика, ИНН/КПП пустые. Ждём распознавания.
+  if (/^распозна[её]тся/i.test(name) || /^ожидает\s+распознавания/i.test(name)) {
+    return { id: null, created: false, reason: 'stub_name' };
+  }
   // Имя — обязательное поле suppliers.name. Без него карточку не заводим:
   // безымянный поставщик хуже, чем «не сопоставлен».
   if (!name) return { id: null, created: false, reason: 'no_name' };
