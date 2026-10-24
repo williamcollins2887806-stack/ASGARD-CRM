@@ -363,6 +363,11 @@ export default function DirectorApprovals() {
       haptic.success();
       await api.post(`/payment-invoices/${id}/dir-approve`, {
         ...(payTiming ? { pay_timing: payTiming } : {}),
+        // D-378: на мобильном выбор способа оплаты пока не выводится, но
+        // отправлять надо ОСОЗНАННО, а не полагаться на серверный дефолт.
+        // 'regular' — явный выбор «с расчётного счёта»; директор увидит счёт
+        // в реестре и сможет переключить на ОБС (права позволяют).
+        payment_source: 'regular',
       });
       setInvoices((p) => p.filter((x) => x.id !== id));
     } catch (e) {

@@ -91,7 +91,9 @@ const TARGETS = [
   'V432__approval_escalation',                  // эскалация согласований (D-317, чужая сессия)
   'V433__recalc_no_work_for_expense',           // пересчёт «нет работ» для расходов (чужая сессия)
   'V434__ai_error_classes',                     // классы ошибок ИИ (чужая сессия)
-  'V435__equipment_requests_schema_align'       // D-340: схема equipment_requests = прод
+  'V435__equipment_requests_schema_align',       // D-340: схема equipment_requests = прод
+  'V436__close_director_review_on_terminal',     // D-344: снятие согласования при закрытии тендера
+  'V437__obs_payment'                            // D-378: способ оплаты и письмо для ОБС
 ];
 
 /**

@@ -1066,7 +1066,9 @@ window.AsgardApprovalPaymentPage = (function() {
         if (srcHint) {
           srcHint.textContent = 'Выберите, как платим: с расчётного счёта или через ОБС.';
           srcHint.style.opacity = '1';
-          srcHint.style.color = 'var(--bsys-danger-1, #C8293B)';
+          // D-378: цвет только токеном, без хардкод-фолбэка. Если токен
+          // не объявлен — останется цвет по умолчанию, а не чужой красный.
+          srcHint.classList.add('proc-pay-hint--err');
         }
         modalRoot.querySelectorAll('#dir-source .proc-pay-timing__opt').forEach(x => {
           x.classList.add('proc-pay-need');

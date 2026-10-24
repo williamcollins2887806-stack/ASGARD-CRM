@@ -31,6 +31,10 @@ const GUARDS = [
   ['tools/verify_m_bundle_integrity.js', 'M_BUNDLE_INTEGRITY_OK'],
   // D-312: LogMonitor видит ошибки приложения, а не только systemd
   ['tests/log-monitor-sight.test.js', 'LOG_MONITOR_SIGHT_OK'],
+  // D-378: письмо для ОБС — суммы прописью, ставка НДС, единицы услуг.
+  // Документ уходит внешнему контрагенту, поэтому проверка обязана быть в
+  // общем прогоне, а не запускаться вручную (дефект от верификатора 25.10).
+  ['tests/obs-letter.test.js', 'ИТОГ письма ОБС: PASS'],
 ];
 
 let failed = 0;
