@@ -339,6 +339,20 @@ async function approverEmails(db) {
       try { v = JSON.parse(v); } catch (_) {}
       if (typeof v === 'string') v = v.split(/[,\s;]+/);
       if (Array.isArray(v)) for (const e of v) if (e) out.add(String(e).toLowerCase().trim());
+    } else {
+      // D-377 (заказчик 24.10.2026): «добавь, чтобы Сторожев тоже согласовывал
+      // счета». Раньше настройки `doc_approver_emails` на проде не было, и
+      // список состоял только из одного адреса (`doc_approver_user_id` = 3456,
+      // Гажилиев). Письма Сторожева приходили, но `handleApprovalReply`
+      // отбрасывал их с reason='sender_not_approver' — поэтому счета висели.
+      //
+      // По умолчанию добавляем всех активных директоров: они и так имеют право
+      // согласовывать (`DIR_ROLES`), а адрес берём из карточки пользователя.
+      // Явная настройка выше имеет приоритет — если её задали, фолбэк не нужен.
+      const dirs = await db.query(
+        `SELECT email FROM users
+          WHERE role LIKE 'DIRECTOR%' AND is_active = true AND COALESCE(email,'') <> ''`);
+      for (const r of dirs.rows) if (r.email) out.add(String(r.email).toLowerCase().trim());
     }
   } catch (_) { /* нет настроек — вернём то, что есть */ }
   // Нормализуем каждый адрес (display-name/скобки) — сравнение точное.
