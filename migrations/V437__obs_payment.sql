@@ -84,7 +84,20 @@ CREATE INDEX IF NOT EXISTS idx_doc_registry_obs_letter_pending
   ON doc_registry (obs_letter_status)
   WHERE payment_source = 'obs' AND deleted_at IS NULL;
 
--- 7. Комментарии в схеме — чтобы смысл полей был виден из psql.
+-- 7. Счётчик исходящих номеров писем ОБС — атомарный, без гонок.
+--    Первая версия считала COUNT()+1, и два письма подряд получили один номер
+--    «Исх. №261025-01». Для официального исходящего документа это брак.
+--    UPDATE ... RETURNING в Postgres сериализуется, поэтому номер уникален.
+CREATE TABLE IF NOT EXISTS obs_letter_counter (
+  day       DATE PRIMARY KEY,
+  last_seq  INTEGER NOT NULL DEFAULT 0,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+COMMENT ON TABLE obs_letter_counter IS
+  'Счётчик порядковых номеров писем для ОБС: один ряд на день, last_seq — последний выданный';
+
+-- 8. Комментарии в схеме — чтобы смысл полей был виден из psql.
 COMMENT ON COLUMN doc_registry.payment_source IS
   'Способ оплаты: regular — с расчётного счёта, obs — через ОБС (нужно письмо)';
 COMMENT ON COLUMN doc_registry.obs_letter_doc_id IS

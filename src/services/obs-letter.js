@@ -169,8 +169,17 @@ function amountInWords(amount) {
 
 // ─── Номер исходящего ─────────────────────────────────────────────────────
 /**
- * «26-1023-11» — как в образце (Исх. №261023-11): ГГММДД-порядковый.
- * Порядковый номер считаем по числу писем ОБС за тот же день, +1.
+ * Захватить следующий исходящий номер АТОМАРНО.
+ *
+ * D-378: первый вариант считал COUNT() и прибавлял 1 — при двух письмах
+ * подряд (или одновременной генерации) оба получали один номер. Для
+ * исходящего документа это брак: два разных письма с «Исх. №261025-01».
+ *
+ * Теперь счётчик живёт в отдельной строке `obs_letter_counter` и
+ * увеличивается одним UPDATE ... RETURNING внутри транзакции. Postgres
+ * сериализует такие UPDATE, поэтому одинаковых номеров быть не может.
+ *
+ * Если таблицы нет (старая база) — мягкий откат на подсчёт по письмам.
  */
 async function nextOutgoingNumber(db, date) {
   const d = date instanceof Date ? date : new Date(date || Date.now());
@@ -179,16 +188,29 @@ async function nextOutgoingNumber(db, date) {
   const dd = String(d.getDate()).padStart(2, '0');
   const prefix = `${yy}${mm}${dd}`;
 
+  // Атомарный путь.
+  try {
+    const r = await db.query(
+      `INSERT INTO obs_letter_counter (day, last_seq)
+       VALUES (CURRENT_DATE, 1)
+       ON CONFLICT (day)
+       DO UPDATE SET last_seq = obs_letter_counter.last_seq + 1
+       RETURNING last_seq`
+    );
+    const seq = r.rows[0] && Number(r.rows[0].last_seq);
+    if (seq > 0) return `${prefix}-${String(seq).padStart(2, '0')}`;
+  } catch (_) { /* таблицы нет — идём в фолбэк */ }
+
+  // Фолбэк: по уже созданным письмам за сегодня.
   let seq = 1;
   try {
     const r = await db.query(
       `SELECT COUNT(*)::int AS n FROM doc_registry
-        WHERE obs_letter_status IN ('ready','generating')
-          AND COALESCE(obs_letter_doc_id, 0) > 0
-          AND updated_at::date = CURRENT_DATE`
+        WHERE dir = 'out' AND package_type = 'letter'
+          AND created_at::date = CURRENT_DATE AND deleted_at IS NULL`
     );
-    seq = (r.rows[0] ? r.rows[0].n : 0) + 1;
-  } catch (_) { /* при сбое начинаем с 1 */ }
+    seq = (r.rows[0] ? Number(r.rows[0].n) || 0 : 0) + 1;
+  } catch (_) { /* начинаем с 1 */ }
 
   return `${prefix}-${String(seq).padStart(2, '0')}`;
 }
