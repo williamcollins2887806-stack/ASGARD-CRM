@@ -1266,10 +1266,10 @@ window.AsgardDocHubPage = (function () {
         <td class="dh-col-sf">${closingCell(r)}</td>
         <td class="dh-actions">
           <div class="dh-qa" aria-label="Действия">
-            ${payActionState(row).show ? `<button type="button" class="dh-qa__pay" data-qa="pay" title="В очередь оплаты (со сканом)" aria-label="В очередь оплаты">${ico.pay}</button>` : ''}
+            ${payActionState(r).show ? `<button type="button" class="dh-qa__pay" data-qa="pay" title="В очередь оплаты (со сканом)" aria-label="В очередь оплаты">${ico.pay}</button>` : ''}
             <button type="button" class="dh-qa__sf" data-qa="sf" title="СФ получена" aria-label="СФ получена">${ico.sf}</button>
             ${(Array.isArray(r.closing_json) && r.closing_json.length) ? `<button type="button" data-qa="unmark_sf" title="Снять отметку «СФ получена»" aria-label="Снять отметку СФ" class="dh-qa__undo">${ico.undo}</button>` : ''}
-            ${(canWh() && row.pay_status !== 'paid') ? `<button type="button" data-qa="mark_paid" title="Отметить оплачено без согласования — только для старых оплат прошлых периодов" aria-label="Отметить оплачено" class="dh-qa__paid" hidden>${ico.paid}</button>` : ''}
+            ${(canWh() && r.pay_status !== 'paid') ? `<button type="button" data-qa="mark_paid" title="Отметить оплачено без согласования — только для старых оплат прошлых периодов" aria-label="Отметить оплачено" class="dh-qa__paid" hidden>${ico.paid}</button>` : ''}
             ${canWh() ? `<button type="button" data-qa="wh" title="Склад" aria-label="Склад">${ico.wh}</button>` : ''}
             ${canCorrect() ? `<button type="button" data-qa="corr" class="dh-qa__corr${r.correction_state === 'requested' ? ' is-on' : ''}" title="${r.correction_state === 'requested' ? 'Корректировка запрошена' : 'СФ/Акт не корректен'}" aria-label="Корректировка">${ico.corr}</button>` : ''}
             <button type="button" data-qa="open" title="Карточка" aria-label="Открыть карточку">${ico.open}</button>
