@@ -337,8 +337,17 @@ async function applyPaymentSourceToRegistry(db, fastify, pay, paySrc, actor, res
               updated_by=$3, updated_at=NOW()
         WHERE id=$1
           AND ($2 <> 'obs'
-               OR (COALESCE(obs_letter_doc_id, 0) = 0
-                   AND COALESCE(obs_letter_status, 'none') <> 'generating'))
+               OR (
+                    COALESCE(obs_letter_status, 'none') <> 'generating'
+                    AND (
+                      COALESCE(obs_letter_doc_id, 0) = 0
+                      OR NOT EXISTS (
+                           SELECT 1 FROM doc_registry l
+                            WHERE l.id = doc_registry.obs_letter_doc_id
+                              AND l.deleted_at IS NULL
+                         )
+                    )
+                  ))
         RETURNING id`,
       [docId, paySrc, actor && actor.id ? actor.id : null]);
 

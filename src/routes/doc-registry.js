@@ -2777,18 +2777,32 @@ module.exports = async function docRegistryRoutes(fastify) {
       });
     }
 
-    // D-378 (P1 от верификатора 25.10.2026): здесь был SELECT → UPDATE без
+    // D-378 (P2 от верификатора 25.10.2026): здесь был SELECT → UPDATE без
     // условия. Два одновременных клика «Сформировать» оба проходили проверку
     // и запускали ДВА Chrome, плодя письма-дубли. Теперь захват — атомарный:
     // статус переводится в 'generating' ТОЛЬКО если письма ещё нет и
     // генерация не идёт. Если строка не обновилась — второй вызов уходит.
+    //
+    // D-378 (второй раунд, P2 от третьего верификатора): условие
+    // `obs_letter_doc_id = 0` блокировало пересборку НАВСЕГДА, если ссылка
+    // осталась на удалённое письмо (soft-delete). Пользователь видел вечное
+    // «Формируется…», второе нажатие возвращало already:true, выхода через
+    // интерфейс не было. Теперь мёртвая ссылка (письмо удалено/не существует)
+    // считается отсутствующей — пересборка разрешена.
     const claim = await db.query(
       `UPDATE doc_registry
           SET obs_letter_status='generating', obs_letter_error=NULL,
               updated_by=$2, updated_at=NOW()
         WHERE id=$1
-          AND COALESCE(obs_letter_doc_id, 0) = 0
           AND COALESCE(obs_letter_status, 'none') <> 'generating'
+          AND (
+                COALESCE(obs_letter_doc_id, 0) = 0
+                OR NOT EXISTS (
+                     SELECT 1 FROM doc_registry l
+                      WHERE l.id = doc_registry.obs_letter_doc_id
+                        AND l.deleted_at IS NULL
+                   )
+              )
         RETURNING id`, [id, req.user.id]);
 
     if (!claim.rowCount) {
