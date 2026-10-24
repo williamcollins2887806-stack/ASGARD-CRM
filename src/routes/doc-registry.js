@@ -2652,7 +2652,16 @@ module.exports = async function docRegistryRoutes(fastify) {
    * Идемпотентность: повторный вызов при статусе 'generating' не запускает
    * вторую генерацию (иначе два Chrome-процесса на один и тот же документ).
    */
-  fastify.post('/:id/obs-letter', { preHandler: [fastify.requireRoles(OBS_ROLES)] }, async (req, reply) => {
+  // D-378: POST без тела. Fastify на уровне проекта отвечает 400
+  // FST_ERR_CTP_EMPTY_JSON_BODY, если пришёл content-type: application/json
+  // с пустым телом — схема роута это не переопределяет. Поэтому фронт
+  // обязан слать хотя бы «{}» (см. doc-hub.js: api(..., { method:'POST' })
+  // без body → шлём {}). Здесь оставляем схему-«разрешение» на случай,
+  // если клиент придёт без тела вовсе.
+  fastify.post('/:id/obs-letter', {
+    preHandler: [fastify.requireRoles(OBS_ROLES)],
+    schema: { body: { type: 'object', additionalProperties: true, nullable: true } },
+  }, async (req, reply) => {
     const id = parseInt(req.params.id, 10);
     if (isNaN(id)) return reply.code(400).send({ error: 'Неверный ID' });
 

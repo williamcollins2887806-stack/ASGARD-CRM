@@ -4497,7 +4497,7 @@ window.AsgardDocHubPage = (function () {
         obsGen.disabled = true;
         const prevText = obsGen.textContent;
         obsGen.textContent = 'Формируется…';
-        api(`/${docId}/obs-letter`, { method: 'POST' })
+        api(`/${docId}/obs-letter`, { method: 'POST', body: {} })
           .then(() => {
             toast('Письмо формируется', 'Плашка станет зелёной, когда PDF будет готов', 'ok');
             pollObsLetter(docId, tr);
