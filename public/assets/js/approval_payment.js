@@ -954,6 +954,16 @@ window.AsgardApprovalPaymentPage = (function() {
               </div>
             </div>
             <div class="proc-pay-modal__section">
+              <div class="proc-pay-modal__section-title">Как платим</div>
+              <div class="proc-pay-timing" id="dir-source">
+                <button type="button" class="proc-pay-timing__opt" data-s="regular"><strong>С расчётного счёта</strong></button>
+                <button type="button" class="proc-pay-timing__opt" data-s="obs"><strong>Через ОБС</strong></button>
+              </div>
+              <div class="proc-pay-modal__hint" id="dir-source-hint" style="font-size:12px;opacity:.75;margin-top:6px">
+                Обычный счёт — письмо для ОБС не требуется.
+              </div>
+            </div>
+            <div class="proc-pay-modal__section">
               <label class="proc-pay-modal__label" for="dir-comment">Комментарий</label>
               <textarea id="dir-comment" class="proc-pay-modal__field" rows="2" placeholder="Необязательно"></textarea>
             </div>
@@ -989,6 +999,25 @@ window.AsgardApprovalPaymentPage = (function() {
         dirTiming = el.dataset.t;
         modalRoot.querySelectorAll('#dir-timing .proc-pay-timing__opt').forEach(x =>
           x.classList.toggle('proc-pay-timing__opt--on', x.dataset.t === dirTiming));
+      };
+    });
+
+    // ── D-378: способ оплаты ──────────────────────────────────────────────
+    // Выбор обязателен: по умолчанию НЕ предвыбран, чтобы директор не
+    // согласовал «на автомате» не тот платёжный контур. Подсказка меняется,
+    // чтобы было понятно последствие выбора.
+    let dirSource = '';
+    const srcHint = modalRoot.querySelector('#dir-source-hint');
+    const SRC_HINT = {
+      regular: 'Обычный счёт — письмо для ОБС не требуется.',
+      obs: 'Через ОБС: CRM сформирует письмо на бланке с подписью и печатью и приложит его к карточке счёта.'
+    };
+    modalRoot.querySelectorAll('#dir-source .proc-pay-timing__opt').forEach(el => {
+      el.onclick = () => {
+        dirSource = el.dataset.s;
+        modalRoot.querySelectorAll('#dir-source .proc-pay-timing__opt').forEach(x =>
+          x.classList.toggle('proc-pay-timing__opt--on', x.dataset.s === dirSource));
+        if (srcHint) srcHint.textContent = SRC_HINT[dirSource] || '';
       };
     });
 
@@ -1029,7 +1058,28 @@ window.AsgardApprovalPaymentPage = (function() {
     const ap = modalRoot.querySelector('#dir-approve');
     const rj = modalRoot.querySelector('#dir-reject');
     const cm = modalRoot.querySelector('#dir-comment');
-    if (ap) ap.onclick = () => closeAfter(`/api/payment-invoices/${pay.id}/dir-approve`, { pay_timing: dirTiming, comment: cm ? cm.value.trim() : '' });
+    if (ap) ap.onclick = () => {
+      // D-378: без выбора способа оплаты не согласовываем. Раньше выбор жил
+      // только в тексте письма, и бухгалтерия узнавала его из переписки —
+      // теперь это осознанное действие директора.
+      if (!dirSource) {
+        if (srcHint) {
+          srcHint.textContent = 'Выберите, как платим: с расчётного счёта или через ОБС.';
+          srcHint.style.opacity = '1';
+          srcHint.style.color = 'var(--bsys-danger-1, #C8293B)';
+        }
+        modalRoot.querySelectorAll('#dir-source .proc-pay-timing__opt').forEach(x => {
+          x.classList.add('proc-pay-need');
+          setTimeout(() => x.classList.remove('proc-pay-need'), 900);
+        });
+        return;
+      }
+      closeAfter(`/api/payment-invoices/${pay.id}/dir-approve`, {
+        pay_timing: dirTiming,
+        comment: cm ? cm.value.trim() : '',
+        payment_source: dirSource
+      });
+    };
     if (rj) rj.onclick = () => closeAfter(`/api/payment-invoices/${pay.id}/dir-reject`, { comment: cm ? cm.value.trim() : '' });
 
     // ── Превью счёта ──────────────────────────────────────────────────────

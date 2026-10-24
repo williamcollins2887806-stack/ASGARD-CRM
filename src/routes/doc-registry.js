@@ -569,6 +569,19 @@ function buildFilters(q, userId, role) {
   // не async) — см. вызов в GET /; здесь только парсинг параметра.
   if (q.incomplete === '1' || q.incomplete === 'true') where += ' AND d.is_incomplete';
   if (q.no_onec === '1' || q.no_onec === 'true') where += ` AND (d.onec_id IS NULL OR trim(d.onec_id)='')`;
+
+  // D-378: способ оплаты. Значения фиксированные, подстановки нет.
+  const paySrc = String(q.payment_source || '').toLowerCase();
+  if (paySrc === 'obs' || paySrc === 'regular') {
+    where += ` AND d.payment_source = '${paySrc}'`;
+  }
+  // «Без письма ОБС» — очередь на генерацию: ОБС выбран, письма ещё нет.
+  // Именно этот фильтр нужен Диме, чтобы одной кнопкой видеть, где работать.
+  if (q.obs_letter_missing === '1' || q.obs_letter_missing === 'true') {
+    where += ` AND d.payment_source = 'obs'
+               AND COALESCE(d.obs_letter_doc_id, 0) = 0
+               AND d.obs_letter_status IN ('none','failed')`;
+  }
   const kpi = (q.kpi || '').toLowerCase();
   if (kpi === 'pay') where += ` AND ${payOver}`;
   else if (kpi === 'sf') where += ` AND (d.ops_status IN ('wait_sf','wait_closing') OR (${sfOver}))`;
@@ -2572,5 +2585,162 @@ module.exports = async function docRegistryRoutes(fastify) {
       [id, expense.id, req.user.id]);
     await audit(db, id, req.user.id, 'create_expense', { work_expense_id: expense.id });
     return { work_expense_id: expense.id, expense, existing: false };
+  });
+
+  // ─── D-378: способ оплаты и письмо для ОБС ──────────────────────────────
+  //
+  // Способ оплаты меняют ТОЛЬКО бухгалтерия и директора (решение 24.10.2026).
+  // РП, офис, инициатор счёта — не могут: это выбор платёжного контура,
+  // а не свойство заявки. Каждая смена пишется в аудит, чтобы на вопрос
+  // «кто переключил на ОБС» был ответ с именем и временем.
+  const OBS_ROLES = ['ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV', 'BUH'];
+
+  /**
+   * PATCH /:id/payment-source — сменить способ оплаты.
+   * body: { payment_source: 'regular' | 'obs' }
+   *
+   * При 'regular' письмо не требуется: статус письма сбрасывается в 'none',
+   * ссылка на письмо НЕ стирается — если письмо уже сформировано, оно остаётся
+   * в карточке как документ, просто перестаёт быть обязательным.
+   */
+  fastify.patch('/:id/payment-source', { preHandler: [fastify.requireRoles(OBS_ROLES)] }, async (req, reply) => {
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id)) return reply.code(400).send({ error: 'Неверный ID' });
+
+    const src = String((req.body && req.body.payment_source) || '').toLowerCase();
+    if (src !== 'regular' && src !== 'obs') {
+      return reply.code(400).send({ error: "payment_source: 'regular' | 'obs'" });
+    }
+
+    if (!(await assertDocVisible(db, { role: req.user.role, userId: req.user.id }, id))) {
+      return reply.code(404).send({ error: 'Не найдено' });
+    }
+
+    const found = await db.query(
+      'SELECT id, payment_source, obs_letter_status FROM doc_registry WHERE id=$1 AND deleted_at IS NULL', [id]);
+    const doc = found.rows[0];
+    if (!doc) return reply.code(404).send({ error: 'Не найдено' });
+
+    const prev = doc.payment_source || 'regular';
+    if (prev === src) {
+      return { ok: true, payment_source: src, changed: false, obs_letter_status: doc.obs_letter_status };
+    }
+
+    const nextLetterStatus = src === 'obs'
+      // Переключили на ОБС: если письмо уже есть — оно готово, иначе «нет».
+      ? (doc.obs_letter_status === 'ready' ? 'ready' : 'none')
+      : 'none';
+
+    const { rows } = await db.query(
+      `UPDATE doc_registry
+          SET payment_source=$2, obs_letter_status=$3, updated_by=$4, updated_at=NOW()
+        WHERE id=$1 RETURNING id, payment_source, obs_letter_status, obs_letter_doc_id`,
+      [id, src, nextLetterStatus, req.user.id]);
+
+    await audit(db, id, req.user.id, 'payment_source', { from: prev, to: src });
+
+    return { ok: true, changed: true, ...rows[0] };
+  });
+
+  /**
+   * POST /:id/obs-letter — сформировать (или пересобрать) письмо для ОБС.
+   *
+   * Отвечает СРАЗУ: генерация PDF занимает секунды, и держать запрос всё это
+   * время нельзя — UI показывает серую плашку «Формируется…» и опрашивает
+   * GET /:id. Так же ведёт себя согласование директора.
+   *
+   * Идемпотентность: повторный вызов при статусе 'generating' не запускает
+   * вторую генерацию (иначе два Chrome-процесса на один и тот же документ).
+   */
+  fastify.post('/:id/obs-letter', { preHandler: [fastify.requireRoles(OBS_ROLES)] }, async (req, reply) => {
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id)) return reply.code(400).send({ error: 'Неверный ID' });
+
+    if (!(await assertDocVisible(db, { role: req.user.role, userId: req.user.id }, id))) {
+      return reply.code(404).send({ error: 'Не найдено' });
+    }
+
+    const found = await db.query(
+      `SELECT id, invoice_number, payment_source, obs_letter_status
+         FROM doc_registry WHERE id=$1 AND deleted_at IS NULL`, [id]);
+    const doc = found.rows[0];
+    if (!doc) return reply.code(404).send({ error: 'Не найдено' });
+
+    if (doc.obs_letter_status === 'generating') {
+      return { status: 'generating', already: true };
+    }
+
+    // Обычный счёт: письмо не требуется. Не запускаем генерацию молча —
+    // говорим прямо, чтобы пользователь не ждал плашку, которой не будет.
+    if (doc.payment_source !== 'obs') {
+      return reply.code(409).send({
+        error: 'Счёт оплачивается с расчётного счёта — письмо ОБС не требуется',
+        hint: "Сначала переключите способ оплаты на 'obs'",
+      });
+    }
+
+    await db.query(
+      `UPDATE doc_registry SET obs_letter_status='generating', obs_letter_error=NULL,
+              updated_by=$2, updated_at=NOW() WHERE id=$1`, [id, req.user.id]);
+    await audit(db, id, req.user.id, 'obs_letter_start', {});
+
+    const obsLetter = require('../services/obs-letter');
+    const fastifyRef = fastify;
+    const docId = id;
+    const userId = req.user.id;
+
+    // Запускаем в фоне и НЕ ждём: ответ уже ушёл в UI.
+    setImmediate(async () => {
+      try {
+        const res = await obsLetter.generateObsLetterPdf(fastifyRef.db || fastifyRef.pg, docId);
+
+        // Письмо живёт в том же реестре отдельной строкой (dir='out'),
+        // чтобы попасть в карточку вложением и в общую нумерацию исходящих.
+        const ins = await fastifyRef.db.query(
+          `INSERT INTO doc_registry
+             (dir, package_type, ops_status, pay_status, counterparty_name,
+              amount_gross, amount_net, vat_amount, vat_rate, has_vat,
+              spend_kind, created_by, updated_by, receive_channel, comment_text,
+              invoice_number, invoice_date, attachments)
+           VALUES
+             ('out','letter','done','n_a',$1,
+              0,0,0,0,false,
+              'work',$2,$2,'manual',$3,
+              $4,$5,$6)
+           RETURNING id`,
+          [
+            'Для ОБС по счёту № ' + (doc.invoice_number || docId),
+            userId,
+            'Письмо для оплаты через ОБС по счёту № ' + (doc.invoice_number || docId),
+            'Исх. ' + res.number,
+            new Date(),
+            JSON.stringify([{ name: require('path').basename(res.pdfPath), path: res.pdfPath, kind: 'obs_letter' }]),
+          ]
+        );
+        const letterDocId = ins.rows[0] && ins.rows[0].id;
+
+        await fastifyRef.db.query(
+          `UPDATE doc_registry
+              SET obs_letter_status='ready', obs_letter_doc_id=$2, obs_letter_error=NULL, updated_at=NOW()
+            WHERE id=$1`, [docId, letterDocId || null]);
+
+        await audit(fastifyRef.db, docId, userId, 'obs_letter_ready',
+          { letter_doc_id: letterDocId, number: res.number, pdf: res.pdfPath });
+        fastifyRef.log.info(`[obs-letter] готово: doc=${docId} письмо=${letterDocId} №${res.number}`);
+      } catch (e) {
+        const msg = String(e && e.message || e).slice(0, 500);
+        fastifyRef.log.error(`[obs-letter] сбой doc=${docId}: ${msg}`);
+        try {
+          await fastifyRef.db.query(
+            `UPDATE doc_registry SET obs_letter_status='failed', obs_letter_error=$2, updated_at=NOW()
+              WHERE id=$1`, [docId, msg]);
+          await audit(fastifyRef.db, docId, userId, 'obs_letter_failed', { error: msg });
+        } catch (e2) {
+          fastifyRef.log.error(`[obs-letter] не смог записать статус сбоя: ${e2.message}`);
+        }
+      }
+    });
+
+    return { status: 'generating', id };
   });
 };

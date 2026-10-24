@@ -295,6 +295,107 @@ async function autoWorkExpense(db, payment, docRow) {
   }
 }
 
+/**
+ * D-378: перенести выбор директора «как платим» на строку реестра и,
+ * если выбран ОБС, поставить генерацию письма в фон.
+ *
+ * Почему в фоне. Генерация PDF — это puppeteer + рендер страницы, секунды.
+ * Директор не должен ждать. Поэтому в реестре сразу ставится
+ * `obs_letter_status='generating'`, UI показывает серую плашку
+ * «Формируется…», а по завершении статус станет 'ready' или 'failed'.
+ *
+ * @param {object} db — pg
+ * @param {object} fastify — для logger и повторного db
+ * @param {object} pay — заявка payment_invoices
+ * @param {string} paySrc — 'regular' | 'obs'
+ * @param {object} actor — req.user
+ * @param {object} result — ответ applyDecision (может содержать docId)
+ */
+async function applyPaymentSourceToRegistry(db, fastify, pay, paySrc, actor, result) {
+  try {
+    // Строка реестра могла быть создана внутри applyDecision (ensureRegistryDoc).
+    let docId = (result && result.docId) || pay.doc_registry_id;
+    if (!docId) {
+      const r = await db.query(
+        `SELECT id FROM doc_registry WHERE payment_invoice_id=$1 AND deleted_at IS NULL ORDER BY id DESC LIMIT 1`,
+        [pay.id]);
+      docId = r.rows[0] && r.rows[0].id;
+    }
+    if (!docId) return;
+
+    await db.query(
+      `UPDATE doc_registry
+          SET payment_source=$2,
+              obs_letter_status = CASE WHEN $2 = 'obs' THEN 'generating' ELSE 'none' END,
+              updated_by=$3, updated_at=NOW()
+        WHERE id=$1`, [docId, paySrc, actor && actor.id ? actor.id : null]);
+
+    if (paySrc !== 'obs') return;
+
+    const obsLetter = require('../services/obs-letter');
+    const log = fastify && fastify.log ? fastify.log : console;
+
+    setImmediate(async () => {
+      try {
+        const res = await obsLetter.generateObsLetterPdf(db, docId);
+
+        // Письмо — отдельная строка реестра (dir='out'), чтобы попасть
+        // в карточку вложением и в нумерацию исходящих.
+        const ins = await db.query(
+          `INSERT INTO doc_registry
+             (dir, package_type, ops_status, pay_status, counterparty_name,
+              amount_gross, amount_net, vat_amount, vat_rate, has_vat,
+              spend_kind, created_by, updated_by, receive_channel, comment_text,
+              invoice_number, invoice_date, attachments)
+           VALUES
+             ('out','letter','done','n_a',$1,
+              0,0,0,0,false,
+              'work',$2,$2,'manual',$3,
+              $4,$5,$6)
+           RETURNING id`,
+          [
+            'Для ОБС по счёту № ' + (pay.invoice_number || pay.id),
+            actor && actor.id ? actor.id : null,
+            'Письмо для оплаты через ОБС по счёту № ' + (pay.invoice_number || pay.id),
+            'Исх. ' + res.number,
+            new Date(),
+            JSON.stringify([{ name: require('path').basename(res.pdfPath), path: res.pdfPath, kind: 'obs_letter' }]),
+          ]);
+
+        const letterDocId = ins.rows[0] && ins.rows[0].id;
+
+        await db.query(
+          `UPDATE doc_registry
+              SET obs_letter_status='ready', obs_letter_doc_id=$2, obs_letter_error=NULL, updated_at=NOW()
+            WHERE id=$1`, [docId, letterDocId || null]);
+
+        log.info(`[obs-letter] готово: счёт #${pay.id} → реестр ${docId}, письмо ${letterDocId} №${res.number}`);
+      } catch (e) {
+        const msg = String((e && e.message) || e).slice(0, 500);
+        log.error(`[obs-letter] сбой: счёт #${pay.id} реестр ${docId}: ${msg}`);
+        try {
+          await db.query(
+            `UPDATE doc_registry SET obs_letter_status='failed', obs_letter_error=$2, updated_at=NOW()
+              WHERE id=$1`, [docId, msg]);
+        } catch (e2) { log.error(`[obs-letter] статус сбоя не записан: ${e2.message}`); }
+      }
+    });
+  } catch (e) {
+    // Согласование уже состоялось — откатывать его из-за письма нельзя.
+    // Фиксируем причину в комментарии директора, чтобы бухгалтерия знала.
+    const msg = String((e && e.message) || e);
+    if (fastify && fastify.log) fastify.log.warn('[obs-letter] перенос способа оплаты: ' + msg);
+    try {
+      await db.query(
+        `UPDATE payment_invoices
+            SET dir_comment = COALESCE(NULLIF(dir_comment,''), '') ||
+                CASE WHEN COALESCE(dir_comment,'') = '' THEN '' ELSE ' | ' END ||
+                $2, updated_at=NOW()
+          WHERE id=$1`, [pay.id, 'Письмо ОБС не сформировано: ' + msg.slice(0, 200)]);
+    } catch (_) { /* */ }
+  }
+}
+
 function decoratePayment(row) {
   if (!row) return row;
   const file_path = normalizeUploadUrl(row.file_path);
@@ -1627,6 +1728,14 @@ async function routes(fastify) {
     const { rows } = await db.query('SELECT * FROM payment_invoices WHERE id=$1', [id]);
     if (!rows[0]) return reply.code(404).send({ error: 'Не найдено' });
     if (rows[0].status !== 'awaiting_dir') return reply.code(409).send({ error: 'Счёт не на согласовании директора' });
+
+    // D-378: способ оплаты выбирает директор В МОМЕНТ согласования.
+    // Раньше этот выбор жил только в тексте писем («Оплату проводим через
+    // ОБС "АГПЗ"»), и бухгалтерия узнавала его из переписки. Теперь это
+    // явное поле. 'regular' — по умолчанию, если директор не выбрал.
+    const rawSrc = req.body && req.body.payment_source;
+    const paySrc = (rawSrc === 'obs' || rawSrc === 'regular') ? rawSrc : 'regular';
+
     const timing = (req.body && req.body.pay_timing) || rows[0].pay_timing;
     if (timing === 'deferred' || timing === 'immediate') {
       await db.query(`UPDATE payment_invoices SET pay_timing=$2, updated_at=NOW() WHERE id=$1`, [id, timing]);
@@ -1638,8 +1747,22 @@ async function routes(fastify) {
       await db.query(`UPDATE payment_invoices SET dir_comment=$2, updated_at=NOW() WHERE id=$1`, [id, dirComment]);
       rows[0].dir_comment = dirComment;
     }
+
+    // Запоминаем выбор в заявке ДО решения: если applyDecision упадёт,
+    // выбор директора всё равно не потеряется.
+    await db.query(`UPDATE payment_invoices SET payment_source=$2, updated_at=NOW() WHERE id=$1`, [id, paySrc]);
+    rows[0].payment_source = paySrc;
+
     const result = await paymentMail.applyDecision(db, rows[0], 'approve', req.user);
-    return result;
+
+    // Применяем способ оплаты к строке реестра. Письмо для ОБС генерируем
+    // АСИНХРОННО: согласование не должно ждать puppeteer, иначе кнопка
+    // «Согласовать» висит несколько секунд.
+    if (result && result.status === 'pending_payment') {
+      await applyPaymentSourceToRegistry(db, fastify, rows[0], paySrc, req.user, result);
+    }
+
+    return { ...result, payment_source: paySrc };
   });
 
   fastify.post('/:id/dir-reject', { preHandler: [fastify.requireRoles(DIR_ROLES)] }, async (req, reply) => {

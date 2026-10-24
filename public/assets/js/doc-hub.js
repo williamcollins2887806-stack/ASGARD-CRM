@@ -690,6 +690,49 @@ window.AsgardDocHubPage = (function () {
     return j;
   }
 
+  /**
+   * D-378: открыть файл письма ОБС.
+   *
+   * Письмо — обычная строка реестра (dir='out'), у неё есть вложения.
+   * Идём через тот же роут файла, что и у остальных документов, чтобы
+   * не плодить второй способ раздачи файлов и второй набор прав.
+   */
+  function openDocFile(docId) {
+    if (!docId) return;
+    window.open(`/api/doc-registry/${docId}/file`, '_blank', 'noopener');
+  }
+
+  /**
+   * D-378: дождаться окончания генерации письма.
+   *
+   * Генерация идёт в фоне на бэке (puppeteer + рендер). Держим короткий
+   * опрос по строке: 10 попыток по 1.2 с — этого хватает, потому что PDF
+   * собирается за 2–4 с. Если не успели — просто обновим список: статус
+   * всё равно придёт из базы, плашка не «залипнет» серой.
+   *
+   * @param {number} docId
+   * @param {HTMLElement|null} tr — строка таблицы (для точечной замены плашки)
+   */
+  function pollObsLetter(docId, tr) {
+    let tries = 0;
+    const tick = async () => {
+      tries++;
+      try {
+        const row = await api(`/${docId}`);
+        const status = String(row && row.obs_letter_status || '');
+        if (status === 'ready' || status === 'failed') {
+          refresh();
+          if (status === 'ready') toast('Письмо готово', 'PDF с подписью и печатью в карточке счёта', 'ok');
+          else toast('Письмо не сформировано', (row && row.obs_letter_error) || 'нажмите «Сформировать» ещё раз', 'err');
+          return;
+        }
+      } catch (_) { /* сеть мигнула — пробуем ещё */ }
+      if (tries < 10) setTimeout(tick, 1200);
+      else refresh();
+    };
+    setTimeout(tick, 1000);
+  }
+
   // D-211 (B3): в карточке печаталось СЫРОЕ значение wh_status («await»), а не
   // человеческий статус. Список — зеркало WH_CHAIN из src/routes/doc-registry.js:21.
   // Неизвестное значение печатаем как есть (лучше код, чем пустота) — но известные
@@ -1161,6 +1204,51 @@ window.AsgardDocHubPage = (function () {
       <span class="dh-flag ${row.purpose_consumables ? 'is-on' : ''}" title="Расходники">Р</span>
     </div>`;
   }
+
+  /**
+   * D-378: плашки способа оплаты и письма для ОБС.
+   *
+   * Показываем ТОЛЬКО у счетов с ОБС — у обычных строк здесь пусто, чтобы
+   * не засорять реестр серыми бейджами (решение заказчика 24.10.2026).
+   *
+   * Состояния письма:
+   *   • generating — серая «Формируется…» (генерация идёт прямо сейчас);
+   *   • ready / есть obs_letter_doc_id — зелёная «Письмо готово», клик открывает;
+   *   • none / failed — красная «Письма нет» + кнопка «Сформировать».
+   *
+   * Цвета — только существующие классы .dh-pill--* (gold/muted/ok/err):
+   * у них уже прописаны обе темы, новых цветов не вводим.
+   */
+  function obsBadges(row) {
+    const src = String(row.payment_source || 'regular');
+    if (src !== 'obs') return '';
+
+    const status = String(row.obs_letter_status || 'none');
+    const hasLetter = Number(row.obs_letter_doc_id || 0) > 0;
+    const num = esc(row.invoice_number || '');
+
+    const obsPill = `<span class="dh-pill dh-pill--gold dh-obs-pill" title="Оплата через ОБС">ОБС</span>`;
+
+    let letterPill;
+    if (status === 'generating') {
+      letterPill = `<span class="dh-pill dh-pill--muted dh-obs-letter" title="Письмо формируется, подождите">
+        <span class="dh-spin"></span>Формируется…</span>`;
+    } else if (hasLetter) {
+      letterPill = `<button type="button" class="dh-pill dh-pill--ok dh-obs-letter dh-obs-letter--open"
+        data-obs-open="${Number(row.obs_letter_doc_id)}" title="Открыть письмо для ОБС">Письмо готово</button>`;
+    } else {
+      const err = row.obs_letter_error
+        ? ` title="${esc(String(row.obs_letter_error).slice(0, 200))}"`
+        : ' title="Письмо для ОБС ещё не сформировано"';
+      letterPill = `<span class="dh-obs-letter-wrap">
+        <span class="dh-pill dh-pill--err dh-obs-letter"${err}>Письма нет</span>
+        <button type="button" class="dh-obs-gen" data-obs-gen="${Number(row.id)}"
+          title="Сформировать письмо для ОБС по счёту ${num}">Сформировать</button>
+      </span>`;
+    }
+
+    return `<div class="dh-obs-row">${obsPill}${letterPill}</div>`;
+  }
   function qaIcons() {
     // V413: премиум-иконки (заказчик 19.10.2026: «системные иконки и кнопки,
     // не красиво и не премиально»). Единая сетка 18×18, stroke-width 1.7,
@@ -1260,7 +1348,7 @@ window.AsgardDocHubPage = (function () {
         <td class="dh-col-recv">${receiveCell(r)}</td>
         <td class="dh-col-purpose">${purposeFlags(r)}</td>
         <td class="dh-col-owners">${ownersCell(r)}</td>
-        <td class="dh-money" title="${esc(moneyFine(r.amount_gross))}">${money(r.amount_gross)}</td>
+        <td class="dh-money" title="${esc(moneyFine(r.amount_gross))}">${money(r.amount_gross)}${obsBadges(r)}</td>
         <td class="dh-col-vat">${vatCell(r)}</td>
         <td>${payCell(r)}</td>
         <td class="dh-col-sf">${closingCell(r)}</td>
@@ -4397,6 +4485,38 @@ window.AsgardDocHubPage = (function () {
       }
       const btn = e.target.closest('[data-qa]');
       const tr = e.target.closest('tr[data-id]');
+
+      // D-378: кнопки ОБС живут отдельно от [data-qa] — они не в колонке
+      // действий, а под суммой. Обрабатываем ДО проверки строки, чтобы
+      // клик по ним не открывал карточку.
+      const obsGen = e.target.closest('[data-obs-gen]');
+      if (obsGen) {
+        e.preventDefault();
+        e.stopPropagation();
+        const docId = Number(obsGen.getAttribute('data-obs-gen'));
+        obsGen.disabled = true;
+        const prevText = obsGen.textContent;
+        obsGen.textContent = 'Формируется…';
+        api(`/${docId}/obs-letter`, { method: 'POST' })
+          .then(() => {
+            toast('Письмо формируется', 'Плашка станет зелёной, когда PDF будет готов', 'ok');
+            pollObsLetter(docId, tr);
+          })
+          .catch((err) => {
+            obsGen.disabled = false;
+            obsGen.textContent = prevText;
+            toast('Не удалось', err.message || 'письмо не сформировано', 'err');
+          });
+        return;
+      }
+      const obsOpen = e.target.closest('[data-obs-open]');
+      if (obsOpen) {
+        e.preventDefault();
+        e.stopPropagation();
+        openDocFile(Number(obsOpen.getAttribute('data-obs-open')));
+        return;
+      }
+
       if (!tr) return;
       const id = Number(tr.getAttribute('data-id'));
       if (btn) {

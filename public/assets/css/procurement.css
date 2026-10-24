@@ -362,6 +362,17 @@ button.proc-cover{cursor:pointer}
 .proc-pay-timing__opt strong{display:block;margin-bottom:4px;font-size:13px}
 .proc-pay-timing__opt span{font-size:11px;color:var(--t3);line-height:1.35}
 .proc-pay-timing__opt--on{border-color:rgba(201,168,76,.55);background:rgba(201,168,76,.1)}
+/* D-378: подсветка «не выбрано» — при попытке согласовать без выбора способа
+   оплаты. Мягкое мигание рамкой, без резкого красного фона: подсказка уже
+   написана текстом под кнопками. */
+@keyframes proc-pay-need-pulse {
+  0%, 100% { border-color: var(--brd); }
+  50% { border-color: var(--bsys-danger-1, #C8293B); }
+}
+.proc-pay-need { animation: proc-pay-need-pulse .45s ease-in-out 2; }
+@media (prefers-reduced-motion: reduce) {
+  .proc-pay-need { animation: none; border-color: var(--bsys-danger-1, #C8293B); }
+}
 .proc-tooltip{display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:50%;border:1px solid var(--brd);font-size:10px;font-weight:700;color:var(--t3);cursor:help;margin-left:4px;vertical-align:middle;background:var(--bg2)}
 .proc-pay-btn-ghost{border:0;background:transparent;color:var(--t3);font-size:12px;text-decoration:underline;cursor:pointer;padding:8px}
 .proc-pay-btn-ghost:hover{color:var(--t1)}

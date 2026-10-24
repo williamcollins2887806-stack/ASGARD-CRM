@@ -784,6 +784,80 @@ a:hover { text-decoration: underline; }
   border-color: color-mix(in srgb, var(--gold, #d4a017) 50%, transparent);
 }
 
+/* ── D-378: плашки ОБС и письма ──────────────────────────────────────────
+   Показываются только у счетов с payment_source='obs'. У обычных строк
+   блока нет вовсе, поэтому реестр не зарастает серыми бейджами.
+
+   Размер повторяет .dh-pill (22px / 11px / 750), чтобы строка не «прыгала»
+   и плашки не выглядели крупнее соседних. Цвета — только токены темы. */
+.dh-obs-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 3px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+.dh-obs-pill {
+  letter-spacing: 0.02em;
+}
+.dh-obs-letter {
+  cursor: default;
+}
+.dh-obs-letter--open {
+  cursor: pointer;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 750;
+  font-family: inherit;
+}
+.dh-obs-letter--open:hover {
+  filter: brightness(1.08);
+}
+.dh-obs-letter-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.dh-obs-gen {
+  height: 20px;
+  padding: 0 7px;
+  border-radius: 6px;
+  font-size: 10.5px;
+  font-weight: 700;
+  font-family: inherit;
+  cursor: pointer;
+  background: transparent;
+  color: var(--t2);
+  border: 1px solid var(--brd);
+  transition: background .12s, color .12s, border-color .12s;
+}
+.dh-obs-gen:hover {
+  background: var(--bg4);
+  color: var(--t1);
+  border-color: var(--brd-strong, var(--brd));
+}
+.dh-obs-gen:disabled {
+  opacity: .55;
+  cursor: default;
+}
+/* Спиннер «Формируется…» — тот же смысл, что у плашки, без сторонних картинок */
+.dh-spin {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  border: 1.4px solid currentColor;
+  border-right-color: transparent;
+  animation: dh-spin .7s linear infinite;
+  flex-shrink: 0;
+}
+@keyframes dh-spin {
+  to { transform: rotate(360deg); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .dh-spin { animation-duration: 2.4s; }
+}
+
 .dh-dot {
   width: 6px;
   height: 6px;
