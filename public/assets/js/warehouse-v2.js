@@ -459,7 +459,11 @@ window.AsgardWarehouseV2 = (function () {
     .wh2-stp__n::-webkit-outer-spin-button,.wh2-stp__n::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
     .wh2-stp__n:focus{background:rgba(212,168,67,.10)}
 
-    /* FAB корзины (угол, вместо Мимира на складе) */
+    /* FAB корзины (угол, вместо Мимира на складе).
+       Слой остаётся ниже оверлея корзины (700), иначе кнопка «висит» над затемнением
+       при открытом drawer. От дока «Хугинн» (z 1200) спасает не z-index, а ГЕОМЕТРИЯ:
+       горизонтальный отступ задаёт huginn_dock.css (body.hg-dock-open / -collapsed),
+       поэтому кнопка и полоса разбивки стоят левее панели и не пересекаются с ней. */
     .wh2-fab{position:fixed;bottom:24px;right:24px;z-index:600;display:flex;flex-direction:column;align-items:flex-end;gap:10px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif}
     .wh2-fab__btn{position:relative;width:64px;height:64px;border-radius:50%;border:none;cursor:pointer;background:linear-gradient(135deg,#e7bd54,#D4A843);color:#1a1408;font-size:28px;display:flex;align-items:center;justify-content:center;box-shadow:0 6px 22px rgba(212,168,67,.4),0 2px 6px rgba(0,0,0,.3);transition:.2s}
     .wh2-fab__btn:hover{transform:translateY(-3px) scale(1.05);box-shadow:0 10px 30px rgba(212,168,67,.5)}
@@ -524,7 +528,9 @@ window.AsgardWarehouseV2 = (function () {
       .wh2{padding:12px}
       .wh2-kpis{grid-template-columns:1fr 1fr;gap:10px}
       .wh2-cart-dr{width:100vw}
-      .wh2-fab{bottom:16px;right:16px}
+      /* На узком экране угол занят круглой кнопкой поиска «Хугинн» (.hg-nav-search:
+         64px, right 12, bottom 14) — корзина встаёт НАД ней, а не под ней. */
+      .wh2-fab{bottom:calc(14px + var(--hg-tg-fab-size,64px) + 10px);right:12px}
       .wh2-fab__btn{width:58px;height:58px;font-size:25px}
       .wh2-stp{height:38px}
       .wh2-stp__b{width:36px;font-size:20px}

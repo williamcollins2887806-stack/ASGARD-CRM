@@ -4463,6 +4463,15 @@ body.hg-dock-collapsed { padding-right: calc(var(--hg-rail-w) + 24px); }
   body.hg-dock-collapsed :is(.cr-d.drawer, .bc-drawer, .pk3-drawer, .wh2-cart-dr) {
     right: calc(var(--hg-rail-w, 56px) + 24px);
   }
+
+  /* FAB корзины склада — тот же закон: держим левее дока, иначе правый рейл
+     наполовину накрывает кнопку (жалоба заказчика 24.10.2026). */
+  body.hg-dock-open .wh2-fab {
+    right: calc(var(--hg-panel-w, 400px) + var(--hg-rail-w, 56px) + 24px);
+  }
+  body.hg-dock-collapsed .wh2-fab {
+    right: calc(var(--hg-rail-w, 56px) + 24px);
+  }
 }
 
 
