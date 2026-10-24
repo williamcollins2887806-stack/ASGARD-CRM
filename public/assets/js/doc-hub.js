@@ -88,6 +88,9 @@ window.AsgardDocHubPage = (function () {
     // Сортировка реестра (заказчик 19.10.2026: «где фильтр по дате внесения?»).
     // invoice_desc — как было (дата счёта), created_desc — по дате внесения в CRM.
     sort: 'invoice_desc',
+    // D-378: фильтр по способу оплаты и «очередь на генерацию письма ОБС».
+    paymentSource: '',    // '' | 'obs' | 'regular'
+    obsLetterMissing: false,
     actsTab: false,      // V394: вкладка «Акты сверки»
     archiveTab: false,   // паритет с «Выплатами»: вкладка «Архив»
     archTab: 'summary',  // D-291: внутри Архива — сводка по месяцам или корзина
@@ -693,13 +696,34 @@ window.AsgardDocHubPage = (function () {
   /**
    * D-378: открыть файл письма ОБС.
    *
-   * Письмо — обычная строка реестра (dir='out'), у неё есть вложения.
-   * Идём через тот же роут файла, что и у остальных документов, чтобы
-   * не плодить второй способ раздачи файлов и второй набор прав.
+   * Письмо — строка реестра (dir='out', package_type='letter'). Открываем
+   * через ACL-роут `/:id/letter-file`. Прямой URL не подходит: файл лежит
+   * в uploads/, а `window.open` не передаёт Bearer-токен → 401. Поэтому
+   * тянем blob с заголовком авторизации и открываем объектный URL.
+   *
+   * Дефект, найденный верификатором 25.10.2026: раньше здесь был
+   * несуществующий роут `/api/doc-registry/:id/file` → 404.
    */
-  function openDocFile(docId) {
+  async function openDocFile(docId) {
     if (!docId) return;
-    window.open(`/api/doc-registry/${docId}/file`, '_blank', 'noopener');
+    try {
+      const r = await fetch(`/api/doc-registry/${docId}/letter-file`, {
+        headers: authHeaders(false),
+        cache: 'no-store',
+      });
+      if (!r.ok) {
+        const j = await r.json().catch(() => ({}));
+        toast('Не удалось открыть', j.error || ('HTTP ' + r.status), 'err');
+        return;
+      }
+      const blob = await r.blob();
+      const url = URL.createObjectURL(blob);
+      window.open(url, '_blank', 'noopener');
+      // Освобождаем память после того, как вкладка успела забрать файл.
+      setTimeout(() => URL.revokeObjectURL(url), 60000);
+    } catch (e) {
+      toast('Не удалось открыть', e.message || 'сеть недоступна', 'err');
+    }
   }
 
   /**
@@ -888,6 +912,15 @@ window.AsgardDocHubPage = (function () {
     const [sortField, sortDir] = sortMap[state.sort] || ['invoice_date', 'desc'];
     p.set('sort', sortField);
     p.set('order', sortDir);
+
+    // D-378: фильтр по способу оплаты. Дефект от верификатора 25.10.2026 —
+    // API фильтры поддерживал, но фронт их не передавал, и Дима не мог
+    // открыть «очередь на генерацию».
+    if (state.paymentSource === 'obs' || state.paymentSource === 'regular') {
+      p.set('payment_source', state.paymentSource);
+    }
+    if (state.obsLetterMissing) p.set('obs_letter_missing', '1');
+
     return '?' + p.toString();
   }
 
@@ -1588,6 +1621,18 @@ window.AsgardDocHubPage = (function () {
         <label class="dh-facet dh-facet--check">
           <input type="checkbox" id="dhFacetIncomplete" ${state.facetIncomplete ? 'checked' : ''}/>
           <span>Только неполные</span>
+        </label>
+        <div class="dh-facet">
+          <span class="dh-facet__label">Способ оплаты</span>
+          <select id="dhFacetPaySource" class="dh-input dh-input--sm">
+            <option value="" ${state.paymentSource === '' ? 'selected' : ''}>Все</option>
+            <option value="regular" ${state.paymentSource === 'regular' ? 'selected' : ''}>С расчётного счёта</option>
+            <option value="obs" ${state.paymentSource === 'obs' ? 'selected' : ''}>Через ОБС</option>
+          </select>
+        </div>
+        <label class="dh-facet dh-facet--check" title="Счета с ОБС, у которых письмо ещё не сформировано">
+          <input type="checkbox" id="dhFacetObsMissing" ${state.obsLetterMissing ? 'checked' : ''}/>
+          <span>Без письма ОБС</span>
         </label>
       </div>`;
   }
@@ -4251,6 +4296,8 @@ window.AsgardDocHubPage = (function () {
       state.facetPms = dhMultiSelectValue('dhFacetPms');
       state.facetOwnerNotes = dhMultiSelectValue('dhFacetNotes');
       state.facetIncomplete = !!root.querySelector('#dhFacetIncomplete')?.checked;
+      state.paymentSource = root.querySelector('#dhFacetPaySource')?.value || '';
+      state.obsLetterMissing = !!root.querySelector('#dhFacetObsMissing')?.checked;
       state.year = root.querySelector('#dhFacetYear')?.value || '';
       state.sort = root.querySelector('#dhSort')?.value || 'invoice_desc';
       if (state.facetIncomplete) state.kpi = 'incomplete';

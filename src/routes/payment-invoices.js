@@ -323,12 +323,43 @@ async function applyPaymentSourceToRegistry(db, fastify, pay, paySrc, actor, res
     }
     if (!docId) return;
 
-    await db.query(
+    // D-378 (дефект от верификатора 25.10.2026): здесь не было ни аудита, ни
+    // защиты от повторной генерации. Два вызова dir-approve (или повторный
+    // клик) запускали ДВА Chrome на один документ и плодили письма.
+    //
+    // Теперь переход в 'generating' — атомарный: UPDATE с условием
+    // «письма ещё нет и генерация не идёт». Если строка не обновилась,
+    // значит письмо уже готово или собирается — второй раз не запускаем.
+    const claim = await db.query(
       `UPDATE doc_registry
           SET payment_source=$2,
               obs_letter_status = CASE WHEN $2 = 'obs' THEN 'generating' ELSE 'none' END,
               updated_by=$3, updated_at=NOW()
-        WHERE id=$1`, [docId, paySrc, actor && actor.id ? actor.id : null]);
+        WHERE id=$1
+          AND ($2 <> 'obs'
+               OR (COALESCE(obs_letter_doc_id, 0) = 0
+                   AND COALESCE(obs_letter_status, 'none') <> 'generating'))
+        RETURNING id`,
+      [docId, paySrc, actor && actor.id ? actor.id : null]);
+
+    // Аудит способа оплаты — так же, как в PATCH /payment-source.
+    // Раньше главный путь (согласование директором) не оставлял следа вообще.
+    try {
+      await db.query(
+        `INSERT INTO doc_registry_audit(doc_id, user_id, action, payload)
+         VALUES ($1, $2, 'payment_source', $3::jsonb)`,
+        [docId, (actor && actor.id) || null, JSON.stringify({ to: paySrc, via: 'dir_approve' })]);
+    } catch (e) {
+      if (fastify && fastify.log) fastify.log.warn('[obs-letter] аудит payment_source: ' + e.message);
+    }
+
+    // Уже занято другой генерацией или письмо готово — выходим без второго Chrome.
+    if (!claim.rowCount) {
+      if (fastify && fastify.log) {
+        fastify.log.info(`[obs-letter] письмо для реестра ${docId} уже есть или формируется — пропуск`);
+      }
+      return;
+    }
 
     if (paySrc !== 'obs') return;
 
@@ -341,6 +372,8 @@ async function applyPaymentSourceToRegistry(db, fastify, pay, paySrc, actor, res
 
         // Письмо — отдельная строка реестра (dir='out'), чтобы попасть
         // в карточку вложением и в нумерацию исходящих.
+        // D-378: в attachments пишем ПУБЛИЧНЫЙ url (/uploads/...), а не
+        // абсолютный путь на диске — иначе файл не открывается.
         const ins = await db.query(
           `INSERT INTO doc_registry
              (dir, package_type, ops_status, pay_status, counterparty_name,
@@ -359,7 +392,7 @@ async function applyPaymentSourceToRegistry(db, fastify, pay, paySrc, actor, res
             'Письмо для оплаты через ОБС по счёту № ' + (pay.invoice_number || pay.id),
             'Исх. ' + res.number,
             new Date(),
-            JSON.stringify([{ name: require('path').basename(res.pdfPath), path: res.pdfPath, kind: 'obs_letter' }]),
+            JSON.stringify([{ name: res.fileName, url: res.url, kind: 'obs_letter' }]),
           ]);
 
         const letterDocId = ins.rows[0] && ins.rows[0].id;

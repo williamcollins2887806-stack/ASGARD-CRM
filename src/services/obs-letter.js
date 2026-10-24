@@ -449,6 +449,11 @@ function buildHtml(data, opts) {
     margin-top: 12mm;
     position: relative;
     min-height: 34mm;
+    /* D-378: письмо А-2115 выходило на 2 страницы, и подпись с печатью
+       уезжали на вторую, оставляя на первой пустое место. Блок подписи
+       неделим — как в бумажном делопроизводстве. */
+    break-inside: avoid;
+    page-break-inside: avoid;
   }
   .signature-row {
     display: flex;
@@ -554,7 +559,15 @@ function buildHtml(data, opts) {
 }
 
 // ─── Генерация PDF ────────────────────────────────────────────────────────
-const STORAGE_DIR = path.join(process.cwd(), 'storage', 'obs-letters');
+// D-378 (дефект, найденный верификатором 25.10.2026): первая версия писала
+// PDF в `storage/obs-letters/`, а это вне и `public/`, и `uploads/` — nginx
+// такой путь не раздаёт, и клик «Письмо готово» получал SPA-заглушку вместо
+// файла. Теперь письма лежат в `uploads/doc-hub/obs-letters/` — в том же
+// защищённом каталоге, откуда реестр отдаёт остальные документы ACL-роутом.
+const UPLOAD_ROOT = path.join(process.cwd(), process.env.UPLOAD_DIR || 'uploads');
+const STORAGE_DIR = path.join(UPLOAD_ROOT, 'doc-hub', 'obs-letters');
+/** Публичный URL-префикс для записи в attachments (раздаётся ACL-роутом). */
+const URL_PREFIX = '/uploads/doc-hub/obs-letters';
 
 function ensureDir() {
   if (!fs.existsSync(STORAGE_DIR)) fs.mkdirSync(STORAGE_DIR, { recursive: true });
@@ -599,7 +612,7 @@ async function generateObsLetterPdf(db, docId) {
     try { await page.close(); } catch (_) { /* */ }
   }
 
-  return { pdfPath, htmlPath, number, dateText, docId: doc.id };
+  return { pdfPath, htmlPath, url: `${URL_PREFIX}/${encodeURIComponent(`${base}.pdf`)}`, number, dateText, docId: doc.id, fileName: `${base}.pdf` };
 }
 
 module.exports = {

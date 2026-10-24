@@ -2596,6 +2596,80 @@ module.exports = async function docRegistryRoutes(fastify) {
   const OBS_ROLES = ['ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV', 'BUH'];
 
   /**
+   * GET /:id/letter-file — отдать PDF письма для ОБС.
+   *
+   * D-378 (дефект от верификатора 25.10.2026): фронт открывал
+   * `/api/doc-registry/:id/file`, но такого роута не было — 404. Плюс
+   * `window.open` не передаёт Bearer-токен, поэтому нужен не прямой URL,
+   * а blob через fetch с заголовком.
+   *
+   * Отдаём файл ACL-роутом: проверяем видимость документа и что запрошенный
+   * документ — действительно письмо (package_type='letter'), а не любая
+   * строка реестра. Путь берём из attachments[0].url и валидируем, что он
+   * лежит внутри uploads/ (защита от path traversal).
+   */
+  fastify.get('/:id/letter-file', auth, async (req, reply) => {
+    const id = parseInt(req.params.id, 10);
+    if (!Number.isFinite(id)) return reply.code(400).send({ error: 'Неверный ID' });
+
+    // D-378 (дефект от верификатора 25.10.2026): проверка видимости по САМОМУ
+    // письму не пускала бухгалтерию — письмо создаётся от имени инициатора
+    // (PM), у него doc_owner_id пустой, и BUH получал 404 на собственном
+    // документе. Правильно: если человек видит СЧЁТ, он видит и его письмо.
+    // Поэтому видимость проверяем по счёту-родителю; прямое письмо без
+    // родителя — по обычной матрице.
+    const parent = await db.query(
+      `SELECT id FROM doc_registry
+        WHERE obs_letter_doc_id = $1 AND deleted_at IS NULL LIMIT 1`, [id]);
+    const parentId = parent.rows[0] && parent.rows[0].id;
+
+    const ctx = { role: req.user.role, userId: req.user.id };
+    const visible = parentId
+      ? await assertDocVisible(db, ctx, parentId)
+      : await assertDocVisible(db, ctx, id);
+    if (!visible) return reply.code(404).send({ error: 'Не найдено' });
+
+    const { rows } = await db.query(
+      `SELECT id, package_type, attachments, original_path_url, invoice_number
+         FROM doc_registry WHERE id=$1 AND deleted_at IS NULL`, [id]);
+    const doc = rows[0];
+    if (!doc) return reply.code(404).send({ error: 'Не найдено' });
+    if (doc.package_type !== 'letter') {
+      return reply.code(400).send({ error: 'Это не письмо для ОБС' });
+    }
+
+    let atts = doc.attachments;
+    if (typeof atts === 'string') { try { atts = JSON.parse(atts); } catch (_) { atts = []; } }
+    if (!Array.isArray(atts)) atts = [];
+    const first = atts[0] || null;
+    const url = (first && (first.url || first.path)) || doc.original_path_url;
+    if (!url) return reply.code(404).send({ error: 'Файл письма не найден' });
+
+    // D-378: url в attachments хранится как публичный адрес и содержит
+    // кириллицу в percent-encoding (`%D0%9E%D0%91%D0%A1_...`). Файловая
+    // система работает с настоящими именами, поэтому декодируем — иначе
+    // safeUploadPath ищет файл с литеральным «%D0%9E» и не находит его.
+    let decoded = String(url);
+    try { decoded = decodeURIComponent(url); } catch (_) { /* оставляем как есть */ }
+
+    // Файл обязан лежать внутри uploads/ — иначе это попытка прочитать
+    // произвольный файл сервера от имени сотрудника.
+    const fsPath = safeUploadPath(decoded, { subdir: path.join('doc-hub', 'obs-letters') })
+      || safeUploadPath(decoded, { subdir: 'doc-hub' });
+    if (!fsPath) return reply.code(400).send({ error: 'Недопустимый путь к файлу' });
+    if (!fs.existsSync(fsPath)) return reply.code(404).send({ error: 'Файл отсутствует на диске' });
+
+    const { safeContentType } = require('../lib/upload-ext');
+    const ct = safeContentType('.pdf', null);
+    const name = (first && first.name) || path.basename(fsPath);
+    reply.header('Content-Type', ct);
+    reply.header('Content-Disposition', `inline; filename="${encodeURIComponent(name)}"`);
+    return reply.send(fs.createReadStream(fsPath));
+  });
+
+  // Способ оплаты меняют ТОЛЬКО бухгалтерия и директора (решение 24.10.2026).
+
+  /**
    * PATCH /:id/payment-source — сменить способ оплаты.
    * body: { payment_source: 'regular' | 'obs' }
    *
@@ -2617,7 +2691,7 @@ module.exports = async function docRegistryRoutes(fastify) {
     }
 
     const found = await db.query(
-      'SELECT id, payment_source, obs_letter_status FROM doc_registry WHERE id=$1 AND deleted_at IS NULL', [id]);
+      'SELECT id, payment_source, obs_letter_status, obs_letter_doc_id FROM doc_registry WHERE id=$1 AND deleted_at IS NULL', [id]);
     const doc = found.rows[0];
     if (!doc) return reply.code(404).send({ error: 'Не найдено' });
 
@@ -2626,10 +2700,25 @@ module.exports = async function docRegistryRoutes(fastify) {
       return { ok: true, payment_source: src, changed: false, obs_letter_status: doc.obs_letter_status };
     }
 
-    const nextLetterStatus = src === 'obs'
-      // Переключили на ОБС: если письмо уже есть — оно готово, иначе «нет».
-      ? (doc.obs_letter_status === 'ready' ? 'ready' : 'none')
-      : 'none';
+    // D-378 (дефект от верификатора 25.10.2026): при уходе на 'regular' статус
+    // становился 'none', и при возврате на 'obs' восстановить 'ready' было
+    // нельзя — плашка показывала «Письма нет» при живом письме в реестре и
+    // предлагала сделать дубль.
+    //
+    // Теперь состояние письма НЕ зависит от текущего способа оплаты: если
+    // письмо реально существует (obs_letter_doc_id указывает на живую строку),
+    // статус остаётся 'ready' независимо от того, что выбрано сейчас.
+    let hasLiveLetter = false;
+    if (doc.obs_letter_doc_id) {
+      const l = await db.query(
+        'SELECT id FROM doc_registry WHERE id=$1 AND deleted_at IS NULL AND package_type=$2',
+        [doc.obs_letter_doc_id, 'letter']);
+      hasLiveLetter = !!l.rows[0];
+    }
+
+    const nextLetterStatus = hasLiveLetter
+      ? 'ready'
+      : (doc.obs_letter_status === 'generating' ? 'generating' : 'none');
 
     const { rows } = await db.query(
       `UPDATE doc_registry
@@ -2692,7 +2781,6 @@ module.exports = async function docRegistryRoutes(fastify) {
       `UPDATE doc_registry SET obs_letter_status='generating', obs_letter_error=NULL,
               updated_by=$2, updated_at=NOW() WHERE id=$1`, [id, req.user.id]);
     await audit(db, id, req.user.id, 'obs_letter_start', {});
-
     const obsLetter = require('../services/obs-letter');
     const fastifyRef = fastify;
     const docId = id;
@@ -2723,7 +2811,10 @@ module.exports = async function docRegistryRoutes(fastify) {
             'Письмо для оплаты через ОБС по счёту № ' + (doc.invoice_number || docId),
             'Исх. ' + res.number,
             new Date(),
-            JSON.stringify([{ name: require('path').basename(res.pdfPath), path: res.pdfPath, kind: 'obs_letter' }]),
+            // D-378: в attachments — ПУБЛИЧНЫЙ url (/uploads/...), а не
+            // абсолютный путь на диске. Абсолютный путь nginx не раздаёт,
+            // поэтому клик по письму открывал SPA-заглушку вместо PDF.
+            JSON.stringify([{ name: res.fileName, url: res.url, kind: 'obs_letter' }]),
           ]
         );
         const letterDocId = ins.rows[0] && ins.rows[0].id;
@@ -2734,7 +2825,7 @@ module.exports = async function docRegistryRoutes(fastify) {
             WHERE id=$1`, [docId, letterDocId || null]);
 
         await audit(fastifyRef.db, docId, userId, 'obs_letter_ready',
-          { letter_doc_id: letterDocId, number: res.number, pdf: res.pdfPath });
+          { letter_doc_id: letterDocId, number: res.number, url: res.url });
         fastifyRef.log.info(`[obs-letter] готово: doc=${docId} письмо=${letterDocId} №${res.number}`);
       } catch (e) {
         const msg = String(e && e.message || e).slice(0, 500);
