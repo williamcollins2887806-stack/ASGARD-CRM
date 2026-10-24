@@ -4316,6 +4316,11 @@ window.AsgardDocHubPage = (function () {
     });
     root.querySelector('#dhFacetOps')?.addEventListener('change', apply);
     root.querySelector('#dhFacetIncomplete')?.addEventListener('change', apply);
+    // D-378: способ оплаты и «без письма ОБС». Дефект от верификатора
+    // 25.10.2026 — контролы рендерились, но обработчиков не было, и выбор
+    // ни к чему не приводил: фильтр не применялся.
+    root.querySelector('#dhFacetPaySource')?.addEventListener('change', apply);
+    root.querySelector('#dhFacetObsMissing')?.addEventListener('change', apply);
     root.querySelector('#dhFacetYear')?.addEventListener('change', apply);
     // Сортировка реестра (дата счёта / дата внесения / сумма).
     root.querySelector('#dhSort')?.addEventListener('change', apply);

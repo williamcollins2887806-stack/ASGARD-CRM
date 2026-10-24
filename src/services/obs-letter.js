@@ -358,16 +358,21 @@ function buildHtml(data, opts) {
     : 'работы';
 
   // Даты — числами, как в образце («23.10.2026 г.»), а не словами.
+  //
+  // D-378 (P2 от верификатора 25.10.2026): в первой версии были обороты из
+  // запрещённого списка .cursor/rules/anti-ai-text.mdc — «Настоящим сообщаем»,
+  // «В рамках исполнения», «В целях обеспечения». Письмо уходит внешнему
+  // контрагенту, поэтому переписано прямыми формулировками без канцелярита.
   let basisText;
   if (objectName && customerName) {
-    basisText = `Настоящим сообщаем, что ${esc(company.name_short)} выполняет ${esc(whatWeDo)} `
-      + `на объекте ${esc(objectName)} в рамках договора субподряда, заключённого с ${esc(customerName)}.`;
+    basisText = `${esc(company.name_short)} выполняет ${esc(whatWeDo)} `
+      + `на объекте ${esc(objectName)} по договору субподряда с ${esc(customerName)}.`;
   } else if (objectName) {
-    basisText = `Настоящим сообщаем, что ${esc(company.name_short)} выполняет ${esc(whatWeDo)} на объекте ${esc(objectName)}.`;
+    basisText = `${esc(company.name_short)} выполняет ${esc(whatWeDo)} на объекте ${esc(objectName)}.`;
   } else if (workTitle) {
-    basisText = `Настоящим сообщаем, что ${esc(company.name_short)} выполняет ${esc(whatWeDo)}.`;
+    basisText = `${esc(company.name_short)} выполняет ${esc(whatWeDo)}.`;
   } else {
-    basisText = `Настоящим сообщаем, что ${esc(company.name_short)} привлекает подрядчиков для исполнения своих обязательств перед заказчиками.`;
+    basisText = `${esc(company.name_short)} привлекает подрядчиков для исполнения своих обязательств перед заказчиками.`;
   }
 
   // D-378: раньше выходило «привлекло ООО "УК МАГИСТР" Договор с ООО "УК
@@ -455,6 +460,12 @@ function buildHtml(data, opts) {
     break-inside: avoid;
     page-break-inside: avoid;
   }
+  /* D-378 (P2 от верификатора 25.10.2026): одного break-inside оказалось
+     мало — Chrome при min-height 297mm у контейнера страницы всё равно
+     разрывал лист. Запрещаем разрыв у самой страницы и держим подпись
+     сразу за текстом: письмо умещается на одном листе. */
+  .page { break-inside: avoid; page-break-inside: avoid; }
+  .body { break-after: avoid; page-break-after: avoid; }
   .signature-row {
     display: flex;
     align-items: flex-end;
@@ -526,16 +537,16 @@ function buildHtml(data, opts) {
 
   <div class="body">
     <p>${basisText}</p>
-    <p>В рамках исполнения обязательств персонал ${esc(company.name_short)} обязан иметь действующие допуски
-       и разрешительные документы, подтверждающие возможность выполнения работ на объекте Заказчика.</p>
-    <p>В целях обеспечения допуска персонала к выполнению работ ${esc(company.name_short)} привлекло
+    <p>Персонал ${esc(company.name_short)} обязан иметь действующие допуски и разрешительные документы,
+       подтверждающие возможность выполнения работ на объекте Заказчика.</p>
+    <p>Чтобы обеспечить допуск персонала к работам, ${esc(company.name_short)} привлекло
        ${esc(counterparty)} для оказания услуг${contractText}, а именно:</p>
     ${data.items.length ? `<ul>${itemsHtml}</ul>` : ''}
-    <p>В адрес ${esc(company.name_short)} выставлен счёт на оплату № ${esc(invoiceNo)}${invoiceDate ? ` от ${esc(invoiceDate)}` : ''}
+    <p>${esc(company.name_short)} получило счёт на оплату № ${esc(invoiceNo)}${invoiceDate ? ` от ${esc(invoiceDate)}` : ''}
        на сумму ${money(gross)} руб.${esc(vatLine)}.</p>
-    <p>Указанные расходы являются обязательными и непосредственно связаны с исполнением обязательств по договору,
-       поскольку отсутствие соответствующих документов исключает возможность выполнения работ на объекте Заказчика.</p>
-    <p>Просим осуществить оплату счёта (100% суммы) в размере ${money(gross)} руб.
+    <p>Расходы обязательные и напрямую связаны с исполнением обязательств по договору:
+       без этих документов работы на объекте Заказчика выполнять нельзя.</p>
+    <p>Просим оплатить счёт (100% суммы) в размере ${money(gross)} руб.
        (${esc(amountInWords(gross))})${esc(vatTail)}</p>
   </div>
 
@@ -592,10 +603,13 @@ async function generateObsLetterPdf(db, docId) {
   ensureDir();
   const safeNo = String(doc.invoice_number || doc.id).replace(/[^\p{L}\p{N}-]+/gu, '_').slice(0, 40);
   const base = `ОБС_${safeNo}_${number}`;
-  const htmlPath = path.join(STORAGE_DIR, `${base}.html`);
   const pdfPath = path.join(STORAGE_DIR, `${base}.pdf`);
 
-  fs.writeFileSync(htmlPath, html, 'utf8');
+  // D-378 (P3 от верификатора 25.10.2026): HTML-исходник письма на диск
+  // больше не пишем. Каталог раздаётся nginx напрямую, и файл .html
+  // открывался бы в браузере как страница с реквизитами и суммами —
+  // это утечка внешнего документа и лишняя XSS-поверхность.
+  // Для отладки HTML можно получить из функции buildHtml.
 
   const browser = await _getBrowser();
   const page = await browser.newPage();
@@ -612,7 +626,7 @@ async function generateObsLetterPdf(db, docId) {
     try { await page.close(); } catch (_) { /* */ }
   }
 
-  return { pdfPath, htmlPath, url: `${URL_PREFIX}/${encodeURIComponent(`${base}.pdf`)}`, number, dateText, docId: doc.id, fileName: `${base}.pdf` };
+  return { pdfPath, htmlPath: null, url: `${URL_PREFIX}/${encodeURIComponent(`${base}.pdf`)}`, number, dateText, docId: doc.id, fileName: `${base}.pdf` };
 }
 
 module.exports = {

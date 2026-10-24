@@ -529,6 +529,13 @@ fastify.addHook('onRequest', (req, reply, next) => {
   if (/^\/uploads\/private(\/|$)/i.test(url)) {
     return reply.code(404).send({ error: 'Не найдено' });
   }
+  // D-378 (P3 от верификатора 25.10.2026): письма для ОБС — внешние документы
+  // с реквизитами и суммами. Каталог раздавался nginx напрямую, и PDF/HTML
+  // открывались по одной ссылке без авторизации. Отдаём их ТОЛЬКО через
+  // ACL-роут /api/doc-registry/:id/letter-file.
+  if (/^\/uploads\/doc-hub\/obs-letters(\/|$)/i.test(url)) {
+    return reply.code(404).send({ error: 'Не найдено' });
+  }
   next();
 });
 

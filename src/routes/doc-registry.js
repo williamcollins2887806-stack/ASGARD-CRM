@@ -2759,7 +2759,7 @@ module.exports = async function docRegistryRoutes(fastify) {
     }
 
     const found = await db.query(
-      `SELECT id, invoice_number, payment_source, obs_letter_status
+      `SELECT id, invoice_number, payment_source, obs_letter_status, obs_letter_doc_id
          FROM doc_registry WHERE id=$1 AND deleted_at IS NULL`, [id]);
     const doc = found.rows[0];
     if (!doc) return reply.code(404).send({ error: 'Не найдено' });
@@ -2777,9 +2777,24 @@ module.exports = async function docRegistryRoutes(fastify) {
       });
     }
 
-    await db.query(
-      `UPDATE doc_registry SET obs_letter_status='generating', obs_letter_error=NULL,
-              updated_by=$2, updated_at=NOW() WHERE id=$1`, [id, req.user.id]);
+    // D-378 (P1 от верификатора 25.10.2026): здесь был SELECT → UPDATE без
+    // условия. Два одновременных клика «Сформировать» оба проходили проверку
+    // и запускали ДВА Chrome, плодя письма-дубли. Теперь захват — атомарный:
+    // статус переводится в 'generating' ТОЛЬКО если письма ещё нет и
+    // генерация не идёт. Если строка не обновилась — второй вызов уходит.
+    const claim = await db.query(
+      `UPDATE doc_registry
+          SET obs_letter_status='generating', obs_letter_error=NULL,
+              updated_by=$2, updated_at=NOW()
+        WHERE id=$1
+          AND COALESCE(obs_letter_doc_id, 0) = 0
+          AND COALESCE(obs_letter_status, 'none') <> 'generating'
+        RETURNING id`, [id, req.user.id]);
+
+    if (!claim.rowCount) {
+      return { status: 'generating', already: true };
+    }
+
     await audit(db, id, req.user.id, 'obs_letter_start', {});
     const obsLetter = require('../services/obs-letter');
     const fastifyRef = fastify;
