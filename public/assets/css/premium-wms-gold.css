@@ -1,37 +1,9 @@
-/* Premium WMS/Pay/Catalog — gold primary (loads AFTER app.css) */
-.proc-page .btn.primary,
-.proc-desk .btn.primary,
-.proc-pay-modal .btn.primary,
-.proc-pay-modal__actions .btn.primary,
-.proc-inv-cta .btn.primary,
-#proc-invoice-top.btn.primary,
-#proc-invoice.btn.primary,
-#proc-invoice-foot.btn.primary,
-#inv-root .btn.primary,
-.pi-queue .btn.primary,
-.cr-m .btn.primary,
-.cr-m-overlay .btn.primary,
-.cr-m-body .btn.primary,
-.asm-page .btn.primary,
-.asm-detail .btn.primary,
-.asm-detail__actions .btn.primary,
-#asm-send.btn.primary,
-#asm-confirm.btn.primary,
-.sup-page .btn.primary,
-#sup-ci-go.btn.primary,
-.wh2-page .btn.primary,
-.wh2-btn--primary {
-  background: var(--gold, #D4A843) !important;
-  border-color: var(--gold, #D4A843) !important;
-  color: #15110d !important;
-  box-shadow: none;
-}
-.proc-page .btn.primary:hover,
-.cr-m .btn.primary:hover,
-.sup-page .btn.primary:hover,
-.asm-detail .btn.primary:hover {
-  filter: brightness(1.06);
-}
+/* Premium WMS/Pay/Catalog — стили поверхностей.
+   ⚠️ 23.10.2026: блок, красивший `.btn.primary` в золото (`--gold` + `#15110d`
+   текстом), УДАЛЁН. Он заставлял каждую страницу модуля иметь свой цвет кнопки:
+   procurement/suppliers/assembly/склады были золотыми, остальные — синими.
+   Теперь цвет кнопок задаётся ОДНИМ местом (единая система кнопок), а модули
+   оформляют только свои поверхности. Подробности — D-343 в _DIFF-LEDGER.md. */
 #proc-new-pay.proc-act,
 .proc-act#proc-new-pay {
   background: var(--gold, #D4A843) !important;
@@ -44,10 +16,8 @@
   border-color: var(--gold, #D4A843) !important;
   color: #15110d !important;
 }
-.proc-deliver__btn--primary {
-  background: linear-gradient(135deg, var(--gold, #D4A843), #b8923a) !important;
-  color: #15110d !important;
-}
+/* 23.10.2026: .proc-deliver__btn--primary — это primary-кнопка модуля,
+   её цвет теперь в единой системе (не золото). См. D-343. */
 .wh2-table .wh2-btn,
 .wh2-ops-list .wh2-btn,
 #wh2-ops-list .wh2-btn {
@@ -142,8 +112,5 @@
   .wh2-rc-row { grid-template-columns:1fr 1fr; }
   .wh2-rc-name { grid-column:1 / -1; }
 }
-.wh2 .btn.primary, .wh2-asm .btn.primary {
-  background: var(--gold, #D4A843) !important;
-  border-color: var(--gold, #D4A843) !important;
-  color: #15110d !important;
-}
+/* 23.10.2026 (D-343): последняя перекраска primary в золото в этом файле
+   удалена — цвет задаёт единая система кнопок. */

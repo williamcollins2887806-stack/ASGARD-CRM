@@ -192,54 +192,23 @@ html:not([data-theme="dark"]):not(.theme-dark) .telephony-page .telephony-tab--a
 
 /* Legacy btn modifiers → components.css parity */
 /* Beat app.css .btn.primary / .btn--primary !important navy — gold CTAs */
-.telephony-page .btn.primary,
-.telephony-page button.btn.primary,
-.telephony-page .btn.primary.sm,
-.telephony-page .btn--primary,
-.telephony-page button.btn--primary,
-.telephony-page .call-detail-actions .btn.primary,
-.telephony-page .call-detail-actions .btn--primary,
-.telephony-page #callbackBtn,
+/* 23.10.2026 (D-343): блок красил ВСЕ primary-кнопки телефонии в золото
+   (#F5C542→#E5A820) мимо системы — самая яркая точка во всей CRM.
+   Цвет primary задаётся в buttons-system.css. Оставлены только размеры,
+   потому что кнопка набора намеренно крупная (48px) — это удобство набора. */
 .telephony-page #fApply,
-.telephony-page #sApply,
+.telephony-page #callbackBtn,
 .telephony-page #addRuleBtn,
-.telephony-page #pbxSaveSettings,
 .telephony-page #rmRuleSave,
 .telephony-page #telCbConfirm,
-#callbackBtn.btn.primary,
-#phDialCall,
-button#phDialCall.btn.primary,
-#phTransferGo,
-button#phTransferGo.btn.primary,
-.ph-dial-call.btn.primary,
-body .btn.primary.ph-dial-call,
-body #phTransferGo.btn.primary,
-.ph-act--answer {
-  background: linear-gradient(165deg, #F5C542 0%, #E5A820 55%, #C8892E 100%) !important;
-  color: #1a1205 !important;
-  border-color: transparent !important;
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.52),
-    inset 0 -1px 0 rgba(80, 50, 0, 0.16),
-    0 0 0 1px color-mix(in srgb, #C8892E 42%, transparent),
-    0 8px 24px color-mix(in srgb, #E5A820 44%, transparent),
-    0 0 36px color-mix(in srgb, #F5C542 28%, transparent) !important;
+.telephony-page #pbxSaveSettings {
   font-weight: 700 !important;
-  transition: box-shadow 0.22s ease, filter 0.22s ease, transform 0.18s ease;
 }
 .telephony-page .btn.primary:hover,
 .telephony-page button.btn.primary:hover,
-.telephony-page #fApply:hover,
-.telephony-page #callbackBtn:hover,
 #phDialCall:hover,
 button#phDialCall.btn.primary:hover,
 .ph-act--answer:hover {
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.6),
-    0 0 0 1px color-mix(in srgb, #C8892E 55%, transparent),
-    0 12px 32px color-mix(in srgb, #E5A820 52%, transparent),
-    0 0 48px color-mix(in srgb, #F5C542 38%, transparent) !important;
-  filter: brightness(1.06);
   transform: translateY(-1px);
 }
 
@@ -2124,9 +2093,7 @@ html body:has(.telephony-page) .asg-main-wrap {
 .telephony-page .missed-call-btn--callback,
 body .ph-dial-call.btn.primary,
 body .btn.primary.ph-dial-call {
-  background: linear-gradient(180deg, var(--gold-l, #E8C35A), var(--gold, #D4A843)) !important;
-  color: #1a1205 !important;
-  border: none !important;
+  /* 23.10.2026 (D-343): цвет из единой системы кнопок (был золотой градиент). */
   font-weight: 700;
 }
 

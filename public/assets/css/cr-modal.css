@@ -811,25 +811,12 @@
   transform: scale(0.97);
 }
 
-.cr-m__body .btn.primary,
-.cr-m__body .btn.gold {
-  background: linear-gradient(135deg, var(--gold), var(--gold-h));
-  color: var(--bg1);
-  border: none;
-  font-weight: 600;
-}
+/* 23.10.2026 (D-343): primary внутри модалок больше НЕ перекрашивается в золото.
+   Правило делало так, что одна и та же кнопка была золотой в модалке и синей
+   на странице. Цвет primary задаётся единой системой кнопок.
+   Оставлены только семантические (.red/.danger) и нейтральные (.ghost). */
 
-.cr-m__body .btn.primary:hover,
-.cr-m__body .btn.gold:hover {
-  filter: brightness(1.12);
-}
-
-.cr-m__body .btn.red,
-.cr-m__body .btn.danger {
-  background: linear-gradient(135deg, var(--red), var(--red-h));
-  color: #fff;
-  border: none;
-}
+/* 23.10.2026 (D-343): цвет danger в модалках задаёт buttons-system.css. */
 
 .cr-m__body .btn.ghost {
   border: 1px solid var(--brd);

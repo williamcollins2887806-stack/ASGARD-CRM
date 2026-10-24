@@ -32,33 +32,13 @@
 }
 .pk3-search-input:focus { border-color: var(--gold); box-shadow: 0 0 0 3px var(--gold-bg); }
 
-/* ── Tabs ── */
-.pk3-tabs-bar {
-  display: flex; gap: 0; padding: 0 22px; border-bottom: 1px solid var(--brd-2);
-  background: var(--bg-1);
-}
-.pk3-tab {
-  padding: 11px 17px; color: var(--t-3); cursor: pointer; font-size: 13px;
-  font-weight: 500; border-bottom: 2px solid transparent;
-  display: inline-flex; align-items: center; gap: 7px; transition: all .15s;
-  background: transparent; border-left: 0; border-right: 0; border-top: 0;
-  font-family: inherit;
-}
-.pk3-tab:hover { color: var(--t-1); }
-.pk3-tab.pk3-active { color: var(--gold-l); border-bottom-color: var(--gold); }
-.pk3-cnt {
-  background: var(--bg-3); color: var(--t-2); padding: 1px 7px;
-  border-radius: 999px; font-size: 11px; font-weight: 600;
-}
-.pk3-tab.pk3-active .pk3-cnt { background: var(--gold); color: var(--on-gold); }
+/* ── Tabs ──
+   23.10.2026: .pk3-tabs-bar / .pk3-tab / .pk3-cnt удалены — вкладки типов
+   (Заявки/Пре-тендеры/Тендеры/Работы) убраны из канбана: «Все типы» показывал
+   то же самое, а остальные только скрывали карты других типов. */
 
-/* ── View toggle ── */
-.pk3-view-toggle { display: inline-flex; background: var(--bg-3); border-radius: 8px; padding: 2px; margin-right: 8px; }
-.pk3-view-toggle button {
-  padding: 6px 12px; background: transparent; border: 0; color: var(--t-3);
-  cursor: pointer; font-size: 12px; border-radius: 6px; font-family: inherit;
-}
-.pk3-view-toggle button.pk3-active { background: var(--bg-1); color: var(--gold-l); }
+/* ── View toggle ──
+   23.10.2026: .pk3-view-toggle удалён — кнопка «По под-этапам» не работала. */
 
 /* ── Board ── */
 .pk3-board {

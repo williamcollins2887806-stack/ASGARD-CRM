@@ -59,7 +59,14 @@ export default function Home() {
           className="px-3 pb-4"
           style={{
             paddingTop: 'calc(var(--safe-top) + 8px)',
-            paddingBottom: 'calc(var(--tabbar-total) + 16px)',
+            /**
+             * D-341: та же формула, что в PageShell. Бар прижат к ФИЗИЧЕСКОМУ
+             * низу, и на iPhone он лежит в основном в зазоре вне документа,
+             * поэтому резервировать полную высоту нельзя — останется ~51px
+             * пустоты, а контент «отстанет» от бара. Вычитаем зазор через
+             * знаковый --tabbar-lift (он может быть и положительным при зуме).
+             */
+            paddingBottom: 'calc(max(0px, var(--tabbar-total) + var(--tabbar-lift, 0px)) + 16px)',
           }}
         >
           {/* Панель РП + вход в Зал Рабочих для PM/HEAD_PM/ADMIN */}

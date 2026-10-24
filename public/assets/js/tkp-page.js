@@ -81,6 +81,8 @@ window.AsgardTkpPage = (function() {
   let _tkpAllItems = [];
   // D-293: текущий вариант КП ('classic' | 'full'). Раньше всегда classic.
   let currentKpVariant = 'classic';
+  // D-308: защита от повторного запуска автозаполнения.
+  let _autofillBusy = false;
 
   function injectMimirTkpStyles() {
     if (_mimirStylesInjected) return;
@@ -141,12 +143,12 @@ window.AsgardTkpPage = (function() {
       // Action buttons — modal footer
       '.tkp-actions{display:flex;gap:10px;margin-top:20px;padding-top:16px;border-top:1px solid var(--brd)}' +
       '.tkp-btn-save,.tkp-btn-pdf,.tkp-btn-send{display:inline-flex;align-items:center;gap:8px;padding:10px 20px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;transition:all .2s;border:none}' +
-      '.tkp-btn-save{flex:1;justify-content:center;background:var(--blue);color:#fff}' +
-      '.tkp-btn-save:hover{background:var(--blue-h);box-shadow:0 4px 12px rgba(30,77,140,0.3)}' +
+      '.tkp-btn-save{flex:1;justify-content:center;background:linear-gradient(180deg,var(--bsys-primary-1),var(--bsys-primary-2));color:var(--bsys-primary-ink)}' +
+      '.tkp-btn-save:hover{background:linear-gradient(180deg,var(--bsys-primary-hover),var(--bsys-primary-1))}' +
       '.tkp-btn-pdf{background:var(--bg3);color:var(--t1);border:1px solid var(--brd)!important}' +
-      '.tkp-btn-pdf:hover{border-color:var(--blue)!important;color:var(--blue);background:rgba(30,77,140,0.05)}' +
-      '.tkp-btn-send{background:linear-gradient(135deg,#1E4D8C,#2563EB);color:#fff}' +
-      '.tkp-btn-send:hover{box-shadow:0 4px 12px rgba(37,99,235,0.3);transform:translateY(-1px)}' +
+      '.tkp-btn-pdf:hover{border-color:var(--bsys-primary-brd)!important;color:var(--bsys-primary-1);background:var(--gold-bg)}' +
+      '.tkp-btn-send{background:linear-gradient(180deg,var(--bsys-primary-1),var(--bsys-primary-2));color:var(--bsys-primary-ink)}' +
+      '.tkp-btn-send:hover{filter:brightness(1.07);transform:translateY(-1px)}' +
       // Table action buttons
       '.tkp-tbl-btn{display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:6px;border:1px solid var(--brd);background:transparent;color:var(--t1);cursor:pointer;transition:all .15s;padding:0}' +
       '.tkp-tbl-btn:hover{border-color:var(--blue);color:var(--blue);background:rgba(30,77,140,0.06)}' +
@@ -776,8 +778,80 @@ window.AsgardTkpPage = (function() {
 
   // prefill = { tender_id, tender_title, customer_name, customer_inn, subject, work_type,
   //             object_name, object_city, total_price }
-  async function openForm(editId, prefill) {
-    var prefillData = prefill || {};
+  /**
+   * D-308: автозаполнение ТКП из сметы Мимира с индикацией прогресса.
+   * Работает по SSE: пользователь видит, что происходит, а результат пишется
+   * в ЧЕРНОВИК на сервере — при обрыве связи данные не теряются.
+   */
+  async function _autoFillFromEstimate(tkpId) {
+    if (!tkpId || _autofillBusy) return;
+    _autofillBusy = true;
+    const token = localStorage.getItem('asgard_token') || '';
+    let bar = document.getElementById('tkpAutofillBar');
+    if (!bar) {
+      bar = document.createElement('div');
+      bar.id = 'tkpAutofillBar';
+      bar.style.cssText = 'margin:8px 0 12px;padding:10px 14px;border-radius:10px;'
+        + 'background:rgba(212,168,67,.08);border:1px solid rgba(212,168,67,.35);'
+        + 'font-size:12.5px;color:var(--t1)';
+      const host = document.querySelector('.modal-content') || document.querySelector('.modal');
+      if (host) host.insertBefore(bar, host.firstChild);
+    }
+    const setBar = (txt) => { if (bar) bar.textContent = txt; };
+    setBar('🧙 Мимир заполняет ТКП из сметы…');
+
+    try {
+      const resp = await fetch('/api/tkp/' + tkpId + '/autofill', {
+        method: 'POST',
+        headers: { Authorization: 'Bearer ' + token }
+      });
+      if (!resp.ok || !resp.body) throw new Error('HTTP ' + resp.status);
+      const reader = resp.body.getReader();
+      const dec = new TextDecoder();
+      let buf = '';
+      let doneData = null;
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buf += dec.decode(value, { stream: true });
+        const lines = buf.split('\n');
+        buf = lines.pop() || '';
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue;
+          let ev = null;
+          try { ev = JSON.parse(line.slice(6)); } catch (_) { continue; }
+          if (ev.type === 'progress' || ev.type === 'start') {
+            setBar('🧙 ' + (ev.message || 'работаю…'));
+          } else if (ev.type === 'warn') {
+            setBar('⚠ ' + (ev.message || ''));
+          } else if (ev.type === 'done') {
+            doneData = ev;
+          } else if (ev.type === 'error') {
+            setBar('❌ ' + (ev.message || 'ошибка'));
+          }
+        }
+      }
+
+      if (doneData && doneData.items_count > 0) {
+        setBar('✅ ' + doneData.message + ' · итого ' +
+          Number(doneData.total_with_vat || 0).toLocaleString('ru-RU') + ' ₽ с НДС');
+        setTimeout(() => { try { bar.remove(); } catch (_) {} }, 2500);
+        // Перерисовываем таблицу с новыми позициями.
+        try {
+          hideModal();
+          await openForm(tkpId);
+        } catch (_) {}
+      } else {
+        setBar('⚠ Смета не найдена — заполните позиции вручную');
+      }
+    } catch (e) {
+      setBar('❌ Автозаполнение не удалось: ' + (e.message || e));
+    } finally {
+      _autofillBusy = false;
+    }
+  }
+
+  async function openForm(editId, prefill) {    var prefillData = prefill || {};
     let currentId = editId || null;
     let item = {};
 
@@ -883,6 +957,13 @@ window.AsgardTkpPage = (function() {
           addItemRow();
         }
         recalcTotals();
+
+        // D-308: если ТКП создано и позиций нет — сразу подтянуть их из сметы
+        // Мимира (в фоне, с индикацией). Пользователь не должен видеть пустую
+        // таблицу и вручную искать, где взять цены.
+        if (currentId && (!parsed.items || !parsed.items.length)) {
+          _autoFillFromEstimate(currentId);
+        }
 
         // Мимир: генерация описания
         injectMimirTkpStyles();
@@ -1076,6 +1157,50 @@ window.AsgardTkpPage = (function() {
         }
 
         // Предпросмотр — генерация PDF без записи в БД
+        // D-309: автосохранение черновика. Пользователь не должен терять
+        // заполненное, если его выкинет (браузер закрылся / сеть пропала).
+        // Сохраняем изменения формы раз в 20 сек и при уходе с вкладки.
+        if (currentId) {
+          let _dirty = false;
+          const markDirty = () => { _dirty = true; };
+          document.querySelectorAll('.modal input, .modal textarea, .modal select')
+            .forEach((el) => el.addEventListener('change', markDirty));
+
+          const doAutosave = async () => {
+            if (!_dirty || !currentId) return;
+            _dirty = false;
+            try {
+              const body = buildSaveBody();
+              const token = localStorage.getItem('asgard_token');
+              await fetch('/api/tkp/' + currentId, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+                body: JSON.stringify(body)
+              });
+              const hint = document.getElementById('tkpAutosaveHint');
+              if (hint) {
+                hint.textContent = '✓ черновик сохранён ' + new Date().toLocaleTimeString('ru-RU');
+                hint.style.opacity = '1';
+                setTimeout(() => { hint.style.opacity = '.45'; }, 2200);
+              }
+            } catch (_) { /* тихо — автосейв не должен мешать */ }
+          };
+          const _asIv = setInterval(doAutosave, 20000);
+          window.addEventListener('beforeunload', () => { try { doAutosave(); } catch (_) {} });
+          // Показ статуса автосохранения рядом с кнопками.
+          const foot = document.querySelector('.modal-footer, .modal-foot');
+          if (foot && !document.getElementById('tkpAutosaveHint')) {
+            const h = document.createElement('span');
+            h.id = 'tkpAutosaveHint';
+            h.style.cssText = 'font-size:11px;opacity:.45;margin-right:auto;transition:opacity .3s';
+            h.textContent = 'черновик сохраняется автоматически';
+            foot.insertBefore(h, foot.firstChild);
+          }
+          // Снимаем интервал при закрытии модалки.
+          const closeBtn = document.querySelector('.modal .modal-close, .modal [data-act="close"]');
+          if (closeBtn) closeBtn.addEventListener('click', () => clearInterval(_asIv));
+        }
+
         const btnPrev = $('#btnPreviewTkp');
         if (btnPrev) {
           btnPrev.addEventListener('click', async function() {

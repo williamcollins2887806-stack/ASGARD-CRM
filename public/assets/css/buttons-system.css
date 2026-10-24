@@ -1,0 +1,439 @@
+/* ═══════════════════════════════════════════════════════════════════════════════
+   BUTTON SYSTEM — единый источник правды по цвету кнопок (D-343, 23.10.2026)
+
+   ЗАЧЕМ. До этого файла цвет кнопки определялся тем, на какой странице она
+   стоит: procurement / suppliers / assembly / склады / сметы перекрашивали
+   `.btn.primary` в золото через `!important`, остальные оставляли синим, а
+   внутри модалок primary был золотым. В светлой теме те же правила дрались
+   с light-theme.css / light-glass.css / light-buttons.css — три файла
+   переопределяли одни и те же кнопки, каждый со своим `!important`.
+   Итог: цветной шум, о котором сообщил заказчик.
+
+   ПРИНЦИП. Один файл, подключён ПОСЛЕДНИМ среди десктопных стилей, поэтому
+   выигрывает у модулей без гонки. Цвет задаётся ТОЛЬКО здесь.
+
+   ДВЕ ТЕМЫ — ДВА НАБОРА, обе премиальные:
+     • тёмная  : золото как бренд-акцент (--gold / --gold-l), как в «Касе»;
+     • светлая : синий как основной (--blue), потому что --gold в светлой теме
+                 равен #8E6212 — это цвет ТЕКСТА (для контраста), а не плашки.
+                 Золото на светлой остаётся акцентом рамок/заголовков, не кнопок.
+
+   СЕМАНТИКА (строгая, по решению заказчика):
+     primary   — главное действие экрана (одно на экран);
+     gold      — акцентное действие (там, где золото уместно по смыслу);
+     danger    — необратимое (удалить, отклонить, отозвать);
+     success   — только подтверждение/одобрение;
+     ghost     — второстепенное, нейтральное;
+     secondary — нейтральное с фоном (альтернатива ghost).
+   Синего «информационного» варианта отдельно нет: `.btn.blue` = primary.
+
+   КОНТРАСТ. Числа ниже пересчитаны формулой WCAG 2.x по фактическим значениям
+   токенов (первая редакция содержала неверные цифры — исправлено 23.10.2026):
+     тёмная  — графит #15110D на золоте #D4A843 = 8.48:1 (и 11.08:1 на hover);
+     светлая — белый на синем #2563EB = 5.17:1 (8.72:1 на hover);
+               белый на красном #D62B3E = 4.91:1 (8.04:1 на hover);
+               белый на зелёном #12874A = 4.57:1 (8.67:1 на hover);
+               графит на золотой плашке #E8C35A = 11.08:1.
+   Все значения ≥ 4.5:1 (порог WCAG AA для обычного текста).
+   ═══════════════════════════════════════════════════════════════════════════════ */
+
+/* ── Токены: одинаковые имена для обеих тем, разные значения ─────────────── */
+:root {
+  --bsys-r: 9px;          /* радиус кнопки */
+  --bsys-h: 38px;         /* высота обычной */
+  --bsys-h-sm: 28px;      /* высота mini/sm */
+  --bsys-h-lg: 44px;      /* высота lg */
+  --bsys-px: 16px;        /* боковой отступ */
+  --bsys-fs: 13px;
+  --bsys-fw: 600;
+  --bsys-gap: 8px;
+  --bsys-ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --bsys-dur: 0.16s;
+}
+
+/* ── ТЁМНАЯ ТЕМА: золото как бренд ───────────────────────────────────────── */
+html:not([data-theme="light"]) {
+  --bsys-primary-1: #D4A843;
+  --bsys-primary-2: #B8922E;
+  --bsys-primary-brd: #8E6F1F;
+  --bsys-primary-ink: #15110D;   /* графит на золоте — 8.48:1 */
+  --bsys-primary-hover: #E8C35A; /* светлее — ОК, текст графит: 11.08:1 */
+  --bsys-primary-glow: 0 0 18px rgba(212, 168, 67, 0.34);
+
+  --bsys-danger-1: #C8293B;
+  --bsys-danger-2: #A31E2E;
+  --bsys-danger-brd: #851726;
+  --bsys-danger-ink: #FFFFFF;
+  /* hover ТЕМНЕЕ: белый текст на светлеющем красном падал до 4.30:1 */
+  --bsys-danger-hover: #A31E2E;   /* 7.55:1 */
+
+  --bsys-success-1: #2D8659;
+  --bsys-success-2: #226B47;
+  --bsys-success-brd: #1A5236;
+  --bsys-success-ink: #FFFFFF;
+  /* hover темнее: было #359C68 = 3.44:1 */
+  --bsys-success-hover: #226B47;  /* 6.44:1 */
+
+  --bsys-neutral-bg: rgba(255, 255, 255, 0.045);
+  --bsys-neutral-brd: rgba(255, 255, 255, 0.14);
+  --bsys-neutral-ink: rgba(255, 255, 255, 0.92);
+  --bsys-neutral-hover-bg: rgba(255, 255, 255, 0.085);
+  --bsys-neutral-hover-brd: rgba(255, 255, 255, 0.24);
+
+  --bsys-ghost-ink: rgba(255, 255, 255, 0.78);
+  --bsys-ghost-hover-bg: rgba(255, 255, 255, 0.07);
+  --bsys-focus: 0 0 0 3px rgba(212, 168, 67, 0.32);
+  --bsys-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
+
+  /* Плашка «золото» для не-кнопочных элементов (активный таб, бейдж) —
+     в тёмной теме это тот же бренд-золотой. */
+  --bsys-gold-fill: #D4A843;
+  --bsys-gold-fill-h: #B8922E;
+  --bsys-gold-ink: #15110D;
+}
+
+/* ── СВЕТЛАЯ ТЕМА: синий как основной ────────────────────────────────────── */
+html[data-theme="light"] {
+  --bsys-primary-1: #2563EB;
+  --bsys-primary-2: #1D4ED8;
+  --bsys-primary-brd: #1E40AF;
+  --bsys-primary-ink: #FFFFFF;   /* белый на синем — 5.17:1 */
+  /* hover ТЕМНЕЕ: белый текст на светлеющем синем падал до 3.68:1 */
+  --bsys-primary-hover: #1E40AF; /* 8.72:1 */
+  --bsys-primary-glow: 0 2px 4px rgba(29, 78, 216, 0.26), 0 8px 20px rgba(29, 78, 216, 0.18);
+
+  --bsys-danger-1: #D62B3E;
+  --bsys-danger-2: #C41E31;
+  --bsys-danger-brd: #9E1826;
+  --bsys-danger-ink: #FFFFFF;
+  --bsys-danger-hover: #9E1826;   /* 8.04:1, было #E5455A = 3.9:1 */
+
+  --bsys-success-1: #12874A;
+  --bsys-success-2: #0F6B3A;
+  --bsys-success-brd: #0B5731;
+  --bsys-success-ink: #FFFFFF;
+  --bsys-success-hover: #0B5731;  /* 8.67:1, было #17A05A = 3.38:1 */
+
+  --bsys-neutral-bg: #FFFFFF;
+  --bsys-neutral-brd: rgba(15, 23, 42, 0.13);
+  --bsys-neutral-ink: #1A1D20;
+  --bsys-neutral-hover-bg: #FFFFFF;
+  --bsys-neutral-hover-brd: rgba(15, 23, 42, 0.22);
+
+  --bsys-ghost-ink: #4A5568;
+  --bsys-ghost-hover-bg: rgba(15, 23, 42, 0.05);
+  --bsys-focus: 0 0 0 3px rgba(29, 78, 216, 0.22);
+  --bsys-shadow: 0 1px 2px rgba(16, 24, 40, 0.06);
+
+  /* Плашка «золото» для НЕ-кнопочных элементов (активный таб, бейдж).
+     ВАЖНО (D-343, F6): здесь стоял #8E6212 — это цвет ТЕКСТА, как фон он даёт
+     ровно ту «коричневую» плашку, которую убирали, и проваливает контраст.
+     Теперь золотая заливка одинакова в обеих темах, текст на ней — графит. */
+  --bsys-gold-fill: #E8C35A;
+  --bsys-gold-fill-h: #D4A843;
+  --bsys-gold-ink: #15110D;
+}
+
+/* ── Базовая форма кнопки (обе темы) ─────────────────────────────────────── */
+.btn,
+button.btn,
+a.btn,
+.btn--primary,
+.btn--danger,
+.btn--success,
+.btn--ghost {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--bsys-gap);
+  min-height: var(--bsys-h);
+  padding: 0 var(--bsys-px);
+  border-radius: var(--bsys-r);
+  border: 1px solid transparent;
+  font-size: var(--bsys-fs);
+  font-weight: var(--bsys-fw);
+  line-height: 1;
+  letter-spacing: 0.01em;
+  text-decoration: none;
+  cursor: pointer;
+  box-shadow: var(--bsys-shadow);
+  transition: background var(--bsys-dur) var(--bsys-ease),
+              border-color var(--bsys-dur) var(--bsys-ease),
+              box-shadow var(--bsys-dur) var(--bsys-ease),
+              color var(--bsys-dur) var(--bsys-ease),
+              transform var(--bsys-dur) var(--bsys-ease);
+}
+
+/* Никаких декоративных псевдоэлементов: они давали «дешёвый» градиент-обводку
+   и мешали единому виду (в app.css был .btn.ghost::after с сине-золотым бликом). */
+.btn::before,
+.btn::after {
+  content: none !important;
+  display: none !important;
+}
+
+.btn:focus-visible {
+  outline: none !important;
+  box-shadow: var(--bsys-focus) !important;
+}
+.btn:active { transform: translateY(1px) scale(0.99); }
+.btn:disabled,
+.btn[disabled],
+.btn.is-disabled {
+  opacity: 0.5;
+  filter: saturate(0.55);
+  transform: none !important;
+  cursor: not-allowed;
+  box-shadow: none !important;
+}
+
+/* ── PRIMARY: главное действие ───────────────────────────────────────────── */
+/* Список селекторов покрывает модульные primary-классы (wh2-, proc-, sup-),
+   которые раньше красились каждый по-своему. Цвет — один. */
+.btn.primary,
+.btn.blue,
+.btn--primary,
+.btn-primary,
+.wh2-btn--primary,
+.proc-deliver__btn--primary,
+.wh2-fab__btn {
+  background: linear-gradient(180deg, var(--bsys-primary-1) 0%, var(--bsys-primary-2) 100%) !important;
+  border: 1px solid var(--bsys-primary-brd) !important;
+  color: var(--bsys-primary-ink) !important;
+  font-weight: 700;
+  box-shadow: var(--bsys-shadow) !important;
+}
+.btn.primary:hover,
+.btn.blue:hover,
+.btn--primary:hover,
+.btn-primary:hover,
+.wh2-btn--primary:hover,
+.proc-deliver__btn--primary:hover,
+.wh2-fab__btn:hover {
+  background: linear-gradient(180deg, var(--bsys-primary-hover) 0%, var(--bsys-primary-1) 100%) !important;
+  border-color: var(--bsys-primary-hover) !important;
+  box-shadow: var(--bsys-primary-glow) !important;
+  transform: translateY(-1px);
+  filter: none !important;
+}
+
+/* ── DANGER: только необратимое ──────────────────────────────────────────── */
+.btn.red:not(#btnLogout),
+.btn.danger,
+.btn--danger,
+.btn-danger {
+  background: linear-gradient(180deg, var(--bsys-danger-1) 0%, var(--bsys-danger-2) 100%) !important;
+  border: 1px solid var(--bsys-danger-brd) !important;
+  color: var(--bsys-danger-ink) !important;
+  font-weight: 700;
+  box-shadow: var(--bsys-shadow) !important;
+}
+.btn.red:not(#btnLogout):hover,
+.btn.danger:hover,
+.btn--danger:hover {
+  background: linear-gradient(180deg, var(--bsys-danger-hover) 0%, var(--bsys-danger-1) 100%) !important;
+  border-color: var(--bsys-danger-hover) !important;
+  transform: translateY(-1px);
+}
+
+/* ── SUCCESS: только подтверждение ───────────────────────────────────────── */
+.btn.green,
+.btn.success,
+.btn.ok,
+.btn--success,
+.btn-success {
+  background: linear-gradient(180deg, var(--bsys-success-1) 0%, var(--bsys-success-2) 100%) !important;
+  border: 1px solid var(--bsys-success-brd) !important;
+  color: var(--bsys-success-ink) !important;
+  font-weight: 700;
+  box-shadow: var(--bsys-shadow) !important;
+}
+.btn.green:hover,
+.btn.success:hover,
+.btn.ok:hover {
+  background: linear-gradient(180deg, var(--bsys-success-hover) 0%, var(--bsys-success-1) 100%) !important;
+  border-color: var(--bsys-success-hover) !important;
+  transform: translateY(-1px);
+}
+
+/* ── GOLD / AMBER / WARNING: акцентное действие ──────────────────────────── */
+/* В тёмной теме совпадает с primary (золото и есть бренд), в светлой это
+   ОТДЕЛЬНЫЙ тёмно-янтарный вариант — чтобы «предупреждение» отличалось от
+   «главного действия», а не сливалось с ним. */
+html:not([data-theme="light"]) .btn.gold,
+html:not([data-theme="light"]) .btn.amber,
+html:not([data-theme="light"]) .btn.warning,
+html:not([data-theme="light"]) .btn.secondary.gold {
+  background: linear-gradient(180deg, #E8C35A 0%, var(--bsys-primary-1) 100%) !important;
+  border: 1px solid var(--bsys-primary-brd) !important;
+  color: #15110D !important;
+  font-weight: 700;
+}
+html[data-theme="light"] .btn.gold,
+html[data-theme="light"] .btn.amber,
+html[data-theme="light"] .btn.warning,
+html[data-theme="light"] .btn.secondary.gold {
+  /* ВАЖНО (D-343, замечание F4): белый текст на #A97418 давал 4.04:1, на #BE8614 —
+     3.18:1, то есть ниже нормы WCAG AA. Золото вообще не держит белый текст:
+     ставим графит на золотой градиент — 11.08:1 / 8.48:1. Так же сделано в тёмной. */
+  background: linear-gradient(180deg, #E8C35A 0%, #D4A843 100%) !important;
+  border: 1px solid #B8922E !important;
+  color: #15110D !important;
+  font-weight: 700;
+  box-shadow: var(--bsys-shadow) !important;
+}
+html[data-theme="light"] .btn.gold:hover,
+html[data-theme="light"] .btn.amber:hover,
+html[data-theme="light"] .btn.warning:hover {
+  background: linear-gradient(180deg, #F0D07A 0%, #E8C35A 100%) !important;
+}
+.btn.gold:hover,
+.btn.amber:hover,
+.btn.warning:hover {
+  transform: translateY(-1px);
+  filter: brightness(1.07) !important;
+}
+
+/* ── GHOST: второстепенное, без фона ─────────────────────────────────────── */
+.btn.ghost,
+.btn--ghost,
+.btn.text {
+  background: transparent !important;
+  border: 1px solid transparent !important;
+  color: var(--bsys-ghost-ink) !important;
+  box-shadow: none !important;
+}
+.btn.ghost:hover,
+.btn--ghost:hover {
+  background: var(--bsys-ghost-hover-bg) !important;
+  border-color: var(--bsys-neutral-brd) !important;
+  color: var(--bsys-neutral-ink) !important;
+  box-shadow: none !important;
+}
+
+/* ── SECONDARY: нейтральное с фоном ──────────────────────────────────────── */
+.btn.secondary {
+  background: var(--bsys-neutral-bg) !important;
+  border: 1px solid var(--bsys-neutral-brd) !important;
+  color: var(--bsys-neutral-ink) !important;
+  box-shadow: var(--bsys-shadow) !important;
+}
+.btn.secondary:hover {
+  background: var(--bsys-neutral-hover-bg) !important;
+  border-color: var(--bsys-neutral-hover-brd) !important;
+}
+
+/* ── Размеры ─────────────────────────────────────────────────────────────── */
+.btn.mini,
+.btn.sm,
+.btn--sm {
+  min-height: var(--bsys-h-sm);
+  padding: 0 11px;
+  font-size: 12px;
+  border-radius: 7px;
+  gap: 6px;
+}
+.btn.lg {
+  min-height: var(--bsys-h-lg);
+  padding: 0 22px;
+  font-size: 14px;
+  border-radius: 11px;
+}
+.btn.icononly {
+  min-width: var(--bsys-h);
+  padding: 0;
+}
+
+/* ── Состояние загрузки: спиннер вместо текста ───────────────────────────── */
+.btn.loading {
+  position: relative;
+  color: transparent !important;
+  pointer-events: none;
+}
+.btn.loading::after {
+  content: '' !important;
+  display: block !important;
+  position: absolute;
+  width: 15px;
+  height: 15px;
+  border: 2px solid currentColor;
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: bsys-spin 0.7s linear infinite;
+  color: var(--bsys-primary-ink);
+}
+.btn.ghost.loading::after,
+.btn.secondary.loading::after {
+  color: var(--bsys-neutral-ink);
+}
+@keyframes bsys-spin { to { transform: rotate(360deg); } }
+
+/* ── Исключение: выход из аккаунта не красный ────────────────────────────── */
+/* #btnLogout намеренно нейтральная кнопка: красный на «Выйти» пугал и был
+   главным цветным пятном в шапке. */
+#btnLogout,
+.btn.red#btnLogout {
+  background: var(--bsys-neutral-bg) !important;
+  border: 1px solid var(--bsys-neutral-brd) !important;
+  color: var(--bsys-neutral-ink) !important;
+  box-shadow: var(--bsys-shadow) !important;
+}
+#btnLogout:hover {
+  background: var(--bsys-neutral-hover-bg) !important;
+  border-color: var(--bsys-neutral-hover-brd) !important;
+}
+
+/* ── reduced-motion: без подъёма ─────────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  .btn:hover,
+  .btn:active { transform: none !important; }
+  .btn.loading::after { animation-duration: 1.4s; }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+   ЧАСТЬ 2. Кнопки-близнецы вне класса .btn
+
+   В проекте есть «кнопки», которые не имеют класса `.btn`: кнопки канбана
+   (`.pk3-btn`), активные табы командировок (`.tl-tab`), кнопка нового диалога
+   Мимира. Они красились напрямую через `--gold`, а в светлой теме это
+   #8E6212 — коричневая плашка с плохим контрастом. Приводим их к тем же
+   токенам, чтобы цветовой шум исчез и здесь.
+   ═══════════════════════════════════════════════════════════════════════════════ */
+
+/* Кнопки канбана: gold-вариант = primary-цвет системы, обычный = нейтральный */
+.pk3-btn {
+  border-radius: var(--bsys-r);
+  font-weight: var(--bsys-fw);
+  transition: background var(--bsys-dur) var(--bsys-ease),
+              border-color var(--bsys-dur) var(--bsys-ease),
+              box-shadow var(--bsys-dur) var(--bsys-ease);
+}
+.pk3-btn.pk3-gold {
+  background: linear-gradient(180deg, var(--bsys-primary-1) 0%, var(--bsys-primary-2) 100%) !important;
+  border: 1px solid var(--bsys-primary-brd) !important;
+  color: var(--bsys-primary-ink) !important;
+  font-weight: 700 !important;
+}
+.pk3-btn.pk3-gold:hover {
+  filter: brightness(1.07);
+}
+
+/* Активный таб командировок — золотая плашка с белым текстом в обеих темах */
+.tl-tab.active {
+  background: var(--bsys-gold-fill) !important;
+  color: var(--bsys-gold-ink) !important;
+  border-color: var(--bsys-gold-fill) !important;
+}
+.tl-tab.active:hover {
+  background: var(--bsys-gold-fill-h) !important;
+}
+
+/* «Новый диалог» в боковой панели Мимира — следовал --gold (коричневый в свете) */
+.mimir-sidebar-new {
+  background: var(--bsys-gold-fill) !important;
+  color: var(--bsys-gold-ink) !important;
+  border-color: var(--bsys-gold-fill) !important;
+}
+.mimir-sidebar-new:hover {
+  background: var(--bsys-gold-fill-h) !important;
+}

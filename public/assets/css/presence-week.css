@@ -539,17 +539,20 @@ html[data-theme="light"] .pg-foot { border-top-color: rgba(120, 100, 60, 0.13); 
   font-size: 14px;
   font-weight: 800;
   letter-spacing: 0.01em;
-  color: #fff;
-  /* Синяя в обеих темах — как в старом окне присутствия (заказчик, 21.10). */
-  background: linear-gradient(135deg, var(--blue-l), var(--blue));
-  box-shadow: 0 4px 16px color-mix(in srgb, var(--blue-l) 26%, transparent);
+  /* 23.10.2026 (D-343, F3): было «синяя в обеих темах» (решение 21.10).
+     Новое решение заказчика: тёмная тема — золото, светлая — синий. Кнопка
+     «В строй» должна следовать системе, иначе в тёмной теме остаётся синее
+     пятно, а в светлой появляется второй оттенок синего. */
+  color: var(--bsys-primary-ink);
+  background: linear-gradient(180deg, var(--bsys-primary-1) 0%, var(--bsys-primary-2) 100%);
+  box-shadow: 0 4px 16px color-mix(in srgb, var(--bsys-primary-2) 26%, transparent);
   transition: transform 0.13s ease, box-shadow 0.16s ease, filter 0.16s ease;
 }
 
 .pg-btn:hover:not(:disabled) {
   transform: translateY(-1px);
-  box-shadow: 0 8px 24px color-mix(in srgb, var(--blue-l) 34%, transparent);
-  filter: brightness(1.06);
+  background: linear-gradient(180deg, var(--bsys-primary-hover) 0%, var(--bsys-primary-1) 100%);
+  box-shadow: 0 8px 24px color-mix(in srgb, var(--bsys-primary-2) 34%, transparent);
 }
 
 .pg-btn:active:not(:disabled) { transform: translateY(0); }

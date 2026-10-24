@@ -310,6 +310,15 @@ module.exports = async function (fastify) {
     const user = request.user;
     // 23.06.2026 Маркетплейс: PM/HEAD_PM фронт хочет «свободные FIFO» → ?unassigned=1.
     const unassigned = String(request.query.unassigned || '') === '1';
+    /**
+     * D-343: фильтр по конкретному РП — нужен дашборду директора, чтобы
+     * провалиться в заявки выбранного руководителя. Доступен ТОЛЬКО
+     * директорским ролям: остальные и так видят лишь свои заявки (owner-guard
+     * ниже), и подмена assigned_to не должна обходить это ограничение.
+     */
+    const assignedToRaw = request.query.assigned_to;
+    const assignedTo = assignedToRaw != null && assignedToRaw !== '' ? Number(assignedToRaw) : null;
+    const canFilterByPm = DIRECTOR_LIKE_ROLES.includes(user.role) && Number.isFinite(assignedTo);
 
     let where = 'WHERE 1=1';
     const params = [];
@@ -320,6 +329,11 @@ module.exports = async function (fastify) {
       // PM-owner-фильтр игнорируется (это и есть смысл маркетплейса).
       where += ` AND pt.assigned_to IS NULL AND pt.status = ANY($${idx}::text[])`;
       params.push(MARKETPLACE_CLAIMABLE_STATUSES);
+      idx++;
+    } else if (canFilterByPm) {
+      // Директор смотрит заявки конкретного РП.
+      where += ` AND pt.assigned_to = $${idx}`;
+      params.push(assignedTo);
       idx++;
     } else if (!DIRECTOR_LIKE_ROLES.includes(user.role)) {
       // Wave A+ fix BLOCKER#1: PM/TO видят только свои (assigned_to ИЛИ created_by).
@@ -432,6 +446,175 @@ module.exports = async function (fastify) {
       by_month: monthRes.rows,
       avg_decision_time_hours: parseFloat(avgRes.rows[0]?.avg_hours || 0)
     };
+  });
+
+  // ═══════════════════════════════════════════════════════════════════
+  // 2.4 GET /pm-summary — сводка по каждому РП для директора (D-343)
+  // ═══════════════════════════════════════════════════════════════════
+  /**
+   * Дашборд директора: по каждому РП — сколько заявок пришло, в работе,
+   * принято, отклонено, без движения, и сколько работ создано.
+   *
+   * Готового агрегата не существовало: director-summary считает по компании
+   * целиком, reports/* — либо по ТО, либо только по работам. Группировку по
+   * `assigned_to` даёт готовая countActiveAssigned (выше) — здесь её сводный вид
+   * по всем РП плюс данные из `works`.
+   *
+   * Все цифры — COUNT из БД, без вычислений «на глаз». Статусы берутся из
+   * ALLOWED_STATUSES этой же таблицы, чтобы не разойтись с реальностью.
+   */
+  fastify.get('/pm-summary', {
+    preHandler: [fastify.requireRoles(DIRECTOR_LIKE_ROLES)]
+  }, async (request, reply) => {
+    try {
+      // Заявки по РП: разбивка по статусам одним запросом.
+      const ptRes = await db.query(`
+        SELECT
+          u.id                                             AS pm_id,
+          COALESCE(u.name, u.login, 'Без имени')            AS pm_name,
+          COUNT(pt.id)::int                                 AS total,
+          COUNT(pt.id) FILTER (WHERE pt.status = 'new')::int            AS s_new,
+          COUNT(pt.id) FILTER (WHERE pt.status = 'in_review')::int      AS s_in_review,
+          COUNT(pt.id) FILTER (WHERE pt.status = 'need_docs')::int      AS s_need_docs,
+          COUNT(pt.id) FILTER (WHERE pt.status = 'pending_approval')::int AS s_pending_approval,
+          COUNT(pt.id) FILTER (WHERE pt.status = 'approved')::int       AS s_approved,
+          COUNT(pt.id) FILTER (WHERE pt.status = 'accepted')::int       AS s_accepted,
+          COUNT(pt.id) FILTER (WHERE pt.status = 'rejected')::int       AS s_rejected,
+          COUNT(pt.id) FILTER (WHERE pt.status = 'expired')::int        AS s_expired,
+          COUNT(pt.id) FILTER (WHERE pt.created_tender_id IS NOT NULL)::int AS s_converted,
+          MAX(pt.updated_at)                                AS last_activity
+        FROM users u
+        LEFT JOIN pre_tender_requests pt ON pt.assigned_to = u.id
+        WHERE u.role IN ('PM', 'HEAD_PM') AND u.is_active = true
+        GROUP BY u.id, u.name, u.login
+        ORDER BY COUNT(pt.id) DESC, u.name ASC
+      `);
+
+      // Работы по РП: сколько всего за ним и в каком состоянии.
+      // ВАЖНО: колонка называется `work_status` (не `status`), значения —
+      // «Новая», «В работе», «Завершена», «На паузе» и т.п. (проверено на проде).
+      // Работы могут быть созданы и не из заявки (например, из тендера), поэтому
+      // это общий объём РП, а не «конверсия заявок».
+      const worksRes = await db.query(`
+        SELECT
+          w.pm_id,
+          COUNT(*)::int AS works_total,
+          COUNT(*) FILTER (WHERE w.work_status = 'В работе')::int AS works_active,
+          COUNT(*) FILTER (WHERE w.work_status IN ('Завершена', 'Работы сдали', 'Закрыт'))::int AS works_done
+        FROM works w
+        WHERE w.pm_id IS NOT NULL
+        GROUP BY w.pm_id
+      `).catch(() => ({ rows: [] }));
+
+      const worksByPm = {};
+      for (const r of worksRes.rows) worksByPm[r.pm_id] = r;
+
+      /**
+       * Итоги ТЕНДЕРОВ по РП (D-343): «сколько подали, сколько отменено, сколько
+       * проиграли» — заказчик назвал именно эти показатели. Живут они не в
+       * заявках (`pre_tender_requests`), а в реестре тендеров (`tenders`), и
+       * привязка к РП — через `calculator_user_id` (кто считал).
+       * Статусы: рассмотрение / готовим / подались / выиграли / проиграли / отмена.
+       */
+      const tendersRes = await db.query(`
+        SELECT
+          t.calculator_user_id AS pm_id,
+          COUNT(*)::int AS tenders_total,
+          COUNT(*) FILTER (WHERE t.registry_status = 'подались')::int    AS t_submitted,
+          COUNT(*) FILTER (WHERE t.registry_status = 'выиграли')::int    AS t_won,
+          COUNT(*) FILTER (WHERE t.registry_status = 'проиграли')::int   AS t_lost,
+          COUNT(*) FILTER (WHERE t.registry_status = 'отмена')::int      AS t_cancelled,
+          COUNT(*) FILTER (WHERE t.registry_status IN ('рассмотрение', 'готовим'))::int AS t_in_progress
+        FROM tenders t
+        WHERE t.deleted_at IS NULL AND t.calculator_user_id IS NOT NULL
+        GROUP BY t.calculator_user_id
+      `).catch(() => ({ rows: [] }));
+
+      const tendersByPm = {};
+      for (const r of tendersRes.rows) tendersByPm[r.pm_id] = r;
+
+      const items = ptRes.rows.map((r) => {
+        const w = worksByPm[r.pm_id] || {};
+        const tt = tendersByPm[r.pm_id] || {};
+        return {
+          pm_id: r.pm_id,
+          pm_name: r.pm_name,
+          // «В работе» = заявка у РП, решение ещё не принято
+          in_work: r.s_new + r.s_in_review + r.s_need_docs + r.s_pending_approval + r.s_approved,
+          total: r.total,
+          new: r.s_new,
+          in_review: r.s_in_review,
+          need_docs: r.s_need_docs,
+          pending_approval: r.s_pending_approval,
+          approved: r.s_approved,
+          accepted: r.s_accepted,
+          rejected: r.s_rejected,
+          expired: r.s_expired,
+          converted: r.s_converted,
+          works_total: w.works_total || 0,
+          works_active: w.works_active || 0,
+          works_done: w.works_done || 0,
+          // Тендеры (реестр): то, что заказчик просил показать по каждому РП.
+          tenders_total: tt.tenders_total || 0,
+          submitted: tt.t_submitted || 0,
+          won: tt.t_won || 0,
+          lost: tt.t_lost || 0,
+          cancelled: tt.t_cancelled || 0,
+          tenders_in_progress: tt.t_in_progress || 0,
+          last_activity: r.last_activity,
+        };
+      });
+
+      // Итоги по всем РП — чтобы дашборд показывал общую картину сверху.
+      const totals = items.reduce((acc, x) => ({
+        total: acc.total + x.total,
+        in_work: acc.in_work + x.in_work,
+        accepted: acc.accepted + x.accepted,
+        rejected: acc.rejected + x.rejected,
+        converted: acc.converted + x.converted,
+        works_total: acc.works_total + x.works_total,
+        tenders_total: acc.tenders_total + x.tenders_total,
+        submitted: acc.submitted + x.submitted,
+        won: acc.won + x.won,
+        lost: acc.lost + x.lost,
+        cancelled: acc.cancelled + x.cancelled,
+      }), {
+        total: 0, in_work: 0, accepted: 0, rejected: 0, converted: 0, works_total: 0,
+        tenders_total: 0, submitted: 0, won: 0, lost: 0, cancelled: 0,
+      });
+
+      // Заявки БЕЗ РП: LEFT JOIN выше их не считает (у них assigned_to IS NULL).
+      // Без этой строки дашборд «терял» бы часть заявок и показывал неполную картину.
+      const unassignedRes = await db.query(`
+        SELECT
+          COUNT(*)::int AS total,
+          COUNT(*) FILTER (WHERE status NOT IN ('rejected', 'expired'))::int AS in_work,
+          COUNT(*) FILTER (WHERE status = 'accepted')::int AS accepted,
+          COUNT(*) FILTER (WHERE status = 'rejected')::int AS rejected,
+          COUNT(*) FILTER (WHERE created_tender_id IS NOT NULL)::int AS converted
+        FROM pre_tender_requests
+        WHERE assigned_to IS NULL
+      `).catch(() => ({ rows: [] }));
+      const un = unassignedRes.rows[0] || {};
+      const unassigned = {
+        total: un.total || 0,
+        in_work: un.in_work || 0,
+        accepted: un.accepted || 0,
+        rejected: un.rejected || 0,
+        converted: un.converted || 0,
+      };
+      totals.unassigned_total = unassigned.total;
+      totals.total += unassigned.total;
+      totals.in_work += unassigned.in_work;
+      totals.accepted += unassigned.accepted;
+      totals.rejected += unassigned.rejected;
+      totals.converted += unassigned.converted;
+
+      return { success: true, items, totals, unassigned, pm_count: items.length };
+    } catch (e) {
+      request.log?.error?.({ err: e }, 'pm-summary failed');
+      return reply.code(500).send({ success: false, error: 'pm_summary_failed', message: e.message });
+    }
   });
 
   // ═══════════════════════════════════════════════════════════════════

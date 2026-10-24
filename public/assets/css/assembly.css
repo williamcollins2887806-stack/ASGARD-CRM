@@ -228,17 +228,8 @@
 /* -- FLIP -- */
 .vpb__flip{transition:transform .35s cubic-bezier(.2,0,0,1)}
 
-/* premium-gold: primary CTA сборки */
-.asm-page .btn.primary,
-.asm-detail .btn.primary,
-.asm-detail__actions .btn.primary,
-.asm-queue .btn.primary,
-#asm-send.btn.primary,
-#asm-confirm.btn.primary {
-  background: var(--gold,#D4A843) !important;
-  border-color: var(--gold,#D4A843) !important;
-  color: #15110d !important;
-}
+/* 23.10.2026: перекраска primary-кнопок сборки в золото УДАЛЕНА (D-343).
+   Цвет primary задаётся единой системой кнопок. */
 .asm-status--confirmed {
   background: color-mix(in srgb, var(--gold) 18%, transparent);
   color: var(--gold);

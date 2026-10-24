@@ -53,6 +53,11 @@ const GROUPS = [
     color: 'var(--gold)',
     items: [
       { path: '/tenders',     icon: Trophy,          label: 'Реестр ТО',    section: 'tenders' },
+      // D-341: страница согласования тендеров была недостижима — прямого входа
+      // не существовало (только виджет и URL). Теперь пункт в меню.
+      { path: '/director-tender-approvals', icon: FileCheck2, label: 'Согласование тендеров', section: 'tenders', roles: ['DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV', 'ADMIN'] },
+      // D-343: дашборд заявок по РП — директор видит работу подчинённых и проваливается в каждого.
+      { path: '/director-applications', icon: Users2, label: 'Заявки по РП', section: 'tenders', roles: ['DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV', 'ADMIN'] },
       { path: '/tenders/platform', icon: Filter,     label: 'С площадок',   section: 'tenders', roles: ['ADMIN', 'TO', 'HEAD_TO', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV'] },
       { path: '/to-calcs',    icon: Calculator,       label: 'Расчёты ТО',   section: 'tenders', roles: ['TO', 'HEAD_TO', 'ADMIN'] },
       { path: '/head-to-approvals', icon: FileCheck2, label: 'Согласования ТО', section: 'tenders', roles: ['HEAD_TO', 'ADMIN'] },
@@ -125,6 +130,12 @@ const GROUPS = [
       { path: '/works',          icon: HardHat,          label: 'Работы',          section: 'works' },
       { path: '/warehouse',      icon: Warehouse,        label: 'Склад',           section: 'dashboard' },
       { path: '/procurement',    icon: ShoppingCart,     label: 'Заявки на закупку', section: 'works' },
+      // D-369 (23.10.2026): «Мои заявки» — счета на согласование с телефона.
+      // Роли те же, что у десктопного /my-procurement: подать счёт может
+      // инициатор (РП, ТО, склад, офис-менеджер), а не только закупки.
+      { path: '/my-requests',    icon: Receipt,          label: 'Мои заявки', section: 'works',
+        roles: ['PM', 'HEAD_PM', 'WAREHOUSE', 'ADMIN', 'PROC', 'TO', 'HEAD_TO', 'BUH', 'OFFICE_MANAGER',
+                'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV'] },
       { path: '/seals',          icon: Disc3,            label: 'Печати',          section: 'works' },
       { path: '/gantt',          icon: GanttChartSquare, label: 'Диаграмма Ганта', section: 'works' },
     ],

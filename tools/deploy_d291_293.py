@@ -18,8 +18,12 @@ UPLOAD = [
     "public/assets/js/tkp-page.js",
     "src/routes/pre_tenders.js",
     "src/routes/tkp.js",
+    "src/routes/tkp_quick.js",
     "src/services/pre-tender-service.js",
     "src/services/ai-provider.js",
+    "src/services/mimir-tkp-quick.js",
+    "src/services/mimir-auto-estimate.js",
+    "src/routes/mimir.js",
 ]
 
 

@@ -681,9 +681,7 @@
 .rp-calc-save-state.is-err { color: #b91c1c; }
 
 .rp-calc-footer .btn.primary {
-  background: var(--primary);
-  border-color: var(--primary);
-  color: #fff;
+  /* 23.10.2026 (D-343): цвет из единой системы кнопок; здесь только размер. */
   font-weight: 700;
   min-width: 168px;
 }
@@ -779,6 +777,90 @@
   border: 0;
   background: #eef1f6;
   min-height: 0;
+}
+
+/* ── Галочка «Отправить на согласование директору» (23.10.2026) ──────────────
+   Требование заказчика: свыше 10 млн без НДС согласование не навязывается,
+   а включается галочкой РП. Решение должно быть крупным и читаемым: РП видит
+   сумму, порог и последствие («уйдёт сразу в ТО») в одном месте.
+   Клик по всему блоку — цель не меньше 44px (Apple HIG). */
+.rp-calc-approve-toggle {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 14px;
+  margin-bottom: 12px;
+  border-radius: 12px;
+  cursor: pointer;
+  background: var(--bg2, rgba(255, 255, 255, 0.04));
+  border: 1px solid var(--brd, rgba(255, 255, 255, 0.12));
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+.rp-calc-approve-toggle:hover {
+  border-color: var(--gold, #c8a84e);
+}
+/* Нативная галочка скрыта — рисуем свою, чтобы она выглядела одинаково
+   в обеих темах. Сам input остаётся в DOM: работает клавиатура и a11y. */
+.rp-calc-approve-toggle input[type='checkbox'] {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+.rp-calc-approve-toggle__box {
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  margin-top: 1px;
+  border-radius: 6px;
+  border: 1.5px solid var(--brd, rgba(255, 255, 255, 0.3));
+  background: transparent;
+  position: relative;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+.rp-calc-approve-toggle input[type='checkbox']:checked ~ .rp-calc-approve-toggle__box {
+  background: var(--gold, #c8a84e);
+  border-color: var(--gold, #c8a84e);
+}
+/* Галочка «птичкой» из двух границ — без внешних иконок. */
+.rp-calc-approve-toggle input[type='checkbox']:checked ~ .rp-calc-approve-toggle__box::after {
+  content: '';
+  position: absolute;
+  left: 7px;
+  top: 3px;
+  width: 6px;
+  height: 11px;
+  border: solid #1a1408;
+  border-width: 0 2.5px 2.5px 0;
+  transform: rotate(45deg);
+}
+/* Фокус с клавиатуры: видимое кольцо (нативная галочка скрыта). */
+.rp-calc-approve-toggle input[type='checkbox']:focus-visible ~ .rp-calc-approve-toggle__box {
+  outline: 2px solid var(--gold, #c8a84e);
+  outline-offset: 2px;
+}
+.rp-calc-approve-toggle__text {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+.rp-calc-approve-toggle__text > b {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+.rp-calc-approve-toggle__hint {
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--text-muted);
+}
+/* Светлая тема: достаточно сменить цвет «птички» — текст берёт токены темы.
+   Селектор — как во всём проекте: `html[data-theme="light"]` (2533 правила),
+   а НЕ класс `.light`: тему переключает `app.js` через атрибут, поэтому
+   `html.light` в светлой теме просто не сработал бы. */
+html[data-theme='light'] .rp-calc-approve-toggle input[type='checkbox']:checked ~ .rp-calc-approve-toggle__box::after {
+  border-color: var(--text-on-accent);
 }
 .rp-calc-field textarea.inp {
   width: 100%;

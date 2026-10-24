@@ -186,9 +186,19 @@ window.AsgardUI = (function(){
     return overlay;
   }
 
-  // Global ESC — closes only the top modal
+  // Global ESC — closes only the top modal.
+  // Выше модалки отчёта может лежать слой ЛИЧНОГО КАНБАНА (Quick/Кондуктор,
+  // personal_kanban.js). Раньше этот обработчик закрывал модалку отчёта даже
+  // когда сверху открыт Quick — один Esc снимал ДВА окна (22.10.2026).
+  // Сравнивать z-index нельзя: у openReferences 20100, у обычного Quick 13000,
+  // и «верхним» по z оказывался нижний слой. Порядок открытия сообщает сам
+  // канбан: пока он держит открытые окна, Esc принадлежит ему.
   document.addEventListener("keydown", (e)=>{
-    if(e.key === "Escape" && _modalStack.length > 0) hideModal();
+    if(e.key !== "Escape" || _modalStack.length === 0) return;
+    try {
+      if (Array.isArray(window.__asgardPk3OpenOverlays) && window.__asgardPk3OpenOverlays.length > 0) return;
+    } catch (_) {}
+    hideModal();
   });
 
   /**

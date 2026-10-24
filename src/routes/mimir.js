@@ -443,7 +443,9 @@ async function mimirRoutes(fastify, options) {
       }
 
       const streamResponse = await aiProvider.stream({
-        system: systemPrompt,
+        // D-306: мысли видны пользователю в чате — требуем русский язык.
+        system: 'ВАЖНО: все рассуждения (reasoning) веди ИСКЛЮЧИТЕЛЬНО на русском языке — '
+          + 'их видит руководитель. Коротко и по делу.\n\n' + systemPrompt,
         messages: aiMessages,
         maxTokens: 8000,
         temperature: 0.5,

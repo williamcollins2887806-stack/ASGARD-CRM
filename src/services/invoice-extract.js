@@ -302,7 +302,10 @@ function extractInvoice(text, opts) {
   if (lineM) {
     const line = lineM[0];
     let raw = null;
-    const hashM = line.match(/№\s*([^\n]*)$/i);
+    // D-337: в текстовом слое PDF знак «№» часто записан как «No», «N» или «#»
+    // («Счет на оплату No 276 от 22 октября 2026 г.»). Раньше искали только «№»,
+    // поэтому номер счёта не извлекался вовсе (number: null при явном «276»).
+    const hashM = line.match(/(?:№|N[oо]?\.?\s*|#)\s*([^\n]*)$/i);
     if (hashM) raw = hashM[1];
     else {
       const wordM = line.match(/сч[её]т(?:-договор)?\s+([^\n]*)$/i);

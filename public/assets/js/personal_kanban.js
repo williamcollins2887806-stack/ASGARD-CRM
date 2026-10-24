@@ -298,17 +298,8 @@ window.AsgardPersonalKanbanPage = (function () {
 .pk3-top-actions .pk3-search{background:var(--bg2);border:1px solid var(--brd);border-radius:9999px;padding:8px 14px;color:var(--t1);font-size:13px;outline:none;width:260px;max-width:100%}
 .pk3-top-actions .pk3-search::placeholder{color:var(--t3)}
 .pk3-top-actions .pk3-search:focus{border-color:var(--gold);box-shadow:0 0 0 3px var(--gold-bg)}
-.pk3-view-toggle{display:inline-flex;border:1px solid var(--brd);border-radius:9px;overflow:hidden;background:var(--bg2)}
-.pk3-view-toggle button{background:transparent;color:var(--t2);border:none;padding:7px 12px;font-size:12.5px;font-weight:600;cursor:pointer;font-family:var(--font-sans)}
-.pk3-view-toggle button:hover{color:var(--t1);background:var(--bg3)}
-.pk3-view-toggle button.pk3-active{background:var(--gold-bg);color:var(--gold-l)}
-
-.pk3-tabs-bar{display:flex;gap:0;padding:0 4px;border-bottom:1px solid var(--brd-m);margin-bottom:14px;flex-wrap:wrap}
-.pk3-tab{padding:11px 16px;color:var(--t3);cursor:pointer;font-size:13.5px;font-weight:600;border-bottom:2px solid transparent;display:inline-flex;align-items:center;gap:7px;background:transparent;border-left:none;border-top:none;border-right:none;font-family:var(--font-sans);transition:color .15s ease}
-.pk3-tab:hover{color:var(--t1)}
-.pk3-tab.pk3-active{color:var(--gold-l);border-bottom-color:var(--gold)}
-.pk3-tab .pk3-cnt{background:var(--bg3);color:var(--t2);padding:1px 7px;border-radius:9999px;font-size:11px;font-weight:700}
-.pk3-tab.pk3-active .pk3-cnt{background:var(--gold);color:#0a0a0a}
+/* 23.10.2026: .pk3-view-toggle / .pk3-tabs-bar / .pk3-tab / .pk3-cnt удалены —
+   вкладки типов и кнопка «По под-этапам» убраны из UI, стили стали мёртвыми. */
 
 .pk3-board{padding:6px 0 28px;display:flex;gap:10px;overflow-x:auto;align-items:flex-start;min-height:380px}
 .pk3-col{flex:0 0 270px;background:var(--bg2);border:1px solid var(--brd);border-radius:12px;overflow:hidden;display:flex;flex-direction:column;max-height:calc(100vh - 260px)}
@@ -533,12 +524,12 @@ window.AsgardPersonalKanbanPage = (function () {
 /* Кнопки внутри pk3 */
 .pk3-btn{padding:7px 14px;border-radius:8px;font-size:13px;font-weight:600;border:1px solid var(--brd);background:var(--bg2);color:var(--t1);cursor:pointer;display:inline-flex;align-items:center;gap:6px;font-family:inherit;text-decoration:none;transition:all .15s ease}
 .pk3-btn:hover{background:var(--bg3);border-color:var(--gold-border,var(--brd))}
-.pk3-btn.pk3-gold{background:linear-gradient(180deg,var(--gold),var(--gold-h));color:#0a0a0a;border-color:var(--gold-h);font-weight:700}
-.pk3-btn.pk3-gold:hover{filter:brightness(1.1)}
+.pk3-btn.pk3-gold{background:linear-gradient(180deg,var(--bsys-primary-1),var(--bsys-primary-2));color:var(--bsys-primary-ink);border-color:var(--bsys-primary-brd);font-weight:700}
+.pk3-btn.pk3-gold:hover{filter:brightness(1.07)}
 .pk3-btn.pk3-ghost{background:transparent}
 .pk3-btn.pk3-danger{color:var(--err-t);border-color:var(--err)}
 .pk3-btn.pk3-danger:hover{background:var(--err-bg)}
-.pk3-btn.pk3-ok{background:var(--ok);color:#0a0a0a;border-color:var(--ok);font-weight:700}
+.pk3-btn.pk3-ok{background:var(--bsys-success-1);color:var(--bsys-success-ink);border-color:var(--bsys-success-brd);font-weight:700}
 .pk3-btn.pk3-sm{padding:5px 10px;font-size:12px}
 
 /* === MODALS (5 штук) === */
@@ -806,16 +797,13 @@ window.AsgardPersonalKanbanPage = (function () {
       </button>`;
     }).join('');
 
-    const viewToggle = `<div class="pk3-view-toggle">
-        <button data-mode="substages" class="${_viewMode === 'substages' ? 'pk3-active' : ''}" title="Группировка по под-этапам">📋 По под-этапам</button>
-        <button data-mode="v3" class="${_viewMode === 'v3' ? 'pk3-active' : ''}" title="Группировка по воронке (Сага Тендеров V3)">📊 По воронке</button>
-      </div>`;
-
+    // 23.10.2026: переключатель «📋 По под-этапам / 📊 По воронке» удалён и здесь.
+    // Кнопка не работала (переключала несуществующий вид), а сама legacy-страница
+    // недостижима: маршрут /personal-kanban редиректит на /personal-kanban-v3.
     return `<div class="pk-page">
       <div class="pk-head">
         <div class="pk-tabs">${tabs}</div>
         <div class="pk-actions">
-          ${viewToggle}
           <button class="btn primary" id="pk-btn-config">⚙ Подэтапы — ${esc(mainStatusLabel(_flowKey, _mainStatus || flow.mainStatuses[0]))}</button>
           ${_flowKey === 'application' ? '<button class="btn ghost" id="pk-btn-direct">＋ Прямая заявка</button>' : ''}
           <button class="btn ghost" id="pk-btn-refresh" title="Обновить">⟳</button>
@@ -881,28 +869,13 @@ window.AsgardPersonalKanbanPage = (function () {
     }
     const root = $('#pk-root');
     if (!root) return;
-    root.innerHTML = htmlPage() + _pk3ViewToggleHtml();
+    root.innerHTML = htmlPage();
     _bindHead();
-    _bindViewToggle();
     renderBoard();
   }
 
-  // === v3 view toggle ===
-  function _pk3ViewToggleHtml() {
-    return ''; // включён в htmlPage отдельно — здесь чтобы не дублить
-  }
-
-  function _bindViewToggle() {
-    $$('.pk3-view-toggle button').forEach(b => {
-      b.addEventListener('click', () => {
-        const mode = b.dataset.mode;
-        if (!mode || mode === _viewMode) return;
-        _viewMode = mode;
-        try { localStorage.setItem('asg_pk_view', mode); } catch (_) {}
-        renderPage();
-      });
-    });
-  }
+  // 23.10.2026: функции _pk3ViewToggleHtml / _bindViewToggle удалены полностью —
+  // переключателей видов больше нет ни в разметке, ни в биндинге.
 
   // ── Binding ─────────────────────────────────────────────────────────
   function _bindHead() {
@@ -1620,7 +1593,8 @@ window.AsgardPersonalKanbanPage = (function () {
       if (r.ok) toast('Готово', 'Возвращено в рассмотрение', 'ok');
     }
     if (!r || !r.ok) {
-      toast('Ошибка', (r?.data?.error || r?.data?.message || 'Не удалось выполнить'), 'err');
+      // Русский текст раньше машинного кода (23.10.2026).
+      toast('Ошибка', (r?.data?.message || r?.data?.hint || r?.data?.error || 'Не удалось выполнить'), 'err');
       return;
     }
     hideModal();
@@ -2115,13 +2089,10 @@ window.AsgardPersonalKanbanV3 = (function () {
     { id: 'lose',     ic: '❌', title: 'Проиграно', cls: 'pk3-col-lose' },
     { id: 'work',     ic: '🏗', title: 'В работе' },
   ];
-  const FLOW_TABS = [
-    { id: 'all',         label: 'Все типы' },
-    { id: 'application', label: '📥 Заявки' },
-    { id: 'pre_tender',  label: '🗂 Пре-тендеры' },
-    { id: 'tender',      label: '📋 Тендеры' },
-    { id: 'work',        label: '🏗 Работы' },
-  ];
+  // 23.10.2026: FLOW_TABS (Все типы / Заявки / Пре-тендеры / Тендеры / Работы)
+  // удалён — вкладки не имели смысла: «Все типы» показывал то же самое, а
+  // остальные лишь скрывали карты других типов, и пользователь думал, что
+  // данные пропали. Доска всегда показывает все типы.
   const STAGE_LABELS = ['Новая', 'Просчёт', 'Согласование', 'КП готов', 'КП ушло', 'Дозапрос', 'Выиграно', 'Проиграно', 'В работе'];
   const COL_TO_STAGE = { new: 0, calc: 1, approval: 2, kp_prep: 3, sent: 4, addendum: 5, win: 6, lose: 7, work: 8 };
   const PK3_FIN_COLS = new Set(['kp_prep', 'approval', 'sent', 'addendum', 'win', 'work']);
@@ -2234,7 +2205,7 @@ window.AsgardPersonalKanbanV3 = (function () {
 .pk3-doc-size { font-size: 10.5px; color: var(--t3); flex-shrink: 0; }
 .pk3-doc-actions { display: flex; gap: 4px; flex-shrink: 0; }
 .pk3-doc-btn { width: 30px; height: 30px; border-radius: 7px; border: 1px solid var(--brd-m); background: var(--bg2); color: var(--t2); cursor: pointer; font-size: 12px; display: inline-flex; align-items: center; justify-content: center; transition: all .12s ease; }
-.pk3-doc-btn:hover { color: var(--gold-l); border-color: var(--gold); background: var(--gold-bg); }
+.pk3-doc-btn:hover { color: var(--bsys-primary-1); border-color: var(--bsys-primary-1); background: var(--gold-bg); }
 .pk3-doc-ctx { position: fixed; z-index: 100010; background: var(--bg2); border: 1px solid var(--brd-m); border-radius: 10px; padding: 4px; min-width: 168px; box-shadow: 0 12px 32px rgba(0,0,0,.45); }
 .pk3-doc-ctx button { display: block; width: 100%; text-align: left; padding: 8px 12px; border: none; background: transparent; color: var(--t1); font-size: 12px; cursor: pointer; border-radius: 6px; font-family: inherit; }
 .pk3-doc-ctx button:hover { background: var(--gold-bg); color: var(--gold-l); }
@@ -2295,8 +2266,8 @@ window.AsgardPersonalKanbanV3 = (function () {
 .pk3-thought-row{display:flex;gap:9px;font-size:11.5px;line-height:1.5;
   color:rgba(255,255,255,.62);animation:pk3-thought-in .25s ease both}
 .pk3-thought-row:last-child{color:rgba(255,255,255,.9)}
-.pk3-thought-time{color:rgba(212,168,67,.75);font-variant-numeric:tabular-nums;
-  flex:0 0 auto;font-size:10.5px}
+.pk3-thought-stage{color:rgba(212,168,67,.8);font-weight:600}
+.pk3-thought-text{white-space:pre-wrap}
 .pk3-thought-text{flex:1;word-break:break-word}
 @keyframes pk3-thought-in{from{opacity:0;transform:translateY(3px)}to{opacity:1;transform:none}}
 .pk3-scope-vol { color: var(--gold-l); font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
@@ -2350,32 +2321,13 @@ window.AsgardPersonalKanbanV3 = (function () {
 }
 .pk3-search-input:focus { border-color: var(--gold); box-shadow: 0 0 0 3px var(--gold-bg); }
 
-/* ── Tabs (flow filter) ── */
-.pk3-tabs-bar {
-  display: flex; gap: 0; padding: 0 22px; border-bottom: 1px solid var(--brd-m);
-  background: var(--bg2);
-}
-.pk3-tab {
-  padding: 11px 17px; color: var(--t3); cursor: pointer; font-size: 13px;
-  font-weight: 500; border-bottom: 2px solid transparent;
-  display: inline-flex; align-items: center; gap: 7px; transition: all .15s;
-}
-.pk3-tab:hover { color: var(--t1); }
-.pk3-tab.active { color: var(--gold-l); border-bottom-color: var(--gold); }
-.pk3-cnt {
-  background: var(--bg3); color: var(--t2); padding: 1px 7px;
-  border-radius: 999px; font-size: 11px; font-weight: 600;
-}
-.pk3-tab.active .pk3-cnt { background: var(--gold); color: #1a1000; }
+/* ── Tabs (flow filter) ──
+   УДАЛЕНО 23.10.2026: .pk3-tabs-bar / .pk3-tab / .pk3-cnt больше не используются —
+   вкладки типов убраны из канбана (см. комментарий в _v3RenderShell). */
+/* 23.10.2026: .pk3-view-toggle удалён — кнопка «По под-этапам» убрана из UI. */
 
-/* ── View toggle ── */
-.pk3-view-toggle { display: inline-flex; background: var(--bg3); border-radius: 8px; padding: 2px; margin-right: 8px; }
-.pk3-view-toggle button {
-  padding: 6px 12px; background: transparent; border: 0; color: var(--t3);
-  cursor: pointer; font-size: 12px; border-radius: 6px;
-}
-.pk3-view-toggle button.active { background: var(--bg1); color: var(--gold-l); }
-
+/* ── View toggle ──
+   УДАЛЕНО 23.10.2026: .pk3-view-toggle больше не используется. */
 /* ── Board ── */
 .pk3-noteboard {
   flex: 1; padding: 14px 14px 24px; display: flex; gap: 9px;
@@ -2661,16 +2613,19 @@ window.AsgardPersonalKanbanV3 = (function () {
   display: inline-flex; align-items: center; gap: 6px; text-decoration: none;
   font-family: inherit;
 }
-.pk3-btn:hover { background: var(--bg3); border-color: var(--gold); }
+.pk3-btn:hover { background: var(--bg3); border-color: var(--bsys-primary-brd); }
 .pk3-btn.pk3-gold {
-  background: linear-gradient(180deg, var(--gold), var(--gold-h));
-  color: #1a1000; border-color: var(--gold-h); font-weight: 600;
+  /* 23.10.2026 (D-343, F7): цвет берётся из единой системы кнопок, а не из
+     локального градиента на --gold (в светлой теме это коричневый #8E6212). */
+  background: linear-gradient(180deg, var(--bsys-primary-1), var(--bsys-primary-2));
+  color: var(--bsys-primary-ink);
+  border-color: var(--bsys-primary-brd); font-weight: 600;
 }
-.pk3-btn.pk3-gold:hover { filter: brightness(1.1); }
+.pk3-btn.pk3-gold:hover { filter: brightness(1.07); }
 .pk3-btn.pk3-ghost { background: transparent; }
 .pk3-btn.pk3-danger { color: var(--err-t); border-color: var(--err); }
 .pk3-btn.pk3-danger:hover { background: var(--err-bg); }
-.pk3-btn.pk3-ok { background: var(--ok); color: #0a1b0a; border-color: var(--ok); font-weight: 600; }
+.pk3-btn.pk3-ok { background: var(--bsys-success-1); color: var(--bsys-success-ink); border-color: var(--bsys-success-brd); font-weight: 600; }
 .pk3-btn.pk3-sm { padding: 4px 9px; font-size: 11px; }
 
 /* ── Modal overlay (поверх drawer) ── */
@@ -3042,10 +2997,9 @@ html[data-theme="light"] .pk3-stk-float-bar { background: rgba(255,255,255,.94);
   function _v3RenderShell() {
     const root = $('#pk3-root');
     if (!root) return;
-    // S-15: для TO/HEAD_TO скрываем flow-tabs (показываем только тендеры);
-    //       для HEAD_TO добавляем toggle «Мои / Отдел»
+    // S-15: для HEAD_TO добавляем toggle «Мои / Отдел».
+    // (Фильтры по flow-типам убраны 23.10.2026 — см. комментарий в _v3AttachEvents.)
     const role = (_user && _user.role) || '';
-    const hideFlowTabs = _isToRole();
     let scopeToggle = '';
     if (role === 'HEAD_TO') {
       let toggle = 'team';
@@ -3058,7 +3012,7 @@ html[data-theme="light"] .pk3-stk-float-bar { background: rgba(255,255,255,.94);
       `;
     }
     const h2Title = _scopeLabel();
-    const subTitle = hideFlowTabs
+    const subTitle = _isToRole()
       ? '📥 → 🧮 → ⚖️ → 📋 → 📤 → ❓ → 🏆/❌ · только тендеры'
       : '📥 → 🧮 → ⚖️ → 📋 → 📤 → ❓ → 🏆/❌ → 🏗 · с просчётом и ТКП внутри карты';
     root.innerHTML = `
@@ -3069,27 +3023,11 @@ html[data-theme="light"] .pk3-stk-float-bar { background: rgba(255,255,255,.94);
           <div class="pk3-h2-sub">${subTitle}</div>
         </div>
         ${scopeToggle}
-        <div class="pk3-view-toggle" id="pk3-view-toggle">
-          <button data-view="substages">📋 По под-этапам</button>
-          <button class="active" data-view="v3">📊 По воронке</button>
-        </div>
         <input class="pk3-search-input" id="pk3-search" placeholder="🔍 поиск по клиенту, теме, ИНН…" />
         <button class="pk3-btn pk3-gold" id="pk3-create-manual">＋ Создать вручную</button>
       </div>
-      ${hideFlowTabs ? '' : `
-      <div class="pk3-tabs-bar" id="pk3-tabs">
-        ${FLOW_TABS.map(t => `<div class="pk3-tab ${_flowFilter === t.id ? 'active' : ''}" data-flow="${t.id}">${esc(t.label)} <span class="pk3-cnt">${_countByFlow(t.id)}</span></div>`).join('')}
-      </div>
-      `}
       <div class="pk3-noteboard" id="pk3-noteboard"></div>
     `;
-  }
-  function _countByFlow(flowId) {
-    if (flowId === 'all') return _counts.total || 0;
-    // оценка: фронт-фильтр по карточкам
-    let n = 0;
-    Object.values(_columns).forEach(arr => arr.forEach(c => { if (c.flow_type === flowId) n++; }));
-    return n;
   }
   function _v3GetCardFinance(c) {
     const fin = c.finance || {};
@@ -3272,24 +3210,10 @@ html[data-theme="light"] .pk3-stk-float-bar { background: rgba(255,255,255,.94);
       _v3RenderBoard();
       _v3AttachEvents();
     }));
-    // tabs flow (для PM/HEAD_PM/ADMIN/DIRECTOR — у TO/HEAD_TO скрыты, селектор пустой)
-    $$('#pk3-tabs .pk3-tab').forEach(t => t.addEventListener('click', async () => {
-      _flowFilter = t.dataset.flow;
-      $$('#pk3-tabs .pk3-tab').forEach(x => x.classList.remove('active'));
-      t.classList.add('active');
-      await _v3LoadData();
-      _v3RenderShell();
-      _v3RenderBoard();
-      _v3AttachEvents();
-    }));
-    // view toggle → substages
-    $$('#pk3-view-toggle button').forEach(b => b.addEventListener('click', () => {
-      const view = b.dataset.view;
-      try { localStorage.setItem('pk3_view_mode', view); } catch (_) {}
-      if (view === 'substages') {
-        location.hash = '#/personal-kanban';
-      }
-    }));
+    // Фильтры по типам (Заявки/Пре-тендеры/Тендеры/Работы) убраны 23.10.2026:
+    // вкладка «Все типы» показывала то же самое, а остальные лишь прятали карты
+    // остальных типов — пользователь принимал это за пропажу данных.
+    // create manual
     // create manual
     const cm = $('#pk3-create-manual'); if (cm) cm.addEventListener('click', _v3OpenCreateManual);
     // cards click + DnD
@@ -3338,12 +3262,27 @@ html[data-theme="light"] .pk3-stk-float-bar { background: rgba(255,255,255,.94);
       return;
     }
     if (!r.ok) {
+      // Код ситуации живёт в `code` (D-313), а `error` может быть уже русским
+      // текстом — читаем оба поля, иначе объяснение не подберётся.
+      const code = (r.data && (r.data.code || r.data.error)) || '';
       // 22.06.2026: специальный кейс — нет ТКП при попытке отправить на согласование
-      if (r.data && r.data.error === 'tkp_required') {
+      if (code === 'tkp_required') {
         toast('Нужен ТКП', r.data.message || 'Сначала создайте ТКП в разделе ниже', 'warn');
         return;
       }
-      toast('Не получилось', (r.data && (r.data.error || r.data.message)) || 'Ошибка перехода', 'err');
+      // 23.10.2026: остальные коды перехода объясняем по-русски, а не «bad_request».
+      const friendly = {
+        transition_not_allowed: 'Для этого типа карты такой переход недоступен. Верните карту в её колонку или создайте работу из тендера.',
+        card_closed: 'Карта уже закрыта — переход невозможен.',
+        version_conflict: 'Карту успели изменить в другой вкладке. Обновляю — повторите переход.',
+        forbidden: 'Перемещать карту может только её владелец или руководитель.',
+        not_found: 'Карта не найдена — возможно, её удалили. Обновляю доску.',
+        invalid_to_v3_column: 'Такого этапа не существует. Обновите страницу.',
+      }[code];
+      toast('Не получилось', friendly || _humanErrText(r.data, 'Не удалось переместить карту — повторите попытку.'), 'err');
+      if (code === 'version_conflict' || code === 'not_found') {
+        await _v3LoadAndRender();
+      }
       return;
     }
     // 22.06.2026: backend мог автопромоутить из approval в kp_prep (сумма < 50M)
@@ -3361,6 +3300,22 @@ html[data-theme="light"] .pk3-stk-float-bar { background: rgba(255,255,255,.94);
       await _reopenCurrentCard();
     }
   }
+  // Ошибки показываем по-человечески: «что случилось» (message) + «что делать»
+  // (hint). Раньше брали data.error — машинный код ('bad_request', 'not_found'),
+  // и пользователь видел «Не получилось: bad_request», из чего невозможно
+  // понять ни причину, ни что делать (правило продукта, 23.10.2026).
+  function _humanErrText(data, fallback) {
+    const b = data || {};
+    const parts = [];
+    const m = b.message;
+    // Машинный код (латиница без кириллицы) в текст не пускаем — только русский.
+    const isMachine = (s) => !!s && /^[a-z][a-z0-9_]*$/.test(String(s));
+    if (m && !isMachine(m)) parts.push(String(m));
+    else if (b.error && !isMachine(b.error)) parts.push(String(b.error));
+    if (b.hint && !parts.includes(String(b.hint))) parts.push(String(b.hint));
+    return parts.length ? parts.join(' ') : (fallback || 'Не удалось выполнить действие — повторите попытку.');
+  }
+
   function _v3OpenCreateManual() {
     // Полная форма ручного создания заявки (формат как через почту).
     // POST /api/pre-tenders/ создаёт pre_tender_request, далее карта канбана попадает в колонку «📥 Новые».
@@ -3579,7 +3534,7 @@ html[data-theme="light"] .pk3-stk-float-bar { background: rgba(255,255,255,.94);
           _v3LoadAndRender();
         } else {
           b.disabled = false; b.textContent = '✅ Создать заявку';
-          toast('Не получилось', (r.data && (r.data.error || r.data.message)) || 'Ошибка', 'err');
+          toast('Не получилось', _humanErrText(r.data, 'Заявка не создана — проверьте заполненные поля.'), 'err');
         }
       }
     }));
@@ -4330,7 +4285,7 @@ html[data-theme="light"] .pk3-stk-float-bar { background: rgba(255,255,255,.94);
         try {
           const r = await api('/api/customers', { method: 'POST', body });
           if (!r.ok) {
-            const errMsg = (r.data && (r.data.error || r.data.message)) || 'Не сохранилось';
+            const errMsg = (r.data && (r.data.message || r.data.hint || r.data.error)) || 'Не сохранилось';
             // Если контрагент с этим ИНН уже есть — предложить выбрать его
             if (errMsg.toLowerCase().includes('уже существует') || r.status === 409) {
               const gr = await api('/api/customers/' + encodeURIComponent(inn));
@@ -5671,7 +5626,7 @@ html[data-theme="light"] .pk3-stk-float-bar { background: rgba(255,255,255,.94);
       toast('Сохранено', 'Клиент и работа обновлены', 'ok');
       Object.assign(card, body);
     } else {
-      toast('Не сохранилось', (r.data && r.data.error) || 'Ошибка', 'err');
+      toast('Не сохранилось', (r.data && (r.data.message || r.data.error)) || 'Ошибка', 'err');
     }
   }
 
@@ -5704,7 +5659,7 @@ html[data-theme="light"] .pk3-stk-float-bar { background: rgba(255,255,255,.94);
       toast('Сохранено', 'Финансы обновлены', 'ok');
       card.finance = { ...card.finance, ...body };
     } else {
-      toast('Не сохранилось', (r.data && (r.data.error || r.data.message)) || 'Ошибка', 'err');
+      toast('Не сохранилось', (r.data && (r.data.message || r.data.error)) || 'Ошибка', 'err');
     }
   }
 
@@ -5851,7 +5806,8 @@ html[data-theme="light"] .pk3-stk-float-bar { background: rgba(255,255,255,.94);
     try {
       const r = await apiPreTender(`/${ptId}/documents/${idx}/json`);
       if (!r.ok || !r.data) {
-        const err = (r.data && r.data.error) || ('HTTP ' + r.status);
+        // Понятный текст: `message`/`hint` от сервера, а не машинный код или «HTTP 500».
+        const err = (r.data && (r.data.message || r.data.hint)) || ('HTTP ' + r.status);
         const body = $('#pk3-doc-edit-body');
         if (body) body.innerHTML = `<div style="padding:38px;text-align:center;color:var(--err);font-size:13px">❌ Не удалось загрузить документ: ${esc(err)}</div>`;
         return;
@@ -6613,7 +6569,7 @@ html[data-theme="light"] .pk3-stk-float-bar { background: rgba(255,255,255,.94);
               method: 'POST', headers: _authHeaders(), body: JSON.stringify(payload)
             });
             const data = await res.json().catch(() => ({}));
-            if (!res.ok) { toast('Ошибка', data.error || 'Не создать папку', 'err'); return; }
+            if (!res.ok) { toast('Ошибка', data.message || data.error || 'Не создать папку', 'err'); return; }
             if (data.folder?.id) _setDocFolder(card, data.folder.id);
             close();
             toast('Готово', 'Папка создана', 'ok');
@@ -6638,7 +6594,7 @@ html[data-theme="light"] .pk3-stk-float-bar { background: rgba(255,255,255,.94);
         method: 'PATCH', headers: _authHeaders(), body: JSON.stringify({ name: name.trim() })
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) { toast('Ошибка', data.error || 'Не переименовать', 'err'); return; }
+      if (!res.ok) { toast('Ошибка', data.message || data.error || 'Не переименовать', 'err'); return; }
       toast('Готово', 'Папка переименована', 'ok');
       _refreshDocsExplorer(card);
     } catch (e) { toast('Сеть', e.message, 'err'); }
@@ -6740,7 +6696,7 @@ html[data-theme="light"] .pk3-stk-float-bar { background: rgba(255,255,255,.94);
         method: 'PATCH', headers: _authHeaders(), body: JSON.stringify({ folder_id: folderId })
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) { toast('Ошибка', data.error || 'Не переместить', 'err'); return; }
+      if (!res.ok) { toast('Ошибка', data.message || data.error || 'Не переместить', 'err'); return; }
       _setDocFolder(card, folderId);
       toast('Готово', 'Документ перемещён', 'ok');
       _refreshDocsExplorer(card);
@@ -6762,7 +6718,7 @@ html[data-theme="light"] .pk3-stk-float-bar { background: rgba(255,255,255,.94);
         method: 'PATCH', headers: _authHeaders(), body: JSON.stringify({ original_name: name.trim() })
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) { toast('Ошибка', data.error || 'Не переименовать', 'err'); return; }
+      if (!res.ok) { toast('Ошибка', data.message || data.error || 'Не переименовать', 'err'); return; }
       toast('Готово', 'Файл переименован', 'ok');
       _refreshDocsExplorer(card);
     } catch (e) { toast('Сеть', e.message, 'err'); }
@@ -6783,7 +6739,7 @@ html[data-theme="light"] .pk3-stk-float-bar { background: rgba(255,255,255,.94);
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        const msg = data.error === 'mimir_doc_protected' ? 'Документ Мимира — только директор может удалить' : (data.error || 'Не удалить');
+        const msg = data.error === 'mimir_doc_protected' ? 'Документ Мимира — только директор может удалить' : (data.message || data.error || 'Не удалить');
         toast('Ошибка', msg, 'err');
         return;
       }
@@ -6933,7 +6889,7 @@ html[data-theme="light"] .pk3-stk-float-bar { background: rgba(255,255,255,.94);
         });
         if (!res.ok) {
           let err = `HTTP ${res.status}`;
-          try { const j = await res.json(); err = j.error || j.message || err; } catch (_) {}
+          try { const j = await res.json(); err = j.message || j.hint || j.error || err; } catch (_) {}
           toast('Не загрузилось', err, 'err');
           if (btn) { btn.disabled = false; btn.textContent = '📥 Загрузить'; }
           return;
@@ -7022,7 +6978,7 @@ html[data-theme="light"] .pk3-stk-float-bar { background: rgba(255,255,255,.94);
           method: 'POST', body: { body: text }
         });
         if (!r.ok) {
-          toast('Заметка', (r.data && (r.data.error || r.data.message)) || 'Не сохранилось', 'err');
+          toast('Заметка', (r.data && (r.data.message || r.data.error)) || 'Не сохранилось', 'err');
           if (btn) { btn.disabled = false; btn.textContent = '💾 Сохранить'; }
           return;
         }
@@ -7087,7 +7043,7 @@ html[data-theme="light"] .pk3-stk-float-bar { background: rgba(255,255,255,.94);
           method: 'PUT', body: { body: text }
         });
         if (!r.ok) {
-          toast('Заметка', (r.data && (r.data.error || r.data.message)) || 'Не сохранилось', 'err');
+          toast('Заметка', (r.data && (r.data.message || r.data.error)) || 'Не сохранилось', 'err');
           if (btn) { btn.disabled = false; btn.textContent = '💾 Сохранить'; }
           return;
         }
@@ -7285,7 +7241,7 @@ html[data-theme="light"] .pk3-stk-float-bar { background: rgba(255,255,255,.94);
             toast('Готово', isEdit ? 'Напоминание обновлено' : 'Напоминание поставлено', 'ok');
             await _loadAndRenderReminders(card);
           } else {
-            const err = (r.data && (r.data.error || r.data.message)) || 'Не удалось сохранить';
+            const err = (r.data && (r.data.message || r.data.hint || r.data.error)) || 'Не удалось сохранить';
             const errMap = {
               remind_at_in_past: 'Время напоминания в прошлом',
               invalid_event_at: 'Некорректная дата события',
@@ -7306,7 +7262,13 @@ html[data-theme="light"] .pk3-stk-float-bar { background: rgba(255,255,255,.94);
       _closeDrawer();
       await _v3LoadAndRender();
     } else {
-      toast('Не получилось', (r.data && r.data.error) || 'Ошибка', 'err');
+      // Понятное объяснение вместо машинного кода (23.10.2026).
+      const friendly = {
+        application_not_found: 'Исходная заявка удалена — конвертировать нечего.',
+        pre_tender_exists: 'По этой заявке пре-тендер уже создан. Откройте его в колонке «Новые».',
+        card_closed: 'Карта закрыта — конвертация недоступна.',
+      }[r.data && r.data.error];
+      toast('Не получилось', friendly || _humanErrText(r.data, 'Заявка не сконвертирована — повторите попытку.'), 'err');
     }
   }
   async function _downloadTkpPdf(card) {
@@ -7344,9 +7306,31 @@ html[data-theme="light"] .pk3-stk-float-bar { background: rgba(255,255,255,.94);
   // Backend POST /api/tkp/from-card/:cardId отдаёт { item: tkp, template_kind, ... }
   // (НЕ tkp_id отдельно), нужно брать item.id или tkp_id как fallback.
   async function _openTkpConstructor(card) {
+    // D-302/D-305: сначала смотрим, есть ли уже ТКП по этой заявке.
+    // Раньше каждый клик создавал НОВЫЙ черновик с нулём (поймано: 3 ТКП на
+    // одну заявку, одно с суммой 0). Теперь предлагаем открыть существующее.
+    try {
+      const existing = await api(`/api/tkp?pre_tender_id=${encodeURIComponent(card.entity_id || '')}&limit=20`);
+      const list = (existing && existing.ok && (existing.data.items || existing.data.rows)) || [];
+      // Только по этой заявке и не удалённые
+      const mine = list.filter((t) => Number(t.pre_tender_id) === Number(card.entity_id));
+      if (mine.length) {
+        const pick = await _askOpenExisting(mine);
+        if (pick === 'cancel') return;
+        if (pick && pick !== 'new') {
+          location.hash = '#/tkp?edit=' + pick;
+          return;
+        }
+        // 'new' — создать ещё одно, продолжаем ниже
+      }
+    } catch (_) { /* если список не отдался — просто создаём */ }
+
+    const choice = await _askTkpKind();
+    if (!choice) return; // отменил
+
     try {
       const r = await api(`/api/tkp/from-card/${card.id}`, {
-        method: 'POST', body: { template_kind: 'universal' }
+        method: 'POST', body: { template_kind: choice.template_kind, kp_variant: choice.kp_variant }
       });
       if (!r.ok) {
         const msg = (r.data && (r.data.message || r.data.error)) || `HTTP ${r.status}`;
@@ -7365,6 +7349,76 @@ html[data-theme="light"] .pk3-stk-float-bar { background: rgba(255,255,255,.94);
       toast('ТКП', String(e.message || e), 'err');
       console.error('[TKP from-card] exception:', e);
     }
+  }
+
+  /** D-305: по заявке уже есть ТКП — предложить открыть, а не плодить дубли. */
+  function _askOpenExisting(list) {
+    return new Promise((resolve) => {
+      const money = (v) => (Number(v) || 0).toLocaleString('ru-RU') + ' ₽';
+      const rows = list.map((t) => `
+        <button type="button" class="pk3-btn" data-pick="${t.id}"
+                style="text-align:left;padding:11px 14px;display:flex;justify-content:space-between;gap:10px;width:100%">
+          <span>ТКП #${esc(t.id)} · ${esc(String(t.subject || 'без названия').slice(0, 46))}</span>
+          <b style="white-space:nowrap">${esc(money(t.total_sum))}</b>
+        </button>`).join('');
+      const html = `
+        <div class="pk3-modal" style="max-width:600px">
+          <div class="pk3-modal-head"><div class="pk3-modal-title">По этой заявке уже есть ТКП</div></div>
+          <div class="pk3-modal-body" style="display:flex;flex-direction:column;gap:8px;padding:14px">
+            <div style="font-size:12.5px;opacity:.75;margin-bottom:4px">
+              Открой существующее — новый черновик создавать не нужно.
+            </div>
+            ${rows}
+            <button type="button" class="pk3-btn pk3-ghost" data-pick="new" style="margin-top:8px">Всё равно создать новое</button>
+            <button type="button" class="pk3-btn pk3-ghost" data-pick="cancel">Отмена</button>
+          </div>
+        </div>`;
+      const ov = _openModal(html, {
+        onMount(el) {
+          el.querySelectorAll('[data-pick]').forEach((b) => {
+            b.addEventListener('click', () => {
+              const v = b.getAttribute('data-pick');
+              _closeTopModal();
+              resolve(v === 'cancel' ? 'cancel' : (v === 'new' ? 'new' : Number(v)));
+            });
+          });
+        }
+      });
+      ov.addEventListener('click', (e) => { if (e.target === ov) resolve('cancel'); });
+    });
+  }
+
+  /** D-302: выбор формата КП. Возвращает { template_kind, kp_variant } или null. */
+  function _askTkpKind() {
+    return new Promise((resolve) => {
+      const html = `
+        <div class="pk3-modal" style="max-width:560px">
+          <div class="pk3-modal-head"><div class="pk3-modal-title">Какое ТКП делаем?</div></div>
+          <div class="pk3-modal-body" style="display:flex;flex-direction:column;gap:10px;padding:14px">
+            <button type="button" class="pk3-btn pk3-gold" data-kind="classic" style="text-align:left;padding:14px 16px">
+              <b>Короткое</b><br><span style="opacity:.75;font-size:12px">Таблица работ и итог. Быстро, для простых запросов.</span>
+            </button>
+            <button type="button" class="pk3-btn" data-kind="full" style="text-align:left;padding:14px 16px;border:1px solid var(--gold)">
+              <b>Полное</b><br><span style="opacity:.75;font-size:12px">Блоки: преамбула, смета, условия, гарантия, охрана труда, логистика, команда, подпись.</span>
+            </button>
+            <button type="button" class="pk3-btn pk3-ghost" data-kind="cancel" style="margin-top:4px">Отмена</button>
+          </div>
+        </div>`;
+      const ov = _openModal(html, {
+        onMount(el) {
+          el.querySelectorAll('[data-kind]').forEach((b) => {
+            b.addEventListener('click', () => {
+              const k = b.getAttribute('data-kind');
+              _closeTopModal();
+              if (k === 'cancel') return resolve(null);
+              resolve({ template_kind: k === 'full' ? 'full' : 'universal', kp_variant: k });
+            });
+          });
+        }
+      });
+      // клик по фону = отмена
+      ov.addEventListener('click', (e) => { if (e.target === ov) resolve(null); });
+    });
   }
   function _openSendModal(card) {
     if (window.AsgardPKv3Modals && window.AsgardPKv3Modals.openSend) {
@@ -7470,7 +7524,8 @@ window.AsgardPKv3Modals = (function () {
 .pk3-modal-body{flex:1;overflow-y:auto;padding:18px 22px}
 .pk3-modal-foot{padding:12px 20px;border-top:1px solid var(--brd-m,#2a2a35);display:flex;gap:9px;align-items:center;background:var(--bg2,#1c1c28)}
 .pk3-btn{border:1px solid var(--brd-m,#333);background:var(--bg2,#1c1c28);color:var(--t1,#eee);border-radius:8px;padding:8px 14px;cursor:pointer;font:inherit}
-.pk3-btn.pk3-gold{background:linear-gradient(135deg,#d4a843,#b8860b);border-color:transparent;color:#1a1200;font-weight:700}
+/* D-343: цвет gold-кнопки — из единой системы (был локальный #d4a843→#b8860b). */
+.pk3-btn.pk3-gold{background:linear-gradient(180deg,var(--bsys-primary-1),var(--bsys-primary-2));border-color:var(--bsys-primary-brd);color:var(--bsys-primary-ink);font-weight:700}
 .pk3-btn.pk3-ghost{background:transparent}
 .pk3-btn.pk3-sm{padding:4px 9px;font-size:11px}
 .pk3-btn-icon{background:transparent;border:none;color:var(--t2,#aaa);cursor:pointer;font-size:18px}
@@ -7499,6 +7554,59 @@ window.AsgardPKv3Modals = (function () {
     // модалка рендерится «голым» DOM внизу страницы.
     _ensureQuickModalStylesFallback();
   }
+  // Стек открытых pk3-окон. ПОРЯДОК ОТКРЫТИЯ — единственная истина для Esc:
+  // у openReferences/openTkp/openSend/openConductor z-index одинаковый (20100),
+  // а у обычного Quick — 13000, поэтому ни z, ни порядок в DOM не дают
+  // правильный «верхний». Из-за сравнения по z Esc переставал работать вовсе
+  // (три нажатия не закрывали ни одного окна) — проверено 22.10.2026.
+  const _pk3OverlayStack = [];
+  function _pk3StackPush(el) {
+    const i = _pk3OverlayStack.indexOf(el);
+    if (i >= 0) _pk3OverlayStack.splice(i, 1);
+    _pk3OverlayStack.push(el);
+    // Публикуем для ui.js: пока есть открытые окна канбана, глобальный Esc
+    // модалок отчёта не срабатывает (иначе один Esc закрывал два окна).
+    try { window.__asgardPk3OpenOverlays = _pk3OverlayStack.slice(); } catch (_) {}
+  }
+  function _pk3StackDrop(el) {
+    const i = _pk3OverlayStack.indexOf(el);
+    if (i >= 0) _pk3OverlayStack.splice(i, 1);
+    try { window.__asgardPk3OpenOverlays = _pk3OverlayStack.slice(); } catch (_) {}
+  }
+  function _overlayZ(el) {
+    let z = 0, node = el;
+    while (node && node !== document.body) {
+      const v = Number(getComputedStyle(node).zIndex);
+      if (isFinite(v) && v > z) z = v;
+      node = node.parentElement;
+    }
+    return z;
+  }
+  function _isTopmostOverlay(overlay) {
+    try {
+      if (overlay && overlay.classList && overlay.classList.contains('pk3-mimir-busy')) {
+        overlay = overlay.closest('.pk3-modal-overlay') || overlay;
+      }
+      // Порядок открытия — истина для Esc. Порядок в DOM и z-index не годятся:
+      // у openReferences/openTkp/openSend/openConductor z=20100 у ВСЕХ, и
+      // сравнение «по z» объявляло нетоповым сразу оба окна — Esc переставал
+      // работать вовсе (три нажатия не закрывали ничего). Проверено 22.10.2026.
+      for (let i = _pk3OverlayStack.length - 1; i >= 0; i--) {
+        if (!_pk3OverlayStack[i].isConnected) { _pk3OverlayStack.splice(i, 1); continue; }
+        return _pk3OverlayStack[i] === overlay;
+      }
+      // В стеке никого — значит окно не из канбана (например .cr-m-overlay):
+      // решает z-index, чтобы не закрывать чужой верхний слой.
+      const myZ = _overlayZ(overlay);
+      const others = Array.from(document.querySelectorAll('.pk3-modal-overlay, .cr-m-overlay'))
+        .filter((el) => el !== overlay && el.isConnected && getComputedStyle(el).display !== 'none');
+      for (const el of others) {
+        if (el.classList.contains('pk3-modal-overlay')) continue; // их порядок — в стеке
+        if (_overlayZ(el) > myZ) return false;
+      }
+      return true;
+    } catch (_) { return true; }
+  }
   function mountModal(html) {
     ensurePk3Styles();
     const overlay = document.createElement('div');
@@ -7506,9 +7614,30 @@ window.AsgardPKv3Modals = (function () {
     overlay.innerHTML = html;
     overlay.addEventListener('click', (e) => { if (e.target === overlay) close(overlay); });
     document.body.appendChild(overlay);
-    const onKey = (e) => { if (e.key === 'Escape') close(overlay); };
+    _pk3StackPush(overlay);
+    const onKey = (e) => {
+      if (e.key !== 'Escape') return;
+      // Пока открыт ЭКРАН ОШИБКИ расчёта, Esc принадлежит ему: он снимает
+      // только себя и оставляет модалку. Порядок подписки тут не помогает
+      // (mountModal подписан РАНЬШЕ _bzFail), поэтому проверяем состояние.
+      // Обычный busy-экран (идёт расчёт) Esc не перехватывает — иначе окно
+      // нельзя было бы закрыть во время долгого расчёта.
+      if (overlay.querySelector('.pk3-mimir-busy.is-failed')) return;
+      // Верхнее окно закрывает себя и гасит событие, чтобы нижние обработчики
+      // не сняли второе окно. Нижний слой просто выходит (БЕЗ гашения): иначе
+      // при двух окнах с одинаковым z оба считали себя нетоповыми и взаимно
+      // блокировали Esc — он переставал работать вовсе (22.10.2026).
+      if (!_isTopmostOverlay(overlay)) return;
+      e.stopImmediatePropagation();
+      e.preventDefault();
+      close(overlay);
+    };
     document.addEventListener('keydown', onKey);
-    overlay._closeFn = () => { document.removeEventListener('keydown', onKey); try { overlay.remove(); } catch (_) {} };
+    overlay._closeFn = () => {
+      document.removeEventListener('keydown', onKey);
+      _pk3StackDrop(overlay);
+      try { overlay.remove(); } catch (_) {}
+    };
     return overlay;
   }
   function close(overlay) {
@@ -7800,7 +7929,7 @@ window.AsgardPKv3Modals = (function () {
           <td style="padding:4px 6px;font-size:12px">${esc(meta.label)}</td>
           <td style="padding:4px;width:110px">
             <input data-param="${esc(meta.key)}" type="number" step="${step}" value="${show}"
-              style="width:100%;background:#dce6f1;border:1px solid #8faadc;padding:4px 6px;color:var(--t1);font:inherit;border-radius:4px;text-align:right"/>
+              class="pk3-qin" style="width:100%"/>
           </td>
           <td style="padding:4px;color:var(--t3);font-size:11px">${esc(unit)}</td>
           <td style="padding:4px;color:var(--t3);font-size:11px">${esc(meta.note || '')}</td>
@@ -7809,7 +7938,7 @@ window.AsgardPKv3Modals = (function () {
 
       const bodyRows = (est.rows || []).map((row, i) => {
         if (row.kind === 'section') {
-          return `<tr style="background:var(--bg3,#2a2218)"><td colspan="7" style="padding:8px 6px;font-weight:700;color:var(--gold-l)">${esc(row.name)}</td></tr>`;
+          return `<tr class="pk3-qsecrow"><td colspan="7" style="padding:8px 6px;font-weight:700;color:var(--gold)">${esc(row.name)}</td></tr>`;
         }
         if (row.kind === 'line') {
           const sum = Number(row.sum) || 0;
@@ -7817,9 +7946,9 @@ window.AsgardPKv3Modals = (function () {
             <td style="padding:4px;color:var(--t3);font-size:11px">${esc(row.code || '')}</td>
             <td style="padding:4px"><input data-fld="name" value="${esc(row.name || '')}" style="width:100%;background:transparent;border:1px solid transparent;padding:4px 6px;color:var(--t1);font:inherit"/></td>
             <td style="padding:4px;width:64px"><input data-fld="unit" value="${esc(row.unit || '')}" style="width:100%;background:transparent;border:1px solid transparent;padding:4px;color:var(--t1);font:inherit"/></td>
-            <td style="padding:4px;width:90px"><input data-fld="qty" type="number" step="0.01" value="${Number(row.qty) || 0}" style="width:100%;background:#dce6f1;border:1px solid #8faadc;padding:4px;color:var(--t1);font:inherit;text-align:right;border-radius:4px"/></td>
-            <td style="padding:4px;width:110px"><input data-fld="price" type="number" step="1" value="${Number(row.price) || 0}" style="width:100%;background:#dce6f1;border:1px solid #8faadc;padding:4px;color:var(--t1);font:inherit;text-align:right;border-radius:4px"/></td>
-            <td style="padding:6px;text-align:right;color:var(--gold-l);font-family:monospace" data-fld="sum">${_fmtMoneyRub(sum)}</td>
+            <td style="padding:4px;width:90px"><input data-fld="qty" type="number" step="0.01" value="${Number(row.qty) || 0}" class="pk3-qin" style="width:100%"/></td>
+            <td style="padding:4px;width:110px"><input data-fld="price" type="number" step="1" value="${Number(row.price) || 0}" class="pk3-qin" style="width:100%"/></td>
+            <td style="padding:6px;text-align:right;color:var(--gold);font-family:monospace" data-fld="sum">${_fmtMoneyRub(sum)}</td>
             <td style="padding:4px;width:32px"><button class="pk3-btn pk3-ghost pk3-sm" data-act="row-del" data-row-id="${esc(row.id)}" title="Удалить" style="padding:4px 8px">🗑</button></td>
           </tr>`;
         }
@@ -7827,14 +7956,14 @@ window.AsgardPKv3Modals = (function () {
         const strong = row.sumExpr === 'cost' || row.sumExpr === 'price_with_vat';
         return `<tr style="border-top:1px solid var(--brd-m);background:${strong ? 'rgba(212,168,67,.12)' : 'transparent'}">
           <td colspan="5" style="padding:7px 6px;text-align:right;font-weight:600">${esc(row.name)}</td>
-          <td style="padding:7px;text-align:right;font-weight:700;font-family:monospace;color:var(--gold-l)" data-rollup="${esc(row.id)}">${_fmtMoneyRub(row.sum)}</td>
+          <td style="padding:7px;text-align:right;font-weight:700;font-family:monospace;color:var(--gold)" data-rollup="${esc(row.id)}">${_fmtMoneyRub(row.sum)}</td>
           <td></td>
         </tr>`;
       }).join('');
 
       const aiBlock = lastChatMd ? `
         <details style="margin-top:12px;background:var(--bg2);border:1px solid var(--brd-m);border-radius:10px;padding:8px 12px">
-          <summary style="cursor:pointer;font-size:12px;color:var(--gold-l);font-weight:600">📝 Анализ Мимира (нажми чтобы развернуть)</summary>
+          <summary style="cursor:pointer;font-size:12px;color:var(--gold);font-weight:600">📝 Анализ Мимира (нажми чтобы развернуть)</summary>
           <div style="margin-top:10px;font-size:12.5px;line-height:1.55">${_markdownToHtml(lastChatMd)}</div>
         </details>` : '';
 
@@ -7851,7 +7980,7 @@ window.AsgardPKv3Modals = (function () {
         </div>
 
         <div style="background:var(--bg2);border:1px solid var(--brd-m);border-radius:10px;padding:8px 10px;margin-bottom:12px">
-          <div style="font-size:12px;font-weight:700;color:var(--gold-l);margin-bottom:6px">1. Исходные параметры</div>
+          <div style="font-size:12px;font-weight:700;color:var(--gold);margin-bottom:6px">1. Исходные параметры</div>
           <table style="width:100%;border-collapse:collapse;font-size:12px">
             <thead><tr style="border-bottom:1px solid var(--brd-m)">
               <th style="text-align:left;padding:6px;color:var(--t3)">Параметр</th>
@@ -7864,7 +7993,7 @@ window.AsgardPKv3Modals = (function () {
         </div>
 
         <div style="background:var(--bg2);border:1px solid var(--brd-m);border-radius:10px;padding:8px 10px">
-          <div style="font-size:12px;font-weight:700;color:var(--gold-l);margin-bottom:6px">2. Калькуляция</div>
+          <div style="font-size:12px;font-weight:700;color:var(--gold);margin-bottom:6px">2. Калькуляция</div>
           <table id="pk3-q-smeta-tbl" style="width:100%;border-collapse:collapse;font-size:12px">
             <thead><tr style="border-bottom:1px solid var(--brd-m)">
               <th style="text-align:left;padding:7px 6px;color:var(--t3);font-size:11px">№</th>
@@ -7878,7 +8007,7 @@ window.AsgardPKv3Modals = (function () {
             <tbody>${bodyRows || '<tr><td colspan="7" style="padding:14px;color:var(--t3);text-align:center">Нет строк</td></tr>'}
               <tr style="border-top:2px solid var(--brd)">
                 <td colspan="5" style="padding:9px;text-align:right;font-weight:600">Итого с/с / КП без НДС / с НДС:</td>
-                <td id="pk3-q-smeta-total" style="padding:9px;text-align:right;color:var(--gold-l);font-weight:700;font-family:monospace;font-size:11px">
+                <td id="pk3-q-smeta-total" style="padding:9px;text-align:right;color:var(--gold);font-weight:700;font-family:monospace;font-size:11px">
                   ${_fmtMoneyRub(totals.cost)}<br/>
                   ${_fmtMoneyRub(totals.kp_no_vat)}<br/>
                   ${_fmtMoneyRub(totals.kp_with_vat)}
@@ -8295,6 +8424,10 @@ window.AsgardPKv3Modals = (function () {
 
     const overlay = mountModal(wizardHtml());
     overlay.dataset.mimirQuick = '1';
+    // Стили экрана расчёта и шапки мастера нужны СРАЗУ при открытии модалки,
+    // а не только в момент старта busy (иначе шаги 2–3 оставались на старых
+    // цветах: бледно-зелёный #6DCB96 на белом фоне светлой темы).
+    _bzEnsureStyles();
     // AsgardUI.modal = 10000+; без этого Quick открывается ПОД модалкой отчёта.
     overlay.style.zIndex = isRp ? '20100' : '13000';
     // Keepalive SessionGuard на весь lifetime модалки (скачивание/SSE без progress-событий)
@@ -8308,50 +8441,484 @@ window.AsgardPKv3Modals = (function () {
     const _origCloseFn = overlay._closeFn;
     overlay._closeFn = () => {
       clearInterval(_keepAliveIv);
-      _stopBusyTick();
+      _bzStop();
+      if (_thoughtFlushTimer) { clearTimeout(_thoughtFlushTimer); _thoughtFlushTimer = null; }
       if (_origCloseFn) _origCloseFn();
     };
     const rerender = () => { overlay.innerHTML = wizardHtml(); bindAll(); };
-    let _busyTickIv = null;
-    let _busyStartedAt = 0;
-    let _busyBaseSub = '';
 
-    function _ensureSpinKeyframes() {
-      if (document.getElementById('asg-pk3-spin-kf')) return;
+    /* ── Мимир: busy-экран расчёта (v2) ──────────────────────────────────
+     * D-310. Что было сломано и почему:
+     *  - каждый SSE-progress звал _setBusy(), который заново ставил
+     *    _busyStartedAt=Date.now() → таймер «сбрасывался» каждые 8 сек
+     *    (бэкенд шлёт heartbeat на каждом шаге модели);
+     *  - из-за того же сброса шкала каждый раз начиналась с 0 — «полоска
+     *    не работает»;
+     *  - мысли модели вываливались простынёй текста в тёмном прямоугольнике,
+     *    на светлой теме всё сливалось в серое пятно.
+     * Теперь: таймер ставится один раз на фазу, шкала монотонная (этап задаёт
+     * «пол», внутри этапа растёт по экспоненте и никогда не откатывается),
+     * рассуждения идут одной живой строкой, полный журнал — по кнопке.
+     */
+    const CALC_STAGES = ['ТЗ и вложения', 'Данные компании', 'Расчёт модели', 'Сборка сметы'];
+    const REPLY_STAGES = ['Правка', 'Пересчёт модели', 'Смета'];
+    // Постоянная времени этапа (сек): за неё шкала проходит ~63 % отрезка.
+    const _STAGE_TAU = [16, 22, 110, 12];
+    const _FLOORS4 = [0, 0.10, 0.26, 0.90, 0.985];
+    const _FLOORS3 = [0, 0.15, 0.88, 0.985];
+
+    let _bz = null;                // состояние активного busy-экрана
+    let _thoughtFlushTimer = null;
+    let _thoughtBuf = '';
+    let _liveBuf = '';
+
+    function _floorsFor(n) {
+      if (n >= 4) return _FLOORS4;
+      if (n === 3) return _FLOORS3;
+      return [0, 0.96];
+    }
+    function _bzFmt(sec) {
+      const s = Math.max(0, Math.round(sec));
+      return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
+    }
+    function _bzEnsureStyles() {
+      if (document.getElementById('asg-mimir-busy-styles')) return;
       const st = document.createElement('style');
-      st.id = 'asg-pk3-spin-kf';
-      st.textContent = '@keyframes pk3-spin{to{transform:rotate(360deg)}}';
+      st.id = 'asg-mimir-busy-styles';
+      st.textContent = `
+@keyframes bzIn{from{opacity:0;transform:translateY(8px) scale(.995)}to{opacity:1;transform:none}}
+@keyframes bzSpin{to{transform:rotate(360deg)}}
+@keyframes bzGlow{0%,100%{opacity:.35}50%{opacity:1}}
+@keyframes bzShimmer{0%{transform:translateX(-70%)}100%{transform:translateX(220%)}}
+@keyframes bzCaret{0%,42%{opacity:1}50%,100%{opacity:0}}
+
+.pk3-mimir-busy{position:absolute;inset:0;z-index:80;display:flex;align-items:center;justify-content:center;
+  padding:clamp(12px,2.6vh,30px);box-sizing:border-box;border-radius:14px;
+  background:rgba(9,11,17,.74);backdrop-filter:blur(16px) saturate(1.06);-webkit-backdrop-filter:blur(16px) saturate(1.06);
+  animation:bzIn .26s cubic-bezier(.16,1,.3,1) both}
+html[data-theme="light"] .pk3-mimir-busy{background:rgba(244,246,248,.80)}
+/* Пока идёт расчёт — фоновый прогресс-блок под карточкой не нужен. */
+.pk3-modal:has(.pk3-mimir-busy) #pk3-q-progress,
+.pk3-modal:has(.pk3-mimir-busy) #pk3-q-prog-line{visibility:hidden}
+
+.pk3-bz-card{position:relative;width:min(620px,100%);max-height:100%;overflow:auto;box-sizing:border-box;
+  padding:26px 28px 20px;border-radius:22px;background:var(--bg2);
+  border:1px solid var(--brd);
+  box-shadow:0 26px 70px rgba(3,6,12,.42),0 1px 0 rgba(255,255,255,.05) inset,0 0 0 1px rgba(212,168,67,.10)}
+html[data-theme="light"] .pk3-bz-card{box-shadow:0 26px 64px rgba(16,24,40,.16),0 0 0 1px rgba(184,132,26,.10)}
+.pk3-bz-card::before{content:'';position:absolute;left:18%;right:18%;top:0;height:2px;border-radius:0 0 3px 3px;
+  background:linear-gradient(90deg,transparent,var(--gold),transparent);opacity:.6}
+
+.pk3-bz-top{display:flex;align-items:center;gap:16px;margin-bottom:18px}
+.pk3-bz-crest{position:relative;width:54px;height:54px;flex:0 0 auto;border-radius:50%;display:grid;place-items:center;
+  background:radial-gradient(circle at 32% 26%,rgba(212,168,67,.22),transparent 64%),var(--bg3);
+  border:1px solid rgba(212,168,67,.38)}
+.pk3-bz-crest i{position:absolute;inset:-5px;border-radius:50%;animation:bzSpin 3.6s linear infinite;
+  border:1px solid transparent;border-top-color:var(--gold);border-right-color:rgba(212,168,67,.28)}
+.pk3-bz-crest b{font:700 22px/1 Cinzel,Georgia,serif;color:var(--gold);letter-spacing:.02em}
+html[data-theme="light"] .pk3-bz-crest b{color:var(--gold)}
+.pk3-bz-head{min-width:0;flex:1}
+.pk3-bz-kicker{font-size:9.5px;letter-spacing:.2em;text-transform:uppercase;color:var(--t3);font-weight:700;margin-bottom:6px}
+/* D-310: --t3 в тёмной теме = rgba(255,255,255,.40) → 3.81:1 на --bg2, ниже
+   WCAG AA. Старый экран давал 6.23:1, поэтому здесь непрозрачный оттенок:
+   0.55 альфы = 6.09:1 на --bg2 и 5.55:1 на --bg3. */
+.pk3-bz-kicker,.pk3-bz-meta,.pk3-bz-hint,.pk3-bz-more-btn,.pk3-bz-foot{
+  color:rgba(255,255,255,.58)}
+.pk3-bz-foot{opacity:1}
+.pk3-bz-title{font-family:Cinzel,Georgia,serif;font-size:19px;line-height:1.28;font-weight:700;color:var(--t1);margin:0 0 5px;
+  text-wrap:balance}
+.pk3-bz-note{font-size:12.5px;line-height:1.5;color:var(--t2);margin:0;overflow:hidden;
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;word-break:break-word}
+
+.pk3-bz-stages{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:16px}
+.pk3-bz-stages:empty{display:none}
+.pk3-bz-stage{display:inline-flex;align-items:center;gap:6px;padding:5px 10px;border-radius:999px;
+  border:1px solid var(--brd-m);background:var(--bg3);color:rgba(255,255,255,.58);
+  font-size:11px;font-weight:600;transition:all .25s ease}
+.pk3-bz-stage i{width:6px;height:6px;border-radius:50%;background:currentColor;opacity:.45;flex:0 0 auto}
+.pk3-bz-stage.is-done{color:var(--ok-t);background:var(--ok-bg);border-color:rgba(18,135,74,.26)}
+.pk3-bz-stage.is-done i{opacity:1}
+.pk3-bz-stage.is-now{color:var(--gold);background:var(--gold-bg);border-color:rgba(212,168,67,.45);
+  box-shadow:0 0 0 3px rgba(212,168,67,.07)}
+html[data-theme="light"] .pk3-bz-stage{color:var(--t2);background:var(--bg3);border-color:var(--brd)}
+html[data-theme="light"] .pk3-bz-stage.is-done{color:#0E6634;background:rgba(18,135,74,.10);
+  border-color:rgba(18,135,74,.26)}
+html[data-theme="light"] .pk3-bz-stage.is-now{color:var(--gold-h);background:rgba(224,165,38,.14);
+  box-shadow:0 0 0 3px rgba(184,132,26,.08)}
+.pk3-bz-stage.is-now i{opacity:1;animation:bzGlow 1.6s ease-in-out infinite}
+
+.pk3-bz-bar{position:relative;height:5px;border-radius:999px;background:var(--bg4);overflow:hidden;margin-bottom:9px}
+.pk3-bz-fill{position:absolute;inset:0;transform-origin:left center;transform:scaleX(0);border-radius:999px;
+  background:linear-gradient(90deg,var(--gold-h),var(--gold-l) 58%,var(--gold));will-change:transform}
+.pk3-bz-shine{position:absolute;top:0;bottom:0;left:0;width:34%;
+  background:linear-gradient(90deg,transparent,rgba(255,255,255,.5),transparent);
+  animation:bzShimmer 2.4s ease-in-out infinite;mix-blend-mode:overlay}
+
+.pk3-bz-meta{display:flex;align-items:baseline;justify-content:space-between;gap:12px;font-size:11.5px;margin-bottom:16px}
+.pk3-bz-time{font-variant-numeric:tabular-nums;letter-spacing:.03em}
+.pk3-bz-time b{color:var(--t1);font-weight:700;font-size:13px}
+.pk3-bz-right{display:inline-flex;align-items:baseline;gap:10px;font-variant-numeric:tabular-nums}
+.pk3-bz-pct{color:var(--gold);font-weight:700}
+html[data-theme="light"] .pk3-bz-pct{color:var(--gold)}
+
+.pk3-bz-live{display:flex;gap:10px;align-items:flex-start;padding:11px 14px;border-radius:12px;
+  background:var(--bg3);border:1px solid var(--brd-m);min-height:46px}
+.pk3-bz-live-bar{flex:0 0 auto;align-self:stretch;width:2px;border-radius:2px;
+  background:linear-gradient(180deg,var(--gold),transparent);opacity:.85}
+.pk3-bz-live-text{margin:0;flex:1;min-width:0;font-size:12.5px;line-height:1.55;color:var(--t2);
+  overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;word-break:break-word}
+.pk3-bz-live-text.is-stream::after{content:'';display:inline-block;width:5px;height:12px;margin-left:4px;border-radius:1px;
+  background:var(--gold);vertical-align:-2px;animation:bzCaret 1.05s steps(1,end) infinite}
+
+.pk3-bz-more{margin-top:12px;border-top:1px dashed var(--brd-m);padding-top:9px}
+.pk3-bz-more-btn{display:inline-flex;align-items:center;gap:7px;background:none;border:0;padding:0;
+  font:inherit;font-size:11.5px;cursor:pointer}
+.pk3-bz-more-btn:hover{color:var(--bsys-primary-1)}
+.pk3-bz-more-btn .chev{display:inline-block;transition:transform .2s ease;font-size:10px}
+.pk3-bz-more.is-open .pk3-bz-more-btn .chev{transform:rotate(180deg)}
+.pk3-bz-more.is-open .pk3-bz-more-btn{color:rgba(255,255,255,.72)}
+/* Перебиваем старые стили журнала из drawer-CSS (там тёмная плашка
+   rgba(255,255,255,.04) и width 560px — на светлой теме это мыльное пятно). */
+.pk3-bz-card .pk3-mimir-thoughts{display:none;width:auto;max-height:136px;overflow-y:auto;
+  text-align:left;scrollbar-width:thin;margin-top:9px;padding:0 4px 0 0;
+  background:transparent;border:0;border-radius:0}
+.pk3-bz-card .pk3-bz-more.is-open .pk3-mimir-thoughts{display:block}
+.pk3-mimir-thoughts::-webkit-scrollbar{width:6px}
+.pk3-mimir-thoughts::-webkit-scrollbar-thumb{background:var(--brd);border-radius:3px}
+.pk3-bz-card .pk3-thought-row{display:flex;gap:8px;font-size:11.5px;line-height:1.5;color:var(--t3);padding:2px 0;
+  background:none;animation:bzIn .18s ease both}
+.pk3-bz-card .pk3-thought-row:last-child{color:var(--t2)}
+.pk3-bz-card .pk3-thought-row::before{content:'·';color:var(--gold);opacity:.75;flex:0 0 auto}
+.pk3-bz-card .pk3-thought-stage{color:var(--t2);font-weight:500}
+.pk3-bz-card .pk3-thought-stage::before{content:'▸';font-size:9px;line-height:1.9}
+.pk3-bz-card .pk3-thought-text{flex:1;min-width:0;white-space:pre-wrap;word-break:break-word}
+
+.pk3-bz-foot{display:flex;align-items:center;gap:7px;margin-top:14px;font-size:11px}
+
+/* Состояние ошибки (D-310): экран не исчезает, таймер/шкала замирают на месте,
+   этап не откатывается. Кнопка возврата обязательна — оверлей перекрывает
+   шапку модалки, и без неё окно запиралось до Esc. */
+.pk3-mimir-busy.is-failed .pk3-bz-crest{border-color:rgba(214,43,62,.45);
+  background:radial-gradient(circle at 32% 26%,rgba(214,43,62,.20),transparent 64%),var(--bg3)}
+.pk3-mimir-busy.is-failed .pk3-bz-crest i{animation:none;border-top-color:transparent;
+  border-color:rgba(214,43,62,.30)}
+.pk3-mimir-busy.is-failed .pk3-bz-crest b{color:var(--err-t)}
+.pk3-mimir-busy.is-failed .pk3-bz-fill{background:linear-gradient(90deg,var(--err),var(--err-t))}
+.pk3-mimir-busy.is-failed .pk3-bz-shine{display:none}
+.pk3-mimir-busy.is-failed .pk3-bz-live{border-color:rgba(214,43,62,.28);background:var(--err-bg)}
+.pk3-mimir-busy.is-failed .pk3-bz-live-bar{background:linear-gradient(180deg,var(--err),transparent)}
+.pk3-mimir-busy.is-failed .pk3-bz-live-text{color:var(--t1)}
+.pk3-mimir-busy.is-failed .pk3-bz-live-text::after{display:none}
+.pk3-bz-actions{display:flex;gap:8px;margin-top:14px}
+.pk3-bz-btn{border:1px solid var(--brd);background:var(--bg3);color:var(--t1);
+  border-radius:9px;padding:7px 15px;font:inherit;font-size:12.5px;cursor:pointer;
+  transition:border-color .15s ease,background .15s ease}
+.pk3-bz-btn:hover{border-color:var(--bsys-primary-brd);color:var(--bsys-primary-1)}
+html[data-theme="light"] .pk3-bz-btn{background:#fff;border-color:rgba(15,23,42,.14)}
+
+/* Шапка мастера и этапы — плотнее и с золотой нитью (только Quick-модалка). */
+.pk3-modal-overlay[data-mimir-quick="1"] .pk3-wiz-steps{gap:1px;background:var(--brd-m);border:0}
+.pk3-modal-overlay[data-mimir-quick="1"] .pk3-wiz-step{position:relative;padding:11px 8px;font-weight:600;
+  background:var(--bg2);color:var(--t3);border-right:1px solid var(--brd-m)}
+.pk3-modal-overlay[data-mimir-quick="1"] .pk3-wiz-step:last-child{border-right:0}
+.pk3-modal-overlay[data-mimir-quick="1"] .pk3-wiz-step::after{content:'';position:absolute;left:0;right:0;bottom:0;
+  height:2px;background:transparent}
+.pk3-modal-overlay[data-mimir-quick="1"] .pk3-wiz-step.pk3-now{background:var(--gold-bg);color:var(--gold-h);
+  box-shadow:none;font-weight:700}
+.pk3-modal-overlay[data-mimir-quick="1"] .pk3-wiz-step.pk3-now::after{background:linear-gradient(90deg,var(--gold-h),var(--gold-l))}
+.pk3-modal-overlay[data-mimir-quick="1"] .pk3-wiz-step.pk3-done{background:var(--ok-bg);color:var(--ok-t)}
+.pk3-modal-overlay[data-mimir-quick="1"] .pk3-wiz-step.pk3-done::after{background:rgba(18,135,74,.45)}
+.pk3-modal-overlay[data-mimir-quick="1"] .pk3-num{display:inline-grid;place-items:center;width:15px;height:15px;
+  margin-right:5px;border-radius:50%;border:1px solid currentColor;font-size:9px;font-weight:700;opacity:.85;
+  vertical-align:1px}
+
+@media (prefers-reduced-motion: reduce){
+  .pk3-mimir-busy,.pk3-bz-card,.pk3-thought-row{animation:none!important}
+  .pk3-bz-crest i,.pk3-bz-shine,.pk3-bz-stage.is-now i,.pk3-bz-live-text.is-stream::after{animation:none!important}
+}
+
+/* ── Светлая тема: раньше здесь было серое по серому ───────────────────
+   Тёмные rgba-подложки и #E8C35A на белом давали «выцветший» вид. Теперь
+   цвета берём из токенов светлой темы (--gold = #8E6212, контраст 5.4:1). */
+html[data-theme="light"] .pk3-bz-kicker{color:var(--t3)}
+html[data-theme="light"] .pk3-bz-meta,
+html[data-theme="light"] .pk3-bz-hint,
+html[data-theme="light"] .pk3-bz-more-btn,
+html[data-theme="light"] .pk3-bz-foot{color:var(--t2)}
+html[data-theme="light"] .pk3-bz-more.is-open .pk3-bz-more-btn{color:var(--t1)}
+html[data-theme="light"] .pk3-bz-title{color:var(--t1)}
+html[data-theme="light"] .pk3-bz-note{color:var(--t2)}
+/* Чипы этапов в светлой теме заданы ВЫШЕ (одним блоком с контрастом ≥4.5).
+   Здесь их дублировать нельзя: старые правила с color:var(--ok-t) давали
+   4.46:1 и перебивали исправленные (найдено верификатором 22.10.2026). */
+html[data-theme="light"] .pk3-bz-bar{background:#E3E9F1}html[data-theme="light"] .pk3-bz-fill{background:linear-gradient(90deg,#B8841A,#E0A526 60%,#C8901C)}
+html[data-theme="light"] .pk3-bz-shine{mix-blend-mode:normal;opacity:.55;
+  background:linear-gradient(90deg,transparent,rgba(255,255,255,.85),transparent)}
+html[data-theme="light"] .pk3-bz-live{background:var(--bg3);border-color:var(--brd)}
+html[data-theme="light"] .pk3-bz-live-text{color:var(--t1)}
+html[data-theme="light"] .pk3-thought-row{color:var(--t2)}
+html[data-theme="light"] .pk3-thought-stage{color:var(--gold)}
+html[data-theme="light"] .pk3-thought-row:last-child{color:var(--t1)}
+/* .pk3-bz-more-btn и .pk3-bz-foot в светлой теме уже заданы выше (один блок,
+   контраст 7.77/5.43). Дублей здесь быть не должно — они перебивали фикс
+   (color:var(--t3) давал 4.46:1). Найдено верификатором 22.10.2026. */
+html[data-theme="light"] .pk3-modal-overlay[data-mimir-quick="1"] .pk3-modal-head{background:var(--bg2);
+  border-bottom-color:var(--brd)}
+html[data-theme="light"] .pk3-modal-overlay[data-mimir-quick="1"] .pk3-modal-foot{background:var(--bg3);
+  border-top-color:var(--brd)}
+html[data-theme="light"] .pk3-modal-overlay[data-mimir-quick="1"] .pk3-wiz-step{background:var(--bg2);
+  color:var(--t3);border-right-color:var(--brd)}
+html[data-theme="light"] .pk3-modal-overlay[data-mimir-quick="1"] .pk3-wiz-step.pk3-now{
+  background:rgba(224,165,38,.14);color:var(--gold-h)}
+html[data-theme="light"] .pk3-modal-overlay[data-mimir-quick="1"] .pk3-wiz-step.pk3-done{
+  background:rgba(18,135,74,.10);color:#0E6634}
+html[data-theme="light"] .pk3-modal-overlay[data-mimir-quick="1"] .pk3-btn.pk3-gold{
+  background:linear-gradient(180deg,var(--bsys-primary-1),var(--bsys-primary-2));color:var(--bsys-primary-ink);box-shadow:0 2px 10px rgba(29,78,216,.22)}
+html[data-theme="light"] .pk3-modal-overlay[data-mimir-quick="1"] .pk3-ai-block{
+  background:var(--bg2);border-color:var(--brd);color:var(--t1)}
+html[data-theme="light"] .pk3-modal-overlay[data-mimir-quick="1"] .pk3-tag{
+  background:rgba(29,78,216,.08);color:var(--blue)}
+
+/* Золото как ЦВЕТ ТЕКСТА: в светлой теме --gold-l (#E0A526) на белом даёт
+   контраст 1.9:1 — читать невозможно. Для текста берём --gold (#8E6212, 5.4:1). */
+.pk3-qmoney{color:var(--gold-l)}
+html[data-theme="light"] .pk3-qmoney{color:var(--gold)}
+/* Редактируемая ячейка сметы. Раньше была на хардкоде Excel-синего
+   (#dce6f1 / #8faadc) — в тёмной теме это светлые пятна, в светлой грязь.
+   Селекторы намеренно длинные: app.css/light-theme.css задают инпутам
+   input:not(...)...!important со специфичностью до (0,6,2), поэтому короткое
+   правило не применяется вообще. Дублируем класс (.pk3-qin.pk3-qin), чтобы
+   подняться до (0,6,3) и перебить глобал. */
+html body .pk3-modal-overlay[data-mimir-quick="1"] .pk3-modal-body .pk3-qin.pk3-qin{
+  background:var(--gold-bg) !important;border:1px solid var(--brd) !important;
+  padding:4px 6px;color:var(--t1) !important;font:inherit;border-radius:5px !important;
+  text-align:right;outline:none;
+  transition:border-color .15s ease,box-shadow .15s ease,background .15s ease}
+html body .pk3-modal-overlay[data-mimir-quick="1"] .pk3-modal-body .pk3-qin.pk3-qin:hover{
+  border-color:rgba(212,168,67,.5) !important}
+html body .pk3-modal-overlay[data-mimir-quick="1"] .pk3-modal-body .pk3-qin.pk3-qin:focus{
+  background:var(--bg2) !important;border-color:var(--gold) !important;
+  box-shadow:0 0 0 3px var(--gold-bg) !important}
+html[data-theme="light"] body .pk3-modal-overlay[data-mimir-quick="1"] .pk3-modal-body .pk3-qin.pk3-qin{
+  background:rgba(224,165,38,.10) !important;border-color:rgba(169,116,24,.28) !important;
+  color:var(--t1) !important}
+html[data-theme="light"] body .pk3-modal-overlay[data-mimir-quick="1"] .pk3-modal-body .pk3-qin.pk3-qin:hover{
+  border-color:rgba(169,116,24,.48) !important}
+html[data-theme="light"] body .pk3-modal-overlay[data-mimir-quick="1"] .pk3-modal-body .pk3-qin.pk3-qin:focus{
+  background:#fff !important;border-color:var(--gold) !important;
+  box-shadow:0 0 0 3px rgba(184,132,26,.16) !important}
+.pk3-qsecrow{background:var(--bg3)}
+html[data-theme="light"] .pk3-qsecrow{background:var(--bg3) !important;color:var(--t1)}
+`;
       document.head.appendChild(st);
     }
-    function _stopBusyTick() {
-      if (_busyTickIv) { clearInterval(_busyTickIv); _busyTickIv = null; }
+
+    function _bzBuild(stages) {
+      const root = document.createElement('div');
+      root.className = 'pk3-mimir-busy';
+      root.setAttribute('role', 'status');
+      root.setAttribute('aria-live', 'polite');
+      root.innerHTML = `
+        <div class="pk3-bz-card">
+          <div class="pk3-bz-top">
+            <div class="pk3-bz-crest"><i></i><b>M</b></div>
+            <div class="pk3-bz-head">
+              <div class="pk3-bz-kicker">Мимир · расчёт сметы</div>
+              <div class="pk3-bz-title">Считаю смету</div>
+              <p class="pk3-bz-note">Готовлю данные…</p>
+            </div>
+          </div>
+          <div class="pk3-bz-stages"></div>
+          <div class="pk3-bz-bar"><div class="pk3-bz-fill"></div><div class="pk3-bz-shine"></div></div>
+          <div class="pk3-bz-meta">
+            <span class="pk3-bz-time"><b>0:00</b> в расчёте</span>
+            <span class="pk3-bz-right"><span class="pk3-bz-pct">0%</span><span class="pk3-bz-hint">обычно 2–5 мин</span></span>
+          </div>
+          <div class="pk3-bz-live">
+            <span class="pk3-bz-live-bar"></span>
+            <p class="pk3-bz-live-text">Подключаюсь к модели…</p>
+          </div>
+          <div class="pk3-bz-more">
+            <button type="button" class="pk3-bz-more-btn"><span class="chev">▾</span> Ход расчёта</button>
+            <div class="pk3-mimir-thoughts" aria-live="polite"></div>
+          </div>
+          <div class="pk3-bz-foot">🛡 Расчёт идёт на сервере — окно можно закрыть, результат сохранится.</div>
+        </div>`;
+      const btn = root.querySelector('.pk3-bz-more-btn');
+      if (btn) btn.addEventListener('click', () => {
+        const more = root.querySelector('.pk3-bz-more');
+        if (more) more.classList.toggle('is-open');
+        const box = root.querySelector('.pk3-mimir-thoughts');
+        if (box) box.scrollTop = box.scrollHeight;
+      });
+      return root;
     }
-    function _formatBusySub(base, sec) {
-      const b = (base || '').trim();
-      return (b ? b + ' · ' : '') + sec + ' сек';
+
+    function _bzHint(total) {
+      if (!_bz) return '';
+      if (_bz.pct > 0.96) return 'почти готово';
+      if (_bz.mode === 'reply') return 'обычно 20–90 сек';
+      if (_bz.stage === 2) {
+        if (total < 25) return 'модель читает ТЗ';
+        if (total < 300) return 'обычно 2–5 мин';
+        return 'большой пакет — дольше обычного';
+      }
+      return 'обычно 2–5 мин';
+    }
+
+    function _bzStartLoop() {
+      if (!_bz) return;
+      const paint = () => {
+        if (!_bz) return;
+        if (!_bz.root.isConnected) { _bzStop(); return; }
+        const now = Date.now();
+        const total = (now - _bz.startedAt) / 1000;
+        const inStage = (now - _bz.stageAt) / 1000;
+        const tau = _STAGE_TAU[Math.min(_bz.stage, _STAGE_TAU.length - 1)] || 60;
+        const raw = _bz.floor + (_bz.ceil - _bz.floor) * (1 - Math.exp(-inStage / tau));
+        if (raw > _bz.pct) _bz.pct = raw; // строго монотонно — шкала не откатывается
+        const fill = _bz.root.querySelector('.pk3-bz-fill');
+        if (fill) fill.style.transform = 'scaleX(' + _bz.pct.toFixed(4) + ')';
+        if (now - _bz.painted >= 240) {
+          _bz.painted = now;
+          const timeEl = _bz.root.querySelector('.pk3-bz-time b');
+          if (timeEl) timeEl.textContent = _bzFmt(total);
+          const pctEl = _bz.root.querySelector('.pk3-bz-pct');
+          if (pctEl) pctEl.textContent = Math.min(99, Math.round(_bz.pct * 100)) + '%';
+          const hintEl = _bz.root.querySelector('.pk3-bz-hint');
+          if (hintEl) hintEl.textContent = _bzHint(total);
+        }
+        _bz.raf = requestAnimationFrame(paint);
+      };
+      _bz.raf = requestAnimationFrame(paint);
+    }
+
+    function _bzStop() {
+      if (_bz && _bz.raf) { try { cancelAnimationFrame(_bz.raf); } catch (_) {} }
+      if (_bz) _bz.raf = 0;
+      _bz = null;
+    }
+
+    function _bzSetTitle(t) {
+      const el = _bz && _bz.root.querySelector('.pk3-bz-title');
+      if (el && t) el.textContent = String(t);
+    }
+    function _bzSetNote(t) {
+      if (!_bz || !t) return;
+      const el = _bz.root.querySelector('.pk3-bz-note');
+      if (el) el.textContent = String(t);
+      _bzSetLive(t, false);
+    }
+    function _bzSetLive(t, stream) {
+      const el = _bz && _bz.root.querySelector('.pk3-bz-live-text');
+      if (!el || !t) return;
+      el.textContent = String(t);
+      el.classList.toggle('is-stream', !!stream);
+    }
+    function _bzSetStage(i) {
+      if (!_bz) return;
+      const n = _bz.stages.length;
+      if (!n) return;
+      const idx = Math.max(0, Math.min(Number(i) || 0, n - 1));
+      if (idx <= _bz.stage) return;           // только вперёд
+      _bz.stage = idx;
+      _bz.stageAt = Date.now();
+      const F = _floorsFor(n);
+      _bz.floor = F[idx] != null ? F[idx] : 0.90;
+      _bz.ceil = F[idx + 1] != null ? F[idx + 1] : 0.985;
+      const nodes = _bz.root.querySelectorAll('.pk3-bz-stage');
+      nodes.forEach((el, k) => {
+        el.classList.toggle('is-done', k < idx);
+        el.classList.toggle('is-now', k === idx);
+      });
+    }
+
+    /**
+     * Ошибка расчёта (D-310). НЕ пересоздаём экран: таймер замирает на текущем
+     * значении, шкала остаётся на месте, этап не откатывается. Раньше здесь
+     * вызывались _clearBusy()+_setBusy(), и директор видел, как время прыгает
+     * с 0:03 на 0:00, шкала с 27 % на 0 %, а этап — обратно на первый.
+     * Даём кнопку возврата: без неё оверлей запирал модалку до Esc.
+     */
+    function _bzFail(message) {
+      if (!_bz) return;
+      const m = String(message || 'Расчёт не удался');
+      if (_bz.raf) { try { cancelAnimationFrame(_bz.raf); } catch (_) {} _bz.raf = 0; }
+      _bz.failed = true;
+      const root = _bz.root;
+      root.classList.add('is-failed');
+      const titleEl = root.querySelector('.pk3-bz-title');
+      if (titleEl) titleEl.textContent = 'Расчёт не завершён';
+      _bzSetNote(m);
+      _bzSetLive(m + ' — данные не потеряны, сессия сохранена', false);
+      const pctEl = root.querySelector('.pk3-bz-pct');
+      if (pctEl) pctEl.textContent = '—';
+      const hintEl = root.querySelector('.pk3-bz-hint');
+      if (hintEl) hintEl.textContent = 'ошибка';
+      const live = root.querySelector('.pk3-bz-live');
+      if (live) live.classList.add('is-failed');
+      // Кнопки выхода: иначе pointer-events:auto оверлея запирал окно.
+      if (!root.querySelector('.pk3-bz-actions')) {
+        // Выход по Esc/фону/кнопке — один cleanup, иначе слушатель оставался
+        // висеть на document после выхода кнопкой (найдено верификатором).
+        const cleanup = () => { document.removeEventListener('keydown', onKeyEsc); };
+        const onKeyEsc = (e) => {
+          if (e.key !== 'Escape') return;
+          // Экран ошибки — САМЫЙ верхний слой внутри модалки, поэтому Esc
+          // снимает только его, а модалку оставляет. Раньше здесь проверялся
+          // root (z=80) против overlay (z=13000) — условие было всегда ложным,
+          // и Esc закрывал всё окно целиком (регрессия, найдена 22.10.2026).
+          const host = root.closest('.pk3-modal-overlay');
+          if (host && !_isTopmostOverlay(host)) return;
+          // stopImmediatePropagation: обработчик mountModal зарегистрирован
+          // раньше на том же узле и иначе закроет модалку первым.
+          e.stopImmediatePropagation();
+          e.preventDefault();
+          cleanup();
+          _clearBusy();
+        };
+        document.addEventListener('keydown', onKeyEsc);
+        _bz.cleanup = cleanup;
+        root.addEventListener('click', (e) => { if (e.target === root) { cleanup(); _clearBusy(); } });
+        const acts = document.createElement('div');
+        acts.className = 'pk3-bz-actions';
+        const ok = document.createElement('button');
+        ok.type = 'button';
+        ok.className = 'pk3-bz-btn';
+        ok.textContent = 'Вернуться к окну';
+        ok.addEventListener('click', () => { cleanup(); _clearBusy(); });
+        acts.appendChild(ok);
+        const card = root.querySelector('.pk3-bz-card');
+        if (card) card.appendChild(acts);
+      }
+    }
+    function _bzFinish() {
+      if (!_bz) return;
+      _bz.pct = 1;
+      _bz.floor = 1; _bz.ceil = 1;
+      const fill = _bz.root.querySelector('.pk3-bz-fill');
+      if (fill) fill.style.transform = 'scaleX(1)';
+      const pctEl = _bz.root.querySelector('.pk3-bz-pct');
+      if (pctEl) pctEl.textContent = '100%';
+      const hintEl = _bz.root.querySelector('.pk3-bz-hint');
+      if (hintEl) hintEl.textContent = 'готово';
+      _bz.root.querySelectorAll('.pk3-bz-stage').forEach((el) => {
+        el.classList.add('is-done'); el.classList.remove('is-now');
+      });
     }
 
     const setProgress = (text, opts) => {
       // keepBusy=false — только строка статуса (idle: «жми Запустить»).
-      // keepBusy=true (по умолчанию) — статус в busy-overlay внутри модалки.
+      // keepBusy=true (по умолчанию) — статус в busy-экране внутри модалки.
       const keepBusy = !(opts && opts.keepBusy === false);
       if (keepBusy) {
-        const sub = (opts && opts.sub != null) ? opts.sub : null;
-        // Новый этап → полный _setBusy с таймером; иначе только обновляем заголовок
-        if (!overlay.querySelector('.pk3-busy') || (opts && opts.restart)) {
-          _setBusy(text || 'Мимир работает', sub != null ? sub : '');
+        const restart = !!(opts && opts.restart);
+        if (restart || !_bz || !_bz.root.isConnected) {
+          _setBusy(text || 'Мимир работает', (opts && opts.sub != null) ? opts.sub : '', opts || {});
         } else {
-          const busy = overlay.querySelector('.pk3-busy');
-          const bt = busy && busy.querySelector('.pk3-busy-text');
-          if (bt) bt.textContent = text || '';
-          if (sub != null) {
-            _busyBaseSub = sub;
-            const subEl = busy && busy.querySelector('.pk3-busy-sub:not(.pk3-busy-dots)');
-            if (subEl) {
-              const sec = _busyStartedAt ? Math.round((Date.now() - _busyStartedAt) / 1000) : 0;
-              subEl.textContent = _formatBusySub(_busyBaseSub, sec);
-            }
-          }
+          if (text) _bzSetTitle(text);
+          if (opts && opts.sub != null) _bzSetNote(opts.sub);
+          if (opts && opts.stage != null) _bzSetStage(opts.stage);
         }
       } else {
         _clearBusy();
@@ -8367,91 +8934,102 @@ window.AsgardPKv3Modals = (function () {
       } catch (_) {}
     };
 
-    // ── Busy-overlay поверх модалки (спиннер + таймер секунд) ──
-    // D-296: журнал «мыслей» Мимира (как в DeepSeek) — видно, на каком шаге он,
-    // а не просто крутящийся спиннер. Строки копятся, старые тускнеют.
+    // ── Журнал хода расчёта ─────────────────────────────────────────────
+    // .pk3-mimir-thoughts — компактный журнал (по кнопке), .pk3-bz-live-text —
+    // одна живая строка, чтобы не превращать окно в портянку текста.
     function _mimirThoughtsReset() {
-      const box = overlay.querySelector('.pk3-mimir-thoughts');
+      const box = _bz && _bz.root.querySelector('.pk3-mimir-thoughts');
       if (box) box.innerHTML = '';
+      _thoughtBuf = '';
+      _liveBuf = '';
+      if (_thoughtFlushTimer) { clearTimeout(_thoughtFlushTimer); _thoughtFlushTimer = null; }
     }
     function _mimirThought(text) {
-      const box = overlay.querySelector('.pk3-mimir-thoughts');
+      // Служебная пометка (этап), а не рассуждение модели — отдельный стиль.
+      if (!text) return;
+      _appendThoughtRow(String(text), true);
+    }
+    function _mimirReasoning(chunk) {
+      if (!chunk) return;
+      _thoughtBuf += chunk;
+      _liveBuf = (_liveBuf + chunk).slice(-420);
+      _bzSetLive(_liveBuf.replace(/\s+/g, ' ').trim(), true);
+      // Склеиваем дельты: модель шлёт по 1–3 слова, иначе журнал — шум.
+      if (_thoughtFlushTimer) return;
+      _thoughtFlushTimer = setTimeout(() => {
+        _thoughtFlushTimer = null;
+        const text = _thoughtBuf.trim();
+        _thoughtBuf = '';
+        if (!text) return;
+        _appendThoughtRow(text, false);
+      }, 700);
+    }
+    function _appendThoughtRow(text, isStage) {
+      const box = _bz && _bz.root.querySelector('.pk3-mimir-thoughts');
       if (!box || !text) return;
-      const t = new Date();
-      const hh = String(t.getHours()).padStart(2, '0');
-      const mm = String(t.getMinutes()).padStart(2, '0');
-      const ss = String(t.getSeconds()).padStart(2, '0');
       const row = document.createElement('div');
-      row.className = 'pk3-thought-row';
-      row.innerHTML = `<span class="pk3-thought-time">${hh}:${mm}:${ss}</span><span class="pk3-thought-text"></span>`;
-      row.querySelector('.pk3-thought-text').textContent = text;
+      row.className = 'pk3-thought-row' + (isStage ? ' pk3-thought-stage' : '');
+      const span = document.createElement('span');
+      span.className = 'pk3-thought-text';
+      span.textContent = text;
+      row.appendChild(span);
       box.appendChild(row);
-      // держим последние 8 строк, чтобы не разъезжалось
-      while (box.children.length > 8) box.removeChild(box.firstChild);
+      while (box.children.length > 40) box.removeChild(box.firstChild);
       box.scrollTop = box.scrollHeight;
     }
 
-    function _setBusy(title, subtitle) {
-      _ensureSpinKeyframes();
+    function _setBusy(title, subtitle, o) {
+      o = o || {};
+      _bzEnsureStyles();
       const modalEl = overlay.querySelector('.pk3-modal');
       if (!modalEl) return;
       modalEl.style.position = 'relative';
       modalEl.style.overflow = 'hidden';
-      let busy = modalEl.querySelector('.pk3-busy');
-      if (!busy) {
-        busy = document.createElement('div');
-        busy.className = 'pk3-busy';
-        busy.innerHTML = `
-          <div class="pk3-busy-spin" style="width:46px;height:46px;border-radius:50%;border:3px solid rgba(255,255,255,.12);border-top-color:#D4A843;animation:pk3-spin .75s linear infinite;flex-shrink:0;box-sizing:border-box"></div>
-          <div class="pk3-busy-text"></div>
-          <div class="pk3-busy-sub"></div>
-          <div class="pk3-busy-sub pk3-busy-dots"></div>
-          <div class="pk3-mimir-thoughts" aria-live="polite"></div>
-        `;
-        modalEl.appendChild(busy);
-      } else {
-        // Гарантируем анимацию спиннера (на случай старого DOM)
-        const spin = busy.querySelector('.pk3-busy-spin');
-        if (spin) {
-          spin.style.cssText = 'width:46px;height:46px;border-radius:50%;border:3px solid rgba(255,255,255,.12);border-top-color:#D4A843;animation:pk3-spin .75s linear infinite;flex-shrink:0;box-sizing:border-box';
-        }
+      const stages = Array.isArray(o.stages) ? o.stages
+        : (o.mode === 'reply' ? REPLY_STAGES : CALC_STAGES);
+
+      // Повторный вызов с теми же этапами — это смена статуса, а НЕ рестарт.
+      // Именно здесь раньше сбрасывался таймер и шкала (D-310).
+      if (_bz && _bz.root.isConnected && _bz.mode === (o.mode || 'calc')
+        && _bz.stages.length === stages.length) {
+        if (title) _bzSetTitle(title);
+        if (subtitle) _bzSetNote(subtitle);
+        if (o.stage != null) _bzSetStage(o.stage);
+        return;
       }
-      busy.style.cssText = [
-        'position:absolute', 'inset:0', 'background:rgba(15,15,18,.9)',
-        'backdrop-filter:blur(3px)', 'display:flex', 'flex-direction:column',
-        'align-items:center', 'justify-content:center', 'gap:14px',
-        'z-index:80', 'border-radius:14px', 'pointer-events:auto',
-        'padding:24px', 'box-sizing:border-box'
-      ].join(';');
-      const bt = busy.querySelector('.pk3-busy-text');
-      if (bt) {
-        bt.style.cssText = 'color:#E8C35A;font-size:14px;font-weight:600;text-align:center;max-width:90%;line-height:1.5';
-        bt.textContent = title || 'Мимир работает';
-      }
-      _busyBaseSub = subtitle || '';
-      _busyStartedAt = Date.now();
-      const sub0 = busy.querySelector('.pk3-busy-sub:not(.pk3-busy-dots)');
-      if (sub0) {
-        sub0.style.cssText = 'color:rgba(255,255,255,.6);font-size:12px;text-align:center;max-width:90%;min-height:1.2em';
-        sub0.textContent = _formatBusySub(_busyBaseSub, 0);
-      }
-      _stopBusyTick();
-      _busyTickIv = setInterval(() => {
-        const el = overlay.querySelector('.pk3-busy .pk3-busy-sub:not(.pk3-busy-dots)');
-        if (!el) { _stopBusyTick(); return; }
-        const sec = Math.round((Date.now() - _busyStartedAt) / 1000);
-        el.textContent = _formatBusySub(_busyBaseSub, sec);
-        try {
-          if (window.AsgardSessionGuard && typeof window.AsgardSessionGuard.reset === 'function') {
-            window.AsgardSessionGuard.reset();
-          }
-        } catch (_) {}
-      }, 1000);
+
+      _clearBusy();
+      const root = _bzBuild(stages);
+      modalEl.appendChild(root);
+      const stageBox = root.querySelector('.pk3-bz-stages');
+      stageBox.innerHTML = stages.map((s, i) => `
+        <span class="pk3-bz-stage${i === 0 ? ' is-now' : ''}"><i></i>${esc(s)}</span>`).join('');
+
+      _bz = {
+        root,
+        mode: o.mode || 'calc',
+        stages,
+        stage: 0,
+        stageAt: Date.now(),
+        startedAt: o.startedAt || Date.now(),
+        pct: 0,
+        floor: _floorsFor(stages.length)[0],
+        ceil: _floorsFor(stages.length)[1],
+        raf: 0,
+        painted: 0
+      };
+      const fill = root.querySelector('.pk3-bz-fill');
+      if (fill) fill.style.transform = 'scaleX(0)';
+      _bzSetTitle(title || 'Мимир работает');
+      _bzSetNote(subtitle || 'Готовлю данные…');
+      _bzStartLoop();
     }
     function _clearBusy() {
-      _stopBusyTick();
-      const busy = overlay.querySelector('.pk3-busy');
-      if (busy) busy.remove();
+      if (!_bz) return;
+      const root = _bz.root;
+      if (typeof _bz.cleanup === 'function') { try { _bz.cleanup(); } catch (_) {} }
+      _bzStop();
+      try { root.remove(); } catch (_) {}
     }
 
     // ── Авто-инициализация: ищем существующую сессию (backend дедупит
@@ -8459,7 +9037,7 @@ window.AsgardPKv3Modals = (function () {
     //    PM продолжает с того места.
     async function _initSession() {
       try {
-        setProgress('Проверяю предыдущую сессию…');
+        setProgress('Проверяю предыдущую сессию…', { keepBusy: false });
         const data = await _startSession({});
         if (!data || !data.session_uid) return;
         sessionUid = data.session_uid;
@@ -8479,7 +9057,7 @@ window.AsgardPKv3Modals = (function () {
           return;
         }
         // Существующая — тянем полное состояние и восстанавливаем шаг.
-        setProgress('Восстанавливаю предыдущий расчёт…');
+        setProgress('Восстанавливаю предыдущий расчёт…', { keepBusy: false });
         const g = await api(`/api/tkp-quick/sessions/${encodeURIComponent(sessionUid)}`);
         if (!g.ok || !g.data) {
           setProgress('Не удалось подгрузить — нажми «🔄 С нуля» или «▶ Запустить».', { keepBusy: false });
@@ -8514,7 +9092,9 @@ window.AsgardPKv3Modals = (function () {
         } else if (step === 1) {
           // D-296: не «ошибка», а честный статус с прогрессом и авто-подхватом.
           setProgress('⏳ Мимир уже считает этот просчёт на сервере.', { keepBusy: false });
-          _setBusy('Мимир считает смету', 'результат появится автоматически — можно не закрывать');
+          _setBusy('Мимир считает смету', 'Расчёт уже идёт на сервере — подхватываю', {
+            mode: 'calc', stages: CALC_STAGES, stage: 2
+          });
           const recovered = await _pollSessionResult(0);
           _clearBusy();
           if (recovered) {
@@ -8565,14 +9145,16 @@ window.AsgardPKv3Modals = (function () {
       if (running) return;
       running = true;
       const tag = overlay.querySelector('#pk3-q-tag'); if (tag) tag.textContent = 'запуск…';
-      _setBusy('Мимир готовит сессию', 'это займёт несколько секунд');
+      _setBusy('Мимир готовит сессию', 'это займёт несколько секунд', {
+        mode: 'upload', stages: ['Сессия', 'Файлы ТЗ', 'Чтение документов']
+      });
       try {
         // 1. Создать (или переиспользовать) сессию
         if (!sessionUid) {
           setProgress('Создаю Quick-сессию…');
           const data = await _startSession({});
           if (!data || !data.session_uid) {
-            throw new Error((data && data.error) || 'start-quick failed');
+            throw new Error((data && data.error) || 'не удалось запустить быстрый просчёт');
           }
           sessionUid = data.session_uid;
           card._quickSession = sessionUid;
@@ -8625,10 +9207,10 @@ window.AsgardPKv3Modals = (function () {
         for (let i = 0; i < atts.length; i++) {
           const att = atts[i];
           const fname = att.original_filename || att.filename || ('att_' + att.id);
-          setProgress(`Качаю файл ${i+1}/${atts.length}: ${fname}`, {
-            restart: true,
-            sub: 'скачиваю с сервера'
-          });
+          // D-310: не пересоздаём экран на каждый файл — иначе таймер начинался
+          // заново и «загрузка 3 файлов» выглядела как три разных запуска.
+          setProgress('Мимир готовит сессию', `Файл ${i + 1} из ${atts.length}: ${fname} — скачиваю`);
+          _bzSetStage(1);
           let blob;
           try {
             let dlUrl;
@@ -8650,12 +9232,10 @@ window.AsgardPKv3Modals = (function () {
             continue;
           }
           const isArch = /\.(rar|zip|7z)$/i.test(fname);
-          setProgress(`Загружаю в AI-сессию: ${fname}`, {
-            restart: true,
-            sub: isArch
-              ? 'архив: распаковка + OCR страниц (может занять 1–5 мин)'
-              : 'отправляю файл, извлекаю текст'
-          });
+          setProgress('Мимир готовит сессию', isArch
+            ? `Файл ${i + 1} из ${atts.length}: ${fname} — архив, распаковка и OCR`
+            : `Файл ${i + 1} из ${atts.length}: ${fname} — извлекаю текст`);
+          _bzSetStage(2);
           try {
             const fd = new FormData();
             fd.append('files', blob, fname);
@@ -8670,15 +9250,20 @@ window.AsgardPKv3Modals = (function () {
             }
             let uj = {};
             try { uj = await upResp.json(); } catch (_) {}
-            if (uj && (uj.ocr_chars == null || uj.ocr_chars < 50)) {
+            // D-300: картинки (jpg/png) — это НЕ документы с текстом. OCR для них
+            // не ожидается, поэтому «текст не извлечён» был ложной тревогой и
+            // пугал директора. Предупреждаем только о тех файлах, где текст
+            // ДОЛЖЕН был быть (pdf/docx/xlsx/doc/txt).
+            const isImage = /\.(jpe?g|png|gif|webp|bmp|heic|tiff?)$/i.test(fname);
+            if (isImage) {
+              // Картинку приложили как иллюстрацию/скан — молча принимаем.
+            } else if (uj && (uj.ocr_chars == null || uj.ocr_chars < 50)) {
               attachWarn.push(fname + ' (текст не извлечён'
                 + (uj.warning ? ': ' + uj.warning : uj.warnings && uj.warnings[0] ? ': ' + uj.warnings[0] : '')
                 + ')');
             } else if (uj && uj.files_parsed) {
-              setProgress(`✅ ${fname}: ${uj.files_parsed} файл(ов), ${uj.ocr_chars} симв.`, {
-                restart: true,
-                sub: 'готово'
-              });
+              setProgress('Мимир готовит сессию',
+                `✅ ${fname}: ${uj.files_parsed} файл(ов), ${uj.ocr_chars} симв. текста`);
             }
           } catch (e) {
             attachWarn.push(fname + ' (upload: ' + e.message + ')');
@@ -8712,35 +9297,38 @@ window.AsgardPKv3Modals = (function () {
       if (running) return;
       running = true;
       const calcStarted = Date.now();
-      const calcLabel = () => {
-        const sec = Math.round((Date.now() - calcStarted) / 1000);
-        return `уже ${sec} сек · обычно 2–5 мин — не закрывай окно`;
-      };
-      _setBusy('Мимир считает смету', calcLabel());
-      const calcIv = setInterval(() => {
-        _setBusy('Мимир считает смету', calcLabel());
-      }, 1000);
+      // D-310: busy-экран ставится ОДИН раз. Таймер и шкалу ведёт rAF-цикл,
+      // а SSE-события только двигают этап — поэтому «0:00» больше не мигает
+      // на каждом heartbeat бэкенда.
+      _setBusy('Мимир считает смету', 'Собираю данные компании и читаю ТЗ', {
+        mode: 'calc', stages: CALC_STAGES, startedAt: calcStarted, stage: 0
+      });
       try {
-        setProgress('Подключаюсь к модели…');
-        // D-296: журнал «мыслей» Мимира — как в DeepSeek. Каждый шаг SSE
-        // дописывается строкой с отметкой времени, чтобы человек видел,
-        // что работа идёт, а не просто висел спиннер.
         _mimirThoughtsReset();
         const ssr = await _streamSSE(`/api/tkp-quick/sessions/${encodeURIComponent(sessionUid)}/calculate`, {});
         ssr.onEach(ev => {
           const d = ev.data || {};
+          if (d.type === 'reasoning') {
+            _mimirReasoning(d.delta || '');
+            return;
+          }
           if (d.type === 'start' || d.type === 'progress' || d.type === 'status') {
             const msg = d.message || 'AI работает…';
-            setProgress(msg);
+            const stageIdx = _stageFromSse(d.step);
+            if (stageIdx != null) _bzSetStage(stageIdx);
+            _bzSetNote(msg);
             _mimirThought(msg);
-            _setBusy(msg.length > 72 ? msg.slice(0, 70) + '…' : msg, calcLabel());
+            const el = overlay.querySelector('#pk3-q-prog-line');
+            if (el) el.innerHTML = esc(msg);
           } else if (d.type === 'done') {
             lastChatMd = d.chat_response_md || '';
             lastEstimate = d.estimate || null;
+            _bzFinish();
+            _bzSetLive('Смета собрана — открываю результат', false);
             _mimirThought('Готово — смета собрана');
           } else if (d.type === 'error') {
             _mimirThought('Ошибка: ' + (d.message || 'ошибка AI'));
-            setProgress('❌ ' + (d.message || 'ошибка AI'));
+            _bzSetNote('Ошибка: ' + (d.message || 'ошибка AI'));
           }
         });
         await ssr.stream;
@@ -8756,27 +9344,41 @@ window.AsgardPKv3Modals = (function () {
         // Backend продолжает и сохраняет результат в сессию. Раньше фронт показывал
         // «ошибка» и на этом всё — директор видел отчёт только при повторном заходе
         // через 5 минут. Теперь сами подхватываем результат с сервера.
-        setProgress('Связь с моделью прервалась — проверяю результат на сервере…');
+        _bzSetNote('Связь с моделью прервалась — проверяю результат на сервере…');
         const recovered = await _pollSessionResult(Math.max(0, Date.now() - calcStarted));
-        clearInterval(calcIv);
-        _clearBusy();
         running = false;
         if (recovered) {
+          _clearBusy();
           toast('Мимир-Quick', 'Расчёт всё-таки готов — открываю смету', 'ok');
           step = 2;
           rerender();
           return;
         }
+        // Ошибка: экран НЕ снимаем и не пересоздаём (D-310) — иначе таймер,
+        // шкала и этап откатывались. Показываем финал с кнопкой выхода.
         toast('Мимир-Quick: расчёт не удался', nice, 'err');
-        setProgress('❌ ' + nice + ' Результат на сервере не найден.');
+        const el = overlay.querySelector('#pk3-q-prog-line');
+        if (el) el.innerHTML = esc('❌ ' + nice + ' Результат на сервере не найден.');
+        _bzFail(nice + '. Результат на сервере не найден.');
         return;
       }
-      clearInterval(calcIv);
+      _bzFinish();
+      await new Promise((r) => setTimeout(r, 320));
       _clearBusy();
       // running=false ДО rerender, иначе кнопки step=2 рендерятся disabled.
       running = false;
       step = 2;
       rerender();
+    }
+
+    /** step из SSE-сообщения → индекс этапа в шкале. */
+    function _stageFromSse(step) {
+      const s = String(step || '').toLowerCase();
+      if (!s) return null;
+      if (s === 'ai') return 2;
+      if (s === 'ai_done' || s === 'compose' || s === 'done') return 3;
+      if (s === 'ctx' || s === 'warehouse' || s === 'workers' || s === 'tariffs') return 1;
+      return null;
     }
 
     /**
@@ -8786,11 +9388,20 @@ window.AsgardPKv3Modals = (function () {
      */
     async function _pollSessionResult(alreadyWaitedMs) {
       const deadline = Date.now() + Math.max(60000, 300000 - alreadyWaitedMs);
+      // Экран ожидания НЕ пересоздаём (D-310): таймер продолжает тот же отсчёт,
+      // что и основной расчёт, иначе на обрыве SSE счётчик прыгал на «0:00»,
+      // шкала откатывалась, а этап сбрасывался на первый.
+      if (!_bz || !_bz.root.isConnected) {
+        _setBusy('Мимир считает смету', 'Расчёт идёт на сервере — жду результат', {
+          mode: 'calc', stages: CALC_STAGES, stage: 2
+        });
+      } else {
+        _bzSetStage(2);
+        _bzSetNote('Связь с потоком потеряна — жду результат на сервере');
+      }
       let attempt = 0;
       while (Date.now() < deadline) {
         attempt += 1;
-        const sec = Math.round((Date.now() - (deadline - 300000)) / 1000);
-        _setBusy('Мимир считает на сервере', `уже ~${Math.max(0, sec)} сек · не закрывай окно`);
         await new Promise((r) => setTimeout(r, attempt <= 3 ? 3000 : 8000));
         try {
           const r = await api(`/api/tkp-quick/sessions/${encodeURIComponent(sessionUid)}`);
@@ -8824,39 +9435,41 @@ window.AsgardPKv3Modals = (function () {
         msg = `Ниже моя текущая смета (с моими правками — учти их при пересчёте):\n\n${_estimateAsText()}\n\nМой комментарий:\n${userMsg}`;
       }
 
-      // Явный «думаю» — не тост «принято», а busy до конца SSE
-      _setBusy('🧠 Мимир думает над твоим ответом', 'пересчитываю смету — обычно 20–90 сек');
+      // Экран ожидания — тот же компонент, что у расчёта (D-310): свои этапы,
+      // один таймер, никаких «0 сек» от внешнего setInterval.
       const thinkStarted = Date.now();
-      const thinkIv = setInterval(() => {
-        const sec = Math.round((Date.now() - thinkStarted) / 1000);
-        _setBusy('🧠 Мимир думает над твоим ответом', `уже ${sec} сек — не закрывай окно`);
-      }, 1000);
-
+      _setBusy('Мимир думает над вашим ответом', 'Пересчитываю смету с учётом правок', {
+        mode: 'reply', stages: REPLY_STAGES, startedAt: thinkStarted
+      });
       try {
         const ssr = await _streamSSE(`/api/tkp-quick/sessions/${encodeURIComponent(sessionUid)}/chat`, { message: msg });
         ssr.onEach(ev => {
           const d = ev.data || {};
-          if (d.type === 'start' || d.type === 'progress') {
-            _setBusy('🧠 ' + (d.message || 'Мимир думает'), `уже ${Math.round((Date.now() - thinkStarted) / 1000)} сек`);
+          if (d.type === 'reasoning') {
+            _mimirReasoning(d.delta || '');
+          } else if (d.type === 'start' || d.type === 'progress') {
+            _bzSetStage(1);
+            _bzSetNote(d.message || 'Пересчитываю смету…');
           } else if (d.type === 'done') {
             lastChatMd = d.chat_response_md || lastChatMd;
             if (d.estimate) lastEstimate = d.estimate;
+            _bzSetStage(2);
+            _bzFinish();
             if (d.diagnostics && d.diagnostics.mode === 'direct-edit') {
               toast('Прямая правка', 'Изменены только цифры: ' + (d.diagnostics.applied || []).join(', '), 'info');
             }
           } else if (d.type === 'error') {
-            _setBusy('❌ ' + (d.message || 'ошибка AI'), 'попробуй переотправить');
+            _bzSetNote('Ошибка: ' + (d.message || 'ошибка AI'));
           }
         });
         await ssr.stream;
       } catch (e) {
-        clearInterval(thinkIv);
         toast('Quick: ответ AI не получен', String(e.message || e), 'err');
         _clearBusy();
         running = false;
         return;
       }
-      clearInterval(thinkIv);
+      await new Promise((r) => setTimeout(r, 280));
       _clearBusy();
       running = false;
       const sec = Math.round((Date.now() - thinkStarted) / 1000);
@@ -8884,7 +9497,7 @@ window.AsgardPKv3Modals = (function () {
           vat_pct: vatPct
         };
         const r = await api(`/api/tkp-quick/sessions/${encodeURIComponent(sessionUid)}/finalize`, { method: 'POST', body });
-        if (!r.ok) throw new Error((r.data && r.data.error) || 'finalize failed');
+        if (!r.ok) throw new Error((r.data && r.data.error) || 'не удалось зафиксировать просчёт');
         // best-effort: обновить карту (если поля разрешены — backend пропустит лишнее)
         try {
           await api(`/api/personal-kanban/cards/${card.id}/update`, {
@@ -8998,7 +9611,7 @@ window.AsgardPKv3Modals = (function () {
               toast('✓ Сохранено', 'Смета и отчёт сохранены в карточку заявки', 'ok');
               try { window.dispatchEvent(new CustomEvent('asgard:pre-tender:docs:saved', { detail: { card_id: card.id, pre_tender_id: card.entity_id } })); } catch (_) {}
             } else {
-              toast('Ошибка', (r.data && r.data.error) || 'Не удалось сохранить', 'err');
+              toast('Ошибка', (r.data && (r.data.message || r.data.error)) || 'Не удалось сохранить', 'err');
             }
           } catch (e) {
             toast('Ошибка', e.message || String(e), 'err');
@@ -9373,7 +9986,7 @@ window.AsgardPKv3Modals = (function () {
               });
               if (!r.ok) {
                 const j = await r.json().catch(() => ({}));
-                throw new Error(j.error || ('upload ' + r.status));
+                throw new Error(j.error || ('загрузка не удалась (код ' + r.status + ')'));
               }
             }
             toast('Кондуктор', 'Материалы добавлены, перезапускаю AI', 'ok');
@@ -9550,7 +10163,7 @@ window.AsgardPKv3Modals = (function () {
         const body = opts.fresh ? { fresh: true } : {};
         const r = await api(`/api/personal-kanban/cards/${card.id}/start-conductor`, { method: 'POST', body });
         if (!r.ok || !r.data || !r.data.run_id) {
-          throw new Error((r.data && r.data.error) || 'start-conductor failed');
+          throw new Error((r.data && r.data.error) || 'не удалось запустить Кондуктора');
         }
         runId = Number(r.data.run_id);
         card._conductorRun = runId;
@@ -9596,7 +10209,7 @@ window.AsgardPKv3Modals = (function () {
       }
       try {
         const r = await api('/api/mimir/conductor/letter/generate', { method: 'POST', body: { run_id: runId, clarification_ids: ids } });
-        if (!r.ok) throw new Error((r.data && r.data.error) || 'letter/generate failed');
+        if (!r.ok) throw new Error((r.data && r.data.error) || 'не удалось составить письмо');
         const L = r.data || {};
         lastLetter = {
           letter_id: L.id || L.letter_id || (L.letter && L.letter.id),
@@ -9615,7 +10228,7 @@ window.AsgardPKv3Modals = (function () {
       if (!lastLetter || !lastLetter.letter_id) return;
       try {
         const r = await api(`/api/mimir/conductor/letter/${lastLetter.letter_id}/mark-sent`, { method: 'POST', body: { channel: 'manual' } });
-        if (!r.ok) throw new Error((r.data && r.data.error) || 'mark-sent failed');
+        if (!r.ok) throw new Error((r.data && r.data.error) || 'не удалось отметить письмо отправленным');
         toast('Отмечено', 'Письмо помечено отправленным', 'ok');
         _loadState();
       } catch (e) {
@@ -9658,7 +10271,7 @@ window.AsgardPKv3Modals = (function () {
                 method: 'POST', body: { mapping: data.mapping }
               });
               if (ar.ok) toast('Ответы клиента применены', `Закрыто вопросов: ${(ar.data && ar.data.applied) || data.mapping.length}`, 'ok');
-              else toast('Применение не сработало', (ar.data && ar.data.error) || 'ошибка', 'warn');
+              else toast('Применение не сработало', (ar.data && (ar.data.message || ar.data.error)) || 'ошибка', 'warn');
             } catch (e) {
               toast('apply-mapping упал', String(e.message || e), 'err');
             }
@@ -9678,7 +10291,7 @@ window.AsgardPKv3Modals = (function () {
       if (!clarId || !text || !text.trim()) return;
       try {
         const r = await api(`/api/mimir/conductor/clarification/${clarId}/answer`, { method: 'POST', body: { answer_text: text.trim() } });
-        if (!r.ok) throw new Error((r.data && r.data.error) || 'answer failed');
+        if (!r.ok) throw new Error((r.data && r.data.error) || 'не удалось сохранить ответ клиента');
         toast('Ответ записан', r.data && r.data.resumed ? 'Кондуктор продолжает работу' : 'Ждём остальные ответы', 'ok');
         _loadState();
       } catch (e) {
@@ -9692,7 +10305,7 @@ window.AsgardPKv3Modals = (function () {
       if (!fb || !fb.trim()) return;
       try {
         const r = await api(`/api/mimir/conductor/run/${runId}/recompute-with-feedback`, { method: 'POST', body: { feedback_text: fb.trim() } });
-        if (!r.ok) throw new Error((r.data && r.data.error) || 'recompute failed');
+        if (!r.ok) throw new Error((r.data && r.data.error) || 'не удалось пересчитать смету');
         toast('Пересчёт запущен', 'События придут в журнал', 'ok');
         _loadState();
       } catch (e) {
@@ -9705,7 +10318,7 @@ window.AsgardPKv3Modals = (function () {
       if (!window.confirm('Утвердить просчёт?')) return;
       try {
         const r = await api(`/api/mimir/conductor/run/${runId}/approve`, { method: 'POST', body: {} });
-        if (!r.ok) throw new Error((r.data && r.data.error) || 'approve failed');
+        if (!r.ok) throw new Error((r.data && r.data.error) || 'не удалось согласовать');
         toast('Утверждено', 'Карта переходит в Согласование', 'ok');
         try {
           await api(`/api/personal-kanban/cards/${card.id}/transition`, {
@@ -9723,7 +10336,7 @@ window.AsgardPKv3Modals = (function () {
       if (!window.confirm('Точно отменить просчёт? Все промежуточные данные сохранятся, но run закроется.')) return;
       try {
         const r = await api(`/api/mimir/conductor/run/${runId}/cancel`, { method: 'POST', body: {} });
-        if (!r.ok) throw new Error((r.data && r.data.error) || 'cancel failed');
+        if (!r.ok) throw new Error((r.data && r.data.error) || 'не удалось отменить');
         toast('Отменено', 'Run закрыт', 'ok');
         close(overlay);
       } catch (e) {
@@ -9789,7 +10402,7 @@ window.AsgardPKv3Modals = (function () {
     const topRec = items[0];
     const recHtml = topRec ? `
       <div class="pk3-ai-block" style="margin-top:15px">
-        <b style="color:var(--gold-l);font-size:13px">🤖 Рекомендация Мимира:</b>
+        <b style="color:var(--gold);font-size:13px">🤖 Рекомендация Мимира:</b>
         <p style="margin-top:5px;font-size:12.5px;line-height:1.5">Базовый эталон — <b>${esc(topRec.code || 'REF-' + topRec.id)}</b> (${esc((topRec.similarity_pct || 0))}% совпадение). Скорректируй на: <b>+5% логистика</b>, <b>+2% сезон</b>. Итог: с/с <b>~${esc(_fmtMoney((topRec.contract_value_actual || 1000000) * 0.7))}</b>, КП <b>~${esc(_fmtMoney(topRec.contract_value_actual || 1000000))}</b>.</p>
         <div style="margin-top:8px;display:flex;gap:7px">
           <button class="pk3-btn pk3-gold" data-act="copy-smeta">📋 Скопировать смету в Quick</button>
@@ -10328,7 +10941,7 @@ window.AsgardPKv3Modals = (function () {
           if (opts.onSent) opts.onSent(r.data);
         } else {
           b.disabled = false; b.textContent = '📧 Отправить';
-          toast('Не отправлено', (r.data && r.data.error) || 'Ошибка', 'err');
+          toast('Не отправлено', (r.data && (r.data.message || r.data.error)) || 'Ошибка', 'err');
         }
       }
     }));

@@ -281,7 +281,7 @@ console.log('[ASGARD] Global period functions loaded');
     {r:"/kanban",l:"Канбан-доска",d:"Визуальное управление задачами",roles:ALL_ROLES,i:"approvals",p:"kanban",g:"works"},
     // Старый «Мой канбан» (substages) убран из NAV — функцию покрывает v3.
     // Маршрут /personal-kanban ниже редиректит на /personal-kanban-v3 для обратной совместимости.
-    {r:"/personal-kanban-v3",l:"Мой канбан",d:"8 колонок: Новые → Просчёт → Согласование → КП → Победа → В работе",roles:["PM","HEAD_PM","ADMIN",...DIRECTOR_ROLES],i:"approvals",p:"personal_kanban",g:"works"},
+    {r:"/personal-kanban-v3",l:"Мой канбан",d:"8 колонок: Новые → Просчёт → Согласование → КП → Победа → В работе",roles:["PM","HEAD_PM","TO","HEAD_TO","ADMIN",...DIRECTOR_ROLES],i:"approvals",p:"personal_kanban",g:"works"},
     // Вернул в NAV: v3-канбан не имеет UI «Назначить РП», эта функция нужна директору для маршрутизации заявок.
     // 21.06.2026: переименован «Корзина заявок» → «Распределение заявок по РП» — теперь явно
     // отличается от ТО-страницы /pre-tenders.
@@ -2583,8 +2583,8 @@ AsgardRouter.add("/assembly", () => {
 
     // Волна 4а: Личный канбан + Корзина заявок директора
     // /personal-kanban (старый substages-канбан) удалён из NAV; маршрут редиректит на v3.
-    AsgardRouter.add("/personal-kanban", ()=>{ location.hash = "#/personal-kanban-v3"; }, {auth:true, roles:["PM","HEAD_PM","ADMIN","DIRECTOR_GEN","DIRECTOR_COMM","DIRECTOR_DEV"]});
-    AsgardRouter.add("/personal-kanban-v3", ()=>AsgardPersonalKanbanV3.render({layout, title:"Мой канбан"}), {auth:true, roles:["PM","HEAD_PM","ADMIN","DIRECTOR_GEN","DIRECTOR_COMM","DIRECTOR_DEV"]});
+    AsgardRouter.add("/personal-kanban", ()=>{ location.hash = "#/personal-kanban-v3"; }, {auth:true, roles:["PM","HEAD_PM","TO","HEAD_TO","ADMIN","DIRECTOR_GEN","DIRECTOR_COMM","DIRECTOR_DEV"]});
+    AsgardRouter.add("/personal-kanban-v3", ()=>AsgardPersonalKanbanV3.render({layout, title:"Мой канбан"}), {auth:true, roles:["PM","HEAD_PM","TO","HEAD_TO","ADMIN","DIRECTOR_GEN","DIRECTOR_COMM","DIRECTOR_DEV"]});
     // Откатил редирект: v3-канбан НЕ имеет UI «Назначить РП»; директорская кнопка
     // распределения заявки по PM живёт в AsgardDirectorInboxPage. Возвращаю страницу.
     AsgardRouter.add("/director-inbox", ()=>AsgardDirectorInboxPage.render({layout, title:"Маркетплейс заявок"}), {auth:true, roles:["ADMIN","DIRECTOR_GEN","DIRECTOR_COMM","DIRECTOR_DEV","HEAD_PM","PM"]});

@@ -1062,13 +1062,16 @@ window.AsgardTasksAdminPage = (function() {
         transition: background 0.2s;
       }
 
+      /* 23.10.2026 (D-343): цвет из единой системы кнопок. Здесь был
+         собственный primary (--blue) — в тёмной теме он давал синюю кнопку
+         вместо брендового золота. */
       .btn.primary {
-        background: var(--blue);
-        color: #fff;
+        background: linear-gradient(180deg, var(--bsys-primary-1), var(--bsys-primary-2));
+        color: var(--bsys-primary-ink);
       }
 
       .btn.primary:hover {
-        background: var(--blue-l);
+        background: linear-gradient(180deg, var(--bsys-primary-hover), var(--bsys-primary-1));
       }
 
       .btn.ghost {

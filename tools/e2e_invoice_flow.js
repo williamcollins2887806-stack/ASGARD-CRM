@@ -97,7 +97,18 @@ async function runOne(file, spendKind, label) {
   ok('позиции разобраны', (f.lines || []).length > 0, (f.lines || []).length);
 
   console.log('\n── Что записалось в карточку заявки ──');
-  const row = await api('GET', `/api/payment-invoices/${id}`, PM);
+  // D-372: распознавание пишет ИНН и supplier_id отдельным UPDATE после OCR.
+  // Тест читал карточку сразу и иногда ловил промежуточное состояние
+  // (supplier_id=null), хотя через мгновение всё на месте. Даём записи
+  // зафиксироваться: ждём до 6 с появления ИНН.
+  let row = null;
+  for (let i = 0; i < 12; i++) {
+    row = await api('GET', `/api/payment-invoices/${id}`, PM);
+    const rr = row.json || {};
+    const innNow = rr.counterparty_inn || (rr.supplier && rr.supplier.inn) || '';
+    if (innNow && rr.supplier_id) break;
+    await new Promise((res) => setTimeout(res, 500));
+  }
   const r = row.json || {};
   const innVal = r.counterparty_inn || (r.supplier && r.supplier.inn) || '';
   console.log('  в БД:', JSON.stringify({

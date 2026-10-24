@@ -7,20 +7,25 @@ import { BottomSheet } from '@/components/shared/BottomSheet';
 import { EmptyState } from '@/components/shared/EmptyState';
 import { SkeletonList } from '@/components/shared/SkeletonKit';
 import { PullToRefresh } from '@/components/shared/PullToRefresh';
+import { StatCard, StatRow } from '@/components/shared/StatCard';
+import { StatusBadge } from '@/components/shared/StatusBadge';
 import DocPreviewSheet from '@/components/tenders/DocPreviewSheet';
-import { Check, X as XIcon, MessageCircle, Clock, ChevronRight, Eye, Download } from 'lucide-react';
+import { Check, X as XIcon, MessageCircle, Clock, ChevronRight, Eye, Download, AlertTriangle, FileText, ListChecks, ExternalLink } from 'lucide-react';
 import { formatMoney } from '@/lib/utils';
 import {
   loadDirectorReviewQueue, markDirectorReviewSeen, directorDecisionRpReview,
-  loadRpReview, loadTenderFiles, loadRpReviewMessages, postRpReviewMessage
+  loadRpReview, loadTenderFiles, loadRpReviewMessages, postRpReviewMessage,
+  loadAnalysisChecklist,
 } from '@/api/tendersRegistry';
 import { fileDownloadUrl, downloadProtected } from '@/lib/fileDownload';
 
 const DIRECTOR_ROLES = ['DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV', 'ADMIN'];
 const TABS = [
   { id: 'summary', label: 'Сводка' },
+  { id: 'estimate', label: 'Смета' },
+  { id: 'checklist', label: 'Чек-лист' },
   { id: 'report', label: 'Отчёт' },
-  { id: 'tz', label: 'ТЗ' },
+  { id: 'tz', label: 'Документы' },
   { id: 'chat', label: 'Чат' },
 ];
 
@@ -29,6 +34,16 @@ function fmtDate(v) {
   const s = String(v).slice(0, 10);
   const m = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
   return m ? `${m[3]}.${m[2]}.${m[1]}` : s;
+}
+
+/** Дней до дедлайна: отрицательное — просрочено. null — срока нет. */
+function daysLeft(v) {
+  if (!v) return null;
+  const d = new Date(String(v).slice(0, 10) + 'T12:00:00');
+  if (Number.isNaN(d.getTime())) return null;
+  const today = new Date();
+  today.setHours(12, 0, 0, 0);
+  return Math.round((d - today) / 86400000);
 }
 
 function parseRj(raw) {
@@ -45,18 +60,30 @@ function isArchiveFile(f) {
     || /\.(zip|rar|7z)$/i.test(name);
 }
 
-function BriefKv({ label, value, highlight }) {
+/** Строка «показатель → значение» на дизайн-токенах (замена самодельного BriefKv). */
+function Kv({ label, value, accent, tone }) {
   return (
-    <div style={{
-      padding: '10px 12px',
-      borderRadius: 12,
-      background: highlight
-        ? 'color-mix(in srgb, var(--gold) 12%, transparent)'
-        : 'color-mix(in srgb, var(--bg-surface) 90%, transparent)',
-      border: '0.5px solid var(--border-norse)',
-    }}>
-      <div className="muted" style={{ fontSize: 11, marginBottom: 4 }}>{label}</div>
-      <div style={{ fontSize: 14, fontWeight: highlight ? 700 : 600, lineHeight: 1.35 }}>{value}</div>
+    <div
+      style={{
+        padding: '10px 12px',
+        borderRadius: 12,
+        background: accent
+          ? 'color-mix(in srgb, var(--gold) 12%, transparent)'
+          : 'var(--bg-surface-alt)',
+        border: '0.5px solid var(--border-norse)',
+      }}
+    >
+      <div className="c-tertiary" style={{ fontSize: 11, marginBottom: 4 }}>{label}</div>
+      <div
+        className={tone === 'danger' ? undefined : 'c-primary'}
+        style={{
+          fontSize: accent ? 15 : 14,
+          fontWeight: accent ? 800 : 600,
+          lineHeight: 1.35,
+          color: tone === 'danger' ? 'var(--danger-ink)' : undefined,
+          wordBreak: 'break-word',
+        }}
+      >{value}</div>
     </div>
   );
 }
@@ -67,25 +94,39 @@ function DocRow({ label, file, onPreview, onDownload }) {
   const kb = file.size ? `${Math.round(file.size / 1024)} КБ` : '';
   return (
     <div
-      className="m-card"
+      className="card-glass"
       style={{ padding: 12, marginBottom: 8, display: 'flex', gap: 8, alignItems: 'center' }}
     >
+      <FileText size={18} style={{ color: arch ? 'var(--gold)' : 'var(--blue)', flexShrink: 0 }} />
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontSize: 12 }} className="muted">{label}</div>
-        <div style={{ fontSize: 13, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+        <div className="c-tertiary" style={{ fontSize: 12 }}>{label}</div>
+        <div className="c-primary" style={{ fontSize: 13, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {file.original_name || label}
         </div>
-        {kb ? <div className="muted" style={{ fontSize: 11 }}>{kb}</div> : null}
+        <div className="c-tertiary" style={{ fontSize: 11 }}>
+          {kb}{arch ? ' · архив' : ''}
+        </div>
       </div>
       <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+        {/* Архив предпросмотром не откроем — даём скачать, но не оставляем пустоту. */}
         {!arch && file.id && (
-          <button type="button" className="btn mini" onClick={() => onPreview(file, label)}>
-            <Eye size={14} style={{ marginRight: 4 }} /> Просмотр
+          <button
+            type="button"
+            className="btn-icon spring-tap"
+            onClick={() => onPreview(file, label)}
+            aria-label={`Просмотр: ${label}`}
+          >
+            <Eye size={16} />
           </button>
         )}
         {(file.download_url || file.file_url) && (
-          <button type="button" className="btn mini ghost" onClick={() => onDownload(file)}>
-            <Download size={14} />
+          <button
+            type="button"
+            className="btn-icon spring-tap"
+            onClick={() => onDownload(file)}
+            aria-label={`Скачать: ${label}`}
+          >
+            <Download size={16} />
           </button>
         )}
       </div>
@@ -94,32 +135,70 @@ function DocRow({ label, file, onPreview, onDownload }) {
 }
 
 function TenderCard({ row, onOpen }) {
-  const urgent = row.director_notify_at
+  const dl = daysLeft(row.docs_deadline);
+  // «Горит», если ждёт решения больше суток или срок подачи на исходе/просрочен.
+  const waitingLong = row.director_notify_at
     && (Date.now() - new Date(row.director_notify_at).getTime() > 24 * 3600 * 1000);
+  const dlTone = dl != null && dl <= 0 ? 'danger' : (dl != null && dl <= 2 ? 'warn' : 'normal');
+
   return (
     <button
       type="button"
-      className={'m-card' + (urgent ? ' border-red-500/40' : '')}
-      style={{ width: '100%', textAlign: 'left', padding: '14px 16px', marginBottom: 10 }}
+      className="card-glass spring-tap w-full text-left"
+      style={{
+        padding: '14px 16px',
+        marginBottom: 10,
+        borderColor: waitingLong ? 'color-mix(in srgb, var(--danger) 40%, var(--border-norse))' : undefined,
+      }}
       onClick={() => onOpen(row)}
     >
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontWeight: 600, fontSize: 15 }}>{row.customer_name || '—'}</div>
-          <div className="muted" style={{ fontSize: 13, marginTop: 4 }}>
-            {(row.tender_title || '—').slice(0, 80)}
+          <div className="c-primary" style={{ fontWeight: 700, fontSize: 15 }}>
+            {row.customer_name || '—'}
           </div>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 8, fontSize: 12 }}>
-            <span>НМЦ: <strong>{formatMoney(row.tender_price)}</strong></span>
-            <span>РП: <strong>{formatMoney(row.work_price_ex_vat)}</strong> без НДС</span>
+          <div className="c-secondary" style={{ fontSize: 13, marginTop: 4 }}>
+            {(row.tender_title || '—').slice(0, 90)}
           </div>
-          <div className="muted" style={{ fontSize: 11, marginTop: 6, display: 'flex', gap: 8, alignItems: 'center' }}>
-            <Clock size={12} />
-            Срок: {fmtDate(row.docs_deadline)}
-            {row.duration_days != null ? ` · ${row.duration_days} дн.` : ''}
+
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 8, alignItems: 'center' }}>
+            <span className="c-tertiary" style={{ fontSize: 12 }}>
+              НМЦ: <strong style={{ color: 'var(--text-primary)' }}>{formatMoney(row.tender_price)}</strong>
+            </span>
+            <span className="c-tertiary" style={{ fontSize: 12 }}>
+              РП: <strong style={{ color: 'var(--gold)' }}>{formatMoney(row.work_price_ex_vat)}</strong> без НДС
+            </span>
+          </div>
+
+          {/* Дедлайн: заметный, с остатком дней. Просрочка — красным. */}
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 8, alignItems: 'center' }}>
+            <span
+              style={{
+                display: 'inline-flex', alignItems: 'center', gap: 4,
+                fontSize: 12, fontWeight: 600,
+                color: dlTone === 'danger' ? 'var(--danger-ink)'
+                  : dlTone === 'warn' ? 'var(--gold)' : 'var(--text-secondary)',
+              }}
+            >
+              <Clock size={12} />
+              {fmtDate(row.docs_deadline)}
+              {dl != null && (
+                <span style={{ opacity: 0.85 }}>
+                  {dl < 0 ? `· просрочен на ${Math.abs(dl)} дн.`
+                    : dl === 0 ? '· последний день'
+                      : `· ${dl} дн.`}
+                </span>
+              )}
+            </span>
+            {row.duration_days != null && (
+              <span className="c-tertiary" style={{ fontSize: 11 }}>{row.duration_days} дн. работ</span>
+            )}
+            {waitingLong && (
+              <StatusBadge status="просрочено" label="ждёт >24 ч" />
+            )}
           </div>
         </div>
-        <ChevronRight size={18} className="muted" style={{ flexShrink: 0, marginTop: 4 }} />
+        <ChevronRight size={18} className="c-tertiary" style={{ flexShrink: 0, marginTop: 4 }} />
       </div>
     </button>
   );
@@ -131,6 +210,7 @@ function DetailSheet({ row, open, onClose, onChanged, initialTab }) {
   const [reviewData, setReviewData] = useState(null);
   const [docs, setDocs] = useState([]);
   const [messages, setMessages] = useState([]);
+  const [checklist, setChecklist] = useState(null);
   const [chatText, setChatText] = useState('');
   const [comment, setComment] = useState('');
   const [busy, setBusy] = useState(false);
@@ -138,14 +218,17 @@ function DetailSheet({ row, open, onClose, onChanged, initialTab }) {
 
   const loadDetail = useCallback(async () => {
     if (!row?.id) return;
-    const [rev, files, msgs] = await Promise.all([
+    const [rev, files, msgs, chk] = await Promise.all([
       loadRpReview(row.id).catch(() => null),
       loadTenderFiles(row.id).catch(() => []),
       loadRpReviewMessages(row.id).catch(() => ({ messages: [] })),
+      // Чек-лист анализа — обоснование решения РП о подаче (D-203).
+      loadAnalysisChecklist(row.id).catch(() => null),
     ]);
     setReviewData(rev);
     setDocs(files);
     setMessages(msgs?.messages || []);
+    setChecklist(chk);
   }, [row?.id]);
 
   useEffect(() => {
@@ -163,7 +246,7 @@ function DetailSheet({ row, open, onClose, onChanged, initialTab }) {
       return;
     }
     setBusy(true);
-    haptic?.impact?.('medium');
+    haptic?.medium?.();
     try {
       await directorDecisionRpReview(row.id, {
         action,
@@ -223,11 +306,11 @@ function DetailSheet({ row, open, onClose, onChanged, initialTab }) {
 
   const footer = showDecision ? (
     <div>
-      <label className="muted" style={{ fontSize: 12 }}>Комментарий (обязателен при отказе)</label>
+      <label className="input-label">Комментарий (обязателен при отказе)</label>
       <textarea
-        className="inp"
+        className="input-field"
         rows={2}
-        style={{ width: '100%', marginTop: 6, marginBottom: 10 }}
+        style={{ width: '100%', marginTop: 6, marginBottom: 10, resize: 'none' }}
         value={comment}
         onChange={(e) => setComment(e.target.value)}
         placeholder="Причина отказа…"
@@ -235,21 +318,33 @@ function DetailSheet({ row, open, onClose, onChanged, initialTab }) {
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
         <button
           type="button"
-          className="btn"
-          style={{ minHeight: 52, background: 'var(--ok)', color: 'var(--on-ok)' }}
+          className="spring-tap"
+          style={{
+            minHeight: 52, borderRadius: 14, border: 'none',
+            fontSize: 15, fontWeight: 700,
+            background: 'var(--ok)', color: 'var(--on-ok)',
+            display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+            opacity: busy ? 0.6 : 1,
+          }}
           disabled={busy}
           onClick={() => decide('submit')}
         >
-          <Check size={18} style={{ marginRight: 6 }} /> Подавать
+          <Check size={18} /> Подавать
         </button>
         <button
           type="button"
-          className="btn ghost"
-          style={{ minHeight: 52, color: 'var(--danger)' }}
+          className="spring-tap"
+          style={{
+            minHeight: 52, borderRadius: 14, fontSize: 15, fontWeight: 700,
+            background: 'var(--bg-elevated)', color: 'var(--danger-ink)',
+            border: '0.5px solid color-mix(in srgb, var(--danger) 40%, var(--border-norse))',
+            display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+            opacity: (busy || !comment.trim()) ? 0.5 : 1,
+          }}
           disabled={busy || !comment.trim()}
           onClick={() => decide('reject')}
         >
-          <XIcon size={18} style={{ marginRight: 6 }} /> Не подавать
+          <XIcon size={18} /> Не подавать
         </button>
       </div>
     </div>
@@ -264,60 +359,121 @@ function DetailSheet({ row, open, onClose, onChanged, initialTab }) {
         maxHeight="92vh"
         footer={footer}
       >
-        <div style={{ display: 'flex', gap: 6, marginBottom: 12, overflowX: 'auto' }}>
+        <div style={{ display: 'flex', gap: 6, marginBottom: 12, overflowX: 'auto', paddingBottom: 2 }}>
           {TABS.map((t) => (
             <button
               key={t.id}
               type="button"
-              className={'btn mini' + (tab === t.id ? '' : ' ghost')}
-              onClick={() => setTab(t.id)}
+              // Активное состояние задаётся атрибутом data-active — как в остальном
+              // приложении (Invoices, Payroll, Permits). Класса is-active в CSS нет.
+              data-active={tab === t.id}
+              className="filter-pill spring-tap"
+              style={{ flexShrink: 0, minHeight: 36 }}
+              onClick={() => { haptic?.light?.(); setTab(t.id); }}
             >{t.label}</button>
           ))}
         </div>
 
         {tab === 'summary' && (
           <div style={{ paddingBottom: 8 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-              <div style={{ fontWeight: 700, fontSize: 15 }}>Просчёт на согласование</div>
-              <span
-                className="pill mini"
-                style={{
-                  background: dec === 'submit'
-                    ? 'color-mix(in srgb, var(--success) 18%, transparent)'
-                    : dec === 'reject'
-                      ? 'color-mix(in srgb, var(--danger) 18%, transparent)'
-                      : 'var(--bg-surface)',
-                }}
-              >{decLabel}</span>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, gap: 8 }}>
+              <div className="c-primary" style={{ fontWeight: 700, fontSize: 15 }}>Просчёт на согласование</div>
+              <StatusBadge
+                status={dec === 'submit' ? 'согласован' : dec === 'reject' ? 'отклонено' : 'в работе'}
+                label={decLabel}
+              />
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-              <BriefKv label="РП (считал)" value={calcName} />
-              <BriefKv label="Заказчик" value={row.customer_name || '—'} />
-              <BriefKv label="Себестоимость без НДС" value={formatMoney(rj.cost_without_vat)} />
-              <BriefKv label="Сумма подачи с НДС" value={formatMoney(priceInc)} highlight />
-              <BriefKv label="Сумма подачи без НДС" value={formatMoney(priceEx)} />
-              <BriefKv label="Срок выполнения" value={duration != null && duration !== '' ? `${duration} дн.` : '—'} />
-              <BriefKv label="Срок подачи документов" value={fmtDate(row.docs_deadline)} />
-              <BriefKv label="НМЦ" value={formatMoney(row.tender_price)} />
+
+            {/* Ключевые цифры — компонент дизайн-системы */}
+            <StatRow>
+              <StatCard label="Сумма подачи (с НДС)" color="var(--green)" value={formatMoney(priceInc)} />
+              <StatCard label="Без НДС" color="var(--gold)" value={formatMoney(priceEx)} />
+              <StatCard label="НМЦ" color="var(--blue)" value={formatMoney(row.tender_price, { short: true })} />
+            </StatRow>
+
+            {/* Дедлайн — крупно и заметно */}
+            {(() => {
+              const dl = daysLeft(row.docs_deadline);
+              const tone = dl != null && dl <= 0 ? 'var(--danger-ink)' : dl != null && dl <= 2 ? 'var(--gold)' : 'var(--text-primary)';
+              return (
+                <div
+                  style={{
+                    marginTop: 12, padding: '12px 14px', borderRadius: 12,
+                    background: 'var(--bg-surface-alt)',
+                    border: '0.5px solid var(--border-norse)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10,
+                  }}
+                >
+                  <span className="c-secondary" style={{ fontSize: 13, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                    <Clock size={14} /> Срок подачи
+                  </span>
+                  <span style={{ fontSize: 15, fontWeight: 700, color: tone }}>
+                    {fmtDate(row.docs_deadline)}
+                    {dl != null && (
+                      <span style={{ fontWeight: 600, marginLeft: 6, fontSize: 13 }}>
+                        {dl < 0 ? `просрочен на ${Math.abs(dl)} дн.` : dl === 0 ? 'последний день' : `${dl} дн.`}
+                      </span>
+                    )}
+                  </span>
+                </div>
+              );
+            })()}
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginTop: 12 }}>
+              <Kv label="РП (считал)" value={calcName} />
+              <Kv label="Заказчик" value={row.customer_name || '—'} />
+              <Kv label="Себестоимость без НДС" value={formatMoney(rj.cost_without_vat)} />
+              <Kv label="Сумма подачи с НДС" value={formatMoney(priceInc)} accent />
+              <Kv label="Сумма подачи без НДС" value={formatMoney(priceEx)} />
+              <Kv label="Срок выполнения" value={duration != null && duration !== '' ? `${duration} дн.` : '—'} />
             </div>
-            <div style={{ marginTop: 10 }}>
-              <BriefKv label="Предмет" value={row.tender_title || '—'} />
+            <div style={{ marginTop: 8 }}>
+              <Kv label="Предмет" value={row.tender_title || '—'} />
             </div>
             {(rj.recommendation || rj.summary) && (
               <div style={{
                 marginTop: 12, padding: 12, borderRadius: 12,
+                background: 'var(--bg-surface-alt)',
                 border: '0.5px solid var(--border-norse)', fontSize: 13, lineHeight: 1.45,
               }}>
-                <div className="muted" style={{ fontSize: 11, marginBottom: 4 }}>
+                <div className="c-tertiary" style={{ fontSize: 11, marginBottom: 4 }}>
                   {rj.recommendation ? 'Рекомендация РП' : 'Суть'}
                 </div>
-                {rj.recommendation || String(rj.summary || '').slice(0, 280)}
+                <span className="c-primary">{rj.recommendation || String(rj.summary || '').slice(0, 280)}</span>
               </div>
             )}
 
-            <div style={{ marginTop: 16, marginBottom: 8, fontWeight: 600, fontSize: 14 }}>Документы</div>
-            {!estimate && !report && !tkp ? (
-              <p className="muted" style={{ fontSize: 13 }}>Файлы просчёта не прикреплены</p>
+            {row.purchase_url && (
+              <a
+                className="spring-tap"
+                href={row.purchase_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{
+                  marginTop: 12, display: 'inline-flex', alignItems: 'center', gap: 6,
+                  minHeight: 44, padding: '0 14px', borderRadius: 12,
+                  background: 'var(--bg-elevated)', color: 'var(--blue-fill)',
+                  border: '0.5px solid var(--border-norse)',
+                  fontSize: 14, fontWeight: 600, textDecoration: 'none',
+                }}
+              >
+                <ExternalLink size={16} /> Открыть на площадке
+              </a>
+            )}
+          </div>
+        )}
+
+        {/* ── СМЕТА: главный документ для решения директора ── */}
+        {tab === 'estimate' && (
+          <div style={{ paddingBottom: 8 }}>
+            {!estimate ? (
+              <EmptyState
+                icon={FileText}
+                iconColor="var(--gold)"
+                iconBg="color-mix(in srgb, var(--gold) 12%, transparent)"
+                title="Смета не прикреплена"
+                description="РП не загрузил файл сметы к этому просчёту"
+              />
             ) : (
               <>
                 <DocRow
@@ -326,87 +482,162 @@ function DetailSheet({ row, open, onClose, onChanged, initialTab }) {
                   onPreview={(f, label) => setPreview({ docId: f.id, title: label })}
                   onDownload={onDownload}
                 />
-                <DocRow
-                  label="Отчёт"
-                  file={report}
-                  onPreview={(f, label) => setPreview({ docId: f.id, title: label })}
-                  onDownload={onDownload}
-                />
-                <DocRow
-                  label="ТКП"
-                  file={tkp}
-                  onPreview={(f, label) => setPreview({ docId: f.id, title: label })}
-                  onDownload={onDownload}
-                />
+                <div style={{ display: 'flex', gap: 10, marginTop: 10 }}>
+                  <button
+                    type="button"
+                    className="spring-tap"
+                    style={{
+                      flex: 1, minHeight: 48, borderRadius: 14, border: 'none',
+                      background: 'var(--blue-fill)', color: 'var(--on-ok)',
+                      fontSize: 14, fontWeight: 700,
+                      display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                    }}
+                    onClick={() => setPreview({ docId: estimate.id, title: 'Смета' })}
+                  >
+                    <Eye size={17} /> Открыть смету
+                  </button>
+                  <button
+                    type="button"
+                    className="spring-tap"
+                    style={{
+                      minWidth: 48, minHeight: 48, borderRadius: 14,
+                      background: 'var(--bg-elevated)', color: 'var(--text-primary)',
+                      border: '0.5px solid var(--border-norse)',
+                      display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                    }}
+                    onClick={() => onDownload(estimate)}
+                    aria-label="Скачать смету"
+                  >
+                    <Download size={18} />
+                  </button>
+                </div>
+                {/* Отчёт и ТКП — рядом, чтобы директор видел полный комплект */}
+                {report && (
+                  <div style={{ marginTop: 14 }}>
+                    <DocRow
+                      label="Отчёт РП"
+                      file={report}
+                      onPreview={(f, label) => setPreview({ docId: f.id, title: label })}
+                      onDownload={onDownload}
+                    />
+                  </div>
+                )}
+                {tkp && (
+                  <DocRow
+                    label="ТКП"
+                    file={tkp}
+                    onPreview={(f, label) => setPreview({ docId: f.id, title: label })}
+                    onDownload={onDownload}
+                  />
+                )}
               </>
-            )}
-            {row.purchase_url && (
-              <a
-                className="btn mini ghost"
-                href={row.purchase_url}
-                target="_blank"
-                rel="noopener noreferrer"
-                style={{ marginTop: 8, display: 'inline-flex' }}
-              >↗ Закупка</a>
             )}
           </div>
         )}
 
-        {tab === 'report' && (
-          <div style={{ fontSize: 14, paddingBottom: 8 }}>
-            {!reviewData ? <p className="muted">Загрузка…</p> : (
-              <>
-                <p><strong>Суть:</strong> {rj.summary || '—'}</p>
-                <p><strong>Риски:</strong> {rj.risks || '—'}</p>
-                <p><strong>Рекомендация:</strong> {rj.recommendation || '—'}</p>
-                <p><strong>Цена с НДС:</strong> {formatMoney(review?.work_price)}</p>
-                <p><strong>Себестоимость без НДС:</strong> {formatMoney(rj.cost_without_vat)}</p>
-              </>
-            )}
-          </div>
-        )}
-
-        {tab === 'tz' && (
+        {/* ── ЧЕК-ЛИСТ: основание решения о подаче (D-203) ── */}
+        {tab === 'checklist' && (
           <div style={{ paddingBottom: 8 }}>
-            {!docs.length ? <p className="muted">Документы ТО не загружены</p> : docs.map((d) => (
-              <a
-                key={d.id}
-                href={fileDownloadUrl(d.download_url || d)}
-                target="_blank"
-                rel="noreferrer"
-                className="m-card"
-                style={{ display: 'block', padding: 12, marginBottom: 8, fontSize: 14 }}
-              >📄 {d.original_name || d.filename}</a>
-            ))}
+            {!checklist ? (
+              <p className="c-tertiary" style={{ fontSize: 13 }}>Загрузка…</p>
+            ) : (() => {
+              // Форма ответа (проверено по src/services/analysis-checklist.js):
+              //   template — массив { id, text, required }
+              //   checklist.answers — объект { [id]: ответ }
+              const tpl = Array.isArray(checklist.template) ? checklist.template : [];
+              const answers = (checklist.checklist && checklist.checklist.answers) || {};
+              if (!tpl.length && !Object.keys(answers).length) {
+                return (
+                  <EmptyState
+                    icon={ListChecks}
+                    iconColor="var(--blue)"
+                    iconBg="color-mix(in srgb, var(--blue) 12%, transparent)"
+                    title="Чек-лист не заполнен"
+                    description="РП не заполнял чек-лист анализа по этому тендеру"
+                  />
+                );
+              }
+              return (
+                <>
+                  <div className="c-tertiary" style={{ fontSize: 12, marginBottom: 10 }}>
+                    Заполнил РП · это основание решения о подаче
+                  </div>
+                  {tpl.map((q, i) => {
+                    const key = q.id != null ? String(q.id) : String(i);
+                    const label = q.text || q.label || q.title || `Пункт ${i + 1}`;
+                    const val = answers[key];
+                    const shown = val == null || val === '' ? '—'
+                      : typeof val === 'boolean' ? (val ? 'да' : 'нет')
+                        : Array.isArray(val) ? val.join(', ')
+                          : String(val);
+                    return (
+                      <div
+                        key={key}
+                        className="card-glass"
+                        style={{ padding: 12, marginBottom: 8 }}
+                      >
+                        <div className="c-secondary" style={{ fontSize: 12.5, marginBottom: 6, lineHeight: 1.35 }}>
+                          {label}
+                        </div>
+                        <div
+                          className={shown === '—' ? 'c-tertiary' : 'c-primary'}
+                          style={{ fontSize: 14, fontWeight: shown === '—' ? 500 : 600, lineHeight: 1.4, whiteSpace: 'pre-wrap' }}
+                        >
+                          {shown}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </>
+              );
+            })()}
           </div>
         )}
 
         {tab === 'chat' && (
           <div style={{ paddingBottom: 8 }}>
             <div style={{ maxHeight: '36vh', overflowY: 'auto', marginBottom: 12 }}>
-              {!messages.length ? <p className="muted">Нет сообщений</p> : messages.map((m) => (
-                <div key={m.id} style={{ marginBottom: 10, fontSize: 13 }}>
-                  <div className="muted" style={{ fontSize: 11 }}>{m.user_name} · {new Date(m.created_at).toLocaleString('ru-RU')}</div>
-                  <div>{m.body}</div>
+              {!messages.length ? (
+                <p className="c-tertiary" style={{ fontSize: 13, textAlign: 'center', padding: '16px 0' }}>
+                  Сообщений пока нет — задайте вопрос РП, если что-то непонятно
+                </p>
+              ) : messages.map((m) => (
+                <div key={m.id} style={{ marginBottom: 12, fontSize: 13 }}>
+                  <div className="c-tertiary" style={{ fontSize: 11 }}>
+                    {m.user_name} · {new Date(m.created_at).toLocaleString('ru-RU')}
+                  </div>
+                  <div className="c-primary" style={{ marginTop: 2, lineHeight: 1.4 }}>{m.body}</div>
                 </div>
               ))}
             </div>
             {chatOpen ? (
-              <div style={{ display: 'flex', gap: 8 }}>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end' }}>
                 <textarea
-                  className="inp"
+                  className="input-field"
                   rows={2}
-                  style={{ flex: 1 }}
-                  placeholder="Сообщение…"
+                  style={{ flex: 1, resize: 'none' }}
+                  placeholder="Сообщение РП…"
                   value={chatText}
                   onChange={(e) => setChatText(e.target.value)}
                 />
-                <button type="button" className="btn" disabled={busy} onClick={sendChat}>
+                <button
+                  type="button"
+                  className="spring-tap"
+                  disabled={busy || !chatText.trim()}
+                  onClick={sendChat}
+                  aria-label="Отправить сообщение"
+                  style={{
+                    minWidth: 48, minHeight: 48, borderRadius: 14, border: 'none',
+                    background: 'var(--blue-fill)', color: 'var(--on-ok)',
+                    display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                    opacity: (busy || !chatText.trim()) ? 0.5 : 1,
+                  }}
+                >
                   <MessageCircle size={18} />
                 </button>
               </div>
             ) : (
-              <p className="muted">Чат закрыт</p>
+              <p className="c-tertiary" style={{ fontSize: 13 }}>Чат закрыт — решение принято</p>
             )}
           </div>
         )}
@@ -463,7 +694,7 @@ export default function DirectorTenderApprovals() {
   }, [items, params]);
 
   const openRow = (row) => {
-    haptic?.selection?.();
+    haptic?.light?.();
     setOpened(row);
     navigate(`/director-tender-approvals?id=${row.id}`, { replace: true });
   };
@@ -479,7 +710,13 @@ export default function DirectorTenderApprovals() {
         {loading ? (
           <SkeletonList count={4} />
         ) : !items.length ? (
-          <EmptyState title="Очередь пуста" description="Нет тендеров, ожидающих согласования" />
+          <EmptyState
+            icon={Check}
+            iconColor="var(--green)"
+            iconBg="color-mix(in srgb, var(--green) 12%, transparent)"
+            title="Очередь пуста"
+            description="Нет просчётов, ожидающих вашего решения"
+          />
         ) : (
           items.map((row) => (
             <TenderCard key={row.id} row={row} onOpen={openRow} />

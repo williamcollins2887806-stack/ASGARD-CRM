@@ -1812,8 +1812,14 @@ async function reviewRoutes(fastify) {
         const threshold = await getDirectorThreshold(db);
         // Канон: `workPriceExVat` уже посчитан выше (цена без НДС) — и он же уходит
         // в `work_price_ex_vat`, так что порог и запись в БД не могут разъехаться.
-        // Порог 10 млн без НДС — единственный триггер согласования (force_director убран).
-        if (needsDirectorApproval(workPriceExVat, threshold)) {
+        //
+        // D-342 (23.10.2026, требование заказчика): до порога согласование НЕ нужно
+        // вовсе; свыше порога — только если РП сам запросил (галочка «отправить на
+        // согласование»). Раньше порог был жёстким триггером: выше 10 млн согласование
+        // навязывалось, а без получателей эндпоинт отвечал 400 — отказаться было нельзя.
+        const aboveThreshold = needsDirectorApproval(workPriceExVat, threshold);
+        const wantsApproval = b.request_director_approval === true;
+        if (aboveThreshold && wantsApproval) {
           approvalRecipients = normalizeApprovalRecipients(b.approval_recipients);
           if (!approvalRecipients) {
             return reply.code(400).send({
@@ -1824,6 +1830,8 @@ async function reviewRoutes(fastify) {
           directorNotifyAt = new Date();
           pendingDirector = true;
         } else {
+          // Ниже порога — согласование не требуется. Выше порога, но галочки нет —
+          // РП решил не отправлять, идём дальше без согласования.
           registry_status = 'готовим';
         }
       }

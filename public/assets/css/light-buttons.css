@@ -1,205 +1,30 @@
 /* ═══════════════════════════════════════════════════════════════════════════════
-   §91. BUTTON SYSTEM — единая система кнопок светлой темы
-   Проблема, которую решает файл:
-     premium-wms-gold.css перекрашивал ВСЕ .btn.primary в --gold, а --gold в
-     светлой теме тёмный (#8E6212, он для ТЕКСТА). В итоге на половине страниц
-     были коричневые кнопки с чёрным текстом (контраст 2.3:1).
-   Решение: одна сетка из 5 вариантов, сплошной/градиентный цвет + БЕЛЫЙ текст.
-   Никаких --gold как фона у кнопок: золото в светлой теме = акцент текста.
+   §91. СВЕТЛАЯ ТЕМА — локальные уточнения к единой системе кнопок
+
+   23.10.2026 (D-343). Раньше этот файл был ТРЕТЬИМ независимым «дизайном
+   кнопок»: он спорил с light-theme.css и light-glass.css, каждый со своим
+   !important, а сверху их всех перебивали модульные файлы (procurement,
+   suppliers, assembly, склады, сметы), красившие primary в золото.
+
+   Теперь цвет, форма и состояния кнопок живут в ОДНОМ месте —
+   `assets/css/buttons-system.css` (подключён последним). Здесь осталось только
+   то, что действительно относится к светлой теме и не является «цветом кнопки»:
+   сегментированные переключатели, размеры-уточнения и счётчик-бейдж.
    ═══════════════════════════════════════════════════════════════════════════════ */
 
 html[data-theme="light"] {
-  /* Фон кнопок (отдельно от текстовых акцентов) */
-  --btn-blue-1: #2563EB;
-  --btn-blue-2: #1D4ED8;
-  --btn-blue-3: #1E40AF;
-  --btn-red-1: #D62B3E;
-  --btn-red-2: #A81D2C;
-  --btn-green-1: #12874A;
-  --btn-green-2: #0F6B3A;
-  --btn-amber-1: #A97418;   /* тёмное золото: белый текст ≥4.0:1, для плашек */
-  --btn-amber-2: #8E6212;
-  --btn-ink: #FFFFFF;       /* текст на цветных кнопках */
   --btn-radius: 10px;
   --btn-h: 38px;
-  --btn-focus: 0 0 0 3px color-mix(in srgb, var(--blue) 18%, transparent);
+  --btn-focus: 0 0 0 3px rgba(29, 78, 216, 0.22);
 }
 
-/* ── Базовая кнопка: белое стекло, текст графит ─────────────────────────── */
-html[data-theme="light"] .btn,
-html[data-theme="light"] button.btn,
-html[data-theme="light"] a.btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  min-height: var(--btn-h);
-  padding: 0 16px;
-  border-radius: var(--btn-radius) !important;
-  border: 1px solid color-mix(in srgb, #0F172A 11%, transparent) !important;
-  background: color-mix(in srgb, #FFFFFF 88%, transparent) !important;
-  color: var(--t1) !important;
-  font-size: 13px;
-  font-weight: 600;
-  line-height: 1;
-  letter-spacing: 0.01em;
-  text-decoration: none;
-  cursor: pointer;
-  box-shadow: 0 1px 2px rgba(16, 24, 40, 0.05), inset 0 1px 0 rgba(255, 255, 255, 0.9) !important;
-  transition: background 0.16s ease, border-color 0.16s ease,
-              box-shadow 0.16s ease, transform 0.16s ease, filter 0.16s ease;
-}
-
-html[data-theme="light"] .btn:hover {
-  background: #FFFFFF !important;
-  border-color: color-mix(in srgb, #0F172A 17%, transparent) !important;
-  box-shadow: 0 2px 6px rgba(16, 24, 40, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.95) !important;
-  transform: translateY(-1px);
-}
-html[data-theme="light"] .btn:active { transform: translateY(0) scale(0.985); }
-html[data-theme="light"] .btn:focus-visible {
-  outline: none !important;
-  box-shadow: var(--btn-focus) !important;
-}
-html[data-theme="light"] .btn:disabled,
-html[data-theme="light"] .btn[disabled] {
-  opacity: 0.45;
-  filter: saturate(0.5);
-  transform: none !important;
-  cursor: not-allowed;
-}
-
-/* Убираем старые «дешёвые» псевдоэлементы у любых кнопок */
-html[data-theme="light"] .btn::before,
-html[data-theme="light"] .btn::after {
-  content: none !important;
-  display: none !important;
-}
-
-/* ── primary: синий градиент, белый текст ────────────────────────────────── */
-/* Перебиваем premium-wms-gold.css, который ставил сюда --gold. */
-html[data-theme="light"] .btn.primary,
-html[data-theme="light"] .btn.blue,
-html[data-theme="light"] .btn--primary,
-html[data-theme="light"] .wh2-btn--primary,
-html[data-theme="light"] .proc-deliver__btn--primary,
-html[data-theme="light"] .proc-act,
-html[data-theme="light"] .cr-m .btn.primary,
-html[data-theme="light"] .cr-m-overlay .btn.primary,
-html[data-theme="light"] .wh2-page .btn.primary,
-html[data-theme="light"] .sup-page .btn.primary,
-html[data-theme="light"] .asm-page .btn.primary,
-html[data-theme="light"] .asm-detail .btn.primary,
-html[data-theme="light"] .proc-page .btn.primary,
-html[data-theme="light"] .proc-pay-modal .btn.primary,
-html[data-theme="light"] #inv-root .btn.primary,
-html[data-theme="light"] .pi-queue .btn.primary {
-  background: linear-gradient(180deg, var(--btn-blue-1) 0%, var(--btn-blue-2) 100%) !important;
-  border: 1px solid var(--btn-blue-3) !important;
-  color: var(--btn-ink) !important;
-  font-weight: 700;
-  box-shadow: 0 1px 2px rgba(29, 78, 216, 0.28),
-              0 6px 16px rgba(29, 78, 216, 0.22),
-              inset 0 1px 0 rgba(255, 255, 255, 0.16) !important;
-}
-html[data-theme="light"] .btn.primary:hover,
-html[data-theme="light"] .btn.blue:hover,
-html[data-theme="light"] .btn--primary:hover,
-html[data-theme="light"] .wh2-btn--primary:hover,
-html[data-theme="light"] .proc-act:hover,
-html[data-theme="light"] .cr-m .btn.primary:hover,
-html[data-theme="light"] .wh2-page .btn.primary:hover,
-html[data-theme="light"] .sup-page .btn.primary:hover,
-html[data-theme="light"] .asm-page .btn.primary:hover,
-html[data-theme="light"] .proc-page .btn.primary:hover {
-  background: linear-gradient(180deg, #3B82F6 0%, var(--btn-blue-2) 100%) !important;
-  filter: none !important;
-  box-shadow: 0 2px 4px rgba(29, 78, 216, 0.30),
-              0 10px 24px rgba(29, 78, 216, 0.26),
-              inset 0 1px 0 rgba(255, 255, 255, 0.2) !important;
-}
-
-/* ── red / danger: красный градиент ──────────────────────────────────────── */
-html[data-theme="light"] .btn.red:not(#btnLogout),
-html[data-theme="light"] .btn.danger,
-html[data-theme="light"] .btn--danger {
-  background: linear-gradient(180deg, var(--btn-red-1) 0%, var(--btn-red-2) 100%) !important;
-  border: 1px solid #8E1424 !important;
-  color: var(--btn-ink) !important;
-  font-weight: 700;
-  box-shadow: 0 1px 2px rgba(168, 29, 44, 0.28),
-              0 6px 16px rgba(168, 29, 44, 0.20),
-              inset 0 1px 0 rgba(255, 255, 255, 0.14) !important;
-}
-html[data-theme="light"] .btn.red:not(#btnLogout):hover,
-html[data-theme="light"] .btn.danger:hover,
-html[data-theme="light"] .btn--danger:hover {
-  background: linear-gradient(180deg, #E5455A 0%, var(--btn-red-2) 100%) !important;
-  box-shadow: 0 2px 4px rgba(168, 29, 44, 0.30),
-              0 10px 24px rgba(168, 29, 44, 0.24) !important;
-}
-
-/* ── green / success / ok ────────────────────────────────────────────────── */
-html[data-theme="light"] .btn.green,
-html[data-theme="light"] .btn.success,
-html[data-theme="light"] .btn--success {
-  background: linear-gradient(180deg, var(--btn-green-1) 0%, var(--btn-green-2) 100%) !important;
-  border: 1px solid #0B5731 !important;
-  color: var(--btn-ink) !important;
-  font-weight: 700;
-  box-shadow: 0 1px 2px rgba(15, 107, 58, 0.26),
-              0 6px 16px rgba(15, 107, 58, 0.18),
-              inset 0 1px 0 rgba(255, 255, 255, 0.14) !important;
-}
-html[data-theme="light"] .btn.green:hover,
-html[data-theme="light"] .btn.success:hover {
-  background: linear-gradient(180deg, #17A05A 0%, var(--btn-green-2) 100%) !important;
-}
-
-/* ── gold / amber: тёмное золото + белый текст ───────────────────────────── */
-/* ВАЖНО: раньше здесь был цвет #15110d (почти чёрный) на --gold — 2.3:1. */
-html[data-theme="light"] .btn.gold,
-html[data-theme="light"] .btn.amber,
-html[data-theme="light"] .btn.warning {
-  background: linear-gradient(180deg, var(--btn-amber-1) 0%, var(--btn-amber-2) 100%) !important;
-  border: 1px solid #7A540F !important;
-  color: var(--btn-ink) !important;
-  font-weight: 700;
-  box-shadow: 0 1px 2px rgba(142, 98, 18, 0.26),
-              0 6px 16px rgba(142, 98, 18, 0.18),
-              inset 0 1px 0 rgba(255, 255, 255, 0.16) !important;
-}
-html[data-theme="light"] .btn.gold:hover,
-html[data-theme="light"] .btn.amber:hover {
-  background: linear-gradient(180deg, #BE8614 0%, var(--btn-amber-2) 100%) !important;
-  box-shadow: 0 2px 4px rgba(142, 98, 18, 0.28),
-              0 10px 24px rgba(142, 98, 18, 0.22) !important;
-}
-
-/* ── ghost / secondary: прозрачная с рамкой ──────────────────────────────── */
-html[data-theme="light"] .btn.ghost,
-html[data-theme="light"] .btn.secondary,
-html[data-theme="light"] .btn--ghost {
-  background: color-mix(in srgb, #FFFFFF 70%, transparent) !important;
-  border: 1px solid color-mix(in srgb, #0F172A 15%, transparent) !important;
-  color: var(--t1) !important;
-  box-shadow: 0 1px 2px rgba(16, 24, 40, 0.04) !important;
-}
-html[data-theme="light"] .btn.ghost:hover,
-html[data-theme="light"] .btn.secondary:hover {
-  background: color-mix(in srgb, var(--blue) 8%, #FFFFFF) !important;
-  border-color: color-mix(in srgb, var(--blue) 34%, transparent) !important;
-  color: var(--blue) !important;
-  box-shadow: 0 2px 8px rgba(29, 78, 216, 0.12) !important;
-}
-
-/* ── mini / sm: та же система, меньший размер ────────────────────────────── */
+/* ── Размеры (цвет задаёт buttons-system.css) ────────────────────────────── */
 html[data-theme="light"] .btn.mini,
 html[data-theme="light"] .btn.sm {
   min-height: 28px;
   padding: 0 11px;
   font-size: 12px;
-  border-radius: 8px !important;
+  border-radius: 7px !important;
   gap: 6px;
 }
 html[data-theme="light"] .btn.lg {
@@ -212,32 +37,32 @@ html[data-theme="light"] .btn.icononly {
   padding: 0;
 }
 
-/* ── Переключатели-плашки (segmented) в ту же систему ────────────────────── */
+/* ── Переключатели-плашки (segmented): в ту же систему ───────────────────── */
 html[data-theme="light"] :is(.proc-vt, .wh2-fchip, .wh2-eq-grp-btn, .prs-chip) {
   border-radius: 999px;
-  border: 1px solid color-mix(in srgb, #0F172A 12%, transparent);
+  border: 1px solid rgba(15, 23, 42, 0.12);
   background: color-mix(in srgb, #FFFFFF 86%, transparent);
   color: var(--t2);
   font-weight: 600;
   transition: background 0.16s ease, border-color 0.16s ease, color 0.16s ease;
 }
 html[data-theme="light"] :is(.proc-vt--on, .wh2-fchip--active, .wh2-eq-grp-btn--on) {
-  background: linear-gradient(180deg, var(--btn-blue-1) 0%, var(--btn-blue-2) 100%) !important;
-  border-color: var(--btn-blue-3) !important;
-  color: var(--btn-ink) !important;
-  box-shadow: 0 1px 2px rgba(29, 78, 216, 0.24), 0 4px 12px rgba(29, 78, 216, 0.18);
+  background: linear-gradient(180deg, var(--bsys-primary-1) 0%, var(--bsys-primary-2) 100%) !important;
+  border-color: var(--bsys-primary-brd) !important;
+  color: var(--bsys-primary-ink) !important;
+  box-shadow: 0 1px 2px rgba(29, 78, 216, 0.22), 0 4px 12px rgba(29, 78, 216, 0.16);
 }
 
-/* ── FAB / круглая кнопка «в корзину» — синяя, не золотая ────────────────── */
+/* ── FAB склада «в корзину» — использует primary-цвет системы ────────────── */
 html[data-theme="light"] .wh2-fab__btn,
 html[data-theme="light"] .wh2-stp--add {
-  background: linear-gradient(180deg, var(--btn-blue-1) 0%, var(--btn-blue-2) 100%) !important;
-  border: 1px solid var(--btn-blue-3) !important;
-  color: var(--btn-ink) !important;
-  box-shadow: 0 2px 6px rgba(29, 78, 216, 0.30), 0 10px 24px rgba(29, 78, 216, 0.24) !important;
+  background: linear-gradient(180deg, var(--bsys-primary-1) 0%, var(--bsys-primary-2) 100%) !important;
+  border: 1px solid var(--bsys-primary-brd) !important;
+  color: var(--bsys-primary-ink) !important;
+  box-shadow: 0 2px 6px rgba(29, 78, 216, 0.28), 0 10px 24px rgba(29, 78, 216, 0.22) !important;
 }
 
-/* ── Исключения: маленькие бейджи-счётчики остаются золотыми (это не кнопка) */
+/* ── Счётчик на табе «Согласования» — это бейдж, не кнопка ──────────────── */
 html[data-theme="light"] .ap-tab__n {
   background: var(--gold) !important;
   color: #FFFFFF !important;

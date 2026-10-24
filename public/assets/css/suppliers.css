@@ -8,15 +8,10 @@
 .sup-tab{padding:var(--sp-2) var(--sp-4);font-size:14px;font-weight:500;color:var(--t2);cursor:pointer;border:none;background:transparent;border-bottom:2px solid transparent;margin-bottom:-2px;transition:color .2s,border-color .2s;white-space:nowrap}
 .sup-tab:hover{color:var(--t1)}
 .sup-tab--active{color:var(--gold,#D4A843);border-bottom-color:var(--gold,#D4A843);font-weight:600}
-.sup-page .btn.primary,
-.sup-page button.btn.primary,
-.sup-toolbar .btn.primary{
-  background:var(--gold,#D4A843)!important;
-  border-color:var(--gold,#D4A843)!important;
-  color:#15110d!important;
-}
-.sup-page .btn.primary:hover,
-.sup-page button.btn.primary:hover{filter:brightness(1.06)}
+/* 23.10.2026: перекраска primary-кнопок в золото УДАЛЕНА (D-343).
+   Было: .sup-page .btn.primary → --gold + #15110d текстом. Из-за этого страница
+   «Поставщики» выглядела иначе, чем остальная CRM. Цвет primary задаётся единой
+   системой кнопок. */
 
 /* ─── Toolbar ─── */
 .sup-toolbar{display:flex;gap:var(--sp-3);align-items:center;flex-wrap:wrap;margin-bottom:var(--sp-4);padding:var(--sp-3);background:var(--bg1);border-radius:var(--r-md);border:1px solid var(--brd)}
@@ -150,11 +145,5 @@
   .sup-form__footer{grid-column:1}
 }
 
-/* premium-gold: primary CTA импорта каталога */
-#sup-ci-go.btn.primary,
-.cr-m-body #sup-ci-go,
-.sup-import .btn.primary {
-  background: var(--gold,#D4A843) !important;
-  border-color: var(--gold,#D4A843) !important;
-  color: #15110d !important;
-}
+/* 23.10.2026: CTA импорта каталога красилась в золото отдельным правилом.
+   Это primary-кнопка — цвет теперь из единой системы (D-343). */

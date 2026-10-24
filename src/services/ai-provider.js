@@ -824,10 +824,14 @@ async function* parseOpenAIStream(response) {
           const event = JSON.parse(jsonStr);
           const delta = event.choices?.[0]?.delta;
 
-          // Reasoning-модели шлют рассуждения отдельным
-          // полем reasoning_content. Финальный ответ потом приходит в .content.
-          if (delta?.reasoning_content) {
-            yield { type: 'reasoning', content: delta.reasoning_content };
+          // Reasoning-модели шлют рассуждения отдельным полем. D-303: routerai
+          // использует ключ `reasoning` (проверено 20.10.2026 на deepseek-v4.1:
+          // «DELTA KEYS: content, role, reasoning»). Старый код искал только
+          // `reasoning_content` — как у нативного OpenAI/DeepSeek — и потому
+          // мысли никогда не доходили до UI. Поддерживаем оба варианта.
+          const reasoningDelta = delta?.reasoning_content || delta?.reasoning;
+          if (reasoningDelta && typeof reasoningDelta === 'string') {
+            yield { type: 'reasoning', content: reasoningDelta };
           }
           if (delta?.content) {
             yield { type: 'text', content: delta.content };

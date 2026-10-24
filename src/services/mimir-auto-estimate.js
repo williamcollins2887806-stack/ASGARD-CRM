@@ -931,8 +931,50 @@ function documentsToPrompt(docs) {
  * Если по какой-то причине файл шаблона/модуля нечитаем — fallback на
  * `buildAutoEstimatePrompt_legacy` (полностью inline-промпт, история ниже).
  */
+/**
+ * D-306: рассуждения должны быть на русском. DeepSeek по умолчанию думает
+ * по-английски; если в чанке кириллицы меньше латиницы — не показываем.
+ *
+ * D-310: решать по ОДНОМУ чанку нельзя — модель шлёт по 1–3 слова, и чанк
+ * «12 м²» / «ГОСТ 21.1101» / «1 234 567 ₽» вообще без кириллицы отбрасывался,
+ * из-за чего живой поток выглядел рваным. Решение принимается по скользящему
+ * окну последних ~160 символов: у настоящей русской речи в нём кириллицы
+ * заведомо больше, чем латиницы.
+ */
+function _isRussianReasoning(chunk, windowText) {
+  const s = String(chunk || '');
+  if (!s.trim()) return false;
+  const ownCyr = (s.match(/[а-яё]/gi) || []).length;
+  const ownLat = (s.match(/[a-z]/gi) || []).length;
+  // Длинный чанк целиком без кириллицы — английская речь, скрываем.
+  if (ownCyr === 0 && ownLat > 8) return false;
+  // В самом чанке кириллицы достаточно — это русское продолжение, показываем
+  // немедленно, не оглядываясь на окно. Иначе после англоязычного отрывка
+  // русская речь «глохла» на длину окна (найдено верификатором 22.10.2026).
+  if (ownCyr > 0 && ownCyr >= ownLat) return true;
+  // Чанк почти без букв («5 %.», «м²», «— ») — это часть расчёта, показываем,
+  // если рядом (в окне) была русская речь. Считать такие чанки «английскими»
+  // означало терять фрагменты вида «Добавляю 5 %.» после латинского отрывка.
+  if (ownCyr + ownLat <= 2) {
+    const near = String(windowText || '').slice(-40);
+    return /[а-яё]/i.test(near);
+  }
+  const sample = String(windowText || '') + s;
+  const tail = sample.slice(-160);
+  const cyr = (tail.match(/[а-яё]/gi) || []).length;
+  const lat = (tail.match(/[a-z]/gi) || []).length;
+  if (cyr === 0 && lat === 0) return true;   // цифры, знаки, пунктуация
+  return cyr >= lat;
+}
+
 function buildAutoEstimatePrompt(ctx) {
   try {
+    // D-306: рассуждения модели показываются директору в живом журнале.
+    // DeepSeek по умолчанию думает по-английски — требуем РУССКИЙ.
+    const RUSSIAN_THINKING = 'ВАЖНО: все свои рассуждения (reasoning/thinking) веди '
+      + 'ИСКЛЮЧИТЕЛЬНО на русском языке. Это видит руководитель в интерфейсе. '
+      + 'Пиши по-деловому и коротко: что проверяешь, какие данные берёшь, что считаешь. '
+      + 'Без английских фраз и без технического мусора.\n\n';
     const promptLoader = require('./prompt-loader');
     const work = ctx.work || {};
     const tender = ctx.tender || null;
@@ -1008,7 +1050,9 @@ function buildAutoEstimatePrompt(ctx) {
       work_norms_catalog: ctx.work_norms_catalog || '(справочник норм CRM пуст)'
     };
 
-    return promptLoader.buildPrompt('PROMPT-quick-v4.md', substitutions);
+    const builtPrompt = promptLoader.buildPrompt('PROMPT-quick-v4.md', substitutions);
+    // D-306: русские рассуждения — добавляем в самое начало системного промпта.
+    return RUSSIAN_THINKING + builtPrompt;
   } catch (e) {
     console.warn(`[mimir-auto-estimate] buildAutoEstimatePrompt failed via prompt-loader: ${e.message}. Fallback на legacy-промпт.`);
     return buildAutoEstimatePrompt_legacy(ctx);
@@ -2122,6 +2166,43 @@ async function callMimirForEstimate(aiProvider, ctx, extraUserMessage = null) {
     parseInt(process.env.MIMIR_ESTIMATE_MAX_TOKENS || '48000', 10) || 48000
   );
 
+  /**
+   * D-303: стриминговый вызов с пробросом РЕАЛЬНЫХ рассуждений модели.
+   * complete() не стримит — поэтому в UI нельзя было показать мысли, только
+   * таймер. stream() шлёт reasoning_content отдельными дельтами.
+   * @param {number} maxTokens
+   * @param {(text:string)=>void} [onReasoning]
+   */
+  async function _streamOnce(maxTokens, onReasoning) {
+    const resp = await aiProvider.stream({
+      system: systemPrompt,
+      messages,
+      maxTokens,
+      temperature: 0.2
+    });
+    let text = '';
+    let reasoning = '';
+    let stopReason = null;
+    for await (const ev of aiProvider.parseStream(resp, 'openai')) {
+      if (ev.type === 'reasoning' && ev.content) {
+        reasoning += ev.content;
+        // D-306: модель думает по-английски, а директор должен видеть русскую
+        // речь. Показываем рассуждения только если они РУССКИЕ; англоязычные
+        // не выводим (перевод «на лету» стоил бы второй вызов на каждый чанк).
+        // D-310: решение — по скользящему окну, иначе короткие чанки без
+        // кириллицы («12 м²», «ГОСТ», суммы) выпадали из потока.
+        try {
+          if (onReasoning && _isRussianReasoning(ev.content, reasoning)) onReasoning(ev.content);
+        } catch (_) {}
+      } else if (ev.type === 'text' && ev.content) {
+        text += ev.content;
+      } else if (ev.type === 'done') {
+        stopReason = ev.stopReason;
+      }
+    }
+    return { text, reasoning, stopReason, model: 'stream', provider: 'routerai' };
+  }
+
   async function _completeOnce(maxTokens) {
     return aiProvider.complete({
       system: systemPrompt,
@@ -2131,7 +2212,25 @@ async function callMimirForEstimate(aiProvider, ctx, extraUserMessage = null) {
     });
   }
 
-  let aiResult = await _completeOnce(estimateMaxTokens);
+  // Стриминг включается флагом (caller передаёт onReasoning и opts.stream).
+  // При ошибке стрима — откат на complete(), чтобы расчёт не падал.
+  let aiResult;
+  const wantStream = typeof arguments[3] === 'function' || (arguments[3] && arguments[3].stream);
+  const onReasoning = typeof arguments[3] === 'function'
+    ? arguments[3]
+    : (arguments[3] && arguments[3].onReasoning);
+
+  if (wantStream) {
+    try {
+      aiResult = await _streamOnce(estimateMaxTokens, onReasoning);
+    } catch (e) {
+      console.warn('[mimir-auto-estimate] stream failed, fallback to complete:', e.message);
+      aiResult = null;
+    }
+  }
+  if (!aiResult) {
+    aiResult = await _completeOnce(estimateMaxTokens);
+  }
 
   // Один ретрай при пустом content из‑за усечения reasoning
   if ((!aiResult?.text || !String(aiResult.text).trim()) && aiResult?.stopReason === 'length') {

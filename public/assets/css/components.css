@@ -51,18 +51,10 @@
   pointer-events: none;
 }
 
-/* Primary Button — Blue */
+/* Primary Button — цвет задаётся в buttons-system.css (D-343).
+   Здесь только то, что относится к базовой геометрии. */
 .btn.primary {
-  background: var(--blue);
-  border-color: var(--blue);
-  color: var(--text-on-accent);
   font-weight: 600;
-}
-
-.btn.primary:hover {
-  background: var(--blue-h);
-  border-color: var(--blue-h);
-  box-shadow: 0 0 20px rgba(30,77,140,0.35), 0 4px 12px rgba(30,77,140,0.25);
 }
 
 /* Secondary Button */
@@ -98,58 +90,18 @@
 }
 
 .btn.gold:hover {
-  background: var(--gold-h);
-  border-color: var(--gold-h);
+  background: var(--bsys-primary-hover);
+  border-color: var(--bsys-primary-brd);
   box-shadow: 0 0 20px rgba(212,168,67,0.35), 0 4px 12px rgba(212,168,67,0.25);
 }
 
 /* Red/Danger Button */
-.btn.red,
-.btn.danger {
-  background: var(--red);
-  border-color: var(--red);
-  color: var(--text-on-accent);
-}
+/* 23.10.2026 (D-343): цвет danger/success задаётся в buttons-system.css.
+   Здесь оставлена только геометрия, чтобы не было второго источника цвета. */
 
-.btn.red:hover,
-.btn.danger:hover {
-  background: var(--red-h);
-  border-color: var(--red-h);
-  box-shadow: 0 0 20px rgba(200,41,59,0.35), 0 4px 12px rgba(200,41,59,0.25);
-}
+/* Amber/Warning Button — оформление в buttons-system.css (D-343) */
 
-/* Green/Success Button */
-.btn.green,
-.btn.success {
-  background: var(--ok);
-  border-color: var(--ok);
-  color: var(--text-on-accent);
-}
-
-.btn.green:hover,
-.btn.success:hover {
-  background: var(--ok-t);
-  box-shadow: var(--shadow-glow-green);
-}
-
-/* Amber/Warning Button */
-.btn.amber,
-.btn.warning {
-  background: var(--warn);
-  border-color: var(--warn);
-  color: var(--bg0);
-}
-
-/* Blue Button (info variant) */
-.btn.blue {
-  background: var(--info);
-  border-color: var(--info);
-  color: var(--text-on-accent);
-}
-
-.btn.blue:hover {
-  box-shadow: var(--blue-glow);
-}
+/* Blue Button (info variant) — это primary, оформление в buttons-system.css */
 
 /* Button Sizes */
 .btn.mini {
@@ -5328,7 +5280,7 @@ html[data-theme="light"] .viking-welcome .vw-saga-wrap {
 }
 
 .btn-fast-track:hover {
-  background: linear-gradient(135deg, var(--gold-light), var(--gold));
+  background: linear-gradient(180deg, var(--bsys-primary-hover), var(--bsys-primary-1));
   box-shadow: var(--gold-glow);
 }
 

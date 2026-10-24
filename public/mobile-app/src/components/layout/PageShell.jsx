@@ -134,7 +134,28 @@ export function PageShell({
         ref={mainRef}
         onScroll={scrollable ? handleScroll : undefined}
         className={`flex-1 ${scrollable ? 'overflow-y-auto scroll-container' : 'overflow-hidden'} ${noPadding ? '' : 'px-4'}`}
-        style={{ paddingBottom: 'calc(var(--tabbar-total) + 16px)' }}
+        style={{
+          /**
+           * D-341: контент резервирует только ту часть бара, что реально
+           * заходит в коробку вьюпорта.
+           *
+           * Бар прижат к физическому низу и на iPhone лежит в основном В ЗАЗОРЕ
+           * (`--app-gap` = 51px), который находится вне документа. Прежняя
+           * формула (`--tabbar-total + 16px`) резервировала все 52px, поэтому
+           * внизу оставалось ~51px пустоты — контент «отставал» от бара.
+           *
+           * Правильная формула — через `--tabbar-lift` (он ЗНАКОВЫЙ, в отличие
+           * от `--app-gap`, обрезанного в ноль). Перекрытие = lift + total:
+           *   iPhone 11: lift −51, total 52 → max(0, 1)  + 16 = 17px
+           *   коробка = экран: 0 + 86 → 86              + 16 = 102px
+           *   Safari с панелями: −116 + 52 = −64 →  0   + 16 = 16px
+           *   коробка ВЫШЕ экрана (зум): +20 + 52 = 72  + 16 = 88px
+           * Последний случай `--app-gap` не покрывал: он давал 68px при
+           * перекрытии 72px, и контент на 4px заезжал под бар (нашла матрица
+           * устройств: tools/verify-tabbar-matrix.js).
+           */
+          paddingBottom: 'calc(max(0px, var(--tabbar-total) + var(--tabbar-lift, 0px)) + 16px)',
+        }}
       >
         <div className="page-enter">
           {children}

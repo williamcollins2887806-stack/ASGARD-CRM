@@ -265,9 +265,10 @@ html[data-theme="light"] .status.status-green {
   border-color: rgba(18, 135, 74, 0.22) !important;
 }
 
-/* ═══ 8. KANBAN: активные табы ═════════════════════════════════════════════ */
-html[data-theme="light"] .pk3-tab.active,
-html[data-theme="light"] .pk3-tab.is-active,
+/* ═══ 8. KANBAN: активные элементы ═════════════════════════════════════════ */
+/* 23.10.2026: .pk3-tab.active / .pk3-tab.is-active удалены — вкладки типов
+   убраны из канбана. Ниже — общий селектор для .active ВНУТРИ pk3-блоков:
+   его использует `.pk3-scope-toggle button.active` (переключатель «Мои/Отдел»). */
 html[data-theme="light"] [class*="pk3"] .active {
   color: var(--blue) !important;
   font-weight: 700;

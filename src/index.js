@@ -945,6 +945,10 @@ fastify.register(require('./routes/payment-mail'), { prefix: '/payment-mail' });
 fastify.register(require('./routes/tender-mail'), { prefix: '/tender-mail' });
 fastify.register(require('./routes/tender-files'), { prefix: '/tender-files' });
 fastify.register(require('./routes/payment-invoices'), { prefix: '/api/payment-invoices' });
+// D-369 (23.10.2026): сводный эндпоинт для мобильной страницы «Мои заявки».
+// Считает те же данные, что десктопные /payment-invoices/my и /procurement,
+// чтобы мобильная и десктопная картина не расходились.
+fastify.register(require('./routes/my-requests'), { prefix: '/api/my-requests' });
 fastify.register(require('./routes/doc-registry'), { prefix: '/api/doc-registry' });
 // Stage W: новые модули кассового редизайна.
 fastify.register(require('./routes/handovers'),         { prefix: '/api/handovers' });

@@ -221,7 +221,7 @@ export default function PmPayoutCart() {
         <div
           style={{
             position: 'fixed', left: '50%', transform: 'translateX(-50%)',
-            bottom: 'calc(var(--tabbar-total) + 16px)', zIndex: 80,
+            bottom: 'calc(max(0px, var(--tabbar-total) + var(--tabbar-lift, 0px)) + 16px)', zIndex: 80,
             padding: '10px 16px', borderRadius: 12, fontSize: 13.5, fontWeight: 600,
             background: 'color-mix(in srgb, var(--gold) 20%, var(--bg-surface))',
             border: '0.5px solid color-mix(in srgb, var(--gold) 40%, transparent)',

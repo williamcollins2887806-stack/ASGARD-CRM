@@ -109,6 +109,10 @@ const Invoices = lazyPage(() => import('@/pages/Invoices'));
 const HrRequests = lazyPage(() => import('@/pages/HrRequests'));
 const Travel = lazyPage(() => import('@/pages/Travel'));
 const Procurement = lazyPage(() => import('@/pages/Procurement'));
+// D-369 (23.10.2026): «Мои заявки» на мобильном — паритет с десктопом.
+// Счета на согласование работают полностью (пачка файлов, распознавание,
+// черновик, отправка, статусы), заявки на закупку — пока заглушка.
+const MyRequests = lazyPage(() => import('@/pages/MyRequests'));
 const Permits = lazyPage(() => import('@/pages/Permits'));
 const Proxies = lazyPage(() => import('@/pages/Proxies'));
 const AllEstimates = lazyPage(() => import('@/pages/AllEstimates'));
@@ -158,6 +162,8 @@ const HuginnEstimateChat = lazyPage(() => import('@/pages/HuginnEstimateChat'));
 const ExpenseChat = lazyPage(() => import('@/pages/ExpenseChat'));
 const DirectorApprovals = lazyPage(() => import('@/pages/director/Approvals'));
 const DirectorTenderApprovals = lazyPage(() => import('@/pages/director/TenderApprovals'));
+// D-343: дашборд заявок по РП для директора.
+const DirectorApplications = lazyPage(() => import('@/pages/director/Applications'));
 const MarketplaceMobile = lazyPage(() => import('@/pages/MarketplaceMobile'));
 import { Toaster } from '@/components/ui/sonner';
 import { usePushSubscription } from '@/hooks/usePushSubscription';
@@ -415,6 +421,12 @@ function AppLayout() {
           <Route path="/hr-requests" element={<ProtectedRoute section="personnel"><PinGuard><HrRequests /></PinGuard></ProtectedRoute>} />
           <Route path="/travel" element={<ProtectedRoute section="personnel"><PinGuard><Travel /></PinGuard></ProtectedRoute>} />
           <Route path="/procurement" element={<ProtectedRoute section="works"><PinGuard><Procurement /></PinGuard></ProtectedRoute>} />
+          {/* D-369: «Мои заявки» (счета на согласование + закупки).
+              Секция `works`, а НЕ `finances`: под `finances` лежат /invoices и
+              /acts, и выдача её TO/складу открыла бы им реестры счетов и актов
+              заказчиков — эскалация прав, которой нет на десктопе.
+              Конкретные роли ограничены списком в More.jsx. */}
+          <Route path="/my-requests" element={<ProtectedRoute section="works"><PinGuard><MyRequests /></PinGuard></ProtectedRoute>} />
           {/* Старые раздробленные маршруты закупок → редирект на единый модуль */}
           <Route path="/tmc-requests" element={<Navigate to="/procurement" replace />} />
           <Route path="/proc-requests" element={<Navigate to="/procurement" replace />} />
@@ -472,6 +484,8 @@ function AppLayout() {
           <Route path="/expense-chat/:workId" element={<ProtectedRoute section="finances"><PinGuard><ExpenseChat /></PinGuard></ProtectedRoute>} />
           <Route path="/director-approvals" element={<ProtectedRoute section="finances"><PinGuard><DirectorApprovals /></PinGuard></ProtectedRoute>} />
           <Route path="/director-tender-approvals" element={<ProtectedRoute section="tenders"><PinGuard><DirectorTenderApprovals /></PinGuard></ProtectedRoute>} />
+          {/* D-343: дашборд заявок по РП — директор видит, как работают подчинённые */}
+          <Route path="/director-applications" element={<ProtectedRoute section="tenders"><PinGuard><DirectorApplications /></PinGuard></ProtectedRoute>} />
           <Route path="/marketplace" element={<ProtectedRoute section="marketplace"><PinGuard><MarketplaceMobile /></PinGuard></ProtectedRoute>} />
           <Route path="/more" element={<ProtectedRoute><PinGuard><More /></PinGuard></ProtectedRoute>} />
 

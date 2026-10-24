@@ -599,6 +599,19 @@ window.AsgardRpCalcModal = (function () {
     return Number.isFinite(noVat) && noVat >= stateDirectorThreshold(state);
   }
 
+  /**
+   * Требуется ли согласование по РЕШЕНИЮ РП (23.10.2026).
+   *
+   * Заказчик: «до 10 млн без НДС согласование не нужно; свыше — только если РП сам
+   * поставил галочку "отправить на согласование"; без галочки идёт сразу в "Готовим"».
+   *
+   * Раньше порог был жёстким триггером: свыше 10 млн согласование навязывалось, и
+   * отказаться РП не мог. Теперь порог — лишь УСЛОВИЕ ВОЗМОЖНОСТИ, а решение за РП.
+   */
+  function wantApproval() {
+    return stateApprovalNeeded(state) && state.wantApproval === true;
+  }
+
   function renderShell(state) {
     const t = state.tender || {};
     const dl = deadlineTone(t.docs_deadline);
@@ -1058,6 +1071,12 @@ window.AsgardRpCalcModal = (function () {
       readOnly: !!initial.readOnly,
       role: initial.role || '',
       directorThreshold: initial.directorThreshold || DIRECTOR_THRESHOLD_FALLBACK,
+      /**
+       * Решение РП о согласовании (23.10.2026). По умолчанию — НЕ отправлять:
+       * согласование включается только осознанным действием РП (галочкой).
+       * До этой правки порог сам навязывал отправку директору, и отказаться было нельзя.
+       */
+      wantApproval: false,
       // Смета просчёта готова? Пока false — «скелет» с дефолтными параметрами не показываем
       // и не сохраняем: иначе у всех карточек одна и та же сумма (2 818 084,50 ₽).
       // true только если смета пришла из анализа/Мимира или РП явно начал считать вручную.
@@ -1286,10 +1305,11 @@ window.AsgardRpCalcModal = (function () {
         if (last && totals[expr] != null) last.textContent = fmtMoney(totals[expr]);
       });
 
-      // Кнопка меняет смысл по порогу директора (D-185).
+      // Кнопка зависит от порога И решения РП: до порога согласование невозможно,
+      // свыше порога — возможно, но РП волен отказаться (23.10.2026).
       const btn = root.querySelector('[data-rp-act="send-director"]');
       if (btn && !state.readOnly) {
-        btn.textContent = approvalNeeded() ? 'Отправить директору' : 'Завершить просчёт';
+        btn.textContent = approvalWanted() ? 'Отправить директору' : 'Завершить просчёт';
       }
     }
 
@@ -1588,6 +1608,15 @@ window.AsgardRpCalcModal = (function () {
       return stateApprovalNeeded(state);
     }
 
+    /**
+     * Нужно ли согласование С УЧЁТОМ решения РП (23.10.2026).
+     * `approvalNeeded()` — только порог (нужен для показа галочки);
+     * `approvalWanted()` — порог И галочка РП. Именно по нему решается исход.
+     */
+    function approvalWanted() {
+      return wantApproval();
+    }
+
     /** Порог согласования: с бэкенда, иначе 10 млн (D-185). */
     function directorThreshold() {
       return stateDirectorThreshold(state);
@@ -1637,8 +1666,20 @@ window.AsgardRpCalcModal = (function () {
         finalize: !!finalize,
         expected_updated_at: state.review && state.review.updated_at ? state.review.updated_at : null
       };
-      // Согласование нужно только от 10 млн без НДС; получателей шлём адресно.
-      if (finalize && approvalNeeded()) body.approval_recipients = selectedRecipients();
+      /**
+       * Решение РП о согласовании (23.10.2026).
+       *
+       * Бэкенд включает согласование ТОЛЬКО при `request_director_approval === true`
+       * и цене выше порога. Без этого флага отчёт идёт сразу в «Готовим» — таково
+       * требование заказчика. Флаг шлём всегда при финализации (не только когда
+       * согласование нужно): иначе бэкенд не отличит «РП отказался» от «фронт не умеет».
+       */
+      if (finalize) {
+        body.request_director_approval = approvalWanted();
+        // Получателей шлём только когда согласование реально нужно — иначе
+        // бэкенд справедливо ругается «выберите получателя» на пустом списке.
+        if (body.request_director_approval) body.approval_recipients = selectedRecipients();
+      }
       return body;
     }
 
@@ -1694,12 +1735,12 @@ window.AsgardRpCalcModal = (function () {
         rj.rp_comment = state.brief.rp_comment || rj.rp_comment;
         rj.director_action = state.brief.director_action || rj.director_action;
       }
-      const need = approvalNeeded();
+      const need = approvalNeeded();          // порог: согласование ВОЗМОЖНО
       const totals = (state.estimate && state.estimate.totals) || {};
       const noVat = Number(totals.price_no_vat) || 0;
 
       function buildHtml() {
-        const codes = need ? selectedRecipients() : [];
+        const codes = approvalWanted() ? selectedRecipients() : [];
         const expectedFrom = codes.map(recipientLabelByCode).join(', ');
         return buildEmailPreviewHtml({
           tender: state.tender,
@@ -1722,19 +1763,41 @@ window.AsgardRpCalcModal = (function () {
       });
       const overlay = document.createElement('div');
       overlay.className = 'rp-calc-mail-preview';
+      /**
+       * Три состояния вместо двух (23.10.2026, требование заказчика).
+       *
+       *  1. Цена НИЖЕ порога — согласование невозможно, показываем пояснение.
+       *  2. Цена ВЫШЕ порога + галочка СНЯТА — отчёт уйдёт сразу в ТО, объясняем это.
+       *  3. Цена ВЫШЕ порога + галочка СТОИТ — выбор получателей и предпросмотр письма.
+       *
+       * Раньше было жёстко: до порога — «сразу в Готовим», после — «выбирайте получателя»,
+       * и отказаться было нельзя. Теперь порог лишь открывает ВОЗМОЖНОСТЬ, решает РП.
+       */
       const toBlock = need
         ? ('<div class="rp-calc-mail-preview__to">' +
-            '<div class="rp-calc-mail-preview__to-head">Кому на согласование' +
-            '<span class="rp-calc-mail-preview__to-hint">достаточно согласия любого одного</span></div>' +
-            '<div class="rp-calc-mail-preview__to-list">' +
-            APPROVAL_RECIPIENTS.map(function (r) {
-              const on = selectedRecipients().indexOf(r.code) >= 0;
-              return '<label class="rp-calc-mail-preview__to-item' + (on ? ' is-on' : '') + '" title="' + esc(r.label) + '">' +
-                '<input type="checkbox" data-rcpt="' + r.code + '"' + (on ? ' checked' : '') + '>' +
-                '<span class="rp-calc-mail-preview__chip">' + esc(r.label) + '</span></label>';
-            }).join('') +
+            '<label class="rp-calc-approve-toggle">' +
+              '<input type="checkbox" data-approve-flag' + (state.wantApproval ? ' checked' : '') + '>' +
+              '<span class="rp-calc-approve-toggle__box" aria-hidden="true"></span>' +
+              '<span class="rp-calc-approve-toggle__text">' +
+                '<b>Отправить на согласование директору</b>' +
+                '<span class="rp-calc-approve-toggle__hint">Цена без НДС ' + esc(fmtMoney(noVat)) +
+                ' выше порога ' + esc(fmtMoney(directorThreshold())) +
+                '. Без галочки отчёт уйдёт сразу в ТО, минуя директора.</span>' +
+              '</span>' +
+            '</label>' +
+            '<div data-approve-recipients' + (state.wantApproval ? '' : ' hidden') + '>' +
+              '<div class="rp-calc-mail-preview__to-head">Кому на согласование' +
+              '<span class="rp-calc-mail-preview__to-hint">достаточно согласия любого одного</span></div>' +
+              '<div class="rp-calc-mail-preview__to-list">' +
+              APPROVAL_RECIPIENTS.map(function (r) {
+                const on = selectedRecipients().indexOf(r.code) >= 0;
+                return '<label class="rp-calc-mail-preview__to-item' + (on ? ' is-on' : '') + '" title="' + esc(r.label) + '">' +
+                  '<input type="checkbox" data-rcpt="' + r.code + '"' + (on ? ' checked' : '') + '>' +
+                  '<span class="rp-calc-mail-preview__chip">' + esc(r.label) + '</span></label>';
+              }).join('') +
+              '</div>' +
+              '<div class="rp-calc-mail-preview__to-warn" hidden>Выберите хотя бы одного получателя</div>' +
             '</div>' +
-            '<div class="rp-calc-mail-preview__to-warn" hidden>Выберите хотя бы одного получателя</div>' +
           '</div>')
         : ('<div class="rp-calc-mail-preview__skip">Согласование не требуется: цена без НДС ' +
             esc(fmtMoney(noVat)) + ' ниже порога ' + esc(fmtMoney(directorThreshold())) +
@@ -1746,7 +1809,8 @@ window.AsgardRpCalcModal = (function () {
         '<div class="rp-calc-mail-preview__acts">' +
         '<button type="button" class="btn ghost" data-mail-prev="back">Назад · править</button>' +
         '<button type="button" class="btn primary" data-mail-prev="ok">' +
-        (state.demo ? 'ОК (демо)' : (need ? 'ОК · отправить на согласование' : 'ОК · завершить просчёт')) + '</button>' +
+        (state.demo ? 'ОК (демо)'
+          : (approvalWanted() ? 'ОК · отправить на согласование' : 'ОК · завершить просчёт')) + '</button>' +
         '</div></div>' +
         toBlock +
         '<iframe class="rp-calc-mail-preview__frame" title="Предпросмотр письма"></iframe>';
@@ -1764,6 +1828,27 @@ window.AsgardRpCalcModal = (function () {
       paintFrame();
 
       if (need) {
+        // Галочка «отправить на согласование» — решение РП (23.10.2026).
+        // Снята → отчёт уходит сразу в ТО; блок выбора получателей скрывается,
+        // а кнопка и предпросмотр письма перерисовываются под новое решение.
+        const flag = overlay.querySelector('[data-approve-flag]');
+        const rcptBox = overlay.querySelector('[data-approve-recipients]');
+        if (flag) {
+          flag.addEventListener('change', function () {
+            state.wantApproval = !!flag.checked;
+            if (rcptBox) rcptBox.hidden = !state.wantApproval;
+            const okBtn = overlay.querySelector('[data-mail-prev="ok"]');
+            if (okBtn) {
+              okBtn.textContent = approvalWanted()
+                ? 'ОК · отправить на согласование'
+                : 'ОК · завершить просчёт';
+            }
+            overlay.querySelectorAll('[data-rcpt]').forEach(function (cb) {
+              cb.disabled = !state.wantApproval;
+            });
+            paintFrame();
+          });
+        }
         overlay.querySelectorAll('[data-rcpt]').forEach(function (cb) {
           cb.addEventListener('change', function () {
             const on = [];
@@ -1791,7 +1876,9 @@ window.AsgardRpCalcModal = (function () {
         closeMailPreview();
       });
       overlay.querySelector('[data-mail-prev="ok"]').addEventListener('click', function () {
-        if (need && selectedRecipients().length === 0) {
+        // Получателей требуем ТОЛЬКО если РП выбрал согласование. Без галочки
+        // список не нужен — отчёт идёт прямо в ТО (23.10.2026).
+        if (approvalWanted() && selectedRecipients().length === 0) {
           const warn = overlay.querySelector('.rp-calc-mail-preview__to-warn');
           if (warn) warn.hidden = false;
           return;

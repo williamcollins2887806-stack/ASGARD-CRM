@@ -253,16 +253,14 @@
   background: color-mix(in srgb, var(--bg2) 94%, var(--bg3)); backdrop-filter: blur(12px);
   box-shadow: 0 -8px 24px color-mix(in srgb, var(--bg0) 22%, transparent), inset 0 1px 0 color-mix(in srgb, var(--t1) 4%, transparent);
 }
+/* 23.10.2026 (D-343): цвет primary-кнопок футера УБРАН отсюда — им управляет
+   единая система кнопок (buttons-system.css): тёмная тема — золото, светлая — синий.
+   Оставлены только размер и «дорогая» тень, то есть то, что относится к вёрстке
+   сметы, а не к цвету действия. */
 .rp-calc-footer .btn.primary, .rp-review-footer .btn.primary, .rp-review-footer #rpFinal,
 .rp-calc-mail-preview__acts .btn.primary {
-  background: var(--gold) !important; border-color: var(--gold-h) !important; color: var(--bg0) !important;
   font-weight: var(--fw-bold); min-width: 168px;
-  box-shadow: 0 1px 0 color-mix(in srgb, var(--gold-l) 55%, transparent), 0 4px 14px color-mix(in srgb, var(--gold) 28%, transparent);
   transition: filter var(--base), transform var(--base), box-shadow var(--base);
-}
-.rp-calc-footer .btn.primary:hover, .rp-review-footer .btn.primary:hover, .rp-calc-mail-preview__acts .btn.primary:hover {
-  filter: brightness(1.07); transform: translateY(-1px);
-  box-shadow: 0 2px 0 color-mix(in srgb, var(--gold-l) 55%, transparent), 0 8px 22px color-mix(in srgb, var(--gold) 35%, transparent);
 }
 .rp-calc-footer .btn.ghost, .rp-review-footer .btn.ghost { border-color: color-mix(in srgb, var(--gold) 22%, var(--brd)); }
 .rp-calc-footer .btn.ghost:hover {

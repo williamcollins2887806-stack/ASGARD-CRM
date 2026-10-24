@@ -137,6 +137,16 @@ export function loadDirectorReviewQueue() {
   return api.get('/tenders/director-review-queue');
 }
 
+/**
+ * Чек-лист анализа тендера (D-203): шаблон + сохранённые ответы РП.
+ * Это основание решения о подаче — директор должен видеть его при согласовании.
+ * Приходит как `reviewRoutes` из pm-duty с префиксом /api/tenders, поэтому
+ * путь совпадает с остальными тендерными вызовами.
+ */
+export function loadAnalysisChecklist(tenderId) {
+  return api.get(`/tenders/${tenderId}/analysis-checklist`);
+}
+
 export function loadDirectorReviewQueueCount() {
   return api.get('/tenders/director-review-queue/count');
 }

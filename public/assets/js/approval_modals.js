@@ -99,9 +99,9 @@ window.AsgardApprovalModals = (function() {
       .asg-btn-full:hover { transform:translateY(-1px); box-shadow:var(--shadow-md); filter:brightness(1.1); }
       .asg-btn-full:active { transform:translateY(0); }
       .asg-btn-full:disabled { opacity:.5; cursor:not-allowed; transform:none; filter:none; box-shadow:none; }
-      .asg-btn-green { background:var(--ok); color:#fff; }
-      .asg-btn-amber { background:var(--gold); color:var(--bg1); }
-      .asg-btn-blue { background:var(--blue); color:#fff; }
+      .asg-btn-green { background:var(--bsys-success-1); color:var(--bsys-success-ink); }
+      .asg-btn-amber { background:var(--bsys-gold-fill); color:var(--bsys-gold-ink); }
+      .asg-btn-blue { background:linear-gradient(180deg,var(--bsys-primary-1),var(--bsys-primary-2)); color:var(--bsys-primary-ink); }
       .asg-confirm-icon { font-size:52px; margin-bottom:16px; animation:asg-bounce .5s cubic-bezier(0.16,1,0.3,1); }
       @keyframes asg-bounce { 0%{transform:scale(.6);opacity:0} 60%{transform:scale(1.08)} 100%{transform:scale(1);opacity:1} }
     `;

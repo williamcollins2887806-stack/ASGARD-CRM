@@ -519,7 +519,7 @@ textarea.nd-input { resize: vertical; min-height: 72px; }
   border-color: var(--gold, #d4a843);
 }
 .nd-btn-primary:hover:not(:disabled) {
-  background: var(--gold-h, #b8922e);
+  background: var(--bsys-primary-hover);
   border-color: var(--gold-h, #b8922e);
 }
 .nd-btn-secondary,

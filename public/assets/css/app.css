@@ -4601,15 +4601,11 @@ html[data-theme="light"] .pill .role {
 }
 
 /* Better buttons */
-html[data-theme="light"] .btn.red {
-  background: linear-gradient(135deg, var(--blue), var(--blue-h));
-  color: var(--bg0);
-  border: none;
-  box-shadow: 0 2px 8px rgba(220, 38, 38, 0.25);
-}
+/* 23.10.2026 (D-343): НАЙДЕН БАГ — здесь `.btn.red` в светлой теме красился
+   в СИНИЙ (linear-gradient(--blue, --blue-h)). То есть «удалить/отклонить»
+   выглядело как «главное действие». Цвет danger задаётся в buttons-system.css. */
 
 html[data-theme="light"] .btn.red:hover {
-  box-shadow: 0 4px 16px rgba(220, 38, 38, 0.35);
   transform: translateY(-1px);
 }
 
@@ -5028,27 +5024,14 @@ body::after {
   opacity: 1;
 }
 
-.btn.primary, .btn.red {
-  background: linear-gradient(135deg, var(--blue) 0%, var(--blue-h) 100%);
-  color: white;
-  box-shadow:
-    0 4px 15px rgba(220, 38, 38, 0.3),
-    0 1px 0 rgba(255, 255, 255, 0.1) inset;
-}
-
-.btn.primary:hover, .btn.red:hover {
-  box-shadow:
-    0 6px 25px rgba(220, 38, 38, 0.4),
-    0 0 40px rgba(220, 38, 38, 0.2),
-    0 1px 0 rgba(255, 255, 255, 0.15) inset;
-  transform: translateY(-2px);
-}
+/* 23.10.2026 (D-343): здесь был первый из ТРЁХ наборов правил для
+   `.btn.primary` (этот, потом №8321 и №9510). Все три спорили друг с другом
+   через !important, а сверху их перебивали модульные файлы. Цвет primary
+   теперь задаётся один раз — в `buttons-system.css`. Оставлены только
+   размеры/состояния, не относящиеся к цвету. */
 
 .btn.primary:active, .btn.red:active {
   transform: translateY(0) scale(0.98);
-  box-shadow:
-    0 2px 10px rgba(220, 38, 38, 0.3),
-    0 1px 0 rgba(255, 255, 255, 0.1) inset;
 }
 
 /* Secondary button with border glow */
@@ -7834,11 +7817,8 @@ html[data-theme="light"] .status-unified.secondary {
   padding: 6px 8px;
 }
 
-/* Buttons */
+/* Buttons — цвет задаётся в buttons-system.css (D-343), здесь только геометрия */
 .btn-primary {
-  background: var(--blue);
-  color: white;
-  border: none;
   padding: 8px 16px;
   border-radius: var(--r-sm);
   font-family: var(--ff);
@@ -7848,9 +7828,6 @@ html[data-theme="light"] .status-unified.secondary {
 }
 
 .btn-secondary {
-  background: var(--gold);
-  color: white;
-  border: none;
   padding: 8px 16px;
   border-radius: var(--r-sm);
   font-family: var(--ff);
@@ -7860,9 +7837,6 @@ html[data-theme="light"] .status-unified.secondary {
 }
 
 .btn-success {
-  background: var(--ok-t);
-  color: white;
-  border: none;
   padding: 8px 16px;
   border-radius: var(--r-sm);
   font-family: var(--ff);
@@ -7872,9 +7846,6 @@ html[data-theme="light"] .status-unified.secondary {
 }
 
 .btn-danger {
-  background: var(--err-t);
-  color: white;
-  border: none;
   padding: 8px 16px;
   border-radius: var(--r-sm);
   font-family: var(--ff);
@@ -7884,9 +7855,6 @@ html[data-theme="light"] .status-unified.secondary {
 }
 
 .btn-info {
-  background: var(--info);
-  color: white;
-  border: none;
   padding: 8px 16px;
   border-radius: var(--r-sm);
   font-family: var(--ff);
@@ -7921,8 +7889,8 @@ html[data-theme="light"] .status-unified.secondary {
 }
 
 .btn-outline-primary:hover {
-  background: var(--blue);
-  color: white;
+  background: var(--bsys-primary-2);
+  color: var(--bsys-primary-ink);
 }
 
 .btn-outline-danger {
@@ -7998,8 +7966,21 @@ html[data-theme="light"] .form-select {
    ═══════════════════════════════════════════════════════════════════════════════ */
 
 /* --- Карточки, панели, виджеты — без рамок --- */
+/* ВАЖНО (найдено 23.10.2026): шаблон `[class*="-card"]` цеплял не только
+   контейнеры карточек, но и их внутренние элементы — `pk3-card-top`,
+   `*-card-title`, `*-card-value`, `*-card__body` … В светлой теме из-за этого
+   появлялись серые рамки вокруг бейджей/номеров/заголовков, а цветная полоса
+   слева у карточек пропадала (border-шорткат перетирал border-left-color).
+   Исключаем только внутренности: классы с продолжением `-card-` / `-card__`.
+
+   ⚠️ `:where()` здесь ОБЯЗАТЕЛЕН, а не украшение. Каждый `:not(...)` поднимает
+   специфичность на единицу: три `:not` давали (0,4,0) — и это `border: none`
+   начинало бить собственные `border` компонентов (0,1,0) на других страницах
+   (#/ting, #/travel, #/procurement: рамки исчезали и в тёмной теме).
+   В `:where()` специфичность селектора равна нулю, правило остаётся «мягким»
+   и перекрывается точечными стилями компонентов, как и было задумано. */
 .card, .panel, .widget,
-[class*="-card"],
+:where([class*="-card"]:not([class*="-card-"]):not([class*="-card_"]):not(.pk3-card)),
 .cash-card, .cash-balance-card, .cash-tabs,
 .kpi-works-page .kpi .k,
 .kpi-works-page .chart,
@@ -8079,11 +8060,17 @@ hr, .divider {
 }
 
 /* --- Light-тема: вернуть видимые но мягкие рамки --- */
-html[data-theme="light"] .card,
-html[data-theme="light"] .panel,
-html[data-theme="light"] [class*="-card"],
-html[data-theme="light"] .cash-card,
-html[data-theme="light"] .cash-balance-card {
+/* Тот же уточнённый матч, что и выше: серую рамку получают только контейнеры
+   карточек, а не их внутренние элементы (иначе — двойные рамки у бейджей).
+   `:where()` снижает специфичность до (0,1,1), чтобы это правило НЕ перебивало
+   собственные акценты компонентов: карточка канбана объявляет
+   `.pk3-card.pk3-green { border-left-color: … }`, и раньше светлая тема
+   затирала её серым — цветные полосы пропадали только на светлой теме. */
+html[data-theme="light"] :where(
+  .card, .panel,
+  [class*="-card"]:not([class*="-card-"]):not([class*="-card_"]):not(.pk3-card),
+  .cash-card, .cash-balance-card
+) {
   border: 1px solid var(--brd);
 }
 
@@ -8299,16 +8286,7 @@ html[data-theme="light"] .chart {
 /* ─────────────────────────────────────────────────────────────────────────────
    5. КНОПКИ — Viking color scheme
    ───────────────────────────────────────────────────────────────────────────── */
-.btn.primary {
-  background: linear-gradient(135deg, var(--blue), var(--blue-h)) !important;
-  border: 1px solid rgba(212, 168, 67, 0.15) !important;
-  box-shadow: var(--blue-glow) !important;
-}
-
-.btn.primary:hover {
-  background: linear-gradient(135deg, var(--blue-h), var(--blue)) !important;
-  box-shadow: 0 0 24px rgba(30, 77, 140, 0.4) !important;
-}
+/* 23.10.2026 (D-343): второй набор правил primary УДАЛЁН — цвет в buttons-system.css. */
 
 .btn.gold,
 .btn.secondary.gold {
@@ -8318,12 +8296,7 @@ html[data-theme="light"] .chart {
   box-shadow: var(--gold-glow) !important;
 }
 
-.btn.red,
-.btn.danger {
-  background: linear-gradient(135deg, var(--red), var(--red-h)) !important;
-  border: 1px solid rgba(212, 168, 67, 0.15) !important;
-  box-shadow: var(--red-glow) !important;
-}
+/* 23.10.2026 (D-343): цвет danger задаётся в buttons-system.css. */
 
 /* ─────────────────────────────────────────────────────────────────────────────
    6. TABS — Viking gold accent (как .cash-tabs)
@@ -9055,7 +9028,8 @@ a { color: var(--blue-l, #4A90D9); }
 }
 
 /* Logout button — ghost outline style, NOT solid red */
-.sidefoot .btn.red,
+/* D-343: только #btnLogout (иконка-кружок в подвале). Из группы убран
+   `.btn.red`, чтобы это правило не было вторым источником цвета danger. */
 .sidefoot #btnLogout {
   background: transparent !important;
   border: 1px solid rgba(200,41,59,0.3) !important;
@@ -9064,7 +9038,7 @@ a { color: var(--blue-l, #4A90D9); }
   padding: 0 !important;
 }
 
-.sidefoot .btn.red:hover,
+/* D-343: только #btnLogout — см. комментарий выше. */
 .sidefoot #btnLogout:hover {
   background: rgba(200,41,59,0.08) !important;
   border-color: rgba(200,41,59,0.6) !important;
@@ -9488,18 +9462,8 @@ label {
   transition: all 0.2s ease !important;
 }
 
-.btn.primary {
-  background: linear-gradient(135deg, #1E4D8C, #2563A8) !important;
-  border-color: rgba(30,77,140,0.5) !important;
-  box-shadow: 0 2px 8px rgba(30,77,140,0.15) !important;
-  color: #fff !important;
-}
-
-.btn.primary:hover {
-  background: linear-gradient(135deg, #2563A8, #3B82F6) !important;
-  box-shadow: 0 4px 20px rgba(30,77,140,0.35) !important;
-  transform: translateY(-1px) !important;
-}
+/* 23.10.2026 (D-343): третий (последний) набор правил primary УДАЛЁН.
+   Цвет primary задаётся в buttons-system.css — тёмная тема золото, светлая синий. */
 
 .btn.red:not(#btnLogout):hover,
 .btn.danger:hover {
@@ -10183,8 +10147,8 @@ html[data-theme="light"] .chat-header {
 }
 
 .call-popup-btn--transfer:hover {
-  background: var(--blue);
-  color: #fff;
+  background: var(--bsys-primary-2);
+  color: var(--bsys-primary-ink);
 }
 
 .call-popup-btn--reject {
@@ -10195,8 +10159,8 @@ html[data-theme="light"] .chat-header {
 }
 
 .call-popup-btn--reject:hover {
-  background: var(--red);
-  color: #fff;
+  background: var(--bsys-danger-2);
+  color: var(--bsys-danger-ink);
 }
 
 /* Transfer menu inside popup */

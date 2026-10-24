@@ -73,101 +73,21 @@ html[data-theme="light"] :is(.modal-content, .cr-m, .cr-d, .cr-cf, .search-modal
   box-shadow: 0 2px 6px rgba(16,24,40,0.08), 0 24px 60px rgba(16,24,40,0.18), var(--glass-edge) !important;
 }
 
-/* ── 90-G. Кнопки: убираем «дешёвый» градиент, делаем матовое стекло ────── */
-/* Виновник был .btn.ghost::after с linear-gradient(blue → gold). */
-html[data-theme="light"] .btn.ghost::after {
+/* ── 90-G. Кнопки ─────────────────────────────────────────────────────────
+   23.10.2026 (D-343): блок переписан. Раньше здесь был ТРЕТИЙ независимый
+   набор стилей кнопок (после light-theme.css), и три файла переопределяли
+   друг друга через !important. Теперь цвет и состояния кнопок задаёт
+   `buttons-system.css`; здесь остались только гашение старых псевдоэлементов
+   и фокус — то есть то, что не является «цветом действия». */
+html[data-theme="light"] .btn.ghost::after,
+html[data-theme="light"] .btn::before,
+html[data-theme="light"] .btn::after {
   content: none !important;
   display: none !important;
 }
-html[data-theme="light"] .btn::before {
-  content: none !important;
-  display: none !important;
-}
-html[data-theme="light"] .btn {
-  background: color-mix(in srgb, #FFFFFF 82%, transparent) !important;
-  -webkit-backdrop-filter: blur(10px) saturate(1.2);
-  backdrop-filter: blur(10px) saturate(1.2);
-  border: 1px solid var(--glass-brd) !important;
-  color: var(--t1) !important;
-  box-shadow: 0 1px 2px rgba(16,24,40,0.05), inset 0 1px 0 rgba(255,255,255,0.9) !important;
-  transition: background 0.16s ease, border-color 0.16s ease, box-shadow 0.16s ease, transform 0.16s ease;
-}
-html[data-theme="light"] .btn:hover {
-  background: color-mix(in srgb, #FFFFFF 94%, transparent) !important;
-  border-color: color-mix(in srgb, #0F172A 16%, transparent) !important;
-  box-shadow: 0 2px 6px rgba(16,24,40,0.08), inset 0 1px 0 rgba(255,255,255,0.95) !important;
-  transform: translateY(-1px);
-}
-html[data-theme="light"] .btn:active { transform: translateY(0) scale(0.985); }
 html[data-theme="light"] .btn:focus-visible {
-  outline: 2px solid var(--blue);
-  outline-offset: 2px;
-}
-
-/* Ghost — самый лёгкий: только текст и волосяная рамка */
-html[data-theme="light"] .btn.ghost {
-  background: transparent !important;
-  border: 1px solid var(--glass-brd) !important;
-  color: var(--t2) !important;
-  box-shadow: none !important;
-  -webkit-backdrop-filter: none;
-  backdrop-filter: none;
-}
-html[data-theme="light"] .btn.ghost:hover {
-  background: color-mix(in srgb, #FFFFFF 72%, transparent) !important;
-  border-color: color-mix(in srgb, var(--blue) 26%, transparent) !important;
-  color: var(--blue) !important;
-  box-shadow: 0 2px 8px rgba(16,24,40,0.07) !important;
-}
-
-/* Primary / gold / red — сплошные, без градиента, с честной тенью */
-html[data-theme="light"] .btn.primary,
-html[data-theme="light"] .btn.blue {
-  background: var(--blue) !important;
-  border: 1px solid color-mix(in srgb, var(--blue) 78%, #000 22%) !important;
-  color: #fff !important;
-  box-shadow: 0 1px 2px rgba(29,78,216,0.24), 0 6px 16px rgba(29,78,216,0.20) !important;
-  -webkit-backdrop-filter: none;
-  backdrop-filter: none;
-}
-html[data-theme="light"] .btn.primary:hover,
-html[data-theme="light"] .btn.blue:hover {
-  background: var(--blue-h) !important;
-  box-shadow: 0 2px 4px rgba(29,78,216,0.26), 0 10px 24px rgba(29,78,216,0.24) !important;
-}
-html[data-theme="light"] .btn.gold {
-  background: var(--gold) !important;
-  border: 1px solid color-mix(in srgb, var(--gold) 78%, #000 22%) !important;
-  color: #fff !important;
-  box-shadow: 0 1px 2px rgba(142,98,18,0.24), 0 6px 16px rgba(142,98,18,0.20) !important;
-  -webkit-backdrop-filter: none;
-  backdrop-filter: none;
-}
-html[data-theme="light"] .btn.gold:hover {
-  background: var(--gold-h) !important;
-  box-shadow: 0 2px 4px rgba(142,98,18,0.26), 0 10px 24px rgba(142,98,18,0.24) !important;
-}
-html[data-theme="light"] .btn.red:not(#btnLogout),
-html[data-theme="light"] .btn.danger {
-  background: var(--red) !important;
-  border: 1px solid color-mix(in srgb, var(--red) 78%, #000 22%) !important;
-  color: #fff !important;
-  box-shadow: 0 1px 2px rgba(196,30,49,0.24), 0 6px 16px rgba(196,30,49,0.20) !important;
-  -webkit-backdrop-filter: none;
-  backdrop-filter: none;
-}
-html[data-theme="light"] .btn.red:not(#btnLogout):hover,
-html[data-theme="light"] .btn.danger:hover {
-  background: var(--red-h) !important;
-  box-shadow: 0 2px 4px rgba(196,30,49,0.26), 0 10px 24px rgba(196,30,49,0.24) !important;
-}
-html[data-theme="light"] .btn.green,
-html[data-theme="light"] .btn.success {
-  background: var(--ok) !important;
-  border: 1px solid color-mix(in srgb, var(--ok) 78%, #000 22%) !important;
-  color: #fff !important;
-  -webkit-backdrop-filter: none;
-  backdrop-filter: none;
+  outline: none !important;
+  box-shadow: var(--bsys-focus) !important;
 }
 
 /* ── 90-H. Иконки: контраст вместо бледности ────────────────────────────── */

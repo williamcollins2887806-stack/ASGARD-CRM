@@ -387,21 +387,116 @@ function _flattenCalcToItems(recomputed) {
   pushFlat(calc.transport, 'рейс');
   pushFlat(calc.chemistry, 'л');
 
-  // Виртуальные строки — чтобы UI считал cost совпадающий с total_cost.
+  // Внутренние статьи (ФОТ-налог, накладные, расходные, непредвиденные) раньше
+  // добавлялись прямо в items — и попадали в ТКП заказчику. Это наша
+  // себестоимость (D-304). Оставляем их только в служебном расчёте:
+  //   __internal_items  — полный состав с себестоимостью (для аналитики/маржи)
+  //   items             — только работы/материалы (без налогов и накладных)
+  const internalItems = [];
   if (totals.fot_tax > 0) {
-    items.push({ name: `ФОТ-налог (${recomputed.settings?.fot_tax_pct || 55}%)`, unit: 'усл.', qty: 1, price: Math.round(totals.fot_tax), total: Math.round(totals.fot_tax) });
+    internalItems.push({ name: `ФОТ-налог (${recomputed.settings?.fot_tax_pct || 55}%)`, unit: 'усл.', qty: 1, price: Math.round(totals.fot_tax), total: Math.round(totals.fot_tax) });
   }
   if (totals.overhead > 0) {
-    items.push({ name: `Накладные (${recomputed.settings?.overhead_pct || 15}%)`, unit: 'усл.', qty: 1, price: Math.round(totals.overhead), total: Math.round(totals.overhead) });
+    internalItems.push({ name: `Накладные (${recomputed.settings?.overhead_pct || 15}%)`, unit: 'усл.', qty: 1, price: Math.round(totals.overhead), total: Math.round(totals.overhead) });
   }
   if (totals.consumables > 0) {
-    items.push({ name: `Расходные (${recomputed.settings?.consumables_pct || 3}%)`, unit: 'усл.', qty: 1, price: Math.round(totals.consumables), total: Math.round(totals.consumables) });
+    internalItems.push({ name: `Расходные (${recomputed.settings?.consumables_pct || 3}%)`, unit: 'усл.', qty: 1, price: Math.round(totals.consumables), total: Math.round(totals.consumables) });
   }
   if (totals.contingency_amount > 0) {
-    items.push({ name: `Непредвиденные (${totals.contingency_pct || 12}%)`, unit: 'усл.', qty: 1, price: Math.round(totals.contingency_amount), total: Math.round(totals.contingency_amount) });
+    internalItems.push({ name: `Непредвиденные (${totals.contingency_pct || 12}%)`, unit: 'усл.', qty: 1, price: Math.round(totals.contingency_amount), total: Math.round(totals.contingency_amount) });
   }
 
+  items.__internal = internalItems;
   return items;
+}
+
+/**
+ * D-304: позиции ТКП ДЛЯ ЗАКАЗЧИКА — с наценкой, без внутренних статей.
+ *
+ * Раньше в ТКП уходил `draft.items` как есть: ФОТ-налог 55%, накладные,
+ * пайковые, билеты, «Подготовка на складе». Заказчик видел нашу себестоимость,
+ * а сумма строк не совпадала с итогом (итог = себестоимость × наценка).
+ *
+ * Теперь:
+ *   1. Видимые позиции (люди, оборудование, химия) — с наценкой.
+ *   2. Все внутренние статьи (ФОТ-налог, накладные, логистика, проживание,
+ *      пайковые) сворачиваются в ОДНУ нейтральную строку
+ *      «Материально-техническое обеспечение» без расшифровки.
+ *   3. Сумма строк ВСЕГДА равна цене КП без НДС — иначе таблица не сходится
+ *      с итогом, и это выглядит как ошибка.
+ *
+ * @param {object} draft  estimate_draft из сессии
+ * @returns {Array} позиции для tkp.items.items
+ */
+function buildClientItems(draft) {
+  const items = Array.isArray(draft && draft.items) ? draft.items : [];
+  const totals = (draft && draft.totals) || {};
+
+  // Цена КП без НДС — эталон, к которому обязана сойтись таблица.
+  const targetNoVat = Number(totals.price_no_vat) || 0;
+
+  // Наценка нужна только если price_no_vat неизвестен (старые черновики).
+  const markup =
+    Number(draft && draft.totals && draft.totals.markup_multiplier) ||
+    Number(draft && draft.params && draft.params.markup) ||
+    2.2;
+
+  // Служебные строки, которые нельзя показывать клиенту построчно.
+  const INTERNAL_RE = /(ФОТ[-\s]?налог|накладн|непредвиден|расходн(ые|ых)\s*[\(%]|пайков|проживан|билет|такси|подготовка на складе|дни дороги|доставка оборудования|командировоч|суточн)/i;
+
+  const visible = items.filter((i) => i && i.name && !INTERNAL_RE.test(String(i.name)));
+  const hiddenCost = items
+    .filter((i) => i && i.name && INTERNAL_RE.test(String(i.name)))
+    .reduce((s, i) => s + (Number(i.total) || 0), 0);
+
+  // 1. Видимые позиции с наценкой.
+  const result = visible.map((i) => {
+    const qty = Number(i.qty) || 0;
+    const unitCost = Number(i.price) || 0;
+    const clientPrice = Math.round(unitCost * markup);
+    return {
+      id: i.id,
+      code: i.code || '',
+      name: i.name,
+      unit: i.unit || '',
+      qty,
+      price: clientPrice,
+      total: Math.round(clientPrice * qty),
+      section: i.section || '',
+    };
+  });
+
+  // Если цены КП нет — возвращаем как есть (наценка по умолчанию).
+  if (!(targetNoVat > 0)) return result;
+
+  // 2. Подгоняем сумму строк ровно под цену КП.
+  const visibleSum = result.reduce((s, i) => s + (Number(i.total) || 0), 0);
+  const rest = Math.round(targetNoVat - visibleSum);
+
+  if (Math.abs(rest) >= 1) {
+    // Остаток = внутренние статьи + разница наценки материалов.
+    // Показываем ОДНОЙ нейтральной строкой (без расшифровки затрат).
+    const already = result.find((i) => i.name === 'Материально-техническое обеспечение');
+    if (already) {
+      already.total = Math.round(already.total + rest);
+      already.price = already.total;
+    } else {
+      result.push({
+        id: 'mto',
+        code: '',
+        name: 'Материально-техническое обеспечение',
+        unit: 'компл.',
+        qty: 1,
+        price: rest,
+        total: rest,
+        section: '',
+      });
+    }
+  }
+
+  // Служебная ссылка для диагностики (в PDF не выводится).
+  void hiddenCost;
+  return result;
 }
 
 /**
@@ -768,7 +863,11 @@ async function generateEstimate(opts) {
   const aiHb = setInterval(tickAi, 8000);
   let aiCall;
   try {
-    aiCall = await mimirAutoEstimate.callMimirForEstimate(aiProvider, ctx, dialogMessage);
+    // D-303: пробрасываем onReasoning, чтобы в UI шли РЕАЛЬНЫЕ рассуждения модели.
+    aiCall = await mimirAutoEstimate.callMimirForEstimate(aiProvider, ctx, dialogMessage, {
+      stream: true,
+      onReasoning: typeof opts.onReasoning === 'function' ? opts.onReasoning : null
+    });
   } finally {
     clearInterval(aiHb);
   }
@@ -1158,5 +1257,7 @@ module.exports = {
   // 21.06.2026: preview + save
   generatePreviewBuffers,
   saveDocsToCard,
-  _xlsxFromEstimateDraft
+  _xlsxFromEstimateDraft,
+  // D-304: позиции ТКП для заказчика (с наценкой, без внутренних статей).
+  buildClientItems
 };

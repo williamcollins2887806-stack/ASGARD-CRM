@@ -243,8 +243,11 @@ window.AsgardMimir = (function(){
       .mimir-sidebar-header { padding:12px; border-bottom:1px solid rgba(245,215,142,0.08); }
       .mimir-sidebar-new {
         width:100%; padding:10px; border-radius:10px;
-        background:linear-gradient(135deg, #c0392b, #8e2c22);
-        border:1px solid rgba(245,215,142,0.15); color:#f5d78e;
+        /* 23.10.2026 (D-343): было красно-бордовое (#c0392b→#8e2c22) с золотым
+           текстом #f5d78e — единственная такая кнопка в CRM и худший случай
+           «цветного шума». Теперь цвет из единой системы кнопок. */
+        background:linear-gradient(180deg, var(--bsys-primary-1), var(--bsys-primary-2));
+        border:1px solid var(--bsys-primary-brd); color:var(--bsys-primary-ink);
         cursor:pointer; font-weight:600; font-size:13px; transition:all 0.2s;
       }
       .mimir-sidebar-new:hover { transform:scale(1.02); }

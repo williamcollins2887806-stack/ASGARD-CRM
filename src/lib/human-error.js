@@ -266,6 +266,82 @@ const CODE_HINTS = {
     message: 'Недостаточно прав для этого действия.',
     hint: 'Обратитесь к администратору, чтобы получить доступ.',
   },
+
+  // ── Канбан и переходы карт (найдено 23.10.2026) ──────────────────────
+  // До этого все они отдавались как общий `bad_request`: пользователь видел
+  // «Не получилось: bad_request» и не понимал, что произошло.
+  tkp_required: {
+    message: 'Без ТКП карту нельзя отправить на согласование.',
+    hint: 'Создайте ТКП в разделе «ТКП клиенту» или заполните плановую с/с и цену КП в блоке «Финансы» — тогда переход станет доступен.',
+  },
+  transition_not_allowed: {
+    message: 'Такой переход недоступен для этого типа карты.',
+    hint: 'Верните карту в её колонку. В работу тендер переходит автоматически при выигрыше (создаётся работа).',
+  },
+  card_closed: {
+    message: 'Карта уже закрыта — перемещать её нельзя.',
+    hint: 'Закрытая карта остаётся в архиве. Для новой работы создайте отдельную карту.',
+  },
+  version_conflict: {
+    message: 'Карту уже изменили в другой вкладке или другим сотрудником.',
+    hint: 'Доска обновится автоматически — повторите переход на актуальной версии.',
+  },
+  confirm_required: {
+    message: 'Переход между колонками требует подтверждения.',
+    hint: 'Подтвердите переход в появившемся диалоге.',
+  },
+  confirm_required_cross: {
+    message: 'Переход между основными статусами требует подтверждения.',
+    hint: 'Подтвердите переход в появившемся диалоге.',
+  },
+  not_found: {
+    message: 'Запись не найдена — возможно, её удалили.',
+    hint: 'Обновите страницу. Если запись нужна — создайте её заново.',
+  },
+  invalid_to_v3_column: {
+    message: 'Такого этапа на доске нет.',
+    hint: 'Обновите страницу (F5) — возможно, вы работаете в старой версии.',
+  },
+  invalid_flow_type: {
+    message: 'Неизвестный тип карты.',
+    hint: 'Обновите страницу (F5) и повторите действие.',
+  },
+  application_not_found: {
+    message: 'Исходная заявка не найдена — конвертировать нечего.',
+    hint: 'Обновите доску. Если заявку удалили, создайте карту заново.',
+  },
+  pre_tender_exists: {
+    message: 'По этой заявке пре-тендер уже создан.',
+    hint: 'Найдите его в колонке «Новые» — второй раз конвертировать не нужно.',
+  },
+  has_cards: {
+    message: 'В подэтапе есть карты — удалить его нельзя.',
+    hint: 'Сначала перенесите карты в другой подэтап, затем удаляйте.',
+  },
+  already_owns: {
+    message: 'Эта карта уже у этого сотрудника.',
+    hint: 'Передача не требуется — карта уже в его работе.',
+  },
+  recipient_limit_reached: {
+    message: 'У сотрудника достигнут лимит карт.',
+    hint: 'Передайте карту другому РП или дождитесь, пока он закроет часть своих.',
+  },
+  self_transfer_forbidden: {
+    message: 'Нельзя передать карту самому себе.',
+    hint: 'Выберите другого сотрудника.',
+  },
+  to_user_not_pm: {
+    message: 'Передать карту можно только РП или главе РП.',
+    hint: 'Выберите сотрудника с ролью РП.',
+  },
+  entity_not_editable: {
+    message: 'Поля этой карты нельзя редактировать.',
+    hint: 'Данные меняются в исходном разделе (заявка, тендер или работа).',
+  },
+  wrong_status_for_edit: {
+    message: 'На этом этапе поля карты заблокированы.',
+    hint: 'Дождитесь перехода на следующий этап или верните карту назад.',
+  },
 };
 
 /** Подсказка по HTTP-статусу, когда конкретный код неизвестен. */
@@ -383,15 +459,24 @@ function ensureHumanFields(body, statusCode) {
   // ── error: не оставляем англ./технотекст наружу ────────────────────────
   // D-313: машинные коды (`unauthorized`) уже заменены выше на русский текст.
   // Здесь добиваем оставшийся англо-технотекст (PG-ошибки, `Bad Request`).
+  // ⚠️ 23.10.2026: машинный код ручки (`tkp_required`, `version_conflict`,
+  // `not_found` …) — это ПРОТОКОЛ, а не технотекст. Раньше он попадал под
+  // looksTechnical() и затирался на общий `bad_request`, из-за чего клиент
+  // не мог обработать ситуацию, а пользователь видел «Не получилось:
+  // bad_request» без единого понятного слова. Такой код сохраняем как есть:
+  // человеческий текст живёт в `message`, а код — в `error`/`code`.
   if (typeof body.error === 'string' && body.error && looksTechnical(body.error)) {
-    const std = {
-      'Bad Request': 'bad_request', 'Forbidden': 'forbidden', 'Unauthorized': 'unauthorized',
-      'Not Found': 'not_found', 'Conflict': 'conflict', 'Too Many Requests': 'rate_limited',
-      'Unsupported Media Type': 'unsupported_media_type', 'Precondition Failed': 'precondition_failed',
-      'Not Acceptable': 'not_acceptable', 'Gone': 'gone', 'Internal Server Error': 'server_error',
-    }[body.error];
-    body.error = std || (statusCode >= 500 ? 'server_error' : 'bad_request');
-    changed = true;
+    const isProtocolCode = /^[a-z][a-z0-9_]*$/.test(body.error) && body.error.length > 3;
+    if (!isProtocolCode) {
+      const std = {
+        'Bad Request': 'bad_request', 'Forbidden': 'forbidden', 'Unauthorized': 'unauthorized',
+        'Not Found': 'not_found', 'Conflict': 'conflict', 'Too Many Requests': 'rate_limited',
+        'Unsupported Media Type': 'unsupported_media_type', 'Precondition Failed': 'precondition_failed',
+        'Not Acceptable': 'not_acceptable', 'Gone': 'gone', 'Internal Server Error': 'server_error',
+      }[body.error];
+      body.error = std || (statusCode >= 500 ? 'server_error' : 'bad_request');
+      changed = true;
+    }
   }
 
   // ── hint: обязателен ──────────────────────────────────────────────────

@@ -543,13 +543,13 @@ button.ph-dial-call,
   display: flex;
   align-items: center;
   justify-content: center;
-  background: linear-gradient(165deg, #F5C542 0%, #E5A820 55%, #C8892E 100%) !important;
-  color: #1a1205 !important;
-  border: none !important;
+  /* 23.10.2026 (D-343): свой золотой градиент убран — цвет берётся из
+     единой системы кнопок. Здесь только крупный размер (48px), потому что
+     кнопка набора должна быть удобной мишенью. */
   font-weight: 700 !important;
-  box-shadow:
-    0 8px 24px color-mix(in srgb, #E5A820 40%, transparent),
-    0 0 28px color-mix(in srgb, #F5C542 22%, transparent) !important;
+}
+.ph-dial-call:hover {
+  transform: translateY(-1px);
 }
 .cr-m:has(.ph-dial-grid) .cr-m__body,
 .cr-m:has(#phDialCall) .cr-m__body,
@@ -562,10 +562,8 @@ button.ph-dial-call,
 }
 #phDialCall:hover,
 .ph-dial-call:hover {
-  filter: brightness(1.06);
-  box-shadow:
-    0 12px 32px color-mix(in srgb, #E5A820 50%, transparent),
-    0 0 40px color-mix(in srgb, #F5C542 32%, transparent) !important;
+  /* 23.10.2026 (D-343): золотое свечение убрано — тень/цвет даёт система кнопок. */
+  transform: translateY(-1px);
 }
 
 /* Gallery helpers */
@@ -810,11 +808,8 @@ button#phTransferGo.btn.primary {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: linear-gradient(180deg, var(--gold-l, #E8C35A), var(--gold, #D4A843)) !important;
-  color: #1a1205 !important;
-  border: none !important;
+  /* 23.10.2026 (D-343): цвет из единой системы кнопок, здесь только крупный размер. */
   font-weight: 700 !important;
-  box-shadow: 0 6px 16px color-mix(in srgb, var(--gold, #D4A843) 18%, transparent) !important;
 }
 .cr-m:has(.ph-tr-list) .cr-m__body,
 .cr-m:has(#phTransferGo) .cr-m__body {
@@ -1244,11 +1239,11 @@ body.theme-dark .ph-seg__btn.is-active {
 .ph-dp-btn:hover:not(:disabled) { background: var(--hg-press, var(--bg3)); }
 .ph-dp-btn:disabled { opacity: 0.45; cursor: not-allowed; }
 .ph-dp-btn--primary {
-  background: var(--hg-accent, var(--gold));
+  background: var(--bsys-primary-hover);
   border-color: transparent;
   color: var(--hg-bg, var(--bg1));
 }
-.ph-dp-btn--primary:hover:not(:disabled) { background: var(--hg-accent, var(--gold)); filter: brightness(1.07); }
+.ph-dp-btn--primary:hover:not(:disabled) { background: var(--bsys-primary-hover); filter: brightness(1.07); }
 .ph-dp-btn--ghost { background: transparent; }
 .ph-dp-link {
   border: 0;

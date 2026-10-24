@@ -63,6 +63,22 @@ export default function MobileDiagnostics() {
       vvPageTop: vv ? Math.round(vv.pageTop * 100) / 100 : null,
       safeTop: probe('env(safe-area-inset-top, 0px)'),
       safeBottom: probe('env(safe-area-inset-bottom, 0px)'),
+      // Единицы вьюпорта: dvh = видимая область, lvh = физический экран.
+      // Их расхождение — корень «полосы» под тап-баром (D-341).
+      dvh: probe('100dvh'),
+      lvh: probe('100lvh'),
+      svh: probe('100svh'),
+      appGap: root.getPropertyValue('--app-gap').trim() || '(нет)',
+      tabbarLift: root.getPropertyValue('--tabbar-lift').trim() || '(нет)',
+      // Реальная геометрия бара: если navBottom меньше screen.height — снизу
+      // полоса, и бар не дошёл до физического низа (это и есть D-341).
+      stripPixel: (() => {
+        const h = window.innerHeight;
+        const el = document.elementFromPoint(Math.round(window.innerWidth / 2), h - 2);
+        if (!el) return 'за пределами страницы';
+        const cs = getComputedStyle(el);
+        return `${cs.backgroundColor} (${el.tagName.toLowerCase()})`;
+      })(),
       cssSafeBottom: root.getPropertyValue('--safe-bottom').trim(),
       tabbarTotal: root.getPropertyValue('--tabbar-total').trim(),
       tabbarHeight: root.getPropertyValue('--tabbar-height').trim(),
@@ -146,6 +162,15 @@ export default function MobileDiagnostics() {
       <Row k="vv.offsetTop" v={data.vvOffsetTop} />
       <Row k="screen.height" v={data.screenH} />
       <Row k="dpr" v={data.dpr} />
+      <div style={{ height: 6 }} />
+      {/* Ключевое для «полосы»: если lvh > dvh — приложение короче экрана. */}
+      <Row k="100dvh (видимая)" v={data.dvh} warn={data.lvh > data.dvh} />
+      <Row k="100lvh (экран)" v={data.lvh} warn={data.lvh > data.dvh} />
+      <Row k="100svh" v={data.svh} />
+      <Row k="РАЗНИЦА lvh − dvh" v={(data.lvh - data.dvh).toFixed(1) + ' px'} warn={data.lvh - data.dvh > 1} />
+      <Row k="--app-gap" v={data.appGap} />
+      <Row k="--tabbar-lift" v={data.tabbarLift} warn={!/calc/.test(String(data.tabbarLift))} />
+      <Row k="цвет под баром" v={data.stripPixel} warn={/за пределами/.test(String(data.stripPixel))} />
       <div style={{ height: 6 }} />
       <Row k="env(safe-bottom)" v={data.safeBottom} />
       <Row k="--safe-bottom" v={data.cssSafeBottom} />

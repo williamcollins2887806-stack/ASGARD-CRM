@@ -30,6 +30,8 @@ import CallAnalyticsWidget from './CallAnalyticsWidget';
 import ExpenseWalletWidget from './ExpenseWalletWidget';
 import AcademyWidget from './AcademyWidget';
 import DirectorApprovalsWidget from './DirectorApprovalsWidget';
+// D-341: виджет существовал, но не был зарегистрирован — на главной не появлялся.
+import DirectorTenderApprovalsWidget from './DirectorTenderApprovalsWidget';
 import DirectorQueuesWidget from './DirectorQueuesWidget';
 import ToExecuteWidget from './ToExecuteWidget';
 
@@ -67,6 +69,9 @@ export const WIDGET_REGISTRY = {
   expense_wallet:   { component: ExpenseWalletWidget,   name: 'Кошелёк проекта',       icon: '💰', size: 'normal', roles: ['PM','HEAD_PM'] },
   academy:          { component: AcademyWidget,         name: 'Залы Асгарда',           icon: '🏛️', size: 'normal', roles: ['*'] },
   director_approvals:{ component: DirectorApprovalsWidget, name: 'Согласование кассы',   icon: '📋', size: 'normal', roles: ['DIRECTOR_COMM','DIRECTOR_GEN','DIRECTOR_DEV','ADMIN'], hero: true },
+  // D-341: страница согласования тендеров была недостижима без прямого URL,
+  // хотя виджет для неё уже существовал. Регистрируем — теперь виден на главной.
+  director_tender_approvals: { component: DirectorTenderApprovalsWidget, name: 'Согласование тендеров', icon: '✅', size: 'normal', roles: ['DIRECTOR_COMM','DIRECTOR_GEN','DIRECTOR_DEV','ADMIN'] },
   // 17.10.2026 (заказчик): ЕДИНЫЙ виджет согласований — счета + выплаты + касса
   // в одном месте, каждая строка ведёт на свою вкладку экрана согласований.
   director_queues:  { component: DirectorQueuesWidget,   name: 'Согласования',          icon: '✍️', size: 'wide',   roles: ['DIRECTOR_COMM','DIRECTOR_GEN','DIRECTOR_DEV','ADMIN'], hero: true },
@@ -83,7 +88,7 @@ export const DEFAULT_LAYOUTS = {
   // («погорячился, когда сказал что директору закрываем все вкладки»).
   // Первыми идут ЕДИНЫЙ виджет согласований и «К исполнению» — это главные
   // экраны директора; остальное (финансы/почта/уведомления) — как раньше.
-  ADMIN:          ['director_queues','to_execute','welcome','academy','cash_balance','money_summary','my_mail','notifications'],
+  ADMIN:          ['director_queues','director_tender_approvals','to_execute','welcome','academy','cash_balance','money_summary','my_mail','notifications'],
   CHIEF_ENGINEER: ['welcome','academy','equipment_value','equipment_alerts','my_mail','notifications'],
   HR:             ['welcome','academy','permits_expiry','birthdays','my_mail','notifications','calendar'],
   BUH:            ['welcome','telephony_status','academy','cash_balance','bank_summary','money_summary','my_mail','notifications'],

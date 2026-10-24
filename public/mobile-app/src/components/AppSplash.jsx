@@ -145,23 +145,31 @@ export function AppSplash({ ready = false }) {
       onPointerCancel={() => setPressed(false)}
       style={{
         position: 'fixed', inset: 0, zIndex: 20000,
+        /**
+         * D-341 (переделано 23.10.2026): заставка накрывает ФИЗИЧЕСКИЙ экран.
+         *
+         * `inset: 0` давал высоту коробки (845), а не экрана (896): снизу
+         * оставалась незакрытая полоса, а `justifyContent: center` центрировал
+         * содержимое в короткой коробке — при самопочинке вьюпорта контент
+         * уезжал вверх-вниз, отсюда «прыжки» заставки.
+         *
+         * `--app-gap` = `100lvh − 100dvh` (разница коробки и экрана). Растягиваем
+         * слой вверх на эту величину: высота = коробка + дефицит = физический
+         * экран, а центр содержимого приходится на центр ЭКРАНА. Поэтому при
+         * смене высоты коробки центр не смещается и заставка не дёргается.
+         */
+        top: 'calc(-1 * var(--app-gap, 0px))',
+        bottom: 'calc(-1 * var(--app-gap, 0px))',
         display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-        // Светлая и тёмная сцены. Раньше фон был ТОЛЬКО тёмный, и в светлой теме
-        // заставка выглядела чужеродно (жалоба 22.10.2026). Класс темы вешает
-        // themeStore на <html> (`.light`) ДО монтирования React, поэтому переменная
-        // уже верна на первом кадре.
         background: 'var(--splash-bg)',
         opacity: fading ? 0 : 1,
         transform: fading ? 'scale(1.04)' : 'scale(1)',
         transition: 'opacity 480ms cubic-bezier(0.4,0,0.2,1), transform 480ms cubic-bezier(0.4,0,0.2,1)',
         willChange: 'opacity, transform',
-        paddingTop: 'env(safe-area-inset-top, 0px)',
-        paddingBottom: 'env(safe-area-inset-bottom, 0px)',
+        /* Safe-area сюда НЕ добавляем: слой уже совпадает с физическим экраном,
+           поэтому чёлку и индикатор считаем от его краёв. */
         userSelect: 'none',
         WebkitTapHighlightColor: 'transparent',
-        // БЕЗ overflow:hidden и без height: элемент занимает ровно вьюпорт
-        // (position: fixed; inset: 0). Обрезка содержимого тут не нужна и мешала
-        // «прыжкам»: при смене высоты вьюпорта контент пересчитывался.
       }}
     >
       <style>{`
@@ -361,7 +369,8 @@ export function AppSplash({ ready = false }) {
       {/* ── ПРОГРЕСС: линия с золотым бегущим бликом ── */}
       <div style={{
         position: 'absolute', left: 0, right: 0,
-        bottom: 'calc(env(safe-area-inset-bottom, 0px) + 44px)',
+        // К физическому низу: сплэш накрывает экран, поэтому отсчёт от его края.
+        bottom: 44,
         display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 11,
         opacity: at(3) ? 1 : 0, transition: 'opacity 700ms ease-out',
       }}>
@@ -393,7 +402,7 @@ export function AppSplash({ ready = false }) {
       </div>
 
       <div style={{
-        position: 'absolute', bottom: 'calc(env(safe-area-inset-bottom, 0px) + 18px)',
+        position: 'absolute', bottom: 18,
         fontSize: 9.5, letterSpacing: 1.3, color: 'var(--splash-hint)',
         opacity: at(3) ? 1 : 0,
       }}>коснитесь, чтобы пропустить</div>

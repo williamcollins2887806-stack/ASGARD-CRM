@@ -46,7 +46,7 @@ export default function DirectorTenderApprovalsWidget() {
       loading={loading}
       badge={count || null}
       onClick={() => {
-        haptic?.selection?.();
+        haptic?.light?.();
         navigate('/director-tender-approvals');
       }}
     >

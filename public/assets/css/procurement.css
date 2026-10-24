@@ -468,20 +468,9 @@ button.proc-cover{cursor:pointer}
 .proc-file__name{font-size:12px;color:var(--t2)}
 .proc-file input[type=file]{position:absolute;width:1px;height:1px;opacity:0;overflow:hidden}
 
-/* premium-gold: единый primary для pay/proc */
-.proc-page .btn.primary,
-.proc-desk .btn.primary,
-.proc-pay-modal .btn.primary,
-.proc-pay-modal__actions .btn.primary,
-#inv-root .btn.primary,
-.pi-queue .btn.primary,
-.cr-m-body .proc-pay-modal .btn.primary {
-  background: var(--gold,#D4A843) !important;
-  border-color: var(--gold,#D4A843) !important;
-  color: #15110d !important;
-}
-.proc-deliver__btn--primary {
-  background: linear-gradient(135deg, var(--gold,#D4A843), #b8923a) !important;
-  color: #15110d !important;
-  box-shadow: 0 2px 8px rgba(201,168,76,.35);
-}
+/* 23.10.2026: блок «premium-gold: единый primary для pay/proc» УДАЛЁН.
+   Он красил primary-кнопки закупок в золото через !important, из-за чего
+   страница закупок выглядела иначе, чем остальная CRM. Цвет primary теперь
+   задаётся единой системой кнопок (D-343). */
+
+/* 23.10.2026: .proc-deliver__btn--primary (primary-кнопка модуля) — цвет из единой системы. */

@@ -237,8 +237,8 @@ window.AsgardWarehouseV2 = (function () {
     .wh2-search::before{content:'🔍';position:absolute;left:12px;top:50%;transform:translateY(-50%);opacity:.5;font-size:14px}
     .wh2-btn{padding:11px 16px;border-radius:11px;border:1px solid var(--border,#262c38);background:var(--bg-card,#161a22);color:var(--t1,#e6e9ef);font-size:13px;font-weight:600;cursor:pointer;transition:.15s;white-space:nowrap}
     .wh2-btn:hover{border-color:var(--gold,#D4A843)}
-    .wh2-btn--primary{background:var(--gold,#D4A843);color:#1a1408;border-color:var(--gold,#D4A843)}
-    .wh2-btn--primary:hover{filter:brightness(1.08)}
+    .wh2-btn--primary{background:linear-gradient(180deg,var(--bsys-primary-1),var(--bsys-primary-2));color:var(--bsys-primary-ink);border-color:var(--bsys-primary-brd)}
+    .wh2-btn--primary:hover{filter:brightness(1.07)}
     /* ── Витрина карточек (media-first) ── */
     .wh2-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:16px}
     .wh2-card{background:var(--bg-card,#161a22);border:1px solid transparent;border-radius:16px;padding:0;cursor:pointer;transition:transform .18s ease,box-shadow .18s ease,border-color .18s ease;display:flex;flex-direction:column;gap:0;animation:wh2in .3s ease both;position:relative;overflow:hidden;box-shadow:0 2px 10px rgba(0,0,0,.18)}
@@ -448,7 +448,7 @@ window.AsgardWarehouseV2 = (function () {
     /* ═══════════ MARKETPLACE UI 2.0 ═══════════ */
     /* Степпер «+ / −N+» (Ozon-стиль) */
     .wh2-stp{display:inline-flex;align-items:center;gap:0;height:34px;border-radius:10px;overflow:hidden;user-select:none;flex-shrink:0}
-    .wh2-stp--add{padding:0 14px;background:linear-gradient(135deg,#e7bd54,#D4A843);color:#1a1408;font-weight:800;font-size:13px;cursor:pointer;border:none;transition:.16s;box-shadow:0 2px 8px rgba(212,168,67,.25);white-space:nowrap}
+    .wh2-stp--add{padding:0 14px;background:linear-gradient(180deg,var(--bsys-primary-1),var(--bsys-primary-2));color:var(--bsys-primary-ink);font-weight:800;font-size:13px;cursor:pointer;border:none;e;transition:.16s;box-shadow:0 2px 8px rgba(212,168,67,.25);white-space:nowrap}
     .wh2-stp--add:hover{filter:brightness(1.07);transform:translateY(-1px);box-shadow:0 4px 14px rgba(212,168,67,.35)}
     .wh2-stp--add:active{transform:scale(.94)}
     .wh2-stp--qty{border:1.5px solid var(--gold,#D4A843);background:var(--bg2,#0f1217)}

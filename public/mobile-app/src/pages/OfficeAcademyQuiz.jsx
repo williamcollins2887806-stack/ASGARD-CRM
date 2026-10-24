@@ -48,7 +48,7 @@ function ResultScreen({ result, questions, answers, lessonId, navigate }) {
   const attemptsLeft = retry.attempts_left;
 
   return (
-    <div className="scroll-container" style={{ minHeight: '100dvh', maxHeight: '100dvh', overflowY: 'auto', background: C.bg, paddingBottom: 'calc(var(--tabbar-total) + 16px)' }}>
+    <div className="scroll-container" style={{ minHeight: '100dvh', maxHeight: '100dvh', overflowY: 'auto', background: C.bg, paddingBottom: 'calc(max(0px, var(--tabbar-total) + var(--tabbar-lift, 0px)) + 16px)' }}>
       {/* Hero */}
       <div style={{
         padding: 'calc(var(--safe-top) + 8px) 16px 24px', textAlign: 'center',
@@ -333,7 +333,7 @@ export default function OfficeAcademyQuiz() {
   const progressPct = questions.length > 0 ? ((currentQ + 1) / questions.length) * 100 : 0;
 
   return (
-    <div className="scroll-container" style={{ minHeight: '100dvh', maxHeight: '100dvh', overflowY: 'auto', background: C.bg, paddingBottom: 'calc(var(--tabbar-total) + 16px)' }}>
+    <div className="scroll-container" style={{ minHeight: '100dvh', maxHeight: '100dvh', overflowY: 'auto', background: C.bg, paddingBottom: 'calc(max(0px, var(--tabbar-total) + var(--tabbar-lift, 0px)) + 16px)' }}>
       {/* Header */}
       <div style={{
         padding: 'calc(var(--safe-top) + 8px) 16px 16px',

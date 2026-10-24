@@ -574,7 +574,7 @@ export default function OfficeLesson() {
   const canTakeQuiz = !needsReread && completed && readSeconds >= minReadSeconds;
 
   return (
-    <div className="scroll-container" style={{ minHeight: '100dvh', maxHeight: '100dvh', overflowY: 'auto', background: C.bg, paddingBottom: 'calc(var(--tabbar-total) + 16px)' }}>
+    <div className="scroll-container" style={{ minHeight: '100dvh', maxHeight: '100dvh', overflowY: 'auto', background: C.bg, paddingBottom: 'calc(max(0px, var(--tabbar-total) + var(--tabbar-lift, 0px)) + 16px)' }}>
       {/* Cover */}
       <div style={{
         background: `linear-gradient(180deg, ${lesson.cover_color || '#1e1e3a'} 0%, ${C.bg} 100%)`,

@@ -51,13 +51,9 @@ const OVERLAY_JOKES = [
   'Стой, куда! Карта закрывается только через ✕ 🛑',
 ];
 
-const FLOW_TABS = [
-  { id: 'all',         label: 'Все типы' },
-  { id: 'application', label: '📥 Заявки' },
-  { id: 'pre_tender',  label: '🗂 Пре-тендеры' },
-  { id: 'tender',      label: '📋 Тендеры' },
-  { id: 'work',        label: '🏗 Работы' },
-];
+// 23.10.2026: вкладки «Все типы / Заявки / Пре-тендеры / Тендеры / Работы» удалены.
+// «Все типы» дублировала полную доску, а остальные лишь скрывали карты других
+// типов — пользователь принимал это за пропажу данных. Доска всегда полная.
 // S-22: единицы объёма зависят от типа работ (мойка — м², сварка — стыки, и т.д.).
 const WORK_TYPES = [
   'Гидромеханическая очистка', 'Химическая промывка', 'Очистка АВО',
@@ -131,9 +127,10 @@ export default function BoardV3({ onSwitchToSubstages }) {
 
   const scope = useMemo(() => computeScopeFn(role, headToToggle), [role, headToToggle]);
 
-  // Для TO/HEAD_TO принудительно tender-flow (UI-форс — backend и так форсит, но прячем табы для согласованности).
-  const [flowFilterRaw, setFlowFilter] = useState('all');
-  const flowFilter = isToRole ? 'tender' : flowFilterRaw;
+  // 23.10.2026: фильтры по типам (flow) убраны из UI — доска всегда показывает
+  // все типы. Значение оставлено как константа: backend принимает flow_filter,
+  // а для TO/HEAD_TO он и так форсит тендеры.
+  const flowFilter = isToRole ? 'tender' : 'all';
 
   const [search, setSearch] = useState('');
   const [columns, setColumns] = useState({});
@@ -191,8 +188,29 @@ export default function BoardV3({ onSwitchToSubstages }) {
     /* eslint-disable-next-line */
   }, [flowFilter, scope]);
 
+  // 23.10.2026: переход объясняем по-русски. Раньше в toast уходило поле
+  // `error` — машинный код (`bad_request`, `transition_not_allowed`), из
+  // которого невозможно понять ни причину, ни что делать.
+  const TRANSITION_HINTS = {
+    transition_not_allowed: 'Для этого типа карты такой переход недоступен. Верните карту в её колонку или создайте работу из тендера.',
+    card_closed: 'Карта уже закрыта — переход невозможен.',
+    version_conflict: 'Карту успели изменить в другой вкладке. Обновляю доску — повторите переход.',
+    forbidden: 'Перемещать карту может только её владелец или руководитель.',
+    not_found: 'Карта не найдена — возможно, её удалили. Обновляю доску.',
+    invalid_to_v3_column: 'Такого этапа не существует. Обновите страницу.',
+    tkp_required: 'Сначала создайте ТКП или заполните финансы карты — тогда согласование станет доступно.',
+  };
+
   async function doTransition(cardId, toCol, opts = {}) {
-    const res = await v3Transition(cardId, toCol, opts.note, opts.confirm);
+    let res;
+    try {
+      res = await v3Transition(cardId, toCol, opts.note, opts.confirm);
+    } catch (e) {
+      // Сетевые/серверные сбои: показываем человеческий текст, а не «HTTP 500».
+      const body = e?.data || {};
+      toast.error(body.message || body.hint || e?.serverMsg || 'Не удалось переместить карту — повторите попытку.');
+      return;
+    }
     if (res && res.error === 'confirm_required') {
       if (window.confirm(res.message || 'Подтвердите переход')) {
         return doTransition(cardId, toCol, { ...opts, confirm: true });
@@ -200,7 +218,10 @@ export default function BoardV3({ onSwitchToSubstages }) {
       return;
     }
     if (res && res.error) {
-      toast.error(res.message || res.error);
+      const friendly = TRANSITION_HINTS[res.error];
+      const text = friendly || res.message || res.hint || 'Не удалось переместить карту — повторите попытку.';
+      toast.error(text);
+      if (res.error === 'version_conflict' || res.error === 'not_found') reload();
       return;
     }
     toast.success('Карта перемещена');
@@ -239,13 +260,7 @@ export default function BoardV3({ onSwitchToSubstages }) {
             >👑 Отдел</button>
           </div>
         )}
-        {/* S-21: для TO/HEAD_TO substages-режим не доступен — родитель передаёт undefined, прячем тогглер. */}
-        {onSwitchToSubstages && (
-          <div className="pk3-view-toggle">
-            <button onClick={onSwitchToSubstages}>📋 По под-этапам</button>
-            <button className="pk3-active">📊 По воронке</button>
-          </div>
-        )}
+        {/* S-21: для TO/HEAD_TO substages-режим недоступен — тогглер не рендерим. */}
         <input
           className="pk3-search-input"
           placeholder="🔍 поиск по клиенту, теме, ИНН…"
@@ -255,20 +270,7 @@ export default function BoardV3({ onSwitchToSubstages }) {
         <Btn variant="gold" onClick={() => open(<TenderEditorModal />, { size: 'wide' })}>＋ Создать вручную</Btn>
       </div>
 
-      {/* S-21: для TO/HEAD_TO flow-tabs скрыты (видят только tender). */}
-      {!isToRole && (
-        <div className="pk3-tabs-bar">
-          {FLOW_TABS.map(t => (
-            <div
-              key={t.id}
-              className={'pk3-tab' + (flowFilter === t.id ? ' pk3-active' : '')}
-              onClick={() => setFlowFilter(t.id)}
-            >
-              {t.label} <span className="pk3-cnt">{flowFilter === t.id ? (counts.total || 0) : '—'}</span>
-            </div>
-          ))}
-        </div>
-      )}
+      {/* 23.10.2026: табы по типам (flow) убраны — доска всегда полная. */}
 
       {/* S-31.1 F-6: глобальный banner «ничего не найдено» при активном поиске. */}
       {search && !loading && V3_COLUMNS.reduce(

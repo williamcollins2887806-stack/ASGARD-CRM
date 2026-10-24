@@ -3,6 +3,15 @@ export const ROLE_PERMISSIONS = {
   DIRECTOR_GEN:   ['*'],
   HEAD_PM:        ['dashboard', 'tasks', 'chat', 'tenders', 'approvals', 'finances', 'works', 'personnel', 'profile', 'settings', 'inbox', 'personal_kanban', 'marketplace'],
   PM:             ['dashboard', 'tasks', 'chat', 'tenders', 'works', 'finances', 'profile', 'settings', 'personal_kanban', 'marketplace'],
+  // D-369 (23.10.2026): TO и WAREHOUSE раньше не имели `finances`.
+  // ПЕРВАЯ попытка добавить им `finances` дала ЭСКАЛАЦИЮ ПРАВ (нашёл
+  // верификатор): под этой секцией 11 пунктов, включая /invoices и /acts —
+  // реестры счетов и актов заказчиков с суммами и ИНН. На десктопе у TO и
+  // склада эти разделы закрыты (app.js:294). Кладовщик видел 15,5 млн по АЗОТу.
+  //
+  // Поэтому `finances` НЕ добавляем. Страница «Мои заявки» живёт в секции
+  // `works`, которая у них уже есть, а доступ к ней дополнительно ограничен
+  // списком ролей в пункте меню и в ROUTE_SECTIONS.
   TO:             ['dashboard', 'tasks', 'chat', 'tenders', 'works', 'personnel', 'profile', 'settings', 'personal_kanban'],
   BUH:            ['dashboard', 'tasks', 'chat', 'tenders', 'approvals', 'finances', 'works', 'personnel', 'profile', 'settings'],
   DIRECTOR_DEV:   ['dashboard', 'tasks', 'chat', 'tenders', 'approvals', 'finances', 'works', 'personnel', 'profile', 'settings', 'inbox', 'personal_kanban'],
@@ -59,4 +68,9 @@ export const ROUTE_SECTIONS = {
   '/personal-kanban-config': 'personal_kanban',
   '/director-inbox':         'inbox',
   '/marketplace':            'marketplace',
+  // D-369 (23.10.2026): «Мои заявки». Секция `works`, а НЕ `finances`: под
+  // `finances` лежат /invoices и /acts (реестры счетов и актов заказчиков), и
+  // выдача этой секции TO/складу открыла бы им чужие деньги — эскалация прав,
+  // которой на десктопе нет. Конкретный маршрут ограничен списком ролей ниже.
+  '/my-requests':            'works',
 };

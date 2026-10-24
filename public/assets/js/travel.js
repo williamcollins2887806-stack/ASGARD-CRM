@@ -153,11 +153,11 @@ window.AsgardTravelPage = (function(){
           .tl-header { display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:16px; margin-bottom:20px; }
           .tl-tabs { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:16px; }
           .tl-tab {
-            padding:8px 16px; border-radius:8px; border:1px solid rgba(148,163,184,.2);
+            padding:8px 16px; border-radius:8px; border:1px solid var(--bsys-neutral-brd);
             background:var(--bg3); color:var(--t2); font-size:13px; font-weight:600; cursor:pointer;
             transition: all .2s ease;
           }
-          .tl-tab.active { background:var(--gold); color:#000; border-color:var(--gold); }
+          .tl-tab.active { background:var(--bsys-gold-fill); color:var(--bsys-gold-ink); border-color:var(--bsys-gold-fill); }
           .tl-tab .badge {
             display:inline-block; background:rgba(255,255,255,.25); border-radius:10px;
             padding:1px 7px; font-size:11px; margin-left:6px;
@@ -201,16 +201,19 @@ window.AsgardTravelPage = (function(){
           .tl-card-vat { font-size:10px; color:var(--ok); font-weight:600; }
           .tl-card-actions { display:flex; flex-direction:column; gap:6px; align-items:flex-end; }
           .tl-btn {
-            padding:6px 12px; border-radius:6px; border:1px solid rgba(148,163,184,.2);
+            padding:6px 12px; border-radius:6px; border:1px solid var(--bsys-neutral-brd);
             background:var(--bg3); color:var(--text); font-size:12px; cursor:pointer;
             white-space:nowrap; transition:all .15s;
           }
-          .tl-btn:hover { border-color:var(--gold); color:var(--gold); }
+          .tl-btn:hover { border-color:var(--bsys-primary-brd); color:var(--bsys-primary-1); }
+          /* 23.10.2026 (D-343): .tl-btn-send красился локальным зелёным градиентом,
+             из-за чего на одной странице было 47 ярко-зелёных кнопок — главный
+             источник цветового шума. Теперь это success-вариант единой системы. */
           .tl-btn-send {
-            background:linear-gradient(135deg,var(--ok),#1a7a50);
-            border-color:var(--ok); color:#fff;
+            background:linear-gradient(180deg,var(--bsys-success-1),var(--bsys-success-2)) !important;
+            border-color:var(--bsys-success-brd) !important; color:var(--bsys-success-ink) !important;
           }
-          .tl-btn-send:hover { opacity:.9; }
+          .tl-btn-send:hover { filter:brightness(1.07); }
           .tl-status-badge {
             display:inline-block; padding:2px 8px; border-radius:10px;
             font-size:10px; font-weight:700;

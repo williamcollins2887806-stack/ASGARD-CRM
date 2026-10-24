@@ -2260,7 +2260,12 @@ module.exports = async function (fastify) {
     const note = body.note ? String(body.note).slice(0, 2000) : null;
     const confirm = body.confirm === true;
     if (!toCol || !V3_COLUMNS.includes(toCol)) {
-      return reply.code(400).send({ error: 'invalid_to_v3_column', valid: V3_COLUMNS });
+      return reply.code(400).send({
+        error: 'invalid_to_v3_column',
+        message: 'Такого этапа на доске нет.',
+        hint: 'Обновите страницу (F5) — возможно, вы работаете в старой версии.',
+        valid: V3_COLUMNS
+      });
     }
 
     const client = await db.pool.connect();
@@ -2298,9 +2303,13 @@ module.exports = async function (fastify) {
       const mapped = v3ColumnToMainStatus(toCol, card.flow_type, card.current_main_status);
       if (mapped === undefined) {
         await client.query('ROLLBACK');
+        // 23.10.2026: текст БЕЗ технических `flow_type=… column=…` — пользователь
+        // видел их вместо объяснения. Что именно недопустимо, остаётся в полях
+        // flow_type/to_v3_column (для диагностики), а message — по-русски.
         return reply.code(409).send({
           error: 'transition_not_allowed',
-          message: `flow_type=${card.flow_type} → column=${toCol} недопустимо`,
+          message: 'Такой переход недоступен для этого типа карты. Верните карту в её колонку.',
+          hint: 'В работу тендер переходит автоматически при выигрыше — отдельная колонка «В работе» доступна только картам работ.',
           flow_type: card.flow_type, to_v3_column: toCol
         });
       }
@@ -2368,10 +2377,13 @@ module.exports = async function (fastify) {
       }
       if (currentCol !== toCol && !confirm) {
         await client.query('ROLLBACK');
+        // 23.10.2026: текст для человека. `confirm:true` — это имя поля в API,
+        // пользователю его показывать нельзя.
         return reply.code(409).send({
           error: 'confirm_required',
           code: 'cross_v3_column',
-          message: 'Переход между колонками требует confirm:true',
+          message: 'Переход между колонками требует подтверждения.',
+          hint: 'Подтвердите переход — карта переместится на выбранный этап.',
           from_v3_column: currentCol,
           to_v3_column: toCol
         });

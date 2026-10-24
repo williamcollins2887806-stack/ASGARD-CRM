@@ -2268,12 +2268,148 @@ module.exports = async function routesWithExtensions(fastify, options) {
   // POST /api/tkp/from-card/:cardId — создать ТКП из карты канбана + дефолтные блоки
   // body: { template_kind? }
   // ─────────────────────────────────────────────────────────────────────────────
+  // ═══════════════════════════════════════════════════════════════════
+  // POST /api/tkp/:id/autofill — D-308: ИИ дополняет ТКП по смете + заявке.
+  // Пользователь видит прогресс (SSE), а результат пишется в ЧЕРНОВИК —
+  // если его выкинет, при повторном открытии черновик уже заполнен.
+  // ═══════════════════════════════════════════════════════════════════
+  fastify.post('/:id/autofill', {
+    preHandler: [fastify.requireRoles(EDIT_ROLES)]
+  }, async (request, reply) => {
+    const tkpId = parseInt(request.params.id, 10);
+    if (!Number.isFinite(tkpId)) return reply.code(400).send({ error: 'bad_id' });
+
+    const hit = await db.query('SELECT * FROM tkp WHERE id = $1', [tkpId]);
+    const tkp = hit.rows[0];
+    if (!tkp) return reply.code(404).send({ error: 'tkp_not_found' });
+
+    const sendEvent = (data) => {
+      try { reply.raw.write(`data: ${JSON.stringify(data)}\n\n`); } catch (_) {}
+    };
+    reply.raw.writeHead(200, {
+      'Content-Type': 'text/event-stream; charset=utf-8',
+      'Cache-Control': 'no-cache, no-transform',
+      Connection: 'keep-alive',
+      'X-Accel-Buffering': 'no',
+    });
+    const keepalive = setInterval(() => { try { reply.raw.write(': ping\n\n'); } catch (_) {} }, 15000);
+
+    try {
+      sendEvent({ type: 'start', message: 'Собираю данные заявки и сметы…' });
+
+      // 1. Источник: заявка (контекст) + смета Мимира (позиции и суммы).
+      let pt = null;
+      if (tkp.pre_tender_id) {
+        const r = await db.query(
+          `SELECT work_title, work_description, customer_name, contact_person,
+                  contact_phone, work_deadline, ai_scope_items, ai_work_type
+           FROM pre_tender_requests WHERE id = $1`, [tkp.pre_tender_id]);
+        pt = r.rows[0] || null;
+      }
+
+      let estimate = null;
+      try {
+        const q = await db.query(
+          `SELECT estimate_draft FROM tkp_quick_sessions
+            WHERE estimate_draft IS NOT NULL
+              AND ( (pre_tender_id IS NOT NULL AND pre_tender_id = $1)
+                 OR (tender_id IS NOT NULL AND tender_id = $2) )
+            ORDER BY updated_at DESC NULLS LAST, id DESC LIMIT 1`,
+          [tkp.pre_tender_id || null, tkp.tender_id || null]);
+        if (q.rows[0]) {
+          estimate = typeof q.rows[0].estimate_draft === 'string'
+            ? JSON.parse(q.rows[0].estimate_draft) : q.rows[0].estimate_draft;
+        }
+      } catch (_) {}
+
+      sendEvent({ type: 'progress', message: estimate ? 'Смета найдена — формирую позиции…' : 'Сметы нет — работаю по заявке…' });
+
+      // 2. Позиции для клиента (наценка, без внутренних статей).
+      let mimirTkpQuick = null;
+      try { mimirTkpQuick = require('../services/mimir-tkp-quick'); } catch (_) {}
+      const clientItems = (estimate && mimirTkpQuick)
+        ? mimirTkpQuick.buildClientItems(estimate)
+        : [];
+
+      if (!clientItems.length) {
+        sendEvent({ type: 'warn', message: 'Смета не найдена — заполняю только шапку и сроки.' });
+      }
+
+      const subtotal = clientItems.reduce((s, i) => s + (Number(i.total) || 0), 0);
+      const vatPct = (estimate && Number(estimate.vat_pct)) || 20;
+
+      // 3. Пишем в ЧЕРНОВИК сразу — даже если пользователь закроет окно.
+      sendEvent({ type: 'progress', message: 'Сохраняю позиции в черновик…' });
+      if (clientItems.length) {
+        await db.query(
+          `UPDATE tkp SET items = $1::jsonb, total_sum = $2, updated_at = NOW() WHERE id = $3`,
+          [JSON.stringify({
+            items: clientItems, vat_pct: vatPct, subtotal,
+            total_with_vat: Math.round(subtotal * (1 + vatPct / 100)),
+          }), subtotal, tkpId]);
+      }
+
+      // 4. Блок «Смета» — актуализируем.
+      if (clientItems.length) {
+        try {
+          await db.query(
+            `UPDATE tkp_blocks SET block_data = $1::jsonb
+              WHERE tkp_id = $2 AND block_key = 'smeta'`,
+            [JSON.stringify({
+              items: clientItems, vat_pct: vatPct, subtotal,
+              total_with_vat: Math.round(subtotal * (1 + vatPct / 100)),
+            }), tkpId]);
+        } catch (_) {}
+      }
+
+      // 5. Даты/условия из заявки.
+      const patches = [];
+      if (pt && pt.work_deadline) patches.push('deadline = ' + `'${String(pt.work_deadline).slice(0, 10)}'`);
+      if (patches.length) {
+        try { await db.query(`UPDATE tkp SET ${patches.join(', ')}, updated_at = NOW() WHERE id = $1`, [tkpId]); } catch (_) {}
+      }
+
+      // 6. Сроки в блоке расписания.
+      if (estimate && estimate.work_days) {
+        try {
+          await db.query(
+            `UPDATE tkp_blocks SET block_data = $1::jsonb
+              WHERE tkp_id = $2 AND block_key = 'schedule'`,
+            [JSON.stringify({
+              start_date: new Date().toISOString().slice(0, 10),
+              end_date: new Date(Date.now() + (Number(estimate.work_days) || 0) * 86400000).toISOString().slice(0, 10),
+              milestones: [],
+            }), tkpId]);
+        } catch (_) {}
+      }
+
+      sendEvent({ type: 'progress', message: 'Готово — позиции подставлены' });
+      sendEvent({
+        type: 'done',
+        items_count: clientItems.length,
+        subtotal,
+        total_with_vat: Math.round(subtotal * (1 + vatPct / 100)),
+        message: clientItems.length
+          ? `Заполнено позиций: ${clientItems.length}`
+          : 'Смета не найдена — заполните позиции вручную',
+      });
+    } catch (e) {
+      request.log.error({ err: e }, '[tkp autofill] failed');
+      sendEvent({ type: 'error', message: e.message || 'Ошибка автозаполнения' });
+    } finally {
+      clearInterval(keepalive);
+      try { reply.raw.end(); } catch (_) {}
+    }
+  });
+
   fastify.post('/from-card/:cardId', {
     preHandler: [fastify.requireRoles(EDIT_ROLES)]
   }, async (request, reply) => {
     const cardId = parseInt(request.params.cardId);
     if (!cardId || isNaN(cardId)) return reply.code(400).send({ error: 'Bad cardId' });
     const template_kind = (request.body && request.body.template_kind) || 'universal';
+    // D-302: формат КП выбирает пользователь (короткое/полное), а не дефолт.
+    const kpVariant = request.body && request.body.kp_variant === 'full' ? 'full' : 'classic';
 
     // 1) Карта канбана
     const { rows: cardRows } = await db.query(
@@ -2361,17 +2497,23 @@ module.exports = async function routesWithExtensions(fastify, options) {
       workId = card.entity_id;
     }
 
-    // 3) Прежняя сессия tkp_quick_sessions (finalized) → prefill блока smeta
+    // 3) D-307: смета из Мимир-Quick → ГОТОВЫЕ ПОЗИЦИИ ТКП.
+    // Раньше брали `estimate_draft.items` как есть (себестоимость + ФОТ-налог)
+    // или не брали вовсе, и ТКП выходило пустым. Теперь:
+    //   • ищем сессию и в 'finalized', и в 'chatting' (РП мог не финализировать);
+    //   • прогоняем через buildClientItems — наценка, без внутренних статей;
+    //   • заполняем ещё и описание/сроки/оплату из той же сметы.
     let smetaPrefill = null;
+    let estimateSource = null;
     try {
       const q = await db.query(
-        `SELECT estimate_draft
+        `SELECT estimate_draft, status, chat_messages
            FROM tkp_quick_sessions
           WHERE author_id = $1
-            AND status = 'finalized'
+            AND estimate_draft IS NOT NULL
             AND ( (pre_tender_id IS NOT NULL AND pre_tender_id = $2)
                OR (tender_id     IS NOT NULL AND tender_id     = $3) )
-          ORDER BY finalized_at DESC NULLS LAST, id DESC
+          ORDER BY finalized_at DESC NULLS LAST, updated_at DESC NULLS LAST, id DESC
           LIMIT 1`,
         [request.user.id, preTenderId, tenderId]
       );
@@ -2379,16 +2521,47 @@ module.exports = async function routesWithExtensions(fastify, options) {
         const ed = typeof q.rows[0].estimate_draft === 'string'
           ? JSON.parse(q.rows[0].estimate_draft)
           : q.rows[0].estimate_draft;
-        if (ed && (Array.isArray(ed.items) || Array.isArray(ed.rows))) {
+
+        let mimirTkpQuick = null;
+        try { mimirTkpQuick = require('../services/mimir-tkp-quick'); } catch (_) {}
+
+        // Клиентские позиции: наценка применена, служебные статьи свёрнуты.
+        let clientItems = [];
+        if (mimirTkpQuick && typeof mimirTkpQuick.buildClientItems === 'function') {
+          clientItems = mimirTkpQuick.buildClientItems(ed) || [];
+        } else if (Array.isArray(ed.items)) {
+          clientItems = ed.items;
+        }
+
+        const subtotal = clientItems.reduce((s, i) => s + (Number(i.total) || 0), 0);
+        const vatPct = Number(ed.vat_pct) || 20;
+
+        if (clientItems.length) {
           smetaPrefill = {
-            items: ed.items || ed.rows || [],
-            vat_pct: ed.vat_pct || 20,
-            subtotal: ed.subtotal || null,
-            total_with_vat: ed.total_with_vat || null
+            items: clientItems,
+            vat_pct: vatPct,
+            subtotal,
+            total_with_vat: Math.round(subtotal * (1 + vatPct / 100)),
           };
+          estimateSource = q.rows[0].status || 'draft';
+        }
+
+        // Дополняем шапку ТКП из той же сметы, если поля ещё пустые.
+        if (ed.title && !prefill.subject) prefill.subject = String(ed.title).slice(0, 200);
+        if (ed.comment && !prefill.work_description) prefill.work_description = String(ed.comment);
+        if (ed.deadline && !prefill.deadline) prefill.deadline = ed.deadline;
+        if (ed.work_days && !prefill.work_end) {
+          // Сроки: «N раб.смен» → оценочная дата окончания от сегодня.
+          const days = Number(ed.work_days) || 0;
+          if (days > 0) {
+            const end = new Date(Date.now() + days * 86400000);
+            prefill.work_end = end.toISOString().slice(0, 10);
+          }
         }
       }
-    } catch (_) {}
+    } catch (e) {
+      console.warn('[tkp from-card] estimate prefill failed:', e.message);
+    }
 
     // 4) RBAC: PM может создать ТКП только для своего тендера
     try {
@@ -2410,7 +2583,17 @@ module.exports = async function routesWithExtensions(fastify, options) {
           ORDER BY id DESC LIMIT 1`,
         [request.user.id, preTenderId, tenderId]);
       if (existing.rows[0]) {
-        return { item: existing.rows[0], template_kind: existing.rows[0].template_kind || template_kind, blocks_created: 0, reused: true };
+        // D-302: если у черновика другой формат КП — обновляем его под выбор
+        // пользователя, а не возвращаем молча «чужой» вариант.
+        const ex = existing.rows[0];
+        if (ex.kp_variant !== kpVariant) {
+          try {
+            await db.query('UPDATE tkp SET kp_variant = $1, updated_at = NOW() WHERE id = $2',
+              [kpVariant, ex.id]);
+            ex.kp_variant = kpVariant;
+          } catch (_) {}
+        }
+        return { item: ex, template_kind: ex.template_kind || template_kind, blocks_created: 0, reused: true };
       }
     } catch (_) { /* не критично, идём в insert */ }
 
@@ -2426,26 +2609,46 @@ module.exports = async function routesWithExtensions(fastify, options) {
         preTenderId ? 'direct_request' :
         workId      ? 'work'           : 'standalone';
 
-      // D-295: позиции из объёмов AI (ai_scope_items). Раньше items был '{}' —
-      // в ТКП не было ни одной строки, и РП вбивал работы руками. Сумму не
-      // выдумываем: quantity заполняем, price оставляем пустым (её вводит РП).
-      const scopeRows = Array.isArray(prefill.scope_items) && prefill.scope_items.length
-        ? prefill.scope_items
-            .filter((it) => it && (it.name || it.volume != null))
-            .map((it, i) => ({
-              id: 's' + (i + 1),
-              code: '',
-              name: String(it.name || '').slice(0, 500),
-              unit: it.unit || '',
-              // D-295: объём должен быть ЧИСЛОМ. Раньше пустая строка мешала
-              // посчитать строку: поле qty оставалось '' и итог не считался.
-              qty: it.volume != null && Number(it.volume) > 0 ? Number(it.volume) : null,
-              price: null,
-              total: null,
-              section: '',
-            }))
-        : [];
-      const initialItems = JSON.stringify({ items: scopeRows, vat_pct: 20 });
+      // D-307: позиции ТКП. Приоритет — смета Мимира (цены для заказчика),
+      // затем объёмы из заявки (ai_scope_items) как заготовка без цен.
+      // Раньше ТКП создавалось с пустыми строками → «Итого 0 ₽».
+      let scopeRows = [];
+      if (smetaPrefill && Array.isArray(smetaPrefill.items) && smetaPrefill.items.length) {
+        scopeRows = smetaPrefill.items.map((it, i) => ({
+          id: it.id || ('s' + (i + 1)),
+          code: it.code || '',
+          name: String(it.name || '').slice(0, 500),
+          unit: it.unit || '',
+          qty: it.qty != null ? Number(it.qty) : null,
+          price: it.price != null ? Number(it.price) : null,
+          total: it.total != null ? Number(it.total) : null,
+          section: it.section || '',
+        }));
+      } else if (Array.isArray(prefill.scope_items) && prefill.scope_items.length) {
+        scopeRows = prefill.scope_items
+          .filter((it) => it && (it.name || it.volume != null))
+          .map((it, i) => ({
+            id: 's' + (i + 1),
+            code: '',
+            name: String(it.name || '').slice(0, 500),
+            unit: it.unit || '',
+            qty: it.volume != null && Number(it.volume) > 0 ? Number(it.volume) : null,
+            price: null,
+            total: null,
+            section: '',
+          }));
+      }
+
+      // Итог считаем из строк — чтобы «Итого» не расходилось с таблицей.
+      const initialSubtotal = scopeRows.reduce((s, i) => s + (Number(i.total) || 0), 0);
+      const initialVatPct = (smetaPrefill && smetaPrefill.vat_pct) || 20;
+      const initialItems = JSON.stringify({
+        items: scopeRows,
+        vat_pct: initialVatPct,
+        subtotal: initialSubtotal,
+        total_with_vat: Math.round(initialSubtotal * (1 + initialVatPct / 100)),
+      });
+      const initialTotal = initialSubtotal;
 
       const insRes = await client.query(`
         INSERT INTO tkp (
@@ -2454,14 +2657,14 @@ module.exports = async function routesWithExtensions(fastify, options) {
           contact_person, contact_phone, contact_email,
           items, total_sum, validity_days, deadline,
           author_id, source, status,
-          template_kind, constructor_version, last_autosaved_at
+          template_kind, constructor_version, last_autosaved_at, kp_variant
         ) VALUES (
           $1, $2, $3, $4, $5,
           $6, $7, $8, $9,
           $10, $11, $12,
-          $15::jsonb, 0, 30, $16,
+          $15::jsonb, $18, 30, $16,
           $13, 'kanban_constructor', 'draft',
-          $14, 1, NOW()
+          $14, 1, NOW(), $17
         ) RETURNING *
       `, [
         subj, tenderId, workId, preTenderId, linkType,
@@ -2471,7 +2674,10 @@ module.exports = async function routesWithExtensions(fastify, options) {
         template_kind,
         initialItems,
         // D-295: дедлайн КП из заявки (крайний срок подачи), а не пустой.
-        prefill.deadline || null
+        prefill.deadline || null,
+        kpVariant,
+        // D-307: итог ТКП = сумма строк сметы, а не 0.
+        initialTotal
       ]);
       newTkp = insRes.rows[0];
 
@@ -2486,12 +2692,18 @@ module.exports = async function routesWithExtensions(fastify, options) {
           customer_inn:  prefill.customer_inn,
           subject:       subj,
           author_name:   request.user.name || '',
-          // D-293: смету Мимира НЕ подставляем в блок «Смета» автоматически.
-          // Это ВНУТРЕННИЙ расчёт (себестоимость/ФОТ/накладные) — заказчик не должен
-          // его видеть, а в ТКП он попадал и выглядел как «наша смета внутри КП».
-          // D-295: зато заполняем позиции из объёмов AI и сроки из заявки —
-          // РП остаётся только проставить цены.
-          ...(key === 'smeta' ? { items: scopeRows, vat_pct: 20 } : {}),
+          // D-307: блок «Смета» получает КЛИЕНТСКИЕ позиции (наценка применена,
+          // внутренние статьи свёрнуты в одну строку). Раньше здесь был либо
+          // пустой массив, либо себестоимость — оба варианта неверны.
+          ...(key === 'smeta' ? {
+            items: scopeRows,
+            vat_pct: initialVatPct,
+            subtotal: initialSubtotal,
+            total_with_vat: Math.round(initialSubtotal * (1 + initialVatPct / 100))
+          } : {}),
+          ...(key === 'preamble' && prefill.work_description ? {
+            text: String(prefill.work_description).slice(0, 1200)
+          } : {}),
           ...(key === 'schedule' ? {
             start_date: prefill.work_start || null,
             end_date: prefill.work_end || null,
