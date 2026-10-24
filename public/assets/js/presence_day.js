@@ -127,6 +127,12 @@
           ? 'В табеле на сегодня стоит <b>«' + esc(labelOf(statuses, chosen)) + '»</b>. Подтверждаешь или меняем?'
           : 'Отметься в дружину — где ты сегодня держишь строй?';
 
+        // D-329: в субботу/воскресенье подписываем, что это выходной —
+        // но отметиться можно (дежурство, подряд, срочные работы).
+        var weekendNote = info.is_weekend
+          ? '<div class="pd-weekend">Выходной день · отметься, если работаешь</div>'
+          : '';
+
         scene.innerHTML =
           '<div class="pd-gate" role="dialog" aria-modal="true" aria-labelledby="pdTitle">' +
             '<div class="pd-head">' +
@@ -135,6 +141,7 @@
                 '<span class="pd-title" id="pdTitle">' + (firstName ? 'Привет, ' + esc(firstName) + '!' : 'Отметка на сегодня') + '</span>' +
               '</div>' +
               '<div class="pd-sub">' + esc(fmtToday(serverDate)) + '</div>' +
+              weekendNote +
               '<div class="pd-q">' + q + '</div>' +
             '</div>' +
 

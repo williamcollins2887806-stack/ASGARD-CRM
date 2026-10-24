@@ -70,6 +70,20 @@ html[data-theme="light"] .pd-gate {
 
 .pd-sub { font-size: 13.5px; color: var(--t2); margin-bottom: 4px; }
 
+/* D-329: подпись «выходной» — отметиться можно, но день нерабочий */
+.pd-weekend {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  padding: 3px 9px;
+  border-radius: 99px;
+  margin-bottom: 8px;
+  color: var(--gold);
+  background: color-mix(in srgb, var(--gold) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--gold) 30%, transparent);
+}
+
 .pd-q { font-size: 12.5px; line-height: 1.5; color: var(--t3); margin-bottom: 16px; }
 .pd-q b { color: var(--t1); font-weight: 700; }
 

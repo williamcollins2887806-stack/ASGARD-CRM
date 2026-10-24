@@ -88,13 +88,13 @@ module.exports = async function (fastify, options) {
   }
 
   // Прочитать отметку за сегодня (status_code + work_id) по staff_id
-  async function todayPlan(staffId) {
+  async function todayPlan(staffId, dateIso) {
     const { rows } = await db.query(
       `SELECT id, status_code, work_id, updated_at,
-              (updated_at::date = CURRENT_DATE) AS touched_today
+              (updated_at::date = $2::date) AS touched_today
          FROM staff_plan
-        WHERE staff_id = $1 AND date = CURRENT_DATE AND status_code IS NOT NULL AND status_code <> ''
-        ORDER BY id DESC LIMIT 1`, [staffId]);
+        WHERE staff_id = $1 AND date = $2::date AND status_code IS NOT NULL AND status_code <> ''
+        ORDER BY id DESC LIMIT 1`, [staffId, dateIso || null]);
     return rows[0] || null;
   }
 
@@ -331,7 +331,11 @@ module.exports = async function (fastify, options) {
       if (!userId) { reply.code(401); return { error: 'no_user' }; }
 
       const isOffice = OFFICE_ROLES.includes(role);
-      const sd = await serverDate();
+      // Дата: по умолчанию сегодня на сервере. Параметр `date` нужен для
+      // проверки конкретного дня (тесты, предпросмотр) — раньше он игнорировался,
+      // и праздник можно было проверить только случайно, когда он совпадёт с сегодня.
+      const reqDate = String(request.query.date || '').slice(0, 10);
+      const sd = /^\d{4}-\d{2}-\d{2}$/.test(reqDate) ? reqDate : await serverDate();
       if (!isOffice) {
         // полевые/прочие — гейт не нужен
         return { required: false, server_date: sd, statuses: STATUS_DEFS, works: [], current: null };
@@ -344,17 +348,23 @@ module.exports = async function (fastify, options) {
       if (vac) {
         return { required: false, server_date: sd, statuses: STATUS_DEFS, works: [], current: { status_code: 'отп', work_id: null }, on_vacation: true };
       }
-      // Праздник/выходной — тоже не спрашиваем.
+      // D-329: в субботу/воскресенье ТОЖЕ спрашиваем — люди заходят в CRM
+      // и по выходным (дежурства, подряд, срочные заявки). Раньше гейт молчал
+      // и отметиться было негде. Праздник РФ по-прежнему не спрашиваем:
+      // это не рабочий день по закону, и статуса «в отпуске/больничном» там нет.
       const calToday = await calendarRange(sd, sd);
       const c = calToday[sd];
+      const isHolidayToday = !!(c && c.kind === 'holiday');
+      const isWorkingShift = !!(c && c.kind === 'working');
+      if (isHolidayToday) {
+        return { required: false, server_date: sd, statuses: STATUS_DEFS, works: [], current: null, non_working: true, holiday: true };
+      }
+      // Обычный выходной (сб/вс) — спрашиваем, но помечаем, чтобы UI мог подписать.
       const p = new Date(sd + 'T00:00:00Z');
       const dow = p.getUTCDay();
-      const nonWorking = (dow === 0 || dow === 6) || (c && (c.kind === 'working' ? false : c.is_working === false));
-      if (nonWorking) {
-        return { required: false, server_date: sd, statuses: STATUS_DEFS, works: [], current: null, non_working: true };
-      }
+      const isWeekend = (dow === 0 || dow === 6) && !isWorkingShift;
 
-      const current = await todayPlan(staffId);
+      const current = await todayPlan(staffId, sd);
       const works = await myActiveWorks(userId);
 
       // «На объекте» доступно только если есть активные работы
@@ -368,6 +378,7 @@ module.exports = async function (fastify, options) {
 
       return {
         required: !confirmedToday,
+        is_weekend: isWeekend,
         current: current ? { status_code: current.status_code, work_id: current.work_id } : null,
         statuses,
         works,
