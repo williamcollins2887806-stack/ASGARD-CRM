@@ -178,7 +178,12 @@ export function AppSplash({ ready = false }) {
            Тёмная: глубокая синева с золотом. Светлая: тёплый перламутр с золотом —
            заставка должна продолжать тему, а не спорить с ней. */
         :root {
-          --splash-bg: radial-gradient(ellipse 130% 90% at 50% -12%, #17213f 0%, #0a0e1c 44%, #04050a 100%);
+          /* Последний стоп градиента ОБЯЗАН совпадать с фоном html (--bg-primary).
+             Причина: на iOS коробка вьюпорта короче экрана, и полосу ниже коробки
+             закрашивает canvas (фон html) — элементами страницы она НЕ накрывается
+             (см. TabBar). Если последний стоп отличается от --bg-primary, эта полоса
+             видна как шов: было #04050a против #0a0a0c, расхождение 6 единиц. */
+          --splash-bg: radial-gradient(ellipse 130% 90% at 50% -12%, #17213f 0%, #0a0e1c 44%, var(--bg-primary, #0a0a0c) 100%);
           --splash-title-a: #a08030;
           --splash-title-b: #c8a84e;
           --splash-title-hi: #FFF9E4;
@@ -194,7 +199,10 @@ export function AppSplash({ ready = false }) {
         html.light {
           /* Светлая сцена: почти белый с тёплым оттенком и золотым ореолом.
              Тексты — тёмные, иначе на светлом фоне их не видно. */
-          --splash-bg: radial-gradient(ellipse 130% 90% at 50% -12%, #FFFFFF 0%, #F7F4EC 42%, #EFEAE0 100%);
+          /* Светлая тема: последний стоп тоже равен фону html (--bg-primary = #F2F2F7).
+             Было #EFEAE0 — тёплый кремовый, расхождение с холодным #F2F2F7 в синем
+             канале 23 единицы; полоса под коробкой читалась как светлая полоса. */
+          --splash-bg: radial-gradient(ellipse 130% 90% at 50% -12%, #FFFFFF 0%, #F7F4EC 42%, var(--bg-primary, #F2F2F7) 100%);
           --splash-title-a: #8A5E0B;
           --splash-title-b: #B8860B;
           --splash-title-hi: #FFF6D8;

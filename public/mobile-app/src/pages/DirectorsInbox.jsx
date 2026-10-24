@@ -198,7 +198,7 @@ export default function DirectorsInbox() {
           className="spring-tap fixed flex items-center gap-2 px-4 py-3 rounded-full"
           style={{
             right: 16,
-            bottom: 'calc(max(0px, var(--tabbar-total) + var(--tabbar-lift, 0px)) + 16px)',
+            bottom: 'calc(var(--tabbar-total) + 16px)',
             background: 'var(--gold-gradient)',
             color: 'var(--text-on-gold)',
             fontWeight: 600,

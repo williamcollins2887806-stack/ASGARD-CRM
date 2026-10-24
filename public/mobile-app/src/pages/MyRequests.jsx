@@ -462,7 +462,7 @@ export default function MyRequests() {
           style={{
             position: 'fixed',
             right: 18,
-            bottom: 'calc(max(0px, var(--tabbar-total) + var(--tabbar-lift, 0px)) + 18px)',
+            bottom: 'calc(var(--tabbar-total) + 18px)',
             width: 56, height: 56, borderRadius: 18,
             display: 'grid', placeItems: 'center',
             background: 'var(--gold-gradient)',

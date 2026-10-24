@@ -69,7 +69,16 @@ export default function MobileDiagnostics() {
       lvh: probe('100lvh'),
       svh: probe('100svh'),
       appGap: root.getPropertyValue('--app-gap').trim() || '(нет)',
-      tabbarLift: root.getPropertyValue('--tabbar-lift').trim() || '(нет)',
+      // --tabbar-lift УДАЛЁН (24.10.2026): сдвиг бара вниз обрезался вьюпортом.
+      // Показываем фактическую позицию бара: если его низ не на низу экрана,
+      // значит бар смещён и будет обрезан (это и видел заказчик).
+      tabbarBottom: (() => {
+        const nav = document.querySelector('nav.fixed.bottom-0');
+        if (!nav) return '(нет бара)';
+        const r = nav.getBoundingClientRect();
+        const gap = Math.round(window.innerHeight - r.bottom);
+        return gap === 0 ? 'на низу (0)' : `СМЕЩЁН: зазор ${gap}px`;
+      })(),
       // Реальная геометрия бара: если navBottom меньше screen.height — снизу
       // полоса, и бар не дошёл до физического низа (это и есть D-341).
       stripPixel: (() => {
@@ -169,7 +178,7 @@ export default function MobileDiagnostics() {
       <Row k="100svh" v={data.svh} />
       <Row k="РАЗНИЦА lvh − dvh" v={(data.lvh - data.dvh).toFixed(1) + ' px'} warn={data.lvh - data.dvh > 1} />
       <Row k="--app-gap" v={data.appGap} />
-      <Row k="--tabbar-lift" v={data.tabbarLift} warn={!/calc/.test(String(data.tabbarLift))} />
+      <Row k="позиция тап-бара" v={data.tabbarBottom} warn={/СМЕЩ|нет бара/.test(String(data.tabbarBottom))} />
       <Row k="цвет под баром" v={data.stripPixel} warn={/за пределами/.test(String(data.stripPixel))} />
       <div style={{ height: 6 }} />
       <Row k="env(safe-bottom)" v={data.safeBottom} />

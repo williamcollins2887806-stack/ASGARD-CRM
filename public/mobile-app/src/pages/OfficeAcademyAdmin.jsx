@@ -288,7 +288,7 @@ export default function OfficeAcademyAdmin() {
   }
 
   return (
-    <div className="scroll-container" style={{ minHeight: '100dvh', maxHeight: '100dvh', overflowY: 'auto', background: C.bg, paddingBottom: 'calc(max(0px, var(--tabbar-total) + var(--tabbar-lift, 0px)) + 16px)' }}>
+    <div className="scroll-container" style={{ minHeight: '100dvh', maxHeight: '100dvh', overflowY: 'auto', background: C.bg, paddingBottom: 'calc(var(--tabbar-total) + 16px)' }}>
       {/* Header */}
       <div style={{ padding: 'calc(var(--safe-top) + 8px) 16px 16px', background: 'linear-gradient(180deg, #0d0d2e 0%, transparent 100%)' }}>
         <button onClick={() => navigate('/office-academy')}

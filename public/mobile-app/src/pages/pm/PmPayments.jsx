@@ -208,7 +208,7 @@ export default function PmPayments() {
   const totalPending = Math.round(summary.pending || 0);
 
   return (
-    <div className="scroll-container" style={{ minHeight: '100dvh', maxHeight: '100dvh', overflowY: 'auto', background: C.bg, paddingBottom: 'calc(max(0px, var(--tabbar-total) + var(--tabbar-lift, 0px)) + 16px)' }}>
+    <div className="scroll-container" style={{ minHeight: '100dvh', maxHeight: '100dvh', overflowY: 'auto', background: C.bg, paddingBottom: 'calc(var(--tabbar-total) + 16px)' }}>
       {/* Header */}
       <div style={{ padding: 'calc(var(--safe-top) + 4px) 16px 16px', background: 'linear-gradient(180deg, #0d1a0d 0%, transparent 100%)' }}>
         <button onClick={() => navigate('/pm')}
