@@ -1720,7 +1720,22 @@ body.hg-dock-open .dh-hscroll-bar {
   border: 1px solid var(--brd, var(--line, #334155));
   background: var(--bg2, #0f172a);
 }
-.dh-app--embedded .dh-search svg { width: 16px; height: 16px; color: var(--t3, #94a3b8); flex-shrink: 0; }
+.dh-app--embedded .dh-search svg {
+  /* D-375: в embedded-режиме .dh-search — flex-контейнер с паддингом 12px,
+     поэтому иконка должна быть обычным flex-элементом. Базовое правило
+     `.dh-search svg` задаёт position:absolute; left:12px — при flex-раскладке
+     иконка накладывалась на текст, и плейсхолдер «Номер, поставщик, объект…»
+     начинался прямо под лупой (видно на скриншоте заказчика).
+     Явно сбрасываем абсолютное позиционирование. */
+  position: static;
+  left: auto;
+  top: auto;
+  transform: none;
+  width: 16px;
+  height: 16px;
+  color: var(--t3, #94a3b8);
+  flex-shrink: 0;
+}
 .dh-app--embedded .dh-search input {
   border: 0;
   background: transparent;
