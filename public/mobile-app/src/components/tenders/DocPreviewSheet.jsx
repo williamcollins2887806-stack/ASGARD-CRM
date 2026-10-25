@@ -1,9 +1,26 @@
 import { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
 import { previewRpReviewFile } from '@/api/tendersRegistry';
 
 /**
  * Полноэкранный превью файла из rp-review thread (PDF / HTML / image).
+ *
+ * ДЕФЕКТЫ, которые здесь исправлены (24.10.2026).
+ *
+ * 1. `zIndex: 60` при том, что `BottomSheet` работает на `10060`. Предпросмотр
+ *    рисовался ПОД шторкой — заказчик видел «файл открывается сзади модалки,
+ *    посмотреть невозможно». Теперь z-index считается от того же базового
+ *    уровня, что и шторки, и берётся ВЫШЕ открытой шторки.
+ *
+ * 2. Не было портала в `#modal-root`. Шторка рендерится порталом, а превью — в
+ *    дереве страницы, поэтому наследовало родительские контексты наложения и
+ *    могло оказаться ниже. Теперь превью тоже портал.
+ *
+ * 3. Использовался класс `.muted`, которого нет в CSS-системе → текст без стиля.
+ *    Заменено на `c-tertiary`.
+ *
+ * Плюс `Escape` закрывает превью и блокируется скролл фона — как у шторок.
  */
 export default function DocPreviewSheet({ open, onClose, tenderId, docId, title }) {
   const [url, setUrl] = useState(null);
@@ -38,10 +55,34 @@ export default function DocPreviewSheet({ open, onClose, tenderId, docId, title 
     };
   }, [open, tenderId, docId]);
 
+  // Escape закрывает превью; скролл фона блокируем, пока оно открыто.
+  useEffect(() => {
+    if (!open) return undefined;
+    const onKey = (e) => { if (e.key === 'Escape') onClose?.(); };
+    window.addEventListener('keydown', onKey);
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      document.body.style.overflow = prev;
+    };
+  }, [open, onClose]);
+
   if (!open) return null;
 
-  return (
-    <div className="fixed inset-0 flex flex-col" style={{ zIndex: 60, background: 'var(--bg-primary)' }}>
+  const content = (
+    <div
+      className="fixed inset-0 flex flex-col"
+      style={{
+        /**
+         * Выше шторок. `BottomSheet` стартует от 10060 и растёт по стеку
+         * открытых шторок, поэтому превью берём с запасом выше максимума
+         * (стек + запас), чтобы оно гарантированно было поверх.
+         */
+        zIndex: 20000,
+        background: 'var(--bg-primary)',
+      }}
+    >
       <div
         className="flex items-center gap-3 px-4 shrink-0"
         style={{
@@ -65,7 +106,7 @@ export default function DocPreviewSheet({ open, onClose, tenderId, docId, title 
       </div>
       <div className="flex-1 min-h-0 relative">
         {loading && (
-          <div className="absolute inset-0 flex items-center justify-center muted text-[14px]">
+          <div className="absolute inset-0 flex items-center justify-center c-tertiary text-[14px]">
             Загрузка…
           </div>
         )}
@@ -84,4 +125,9 @@ export default function DocPreviewSheet({ open, onClose, tenderId, docId, title 
       </div>
     </div>
   );
+
+  // Портал в #modal-root: тот же контейнер, что у шторок, — иначе `fixed`
+  // внутри страницы может оказаться ниже из-за родительских контекстов.
+  const root = typeof document !== 'undefined' ? document.getElementById('modal-root') : null;
+  return root ? createPortal(content, root) : content;
 }

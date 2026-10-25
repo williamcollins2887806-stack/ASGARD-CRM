@@ -20,6 +20,47 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="ASGARD" />
   <meta name="format-detection" content="telephone=no" />
+
+  <!-- ─── АНТИ-МИГАНИЕ И АНТИ-«ГОНКА» (24.10.2026) ────────────────────────────
+       Симптом: баг плавающий 50/50 — то идеально, то внизу полоса и заставка
+       прыгает. Это состояние гонки при старте: браузер рисует первый кадр
+       РАНЬШЕ, чем загрузится `index-*.css` с бандлом, и до этого момента
+       страница белая (проверено: в `head` не было ни `<style>`, ни скрипта).
+
+       Что здесь: фон применяется ИНЛАЙНОМ в момент разбора `head` — до любых
+       внешних ресурсов. Поэтому первого белого кадра не существует, и «гонка»
+       исчезает: оба порядка загрузки дают один и тот же цвет.
+
+       Значения ДУБЛИРУЮТ `--bg-primary` из темы (тёмная #0a0a0c, светлая
+       #F2F2F7). Синхронность проверяет гейт `tools/verify-first-paint.js` —
+       если палитра изменится, он упадёт. -->
+  <style>
+    /* Тёмная тема — по умолчанию (приложение стартует в тёмной). */
+    html { background-color: #0a0a0c; color-scheme: dark; }
+    /* Светлая: системная тема или ранее сохранённый выбор. */
+    @media (prefers-color-scheme: light) {
+      html { background-color: #F2F2F7; color-scheme: light; }
+    }
+    /* Тема, выбранная в приложении, хранится в localStorage под `asgard_theme`.
+       Скрипт ниже ставит класс СРАЗУ, не дожидаясь загрузки бандла. */
+    html.light { background-color: #F2F2F7; color-scheme: light; }
+    html:not(.light) { background-color: #0a0a0c; color-scheme: dark; }
+    /* Пока бандл не загрузился, `body` тоже должен быть в цвет темы, иначе
+       между `html` и первым рендером React проступит белый. */
+    body { margin: 0; background-color: inherit; }
+  </style>
+  <script>
+    /* Применяем выбранную тему до первого кадра. Предельно рано и без зависимостей:
+       любая задержка здесь снова открывает «гонку». */
+    (function () {
+      try {
+        var saved = localStorage.getItem('asgard_theme');
+        var prefersLight = window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches;
+        var light = saved ? saved === 'light' : prefersLight;
+        if (light) document.documentElement.classList.add('light');
+      } catch (e) { /* приватный режим — молча остаёмся в тёмной */ }
+    })();
+  </script>
   <!-- D-310: абсолютные пути — см. комментарий в public/m/index.html.
        Относительный href ломался на вложенных полевых роутах (/m/field/home). -->
   <link rel="manifest" href="/m/manifest.json" />
@@ -28,32 +69,55 @@
   <link rel="apple-touch-icon" sizes="192x192" href="/m/icon-192.png" />
   <!-- iOS splash: набор стартовых изображений под распространённые экраны.
        media-запросы повторяют логику Apple: устройство × плотность × ориентация.
-       Тёмный фон #0a0a0c — стартовый экран не «мигает» белым. -->
+       Фон совпадает с --bg-primary соответствующей темы, поэтому перехода
+       «картинка → приложение» не видно.
+
+       24.10.2026: добавлены СВЕТЛЫЕ версии (`-light`) с media
+       `(prefers-color-scheme: light)`. Раньше картинки были только тёмные, и при
+       светлой теме iOS показывал тёмную заставку, затем кремовый CSS-сплэш —
+       переход мигал. Генератор: `node tools/gen-splash.js` (обе темы сразу). -->
   <link rel="apple-touch-startup-image" href="/assets/img/splash/splash-1290x2796.png"
         media="(device-width: 430px) and (device-height: 932px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)" />
+  <link rel="apple-touch-startup-image" href="/assets/img/splash/splash-1290x2796-light.png"
+        media="(device-width: 430px) and (device-height: 932px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait) and (prefers-color-scheme: light)" />
   <link rel="apple-touch-startup-image" href="/assets/img/splash/splash-1179x2556.png"
         media="(device-width: 393px) and (device-height: 852px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)" />
+  <link rel="apple-touch-startup-image" href="/assets/img/splash/splash-1179x2556-light.png"
+        media="(device-width: 393px) and (device-height: 852px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait) and (prefers-color-scheme: light)" />
   <link rel="apple-touch-startup-image" href="/assets/img/splash/splash-1284x2778.png"
         media="(device-width: 428px) and (device-height: 926px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)" />
+  <link rel="apple-touch-startup-image" href="/assets/img/splash/splash-1284x2778-light.png"
+        media="(device-width: 428px) and (device-height: 926px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait) and (prefers-color-scheme: light)" />
   <link rel="apple-touch-startup-image" href="/assets/img/splash/splash-1170x2532.png"
         media="(device-width: 390px) and (device-height: 844px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)" />
+  <link rel="apple-touch-startup-image" href="/assets/img/splash/splash-1170x2532-light.png"
+        media="(device-width: 390px) and (device-height: 844px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait) and (prefers-color-scheme: light)" />
   <link rel="apple-touch-startup-image" href="/assets/img/splash/splash-1125x2436.png"
         media="(device-width: 375px) and (device-height: 812px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)" />
+  <link rel="apple-touch-startup-image" href="/assets/img/splash/splash-1125x2436-light.png"
+        media="(device-width: 375px) and (device-height: 812px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait) and (prefers-color-scheme: light)" />
   <link rel="apple-touch-startup-image" href="/assets/img/splash/splash-1242x2688.png"
         media="(device-width: 414px) and (device-height: 896px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)" />
+  <link rel="apple-touch-startup-image" href="/assets/img/splash/splash-1242x2688-light.png"
+        media="(device-width: 414px) and (device-height: 896px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait) and (prefers-color-scheme: light)" />
   <link rel="apple-touch-startup-image" href="/assets/img/splash/splash-828x1792.png"
         media="(device-width: 414px) and (device-height: 896px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)" />
+  <link rel="apple-touch-startup-image" href="/assets/img/splash/splash-828x1792-light.png"
+        media="(device-width: 414px) and (device-height: 896px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait) and (prefers-color-scheme: light)" />
   <link rel="apple-touch-startup-image" href="/assets/img/splash/splash-750x1334.png"
         media="(device-width: 375px) and (device-height: 667px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)" />
+  <link rel="apple-touch-startup-image" href="/assets/img/splash/splash-750x1334-light.png"
+        media="(device-width: 375px) and (device-height: 667px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait) and (prefers-color-scheme: light)" />
   <link rel="apple-touch-startup-image" href="/assets/img/splash/splash-2048x2732.png"
         media="(device-width: 1024px) and (device-height: 1366px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait)" />
+  <link rel="apple-touch-startup-image" href="/assets/img/splash/splash-2048x2732-light.png"
+        media="(device-width: 1024px) and (device-height: 1366px) and (-webkit-device-pixel-ratio: 2) and (orientation: portrait) and (prefers-color-scheme: light)" />
   <!-- Cinzel удалён: старый рунический шрифт больше не используется (редизайн 2026),
        а внешний <link> к Google Fonts блокировал рендер на ~12с в офлайне/сети РФ. -->
   <title>ASGARD CRM</title>
 </head>
 <body>
-  <div id="root"></div>
-  <!-- D-267: портал для модалок/шторок. Лежит ВНЕ #root, поэтому не наследует
+  <div id="root"></div>  <!-- D-267: портал для модалок/шторок. Лежит ВНЕ #root, поэтому не наследует
        transform/filter от анимированных контейнеров роутов (иначе position: fixed
        внутри них уезжает за пределы экрана). -->
   <div id="modal-root"></div>

@@ -1177,10 +1177,22 @@ async function reviewRoutes(fastify) {
   fastify.get('/director-review-queue/count', {
     preHandler: [fastify.requireRoles(DIRECTOR_DECISION_ROLES)]
   }, async () => {
+    // D-344: считаем ТОЛЬКО актуальные согласования.
+    //
+    // Найдено на проде 24.10.2026: тендер 1939 (176.5 млн ₽) имел
+    // `registry_status = 'отмена'`, но `director_review_status = 'pending'` —
+    // висел у директора с 27.07.2026. Причина: ни очередь, ни счётчик не
+    // проверяли статус реестра, а при отмене/проигрыше `pending` НЕ снимается
+    // (проверено: сброса в коде нет). Значит защита обязана быть в запросе.
+    //
+    // Терминальные статусы: по ним решение директора уже не имеет смысла —
+    // ТО закрыл тендер сам.
     const r = await db.query(`
       SELECT COUNT(*)::int AS c FROM tender_rp_reviews r
       JOIN tenders t ON t.id = r.tender_id AND t.deleted_at IS NULL
       WHERE r.director_review_status = 'pending'
+        AND (t.registry_status IS NULL
+             OR t.registry_status NOT IN ('проиграли', 'отмена', 'выиграли'))
     `);
     return { count: r.rows[0]?.c || 0 };
   });
@@ -1202,6 +1214,11 @@ async function reviewRoutes(fastify) {
       LEFT JOIN users calc ON calc.id = r.calculator_user_id
       LEFT JOIN users owner ON owner.id = t.created_by
       WHERE r.director_review_status = 'pending'
+        -- D-344: не показываем согласования по уже закрытым тендерам.
+        -- Без этого отменённый ТО тендер висел у директора месяцами
+        -- (найдено на проде: тендер 1939 «АО ТЮМЕННЕФТЕГАЗ», 27.07.2026).
+        AND (t.registry_status IS NULL
+             OR t.registry_status NOT IN ('проиграли', 'отмена', 'выиграли'))
       ORDER BY r.director_notify_at ASC NULLS LAST, r.updated_at ASC
       LIMIT 500
     `);

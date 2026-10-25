@@ -10,6 +10,7 @@ import { PullToRefresh } from '@/components/shared/PullToRefresh';
 import { StatCard, StatRow } from '@/components/shared/StatCard';
 import { StatusBadge } from '@/components/shared/StatusBadge';
 import DocPreviewSheet from '@/components/tenders/DocPreviewSheet';
+import EstimateInline from '@/components/tenders/EstimateInline';
 import { Check, X as XIcon, MessageCircle, Clock, ChevronRight, Eye, Download, AlertTriangle, FileText, ListChecks, ExternalLink } from 'lucide-react';
 import { formatMoney } from '@/lib/utils';
 import {
@@ -287,6 +288,18 @@ function DetailSheet({ row, open, onClose, onChanged, initialTab }) {
   const estimate = reviewData?.estimate_file;
   const tkp = reviewData?.tkp_file;
   const report = reviewData?.report_file;
+  /**
+   * Смета просчёта для показа НА СТРАНИЦЕ (24.10.2026).
+   *
+   * Проверено на живом API: `asgard_smeta` лежит в `report_json`, а у тендеров,
+   * закрытых только по анализу — в `analysis_snapshot.asgard_smeta`. Бомбы нет:
+   * если структуры нет ни там, ни там, компонент `EstimateInline` честно скажет
+   * «смета не заполнена», а не покажет пустые нули.
+   */
+  const estimateSmeta = rj?.asgard_smeta
+    || reviewData?.analysis_snapshot?.asgard_smeta
+    || review?.analysis_snapshot?.asgard_smeta
+    || null;
   const chatOpen = !review?.is_final || ['pending', 'approved'].includes(review?.director_review_status || '');
 
   const calcName = review?.finalized_by_name
@@ -463,74 +476,72 @@ function DetailSheet({ row, open, onClose, onChanged, initialTab }) {
           </div>
         )}
 
-        {/* ── СМЕТА: главный документ для решения директора ── */}
+        {/* ── СМЕТА: сама смета НА СТРАНИЦЕ + файл как дополнение ──
+            Требование заказчика (24.10.2026): директору нужно видеть смету из
+            просчёта прямо на экране, а не открывать файл. Файл оставляем ниже —
+            если сотрудник приложил свой документ, его тоже надо увидеть. */}
         {tab === 'estimate' && (
           <div style={{ paddingBottom: 8 }}>
-            {!estimate ? (
-              <EmptyState
-                icon={FileText}
-                iconColor="var(--gold)"
-                iconBg="color-mix(in srgb, var(--gold) 12%, transparent)"
-                title="Смета не прикреплена"
-                description="РП не загрузил файл сметы к этому просчёту"
-              />
-            ) : (
-              <>
+            <EstimateInline smeta={estimateSmeta} />
+
+            {estimate && (
+              <div style={{ marginTop: 14 }}>
+                <div className="c-tertiary" style={{ fontSize: 11, marginBottom: 6 }}>
+                  Прикреплённый файл сметы
+                </div>
                 <DocRow
                   label="Смета"
                   file={estimate}
                   onPreview={(f, label) => setPreview({ docId: f.id, title: label })}
                   onDownload={onDownload}
                 />
-                <div style={{ display: 'flex', gap: 10, marginTop: 10 }}>
-                  <button
-                    type="button"
-                    className="spring-tap"
-                    style={{
-                      flex: 1, minHeight: 48, borderRadius: 14, border: 'none',
-                      background: 'var(--blue-fill)', color: 'var(--on-ok)',
-                      fontSize: 14, fontWeight: 700,
-                      display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6,
-                    }}
-                    onClick={() => setPreview({ docId: estimate.id, title: 'Смета' })}
-                  >
-                    <Eye size={17} /> Открыть смету
-                  </button>
-                  <button
-                    type="button"
-                    className="spring-tap"
-                    style={{
-                      minWidth: 48, minHeight: 48, borderRadius: 14,
-                      background: 'var(--bg-elevated)', color: 'var(--text-primary)',
-                      border: '0.5px solid var(--border-norse)',
-                      display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                    }}
-                    onClick={() => onDownload(estimate)}
-                    aria-label="Скачать смету"
-                  >
-                    <Download size={18} />
-                  </button>
-                </div>
-                {/* Отчёт и ТКП — рядом, чтобы директор видел полный комплект */}
-                {report && (
-                  <div style={{ marginTop: 14 }}>
-                    <DocRow
-                      label="Отчёт РП"
-                      file={report}
-                      onPreview={(f, label) => setPreview({ docId: f.id, title: label })}
-                      onDownload={onDownload}
-                    />
-                  </div>
-                )}
-                {tkp && (
-                  <DocRow
-                    label="ТКП"
-                    file={tkp}
-                    onPreview={(f, label) => setPreview({ docId: f.id, title: label })}
-                    onDownload={onDownload}
-                  />
-                )}
-              </>
+                <button
+                  type="button"
+                  className="spring-tap"
+                  style={{
+                    width: '100%', minHeight: 46, borderRadius: 14, marginTop: 8,
+                    background: 'var(--bg-elevated)', color: 'var(--text-primary)',
+                    border: '0.5px solid var(--border-norse)',
+                    fontSize: 14, fontWeight: 600,
+                    display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                  }}
+                  onClick={() => setPreview({ docId: estimate.id, title: 'Смета' })}
+                >
+                  <Eye size={16} /> Открыть файл сметы
+                </button>
+              </div>
+            )}
+
+            {!estimate && !estimateSmeta && (
+              <div style={{ marginTop: 12 }}>
+                <EmptyState
+                  icon={FileText}
+                  iconColor="var(--gold)"
+                  iconBg="color-mix(in srgb, var(--gold) 12%, transparent)"
+                  title="Смета недоступна"
+                  description="РП не заполнил смету в просчёте и не приложил файл"
+                />
+              </div>
+            )}
+
+            {/* Отчёт и ТКП — рядом, чтобы директор видел полный комплект */}
+            {report && (
+              <div style={{ marginTop: 14 }}>
+                <DocRow
+                  label="Отчёт РП"
+                  file={report}
+                  onPreview={(f, label) => setPreview({ docId: f.id, title: label })}
+                  onDownload={onDownload}
+                />
+              </div>
+            )}
+            {tkp && (
+              <DocRow
+                label="ТКП"
+                file={tkp}
+                onPreview={(f, label) => setPreview({ docId: f.id, title: label })}
+                onDownload={onDownload}
+              />
             )}
           </div>
         )}

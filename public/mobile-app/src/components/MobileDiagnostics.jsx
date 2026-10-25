@@ -64,10 +64,15 @@ export default function MobileDiagnostics() {
       safeTop: probe('env(safe-area-inset-top, 0px)'),
       safeBottom: probe('env(safe-area-inset-bottom, 0px)'),
       // Единицы вьюпорта: dvh = видимая область, lvh = физический экран.
-      // Их расхождение — корень «полосы» под тап-баром (D-341).
+      // ЗАМЕР НА iPhone (24.10.2026, Safari): dvh 838, lvh 968, screen.height 896.
+      // То есть `lvh` НЕ равен физическому экрану — он больше на 72px.
+      // Значит строить геометрию на `lvh` нельзя, и наш `--app-gap` (130px)
+      // в этом состоянии тоже мусорный. Вывод: опираться только на dvh.
       dvh: probe('100dvh'),
       lvh: probe('100lvh'),
       svh: probe('100svh'),
+      // Отдельно мерим коробку и окно: расхождение объясняет «шов».
+      boxProbe: probe('100%'),
       appGap: root.getPropertyValue('--app-gap').trim() || '(нет)',
       // --tabbar-lift УДАЛЁН (24.10.2026): сдвиг бара вниз обрезался вьюпортом.
       // Показываем фактическую позицию бара: если его низ не на низу экрана,
@@ -78,6 +83,30 @@ export default function MobileDiagnostics() {
         const r = nav.getBoundingClientRect();
         const gap = Math.round(window.innerHeight - r.bottom);
         return gap === 0 ? 'на низу (0)' : `СМЕЩЁН: зазор ${gap}px`;
+      })(),
+      /**
+       * ГЛАВНЫЙ ЗАМЕР ДЛЯ «ШВА» (24.10.2026).
+       *
+       * Полоса внизу = расхождение цвета фона `html` и цвета тап-бара на границе.
+       * Здесь читаем ОБА фактических цвета: если они различаются — шов есть, и
+       * цифра покажет насколько. После перехода бара на плоский цвет
+       * (бар = `--bg-primary`) разница обязана быть 0.
+       */
+      seamCheck: (() => {
+        const htmlBg = getComputedStyle(document.documentElement).backgroundColor;
+        const nav = document.querySelector('nav.fixed.bottom-0');
+        if (!nav) return 'нет бара';
+        const barBg = getComputedStyle(nav).backgroundColor;
+        const parse = (c) => {
+          const m = String(c).match(/rgba?\(\s*([\d.]+)[,\s]+([\d.]+)[,\s]+([\d.]+)/);
+          return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : null;
+        };
+        const a = parse(htmlBg), b = parse(barBg);
+        if (!a || !b) return `html ${htmlBg} / бар ${barBg}`;
+        const d = Math.max(...a.map((v, i) => Math.abs(v - b[i])));
+        return d === 0
+          ? `0 — шва нет (${barBg})`
+          : `РАЗНИЦА ${d} (html ${htmlBg} vs бар ${barBg})`;
       })(),
       // Реальная геометрия бара: если navBottom меньше screen.height — снизу
       // полоса, и бар не дошёл до физического низа (это и есть D-341).
@@ -179,6 +208,8 @@ export default function MobileDiagnostics() {
       <Row k="РАЗНИЦА lvh − dvh" v={(data.lvh - data.dvh).toFixed(1) + ' px'} warn={data.lvh - data.dvh > 1} />
       <Row k="--app-gap" v={data.appGap} />
       <Row k="позиция тап-бара" v={data.tabbarBottom} warn={/СМЕЩ|нет бара/.test(String(data.tabbarBottom))} />
+      {/* Ключевой замер: если тут не 0, полоса внизу будет видна. */}
+      <Row k="ШОВ бар↔фон" v={data.seamCheck} warn={/РАЗНИЦА/.test(String(data.seamCheck))} />
       <Row k="цвет под баром" v={data.stripPixel} warn={/за пределами/.test(String(data.stripPixel))} />
       <div style={{ height: 6 }} />
       <Row k="env(safe-bottom)" v={data.safeBottom} />

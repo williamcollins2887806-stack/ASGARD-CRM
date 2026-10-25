@@ -59,6 +59,57 @@ async function applyRegistryStatus(db, tenderId, registryStatus, analysisFinaliz
       [registryStatus, tenderId]
     );
   }
+
+  /**
+   * D-344 (24.10.2026): тендер закрыт — согласование директора больше не нужно.
+   *
+   * Заказчик: «если тендер отменён, то и согласование не нужно, оно просто исчезает».
+   *
+   * Найдено на проде: тендер 1939 (АО «ТЮМЕННЕФТЕГАЗ», 176.5 млн ₽) имел
+   * `registry_status = 'отмена'`, но `director_review_status = 'pending'` —
+   * висел в очереди директора с 27.07.2026 (почти 3 месяца). Снятия флага
+   * нигде не было, а очередь фильтровала только по `pending`.
+   *
+   * Здесь закрываем согласование тем же действием, что закрыло тендер:
+   *   • `отмена` / `проиграли` → согласование снимается со статусом `rejected`
+   *     и комментарием-причиной (в истории видно, почему снято);
+   *   • `выиграли` → согласование считаем `approved`: тендер подан и выигран,
+   *     ждать решения директора уже нечего.
+   *
+   * Пишем ТОЛЬКО если согласование реально висело (`pending`) — иначе не трогаем
+   * историю. Логи, сообщения, файлы и соавторы остаются нетронутыми.
+   */
+  const CLOSING_STATUSES = {
+    'отмена': 'rejected',
+    'проиграли': 'rejected',
+    'выиграли': 'approved',
+  };
+  const closeAs = CLOSING_STATUSES[registryStatus];
+  if (closeAs) {
+    try {
+      await db.query(
+        `UPDATE tender_rp_reviews SET
+           director_review_status = $1,
+           director_review_at = NOW(),
+           director_review_comment = COALESCE(director_review_comment, $2),
+           updated_at = NOW()
+         WHERE tender_id = $3
+           AND director_review_status = 'pending'`,
+        [closeAs, `Снято автоматически: тендер «${registryStatus}»`, tenderId]
+      );
+    } catch (err) {
+      /**
+       * Не роняем смену статуса тендера из-за снятия согласования: это
+       * вспомогательный шаг. Если он не удался (например, старая схема без
+       * колонки `director_review_comment`), запись всё равно не попадёт в
+       * очередь директора — там есть фильтр терминальных статусов (pm-duty.js).
+       * Поэтому только пишем предупреждение в лог, но НЕ выбрасываем ошибку.
+       */
+      if (typeof console !== 'undefined') {
+        console.warn('[registry] не удалось снять согласование директора:', err?.message || err);
+      }
+    }
+  }
 }
 
 const KANBAN_REGISTRY_STATUSES = new Set(['готовим', 'подались']);
