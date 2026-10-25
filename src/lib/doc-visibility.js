@@ -30,6 +30,24 @@ const FULL_VISIBILITY = new Set([
   'OFFICE_MANAGER',
 ]);
 
+/**
+ * D-379: пересекающиеся зоны видимости (Пираев ↔ офис АГПЗ).
+ *
+ * Проблема, которую решает: у строки реестра ОДИН `doc_owner_id`. Пираев и
+ * АГПЗ работают на одном объекте, но это разные люди. Раньше счета Пираева
+ * сливались в аккаунт АГПЗ, и он их не видел в своём реестре. Сменить
+ * владельца нельзя — переписалась бы история и отчётность по АГПЗ.
+ *
+ * Поэтому видимость расширяется, а не переносится: владелец остаётся прежним,
+ * а таблица `doc_registry_shared_view` добавляет второй круг. Правило
+ * двустороннее — обе стороны видят документы друг друга.
+ *
+ * Настройка в settings, чтобы не хардкодить id: `doc_visibility_shared_groups`.
+ * Здесь — только SQL-фрагмент, читается на каждом запросе вместе с остальными
+ * условиями видимости (индекс по user_id).
+ */
+const SHARED_VIEW_SQL = `(SELECT s.doc_id FROM doc_registry_shared_view s WHERE s.user_id = $USER$)`;
+
 const PROC_TO_POOL = `(SELECT id FROM users WHERE role IN ('PROC','TO'))`;
 const TO_POOL = `(SELECT id FROM users WHERE role = 'TO')`;
 
@@ -57,23 +75,37 @@ function visibilitySql(params, role, userId, opts = {}) {
   const r = String(role || '').toUpperCase();
   const scopeAll = String(opts.scope || 'mine').toLowerCase() === 'all';
 
+  /**
+   * D-379: «видит ли пользователь эту строку по связи».
+   * Добавляет userId в params (если ещё не добавлен) и возвращает фрагмент.
+   * Применяется ВМЕСТЕ с обычным правилом роли — это расширение, не замена:
+   * нельзя сузить то, что роль уже разрешает.
+   */
+  const sharedClause = (i) => ` OR d.id IN (SELECT s.doc_id FROM doc_registry_shared_view s WHERE s.user_id = $${i})`;
+
   if (hasFullVisibility(r)) {
-    // Привилегированные: scope=all → без ограничения; mine → только свои.
+    // Привилегированные: scope=all → без ограничения; mine → только свои
+    // (плюс выданные по связи — иначе Пираев в «моих» не увидел бы счета АГПЗ).
     if (scopeAll) return '';
     params.push(userId);
-    return ` AND (d.doc_owner_id=$${params.length} OR d.pm_id=$${params.length})`;
+    const i = params.length;
+    return ` AND (d.doc_owner_id=$${i} OR d.pm_id=$${i}${sharedClause(i)})`;
   }
 
   if (r === 'PROC' || r === 'TO') {
-    // Общий пул «закупки + ТО» (видят друг друга).
-    return ` AND (d.doc_owner_id IN ${PROC_TO_POOL} OR d.pm_id IN ${PROC_TO_POOL})`;
+    // D-379: общий пул «закупки + ТО» остаётся, но к нему добавлены строки,
+    // выданные этому пользователю по связи. Иначе Пираев (PROC) не увидел бы
+    // счета, которые оформил офис АГПЗ на себя.
+    params.push(userId);
+    const i = params.length;
+    return ` AND (d.doc_owner_id IN ${PROC_TO_POOL} OR d.pm_id IN ${PROC_TO_POOL}${sharedClause(i)})`;
   }
 
   if (r === 'HEAD_TO') {
     params.push(userId);
     const i = params.length;
     return ` AND (d.doc_owner_id=$${i} OR d.pm_id=$${i}` +
-      ` OR d.doc_owner_id IN ${TO_POOL} OR d.pm_id IN ${TO_POOL})`;
+      ` OR d.doc_owner_id IN ${TO_POOL} OR d.pm_id IN ${TO_POOL}${sharedClause(i)})`;
   }
 
   if (r === 'WAREHOUSE') {
@@ -90,9 +122,54 @@ function visibilitySql(params, role, userId, opts = {}) {
       ` AND d.purpose_customer IS NOT TRUE)`;
   }
 
-  // PM, HEAD_PM, HR и прочие — только своё.
+  // PM, HEAD_PM, HR и прочие — только своё (+ выданное по связи, D-379).
   params.push(userId);
-  return ` AND (d.doc_owner_id=$${params.length} OR d.pm_id=$${params.length})`;
+  const i = params.length;
+  return ` AND (d.doc_owner_id=$${i} OR d.pm_id=$${i}${sharedClause(i)})`;
+}
+
+/**
+ * D-379: выдать видимость строки реестра участникам той же группы, что и
+ * владелец. Вызывается ПОСЛЕ создания/смены владельца.
+ *
+ * Зачем: если счёт создан от Пираева, офис АГПЗ должен его видеть, и наоборот.
+ * Без этого правила «в будущем падать на него» работало бы только для
+ * инициатора, а вторая сторона теряла бы документ.
+ *
+ * Идемпотентно. Не бросает исключение: видимость — не критичнее самого
+ * документа, при сбое пишем в лог и продолжаем.
+ *
+ * @param {object} db
+ * @param {number} docId
+ * @param {number} ownerId
+ * @returns {Promise<number>} сколько связей добавлено
+ */
+async function grantSharedVisibility(db, docId, ownerId) {
+  if (!docId || !ownerId) return 0;
+  try {
+    const r = await db.query(
+      `INSERT INTO doc_registry_shared_view (doc_id, user_id, granted_by, reason)
+       SELECT $1, u.uid, $2, 'D-379: auto shared group'
+         FROM (
+           SELECT jsonb_array_elements_text(g->'user_ids')::int AS uid
+             FROM settings s
+             CROSS JOIN LATERAL jsonb_array_elements(
+               CASE WHEN s.value_json ~ '^\\s*\\['
+                    THEN s.value_json::jsonb
+                    ELSE '[]'::jsonb END
+             ) AS g
+            WHERE s.key = 'doc_visibility_shared_groups'
+              AND (g->'user_ids') @> to_jsonb(ARRAY[$2::int])
+         ) u
+        WHERE u.uid <> $2
+       ON CONFLICT (doc_id, user_id) DO NOTHING`,
+      [docId, ownerId]
+    );
+    return r.rowCount || 0;
+  } catch (e) {
+    console.warn('[doc-visibility] grantSharedVisibility: ' + e.message);
+    return 0;
+  }
 }
 
 /**
@@ -120,4 +197,5 @@ module.exports = {
   canUseScopeAll,
   visibilitySql,
   assertDocVisible,
+  grantSharedVisibility,
 };

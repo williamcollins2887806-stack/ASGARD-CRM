@@ -990,6 +990,13 @@ async function intakeOne(db, { email, attachment, text, userId = null, dryRun = 
           threadKey: (srcEmail && srcEmail.thread_id) || null
         });
       } catch (e) { console.warn('[intake] applyPendingGrants: ' + (e && e.message)); }
+      // D-379: счёт создан — выдаём видимость участникам группы владельца.
+      // Без этого при разделении Пираева и АГПЗ вторая сторона теряла бы
+      // документ: владелец один, а видеть должны оба.
+      try {
+        const dv = require('../lib/doc-visibility');
+        await dv.grantSharedVisibility(db, docId, senderUserId || null);
+      } catch (e) { console.warn('[intake] grantSharedVisibility: ' + (e && e.message)); }
       // TTL 72ч.
       try { require('./doc-approval-ttl').stampExpiry(db, paymentId); } catch (_) {}
       // D-293 (аудит почты 20.10.2026): ЗАЯВКА СОЗДАВАЛАСЬ МОЛЧА.
