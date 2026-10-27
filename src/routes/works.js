@@ -873,7 +873,7 @@ async function routes(fastify, options) {
       // fot_employee_name для ФОТ/суточных, supplier для материалов; description/comment — детали
       const { rows: expenses } = await db.query(`
         SELECT we.id, we.category, we.subcategory, we.amount, we.comment, we.description,
-               we.payment_method, we.vat_amount, we.vat_rate, we.date,
+               we.payment_method, we.vat_amount, we.vat_rate, we.amount_ex_vat, we.vat_basis, we.date,
           COALESCE(
             NULLIF(TRIM(we.supplier), ''),
             NULLIF(TRIM(we.fot_employee_name), ''),
@@ -919,15 +919,28 @@ async function routes(fastify, options) {
       const revenueExVat = Math.round((contractValue - vatCharged) * 100) / 100;
 
       // === Expense aggregation with unified 55%/НДС logic ===
-      // Источник правды — src/services/expense-tax.js (общий для works.js и expense-recognize.js).
-      // 55% начисляется по payment_method (cash/card → всегда, auto → только ФОТ/суточные).
-      // НДС к вычету — ТОЛЬКО если в строке явно vat_amount > 0 (счёт-фактура).
+      // Источник правды по НДС — src/services/vat-calc.js, по 55% — src/services/expense-tax.js.
+      //
+      // V443 (27.10.2026, разбор работы #406). Было две ошибки в модели:
+      //   1. `totalExpenses` суммировал `amount` как есть, не зная, БРУТТО это или
+      //      НЕТТО. Прибыль считалась как revenue − (брутто + налоги) + НДС-вычет —
+      //      алгебраически то же, но директор видел «+ НДС к вычету» в формуле
+      //      прибыли и не мог сложить столбик: 81,84 − 30,56 ≠ 56,07.
+      //   2. 55% начислялись на `amount`, а не на сумму без НДС.
+      //
+      // Теперь: всё считается в ОДНОЙ базе — без НДС. НДС живёт отдельным блоком
+      // как расчёт с бюджетом и в прибыли участвует неявно (он уже исключён из
+      // и выручки, и расходов). Столбик сходится: revenueExVat − costNet − tax = profit.
       const expenseTax = require('../services/expense-tax');
+      const vatCalc = require('../services/vat-calc');
 
       const catMap = {};
-      let totalExpenses = 0;
+      let totalExpensesGross = 0;   // сумма К ОПЛАТЕ (нетто + НДС) — «как в счетах»
+      let totalExpensesNet = 0;     // без НДС — база для прибыли
       let totalVatDeductible = 0;
       let totalTaxBurden = 0;
+      let totalTaxBase = 0;         // сумма, на которую начислены 55%
+      const dataIssues = [];        // строки, которые сами себе противоречат
 
       for (const exp of expenses) {
         const cat = exp.category || 'other';
@@ -935,46 +948,98 @@ async function routes(fastify, options) {
         if (!catMap[cat]) {
           catMap[cat] = {
             category: cat,
-            sum: 0, count: 0,
+            sum: 0,        // без НДС (для прибыли и долей в структуре)
+            sumGross: 0,   // как введено
+            vat: 0,        // НДС внутри категории
+            count: 0,
             vatDeductible: 0, taxBurden: 0,
             items: [],
             subcategories: {}, // детализация для отчёта
           };
         }
-        const amount = parseFloat(exp.amount) || 0;
-        catMap[cat].sum += amount;
+
+        const resolved = vatCalc.resolveExpense(exp);
+        const amount = resolved.amount;
+
+        catMap[cat].sum += resolved.net;
+        catMap[cat].sumGross += resolved.gross;
+        catMap[cat].vat += resolved.vat;
         catMap[cat].count++;
-        catMap[cat].items.push(exp);
-        totalExpenses += amount;
+        catMap[cat].items.push({
+          ...exp,
+          // Фронту отдаём разложенные величины, чтобы не угадывать базу на клиенте.
+          amount_gross: resolved.gross,
+          amount_net: resolved.net,
+          vat_deductible: resolved.vat,
+          vat_rate_pct: resolved.rate,
+          vat_basis_resolved: resolved.basis,
+          inconsistent: resolved.inconsistent
+        });
+        totalExpensesGross += resolved.gross;
+        totalExpensesNet += resolved.net;
+
+        if (resolved.inconsistent) {
+          // Расхождение считаем по ИСХОДНЫМ данным строки, а не по resolved:
+          // resolveExpense в противоречивом случае сам возвращает net = amount - vat,
+          // из-за чего diff всегда получался 0 и severity всегда был 'rounding'
+          // (нашёл верификатор 27.10.2026). here — то же, что видит бухгалтер в счёте.
+          const rawNet = exp.amount_ex_vat != null ? vatCalc.money(exp.amount_ex_vat) : null;
+          const rawVat = vatCalc.money(exp.vat_amount);
+          const rawAmount = vatCalc.money(exp.amount);
+          const diff = rawNet != null ? Math.abs(rawAmount - (rawNet + rawVat)) : 0;
+          // Порог: расхождение до 100 ₽ или до 1% суммы — округление в первичке.
+          const severity = (diff <= 100 || diff <= rawAmount * 0.01) ? 'rounding' : 'material';
+          dataIssues.push({
+            expense_id: exp.id,
+            category: cat,
+            supplier: exp.supplier || null,
+            date: exp.date || null,
+            amount: rawAmount,
+            vat_amount: rawVat,
+            amount_net: rawNet != null ? rawNet : resolved.net,
+            diff: Math.round(diff * 100) / 100,
+            severity,
+            reason: 'sum_does_not_add_up',
+            detail: severity === 'rounding'
+              ? 'расхождение в пределах округления'
+              : 'сумма не равна нетто + НДС; база не определена'
+          });
+        }
 
         // Подкатегория-аггрегат (если задана)
         if (sub) {
           if (!catMap[cat].subcategories[sub]) {
             catMap[cat].subcategories[sub] = { subcategory: sub, sum: 0, count: 0, items: [] };
           }
-          catMap[cat].subcategories[sub].sum += amount;
+          catMap[cat].subcategories[sub].sum += resolved.net;
           catMap[cat].subcategories[sub].count++;
           catMap[cat].subcategories[sub].items.push(exp);
         }
 
         // НДС к вычету: только реальный НДС из vat_amount (счёт-фактура)
-        const vatDed = expenseTax.calcVatDeductible(exp);
+        const vatDed = resolved.vat;
         if (vatDed > 0) {
           catMap[cat].vatDeductible += vatDed;
           totalVatDeductible += vatDed;
         }
 
-        // 55% налоговая нагрузка по единой логике
-        const tax = expenseTax.calcTaxBurden(exp, taxRate);
+        // 55% налоговая нагрузка — от суммы БЕЗ НДС
+        const tax = expenseTax.calcTaxBurden(
+          { ...exp, amount: resolved.net, vat_amount: 0 },
+          taxRate
+        );
         if (tax > 0) {
           catMap[cat].taxBurden += tax;
           totalTaxBurden += tax;
+          totalTaxBase += resolved.net;
         }
       }
 
       // Round category totals
       for (const c of Object.values(catMap)) {
         c.sum = Math.round(c.sum * 100) / 100;
+        c.sumGross = Math.round(c.sumGross * 100) / 100;
+        c.vat = Math.round(c.vat * 100) / 100;
         c.vatDeductible = Math.round(c.vatDeductible * 100) / 100;
         c.taxBurden = Math.round(c.taxBurden * 100) / 100;
         // Округлить подкатегории
@@ -989,15 +1054,18 @@ async function routes(fastify, options) {
       totalVatDeductible = Math.round(totalVatDeductible * 100) / 100;
       const vatPayable = Math.round((vatCharged - totalVatDeductible) * 100) / 100;
 
-      // === Tax block ===
-      totalTaxBurden = Math.round(totalTaxBurden * 100) / 100;
-
       // === Total expenses including taxes ===
-      const totalExpensesWithTax = Math.round((totalExpenses + totalTaxBurden) * 100) / 100;
+      // В новой модели «расходы + налоги» — это сумма БЕЗ НДС + налоговая нагрузка.
+      // НДС сюда НЕ входит: он не расход, он расчёт с бюджетом.
+      totalExpensesNet = Math.round(totalExpensesNet * 100) / 100;
+      totalExpensesGross = Math.round(totalExpensesGross * 100) / 100;
+      totalTaxBase = Math.round(totalTaxBase * 100) / 100;
+      totalTaxBurden = Math.round(totalTaxBurden * 100) / 100;
+      const totalExpensesWithTax = Math.round((totalExpensesNet + totalTaxBurden) * 100) / 100;
 
       // === Profit ===
-      // Real cost = expenses + tax burden - VAT deductible (input VAT is refunded)
-      const profitBeforeTax = Math.round((revenueExVat - totalExpensesWithTax + totalVatDeductible) * 100) / 100;
+      // Всё в одной базе — без НДС. Никаких «+ НДС к вычету» в формуле.
+      const profitBeforeTax = Math.round((revenueExVat - totalExpensesWithTax) * 100) / 100;
       // ВАЖНО: налог на прибыль начисляется ТОЛЬКО при прибыли (profit > 0).
       // При убытке формула profit * rate давала отрицательный налог и УМЕНЬШАЛА абсолютный
       // убыток — это неверно (налоговая не возвращает деньги при убытке отчётного периода).
@@ -1062,7 +1130,10 @@ async function routes(fastify, options) {
 
         expenses: {
           categories: Object.values(catMap).sort((a, b) => (b.sum - a.sum)),
-          total: Math.round(totalExpenses * 100) / 100,
+          // total — база для прибыли (БЕЗ НДС). total_gross — как введено в БД.
+          total: totalExpensesNet,
+          total_gross: totalExpensesGross,
+          total_vat_inside: Math.round((totalExpensesGross - totalExpensesNet) * 100) / 100,
           total_with_tax: totalExpensesWithTax,
         },
 
@@ -1075,6 +1146,21 @@ async function routes(fastify, options) {
         taxes: {
           rate: taxRate,
           burden: totalTaxBurden,
+          // База, на которую реально начислены 55% — чтобы подпись в UI была точной
+          // («на ФОТ, наличные, суточные, субподряд» — врала: субподряд у ПАНХ банковский).
+          base: totalTaxBase,
+        },
+
+        // Строки, которые сами себе противоречат (сумма ≠ нетто + НДС).
+        // Отчёт обязан показывать их, а не молча считать неправду.
+        // material — влияет на прибыль, rounding — округление в первичке (<1% и <100 ₽).
+        data_quality: {
+          inconsistent: dataIssues,
+          inconsistent_count: dataIssues.length,
+          material_count: dataIssues.filter(i => i.severity === 'material').length,
+          rounding_count: dataIssues.filter(i => i.severity === 'rounding').length,
+          inconsistent_amount: Math.round(dataIssues.reduce((s, i) => s + (i.amount || 0), 0) * 100) / 100,
+          ok: dataIssues.length === 0
         },
 
         profit: {

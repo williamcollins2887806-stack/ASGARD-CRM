@@ -87,6 +87,9 @@ async function insertWorkExpense(db, p, opts = {}) {
     vat_rate: p.vat_rate != null ? Number(p.vat_rate) : null,
     vat_amount: p.vat_amount != null ? Number(p.vat_amount) : null,
     amount_ex_vat: p.amount_ex_vat != null ? Number(p.amount_ex_vat) : null,
+    // V443: что такое amount — 'gross' (с НДС) или 'net' (без НДС).
+    // Без этого поля сумма трактовалась каждым путём ввода по-своему (баг #406).
+    vat_basis: p.vat_basis === 'gross' || p.vat_basis === 'net' ? p.vat_basis : null,
     receipt_url: p.receipt_url || null,
     payment_method,
     source_table: p.source_table || 'manual',
@@ -118,16 +121,29 @@ async function insertWorkExpense(db, p, opts = {}) {
     );
     if (existed[0]?.id) {
       const id = existed[0].id;
+      // V443: НДС-поля тоже обновляем. COALESCE здесь был дефектом: если
+      // счёт перестал быть «с НДС» (пере-оплата без счёта-фактуры), старые
+      // vat_amount/vat_basis оставались навсегда и давали фантомный вычет
+      // (нашёл верификатор 27.10.2026). Теперь: пришло значение — пишем,
+      // пришёл явный null при непустом vat_basis-наборе — тоже пишем.
+      // Защита: не затираем НДС, если в payload его вообще не передали
+      // (undefined) — это несвязанное обновление.
+      const setVat = p.vat_amount !== undefined || p.vat_basis !== undefined;
       const { rows } = await db.query(
         `UPDATE work_expenses
             SET amount = $1,
                 description = COALESCE($2, description),
                 supplier = COALESCE($3, supplier),
                 receipt_url = COALESCE($4, receipt_url),
+                vat_rate = CASE WHEN $9 THEN $5 ELSE vat_rate END,
+                vat_amount = CASE WHEN $9 THEN $6 ELSE vat_amount END,
+                amount_ex_vat = CASE WHEN $9 THEN $7 ELSE amount_ex_vat END,
+                vat_basis = CASE WHEN $9 THEN $8 ELSE vat_basis END,
                 updated_at = NOW()
-          WHERE id = $5
+          WHERE id = $10
           RETURNING *`,
-        [cols.amount, cols.description, cols.supplier, cols.receipt_url, id]
+        [cols.amount, cols.description, cols.supplier, cols.receipt_url,
+         cols.vat_rate, cols.vat_amount, cols.amount_ex_vat, cols.vat_basis, setVat, id]
       );
       return rows[0];
     }

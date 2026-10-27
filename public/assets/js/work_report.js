@@ -24,7 +24,7 @@ window.AsgardWorkReport = (function () {
     equipment:{ label: 'Оборудование',   icon: '\uD83D\uDD27', color: '#8e44ad' },
     materials:{ label: 'Материалы',       icon: '\uD83D\uDCE6', color: '#16a085' },
     subcontract:{ label: 'Субподряд',     icon: '\uD83E\uDD1D', color: '#d35400' },
-    other:   { label: 'Прочие',          icon: '\uD83D\uDCCB', color: '#7f8c8d' },
+    other:   { label: 'Прочее (обучение, медосмотр)', icon: '\uD83D\uDCCB', color: '#7f8c8d' },
     tickets: { label: 'Билеты',          icon: '\u2708',        color: '#2ecc71' },
   };
 
@@ -149,6 +149,7 @@ window.AsgardWorkReport = (function () {
   function renderPage(d) {
     return [
       renderHero(d),
+      renderDataQuality(d),
       renderKpiStrip(d),
       '<div class="wr-grid">',
         '<div class="wr-grid-main">',
@@ -215,11 +216,15 @@ window.AsgardWorkReport = (function () {
     const profitColor = d.profit.net >= 0 ? '#10b981' : '#ef4444';
     const marginColor = d.profit.margin >= 25 ? '#10b981' : d.profit.margin >= 15 ? '#d4a843' : '#ef4444';
 
+    // V443: стартовое значение — реальное число, а не «0». Анимация count-up
+    // перезаписывает его при появлении в вьюпорте; если IntersectionObserver
+    // не сработал (печать, скриншот, prefers-reduced-motion) — цифра всё равно верна.
+    // Раньше в отчёте на печати стояли нули.
     const cards = [
-      { label: 'Выручка', value: d.revenue.with_vat, sub: 'Без НДС: ' + m(d.revenue.ex_vat) + ' \u20BD', icon: svgRevenue(), color: '#3b82f6' },
-      { label: 'Расходы + налоги', value: d.expenses.total_with_tax, sub: 'Расходы: ' + m(d.expenses.total) + ' \u20BD', icon: svgExpense(), color: '#ef4444' },
-      { label: 'Чистая прибыль', value: d.profit.net, sub: 'До налога: ' + m(d.profit.before_tax) + ' \u20BD', icon: svgProfit(), color: profitColor },
-      { label: 'Маржа', value: d.profit.margin, suffix: '%', sub: 'НДС: ' + d.vat_pct + '%', icon: renderGaugeMini(d.profit.margin), color: marginColor, isGauge: true },
+      { label: 'Выручка', value: d.revenue.with_vat, sub: 'Без НДС: ' + m(d.revenue.ex_vat) + ' \u20BD', icon: svgRevenue(), color: '#3b82f6', isPercent: false },
+      { label: 'Расходы + налоги', value: d.expenses.total_with_tax, sub: 'Без НДС: ' + m(d.expenses.total) + ' \u20BD', icon: svgExpense(), color: '#ef4444', isPercent: false },
+      { label: 'Чистая прибыль', value: d.profit.net, sub: 'До налога: ' + m(d.profit.before_tax) + ' \u20BD', icon: svgProfit(), color: profitColor, isPercent: false },
+      { label: 'Маржа', value: d.profit.margin, suffix: '%', sub: 'от выручки без НДС', icon: renderGaugeMini(d.profit.margin), color: marginColor, isPercent: true },
     ];
 
     return '<div class="wr-kpi-strip">' + cards.map(c => `
@@ -228,7 +233,7 @@ window.AsgardWorkReport = (function () {
         <div class="wr-kpi-body">
           <div class="wr-kpi-label">${c.label}</div>
           <div class="wr-kpi-value" style="color:${c.color}">
-            <span class="wr-countup" data-target="${c.value}">${c.isGauge ? '0' : '0'}</span>${c.suffix ? c.suffix : ' \u20BD'}
+            <span class="wr-countup" data-target="${c.value}" data-is-percent="${c.isPercent ? '1' : '0'}">${c.isPercent ? c.value : money(Math.round(c.value))}</span>${c.suffix ? c.suffix : ' \u20BD'}
           </div>
           <div class="wr-kpi-sub">${c.sub}</div>
         </div>
@@ -327,6 +332,36 @@ window.AsgardWorkReport = (function () {
   // ════════════════════════════════════════
   //  4. EXPENSE ACCORDION
   // ════════════════════════════════════════
+  /**
+   * Строка детализации расхода.
+   * V443 (27.10.2026): показываем сумму БЕЗ НДС и НДС отдельной колонкой.
+   * Раньше в колонке «Сумма» лежало `amount` без указания базы — директор
+   * не понимал, это с НДС или без (главная претензия по отчёту #406).
+   * inconsistent — строка сама себе противоречит, помечаем значком.
+   */
+  function expenseDetailRow(it, withVatCol) {
+    const net = it.amount_net != null ? Number(it.amount_net) : Number(it.amount) || 0;
+    const vat = it.vat_deductible != null ? Number(it.vat_deductible) : Number(it.vat_amount) || 0;
+    const warn = it.inconsistent
+      ? ' <span title="Сумма не сходится с нетто + НДС — требует сверки" style="color:#f59e0b">\u26A0</span>'
+      : '';
+    const vatCell = withVatCol
+      ? '<td class="wr-r">' + (vat > 0 ? m(vat) + ' \u20BD' : '\u2014') + '</td>'
+      : '';
+    const supplierCell = withVatCol
+      ? esc(it.supplier || it.fot_employee_name || '\u2014')
+      : esc(it.supplier || it.fot_employee_name || '\u2014');
+    return '<tr' + (it.inconsistent ? ' style="background:rgba(245,158,11,.08)"' : '') + '>'
+      + '<td>' + fmtDate(it.date) + '</td>'
+      + '<td>' + supplierCell + warn + '</td>'
+      + '<td class="wr-r">' + m(net) + ' \u20BD</td>'
+      + vatCell
+      + '<td>' + esc(it.comment || it.description || '') + '</td>'
+      + '<td>' + esc(it.doc_number || '\u2014') + '</td>'
+      + '<td>' + (it.invoice_received ? '\u2705' : it.invoice_needed ? '\u23F3' : '\u2014') + '</td>'
+      + '</tr>';
+  }
+
   function renderExpenseAccordion(d) {
     const cats = d.expenses.categories || [];
     if (cats.length === 0) return '';
@@ -351,14 +386,7 @@ window.AsgardWorkReport = (function () {
       if (shouldGroup) {
         const groups = groupItemsForCategory(c.category, c.items);
         const groupsHtml = groups.map(g => {
-          const detailTrs = g.items.map(it => '<tr>'
-            + '<td>' + fmtDate(it.date) + '</td>'
-            + '<td>' + esc(it.supplier || it.fot_employee_name || '\u2014') + '</td>'
-            + '<td class="wr-r">' + m(it.amount) + ' \u20BD</td>'
-            + '<td>' + esc(it.comment || it.description || '') + '</td>'
-            + '<td>' + esc(it.doc_number || '\u2014') + '</td>'
-            + '<td>' + (it.invoice_received ? '\u2705' : it.invoice_needed ? '\u23F3' : '\u2014') + '</td>'
-            + '</tr>').join('');
+          const detailTrs = g.items.map(it => expenseDetailRow(it, true)).join('');
           return '<div class="wr-subacc" data-open="0">'
             + '<div class="wr-subacc-head" data-subtoggle>'
             +   '<span class="wr-subacc-label">' + esc(g.label) + '</span>'
@@ -368,7 +396,7 @@ window.AsgardWorkReport = (function () {
             + '</div>'
             + '<div class="wr-subacc-body">'
             +   '<table class="wr-acc-table">'
-            +     '<thead><tr><th>Дата</th><th>Поставщик / Сотрудник</th><th class="wr-r">Сумма</th><th>Комментарий</th><th>Документ</th><th>С/Ф</th></tr></thead>'
+            +     '<thead><tr><th>Дата</th><th>Поставщик / Сотрудник</th><th class="wr-r">Сумма без НДС</th><th class="wr-r">НДС</th><th>Комментарий</th><th>Документ</th><th>С/Ф</th></tr></thead>'
             +     '<tbody>' + detailTrs + '</tbody>'
             +   '</table>'
             + '</div>'
@@ -376,17 +404,10 @@ window.AsgardWorkReport = (function () {
         }).join('');
         itemsHtml = '<div class="wr-acc-body wr-acc-body-grouped">' + groupsHtml + '</div>';
       } else if (c.items && c.items.length > 0) {
-        const trs = c.items.map(it => '<tr>'
-          + '<td>' + fmtDate(it.date) + '</td>'
-          + '<td>' + esc(it.supplier || it.fot_employee_name || '\u2014') + '</td>'
-          + '<td class="wr-r">' + m(it.amount) + ' \u20BD</td>'
-          + '<td>' + esc(it.comment || it.description || '') + '</td>'
-          + '<td>' + esc(it.doc_number || '\u2014') + '</td>'
-          + '<td>' + (it.invoice_received ? '\u2705' : it.invoice_needed ? '\u23F3' : '\u2014') + '</td>'
-          + '</tr>').join('');
+        const trs = c.items.map(it => expenseDetailRow(it, true)).join('');
         itemsHtml = '<div class="wr-acc-body">'
           + '<table class="wr-acc-table">'
-          +   '<thead><tr><th>Дата</th><th>Поставщик</th><th class="wr-r">Сумма</th><th>Комментарий</th><th>Документ</th><th>С/Ф</th></tr></thead>'
+          +   '<thead><tr><th>Дата</th><th>Поставщик</th><th class="wr-r">Сумма без НДС</th><th class="wr-r">НДС</th><th>Комментарий</th><th>Документ</th><th>С/Ф</th></tr></thead>'
           +   '<tbody>' + trs + '</tbody>'
           + '</table>'
         + '</div>';
@@ -409,12 +430,32 @@ window.AsgardWorkReport = (function () {
     });
 
     // Totals
-    const totalRow = `<div class="wr-acc-total">
-      <span>Итого расходов</span>
-      <span>${m(d.expenses.total)} \u20BD</span>
+    // V443: «Итого расходов» — БЕЗ НДС (база для прибыли). Отдельной строкой НДС,
+    // который сидит внутри счетов, чтобы было видно, откуда взялась разница.
+    const vatInside = d.expenses.total_vat_inside != null
+      ? d.expenses.total_vat_inside
+      : Math.max(0, (d.expenses.total_gross || d.expenses.total) - d.expenses.total);
+    const grossNote = vatInside > 0
+      ? `<div class="wr-acc-total-sub">
+      <span>С НДС (как в счетах)</span>
+      <span>${m(d.expenses.total_gross || (d.expenses.total + vatInside))} \u20BD</span>
     </div>
     <div class="wr-acc-total-sub">
-      <span>С учётом налогов (${d.taxes.rate}%)</span>
+      <span>\u2212 НДС внутри расходов</span>
+      <span class="wr-blue">${m(vatInside)} \u20BD</span>
+    </div>`
+      : '';
+    const totalRow = `<div class="wr-acc-total">
+      <span>Итого расходов без НДС</span>
+      <span>${m(d.expenses.total)} \u20BD</span>
+    </div>
+    ${grossNote}
+    <div class="wr-acc-total-sub">
+      <span>Налоговая нагрузка ${d.taxes.rate}% (от ${m(d.taxes.base != null ? d.taxes.base : d.expenses.total)} \u20BD)</span>
+      <span class="wr-red">+${m(d.taxes.burden)} \u20BD</span>
+    </div>
+    <div class="wr-acc-total">
+      <span>Итого расходы + налоги</span>
       <span>${m(d.expenses.total_with_tax)} \u20BD</span>
     </div>`;
 
@@ -430,12 +471,14 @@ window.AsgardWorkReport = (function () {
   // ════════════════════════════════════════
   function renderVatBlock(d) {
     return `<div class="wr-card">
-      <div class="wr-card-title">НДС</div>
+      <div class="wr-card-title">НДС \u2014 расчёт с бюджетом</div>
       <div class="wr-row"><span>НДС начисленный</span><span>${m(d.vat.charged)} \u20BD</span></div>
       <div class="wr-row-desc">Выручка ${m(d.revenue.with_vat)} \u00D7 ${d.vat_pct}/${100 + Math.round(d.vat_pct)}</div>
       <div class="wr-row"><span>НДС к вычету</span><span class="wr-blue">${m(d.vat.deductible)} \u20BD</span></div>
       <div class="wr-row-desc">Из безналичных расходов с НДС</div>
+      <div class="wr-divider"></div>
       <div class="wr-row wr-row-bold"><span>НДС к уплате</span><span class="wr-red">${m(d.vat.payable)} \u20BD</span></div>
+      <div class="wr-row-desc">НДС не уменьшает прибыль: он уже исключён и из выручки, и из расходов</div>
     </div>`;
   }
 
@@ -443,10 +486,43 @@ window.AsgardWorkReport = (function () {
   //  6. TAX BLOCK
   // ════════════════════════════════════════
   function renderTaxBlock(d) {
+    const base = d.taxes.base != null ? d.taxes.base : null;
+    const baseNote = base != null
+      ? `Начислено на ${m(base)} \u20BD: ФОТ, наличные, суточные и самозанятые (безнал по счёту не облагается)`
+      : `НДФЛ + взносы / обналичка от суммы без НДС`;
     return `<div class="wr-card">
       <div class="wr-card-title">Налоговая нагрузка</div>
       <div class="wr-row wr-row-bold"><span>НДФЛ + взносы / обналичка (${d.taxes.rate}%)</span><span class="wr-red">${m(d.taxes.burden)} \u20BD</span></div>
-      <div class="wr-row-desc">На ФОТ, наличные, суточные, субподряд</div>
+      <div class="wr-row-desc">${baseNote}</div>
+    </div>`;
+  }
+
+  /**
+   * Плашка качества данных: строки, которые сами себе противоречат.
+   * V443 (27.10.2026) — отчёт обязан говорить об этом, а не молча считать неправду.
+   * Директор увидел «прибыль 42 млн» и не знал, что одна строка на 23 млн не сходится.
+   */
+  function renderDataQuality(d) {
+    const dq = d.data_quality;
+    if (!dq || dq.ok || !dq.inconsistent_count) return '';
+    const material = (dq.inconsistent || []).filter(i => i.severity !== 'rounding');
+    const rounding = (dq.inconsistent || []).filter(i => i.severity === 'rounding');
+    const isCritical = material.length > 0;
+    const color = isCritical ? '#f59e0b' : 'var(--t2)';
+    const head = isCritical ? '\u26A0 Есть строки под сверку' : 'Округления в первичке';
+    const list = (isCritical ? material : rounding).slice(0, 10).map(i =>
+      `<div class="wr-row"><span>${esc(i.supplier || '\u2014')} <span style="color:var(--t3);font-size:11px">#${i.expense_id}</span></span>` +
+      `<span style="color:${color}">${m(i.amount)} \u20BD${i.diff ? ' · расхождение ' + m(i.diff) + ' \u20BD' : ''}</span></div>`
+    ).join('');
+    const text = isCritical
+      ? `${material.length} шт. на ${m(dq.inconsistent_amount)} \u20BD: сумма расхода не равна «нетто + НДС».
+         Непонятно, с НДС она или без. В расчёт вошли по нетто; точность прибыли под вопросом.`
+      : `Расхождения только на округлении (${rounding.length} шт.) \u2014 на прибыль не влияют.`;
+    return `<div class="wr-card" style="border-color:${color}">
+      <div class="wr-card-title" style="color:${color}">${head}</div>
+      <div class="wr-row-desc">${text}</div>
+      ${list}
+      <div class="wr-row-desc">${isCritical ? 'Сверьте сумму и НДС по документу, затем поправьте расход.' : 'Править не обязательно.'}</div>
     </div>`;
   }
 
@@ -496,8 +572,8 @@ window.AsgardWorkReport = (function () {
       <div class="wr-profit-grid">
         <div class="wr-profit-formula">
           <div class="wr-row"><span>Выручка без НДС</span><span>${m(d.revenue.ex_vat)} \u20BD</span></div>
-          <div class="wr-row"><span class="wr-red">\u2212 Расходы + налоги</span><span class="wr-red">${m(d.expenses.total_with_tax)} \u20BD</span></div>
-          <div class="wr-row"><span class="wr-blue">+ НДС к вычету</span><span class="wr-blue">${m(d.vat.deductible)} \u20BD</span></div>
+          <div class="wr-row"><span class="wr-red">\u2212 Расходы без НДС</span><span class="wr-red">${m(d.expenses.total)} \u20BD</span></div>
+          <div class="wr-row"><span class="wr-red">\u2212 Налоговая нагрузка</span><span class="wr-red">${m(d.taxes.burden)} \u20BD</span></div>
           <div class="wr-divider"></div>
           <div class="wr-row wr-row-bold"><span>Прибыль до налога</span><span>${m(d.profit.before_tax)} \u20BD</span></div>
           <div class="wr-row"><span class="wr-red">\u2212 Налог на прибыль (${d.profit.income_tax_rate}%)</span><span class="wr-red">${m(d.profit.income_tax)} \u20BD</span></div>
@@ -521,11 +597,12 @@ window.AsgardWorkReport = (function () {
   }
 
   function renderWaterfall(d) {
+    // V443: из водопада убран «НДС к вычету» — он не доход и не шаг к прибыли.
+    // Столбик сходится без него: Выручка − Расходы − Нал.нагрузка − Налог приб. = Прибыль.
     const items = [
-      { label: 'Выручка', value: d.revenue.ex_vat, type: 'pos' },
-      { label: 'Расходы', value: d.expenses.total, type: 'neg' },
+      { label: 'Выручка без НДС', value: d.revenue.ex_vat, type: 'pos' },
+      { label: 'Расходы без НДС', value: d.expenses.total, type: 'neg' },
       { label: 'Нал.нагрузка', value: d.taxes.burden, type: 'neg' },
-      { label: 'НДС к выч.', value: d.vat.deductible, type: 'pos' },
       { label: 'Налог приб.', value: d.profit.income_tax, type: 'neg' },
       { label: 'Прибыль', value: d.profit.net, type: 'total' },
     ];
@@ -679,7 +756,10 @@ window.AsgardWorkReport = (function () {
     const devColor = devDays === null ? 'var(--t2)' : devDays <= 0 ? '#10b981' : '#ef4444';
     const devText = devDays === null ? '—' : devDays === 0 ? 'В срок ✓' : (devDays > 0 ? 'Задержка +' + devDays + ' дн.' : 'Раньше на ' + Math.abs(devDays) + ' дн.');
 
-    const costDev = wm.cost_plan > 0 ? Math.round((wm.cost_fact - wm.cost_plan) / wm.cost_plan * 100) : null;
+    // V443: сравниваем в ОДНОЙ базе — без НДС. Раньше факт брался как cost_fact
+    // (сумма расходов с НДС), а план — как есть; базы могли не совпадать.
+    const factNet = d.expenses.total;
+    const costDev = wm.cost_plan > 0 ? Math.round((factNet - wm.cost_plan) / wm.cost_plan * 100) : null;
     const costColor = costDev === null ? 'var(--t2)' : costDev <= 0 ? '#10b981' : '#ef4444';
     const costText = costDev === null ? '—' : (costDev > 0 ? 'Перерасход +' + costDev + '%' : 'Экономия ' + Math.abs(costDev) + '%');
 
@@ -699,12 +779,12 @@ window.AsgardWorkReport = (function () {
           <div class="wr-pvf-val" style="color:${devColor}">${devText}</div>
         </div>
         <div class="wr-pvf-item">
-          <div class="wr-pvf-label">Себест. план</div>
+          <div class="wr-pvf-label">Себест. план (без НДС)</div>
           <div class="wr-pvf-val">${wm.cost_plan ? m(wm.cost_plan) + ' \u20BD' : '\u2014'}</div>
         </div>
         <div class="wr-pvf-item">
-          <div class="wr-pvf-label">Себест. факт</div>
-          <div class="wr-pvf-val">${wm.cost_fact ? m(wm.cost_fact) + ' \u20BD' : '\u2014'}</div>
+          <div class="wr-pvf-label">Себест. факт (без НДС)</div>
+          <div class="wr-pvf-val">${m(factNet)} \u20BD</div>
         </div>
         <div class="wr-pvf-item">
           <div class="wr-pvf-label">Отклонение</div>
@@ -757,7 +837,13 @@ window.AsgardWorkReport = (function () {
   // ════════════════════════════════════════
   function renderPayments(d) {
     const p = d.payments;
-    if (!p || !p.items || p.items.length === 0) return '';
+    // V443 (27.10.2026): раньше блок исчезал целиком, если по работе не было
+    // ни одного платежа (`if (!p.items.length) return ''`). По #406 платежей нет —
+    // и директор не видел, что получено 0 ₽ и дебиторка 99,8 млн, зато видел
+    // прибыль 42 млн. Отсутствие денег выглядело как отсутствие раздела.
+    // Теперь блок виден всегда; при отсутствии платежей честно пишем об этом.
+    if (!p) return '';
+    const hasItems = Array.isArray(p.items) && p.items.length > 0;
 
     const today = new Date().toISOString().slice(0, 10);
     const pctFilled = Math.min(p.payment_pct, 100);
@@ -765,7 +851,7 @@ window.AsgardWorkReport = (function () {
 
     const typeLabels = { advance: 'Аванс', postpay: 'Постоплата', intermediate: 'Промежуточный', other: 'Прочее' };
 
-    const rows = p.items.map(inc => {
+    const rows = (p.items || []).map(inc => {
       const isOverdue = !inc.confirmed && inc.date && inc.date < today;
       const statusHtml = inc.confirmed
         ? '<span class="wr-pay-ok">\u2705 Оплачен</span>'
@@ -782,6 +868,9 @@ window.AsgardWorkReport = (function () {
     }).join('');
 
     const receivablesColor = p.receivables > 0 ? '#d4a843' : '#10b981';
+    const emptyNote = hasItems ? '' :
+      `<div class="wr-empty" style="padding:10px 0">По этой работе платежей ещё не зарегистрировано \u2014
+        все ${m(d.contract_value)} \u20BD числятся в дебиторке.</div>`;
 
     return `<div class="wr-card wr-pay-section">
       <div class="wr-card-title">Оплата заказчиком</div>
@@ -797,6 +886,7 @@ window.AsgardWorkReport = (function () {
         </div>
       </div>
 
+      ${emptyNote}
       <table class="wr-pay-table">
         <thead><tr><th>Тип</th><th>Описание</th><th class="wr-r">Сумма</th><th>Дата</th><th>Статус</th></tr></thead>
         <tbody>${rows}</tbody>
@@ -830,7 +920,9 @@ window.AsgardWorkReport = (function () {
   function animateCountUp(el, target, duration) {
     const start = 0;
     const startTime = performance.now();
-    const isPercent = target < 100 && el.closest('.wr-kpi-value') && el.closest('.wr-kpi-value').textContent.includes('%');
+    // Признак «процент» приходит из разметки (data-is-percent), а не из DOM-текста:
+    // прежняя проверка по textContent ломалась, когда рядом не было символа «%».
+    const isPercent = el.dataset.isPercent === '1';
 
     function step(now) {
       const elapsed = now - startTime;
@@ -839,7 +931,7 @@ window.AsgardWorkReport = (function () {
       const eased = 1 - Math.pow(1 - progress, 3);
       const current = start + (target - start) * eased;
 
-      if (Math.abs(target) < 100) {
+      if (isPercent) {
         el.textContent = current.toFixed(1);
       } else {
         el.textContent = money(Math.round(current));
@@ -925,13 +1017,19 @@ window.AsgardWorkReport = (function () {
       ['Статус', wm.work_status || ''],
       [''],
       ['Выручка с НДС', d.revenue.with_vat],
-      ['Выручка без НДС', d.revenue.ex_vat],
-      ['Расходы', d.expenses.total],
-      ['Налоговая нагрузка', d.taxes.burden],
-      ['Расходы с налогами', d.expenses.total_with_tax],
-      ['НДС к уплате', d.vat.payable],
+      ['НДС начисленный', d.vat.charged],
+      ['Выручка без НДС (база для маржи)', d.revenue.ex_vat],
+      [''],
+      ['Расходы без НДС', d.expenses.total],
+      ['НДС внутри расходов (к вычету)', d.expenses.total_vat_inside != null ? d.expenses.total_vat_inside : d.vat.deductible],
+      ['Расходы с НДС (как в счетах)', d.expenses.total_gross != null ? d.expenses.total_gross : d.expenses.total],
+      ['Налоговая нагрузка ' + d.taxes.rate + '% (от ' + (d.taxes.base != null ? d.taxes.base : d.expenses.total) + ')', d.taxes.burden],
+      ['Расходы + налоги (без НДС)', d.expenses.total_with_tax],
+      [''],
+      ['НДС к уплате (расчёт с бюджетом, не уменьшает прибыль)', d.vat.payable],
+      [''],
       ['Прибыль до налога', d.profit.before_tax],
-      ['Налог на прибыль', d.profit.income_tax],
+      ['Налог на прибыль ' + d.profit.income_tax_rate + '%', d.profit.income_tax],
       ['Чистая прибыль', d.profit.net],
       ['Маржа, %', d.profit.margin],
     ];
@@ -952,12 +1050,12 @@ window.AsgardWorkReport = (function () {
     ws2['!cols'] = [{ wch: 25 }, { wch: 18 }];
     XLSX.utils.book_append_sheet(wb, ws2, 'Выручка');
 
-    // 3. Expenses by category
+    // 3. Expenses by category — V443: суммы БЕЗ НДС, НДС отдельной колонкой.
     const cats = d.expenses.categories || [];
     const s3 = [
       ['Расходы по категориям'],
       [''],
-      ['Категория', 'Кол-во', 'Сумма', 'НДС к вычету', 'Налог ' + d.taxes.rate + '%', 'Итого с налогом'],
+      ['Категория', 'Кол-во', 'Сумма без НДС', 'НДС', 'Налог ' + d.taxes.rate + '%', 'Итого с налогом'],
     ];
     for (const c of cats) {
       const info = CAT_LABELS[c.category] || { label: c.category };
@@ -972,16 +1070,23 @@ window.AsgardWorkReport = (function () {
     const s4 = [
       ['Детализация расходов'],
       [''],
-      ['Категория', 'Поставщик', 'Сумма', 'Комментарий', 'Документ', 'Счёт-фактура'],
+      ['Категория', 'Поставщик', 'Сумма без НДС', 'НДС', 'Комментарий', 'Документ', 'Счёт-фактура', 'Проверка'],
     ];
     for (const c of cats) {
       const info = CAT_LABELS[c.category] || { label: c.category };
       for (const it of (c.items || [])) {
-        s4.push([info.label, it.supplier || '', parseFloat(it.amount) || 0, it.comment || '', it.doc_number || '', it.invoice_received ? 'Да' : it.invoice_needed ? 'Ожидается' : 'Нет']);
+        // V443: сумма без НДС и НДС отдельно + пометка противоречивых строк.
+        const net = it.amount_net != null ? Number(it.amount_net) : (parseFloat(it.amount) || 0);
+        const vat = it.vat_deductible != null ? Number(it.vat_deductible) : (parseFloat(it.vat_amount) || 0);
+        s4.push([
+          info.label, it.supplier || '', net, vat, it.comment || '', it.doc_number || '',
+          it.invoice_received ? 'Да' : it.invoice_needed ? 'Ожидается' : 'Нет',
+          it.inconsistent ? 'СВЕРИТЬ' : ''
+        ]);
       }
     }
     const ws4 = XLSX.utils.aoa_to_sheet(s4);
-    ws4['!cols'] = [{ wch: 20 }, { wch: 22 }, { wch: 14 }, { wch: 30 }, { wch: 14 }, { wch: 12 }];
+    ws4['!cols'] = [{ wch: 20 }, { wch: 22 }, { wch: 14 }, { wch: 12 }, { wch: 30 }, { wch: 14 }, { wch: 12 }, { wch: 10 }];
     XLSX.utils.book_append_sheet(wb, ws4, 'Детали расходов');
 
     // 5. VAT
@@ -1011,18 +1116,20 @@ window.AsgardWorkReport = (function () {
     ws6['!cols'] = [{ wch: 22 }, { wch: 18 }];
     XLSX.utils.book_append_sheet(wb, ws6, 'Налоги');
 
-    // 7. Profit
+    // 7. Profit — V443: одна база, без НДС. Столбик сходится без «+ НДС к вычету».
     const s7 = [
       ['Прибыль'],
       [''],
       ['Показатель', 'Сумма, руб.'],
       ['Выручка без НДС', d.revenue.ex_vat],
-      ['Расходы + налоги', d.expenses.total_with_tax],
-      ['НДС к вычету (+)', d.vat.deductible],
-      ['Прибыль до налога', d.profit.before_tax],
-      ['Налог на прибыль', d.profit.income_tax],
-      ['Чистая прибыль', d.profit.net],
+      ['− Расходы без НДС', d.expenses.total],
+      ['− Налоговая нагрузка ' + d.taxes.rate + '%', d.taxes.burden],
+      ['= Прибыль до налога', d.profit.before_tax],
+      ['− Налог на прибыль ' + d.profit.income_tax_rate + '%', d.profit.income_tax],
+      ['= Чистая прибыль', d.profit.net],
       ['Маржа, %', d.profit.margin],
+      [''],
+      ['Справка: НДС к уплате (в прибыли не участвует)', d.vat.payable],
     ];
     const ws7 = XLSX.utils.aoa_to_sheet(s7);
     ws7['!cols'] = [{ wch: 22 }, { wch: 18 }];
@@ -1075,12 +1182,38 @@ window.AsgardWorkReport = (function () {
       ['Ставка налога на прибыль, %', d.profit.income_tax_rate],
       [''],
       ['Тендер ID', wm.tender_id || ''],
-      ['Себест. план', wm.cost_plan || ''],
-      ['Себест. факт', wm.cost_fact || ''],
+      ['Себест. план (без НДС)', wm.cost_plan || ''],
+      ['Себест. факт (без НДС)', d.expenses.total],
+      ['НДС внутри расходов', d.expenses.total_vat_inside != null ? d.expenses.total_vat_inside : d.vat.deductible],
     ];
     const ws10 = XLSX.utils.aoa_to_sheet(s10);
     ws10['!cols'] = [{ wch: 28 }, { wch: 18 }];
     XLSX.utils.book_append_sheet(wb, ws10, 'Параметры');
+
+    // 11. Качество данных — строки под сверку (V443).
+    // Лист добавляется всегда: пустой лист с «противоречий нет» лучше молчания.
+    const dq = d.data_quality || { inconsistent: [], ok: true };
+    const s11 = [
+      ['Качество данных'],
+      [''],
+      dq.ok
+        ? ['Противоречивых строк нет — все суммы сходятся с НДС']
+        : ['Строк под сверку: ' + dq.inconsistent_count + ' на ' + (dq.inconsistent_amount || 0) + ' ₽'],
+      ['']
+    ];
+    if (!dq.ok) {
+      s11.push(['ID', 'Категория', 'Поставщик', 'Дата', 'Сумма', 'НДС', 'Нетто', 'Причина']);
+      for (const i of (dq.inconsistent || [])) {
+        s11.push([
+          i.expense_id, i.category || '', i.supplier || '', i.date || '',
+          i.amount || 0, i.vat_amount || 0, i.amount_net || 0,
+          'сумма не равна нетто + НДС'
+        ]);
+      }
+    }
+    const ws11 = XLSX.utils.aoa_to_sheet(s11);
+    ws11['!cols'] = [{ wch: 8 }, { wch: 16 }, { wch: 26 }, { wch: 12 }, { wch: 14 }, { wch: 12 }, { wch: 14 }, { wch: 30 }];
+    XLSX.utils.book_append_sheet(wb, ws11, 'Качество данных');
 
     // Save
     const fileName = 'Фин_отчёт_работа_' + d.work_id + '.xlsx';
@@ -1278,5 +1411,10 @@ window.AsgardWorkReport = (function () {
 </style>`;
   }
 
-  return { render };
+  return {
+    render,
+    // Точка входа для оффлайн-проверки рендера (tests/manual/render-report.js).
+    // Не используется в проде — только чтобы снять DOM без сети и браузера.
+    renderForTest: function (data) { return renderStyles() + renderPage(data); }
+  };
 })();

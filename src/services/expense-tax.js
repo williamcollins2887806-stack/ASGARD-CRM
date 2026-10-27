@@ -65,14 +65,22 @@ function calcVatDeductible(expense) {
 
 /**
  * 55% нагрузка по одной записи (округлено до копеек).
- * @param {{amount?: number|string, category?: string|null, payment_method?: string|null}} expense
+ *
+ * V443 (27.10.2026): база — сумма БЕЗ НДС, а не `amount` как есть.
+ * Раньше, если amount был с НДС, нагрузка завышалась на долю НДС
+ * (на #406 это давало +лишние рубли в расходы). Разбор базы — src/services/vat-calc.js.
+ *
+ * @param {{amount?: number|string, category?: string|null, payment_method?: string|null,
+ *          vat_rate?: number|null, vat_amount?: number|null, amount_ex_vat?: number|null,
+ *          vat_basis?: string|null}} expense
  * @param {number} [taxRatePct=55]
  * @returns {number}
  */
 function calcTaxBurden(expense, taxRatePct = 55) {
   if (!isTaxableExpense(expense)) return 0;
-  const amount = parseFloat(expense?.amount) || 0;
-  return Math.round((amount * taxRatePct) / 100 * 100) / 100;
+  const vatCalc = require('./vat-calc');
+  const base = vatCalc.taxBase(expense);
+  return Math.round((base * taxRatePct) / 100 * 100) / 100;
 }
 
 /**

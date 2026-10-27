@@ -266,6 +266,34 @@ async function autoWorkExpense(db, payment, docRow) {
     const dedupKey = docRow && docRow.id ? `invoice:${docRow.id}` : `payment:${payment.id}`;
     // Категория по умолчанию — «материалы (безнал)»: счёт поставщику. Это ВИД расхода, а не основание
     // (основание — work_id, см. блок G). Бухгалтер правит категорию в расходах, если закупка иная.
+    //
+    // НДС (V443, 27.10.2026): до этого вызова НДС из счёта НЕ передавался вовсе —
+    // по базе из 1177 связанных расходов вычет 549 тыс. из 33,2 млн, то есть
+    // 32,6 млн ₽ входящего НДС просто не доезжало до отчёта и прибыль по объектам
+    // была занижена.
+    //
+    // ВАЖНО (правка по ревью верификатора 27.10.2026): НДС берём ИЗ ЗАЯВКИ
+    // (`payment.vat_amount` / `vat_rate` / `amount_net`), а карточку реестра —
+    // только как запасной источник. Причина: `upsertFromPaymentInvoice`
+    // создаёт карточку с `vat_amount=0, has_vat=false, amount_net=gross`
+    // (см. src/services/doc-registry-upsert.js:102-107) — там НДС заведомо
+    // обнулён. Читать НДС из карточки означало терять его так же, как до правки.
+    const vat = require('../services/vat-calc');
+    const payVat = vat.money(payment.vat_amount);
+    const payNet = payment.amount_net != null ? vat.money(payment.amount_net) : null;
+    const payRate = vat.normalizeRate(payment.vat_rate);
+    const docVat = docRow ? vat.money(docRow.vat_amount) : 0;
+    const docNet = docRow && docRow.amount_net != null ? vat.money(docRow.amount_net) : null;
+    const docRate = docRow ? vat.normalizeRate(docRow.vat_rate) : null;
+
+    // Приоритет: заявка → карточка реестра → НДС неизвестен (не выдумываем).
+    const usePay = payVat > 0;
+    const useDoc = !usePay && docVat > 0;
+    const hasVat = usePay || useDoc;
+    const vatAmount = usePay ? payVat : (useDoc ? docVat : null);
+    const vatNet = usePay ? payNet : (useDoc ? docNet : null);
+    const vatRate = usePay ? payRate : (useDoc ? docRate : null);
+
     const expense = await insertWorkExpense(db, {
       work_id: payment.work_id,
       category: 'materials',
@@ -275,6 +303,12 @@ async function autoWorkExpense(db, payment, docRow) {
       description: `Оплата счёта #${payment.id}${payment.supplier_name ? ': ' + payment.supplier_name : ''}`,
       supplier: payment.supplier_name || null,
       doc_number: docRow && docRow.invoice_number ? docRow.invoice_number : null,
+      // НДС из счёта — чтобы вычет попал в финансовый отчёт.
+      vat_rate: hasVat ? vatRate : null,
+      vat_amount: hasVat ? vatAmount : null,
+      amount_ex_vat: hasVat ? (vatNet != null ? vatNet : vat.money(num(payment.amount) - vatAmount)) : null,
+      // База: сумма заявки — это сумма к оплате (с НДС), как и amount_gross в реестре.
+      vat_basis: hasVat ? 'gross' : null,
       payment_method: 'bank',
       source_table: 'doc_registry',
       source_id: docRow && docRow.id ? docRow.id : null,

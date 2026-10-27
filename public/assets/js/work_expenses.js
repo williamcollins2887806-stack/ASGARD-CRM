@@ -104,7 +104,7 @@ window.AsgardWorkExpenses = (function(){
   }
 
   // POST /api/expenses/work
-  async function addExpense({work_id, category, subcategory, amount, date, comment, supplier, doc_number, invoice_needed, invoice_received, vat_rate, vat_amount, amount_ex_vat, payment_method}){
+  async function addExpense({work_id, category, subcategory, amount, date, comment, supplier, doc_number, invoice_needed, invoice_received, vat_rate, vat_amount, amount_ex_vat, vat_basis, payment_method}){
     const normalizedCategory = (category === 'payroll') ? 'fot' : category;
     const payload = {
       work_id: Number(work_id),
@@ -120,6 +120,7 @@ window.AsgardWorkExpenses = (function(){
       vat_rate: vat_rate || null,
       vat_amount: vat_amount || null,
       amount_ex_vat: amount_ex_vat || null,
+      vat_basis: vat_basis || null,
       payment_method: payment_method || 'cash'
     };
     const data = await _api('/api/expenses/work', { method: 'POST', body: payload });
@@ -569,12 +570,26 @@ window.AsgardWorkExpenses = (function(){
         <div><label>Ставка НДС</label>
           <select id="exp_vat_rate" style="padding:8px;border-radius:6px;background:var(--bg1);color:var(--t1);border:1px solid var(--brd)">
             <option value="">Без НДС</option>
-            <option value="20">20%</option>
             <option value="22">22%</option>
+            <option value="20">20%</option>
             <option value="10">10%</option>
+            <option value="5">5%</option>
           </select>
         </div>
         <div><label>Сумма НДС ₽</label><input id="exp_vat_amount" type="number" placeholder="авто" /></div>
+      </div>
+      <div class="formrow" style="margin-top:8px">
+        <div style="grid-column:1/-1">
+          <label>Введённая сумма — это:</label>
+          <select id="exp_vat_basis" style="padding:8px;border-radius:6px;background:var(--bg1);color:var(--t1);border:1px solid var(--brd)">
+            <option value="gross">С НДС (как в счёте, всего к оплате)</option>
+            <option value="net">Без НДС (НДС сверху)</option>
+          </select>
+          <div class="help" style="margin-top:4px;font-size:12px;color:var(--t2)">
+            Без этого поля сумма трактовалась по-разному и отчёт расходился.
+            <span id="exp_vat_hint" style="color:var(--t1)"></span>
+          </div>
+        </div>
       </div>
       <div style="margin-top:8px">
         <label style="display:flex;align-items:center;gap:8px;cursor:pointer;padding:8px 12px;border:1px dashed var(--brd);border-radius:8px;font-size:13px;color:var(--t2)">
@@ -598,19 +613,44 @@ window.AsgardWorkExpenses = (function(){
     const _scope = _ovs[_ovs.length - 1] || document;
     const q = (sel) => _scope.querySelector(sel);
 
-    // Авто-расчёт НДС при изменении суммы или ставки
+    // Авто-расчёт НДС при изменении суммы, ставки или базы.
+    // V443 (27.10.2026): до этого сумма ВСЕГДА считалась брутто (amt*rate/(100+rate)).
+    // ПАНХ в #406 внесли как нетто — и строка разошлась на 1,3 млн. Теперь база
+    // указывается явно, и подсказка показывает, что именно уйдёт в расход.
     let _expFile = null;
     if (!isFot) {
       const vatCalc = () => {
         const amt = Number(q('#exp_amount')?.value) || 0;
         const rate = Number(q('#exp_vat_rate')?.value) || 0;
-        if (rate > 0 && amt > 0) {
-          const vatAmt = Math.round(amt * rate / (100 + rate) * 100) / 100;
-          q('#exp_vat_amount').value = vatAmt;
+        const basis = q('#exp_vat_basis')?.value || 'gross';
+        const hint = q('#exp_vat_hint');
+        if (rate <= 0 || amt <= 0) {
+          const va = q('#exp_vat_amount');
+          if (va) va.value = '';
+          if (hint) hint.textContent = '';
+          return;
+        }
+        let vatAmt, netAmt, grossAmt;
+        if (basis === 'net') {
+          vatAmt = Math.round(amt * rate / 100 * 100) / 100;
+          netAmt = amt;
+          grossAmt = Math.round((amt + vatAmt) * 100) / 100;
+        } else {
+          netAmt = Math.round(amt / (1 + rate / 100) * 100) / 100;
+          vatAmt = Math.round((amt - netAmt) * 100) / 100;
+          grossAmt = amt;
+        }
+        const va = q('#exp_vat_amount');
+        if (va) va.value = vatAmt;
+        if (hint) {
+          const f = (v) => String(Math.round(v)).replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+          hint.textContent = ` → без НДС ${f(netAmt)} ₽ + НДС ${f(vatAmt)} ₽ = с НДС ${f(grossAmt)} ₽`;
         }
       };
+      q('#exp_amount')?.addEventListener('input', vatCalc);
       q('#exp_amount')?.addEventListener('change', vatCalc);
       q('#exp_vat_rate')?.addEventListener('change', vatCalc);
+      q('#exp_vat_basis')?.addEventListener('change', vatCalc);
 
       // Предпросмотр файла + клиентская проверка размера (бэк режет >200МБ, но большое
       // фото на слабой связи вешало upload без таймаута → кнопка «залипала»).
@@ -664,8 +704,23 @@ window.AsgardWorkExpenses = (function(){
           const amount = Number(q('#exp_amount').value) || 0;
           if(amount <= 0){ toast('Расход', 'Укажите сумму', 'err'); _btn.disabled = false; _btn.textContent = _orig; return; }
           const vatRate = Number(q('#exp_vat_rate')?.value) || null;
-          const vatAmount = Number(q('#exp_vat_amount')?.value) || null;
-          const amountExVat = (vatRate && vatAmount) ? (amount - vatAmount) : null;
+          const vatBasis = q('#exp_vat_basis')?.value || 'gross';
+          let vatAmount = Number(q('#exp_vat_amount')?.value) || null;
+          // Нетто считаем от выбранной базы: если сумма введена без НДС,
+          // amount уже нетто, а счёт-фактура прибавляет НДС сверху.
+          let amountExVat = null;
+          if (vatRate && vatAmount && vatAmount > 0) {
+            amountExVat = vatBasis === 'net'
+              ? amount
+              : Math.round((amount - vatAmount) * 100) / 100;
+          } else if (vatRate && vatBasis === 'net') {
+            // Ставка есть, НДС не введён — посчитаем сами.
+            vatAmount = Math.round(amount * vatRate / 100 * 100) / 100;
+            amountExVat = amount;
+          } else if (vatRate && vatBasis === 'gross') {
+            amountExVat = Math.round(amount / (1 + vatRate / 100) * 100) / 100;
+            vatAmount = Math.round((amount - amountExVat) * 100) / 100;
+          }
           const payMethod = q('#exp_pay_method')?.value || 'cash';
 
           const expResult = await addExpense({
@@ -681,6 +736,7 @@ window.AsgardWorkExpenses = (function(){
             vat_rate: vatRate,
             vat_amount: vatAmount,
             amount_ex_vat: amountExVat,
+            vat_basis: vatRate ? vatBasis : null,
             payment_method: payMethod,
             created_by: user.id
           });

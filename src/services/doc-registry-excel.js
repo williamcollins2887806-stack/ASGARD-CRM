@@ -204,6 +204,8 @@ async function maybeLinkWorkExpense(db, doc, userId) {
     vat_rate: doc.has_vat ? num(doc.vat_rate) : 0,
     vat_amount: num(doc.vat_amount),
     amount_ex_vat: num(doc.amount_net),
+    // V439: amount_gross — сумма С НДС, фиксируем базу явно.
+    vat_basis: doc.has_vat ? 'gross' : 'net',
     payment_method: 'bank',
     source_table: 'doc_registry',
     source_id: doc.id,

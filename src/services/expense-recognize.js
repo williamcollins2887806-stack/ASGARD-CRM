@@ -305,44 +305,48 @@ async function getWorkFinancials(db, workId) {
   // (тот же модуль использует src/routes/works.js — чтобы desktop-отчёт и Мимир-Кошелёк
   //  показывали одинаковые цифры; источник правды для логики см. в expense-tax.js)
   const expenseTax = require('./expense-tax');
+  const vatCalc = require('./vat-calc');
 
-  const { rows: expenseGroups } = await db.query(
-    `SELECT category, payment_method,
-            SUM(amount) as total,
-            SUM(COALESCE(vat_amount, 0)) as vat_total
-     FROM work_expenses WHERE work_id = $1
-     GROUP BY category, payment_method`,
+  // ВАЖНО (правка по ревью верификатора 27.10.2026): считаем ПОСТРОЧНО, а не
+  // группами. Групповая агрегация «amount − vat» ломалась на строках с
+  // vat_basis='net' (например ПАНХ в #406): там amount — уже нетто, и вычитание
+  // НДС занижало себестоимость на 5 084 423,24 ₽. Из-за этого Мимир давал
+  // прибыль 42,56 млн против 38,75 млн в отчёте.
+  const { rows: expenseRows } = await db.query(
+    `SELECT category, payment_method, amount, vat_rate, vat_amount, amount_ex_vat, vat_basis
+       FROM work_expenses WHERE work_id = $1`,
     [workId]
   );
 
-  let totalExpenses = 0;
+  let totalExpenses = 0;      // сумма к оплате (как в счетах)
+  let totalExpensesNet = 0;   // без НДС — база для прибыли
   let totalTaxBurden = 0;
   let totalVatDeductible = 0;
 
-  for (const row of expenseGroups) {
-    const amount = parseFloat(row.total) || 0;
-    totalExpenses += amount;
+  for (const row of expenseRows) {
+    const resolved = vatCalc.resolveExpense(row);
+    totalExpenses += resolved.gross;
+    totalExpensesNet += resolved.net;
+    totalVatDeductible += resolved.vat;
 
-    // 55%-нагрузка по единой логике (cash/card → всегда; auto+ФОТ/суточные → да; bank/self → 0)
+    // 55%-нагрузка по единой логике, база — без НДС
     totalTaxBurden += expenseTax.calcTaxBurden(
-      { amount, category: row.category, payment_method: row.payment_method },
+      { amount: resolved.net, category: row.category, payment_method: row.payment_method, vat_amount: 0 },
       taxRate
     );
-
-    // НДС к вычету ТОЛЬКО если vat_amount явно > 0 (реальный счёт-фактура)
-    const vatFromDb = parseFloat(row.vat_total) || 0;
-    if (vatFromDb > 0) totalVatDeductible += vatFromDb;
   }
 
   totalExpenses = Math.round(totalExpenses * 100) / 100;
+  totalExpensesNet = Math.round(totalExpensesNet * 100) / 100;
   totalTaxBurden = Math.round(totalTaxBurden * 100) / 100;
   totalVatDeductible = Math.round(totalVatDeductible * 100) / 100;
 
-  // Итого расходы с налогами
-  const totalExpensesWithTax = Math.round((totalExpenses + totalTaxBurden) * 100) / 100;
+  // Итого расходы с налогами (одна база — без НДС)
+  const totalExpensesWithTax = Math.round((totalExpensesNet + totalTaxBurden) * 100) / 100;
 
-  // Прибыль и маржа (как в work_report)
-  const profitBeforeTax = Math.round((revenueExVat - totalExpensesWithTax + totalVatDeductible) * 100) / 100;
+  // Прибыль и маржа (как в work_report): НДС к вычету НЕ прибавляем —
+  // он уже исключён из расходов выше.
+  const profitBeforeTax = Math.round((revenueExVat - totalExpensesWithTax) * 100) / 100;
   // ВАЖНО: налог на прибыль 25% только при profit > 0 (см. works.js — единая логика).
   const incomeTax = profitBeforeTax > 0
     ? Math.round(profitBeforeTax * incomeTaxRate / 100 * 100) / 100
@@ -357,11 +361,15 @@ async function getWorkFinancials(db, workId) {
     contract_value: contractValue,
     revenue_ex_vat: revenueExVat,
     cost_fact: costFact,
+    // V443: cost_with_tax и cost_ex_vat — БЕЗ НДС (одна база с works.js).
+    cost_ex_vat: totalExpensesNet,
+    cost_gross: totalExpenses,
     cost_with_tax: totalExpensesWithTax,
     cost_plan: Number(work.cost_plan) || 0,
     tax_burden: Math.round(totalTaxBurden),
     vat_deductible: Math.round(totalVatDeductible),
     profit: netProfit,
+    profit_before_tax: profitBeforeTax,
     margin_pct: marginPct
   };
 }

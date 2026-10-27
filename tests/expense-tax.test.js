@@ -29,8 +29,15 @@ test('card payment_method → taxable', () => {
 test('bank payment_method → НЕ taxable (с НДС-вычетом отдельно)', () => {
   assert.strictEqual(t.isTaxableExpense({ category: 'materials', payment_method: 'bank' }), false);
 });
-test('self (самозанятый) → НЕ taxable', () => {
-  assert.strictEqual(t.isTaxableExpense({ category: 'transfer', payment_method: 'self' }), false);
+test('self (самозанятый) → taxable (внутреннее правило: НПД = обналичка)', () => {
+  // ИСТОРИЯ (27.10.2026, найдено верификатором): этот тест ожидал `false` и
+  // ПАДАЛ на неизменённом коде — расхождение теста с реализацией, а не
+  // изменение бизнес-правила. Проверка на коммите до правок:
+  //   git show HEAD:src/services/expense-tax.js → TAX_PAYMENT_METHODS содержит 'self'
+  //   isTaxableExpense({payment_method:'self'}) === true
+  // Реализация и шапка модуля (пункт 1: cash | card | self → 55%) с самого
+  // начала считали НПД обналичкой. Ожидание приведено к фактическому поведению.
+  assert.strictEqual(t.isTaxableExpense({ category: 'transfer', payment_method: 'self' }), true);
 });
 test('auto + fot → taxable', () => {
   assert.strictEqual(t.isTaxableExpense({ category: 'fot', payment_method: 'auto' }), true);
@@ -86,6 +93,17 @@ test('Сумма списка', () => {
   assert.strictEqual(r.taxBurden, 16500);
   // vatDeductible: 909.09 (только реальный НДС из счёта)
   assert.strictEqual(r.vatDeductible, 909.09);
+});
+
+console.log('expense-tax: calcTaxBurden — база без НДС (V443)');
+test('cash 12200 с НДС 22% → 55% от 10000 = 5500, а не от 12200', () => {
+  assert.strictEqual(
+    t.calcTaxBurden({ amount: 12200, vat_rate: 22, vat_amount: 2200, vat_basis: 'gross', payment_method: 'cash' }),
+    5500
+  );
+});
+test('cash 10000 без НДС → 5500 (база не изменилась)', () => {
+  assert.strictEqual(t.calcTaxBurden({ amount: 10000, vat_amount: null, payment_method: 'cash' }), 5500);
 });
 
 console.log('');
