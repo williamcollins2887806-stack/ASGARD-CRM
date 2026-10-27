@@ -608,6 +608,8 @@ const AI_MAX_ATTEMPTS = parseInt(process.env.AI_MAX_ATTEMPTS || '3', 10);
 // НЕ тратят попытки, иначе одно пополнение баланса «съедает» письма навсегда.
 const aiRetry = require('./ai-retry-policy');
 let aiProcessorTimer = null;
+// D-380: отдельный таймер дозаполнения номенклатуры (раз в сутки).
+let aiBackfillTimer = null;
 let aiProcessorRunning = false;
 
 // Self-healing helper: update ai_classification regardless of column type (jsonb, json, or text)
@@ -1925,18 +1927,51 @@ function startAiProcessor() {
       if (revived > 0) {
         console.log(`[IMAP-AI] Revived ${revived} emails lost to provider failures on startup`);
       }
+      // D-380: дозаполнить номенклатуру у счетов, созданных без позиций
+      // (например, пока не было денег на ИИ-API). Локальный парсинг PDF и
+      // tesseract — бесплатно, поэтому можно звать на старте без опаски.
+      try {
+        const { backfillInvoiceLines } = require('./backfill-lines');
+        const bf = await backfillInvoiceLines(db, { limit: 30, apply: true });
+        if (bf.filled) {
+          console.log(`[IMAP-AI] Backfill номенклатуры: дозаполнено ${bf.filled} из ${bf.scanned}`);
+        }
+      } catch (e) {
+        console.warn('[IMAP-AI] backfill lines: ' + (e && e.message));
+      }
     } catch (e) {
       console.warn('[IMAP-AI] Reset skipped emails error:', e.message);
     }
     processUnanalyzedEmails().catch(() => {});
   }, 10000);
   console.log(`[IMAP-AI] Background AI processor started (every ${AI_PROCESS_INTERVAL / 1000}s, batch=${AI_BATCH_SIZE})`);
+
+  // D-380: суточный дозаполнение номенклатуры. Причина отдельного таймера:
+  // при старте сервиса прогон уже есть, но если баланс ИИ пополнили днём и
+  // ждать рестарта никто не будет — счета останутся без позиций до ночи.
+  // Локальный парсинг бесплатный, нагрузка мизерная (только счета без позиций).
+  if (!aiBackfillTimer) {
+    aiBackfillTimer = setInterval(async () => {
+      if (isShuttingDown) return;
+      try {
+        const { backfillInvoiceLines } = require('./backfill-lines');
+        const bf = await backfillInvoiceLines(db, { limit: 30, apply: true });
+        if (bf.filled) console.log(`[IMAP-AI] Backfill номенклатуры (daily): ${bf.filled} из ${bf.scanned}`);
+      } catch (e) {
+        console.warn('[IMAP-AI] backfill daily: ' + (e && e.message));
+      }
+    }, 24 * 60 * 60 * 1000);
+  }
 }
 
 function stopAiProcessor() {
   if (aiProcessorTimer) {
     clearInterval(aiProcessorTimer);
     aiProcessorTimer = null;
+  }
+  if (aiBackfillTimer) {
+    clearInterval(aiBackfillTimer);
+    aiBackfillTimer = null;
   }
 }
 
