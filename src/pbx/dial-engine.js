@@ -232,11 +232,12 @@ function buildRingPlan(operators, dutyUserId, config, now = new Date()) {
   const mode = cfg.routing_mode || 'duty_first';
   // MULTI-LINE (V442, 27.10.2026): теперь на линии может быть НЕСКОЛЬКО
   // операторов, и входящий должен звонить всем сразу — «пока кто-то не возьмёт
-  // первым». Поэтому параллельный обзвон включён по умолчанию, а duty_first
-  // определяет лишь ПОРЯДОК (дежурный первым в списке, к нему — приоритет
-  // голосом/уведомлением), а не эксклюзив.
-  const dialAll = cfg.parallel_ring !== false; // по умолчанию всем
-  const parallel = dialAll || mode === 'parallel';
+  // первым». Поэтому параллельный обзвон включён ПО УМОЛЧАНИЮ и не зависит от
+  // legacy-флага parallel_ring (на проде он остался false от одно-линейной
+  // модели и гасил раздачу всем — проверено на /dial/plan 27.10.2026).
+  // duty_first определяет лишь ПОРЯДОК (дежурный первым в списке), не эксклюзив.
+  // Ограничить число звонимых можно явно: limit_parallel_agents + max_agents.
+  const parallel = true;
   const maxAgents = Math.max(1, Number(cfg.max_agents) || 3);
   /** @type {PbxOperator[]} */
   let ordered = eligible;
