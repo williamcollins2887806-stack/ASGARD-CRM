@@ -570,6 +570,23 @@ function buildFilters(q, userId, role) {
   if (q.incomplete === '1' || q.incomplete === 'true') where += ' AND d.is_incomplete';
   if (q.no_onec === '1' || q.no_onec === 'true') where += ` AND (d.onec_id IS NULL OR trim(d.onec_id)='')`;
 
+  // D-383: письма для ОБС — НЕ отдельные строки реестра счетов.
+  //
+  // Дефект (заказчик 27.10.2026: «почему я в реестре счетов вижу ИСХ... разве
+  // исх это счёт?»). При генерации письма создавалась строка doc_registry с
+  // package_type='letter' и dir='out', и она попадала в общий список наравне
+  // со счетами: в колонке «Счёт» стояло «Исх. 261027-09», сумма 0 ₽, статус
+  // «Закрыто». Читать реестр стало невозможно.
+  //
+  // Правильно: письмо — ВЛОЖЕНИЕ счёта. Строка письма остаётся в базе (на неё
+  // ссылается obs_letter_doc_id, из неё берётся файл), но в списке реестра
+  // не показывается. Исключение — явный запрос `include_letters=1`, он нужен
+  // только отладке и выгрузкам.
+  const includeLetters = String((q.include_letters || '') === '1' || (q.include_letters || '') === 'true');
+  if (!includeLetters) {
+    where += ` AND d.package_type <> 'letter'`;
+  }
+
   // D-378: способ оплаты. Значения фиксированные, подстановки нет.
   const paySrc = String(q.payment_source || '').toLowerCase();
   if (paySrc === 'obs' || paySrc === 'regular') {
@@ -2624,20 +2641,56 @@ module.exports = async function docRegistryRoutes(fastify) {
     if (typeof atts === 'string') { try { atts = JSON.parse(atts); } catch (_) { atts = []; } }
     if (!Array.isArray(atts)) atts = [];
 
-    // Первое вложение с путём, иначе скан счёта.
     const first = atts.find((a) => a && (a.url || a.path)) || null;
     const url = (first && (first.url || first.path)) || doc.original_path_url;
     if (!url) return reply.code(404).send({ error: 'Файл не приложен' });
 
-    // Кириллица в имени хранится percent-encoded — декодируем.
     let decoded = String(url);
-    try { decoded = decodeURIComponent(url); } catch (_) { /* оставляем как есть */ }
+    try { decoded = decodeURIComponent(url); } catch (_) { /* как есть */ }
 
     const fsPath = safeUploadPath(decoded, { subdir: 'doc-hub' })
       || safeUploadPath(decoded, { subdir: path.join('doc-hub', 'obs-letters') })
       || safeUploadPath(decoded);
     if (!fsPath) return reply.code(400).send({ error: 'Недопустимый путь к файлу' });
     if (!fs.existsSync(fsPath)) return reply.code(404).send({ error: 'Файл отсутствует на диске' });
+
+    // D-383: выгрузка в Word. Заказчик 27.10.2026: «нужно не только в PDF,
+    // но и в Word». PDF нельзя редактировать, а бухгалтерии и юристам часто
+    // нужно поправить формулировку или вставить в свой документ, поэтому
+    // рядом с PDF отдаём DOCX.
+    //
+    // Конверсия: PDF → текст (pdftotext) → DOCX (mammoth не умеет собирать,
+    // поэтому используем libreoffice: PDF → DOCX напрямую). LibreOffice
+    // есть на проде (24.2.7). Файл готовится по запросу и кэшируется рядом
+    // с исходником, чтобы не конвертировать один и тот же счёт повторно.
+    const wantDocx = String((req.query && req.query.format) || '').toLowerCase() === 'docx';
+    if (wantDocx) {
+      const basePath = fsPath.replace(/\.[^.]+$/, '');
+      const cached = `${basePath}.docx`;
+      const docxName = `${path.basename(basePath)}.docx`;
+
+      const sendDocx = (buf) => {
+        reply.header('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+        reply.header('Content-Disposition', `attachment; filename="${encodeURIComponent(docxName)}"`);
+        reply.header('X-Asgard-Docx-Note', 'text-only');
+        return reply.send(buf);
+      };
+
+      // Кэш: повторный запрос того же счёта не конвертируем заново.
+      if (fs.existsSync(cached)) return sendDocx(fs.readFileSync(cached));
+
+      try {
+        const { pdfToDocxBuffer } = require('../services/pdf-to-docx');
+        const buf = pdfToDocxBuffer(fsPath, doc.invoice_number || path.basename(basePath));
+        try { fs.writeFileSync(cached, buf); } catch (_) { /* кэш не критичен */ }
+        return sendDocx(buf);
+      } catch (e) {
+        return reply.code(500).send({
+          error: 'Не удалось конвертировать в Word',
+          detail: String(e.message || e).slice(0, 200),
+        });
+      }
+    }
 
     const ext = path.extname(fsPath).toLowerCase();
     const { safeContentType } = require('../lib/upload-ext');

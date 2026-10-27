@@ -729,6 +729,57 @@ window.AsgardDocHubPage = (function () {
   }
 
   /**
+   * D-382: скачать файл строки реестра с ПРАВИЛЬНЫМ именем и расширением.
+   *
+   * Дефект (заказчик 27.10.2026: «скачивает в html а не пдф»). Сервер отдаёт
+   * корректный application/pdf с %PDF-. Проблема в `window.open(blobUrl)`:
+   * браузер открывает blob без имени и типа, и при сохранении подставляет
+   * своё расширение. Для скачивания нужен `<a download="имя.pdf">` —
+   * тогда имя и расширение берутся из атрибута, а не угадываются.
+   */
+  async function downloadDocFile(row, kind, format) {
+    const id = typeof row === 'object' ? Number(row.id) : Number(row);
+    if (!id) return;
+    const fmt = format === 'docx' ? 'docx' : 'pdf';
+
+    let url = kind === 'letter'
+      ? `/api/doc-registry/${id}/letter-file`
+      : `/api/doc-registry/${id}/file`;
+    if (fmt === 'docx') url += (url.includes('?') ? '&' : '?') + 'format=docx';
+
+    try {
+      const r = await fetch(url, { headers: authHeaders(false), cache: 'no-store' });
+      if (!r.ok) {
+        const j = await r.json().catch(() => ({}));
+        toast('Не удалось скачать', j.error || ('HTTP ' + r.status), 'err');
+        return;
+      }
+      const blob = await r.blob();
+      let name = '';
+      const cd = r.headers.get('content-disposition') || '';
+      const m = cd.match(/filename\*?=(?:UTF-8'')?"?([^";]+)"?/i);
+      if (m) { try { name = decodeURIComponent(m[1]); } catch (_) { name = m[1]; } }
+      if (!name) {
+        const base = (typeof row === 'object' && (row.invoice_number || row.id)) || id;
+        name = `Документ_${base}.${fmt}`;
+      }
+      if (fmt === 'docx') name = name.replace(/\.pdf$/i, '.docx');
+
+      const objUrl = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = objUrl;
+      a.download = name;          // ← ключ: имя и расширение задаём явно
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(objUrl), 60000);
+      toast('Скачано', name, 'ok');
+    } catch (e) {
+      toast('Не удалось скачать', e.message || 'сеть недоступна', 'err');
+    }
+  }
+
+  /**
    * D-378: открыть файл письма ОБС.
    *
    * Письмо — строка реестра (dir='out', package_type='letter'). Открываем
@@ -1289,9 +1340,20 @@ window.AsgardDocHubPage = (function () {
       return `<span class="dh-pill dh-pill--muted dh-att dh-att--none"
         title="Файл не приложен — скан надо запросить или загрузить">нет файла</span>`;
     }
+
+    // D-383: открыть + скачать в PDF + скачать в Word.
+    // Заказчик 27.10.2026: «нужно не только в PDF, но и в Word».
     const label = n > 1 ? `файлов ${n}` : 'файл';
-    return `<button type="button" class="dh-pill dh-pill--info dh-att dh-att--yes"
-      data-doc-file="${Number(row.id)}" title="Открыть файл вложения">${label}</button>`;
+    return `<div class="dh-att-box">
+      <button type="button" class="dh-pill dh-pill--info dh-att dh-att--yes"
+        data-doc-file="${Number(row.id)}" title="Открыть файл вложения">${label}</button>
+      <div class="dh-att-dl">
+        <button type="button" class="dh-att-dl__btn" data-doc-dl="${Number(row.id)}" data-fmt="pdf"
+          title="Скачать PDF">PDF</button>
+        <button type="button" class="dh-att-dl__btn" data-doc-dl="${Number(row.id)}" data-fmt="docx"
+          title="Скачать в Word (DOCX)">Word</button>
+      </div>
+    </div>`;
   }
 
   function purposeFlags(row) {
@@ -1425,25 +1487,25 @@ window.AsgardDocHubPage = (function () {
         if (qinfo) {
           const isTransition = prevKey && prevKey !== 'none';
           parts.push(`<tr class="dh-qtr-sep" data-qtr="${qinfo.q}" data-year="${qinfo.y}">
-            <td colspan="${state.trafficLight ? 15 : 14}"><div class="dh-qtr-sep__in ${isTransition ? 'is-next' : ''}">
+            <td colspan="${state.trafficLight ? 16 : 15}"><div class="dh-qtr-sep__in ${isTransition ? 'is-next' : ''}">
               ${isTransition ? '<span class="dh-qtr-sep__arrow">↓</span>' : ''}
               <strong>${esc(quarterLabel(qinfo.q, qinfo.y))}</strong>
               <span class="dh-qtr-sep__hint">по дате документа</span>
             </div></td>
           </tr>`);
         } else {
-          parts.push(`<tr class="dh-qtr-sep" data-qtr="0"><td colspan="${state.trafficLight ? 15 : 14}"><div class="dh-qtr-sep__in"><strong>Без даты документа</strong></div></td></tr>`);
+          parts.push(`<tr class="dh-qtr-sep" data-qtr="0"><td colspan="${state.trafficLight ? 16 : 15}"><div class="dh-qtr-sep__in"><strong>Без даты документа</strong></div></td></tr>`);
         }
         prevKey = key;
       }
       parts.push(`<tr class="${rowClass(r)}" data-id="${r.id}">
         ${state.trafficLight ? `<td class="dh-col-tl">${trafficPill(r)}</td>` : ''}
-        <td>${statusPill(r)}</td>
-        <td><span class="dh-pill dh-pill--${r.dir === 'out' ? 'gold' : 'info'}">${r.dir === 'out' ? 'исх.' : 'вх.'}</span></td>
-        <td>
+        <td class="dh-col-status">${statusPill(r)}</td>
+        <td class="dh-col-dir"><span class="dh-pill dh-pill--${r.dir === 'out' ? 'gold' : 'info'}">${r.dir === 'out' ? 'исх.' : 'вх.'}</span></td>
+        <td class="dh-col-num">
           <div class="dh-stack"><span class="a dh-mono">${esc(r.invoice_number || 'б/н')}</span><span class="b">${fmtDate(r.invoice_date)}</span></div>
         </td>
-        <td>
+        <td class="dh-col-cp">
           <div class="dh-stack"><span class="a">${esc(r.counterparty_name)}</span><span class="b dh-muted">${r.inn ? ('ИНН ' + esc(r.inn)) : esc(r.counterparty_email || r.email || '—')}</span></div>
         </td>
         <td class="dh-col-work"><div class="dh-stack"><span class="a">${esc(r.work_title || 'без объекта')}</span>${r.work_number ? `<span class="b">№ ${esc(r.work_number)}</span>` : ''}</div></td>
@@ -1451,10 +1513,10 @@ window.AsgardDocHubPage = (function () {
         <td class="dh-col-recv">${receiveCell(r)}</td>
         <td class="dh-col-purpose">${purposeFlags(r)}</td>
         <td class="dh-col-owners">${ownersCell(r)}</td>
-        <td class="dh-money" title="${esc(moneyFine(r.amount_gross))}">${money(r.amount_gross)}${obsBadges(r)}</td>
+        <td class="dh-col-amount dh-money" title="${esc(moneyFine(r.amount_gross))}">${money(r.amount_gross)}${obsBadges(r)}</td>
         <td class="dh-col-attach">${attachCell(r)}</td>
         <td class="dh-col-vat">${vatCell(r)}</td>
-        <td>${payCell(r)}</td>
+        <td class="dh-col-pay">${payCell(r)}</td>
         <td class="dh-col-sf">${closingCell(r)}</td>
         <td class="dh-actions">
           <div class="dh-qa" aria-label="Действия">
@@ -1473,9 +1535,22 @@ window.AsgardDocHubPage = (function () {
     });
     return `<div class="dh-table-wrap" id="dhTableWrap"><table class="dh-table dh-table--rich">
       <thead><tr>
-        ${state.trafficLight ? '<th class="dh-col-tl" title="Светофор">⏱</th>' : ''}<th>Статус</th><th>Напр.</th><th>Счёт</th><th>Контрагент</th><th>Объект</th>
-        <th>Договор</th><th>Получение</th><th>Назначение</th><th>Ответственные</th>
-        <th>Сумма</th><th>Файл</th><th>НДС</th><th>Оплата</th><th>СФ/УПД</th><th class="dh-actions">Действия</th>
+        ${state.trafficLight ? '<th class="dh-col-tl" title="Светофор">⏱</th>' : ''}
+        <th class="dh-col-status">Статус</th>
+        <th class="dh-col-dir">Напр.</th>
+        <th class="dh-col-num">Счёт</th>
+        <th class="dh-col-cp">Контрагент</th>
+        <th class="dh-col-work">Объект</th>
+        <th class="dh-col-contract">Договор</th>
+        <th class="dh-col-recv">Получение</th>
+        <th class="dh-col-purpose">Назначение</th>
+        <th class="dh-col-owners">Ответственные</th>
+        <th class="dh-col-amount">Сумма</th>
+        <th class="dh-col-attach">Файл</th>
+        <th class="dh-col-vat">НДС</th>
+        <th class="dh-col-pay">Оплата</th>
+        <th class="dh-col-sf">СФ/УПД</th>
+        <th class="dh-actions">Действия</th>
       </tr></thead>
       <tbody>${parts.join('')}</tbody>
     </table></div><div class="dh-hscroll-bar" id="dhHScrollBar" hidden><div class="dh-hscroll-bar__inner"></div></div>`
@@ -4615,6 +4690,21 @@ window.AsgardDocHubPage = (function () {
       // D-382: клик по индикатору файла — открыть счёт/вложение.
       // Идёт через ACL-роут с токеном (blob), как и письмо ОБС: прямой
       // window.open не передаёт Authorization и получил бы 401.
+      // D-383: рядом кнопки «PDF» и «Word» — скачивание с именем файла.
+      const dlBtn = e.target.closest('[data-doc-dl]');
+      if (dlBtn) {
+        e.preventDefault();
+        e.stopPropagation();
+        const docId = Number(dlBtn.getAttribute('data-doc-dl'));
+        const fmt = dlBtn.getAttribute('data-fmt') || 'pdf';
+        const rowEl = dlBtn.closest('tr[data-id]');
+        const rowId = rowEl ? Number(rowEl.getAttribute('data-id')) : docId;
+        const row = (state.rows || []).find((x) => Number(x.id) === rowId) || { id: docId };
+        dlBtn.disabled = true;
+        downloadDocFile(row, undefined, fmt).finally(() => { dlBtn.disabled = false; });
+        return;
+      }
+
       const fileBtn = e.target.closest('[data-doc-file]');
       if (fileBtn) {
         e.preventDefault();
@@ -4622,6 +4712,9 @@ window.AsgardDocHubPage = (function () {
         openDocFile(Number(fileBtn.getAttribute('data-doc-file')));
         return;
       }
+
+      // D-382: клик по индикатору файла — открыть счёт/вложение.
+      // (обработчик уже есть выше, дубль убран)
 
       const obsGen = e.target.closest('[data-obs-gen]');
       if (obsGen) {

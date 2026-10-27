@@ -510,44 +510,51 @@ a:hover { text-decoration: underline; }
   cursor: pointer;
 }
 .dh-table tbody tr:hover { background: color-mix(in srgb, var(--bg4) 55%, transparent); }
-.dh-table tbody tr.is-selected { background: color-mix(in srgb, var(--gold) 10%, var(--bg2)); }
 
-/* ═══ V394 + D-305: светофор Doc Hub — ЗАЛИВКА СТРОКИ ═══
-   Заказчик 20.10.2026: «я просил чтобы неполные горели синим, всё ок зелёным,
-   что-то не так жёлтым, плохо красным. я его не вижу — строки не горят...
-   сделай именно заливку строки, но так чтобы всё было читаемо».
-   
-   Было: красный/синий/жёлтый — фон 5-6% прозрачности (почти невидим),
-   зелёный — ВООБЩЕ без фона, только полоса слева.
-   Стало: заливка на токенах --ok-bg / --warn-bg / --err-bg / --info-bg
-   (они уже подобраны под светлую и тёмную тему с нужным контрастом),
-   + цветная полоса слева 4px, + цвет текста заголовка.
-   Текст остаётся читаемым: заливка полупрозрачная, контраст не падает. */
+/* ═══ V394 + D-305 + D-383: светофор Doc Hub — ЗАЛИВКА СТРОКИ ═══
+   Заказчик 20.10.2026: «сделай именно заливку строки, но так чтобы всё было читаемо».
+   Заказчик 27.10.2026: «на светлой теме светофор не работает, не видно каким
+   цветом закрашена строка».
+
+   Причин было две:
+     1) заливка 12 % на белом фоне почти не различима — цвет читался только
+        по 4-пиксельной полосе слева;
+     2) правило `.is-selected` шло НИЖЕ и перебивало фон светофора: выбранная
+        строка теряла свой цвет.
+
+   Теперь: плотная заливка через color-mix с --bg1 (не прозрачность поверх
+   неизвестного фона), полоса слева 5px, и правила для выбранной строки
+   НЕ перебивают цвет светофора. */
 .dh-table tbody tr.is-traffic-red {
-  background: var(--err-bg);
-  box-shadow: inset 4px 0 0 var(--red);
+  background: color-mix(in srgb, var(--err) 16%, var(--bg1));
+  box-shadow: inset 5px 0 0 var(--red);
 }
-.dh-table tbody tr.is-traffic-red:hover { background: color-mix(in srgb, var(--err-bg) 70%, var(--err) 30%); }
+.dh-table tbody tr.is-traffic-red:hover { background: color-mix(in srgb, var(--err) 24%, var(--bg1)); }
 .dh-table tbody tr.is-traffic-blue {
-  background: var(--info-bg);
-  box-shadow: inset 4px 0 0 var(--blue-l);
+  background: color-mix(in srgb, var(--info) 15%, var(--bg1));
+  box-shadow: inset 5px 0 0 var(--blue-l);
 }
-.dh-table tbody tr.is-traffic-blue:hover { background: color-mix(in srgb, var(--info-bg) 70%, var(--blue-l) 30%); }
+.dh-table tbody tr.is-traffic-blue:hover { background: color-mix(in srgb, var(--info) 23%, var(--bg1)); }
 .dh-table tbody tr.is-traffic-yellow {
-  background: var(--warn-bg);
-  box-shadow: inset 4px 0 0 var(--amber);
+  background: color-mix(in srgb, var(--warn) 18%, var(--bg1));
+  box-shadow: inset 5px 0 0 var(--amber);
 }
-.dh-table tbody tr.is-traffic-yellow:hover { background: color-mix(in srgb, var(--warn-bg) 70%, var(--amber) 30%); }
+.dh-table tbody tr.is-traffic-yellow:hover { background: color-mix(in srgb, var(--warn) 26%, var(--bg1)); }
 .dh-table tbody tr.is-traffic-green {
-  background: var(--ok-bg);
-  box-shadow: inset 4px 0 0 var(--green, #2d8659);
+  background: color-mix(in srgb, var(--ok) 14%, var(--bg1));
+  box-shadow: inset 5px 0 0 var(--green, #2d8659);
 }
-.dh-table tbody tr.is-traffic-green:hover { background: color-mix(in srgb, var(--ok-bg) 70%, var(--green) 30%); }
+.dh-table tbody tr.is-traffic-green:hover { background: color-mix(in srgb, var(--ok) 22%, var(--bg1)); }
 /* Читаемость: заголовок строки (контрагент) не тонет в заливке. */
 .dh-table tbody tr.is-traffic-red .dh-stack .a { color: var(--err-t, var(--red)); }
 .dh-table tbody tr.is-traffic-green .dh-stack .a { color: var(--t1); }
-/* Выбранная строка должна перекрывать заливку светофора, а не спорить с ней. */
+/* Выбранная строка: золотая рамка, фон светофора СОХРАНЯЕТСЯ —
+   иначе пропадает главный сигнал строки. */
 .dh-table tbody tr.is-selected { outline: 2px solid var(--gold); outline-offset: -2px; }
+.dh-table tbody tr.is-selected.is-traffic-red { background: color-mix(in srgb, var(--err) 16%, var(--bg1)); }
+.dh-table tbody tr.is-selected.is-traffic-blue { background: color-mix(in srgb, var(--info) 15%, var(--bg1)); }
+.dh-table tbody tr.is-selected.is-traffic-yellow { background: color-mix(in srgb, var(--warn) 18%, var(--bg1)); }
+.dh-table tbody tr.is-selected.is-traffic-green { background: color-mix(in srgb, var(--ok) 14%, var(--bg1)); }
 /* U3(д): исходящие строки — класс ставился из JS, но CSS не было. */
 .dh-table tbody tr.is-out {
   border-left: 3px solid var(--gold);
@@ -850,6 +857,44 @@ a:hover { text-decoration: underline; }
   border-right-color: transparent;
   animation: dh-spin .7s linear infinite;
   flex-shrink: 0;
+}
+
+/* D-383: файл + скачивание PDF/Word в одной ячейке.
+   Компактно: плашка-статус сверху, две маленькие кнопки под ней.
+   Раньше в колонке был только индикатор, и скачать файл в нужном
+   формате было нельзя (браузер сохранял blob без имени). */
+.dh-att-box {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  align-items: flex-start;
+}
+.dh-att-dl {
+  display: flex;
+  gap: 3px;
+}
+.dh-att-dl__btn {
+  height: 17px;
+  padding: 0 5px;
+  border-radius: 4px;
+  font-size: 9.5px;
+  font-weight: 700;
+  font-family: inherit;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  background: transparent;
+  color: var(--t3);
+  border: 1px solid var(--brd);
+  transition: background .12s, color .12s, border-color .12s;
+}
+.dh-att-dl__btn:hover {
+  background: var(--bg4);
+  color: var(--t1);
+  border-color: var(--brd-strong, var(--brd));
+}
+.dh-att-dl__btn:disabled {
+  opacity: .5;
+  cursor: default;
 }
 @keyframes dh-spin {
   to { transform: rotate(360deg); }
@@ -2145,21 +2190,31 @@ body.hg-dock-open .dh-hscroll-bar {
   overflow: hidden;
   text-overflow: ellipsis;
 }
-/* Статус Напр Счёт Контрагент Объект Договор Получение Назначение Отв Сумма НДС Оплата СФ Действия */
-.dh-table--rich th:nth-child(1), .dh-table--rich td:nth-child(1) { width: 118px; }
-.dh-table--rich th:nth-child(2), .dh-table--rich td:nth-child(2) { width: 52px; }
-.dh-table--rich th:nth-child(3), .dh-table--rich td:nth-child(3) { width: 96px; }
-.dh-table--rich th:nth-child(4), .dh-table--rich td:nth-child(4) { width: 170px; }
-.dh-table--rich th:nth-child(5), .dh-table--rich td:nth-child(5) { width: 130px; }
-.dh-table--rich th:nth-child(6), .dh-table--rich td:nth-child(6) { width: 120px; }
-.dh-table--rich th:nth-child(7), .dh-table--rich td:nth-child(7) { width: 88px; }
-.dh-table--rich th:nth-child(8), .dh-table--rich td:nth-child(8) { width: 72px; }
-.dh-table--rich th:nth-child(9), .dh-table--rich td:nth-child(9) { width: 120px; }
-.dh-table--rich th:nth-child(10), .dh-table--rich td:nth-child(10) { width: 104px; }
-.dh-table--rich th:nth-child(11), .dh-table--rich td:nth-child(11) { width: 88px; }
-.dh-table--rich th:nth-child(12), .dh-table--rich td:nth-child(12) { width: 96px; }
-.dh-table--rich th:nth-child(13), .dh-table--rich td:nth-child(13) { width: 96px; }
-.dh-table--rich th:nth-child(14), .dh-table--rich td:nth-child(14) { width: 156px; }
+
+/* D-383: ширины колонок — ТОЛЬКО через классы, не через nth-child.
+   Дефект (заказчик 27.10.2026: «таблица поменялась, стала не читаемой»):
+   ширины были привязаны к ПОРЯДКОВОМУ НОМЕРУ колонки. Стоило добавить
+   колонку «Файл» — все последующие сдвинулись, и «Сумма» получила ширину
+   «Получения», «НДС» — ширину «Суммы» и так далее. Таблица разъехалась.
+
+   Теперь каждая колонка объявляет свой класс. Порядок колонок можно менять,
+   добавлять новые — вёрстка не поедет. */
+.dh-col-status   { width: 116px; }
+.dh-col-dir      { width: 48px; text-align: center; }
+.dh-col-num      { width: 104px; }
+.dh-col-cp       { width: 176px; }
+.dh-col-work     { width: 132px; }
+.dh-col-contract { width: 118px; }
+.dh-col-recv     { width: 84px; }
+.dh-col-purpose  { width: 76px; }
+.dh-col-owners   { width: 124px; }
+.dh-col-amount   { width: 130px; }
+.dh-col-attach   { width: 84px; }
+.dh-col-vat      { width: 96px; }
+.dh-col-pay      { width: 110px; }
+.dh-col-sf       { width: 110px; }
+.dh-col-tl       { width: 34px; text-align: center; }
+.dh-actions      { width: 156px; }
 .dh-table--rich .dh-col-work,
 .dh-table--rich .dh-col-contract,
 .dh-table--rich .dh-col-owners { white-space: normal; }
