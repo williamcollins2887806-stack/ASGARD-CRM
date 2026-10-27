@@ -446,14 +446,20 @@ function buildHtml(data, opts) {
     text-indent: 8mm;
   }
   .body ul {
-    margin: 2mm 0 4mm 8mm;
-    padding-left: 6mm;
+    margin: 2mm 0 3mm 8mm;
+    padding-left: 5mm;
+    /* D-378: счета за спецодежду дают 9–11 позиций, и письмо уезжало на
+       2 страницы — подпись отдельно от текста. Уплотняем перечень: он
+       справочный, читаемость важнее «воздуха». */
+    font-size: 10.5pt;
+    line-height: 1.22;
   }
-  .body li { margin-bottom: 1.5mm; text-align: left; }
+  .body li { margin-bottom: 0.5mm; text-align: left; }
+  .body p { margin-bottom: 3mm; }
   .signature-block {
-    margin-top: 12mm;
+    margin-top: 6mm;
     position: relative;
-    min-height: 34mm;
+    min-height: 26mm;
     /* D-378: письмо А-2115 выходило на 2 страницы, и подпись с печатью
        уезжали на вторую, оставляя на первой пустое место. Блок подписи
        неделим — как в бумажном делопроизводстве. */
