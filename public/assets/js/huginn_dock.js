@@ -4071,7 +4071,7 @@
         { label: 'Оформление', ico: ICO.palette || ICO.settings || '🎨', tone: 'is-blue', key: 'appearance' }
       ],
       [
-        { label: 'Энергосбережение', ico: ICO.battery || '🔋', tone: 'is-yellow', key: 'fx', value: fx === 'off' ? 'Выкл.' : (fx === 'reduced' ? 'Меньше' : 'Полные') },
+        { label: 'Энергосбережение', ico: ICO.battery || '🔋', tone: 'is-yellow', key: 'fx', value: fx === 'off' ? 'Выкл.' : 'Вкл.' },
         { label: 'Язык', ico: ICO.languages || ICO.globe || '🌐', tone: 'is-purple', key: 'lang', value: (state.lang === 'en' ? 'English' : 'Русский') }
       ]
     ];
