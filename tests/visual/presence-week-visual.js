@@ -24,6 +24,17 @@ const check = (n, ok, d) => {
 };
 
 (async () => {
+  // D-330: чистим неделю, иначе гейт не покажется (она уже заполнена прошлым тестом).
+  const { Client } = require('pg');
+  const db = new Client({ database: 'asgard_crm_test', user: 'asgard', password: '123456789', host: '127.0.0.1' });
+  await db.connect();
+  await db.query(`
+    DELETE FROM staff_plan sp USING staff s, users u
+    WHERE sp.staff_id = s.id AND s.user_id = u.id AND u.login = 'test_buh'
+      AND sp.date >= date_trunc('week', CURRENT_DATE)::date
+      AND sp.date <  date_trunc('week', CURRENT_DATE)::date + 7`);
+  await db.end();
+
   const browser = await chromium.launch();
   const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 }, deviceScaleFactor: 2 });
   const page = await ctx.newPage();

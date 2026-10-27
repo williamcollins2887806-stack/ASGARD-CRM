@@ -566,6 +566,12 @@ html[data-theme="light"] .pg-foot { border-top-color: rgba(120, 100, 60, 0.13); 
 
 .pg-btn svg { width: 15px; height: 15px; }
 
+/* D-330: незаполненный день недели — подсветка, чтобы было видно, что осталось */
+.pg-row.is-missing {
+  border-color: color-mix(in srgb, var(--err-t, #f87171) 45%, transparent);
+  background: color-mix(in srgb, var(--err-t, #f87171) 8%, transparent);
+}
+
 /* ── Узкие экраны ──────────────────────────────────────────────────────── */
 @media (max-width: 620px) {
   .pg-scene { padding: 10px; }

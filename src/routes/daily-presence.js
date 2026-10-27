@@ -237,7 +237,11 @@ module.exports = async function (fastify, options) {
       }
       const filled = days.filter((d) => d.status_code).length;
       return {
+        // D-330: неделя считается заполненной только когда отмечены ВСЕ
+        // рабочие дни, иначе гейт продолжает спрашивать.
         required: filled < days.length,
+        filled,
+        total: days.length,
         week_start: monday,
         server_date: todayIso,
         statuses: STATUS_DEFS,
@@ -310,6 +314,24 @@ module.exports = async function (fastify, options) {
         }
         saved++;
       }
+
+      // D-330: нельзя сохранить НЕПОЛНУЮ неделю — иначе гейт закрывался,
+      // оставляя пустые дни. Проверяем ПОСЛЕ валидации статусов и работ,
+      // чтобы не перекрывать более точные ошибки (bad_status и т.п.).
+      const mondayW = mondayOf(dates[0]);
+      const workdaysW = weekWorkdays(mondayW, cal).filter((w) => !w.holiday).map((w) => w.date);
+      const providedW = new Set(dates);
+      const missingW = workdaysW.filter((d) => !providedW.has(d));
+      if (missingW.length) {
+        await client.query('ROLLBACK');
+        reply.code(400);
+        return {
+          error: 'week_incomplete',
+          message: 'Отметь все рабочие дни недели — осталось ' + missingW.length + '.',
+          missing: missingW,
+        };
+      }
+
       await client.query('COMMIT');
       return { ok: true, saved };
     } catch (e) {

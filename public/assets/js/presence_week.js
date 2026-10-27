@@ -344,7 +344,7 @@
             options: statuses.map(function (s) { return { code: s.code, label: s.label }; }),
             value: d.status_code || '',
             placeholder: '— не отмечено —',
-            onChange: function () { syncWork(); err(''); },
+            onChange: function () { syncWork(); syncProgress(); err(''); },
           });
           slot.appendChild(sel);
           selects[d.date] = sel;
@@ -381,10 +381,34 @@
         }
         syncWork();
 
+        // D-330: показываем на кнопке, сколько дней осталось отметить.
+        function syncProgress() {
+          var total = Object.keys(selects).length;
+          var done = 0;
+          Object.keys(selects).forEach(function (d) { if (selects[d]._getValue()) done++; });
+          var btnEl = scene.querySelector('#pgSave');
+          if (!btnEl) return;
+          if (done === 0) {
+            btnEl.innerHTML = '<span>В строй</span>' + IC.arrow;
+          } else if (done < total) {
+            btnEl.innerHTML = '<span>Отмечено ' + done + ' из ' + total + '</span>' + IC.arrow;
+          } else {
+            btnEl.innerHTML = '<span>В строй</span>' + IC.arrow;
+          }
+          // убираем подсветку с дней, которые уже заполнены
+          Object.keys(selects).forEach(function (d) {
+            var row = scene.querySelector('.pg-row[data-day-row="' + d + '"]');
+            if (row && selects[d]._getValue()) row.classList.remove('is-missing');
+          });
+        }
+
         function err(msg) {
           var el = scene.querySelector('#pgErr');
           el.innerHTML = msg ? (IC.alert + '<span>' + esc(msg) + '</span>') : '';
         }
+
+        // Показываем счётчик сразу: если дни уже были отмечены ранее — видно.
+        syncProgress();
 
         // ── Сохранение ─────────────────────────────────────────────────────
         var btn = scene.querySelector('#pgSave');
@@ -401,6 +425,25 @@
           });
 
           if (!payload.length) { err('Отметь хотя бы один день недели'); return; }
+
+          // D-330: пока не отмечены ВСЕ рабочие дни недели, сохранять нельзя.
+          // Раньше можно было отметить один день, нажать «В строй» — окно
+          // закрывалось, ставился флаг недели, и остаток недели оставался пустым.
+          var totalDays = Object.keys(selects).length;
+          var markedDays = payload.length;
+          if (markedDays < totalDays) {
+            var left = totalDays - markedDays;
+            err('Отметь все рабочие дни недели — осталось ' + left + ' ' +
+              (left === 1 ? 'день' : (left >= 2 && left <= 4 ? 'дня' : 'дней')));
+            // Подсвечиваем незаполненные дни, чтобы было видно, что осталось.
+            Object.keys(selects).forEach(function (d) {
+              var code = selects[d]._getValue();
+              var row = scene.querySelector('.pg-row[data-day-row="' + d + '"]');
+              if (row) row.classList.toggle('is-missing', !code);
+            });
+            return;
+          }
+
           if (payload.some(function (p) { return p.status_code === 'об'; }) && !(workSel && workSel._getValue())) {
             err('Выбери работу для «На объекте»');
             return;
