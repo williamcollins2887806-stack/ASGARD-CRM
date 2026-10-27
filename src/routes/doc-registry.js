@@ -578,14 +578,9 @@ function buildFilters(q, userId, role) {
   // со счетами: в колонке «Счёт» стояло «Исх. 261027-09», сумма 0 ₽, статус
   // «Закрыто». Читать реестр стало невозможно.
   //
-  // Правильно: письмо — ВЛОЖЕНИЕ счёта. Строка письма остаётся в базе (на неё
-  // ссылается obs_letter_doc_id, из неё берётся файл), но в списке реестра
-  // не показывается. Исключение — явный запрос `include_letters=1`, он нужен
-  // только отладке и выгрузкам.
-  const includeLetters = String((q.include_letters || '') === '1' || (q.include_letters || '') === 'true');
-  if (!includeLetters) {
-    where += ` AND d.package_type <> 'letter'`;
-  }
+  // Правильно: письмо — ВЛОЖЕНИЕ счёта. Фильтр добавлен в buildFilters
+  // (см. блок D-383 там). Здесь только комментарий, чтобы не дублировать код.
+
 
   // D-378: способ оплаты. Значения фиксированные, подстановки нет.
   const paySrc = String(q.payment_source || '').toLowerCase();
@@ -606,6 +601,21 @@ function buildFilters(q, userId, role) {
   else if (kpi === 'out') where += ` AND d.dir='out'`;
   else if (kpi === '1c' || kpi === 'no_1c') where += ` AND (d.onec_id IS NULL OR trim(d.onec_id)='')`;
   else if (kpi === 'incomplete') where += ' AND d.is_incomplete';
+
+  // D-383: письма для ОБС — НЕ строки реестра счетов.
+  //
+  // Дефект (заказчик 27.10.2026: «почему я в реестре счетов вижу ИСХ... разве
+  // исх это счёт?»). При генерации письма создавалась строка doc_registry с
+  // package_type='letter' и dir='out', и она попадала в общий список наравне
+  // со счетами: «Счёт Исх. 261027-09», 0 ₽, «Закрыто».
+  //
+  // Письмо — ВЛОЖЕНИЕ счёта. Строка остаётся в базе (на неё ссылается
+  // obs_letter_doc_id, из неё берётся файл), но в списке не показывается.
+  // `include_letters=1` — только для отладки и выгрузок.
+  const includeLetters = String(q.include_letters || '') === '1' || String(q.include_letters || '') === 'true';
+  if (!includeLetters) {
+    where += ` AND d.package_type <> 'letter'`;
+  }
 
   // Quarters by document date (invoice_date), not created_at
   const qtr = parseInt(q.quarter, 10);
