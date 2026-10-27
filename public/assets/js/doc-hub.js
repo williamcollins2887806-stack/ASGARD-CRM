@@ -739,10 +739,14 @@ window.AsgardDocHubPage = (function () {
    * Дефект, найденный верификатором 25.10.2026: раньше здесь был
    * несуществующий роут `/api/doc-registry/:id/file` → 404.
    */
-  async function openDocFile(docId) {
+  async function openDocFile(docId, kind) {
     if (!docId) return;
+    // kind: 'letter' — письмо ОБС, иначе файл строки реестра.
+    const url = kind === 'letter'
+      ? `/api/doc-registry/${docId}/letter-file`
+      : `/api/doc-registry/${docId}/file`;
     try {
-      const r = await fetch(`/api/doc-registry/${docId}/letter-file`, {
+      const r = await fetch(url, {
         headers: authHeaders(false),
         cache: 'no-store',
       });
@@ -752,10 +756,9 @@ window.AsgardDocHubPage = (function () {
         return;
       }
       const blob = await r.blob();
-      const url = URL.createObjectURL(blob);
-      window.open(url, '_blank', 'noopener');
-      // Освобождаем память после того, как вкладка успела забрать файл.
-      setTimeout(() => URL.revokeObjectURL(url), 60000);
+      const objUrl = URL.createObjectURL(blob);
+      window.open(objUrl, '_blank', 'noopener');
+      setTimeout(() => URL.revokeObjectURL(objUrl), 60000);
     } catch (e) {
       toast('Не удалось открыть', e.message || 'сеть недоступна', 'err');
     }
@@ -1265,6 +1268,32 @@ window.AsgardDocHubPage = (function () {
     const hot = row.wh_status && !['none', 'buh_ok'].includes(row.wh_status);
     return `<span class="dh-pill dh-pill--${hot ? 'warn' : 'muted'}">${esc(w)}</span>`;
   }
+  /**
+   * D-382: индикатор вложений — есть файл у строки или нет.
+   *
+   * Запрос заказчика: «видел где есть вложения, где нет и где нужно создать».
+   * Дима ведёт документооборот, и ему нужно с одного взгляда понимать, у
+   * какого счёта скан уже приложен, а у какого — нет (значит, надо запросить).
+   *
+   * Источники: attachments[0].url или original_path_url. Клик открывает файл
+   * через ACL-роут /:id/file.
+   */
+  function attachCell(row) {
+    let atts = row.attachments;
+    if (typeof atts === 'string') { try { atts = JSON.parse(atts); } catch (_) { atts = []; } }
+    const list = Array.isArray(atts) ? atts.filter((a) => a && (a.url || a.path)) : [];
+    const hasOrig = !!(row.original_path_url);
+    const n = list.length + (hasOrig && !list.length ? 1 : 0);
+
+    if (!n) {
+      return `<span class="dh-pill dh-pill--muted dh-att dh-att--none"
+        title="Файл не приложен — скан надо запросить или загрузить">нет файла</span>`;
+    }
+    const label = n > 1 ? `файлов ${n}` : 'файл';
+    return `<button type="button" class="dh-pill dh-pill--info dh-att dh-att--yes"
+      data-doc-file="${Number(row.id)}" title="Открыть файл вложения">${label}</button>`;
+  }
+
   function purposeFlags(row) {
     return `<div class="dh-flags">
       <span class="dh-flag ${row.purpose_customer ? 'is-on' : ''}" title="На объект заказчика">З</span>
@@ -1423,6 +1452,7 @@ window.AsgardDocHubPage = (function () {
         <td class="dh-col-purpose">${purposeFlags(r)}</td>
         <td class="dh-col-owners">${ownersCell(r)}</td>
         <td class="dh-money" title="${esc(moneyFine(r.amount_gross))}">${money(r.amount_gross)}${obsBadges(r)}</td>
+        <td class="dh-col-attach">${attachCell(r)}</td>
         <td class="dh-col-vat">${vatCell(r)}</td>
         <td>${payCell(r)}</td>
         <td class="dh-col-sf">${closingCell(r)}</td>
@@ -1445,7 +1475,7 @@ window.AsgardDocHubPage = (function () {
       <thead><tr>
         ${state.trafficLight ? '<th class="dh-col-tl" title="Светофор">⏱</th>' : ''}<th>Статус</th><th>Напр.</th><th>Счёт</th><th>Контрагент</th><th>Объект</th>
         <th>Договор</th><th>Получение</th><th>Назначение</th><th>Ответственные</th>
-        <th>Сумма</th><th>НДС</th><th>Оплата</th><th>СФ/УПД</th><th class="dh-actions">Действия</th>
+        <th>Сумма</th><th>Файл</th><th>НДС</th><th>Оплата</th><th>СФ/УПД</th><th class="dh-actions">Действия</th>
       </tr></thead>
       <tbody>${parts.join('')}</tbody>
     </table></div><div class="dh-hscroll-bar" id="dhHScrollBar" hidden><div class="dh-hscroll-bar__inner"></div></div>`
@@ -4582,6 +4612,17 @@ window.AsgardDocHubPage = (function () {
       // D-378: кнопки ОБС живут отдельно от [data-qa] — они не в колонке
       // действий, а под суммой. Обрабатываем ДО проверки строки, чтобы
       // клик по ним не открывал карточку.
+      // D-382: клик по индикатору файла — открыть счёт/вложение.
+      // Идёт через ACL-роут с токеном (blob), как и письмо ОБС: прямой
+      // window.open не передаёт Authorization и получил бы 401.
+      const fileBtn = e.target.closest('[data-doc-file]');
+      if (fileBtn) {
+        e.preventDefault();
+        e.stopPropagation();
+        openDocFile(Number(fileBtn.getAttribute('data-doc-file')));
+        return;
+      }
+
       const obsGen = e.target.closest('[data-obs-gen]');
       if (obsGen) {
         e.preventDefault();
@@ -4606,7 +4647,7 @@ window.AsgardDocHubPage = (function () {
       if (obsOpen) {
         e.preventDefault();
         e.stopPropagation();
-        openDocFile(Number(obsOpen.getAttribute('data-obs-open')));
+        openDocFile(Number(obsOpen.getAttribute('data-obs-open')), 'letter');
         return;
       }
 

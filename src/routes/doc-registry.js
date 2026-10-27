@@ -2590,6 +2590,65 @@ module.exports = async function docRegistryRoutes(fastify) {
     return { work_expense_id: expense.id, expense, existing: false };
   });
 
+  /**
+   * GET /:id/file — отдать файл строки реестра (счёт, скан, вложение).
+   *
+   * D-382 (запрос заказчика 27.10.2026: «чтобы он мог скачать счета и
+   * документы»). У реестра не было своего роута файла: `/api/doc-registry/:id/file`
+   * возвращал 404, потому что такой маршрут есть только у payment-invoices
+   * (файл ЗАЯВКИ, не строки реестра). Дима видел строки, но открыть скан
+   * не мог.
+   *
+   * Источник файла, в порядке приоритета:
+   *   1. `attachments[0].url` — вложения строки;
+   *   2. `original_path_url` — скан счёта, загруженный при создании.
+   *
+   * Путь проверяется через safeUploadPath: файл обязан лежать внутри uploads/,
+   * иначе это чтение произвольного файла сервера от имени сотрудника.
+   */
+  fastify.get('/:id/file', auth, async (req, reply) => {
+    const id = parseInt(req.params.id, 10);
+    if (!Number.isFinite(id)) return reply.code(400).send({ error: 'Неверный ID' });
+
+    if (!(await assertDocVisible(db, { role: req.user.role, userId: req.user.id }, id))) {
+      return reply.code(404).send({ error: 'Не найдено' });
+    }
+
+    const { rows } = await db.query(
+      `SELECT id, attachments, original_path_url, invoice_number
+         FROM doc_registry WHERE id=$1 AND deleted_at IS NULL`, [id]);
+    const doc = rows[0];
+    if (!doc) return reply.code(404).send({ error: 'Не найдено' });
+
+    let atts = doc.attachments;
+    if (typeof atts === 'string') { try { atts = JSON.parse(atts); } catch (_) { atts = []; } }
+    if (!Array.isArray(atts)) atts = [];
+
+    // Первое вложение с путём, иначе скан счёта.
+    const first = atts.find((a) => a && (a.url || a.path)) || null;
+    const url = (first && (first.url || first.path)) || doc.original_path_url;
+    if (!url) return reply.code(404).send({ error: 'Файл не приложен' });
+
+    // Кириллица в имени хранится percent-encoded — декодируем.
+    let decoded = String(url);
+    try { decoded = decodeURIComponent(url); } catch (_) { /* оставляем как есть */ }
+
+    const fsPath = safeUploadPath(decoded, { subdir: 'doc-hub' })
+      || safeUploadPath(decoded, { subdir: path.join('doc-hub', 'obs-letters') })
+      || safeUploadPath(decoded);
+    if (!fsPath) return reply.code(400).send({ error: 'Недопустимый путь к файлу' });
+    if (!fs.existsSync(fsPath)) return reply.code(404).send({ error: 'Файл отсутствует на диске' });
+
+    const ext = path.extname(fsPath).toLowerCase();
+    const { safeContentType } = require('../lib/upload-ext');
+    const ct = safeContentType(ext, null);
+    const name = (first && first.name) || path.basename(fsPath);
+    reply.header('Content-Type', ct);
+    reply.header('Content-Disposition',
+      `${ct === 'application/octet-stream' ? 'attachment' : 'inline'}; filename="${encodeURIComponent(name)}"`);
+    return reply.send(fs.createReadStream(fsPath));
+  });
+
   // ─── D-381: договоры субподряда и лимиты существенности ─────────────────
   //
   // Кто может менять способ оплаты и выбирать договор: бухгалтерия и
