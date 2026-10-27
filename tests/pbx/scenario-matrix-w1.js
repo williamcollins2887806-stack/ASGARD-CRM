@@ -172,15 +172,26 @@ async function main() {
     assert.strictEqual(isWithinDutyWindow(baseConfig, afterDuty, 'Europe/Moscow'), false);
   });
 
-  await test('C1', 'cascade max_agents=3 non-parallel', () => {
+  await test('C1', 'multi-line: звонок идёт всем на линии (V442)', () => {
     const ops = [op(1), op(2), op(3), op(4)];
     const plan = buildRingPlan(ops, 1, baseConfig, workNow);
     const users = [...new Set(plan.targets.map((t) => t.userId))];
-    assert.ok(users.length <= 3, 'max_agents violated: ' + users.join(','));
-    assert.ok(users.length >= 2, 'expected cascade across agents');
+    // 27.10.2026: линия больше не эксклюзивна — входящий идёт ВСЕМ, кто on_line,
+    // пока кто-то не возьмёт первым. Дежурный (user 1) идёт первым в порядке.
+    assert.ok(users.length >= 2, 'expected all on-line agents: ' + users.join(','));
+    assert.strictEqual(plan.parallel, true, 'параллельный обзвон включён');
+    assert.strictEqual(users[0], 1, 'дежурный должен быть первым в порядке обзвона');
     const dial = buildDialVars(plan.targets, baseConfig);
     assert.ok(dial.dialString, 'dialString empty');
-    assert.ok(dial.cascade.length >= 1, 'cascade legs missing');
+    assert.ok(dial.dialString.includes('&'), 'параллельный Dial должен склеивать плечи через &');
+  });
+
+  await test('C1b', 'лимит агентов уважается при limit_parallel_agents', () => {
+    const cfg = { ...baseConfig, limit_parallel_agents: true, max_agents: 2 };
+    const ops = [op(1), op(2), op(3), op(4)];
+    const plan = buildRingPlan(ops, 1, cfg, workNow);
+    const users = [...new Set(plan.targets.map((t) => t.userId))];
+    assert.ok(users.length <= 2, 'max_agents violated: ' + users.join(','));
   });
 
   await test('C2', 'normalizePbxConfig duty_until default end+2h', () => {

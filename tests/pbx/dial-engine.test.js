@@ -172,8 +172,18 @@ test('cascade max_agents — несколько операторов', () => {
   const cfg = { ...baseConfig, max_agents: 3, routing_mode: 'ordered' };
   const plan = buildRingPlan([op(1), op(2), op(3), op(4)], null, cfg, workNow);
   const users = new Set(plan.targets.map((t) => t.userId));
-  assert.ok(users.size <= 3);
+  // MULTI-LINE (V442, 27.10.2026): по умолчанию звоним ВСЕМ, кто на линии —
+  // «звонок идёт всем, пока кто-то не возьмёт первым». max_agents теперь лишь
+  // ограничитель, если явно задан cfg.limit_parallel_agents.
   assert.ok(users.size >= 2);
+  assert.strictEqual(plan.parallel, true, 'параллельный обзвон включён по умолчанию');
+});
+
+test('limit_parallel_agents — явный лимит уважается', () => {
+  const cfg = { ...baseConfig, max_agents: 2, limit_parallel_agents: true, routing_mode: 'ordered' };
+  const plan = buildRingPlan([op(1), op(2), op(3), op(4)], null, cfg, workNow);
+  const users = new Set(plan.targets.map((t) => t.userId));
+  assert.ok(users.size <= 2, `ожидали не больше 2 операторов, получили ${users.size}`);
 });
 
 test('duty window after hours', () => {

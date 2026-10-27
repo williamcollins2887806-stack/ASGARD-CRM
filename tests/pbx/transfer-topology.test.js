@@ -54,10 +54,63 @@ test('T3', 'Local/-каналы пропускаются (служебные)', 
   assert.strictEqual(r.transferChannel, 'PJSIP/mango-trunk-00000007');
 });
 
-test('T4', 'клиентский channel берётся первым (GSM-путь)', () => {
-  const list = [{ Channel: 'PJSIP/other-00000001', Linkedid: 'Z' }];
-  const r = pickTransferChannels(list, { channel: 'PJSIP/u3474-00000009', uid: 'Z', sipUser: 'u3474' });
-  assert.strictEqual(r.operatorChannel, 'PJSIP/u3474-00000009', 'явный channel имеет приоритет');
+test('T4', 'клиентский channel (входящий) — это АБОНЕНТ, не оператор', () => {
+  // РЕГРЕССИЯ 27.10.2026 (инцидент Путков→Тумаева): SSE входящего отдаёт
+  // agi_channel = PJSIP/mango-trunk-* (плечо КЛИЕНТА), а sip_username даёт
+  // канал оператора. Раньше код считал явный channel каналом оператора и
+  // redirect уводил в [transfer] ОПЕРАТОРА, а клиент получал Hangup.
+  const list = [
+    { Channel: 'PJSIP/u3465-00000046', Linkedid: '1793100990.129', Uniqueid: '1793100990.129' },
+    { Channel: 'PJSIP/mango-trunk-00000045', Linkedid: '1793100990.129', Uniqueid: '1793100990.128' },
+  ];
+  const r = pickTransferChannels(list, {
+    channel: 'PJSIP/mango-trunk-00000045',
+    uid: '1793100990.129',
+    sipUser: 'u3465',
+  });
+  assert.strictEqual(r.operatorChannel, 'PJSIP/u3465-00000046',
+    'оператор должен определиться по sip_username, а не по клиентскому channel');
+  assert.strictEqual(r.transferChannel, 'PJSIP/mango-trunk-00000045',
+    'переводим плечо АБОНЕНТА');
+  assert.notStrictEqual(r.transferChannel, r.operatorChannel,
+    'перевод собственного канала оператора = потеря клиента');
+});
+
+test('T4b', 'исходящий: явный channel оператора распознаётся как оператор', () => {
+  // Обратный случай: исходящий из CRM звонит локальный ua.call —
+  // channel = PJSIP/u<id>, и он ДОЛЖЕН считаться каналом оператора.
+  const list = [
+    { Channel: 'PJSIP/u3474-00000050', Linkedid: '1793101459.147', Uniqueid: '1793101459.147' },
+    { Channel: 'PJSIP/mango-trunk-00000051', Linkedid: '1793101459.147', Uniqueid: '1793101459.146' },
+  ];
+  const r = pickTransferChannels(list, {
+    channel: 'PJSIP/u3474-00000050',
+    uid: '1793101459.147',
+    sipUser: 'u3474',
+  });
+  assert.strictEqual(r.operatorChannel, 'PJSIP/u3474-00000050');
+  assert.strictEqual(r.transferChannel, 'PJSIP/mango-trunk-00000051',
+    'исходящий переводим на плечо абонента');
+});
+
+test('T4d', 'оператор в режиме mobile: транк НЕ принимается за оператора', () => {
+  // РЕГРЕССИЯ (найдено верификатором 27.10.2026): у оператора с
+  // receive_mode='mobile' его собственное плечо тоже идёт через mango-trunk
+  // (Dial(PJSIP/<моб>@mango-trunk)). Раньше такое плечо опознавалось как
+  // «оператор», и перевод переворачивался: переводился оператор, клиент рвался.
+  const list = [
+    { Channel: 'PJSIP/mango-trunk-00000045', Linkedid: 'L', Uniqueid: 'L1' },
+    { Channel: 'PJSIP/79168888934@mango-trunk-00000047', Linkedid: 'L', Uniqueid: 'L2' },
+  ];
+  const r = pickTransferChannels(list, {
+    channel: 'PJSIP/mango-trunk-00000045',
+    uid: 'L',
+    sipUser: 'u3460',
+  });
+  assert.strictEqual(r.transferChannel, 'PJSIP/mango-trunk-00000045',
+    'переводить нужно плечо КЛИЕНТА, а не мобильное плечо оператора');
+  assert.notStrictEqual(r.transferChannel, r.operatorChannel,
+    'нельзя переводить собственное плечо оператора');
 });
 
 test('T5', 'нет партнёра → падаем на канал оператора (не null)', () => {
@@ -115,6 +168,18 @@ test('C3', 'таймауты каскада из TRANSFER_*_SEC, а не из ri
 test('C4', 'фронт не ловит target_offline (его больше нет)', () => {
   const core = fsx.readFileSync(path.join(ROOT, 'public/assets/js/phone_core.js'), 'utf8');
   assert.ok(!/target_offline/.test(core), 'осталась обработка target_offline в UI');
+});
+
+test('C5', 'applyLineTaken не рвёт активный разговор (перехват линии)', () => {
+  const core = fsx.readFileSync(path.join(ROOT, 'public/assets/js/phone_core.js'), 'utf8');
+  assert.ok(/keptCall/.test(core), 'нет флага сохранения разговора при перехвате');
+  assert.ok(/line_released/.test(core), 'нет события о том, что разговор оставлен');
+  assert.ok(/var inCall = /.test(core), 'нет проверки «идёт разговор»');
+  // Перехват во время разговора НЕ должен звать terminate()
+  const body = core.slice(core.indexOf('applyLineTaken: function'), core.indexOf('goOffline: function'));
+  const keptBranch = body.slice(0, body.indexOf('if (activeSession)'));
+  assert.ok(!/terminate\(\)/.test(keptBranch),
+    'ветка «идёт разговор» всё ещё рвёт сессию через terminate()');
 });
 
 console.log(`\n${passed} passed, ${failed} failed`);

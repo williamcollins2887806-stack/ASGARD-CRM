@@ -3039,17 +3039,43 @@ AsgardRouter.add("/assembly", () => {
       // ПРАВКА F (16.10.2026): линию забрал другой сотрудник. Раньше это событие
       // по SSE НЕ обрабатывалось — оператор думал, что он «на линии», хотя в БД
       // on_line уже снят (инцидент: «оба на линии», звонок в браузер не приходит).
+      // MULTI-LINE (V442): на линии может быть несколько человек. Событие
+      // приходит, когда состав линии меняется (кто-то встал/сошёл).
+      _sseSource.addEventListener('call:line_join', (e) => {
+        try {
+          const data = JSON.parse(e.data || '{}');
+          document.dispatchEvent(new CustomEvent('asgard-phone', {
+            detail: { type: 'on_line_count', data, count: data && data.on_line_count },
+          }));
+        } catch (_) {}
+      });
+
       _sseSource.addEventListener('call:line_taken', (e) => {
         try {
           const data = JSON.parse(e.data || '{}');
           const P = window.AsgardPhone;
+          // ИНЦИДЕНТ 27.10.2026: снятие линии (stale heartbeat / конец смены)
+          // НЕ должно рвать активный разговор. applyLineTaken сам решает:
+          // идёт разговор → оставляем медиа (keptCall=true).
+          let kept = !!data.in_call;
           if (P && P.getState && P.getState() !== 'offline') {
-            try { if (P.applyLineTaken) P.applyLineTaken(data); else P.goOffline(); } catch (_) {}
+            try {
+              const r = P.applyLineTaken ? P.applyLineTaken(data) : (P.goOffline(), null);
+              if (r && r.keptCall) kept = true;
+            } catch (_) {}
           }
           document.dispatchEvent(new CustomEvent('asgard-phone', {
-            detail: { type: 'line_taken', by_user_id: data.by_user_id, reason: data.reason },
+            detail: { type: 'line_taken', by_user_id: data.by_user_id, reason: data.reason, in_call: kept },
           }));
-          if (window.AsgardUI && AsgardUI.toast) AsgardUI.toast('Телефон', 'Линию забрал другой сотрудник — вы сняты с линии', 'warn');
+          if (window.AsgardUI && AsgardUI.toast) {
+            AsgardUI.toast(
+              'Телефон',
+              kept
+                ? 'Вы сняты с линии (нет активности). Разговор продолжается'
+                : 'Вы сняты с линии',
+              'warn'
+            );
+          }
         } catch (_) {}
       });
 

@@ -41,10 +41,25 @@ function targetToDialPart(target) {
  */
 function buildDialVars(targets, cfg) {
   const list = Array.isArray(targets) ? targets.filter(Boolean) : [];
-  const parallel = !!(cfg && (cfg.parallel_ring || cfg.routing_mode === 'parallel'));
+  // MULTI-LINE (V442, 27.10.2026): параллельно звоним ТОЛЬКО браузерам, а
+  // мобильные держим в каскаде. Иначе оператору с receive_mode='both' звонок
+  // шёл бы одновременно в браузер И на сотовый — «звонит и туда, и туда,
+  // ответил на телефоне — не сбрасывает» (жалоба 27.10.2026).
+  const wantParallel = !!(cfg && (cfg.parallel_ring !== false || cfg.routing_mode === 'parallel'));
+
+  const webTargets = list.filter((t) => t.targetType === 'webrtc');
+  const mobTargets = list.filter((t) => t.targetType !== 'webrtc');
+
+  // ВАЖНО (найдено верификатором): параллельный Dial возможен только если
+  // браузерных плеч БОЛЬШЕ ОДНОГО. Иначе (одно web-плечо либо только мобильные)
+  // обязана работать обычная цепочка: первое плечо → фолбэк → каскад. Раньше
+  // при wantParallel без web-плеч фолбэк обнулялся и хвост целей терялся.
+  const effParallel = wantParallel && webTargets.length > 1;
+
   const parts = [];
-  if (parallel) {
-    for (const t of list) {
+  if (effParallel) {
+    // Все браузеры звоним одновременно: Dial(PJSIP/u1&PJSIP/u2&…).
+    for (const t of webTargets) {
       const p = targetToDialPart(t);
       if (p) parts.push(p);
     }
@@ -53,24 +68,34 @@ function buildDialVars(targets, cfg) {
     if (p) parts.push(p);
   }
   const dialString = parts.join('&');
-  let ringTimeout = cfg?.browser_ring_sec ?? 10;
-  if (list[0]?.targetType === 'mobile') ringTimeout = cfg?.mobile_ring_sec ?? 30;
-  if (parallel && list.length) {
-    ringTimeout = Math.max(...list.map((t) => t.ringSec || ringTimeout));
+
+  let ringTimeout = cfg?.browser_ring_sec ?? 25;
+  if (!effParallel && list[0]?.targetType === 'mobile') ringTimeout = cfg?.mobile_ring_sec ?? 30;
+  if (effParallel) {
+    ringTimeout = Math.max(...webTargets.map((t) => t.ringSec || ringTimeout));
   }
+
+  // Каскад-фолбэк: всё, что не ушло в параллельный Dial.
   /** @type {{ dial: string, timeout: number, target: object }[]} */
   const cascade = [];
-  if (!parallel) {
-    for (let i = 1; i < list.length; i++) {
-      const p = targetToDialPart(list[i]);
-      if (!p) continue;
-      cascade.push({
-        dial: p,
-        timeout: Math.max(1, Number(list[i].ringSec) || (cfg?.mobile_ring_sec ?? 30)),
-        target: list[i],
-      });
-    }
+  const pushTarget = (t) => {
+    const p = targetToDialPart(t);
+    if (!p) return;
+    cascade.push({
+      dial: p,
+      timeout: Math.max(1, Number(t.ringSec) || (t.targetType === 'mobile' ? (cfg?.mobile_ring_sec ?? 30) : (cfg?.browser_ring_sec ?? 25))),
+      target: t,
+    });
+  };
+
+  if (effParallel) {
+    // Всё, что не попало в параллельный Dial (мобильные), уходит в фолбэк.
+    for (const t of mobTargets) pushTarget(t);
+  } else {
+    // Обычная цепочка: первое плечо в Dial, остальные — каскадом.
+    for (let i = 1; i < list.length; i++) pushTarget(list[i]);
   }
+
   const fallbackDial = cascade[0]?.dial || null;
   const fallbackTimeout = cascade[0]?.timeout || (cfg?.mobile_ring_sec ?? 30);
   return {
@@ -88,6 +113,7 @@ function buildDialVars(targets, cfg) {
     cascade4Timeout: cascade[2]?.timeout || 20,
     cascade5: cascade[3]?.dial || '',
     cascade5Timeout: cascade[3]?.timeout || 20,
+    parallel_web_count: (wantParallel && webTargets.length) ? webTargets.length : 0,
   };
 }
 
@@ -97,6 +123,18 @@ async function loadDutyUserIdMsk(client) {
     const duty = await getCurrentDuty(client);
     if (duty?.pm_user_id) return duty.pm_user_id;
   } catch (_) { /* ignore */ }
+  // FALLBACK (27.10.2026): текущего дежурного нет (ростер не заполнен или смена
+  // закончилась) — звоним ПРОШЛОМУ дежурному. Так звонок не уходит в пустоту
+  // и не теряется, пока новый дежурный не назначен.
+  try {
+    const { rows: prev } = await client.query(
+      `SELECT pm_user_id FROM pm_duty_roster
+        WHERE period_end < CURRENT_DATE
+        ORDER BY period_end DESC, created_at DESC
+        LIMIT 1`
+    );
+    if (prev[0]?.pm_user_id) return prev[0].pm_user_id;
+  } catch (_) { /* таблицы может не быть — не критично */ }
   try {
     const { rows } = await client.query(
       `SELECT user_id FROM user_call_status WHERE is_duty = true LIMIT 1`
@@ -279,10 +317,15 @@ function normalizePbxConfig(raw) {
     }
   }
   if (cfg.max_agents == null) cfg.max_agents = 3;
-  // РџСЂРёРІРµС‚СЃС‚РІРёРµ РїРѕ СѓРјРѕР»С‡Р°РЅРёСЋ РѕР·РІСѓС‡РёРІР°РµС‚ CRM (Silero). Р’С‹РєР» в†’ РїСЂРёРІРµС‚СЃС‚РІРёРµ РІ Mango IVR.
+  // ПРИВЕТСТВИЕ ПО УМОЛЧАНИЮ озвучивает CRM (Silero). Выкл → приветствие в Mango IVR.
   if (cfg.greeting_in_crm == null) cfg.greeting_in_crm = true;
   if (cfg.duty_mobile_fallback == null) cfg.duty_mobile_fallback = true;
   if (cfg.voicemail_max_sec == null) cfg.voicemail_max_sec = 60;
+  // ТАЙМИНГИ РИНГА (27.10.2026). Было browser_ring_sec=10 → входящий звонил в
+  // браузер всего 10 секунд, оператор не успевал снять трубку. Подняли до 25.
+  if (cfg.browser_ring_sec == null) cfg.browser_ring_sec = 25;
+  if (cfg.mobile_ring_sec == null) cfg.mobile_ring_sec = 30;
+  if (cfg.total_wait_sec == null) cfg.total_wait_sec = 90;
   return cfg;
 }
 

@@ -554,10 +554,13 @@
       .then(function (r) { return r.ok ? r.json() : null; })
       .then(function (st) {
         if (!st || typeof st.on_line === 'undefined') return;
-        // Сервер говорит «не на линии», а мы думаем что на линии → линию забрали.
+        // MULTI-LINE (V442): линию больше никто не «забирает» — быть на линии
+        // могут все сразу. Значит on_line=false у нас может быть только если
+        // нас сняла фоновая гигиена (stale heartbeat / конец смены).
+        // Разговор при этом НЕ прерываем (keptCall).
         if (st.on_line === false && onDuty) {
-          api.applyLineTaken();
-          emit('line_taken', { reason: 'status_poll' });
+          var res = api.applyLineTaken();
+          emit('line_taken', { reason: 'status_poll', in_call: !!(res && res.keptCall) });
         }
       })
       .catch(function () {});
@@ -815,13 +818,13 @@
       });
     },
 
-    /** Встать на линию (перехват): SIP + on_line=true у себя, у прежнего снимается. */
+    /** Встать на линию (multi-line, V442): SIP + on_line=true у себя.
+     *  Других операторов НЕ снимаем — на линии может быть несколько человек,
+     *  входящий звонит всем и достаётся первому ответившему. */
     goOnDuty: function (receiveMode) {
       receiveMode = receiveMode === 'mobile' ? 'mobile' : 'browser';
       // ПРАВКА D (16.10.2026): идемпотентность — если уже на линии в этом же
       // режиме с живой регистрацией, НЕ повторяем register()+claim-line.
-      // Раньше каждый вызов пересоздавал UA (UNREGISTER) и дёргал claim-line,
-      // что при нескольких сессиях рушило регистрацию по кругу.
       if (onDuty && mode === receiveMode && sipRegistered && ua) {
         return Promise.resolve({ ok: true, already: true, mode: receiveMode });
       }
@@ -834,7 +837,7 @@
           onDuty = true;
           setState(receiveMode === 'mobile' ? STATES.on_line_mobile : STATES.on_line_browser);
           startHeartbeat();
-          if (claim && claim.previousUserId) emit('line_taken_by_me', claim);
+          emit('on_line_count', { count: (claim && claim.onLineCount) || 1 });
           return { ok: true, ...claim };
         }).catch(function (e) {
           stopHeartbeat();
@@ -850,9 +853,27 @@
       return api.goOnDuty(receiveMode);
     },
 
-    /** Локально выйти с линии без серверного вызова (линию уже забрал другой). */
+    /** Локально сойти с линии без серверного вызова.
+     *
+     * Вызывается, когда сервер сообщил on_line=false: фоновая гигиена
+     * (stale heartbeat / конец смены) сняла нас с очереди входящих.
+     * MULTI-LINE (V442): линию больше никто не «забирает» — перехвата нет.
+     *
+     * ИНЦИДЕНТ 27.10.2026: если идёт разговор — медиа НЕ трогаем (не зовём
+     * terminate/ua.stop), иначе снятие с линии обрывало живого клиента.
+     */
     applyLineTaken: function () {
       stopHeartbeat();
+      var inCall = !!activeSession && (state === STATES.in_call || state === STATES.held);
+      if (inCall) {
+        // Разговор не прерываем: гасим только присутствие, чтобы новые
+        // входящие не шли на нас.
+        onDuty = false;
+        isLeader = false;
+        releaseLeader();
+        emit('line_released', { reason: 'line_released', inCall: true });
+        return { ok: true, reason: 'line_released', keptCall: true };
+      }
       if (activeSession) {
         try { activeSession.terminate(); } catch (_) {}
         activeSession = null;

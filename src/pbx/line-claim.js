@@ -1,29 +1,28 @@
 'use strict';
 
 /**
- * Одна линия: перехват владения on_line и уведомление прежнего владельца.
+ * Линия оператора (multi-line, V442).
  *
- * Инвариант держится partial-unique индексом uniq_pbx_operators_single_on_line
- * (см. migrations/V376__pbx_single_line.sql): в БД не может быть двух on_line=true.
+ * Раньше «линия» была эксклюзивным ресурсом: partial-unique индекс
+ * uniq_pbx_operators_single_on_line (V376) допускал ровно одну on_line=true,
+ * а claimLine снимал линию у предыдущего владельца. Из-за этого:
+ *   • на линии физически не могло быть двух человек;
+ *   • вставший вторым «выбивал» первого из очереди входящих;
+ *   • при разговоре первого перехват мог обрывать вызов.
+ *
+ * Теперь (инцидент 27.10.2026) линия — это «я готов принимать входящие».
+ * Входящий звонит ВСЕМ, кто on_line, и достаётся первому ответившему.
+ * Поэтому joinLine НЕ трогает on_line других операторов.
  */
 
 const PBX_CHANNEL = 'pbx_call_event';
 
 /**
- * Взять линию себе: снять у прежнего владельца, поставить у нового.
- * @param {import('pg').Pool} db
- * @param {number} userId
- * @param {{receiveMode?: string}} [opts]
- * @returns {Promise<{ok: boolean, previousUserId: number|null, previousChannel: string|null}>}
- */
-/**
  * Достать клиента для транзакции.
  *
  * ВАЖНО (инцидент 10.10.2026): модуль src/services/db.js экспортирует `pool`,
  * но НЕ экспортирует `connect`. Вызов db.connect() падает с
- * «db.connect is not a function» — из-за этого оператор не мог встать на линию
- * (/operator/claim-line отвечал 409/500). Поддерживаем оба варианта: если
- * у переданного объекта есть connect — берём его, иначе идём через pool.connect.
+ * «db.connect is not a function». Поддерживаем оба варианта.
  */
 function getPool(db) {
   if (db && typeof db.connect === 'function') return db;
@@ -32,35 +31,22 @@ function getPool(db) {
 }
 
 /**
+ * Встать на линию. Других операторов НЕ снимает (multi-line).
+ *
  * @param {import('pg').Pool|{pool: import('pg').Pool}} db
  * @param {number} userId
  * @param {{receiveMode?: string}} [opts]
+ * @returns {Promise<{ok: boolean, previousUserId: null, previousInCall: false, previousChannel: null, onLineCount: number}>}
  */
-async function claimLine(db, userId, opts = {}) {
+async function joinLine(db, userId, opts = {}) {
   const receiveMode = ['browser', 'mobile', 'both'].includes(opts.receiveMode)
     ? opts.receiveMode
     : undefined;
 
   const client = await getPool(db).connect();
-  let previousUserId = null;
+  let onLineCount = 0;
   try {
     await client.query('BEGIN');
-
-    // Кто сейчас на линии (кроме нас).
-    const { rows: cur } = await client.query(
-      `SELECT user_id FROM pbx_operators WHERE on_line = true AND user_id <> $1 FOR UPDATE`,
-      [userId]
-    );
-    previousUserId = cur[0]?.user_id ?? null;
-
-    if (previousUserId) {
-      await client.query(
-        `UPDATE pbx_operators
-            SET on_line = false, webrtc_registered = false, updated_at = NOW()
-          WHERE user_id = $1`,
-        [previousUserId]
-      );
-    }
 
     await client.query(
       `INSERT INTO pbx_operators (user_id, on_line, receive_mode, on_line_since, on_line_by, last_seen_at, updated_at)
@@ -75,6 +61,12 @@ async function claimLine(db, userId, opts = {}) {
       [userId, receiveMode || null]
     );
 
+    // Сколько всего на линии — для UI («на линии: N») и диагностики.
+    const { rows } = await client.query(
+      `SELECT COUNT(*)::int AS n FROM pbx_operators WHERE on_line = true`
+    );
+    onLineCount = rows[0]?.n || 0;
+
     await client.query('COMMIT');
   } catch (e) {
     await client.query('ROLLBACK').catch(() => {});
@@ -83,31 +75,112 @@ async function claimLine(db, userId, opts = {}) {
     client.release();
   }
 
-  // Прежнему владельцу — уведомление, чтобы UI показал «линия перехвачена».
-  if (previousUserId) {
-    try {
-      await db.query('SELECT pg_notify($1, $2)', [
-        PBX_CHANNEL,
-        JSON.stringify({
-          event: 'call:line_taken',
-          user_id: previousUserId,
-          data: { by_user_id: userId, reason: 'line_claimed' },
-        }),
-      ]);
-    } catch (_) { /* уведомление не критично для инварианта */ }
-  }
-
-  return { ok: true, previousUserId, previousChannel: null };
+  return {
+    ok: true,
+    previousUserId: null,
+    previousInCall: false,
+    previousChannel: null,
+    onLineCount,
+  };
 }
 
 /**
- * Встать на линию (с перехватом у прежнего владельца).
+ * Совместимость: раньше «взять линию» означало перехват у прежнего владельца.
+ * Оставлено как алиас к joinLine — вызывающий код (`/operator/claim-line`) не
+ * меняется, но поведение теперь неотбирающее.
+ *
+ * @deprecated используйте joinLine (семантика теперь другая).
+ */
+async function claimLine(db, userId, opts = {}) {
+  const r = await joinLine(db, userId, opts);
+  // Уведомляем об изменении состава линии (UI обновляет счётчик), но никого
+  // Никого не снимаем: линия multi-line, событие «перехвачена» не рассылаем.
+  try {
+    await db.query('SELECT pg_notify($1, $2)', [
+      PBX_CHANNEL,
+      JSON.stringify({
+        event: 'call:line_join',
+        user_id: userId,
+        data: { on_line_count: r.onLineCount, reason: 'line_joined' },
+      }),
+    ]);
+  } catch (_) { /* уведомление не критично */ }
+  return r;
+}
+
+/**
+ * Сойти с линии (не мешая другим — multi-line).
+ * @param {import('pg').Pool|{pool: import('pg').Pool}} db
+ * @param {number} userId
+ */
+async function leaveLine(db, userId) {
+  const client = await getPool(db).connect();
+  let onLineCount = 0;
+  try {
+    await client.query('BEGIN');
+    await client.query(
+      `UPDATE pbx_operators
+          SET on_line = false, last_seen_at = NOW(), updated_at = NOW()
+        WHERE user_id = $1`,
+      [userId]
+    );
+    const { rows } = await client.query(
+      `SELECT COUNT(*)::int AS n FROM pbx_operators WHERE on_line = true`
+    );
+    onLineCount = rows[0]?.n || 0;
+    await client.query('COMMIT');
+  } catch (e) {
+    await client.query('ROLLBACK').catch(() => {});
+    throw e;
+  } finally {
+    client.release();
+  }
+  return { ok: true, onLineCount };
+}
+
+/**
+ * Встать на линию (исторический вход).
  * @param {import('pg').Pool} db
  * @param {number} userId
  * @param {{receiveMode?: string}} [opts]
  */
 async function goOnDuty(db, userId, opts = {}) {
-  return claimLine(db, userId, opts);
+  return joinLine(db, userId, opts);
 }
 
-module.exports = { claimLine, goOnDuty };
+/**
+ * Кто сейчас на линии. Сортировка по calls_taken даёт «справедливую» очередь
+ * (кто меньше принял — раньше), затем sort_order и user_id.
+ *
+ * ВНИМАНИЕ: колонка calls_taken появляется миграцией V442. На БД без неё
+ * запрос упадёт, поэтому функция сама откатывается на сортировку без неё.
+ *
+ * @param {import('pg').Pool|import('pg').PoolClient} db
+ * @returns {Promise<number[]>}
+ */
+async function listOnLineUserIds(db) {
+  try {
+    const { rows } = await db.query(
+      `SELECT user_id FROM pbx_operators
+        WHERE on_line = true AND can_accept = true
+        ORDER BY calls_taken, sort_order, user_id`
+    );
+    return rows.map((r) => r.user_id);
+  } catch (_) {
+    // БД ещё без V442 (нет calls_taken) — деградируем без ошибки.
+    const { rows } = await db.query(
+      `SELECT user_id FROM pbx_operators
+        WHERE on_line = true AND can_accept = true
+        ORDER BY sort_order, user_id`
+    );
+    return rows.map((r) => r.user_id);
+  }
+}
+
+module.exports = {
+  claimLine,
+  joinLine,
+  leaveLine,
+  goOnDuty,
+  listOnLineUserIds,
+};

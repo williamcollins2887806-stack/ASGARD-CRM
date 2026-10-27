@@ -230,7 +230,13 @@ function buildRingPlan(operators, dutyUserId, config, now = new Date()) {
   }
 
   const mode = cfg.routing_mode || 'duty_first';
-  const parallel = !!cfg.parallel_ring || mode === 'parallel';
+  // MULTI-LINE (V442, 27.10.2026): теперь на линии может быть НЕСКОЛЬКО
+  // операторов, и входящий должен звонить всем сразу — «пока кто-то не возьмёт
+  // первым». Поэтому параллельный обзвон включён по умолчанию, а duty_first
+  // определяет лишь ПОРЯДОК (дежурный первым в списке, к нему — приоритет
+  // голосом/уведомлением), а не эксклюзив.
+  const dialAll = cfg.parallel_ring !== false; // по умолчанию всем
+  const parallel = dialAll || mode === 'parallel';
   const maxAgents = Math.max(1, Number(cfg.max_agents) || 3);
   /** @type {PbxOperator[]} */
   let ordered = eligible;
@@ -252,8 +258,16 @@ function buildRingPlan(operators, dutyUserId, config, now = new Date()) {
   /** @type {RingTarget[]} */
   const targets = [];
   if (parallel) {
+    // Всем, кто на линии. При max_agents > 0 и явном ограничении — обрезаем,
+    // но по умолчанию лимита нет (все на линии должны слышать звонок).
+    const limit = cfg.limit_parallel_agents ? maxAgents : ordered.length;
+    let agentsTaken = 0;
     for (const op of ordered) {
-      targets.push(...expandOperatorTargets(op, cfg, nowMs));
+      const expanded = expandOperatorTargets(op, cfg, nowMs);
+      if (!expanded.length) continue;
+      targets.push(...expanded);
+      agentsTaken += 1;
+      if (agentsTaken >= limit) break;
     }
   } else {
     let agentsTaken = 0;
@@ -268,7 +282,7 @@ function buildRingPlan(operators, dutyUserId, config, now = new Date()) {
 
   // Перенумеровать sortOrder по порядку каскада (агент → webrtc затем mobile)
   targets.forEach((t, i) => { t.sortOrder = i; });
-  return { withinHours: true, targets, mode };
+  return { withinHours: true, targets, mode, parallel: !!parallel, on_line_count: eligible.length };
 }
 
 /**

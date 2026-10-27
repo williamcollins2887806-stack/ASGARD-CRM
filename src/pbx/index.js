@@ -464,16 +464,45 @@ function pickTransferChannels(list, ctx = {}) {
   const arr = Array.isArray(list) ? list : [];
   const sipUser = ctx.sipUser || '';
   const uid = ctx.uid || '';
-  const isSelfSip = (name) => sipUser && (name === 'PJSIP/' + sipUser || name.indexOf('PJSIP/' + sipUser + '-') === 0);
+  const isSelfSip = (name) => !!(sipUser && (name === 'PJSIP/' + sipUser || name.indexOf('PJSIP/' + sipUser + '-') === 0));
+  // Транковый канал (@mango-trunk) — это ВСЕГДА внешнее плечо (абонент), а не
+  // оператор. Критично для операторов в режиме 'mobile': их собственное плечо
+  // тоже идёт через mango-trunk (Dial(PJSIP/<моб>@mango-trunk)), и раньше
+  // путалось с плечом клиента (найдено верификатором 27.10.2026: перевод
+  // переворачивался — переводился оператор, клиент рвался).
+  const isTrunkLeg = (name) => /^PJSIP\/mango-trunk-/i.test(name) || /@mango-trunk/i.test(name);
 
-  let operatorChannel = ctx.channel || null;
-  let operatorEntry = operatorChannel ? arr.find((ch) => norm(ch.Channel) === operatorChannel) : null;
-  if (!operatorChannel) {
+  // ctx.channel: inbound → плечо АБОНЕНТА (agi_channel), outbound → оператора.
+  const explicit = ctx.channel ? norm(ctx.channel) : null;
+  const explicitIsTrunk = !!explicit && isTrunkLeg(explicit);
+
+  // 1) Канал ОПЕРАТОРА.
+  let operatorChannel = null;
+  let operatorEntry = null;
+  if (explicit && !explicitIsTrunk && isSelfSip(explicit)) {
+    operatorChannel = explicit;
+    operatorEntry = arr.find((ch) => norm(ch.Channel) === explicit) || null;
+  }
+  if (!operatorChannel && sipUser) {
+    const own = arr.find((ch) => isSelfSip(norm(ch.Channel)));
+    if (own) {
+      operatorChannel = norm(own.Channel);
+      operatorEntry = own;
+    }
+  }
+  // Фолбэк для тестов/GSM-путей без sip_username: доверяем явному каналу, но
+  // НЕ транковому (транк — это абонент, см. выше).
+  if (!operatorChannel && explicit && !explicitIsTrunk) {
+    operatorChannel = explicit;
+    operatorEntry = arr.find((ch) => norm(ch.Channel) === explicit) || null;
+  }
+  // Последний фолбэк: ищем по uid (Linkedid/Uniqueid), пропуская Local/ и транк.
+  if (!operatorChannel && uid) {
     for (const ch of arr) {
       const name = norm(ch.Channel);
-      const linked = norm(ch.Linkedid);
-      const unique = norm(ch.Uniqueid);
-      if ((uid && (linked === uid || unique === uid)) || isSelfSip(name)) {
+      if (name.indexOf('Local/') === 0) continue;
+      if (isTrunkLeg(name)) continue;
+      if (norm(ch.Linkedid) === uid || norm(ch.Uniqueid) === uid) {
         operatorChannel = name;
         operatorEntry = ch;
         break;
@@ -481,11 +510,30 @@ function pickTransferChannels(list, ctx = {}) {
     }
   }
 
-  const partnerChannel = pickPartnerChannel(arr, operatorChannel, operatorEntry);
+  // 2) Плечо АБОНЕНТА (far leg) — то, что реально переводим.
+  let farLeg = null;
+  if (explicitIsTrunk) {
+    // Явный транковый канал = абонент (входящий звонок либо GSM-плечо).
+    farLeg = explicit;
+  } else if (explicit && explicit !== operatorChannel) {
+    farLeg = explicit;
+  }
+  if (!farLeg) farLeg = pickPartnerChannel(arr, operatorChannel, operatorEntry);
+  // Если оператор не опознан, но абонент известен (транк) — оператором считаем
+  // партнёра абонента: это нужно для логов/возврата, исход перевода не меняет.
+  if (!operatorChannel && farLeg) {
+    const farEntry = arr.find((ch) => norm(ch.Channel) === farLeg) || null;
+    const partner = pickPartnerChannel(arr, farLeg, farEntry);
+    if (partner && partner !== farLeg) {
+      operatorChannel = partner;
+      operatorEntry = arr.find((ch) => norm(ch.Channel) === partner) || null;
+    }
+  }
+
   return {
     operatorChannel,
-    transferChannel: partnerChannel || ctx.channel || operatorChannel || null,
-    partnerChannel,
+    transferChannel: farLeg || operatorChannel || null,
+    partnerChannel: farLeg,
   };
 }
 

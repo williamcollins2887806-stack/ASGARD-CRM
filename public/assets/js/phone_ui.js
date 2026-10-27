@@ -1397,42 +1397,21 @@
     if (!window.AsgardUI || !AsgardUI.showModal) return;
     transferMode = 'blind';
     transferChannel = 'webrtc';
+    // ШАГ 1 — выбор сотрудника. Раньше сразу показывались переключатели
+    // «в браузер / на мобильный», приходилось выбирать канал ДО фамилии.
+    // Теперь: сначала человек, статус линии виден в списке, канал выбирается
+    // на шаге подтверждения (27.10.2026).
     var html =
       '<input type="search" class="inp" id="phTrSearch" placeholder="Поиск сотрудника…">' +
       '<div class="ph-tr-list" id="phTrList">Загрузка…</div>' +
-      '<div class="ph-seg" role="group" aria-label="Куда переводить">' +
-        '<button type="button" class="ph-seg__btn is-active" data-chan="webrtc">В СРМ (браузер)</button>' +
-        '<button type="button" class="ph-seg__btn" data-chan="mobile">На мобильный</button>' +
-      '</div>' +
-      '<div class="ph-seg" role="group" aria-label="Режим перевода">' +
-        '<button type="button" class="ph-seg__btn is-active" data-mode="blind">Слепой</button>' +
-        // Консультативный перевод пока не реализован до конца (нет сведения
-        // консультанта в мост) — оставлять активную кнопку опасно: вызов может
-        // «подвесить» абонента на hold. Прячем до реализации (10.10.2026).
-      '</div>' +
-      '<input type="hidden" name="phTrMode" id="phTrMode" value="blind">';
+      '<div class="ph-tr-hint" id="phTrHint">Выберите сотрудника — дальше подтверждение</div>';
     var overlay = AsgardUI.showModal({ title: 'Перевод звонка', html: html });
     var modalEl = overlay.querySelector('.cr-m');
     if (modalEl) modalEl.classList.add('ph-modal');
     var body = overlay.querySelector('#modalBody') || overlay;
     var listEl = body.querySelector('#phTrList');
     var staff = [];
-    body.querySelectorAll('.ph-seg__btn[data-chan]').forEach(function (btn) {
-      btn.addEventListener('click', function () {
-        body.querySelectorAll('.ph-seg__btn[data-chan]').forEach(function (b) { b.classList.remove('is-active'); });
-        btn.classList.add('is-active');
-        transferChannel = btn.getAttribute('data-chan') || 'webrtc';
-      });
-    });
-    body.querySelectorAll('.ph-seg__btn[data-mode]').forEach(function (btn) {
-      btn.addEventListener('click', function () {
-        body.querySelectorAll('.ph-seg__btn[data-mode]').forEach(function (b) { b.classList.remove('is-active'); });
-        btn.classList.add('is-active');
-        transferMode = btn.getAttribute('data-mode') || 'blind';
-        var hid = body.querySelector('#phTrMode');
-        if (hid) hid.value = transferMode;
-      });
-    });
+
     Promise.all([
       fetch('/api/telephony/employees', { headers: { Authorization: 'Bearer ' + (localStorage.getItem('asgard_token') || '') } }).then(function (r) { return r.json(); }),
       fetch('/api/telephony/pbx/transfer/staff', { headers: { Authorization: 'Bearer ' + (localStorage.getItem('asgard_token') || '') } })
@@ -1448,14 +1427,83 @@
           id: e.id,
           name: e.name || e.full_name,
           phone: st.sip_username || e.phone || e.internal_phone || st.mobile_phone,
-          on_line: st.on_line,
+          on_line: !!st.on_line,
+          // canWeb — можно ли перевести в браузер: нужен живой SIP-контакт.
+          canWeb: !!(st.on_line && st.webrtc_registered && st.sip_username),
+          hasMobile: !!(st.mobile_phone || e.phone || e.internal_phone),
           mode: st.receive_mode,
         };
+      });
+      // На линии — сверху: их и нужно переводить в браузер.
+      staff.sort(function (a, b) {
+        if (a.on_line !== b.on_line) return a.on_line ? -1 : 1;
+        return String(a.name || '').localeCompare(String(b.name || ''), 'ru');
       });
       paintStaff('');
     }).catch(function () {
       if (listEl) listEl.textContent = 'Не удалось загрузить список';
     });
+
+    /** ШАГ 2 — подтверждение: куда именно и кому. */
+    function openConfirm(emp) {
+      // Кнопка «В СРМ» доступна только когда человек реально на линии в браузере,
+      // иначе перевод в пустоту = потеря клиента.
+      var webDisabled = !emp.canWeb;
+      var mobDisabled = !emp.hasMobile;
+      var html2 =
+        '<div class="ph-tr-confirm">' +
+          '<div class="ph-tr-confirm__who">' + esc(emp.name) + '</div>' +
+          '<div class="ph-tr-confirm__status">' +
+            (emp.on_line
+              ? (emp.canWeb ? 'На линии (браузер доступен)' : 'На линии, но браузер не зарегистрирован')
+              : 'Не на линии') +
+          '</div>' +
+          '<div class="ph-seg" role="group" aria-label="Куда переводить">' +
+            '<button type="button" class="ph-seg__btn' + (emp.canWeb ? ' is-active' : '') + '" data-chan="webrtc"' + (webDisabled ? ' disabled title="Сотрудник не на линии"' : '') + '>В СРМ (браузер)</button>' +
+            '<button type="button" class="ph-seg__btn' + (!emp.canWeb && mobDisabled ? '' : (emp.canWeb ? '' : ' is-active')) + '" data-chan="mobile"' + (mobDisabled ? ' disabled' : '') + '>На мобильный</button>' +
+          '</div>' +
+          '<div class="ph-tr-confirm__actions">' +
+            '<button type="button" class="btn btn--ghost" id="phTrCancel">Отмена</button>' +
+            '<button type="button" class="btn primary" id="phTrDo">Перевести</button>' +
+          '</div>' +
+          '<div class="ph-tr-hint">Если не ответят — звонок вернётся к вам.</div>' +
+        '</div>';
+      var ov2 = AsgardUI.showModal({ title: 'Подтверждение перевода', html: html2 });
+      var m2 = ov2.querySelector('.cr-m');
+      if (m2) m2.classList.add('ph-modal');
+      var b2 = ov2.querySelector('#modalBody') || ov2;
+      // Текущий выбор канала: браузер, если доступен, иначе мобильный.
+      var chan = emp.canWeb ? 'webrtc' : 'mobile';
+      b2.querySelectorAll('.ph-seg__btn[data-chan]').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+          if (btn.disabled) return;
+          b2.querySelectorAll('.ph-seg__btn[data-chan]').forEach(function (b) { b.classList.remove('is-active'); });
+          btn.classList.add('is-active');
+          chan = btn.getAttribute('data-chan') || 'mobile';
+        });
+      });
+      b2.querySelector('#phTrCancel').addEventListener('click', function () {
+        AsgardUI.closeModal && AsgardUI.closeModal();
+      });
+      b2.querySelector('#phTrDo').addEventListener('click', function () {
+        AsgardUI.closeModal && AsgardUI.closeModal();
+        doTransfer(emp, chan);
+      });
+    }
+
+    function doTransfer(emp, chan) {
+      var tid = emp.id != null ? emp.id : emp.phone;
+      panelData.transferStatus = { status: 'trying', target: tid };
+      AsgardPhone.transfer(transferMode || 'blind', tid, chan).then(function () {
+        playTone('ok');
+        toast('Перевод', 'Переводим на ' + emp.name + '…', 'ok');
+        if (panelShown()) paintPanel();
+      }).catch(function (e) {
+        panelData.transferStatus = { status: 'failed', target: tid };
+        toast('Перевод', e.message, 'err');
+        if (panelShown()) paintPanel();
+      });
+    }
 
     function paintStaff(q) {
       q = (q || '').toLowerCase();
@@ -1467,28 +1515,26 @@
       }
       listEl.innerHTML = rows.map(function (s) {
         var on = !!s.on_line;
+        var badge = on
+          ? (s.canWeb ? '<span class="ph-tr-badge ph-tr-badge--web">на линии</span>'
+                      : '<span class="ph-tr-badge ph-tr-badge--mob">только моб.</span>')
+          : '<span class="ph-tr-badge ph-tr-badge--off">не в сети</span>';
         return '<button type="button" class="ph-tr-row" data-id="' + s.id + '" data-phone="' + esc(s.phone || '') + '">' +
           '<span class="ph-tr-ava" aria-hidden="true">' + avatarInner(s.name, s.phone) +
-            '<span class="ph-tr-dot ' + (on ? 'ph-tr-dot--on' : 'ph-tr-dot--off') + '" title="' + (on ? 'на линии' : 'не в сети') + '"></span>' +
+            '<span class="ph-tr-dot ' + (on ? 'ph-tr-dot--on' : 'ph-tr-dot--off') + '"></span>' +
           '</span>' +
           '<span class="ph-tr-name">' + esc(s.name) + '</span>' +
+          badge +
         '</button>';
       }).join('');
       listEl.querySelectorAll('.ph-tr-row').forEach(function (row) {
         row.addEventListener('click', function () {
-          var mode = transferMode || 'blind';
-          var tid = row.getAttribute('data-id') || row.getAttribute('data-phone');
-          panelData.transferStatus = { status: 'trying', target: tid };
-          AsgardPhone.transfer(mode, tid, transferChannel).then(function () {
-            playTone('ok');
-            toast('Перевод', 'Перевод…', 'ok');
-            AsgardUI.closeModal && AsgardUI.closeModal();
-            if (panelShown()) paintPanel();
-          }).catch(function (e) {
-            panelData.transferStatus = { status: 'failed', target: tid };
-            toast('Перевод', e.message, 'err');
-            if (panelShown()) paintPanel();
-          });
+          var id = row.getAttribute('data-id');
+          var emp = null;
+          for (var i = 0; i < staff.length; i++) {
+            if (String(staff[i].id) === String(id)) { emp = staff[i]; break; }
+          }
+          if (emp) openConfirm(emp);
         });
       });
     }
@@ -1524,16 +1570,32 @@
     if (!P) return;
     if (type === 'takeover') showTakeover(true);
     if (type === 'leader') showTakeover(false);
+    if (type === 'on_line_count' || type === 'line_join') {
+      // MULTI-LINE (V442): на линии может быть несколько человек. Показываем
+      // счётчик, чтобы было понятно, что линия не эксклюзивна.
+      var cnt = (d && (d.count || (d.data && d.data.on_line_count))) || null;
+      if (cnt != null) toast('Телефон', 'На линии: ' + cnt, 'ok');
+      if (panelShown()) paintPanel();
+      return;
+    }
     if (type === 'line_taken' || type === 'line_taken_by_me') {
-      // Линию забрал другой сотрудник / я забрал у другого.
+      // MULTI-LINE (V442): снятие линии теперь означает НЕ перехват коллегой,
+      // а фоновую гигиену (stale heartbeat / конец смены). Разговор не рвём —
+      // applyLineTaken() сам решает (keptCall) и оставляет медиа живым.
       var P2 = window.AsgardPhone;
       if (type === 'line_taken') {
-        toast('Телефон', 'Линию забрал другой сотрудник — вы сняты с линии', 'warn');
-        if (P2 && P2.getState && P2.getState() !== 'offline') {
+        var d2 = (d && d.detail) || d || {};
+        var kept = !!(d2.in_call || d2.keptCall);
+        if (kept) {
+          toast('Телефон', 'Вы сняты с линии (нет активности). Разговор продолжается — по завершении встаньте на линию снова', 'warn');
+        } else {
+          toast('Телефон', 'Вы сняты с линии', 'warn');
+        }
+        if (P2 && P2.getState && P2.getState() !== 'offline' && !kept) {
           try { P2.goOffline(); } catch (_) { /* ignore */ }
         }
       } else {
-        toast('Телефон', 'Линия ваша', 'ok');
+        toast('Телефон', 'Вы на линии', 'ok');
       }
       panelData.loadedAt = 0;
       syncUi(P2 ? P2.getState() : 'offline');

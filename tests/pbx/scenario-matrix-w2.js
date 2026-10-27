@@ -164,18 +164,27 @@ async function main() {
     assert.ok(/P\.outbound\(phone\)/.test(body), 'должен звонить через AsgardPhone.outbound (браузер)');
   });
 
-  // ── L1. Одна линия с перехватом ──
-  await test('L1a', 'миграция: partial unique index на одну линию', () => {
-    const sql = readSrc('migrations/V376__pbx_single_line.sql');
-    assert.ok(/uniq_pbx_operators_single_on_line/.test(sql), 'нет индекса одной линии');
-    assert.ok(/WHERE on_line = true/.test(sql), 'индекс должен быть partial по on_line');
+  // ── L1. Линия (multi-line с V442) ──
+  await test('L1a', 'миграция V442: снят эксклюзивный индекс, добавлен calls_taken', () => {
+    const sql = readSrc('migrations/V442__pbx_multi_line.sql');
+    assert.ok(/DROP INDEX IF EXISTS uniq_pbx_operators_single_on_line/.test(sql),
+      'V442 должен снимать эксклюзивный индекс одной линии');
+    assert.ok(/calls_taken/.test(sql), 'нет счётчика принятых звонков');
+    // Историческая миграция, создавшая индекс, должна остаться неизменной.
+    const old = readSrc('migrations/V376__pbx_single_line.sql');
+    assert.ok(/uniq_pbx_operators_single_on_line/.test(old), 'V376 должна сохраниться как история');
   });
 
-  await test('L1b', 'claim-line: снимает прежнего и ставит нового', () => {
+  await test('L1b', 'claim-line: multi-line — никого не снимает, ставит себя', () => {
     const js = readSrc('src/pbx/line-claim.js');
-    assert.ok(/previousUserId/.test(js), 'не снимает прежнего владельца');
-    assert.ok(/on_line = false/.test(js), 'нет снятия on_line');
-    assert.ok(/call:line_taken/.test(js), 'нет уведомления прежнему владельцу');
+    assert.ok(/async function joinLine/.test(js), 'нет joinLine');
+    // Проверяем ТОЛЬКО тело joinLine: снятие on_line у себя законно делает leaveLine.
+    const body = js.slice(js.indexOf('async function joinLine'), js.indexOf('async function claimLine'));
+    assert.ok(!/SET on_line = false/.test(body),
+      'joinLine не должен снимать линию ни у себя, ни у другого оператора');
+    assert.ok(!/WHERE user_id <> \$1/.test(body), 'joinLine не должен трогать других операторов');
+    assert.ok(/previousUserId: null/.test(js), 'previousUserId должен быть null (никого не снимаем)');
+    assert.ok(/onLineCount/.test(js), 'нет счётчика линии для UI');
     assert.ok(/BEGIN/.test(js) && /COMMIT/.test(js), 'нет транзакции');
   });
 
@@ -189,46 +198,49 @@ async function main() {
     const { Pool } = require('pg');
     const pool = new Pool({ connectionString: process.env.DATABASE_URL });
     try {
-      await test('L1d', 'DB: второй on_line невозможен (unique index)', async () => {
+      await test('L1d', 'DB: несколько операторов на линии ОДНОВРЕМЕННО (multi-line V442)', async () => {
         const { rows: u } = await pool.query(
           `SELECT id FROM users WHERE is_active = true ORDER BY id LIMIT 2`
         );
         assert.ok(u.length >= 2, 'нужно ≥2 активных пользователя');
         const [a, b] = [u[0].id, u[1].id];
+        await pool.query(`UPDATE pbx_operators SET on_line = false WHERE user_id IN ($1, $2)`, [a, b]);
+        // Раньше unique-индекс (V376) запрещал второго on_line=true. С V442
+        // линия не эксклюзивна: входящий звонит всем, кто на линии.
         await pool.query(
           `INSERT INTO pbx_operators (user_id, on_line, receive_mode) VALUES ($1, true, 'browser')
            ON CONFLICT (user_id) DO UPDATE SET on_line = true, receive_mode = 'browser'`,
           [a]
         );
-        let blocked = false;
-        try {
-          await pool.query(
-            `INSERT INTO pbx_operators (user_id, on_line, receive_mode) VALUES ($1, true, 'browser')
-             ON CONFLICT (user_id) DO UPDATE SET on_line = true, receive_mode = 'browser'`,
-            [b]
-          );
-        } catch (_) {
-          blocked = true;
-        }
-        assert.ok(blocked, 'index не заблокировал второго on_line');
+        await pool.query(
+          `INSERT INTO pbx_operators (user_id, on_line, receive_mode) VALUES ($1, true, 'browser')
+           ON CONFLICT (user_id) DO UPDATE SET on_line = true, receive_mode = 'browser'`,
+          [b]
+        );
+        const { rows } = await pool.query(
+          `SELECT user_id FROM pbx_operators WHERE on_line = true AND user_id IN ($1,$2)`,
+          [a, b]
+        );
+        assert.strictEqual(rows.length, 2, 'на линии должны быть оба оператора');
         // чистим
         await pool.query(`UPDATE pbx_operators SET on_line = false WHERE user_id IN ($1, $2)`, [a, b]);
       });
 
-      await test('L1e', 'DB: claimLine снимает прежнего, ставит нового', async () => {
+      await test('L1e', 'DB: claimLine НЕ снимает других (линия неотбирающая)', async () => {
         const { rows: u } = await pool.query(
           `SELECT id FROM users WHERE is_active = true ORDER BY id LIMIT 2`
         );
         const [a, b] = [u[0].id, u[1].id];
-        const wrap = { connect: () => pool.connect() };
+        await pool.query(`UPDATE pbx_operators SET on_line = false WHERE user_id IN ($1, $2)`, [a, b]);
         await claimLine(pool, a);
         const r = await claimLine(pool, b);
-        assert.strictEqual(r.previousUserId, a, 'прежний владелец не снят');
+        assert.strictEqual(r.previousUserId, null, 'multi-line: прежний владелец не должен сниматься');
         const { rows } = await pool.query(
-          `SELECT user_id FROM pbx_operators WHERE on_line = true`
+          `SELECT user_id FROM pbx_operators WHERE on_line = true AND user_id IN ($1,$2)`,
+          [a, b]
         );
-        assert.strictEqual(rows.length, 1, 'на линии должен быть ровно один');
-        assert.strictEqual(rows[0].user_id, b);
+        assert.strictEqual(rows.length, 2, 'оба остаются на линии');
+        assert.ok(r.onLineCount >= 2, 'счётчик линии должен вернуть ≥2');
         await pool.query(`UPDATE pbx_operators SET on_line = false WHERE user_id IN ($1, $2)`, [a, b]);
       });
     } finally {
@@ -239,7 +251,7 @@ async function main() {
   }
 
   // ── L2. Цепочка фолбэков ──
-  await test('L2a', 'тайминги 10/30 (браузер/мобильный)', () => {
+  await test('L2a', 'тайминги 25/30 (браузер/мобильный)', () => {
     const cfg = normalizePbxConfig({});
     const t = expandOperatorTargets(
       op(1, { receive_mode: 'both', webrtc_registered: true }),
@@ -248,7 +260,9 @@ async function main() {
     );
     const web = t.find((x) => x.targetType === 'webrtc');
     const mob = t.find((x) => x.targetType === 'mobile');
-    assert.strictEqual(web.ringSec, 10, 'browser_ring_sec должен быть 10');
+    // 27.10.2026: browser_ring_sec 10 → 25 — при 10 секундах оператор не
+    // успевал снять трубку в браузере, звонок уходил дальше по каскаду.
+    assert.strictEqual(web.ringSec, 25, 'browser_ring_sec должен быть 25');
     assert.strictEqual(mob.ringSec, 30, 'mobile_ring_sec должен быть 30');
   });
 
@@ -320,20 +334,27 @@ async function main() {
   });
 
   // ── S2. Звонок во время переключения ──
-  await test('S2a', 'claimLine не обрывает активный звонок (только снимает on_line)', () => {
+  await test('S2a', 'линия не обрывает активные каналы (multi-line V442)', () => {
     const js = readSrc('src/pbx/line-claim.js');
-    assert.ok(!/Hangup/i.test(js), 'claimLine не должен сбрасывать активные каналы');
+    assert.ok(!/Hangup/i.test(js), 'line-claim не должен сбрасывать каналы');
+    // Перехвата больше нет — линия неотбирающая, событие входа на линию есть.
+    const body = js.slice(js.indexOf('async function claimLine'), js.indexOf('async function leaveLine'));
+    assert.ok(!/call:line_taken/.test(body), 'событие перехвата линии больше не рассылается');
+    assert.ok(/call:line_join/.test(body), 'должно быть событие входа на линию');
   });
 
-  await test('S2b', 'входящий план не содержит двух владельцев одной линии', () => {
-    // При гарантии одной линии в eligible окажется максимум один владелец.
+  await test('S2b', 'входящий план: звонок идёт всем, кто на линии (multi-line V442)', () => {
+    // V442: линия не эксклюзивна — входящий получают ВСЕ, кто on_line.
     const ops = [
       op(1, { on_line: true }),
-      op(2, { on_line: false }),
+      op(2, { on_line: true }),
+      op(3, { on_line: false }),
     ];
     const plan = buildRingPlan(ops, 1, baseConfig, workNow);
     const users = new Set(plan.targets.map((t) => t.userId));
-    assert.ok(users.size <= 1, 'в плане больше одного владельца линии');
+    assert.strictEqual(users.size, 2, `ожидали 2 оператора на линии, получили ${users.size}`);
+    assert.ok(users.has(1) && users.has(2), 'оба оператора на линии должны быть в плане');
+    assert.ok(!users.has(3), 'оператор не на линии не должен звониться');
   });
 
   // ── Отчёт ──
