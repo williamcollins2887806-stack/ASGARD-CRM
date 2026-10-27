@@ -694,6 +694,41 @@ window.AsgardDocHubPage = (function () {
   }
 
   /**
+   * D-381: блок выбора договора субподряда и остатка лимита.
+   *
+   * Директор и бухгалтерия должны видеть, сколько лимита осталось и не
+   * выработан ли он. Если лимит выработан — ОБС по договору запрещён,
+   * поэтому опция помечается и недоступна.
+   *
+   * Данные приходят из /subcontracts (остаток считается на сервере по
+   * фактическим ОБС-расходам). Кэш в памяти модуля — список меняется редко.
+   */
+  let _subCache = null;
+  async function loadSubcontracts(workId) {
+    const key = String(workId || 0);
+    if (_subCache && _subCache.key === key && Date.now() - _subCache.at < 60000) return _subCache.items;
+    try {
+      const r = await api('/subcontracts' + (workId ? `?work_id=${workId}` : ''));
+      _subCache = { key, at: Date.now(), items: (r && r.items) || [] };
+      return _subCache.items;
+    } catch (_) { return []; }
+  }
+
+  function subcontractOptionsHtml(items, selectedId) {
+    const cur = Number(selectedId || 0);
+    const opts = items.map((s) => {
+      const lim = Number(s.limit_amount) || 0;
+      const rem = Number(s.remaining) || 0;
+      const pct = Number(s.used_pct) || 0;
+      const dead = s.exhausted;
+      const label = `${s.number} от ${String(s.agreement_date).slice(0, 10)} · `
+        + (dead ? 'ЛИМИТ ВЫРАБОТАН' : `остаток ${money(rem)} из ${money(lim)} (${pct.toFixed(0)}%)`);
+      return `<option value="${s.id}" ${cur === s.id ? 'selected' : ''} ${dead ? 'disabled' : ''}>${esc(label)}</option>`;
+    }).join('');
+    return (cur ? '' : '<option value="">— не выбран —</option>') + opts;
+  }
+
+  /**
    * D-378: открыть файл письма ОБС.
    *
    * Письмо — строка реестра (dir='out', package_type='letter'). Открываем
@@ -1262,6 +1297,12 @@ window.AsgardDocHubPage = (function () {
 
     const obsPill = `<span class="dh-pill dh-pill--gold dh-obs-pill" title="Оплата через ОБС">ОБС</span>`;
 
+    // D-381: пометка договора — чтобы директор видел, по какому основанию
+    // пойдёт письмо. Без договора плашка серая: письмо писать не с чего.
+    const subPill = row.subcontract_id
+      ? ''
+      : `<span class="dh-pill dh-pill--muted dh-obs-sub" title="Договор субподряда не выбран — письмо ОБС не сформировать">договор?</span>`;
+
     let letterPill;
     if (status === 'generating') {
       letterPill = `<span class="dh-pill dh-pill--muted dh-obs-letter" title="Письмо формируется, подождите">
@@ -1280,7 +1321,7 @@ window.AsgardDocHubPage = (function () {
       </span>`;
     }
 
-    return `<div class="dh-obs-row">${obsPill}${letterPill}</div>`;
+    return `<div class="dh-obs-row">${obsPill}${subPill}${letterPill}</div>`;
   }
   function qaIcons() {
     // V413: премиум-иконки (заказчик 19.10.2026: «системные иконки и кнопки,

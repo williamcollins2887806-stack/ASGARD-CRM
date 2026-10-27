@@ -2579,7 +2579,10 @@ module.exports = async function docRegistryRoutes(fastify) {
       // ДВА расхода по объекту (ручная привязка + авто-после-оплаты).
       source_key: `invoice:${doc.id}`,
       status: 'pending',
-      created_by: req.user.id
+      created_by: req.user.id,
+      // V439: amount_gross — сумма С НДС (см. computeAmounts). Явно фиксируем базу,
+      // иначе форма/отчёт угадывают её по контексту и получают расхождение (#406).
+      vat_basis: doc.has_vat ? 'gross' : 'net'
     });
     await db.query(`UPDATE doc_registry SET work_expense_id=$2, updated_by=$3, updated_at=NOW() WHERE id=$1`,
       [id, expense.id, req.user.id]);
@@ -2587,13 +2590,102 @@ module.exports = async function docRegistryRoutes(fastify) {
     return { work_expense_id: expense.id, expense, existing: false };
   });
 
-  // ─── D-378: способ оплаты и письмо для ОБС ──────────────────────────────
+  // ─── D-381: договоры субподряда и лимиты существенности ─────────────────
   //
-  // Способ оплаты меняют ТОЛЬКО бухгалтерия и директора (решение 24.10.2026).
+  // Кто может менять способ оплаты и выбирать договор: бухгалтерия и
+  // директора. Объявлено ДО роутов, которые это используют.
+  const OBS_ROLES = ['ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV', 'BUH'];
+
+  // Директор и бухгалтерия должны видеть остаток лимита по каждому договору
+  // и выбрать договор ПЕРЕД созданием письма. Если лимит выработан, ОБС по
+  // этому договору запрещён — расход идёт другим путём.
+  //
+  // Почему не хардкод: у АСГАРД два действующих договора с ГСП Ремонт
+  // (КР320п26 на 1,5 млн и КР-433п26 на 3 млн), и список будет меняться.
+  fastify.get('/subcontracts', auth, async (req) => {
+    const workId = parseInt(req.query && req.query.work_id, 10) || null;
+
+    const params = [];
+    let where = 'a.is_active = TRUE';
+    if (Number.isFinite(workId)) {
+      params.push(workId);
+      where += ` AND (a.work_id = $${params.length} OR a.work_id IS NULL)`;
+    }
+
+    const { rows } = await db.query(
+      `SELECT a.id, a.number, a.agreement_date, a.customer_name, a.work_id,
+              a.limit_amount, a.currency, a.note,
+              s.spent_amount, s.remaining, s.used_pct, s.exhausted
+         FROM subcontract_agreements a, subcontract_limit_state(a.id) s
+        WHERE ${where}
+        ORDER BY a.agreement_date DESC`, params);
+
+    return {
+      items: rows.map((r) => ({
+        ...r,
+        limit_amount: Number(r.limit_amount) || 0,
+        spent_amount: Number(r.spent_amount) || 0,
+        remaining: Number(r.remaining) || 0,
+        used_pct: Number(r.used_pct) || 0,
+        exhausted: !!r.exhausted,
+      })),
+    };
+  });
+
+  /**
+   * PATCH /:id/subcontract — выбрать договор для строки реестра.
+   * body: { subcontract_id: number | null }
+   *
+   * Выбор делает директор (или бухгалтерия) ДО формирования письма: в письме
+   * должно стоять основание конкретного договора, а лимит считается по нему.
+   */
+  fastify.patch('/:id/subcontract', { preHandler: [fastify.requireRoles(OBS_ROLES)] }, async (req, reply) => {
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id)) return reply.code(400).send({ error: 'Неверный ID' });
+
+    const raw = req.body && req.body.subcontract_id;
+    const subId = raw === null || raw === undefined || raw === '' ? null : parseInt(raw, 10);
+    if (subId !== null && isNaN(subId)) {
+      return reply.code(400).send({ error: 'subcontract_id: число или null' });
+    }
+
+    if (!(await assertDocVisible(db, { role: req.user.role, userId: req.user.id }, id))) {
+      return reply.code(404).send({ error: 'Не найдено' });
+    }
+
+    if (subId !== null) {
+      const sc = await db.query(
+        `SELECT a.id, a.number, a.limit_amount,
+                s.spent_amount, s.remaining, s.exhausted
+           FROM subcontract_agreements a, subcontract_limit_state(a.id) s
+          WHERE a.id = $1 AND a.is_active = TRUE`, [subId]);
+      const a = sc.rows[0];
+      if (!a) return reply.code(404).send({ error: 'Договор не найден или неактивен' });
+
+      // Лимит выработан — ОБС по этому договору запрещён.
+      if (a.exhausted) {
+        return reply.code(409).send({
+          error: `Лимит существенности по договору ${a.number} выработан`,
+          detail: `Лимит ${a.limit_amount}, использовано ${a.spent_amount}. ОБС по этому договору недоступен.`,
+          subcontract_id: a.id,
+          exhausted: true,
+        });
+      }
+    }
+
+    const { rows } = await db.query(
+      `UPDATE doc_registry SET subcontract_id=$2, updated_by=$3, updated_at=NOW()
+        WHERE id=$1 RETURNING id, subcontract_id`,
+      [id, subId, req.user.id]);
+
+    await audit(db, id, req.user.id, 'subcontract_set', { subcontract_id: subId });
+    return { ok: true, ...rows[0] };
+  });
+
   // РП, офис, инициатор счёта — не могут: это выбор платёжного контура,
   // а не свойство заявки. Каждая смена пишется в аудит, чтобы на вопрос
   // «кто переключил на ОБС» был ответ с именем и временем.
-  const OBS_ROLES = ['ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV', 'BUH'];
+  // (OBS_ROLES объявлен выше, в блоке D-381 — он нужен и там.)
 
   /**
    * GET /:id/letter-file — отдать PDF письма для ОБС.
@@ -2759,7 +2851,7 @@ module.exports = async function docRegistryRoutes(fastify) {
     }
 
     const found = await db.query(
-      `SELECT id, invoice_number, payment_source, obs_letter_status, obs_letter_doc_id
+      `SELECT id, invoice_number, payment_source, obs_letter_status, obs_letter_doc_id, subcontract_id
          FROM doc_registry WHERE id=$1 AND deleted_at IS NULL`, [id]);
     const doc = found.rows[0];
     if (!doc) return reply.code(404).send({ error: 'Не найдено' });
@@ -2775,6 +2867,24 @@ module.exports = async function docRegistryRoutes(fastify) {
         error: 'Счёт оплачивается с расчётного счёта — письмо ОБС не требуется',
         hint: "Сначала переключите способ оплаты на 'obs'",
       });
+    }
+
+    // D-381: лимит существенности. Если договор выбран и лимит выработан —
+    // ОБС запрещён, письмо не формируем. Проверяем ДО захвата, чтобы не
+    // оставить документ в статусе «Формируется…» навсегда.
+    if (doc.subcontract_id) {
+      const lim = await db.query(
+        `SELECT s.exhausted, s.remaining, a.number, a.limit_amount, s.spent_amount
+           FROM subcontract_agreements a, subcontract_limit_state(a.id) s
+          WHERE a.id = $1`, [doc.subcontract_id]);
+      const L = lim.rows[0];
+      if (L && L.exhausted) {
+        return reply.code(409).send({
+          error: `Лимит существенности по договору ${L.number} выработан`,
+          detail: `Лимит ${L.limit_amount} руб., использовано ${L.spent_amount} руб. ОБС недоступен.`,
+          exhausted: true,
+        });
+      }
     }
 
     // D-378 (P2 от верификатора 25.10.2026): здесь был SELECT → UPDATE без

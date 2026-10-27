@@ -288,9 +288,43 @@ async function loadLetterData(db, docId) {
     work = wr.rows[0] || null;
   }
 
-  // Договор субподряда: contract_label («26-16/2») — номер договора с контрагентом.
-  const contractLabel = String(doc.contract_label || '').trim();
-  const contractDate = doc.contract_date ? _shared.formatRuDate(doc.contract_date) : '';
+  // D-381: договор субподряда с лимитом существенности.
+  // В письме должно стоять основание ИМЕННО того договора, по которому идёт
+  // расход: у АСГАРД их два (КР320п26 на 1,5 млн и КР-433п26 на 3 млн), и
+  // ошибка в основании делает письмо непригодным.
+  //
+  // Приоритет выбора:
+  //   1. `doc.subcontract_id` — директор выбрал договор при создании письма;
+  //   2. `doc.contract_label` — номер договора, сохранённый в карточке;
+  //   3. договор по работе (`work_id`) — единственный, если он один.
+  let subcontract = null;
+  if (doc.subcontract_id) {
+    const sc = await db.query(
+      `SELECT a.*, s.spent_amount, s.remaining, s.used_pct, s.exhausted
+         FROM subcontract_agreements a, subcontract_limit_state(a.id, $2) s
+        WHERE a.id = $1`, [doc.subcontract_id, doc.id]);
+    subcontract = sc.rows[0] || null;
+  }
+  if (!subcontract && doc.contract_label) {
+    const num = String(doc.contract_label).replace(/[^А-Яа-яЁёA-Za-z0-9-]/g, '');
+    if (num) {
+      const sc = await db.query(
+        `SELECT a.*, s.spent_amount, s.remaining, s.used_pct, s.exhausted
+           FROM subcontract_agreements a, subcontract_limit_state(a.id, $2) s
+          WHERE REPLACE(REPLACE(UPPER(a.number),'-',''),' ','') = REPLACE(REPLACE(UPPER($1),'-',''),' ','')
+          LIMIT 1`, [num, doc.id]);
+      subcontract = sc.rows[0] || null;
+    }
+  }
+  if (!subcontract && doc.work_id) {
+    const sc = await db.query(
+      `SELECT a.*, s.spent_amount, s.remaining, s.used_pct, s.exhausted
+         FROM subcontract_agreements a, subcontract_limit_state(a.id, $2) s
+        WHERE a.work_id = $1 AND a.is_active = TRUE
+        ORDER BY a.agreement_date DESC`, [doc.work_id, doc.id]);
+    // Берём только если договор ровно один — иначе выбор за человеком.
+    if (sc.rows.length === 1) subcontract = sc.rows[0];
+  }
 
   // Позиции: из заявки, если распознаны.
   let lines = null;
@@ -299,6 +333,14 @@ async function loadLetterData(db, docId) {
       ? (() => { try { return JSON.parse(doc.pi_lines); } catch (_) { return null; } })()
       : doc.pi_lines;
   }
+  // D-381: у архивных счетов (импорт до автоматизации) позиции лежат в
+  // `parsed_json.lines`, а не в заявке — заявки у них может не быть вовсе.
+  if ((!Array.isArray(lines) || !lines.length) && doc.parsed_json) {
+    const pj = typeof doc.parsed_json === 'string'
+      ? (() => { try { return JSON.parse(doc.parsed_json); } catch (_) { return null; } })()
+      : doc.parsed_json;
+    if (pj && Array.isArray(pj.lines) && pj.lines.length) lines = pj.lines;
+  }
 
   const company = await _shared.loadCompanyProfile(db);
   const gendir = await _shared.loadAsgardGendir(db);
@@ -306,8 +348,11 @@ async function loadLetterData(db, docId) {
   return {
     doc,
     work,
-    contractLabel,
-    contractDate,
+    subcontract,
+    contractLabel: subcontract ? subcontract.number : String(doc.contract_label || '').trim(),
+    contractDate: subcontract && subcontract.agreement_date
+      ? _shared.formatRuDate(subcontract.agreement_date)
+      : (doc.contract_date ? _shared.formatRuDate(doc.contract_date) : ''),
     items: buildItems(doc, lines),
     company,
     gendir,
@@ -375,11 +420,23 @@ function buildHtml(data, opts) {
     basisText = `${esc(company.name_short)} привлекает подрядчиков для исполнения своих обязательств перед заказчиками.`;
   }
 
-  // D-378: раньше выходило «привлекло ООО "УК МАГИСТР" Договор с ООО "УК
-  // МАГИСТР" № …» — контрагент повторялся дважды. Теперь как в образце:
-  // привлекло <контрагент> для оказания услуг на основании договора № …
-  const contractText = data.contractLabel
-    ? ` на основании договора № ${esc(data.contractLabel)}${data.contractDate ? ` от ${esc(data.contractDate)}` : ''}`
+  // D-381: договор субподряда. Если директор выбрал договор — пишем его номер,
+  // дату и ссылку на лимит существенности. Ошибка в основании делает письмо
+  // непригодным, поэтому договор берём из данных, а не «какой найдётся».
+  const contractText = data.subcontract
+    ? ` на основании договора субподряда № ${esc(data.subcontract.number)}`
+      + `${data.contractDate ? ` от ${esc(data.contractDate)}` : ''}`
+    : (data.contractLabel
+      ? ` на основании договора № ${esc(data.contractLabel)}${data.contractDate ? ` от ${esc(data.contractDate)}` : ''}`
+      : '');
+
+  // D-381: остаток лимита существенности — справочно в письме, чтобы
+  // получатель ОБС видел, в рамках какого лимита расход.
+  const limitNote = (data.subcontract && Number(data.subcontract.limit_amount) > 0)
+    ? `<p style="font-size:10.5pt;color:#444">Лимит существенности по договору: `
+      + `${money(data.subcontract.limit_amount)} руб. `
+      + `Использовано ранее: ${money(data.subcontract.spent_amount || 0)} руб. `
+      + `Остаток до настоящего счёта: ${money(data.subcontract.remaining || 0)} руб.</p>`
     : '';
 
   const itemsHtml = data.items.map((t) => `<li>${esc(t)}</li>`).join('');
@@ -446,20 +503,22 @@ function buildHtml(data, opts) {
     text-indent: 8mm;
   }
   .body ul {
-    margin: 2mm 0 3mm 8mm;
-    padding-left: 5mm;
-    /* D-378: счета за спецодежду дают 9–11 позиций, и письмо уезжало на
-       2 страницы — подпись отдельно от текста. Уплотняем перечень: он
-       справочный, читаемость важнее «воздуха». */
-    font-size: 10.5pt;
-    line-height: 1.22;
+    margin: 1.5mm 0 2mm 7mm;
+    padding-left: 4mm;
+    /* D-381: счета за спецодежду дают 9–11 позиций, и письмо уезжало на
+       2 страницы — подпись отдельно от текста. Перечень справочный,
+       поэтому уплотняем: читаемость важнее «воздуха». */
+    font-size: 9.5pt;
+    line-height: 1.15;
   }
-  .body li { margin-bottom: 0.5mm; text-align: left; }
-  .body p { margin-bottom: 3mm; }
+  .body li { margin-bottom: 0.2mm; text-align: left; }
+  .body p { margin-bottom: 2.4mm; text-indent: 6mm; }
+  .salute { margin: 0 0 3mm; }
+  .doc-number { margin: 3mm 0 4mm; }
   .signature-block {
-    margin-top: 6mm;
+    margin-top: 5mm;
     position: relative;
-    min-height: 26mm;
+    min-height: 24mm;
     /* D-378: письмо А-2115 выходило на 2 страницы, и подпись с печатью
        уезжали на вторую, оставляя на первой пустое место. Блок подписи
        неделим — как в бумажном делопроизводстве. */
@@ -550,6 +609,7 @@ function buildHtml(data, opts) {
     ${data.items.length ? `<ul>${itemsHtml}</ul>` : ''}
     <p>${esc(company.name_short)} получило счёт на оплату № ${esc(invoiceNo)}${invoiceDate ? ` от ${esc(invoiceDate)}` : ''}
        на сумму ${money(gross)} руб.${esc(vatLine)}.</p>
+    ${limitNote}
     <p>Расходы обязательные и напрямую связаны с исполнением обязательств по договору:
        без этих документов работы на объекте Заказчика выполнять нельзя.</p>
     <p>Просим оплатить счёт (100% суммы) в размере ${money(gross)} руб.
