@@ -351,11 +351,12 @@ window.AsgardEmployeePage=(function(){
     const WS_SECTIONS = ['overview','contacts','documents','ppe','work','permits','history','notes'];
     const _secRaw = String(query.section || 'overview').toLowerCase();
     const initialSection = WS_SECTIONS.includes(_secRaw) ? _secRaw : 'overview';
-    const clothingChips = (window.AsgardPpeSizes && window.AsgardPpeSizes.clothing) || ['44','46','48','50','52','54','56','58','60','62','64'];
-    const shoeChips = (window.AsgardPpeSizes && window.AsgardPpeSizes.shoe) || ['39','40','41','42','43','44','45','46','47','48'];
+    const clothingChips = (window.AsgardPpeSizes && window.AsgardPpeSizes.clothing) || ['84-88','88-92','92-96','96-100','100-104','104-108','108-112','112-116','116-120','120-124','124-128'];
+    const shoeChips = (window.AsgardPpeSizes && window.AsgardPpeSizes.shoe) || ['36','37','38','39','40','41','42','43','44','45','46','47','48','49','50'];
     const headwearList = (window.AsgardPpeSizes && window.AsgardPpeSizes.headwear) || ['54','56','58','60','62','стандарт'];
+    const heightList = (window.AsgardPpeSizes && window.AsgardPpeSizes.height) || ['146-152','152-158','158-164','164-170','170-176','176-182','182-188','188-194','194-200','200-206'];
     const _ppeSelect = (kind, id, cur) => {
-      const list = kind === 'clothing' ? clothingChips : kind === 'shoe' ? shoeChips : headwearList;
+      const list = kind === 'clothing' ? clothingChips : kind === 'shoe' ? shoeChips : kind === 'height' ? heightList : headwearList;
       const curS = String(cur || '').trim();
       let opts = `<option value="">—</option>`;
       if (curS && !list.includes(curS)) opts += `<option value="${esc(curS)}" selected>${esc(curS)} (старое)</option>`;
@@ -672,11 +673,11 @@ window.AsgardEmployeePage=(function(){
               <h3 class="emp-ws-panel-title"><span class="bar"></span> СИЗ и доп. данные</h3>
               <div class="formrow">
                 <div>
-                  <label>Размер одежды</label>
+                  <label>Размер одежды (обхват груди, см)</label>
                   ${_ppeSelect('clothing', 'clothing_size', emp.clothing_size)}
                 </div>
                 <div>
-                  <label>Размер обуви</label>
+                  <label>Размер обуви (EU)</label>
                   ${_ppeSelect('shoe', 'shoe_size', emp.shoe_size)}
                 </div>
                 <div>
@@ -684,8 +685,8 @@ window.AsgardEmployeePage=(function(){
                   ${_ppeSelect('headwear', 'headwear_size', emp.headwear_size)}
                 </div>
                 <div>
-                  <label>Рост (см)</label>
-                  <input id="height" type="number" value="${esc(emp.height||"")}" ${canEdit?"":"disabled"}/>
+                  <label>Рост, см</label>
+                  ${_ppeSelect('height', 'height', emp.height)}
                 </div>
                 <div>
                   <label>Группа крови</label>
@@ -1533,7 +1534,7 @@ window.AsgardEmployeePage=(function(){
         emp.clothing_size=$("#clothing_size")?.value?.trim() || "";
         emp.shoe_size=$("#shoe_size")?.value?.trim() || "";
         emp.headwear_size=$("#headwear_size")?.value?.trim() || "";
-        emp.height=$("#height")?.value ? Number($("#height").value) : null;
+        emp.height=$("#height")?.value?.trim() || null;
         emp.blood_type=CRSelect.getValue('blood_type') || "";
         emp.medical_notes=$("#medical_notes")?.value?.trim() || "";
 

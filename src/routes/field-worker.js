@@ -1151,7 +1151,7 @@ async function routes(fastify, options) {
         else if (v === '' || v == null) filtered.is_self_employed = null;
       }
 
-      for (const k of ['children_count', 'height']) {
+      for (const k of ['children_count']) {
         if (k in filtered) {
           if (filtered[k] === '' || filtered[k] == null) filtered[k] = null;
           else {
@@ -1159,6 +1159,13 @@ async function routes(fastify, options) {
             filtered[k] = Number.isFinite(n) ? n : null;
           }
         }
+      }
+
+      // Рост (V441): хранится диапазоном «170-176», не числом. Пустая строка → null,
+      // значение обрезаем до длины колонки, чтобы не ловить 500 «value too long».
+      if ('height' in filtered) {
+        const h = filtered.height == null ? '' : String(filtered.height).trim();
+        filtered.height = h ? h.slice(0, 20) : null;
       }
 
       for (const k of PHONE_FIELDS) {

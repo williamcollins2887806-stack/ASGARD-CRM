@@ -333,9 +333,10 @@ window.AsgardPersonnelPage = (function () {
 
   function sizSizesHtml(e) {
     const parts = [];
-    if (e.clothing_size) parts.push(`<div style="font-size:11px;color:var(--t2)"><span title="Одежда">👕</span> ${esc(e.clothing_size)}</div>`);
-    if (e.shoe_size) parts.push(`<div style="font-size:11px;color:var(--t2)"><span title="Обувь">👟</span> ${esc(e.shoe_size)}</div>`);
-    if (e.headwear_size) parts.push(`<div style="font-size:11px;color:var(--t2)"><span title="Головной убор">⛑</span> ${esc(e.headwear_size)}</div>`);
+    if (e.clothing_size) parts.push(`<div style="font-size:11px;color:var(--t2)" title="Одежда (обхват груди, см)"><span>👕</span> ${esc(e.clothing_size)}</div>`);
+    if (e.shoe_size) parts.push(`<div style="font-size:11px;color:var(--t2)" title="Обувь (EU)"><span>👟</span> ${esc(e.shoe_size)}</div>`);
+    if (e.headwear_size) parts.push(`<div style="font-size:11px;color:var(--t2)" title="Головной убор"><span>⛑</span> ${esc(e.headwear_size)}</div>`);
+    if (e.height) parts.push(`<div style="font-size:11px;color:var(--t2)" title="Рост, см"><span>📏</span> ${esc(e.height)}</div>`);
     return parts.length ? parts.join('') : '<span style="color:var(--t3)">—</span>';
   }
 

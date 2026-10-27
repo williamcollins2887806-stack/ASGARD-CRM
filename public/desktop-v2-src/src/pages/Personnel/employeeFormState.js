@@ -207,7 +207,7 @@ export function buildEmployeePayload(form, opts = {}) {
   if (payload.children_count === '' || payload.children_count == null) payload.children_count = null;
   else payload.children_count = Number(payload.children_count);
   if (payload.height === '' || payload.height == null) payload.height = null;
-  else payload.height = Number(payload.height);
+  else payload.height = String(payload.height).trim() || null;
 
   // Дубли passport → pass_* для старых записей
   if (payload.passport_series) payload.pass_series = payload.passport_series;

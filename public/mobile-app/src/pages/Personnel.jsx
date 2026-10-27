@@ -272,11 +272,12 @@ function EmployeeCard({ emp, cfg, index, onTap }) {
               {emp.planned_info.planned_from ? ` с ${fmtDate(emp.planned_info.planned_from)}` : ''}
             </p>
           )}
-          {(emp.clothing_size || emp.shoe_size || emp.headwear_size) && (
+          {(emp.clothing_size || emp.shoe_size || emp.headwear_size || emp.height) && (
             <p className="text-[10px] mt-0.5 c-tertiary">
               {emp.clothing_size && `👕 ${emp.clothing_size}`}
               {emp.shoe_size && `${emp.clothing_size ? ' · ' : ''}👟 ${emp.shoe_size}`}
               {emp.headwear_size && ` · ⛑ ${emp.headwear_size}`}
+              {emp.height && ` · 📏 ${emp.height}`}
             </p>
           )}
         </div>

@@ -137,12 +137,11 @@ export function EmployeeExtraFields({ employee, canEdit, onSaved }) {
               disabled={!canEdit}
             />
           </Field>
-          <Field label="Рост (см)">
-            <NumberInput
+          <Field label="Рост, см">
+            <SelectInput
               value={form.height}
               onChange={(v) => set('height', v)}
-              min={0}
-              max={250}
+              options={ppeSizeSelectOptions('height', form.height)}
               disabled={!canEdit}
             />
           </Field>
@@ -160,7 +159,7 @@ export function EmployeeExtraFields({ employee, canEdit, onSaved }) {
 
       <SubSection title="👕 СИЗ — размеры">
         <div className="grid-2 gap-10">
-          <Field label="Размер одежды">
+          <Field label="Размер одежды (обхват груди, см)">
             <SelectInput
               value={form.clothing_size}
               onChange={(v) => set('clothing_size', v)}
@@ -168,7 +167,7 @@ export function EmployeeExtraFields({ employee, canEdit, onSaved }) {
               disabled={!canEdit}
             />
           </Field>
-          <Field label="Размер обуви">
+          <Field label="Размер обуви (EU)">
             <SelectInput
               value={form.shoe_size}
               onChange={(v) => set('shoe_size', v)}

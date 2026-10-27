@@ -229,7 +229,7 @@ export function EmployeeAnketaForm({
         <>
           <FormSection title="СИЗ — размеры">
             <div className="grid-2 gap-10">
-              <Field label="Размер одежды">
+              <Field label="Размер одежды (обхват груди, см)">
                 <SelectInput
                   value={form.clothing_size}
                   onChange={(v) => set('clothing_size', v)}
@@ -237,7 +237,7 @@ export function EmployeeAnketaForm({
                   disabled={disabled}
                 />
               </Field>
-              <Field label="Размер обуви">
+              <Field label="Размер обуви (EU)">
                 <SelectInput
                   value={form.shoe_size}
                   onChange={(v) => set('shoe_size', v)}
@@ -260,8 +260,8 @@ export function EmployeeAnketaForm({
               <Field label="Группа крови">
                 <SelectInput value={form.blood_type} onChange={(v) => set('blood_type', v)} options={BLOOD_OPTIONS} disabled={disabled} />
               </Field>
-              <Field label="Рост (см)">
-                <NumberInput value={form.height} onChange={(v) => set('height', v)} min={0} max={250} disabled={disabled} />
+              <Field label="Рост, см">
+                <SelectInput value={form.height} onChange={(v) => set('height', v)} options={ppeSizeSelectOptions('height', form.height)} disabled={disabled} />
               </Field>
             </div>
             <Field label="Аллергии / мед. ограничения">

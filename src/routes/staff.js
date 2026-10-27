@@ -604,6 +604,13 @@ async function routes(fastify, options) {
       return reply.code(400).send({ error: ppeErrs[0], details: ppeErrs });
     }
 
+    // V441: height хранится диапазоном («170-176»), не числом. Пустая строка → null,
+    // длина ограничена колонкой varchar(20), иначе 500 «value too long».
+    if ('height' in body) {
+      const h = body.height == null ? '' : String(body.height).trim();
+      body.height = h ? h.slice(0, 20) : null;
+    }
+
     // ── 3) Валидация se_monthly_used_initial: {year, month, amount} или null.
     if ('se_monthly_used_initial' in body) {
       const v = body.se_monthly_used_initial;
