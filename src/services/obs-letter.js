@@ -695,9 +695,121 @@ async function generateObsLetterPdf(db, docId) {
   return { pdfPath, htmlPath: null, url: `${URL_PREFIX}/${encodeURIComponent(`${base}.pdf`)}`, number, dateText, docId: doc.id, fileName: `${base}.pdf` };
 }
 
+/**
+ * D-384: абзацы письма как ПЛОСКИЙ текст — один источник для PDF и Word.
+ *
+ * Зачем отдельно. Раньше текст собирался внутри `buildHtml` в виде HTML.
+ * Word рендерится через docxtemplater и HTML не понимает, поэтому нужен
+ * общий «смысловой» слой: массив абзацев, из которого HTML делает `<p>`,
+ * а DOCX — параграфы Word. Иначе PDF и Word начнут расходиться по тексту,
+ * и бухгалтерия распечатает одно, а отправит другое.
+ *
+ * Возвращает массив строк. Перечень услуг идёт отдельными строками с
+ * маркером «— », чтобы в Word не нужен был список Word (шаблон его не
+ * содержит).
+ *
+ * @param {object} data — результат loadLetterData
+ * @param {{number?:string, dateText?:string}} [opts]
+ * @returns {string[]}
+ */
+function buildLetterParagraphs(data, opts = {}) {
+  const { doc, work, company, subcontract } = data;
+
+  const dateNum = (d) => {
+    if (!d) return '';
+    const dt = d instanceof Date ? d : new Date(d);
+    if (isNaN(dt.getTime())) return '';
+    return `${String(dt.getDate()).padStart(2, '0')}.${String(dt.getMonth() + 1).padStart(2, '0')}.${dt.getFullYear()} г.`;
+  };
+  const money = (n) => Number(n || 0)
+    .toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+  const gross = Number(doc.amount_gross || 0);
+  const vat = Number(doc.vat_amount || 0);
+  const ratePct = Number(doc.vat_rate || 0) > 1
+    ? Number(doc.vat_rate)
+    : Number(doc.vat_rate || 0) * 100;
+  const hasVat = vat > 0;
+
+  const invoiceNo = doc.invoice_number || 'б/н';
+  const invoiceDate = dateNum(doc.invoice_date);
+  const counterparty = doc.counterparty_name || 'контрагент';
+
+  const objectName = (work && work.object_name) || '';
+  const workTitle = (work && work.work_title) || '';
+  const customerName = (work && work.customer_name) || '';
+
+  const ACTION_TITLE = /^(капитальный|текущий|ремонт|замена|очистка|промывка|монтаж|демонтаж|восстановлен|диагностик|обследован|испытани)/i;
+  const whatWeDo = workTitle
+    ? (ACTION_TITLE.test(workTitle.trim()) ? workTitle.trim() : `работы по ${workTitle.trim()}`)
+    : 'работы';
+
+  const out = [];
+
+  // 1. Основание: объект и работы.
+  if (objectName && customerName) {
+    out.push(`${company.name_short} выполняет ${whatWeDo} на объекте ${objectName} `
+      + `по договору субподряда с ${customerName}.`);
+  } else if (objectName) {
+    out.push(`${company.name_short} выполняет ${whatWeDo} на объекте ${objectName}.`);
+  } else if (workTitle) {
+    out.push(`${company.name_short} выполняет ${whatWeDo}.`);
+  } else {
+    out.push(`${company.name_short} привлекает подрядчиков для исполнения своих обязательств перед заказчиками.`);
+  }
+
+  // 2. Требование к допускам.
+  out.push(`Персонал ${company.name_short} обязан иметь действующие допуски и разрешительные документы, `
+    + `подтверждающие возможность выполнения работ на объекте Заказчика.`);
+
+  // 3. Кого привлекли и по какому договору.
+  const contractTail = subcontract
+    ? ` на основании договора субподряда № ${subcontract.number}`
+      + (data.contractDate ? ` от ${data.contractDate}` : '')
+    : (data.contractLabel
+      ? ` на основании договора № ${data.contractLabel}`
+        + (data.contractDate ? ` от ${data.contractDate}` : '')
+      : '');
+  out.push(`Чтобы обеспечить допуск персонала к работам, ${company.name_short} привлекло `
+    + `${counterparty} для оказания услуг${contractTail}, а именно:`);
+
+  // 4. Перечень услуг — по строке на позицию.
+  for (const item of (data.items || [])) {
+    out.push(`— ${item}`);
+  }
+
+  // 5. Счёт и сумма.
+  const vatLine = hasVat
+    ? ` (включая НДС ${ratePct ? String(Math.round(ratePct)) + '%' : ''} — ${money(vat)} руб.)`
+    : ' (НДС не облагается)';
+  out.push(`${company.name_short} получило счёт на оплату № ${invoiceNo}`
+    + `${invoiceDate ? ` от ${invoiceDate}` : ''} на сумму ${money(gross)} руб.${vatLine}.`);
+
+  // 6. Лимит существенности по договору (справочно).
+  if (subcontract && Number(subcontract.limit_amount) > 0) {
+    out.push(`Лимит существенности по договору: ${money(subcontract.limit_amount)} руб. `
+      + `Использовано ранее: ${money(subcontract.spent_amount || 0)} руб. `
+      + `Остаток до настоящего счёта: ${money(subcontract.remaining || 0)} руб.`);
+  }
+
+  // 7. Обоснование необходимости.
+  out.push('Расходы обязательные и напрямую связаны с исполнением обязательств по договору: '
+    + 'без этих документов работы на объекте Заказчика выполнять нельзя.');
+
+  // 8. Просьба об оплате.
+  const vatTail = hasVat
+    ? `, в том числе НДС ${ratePct ? String(Math.round(ratePct)) + '%' : ''} — ${money(vat)} руб.`
+    : '. НДС не облагается.';
+  out.push(`Просим оплатить счёт (100% суммы) в размере ${money(gross)} руб. `
+    + `(${amountInWords(gross)})${vatTail}`);
+
+  return out;
+}
+
 module.exports = {
   generateObsLetterPdf,
   buildHtml,
+  buildLetterParagraphs,
   loadLetterData,
   buildItems,
   amountInWords,

@@ -2687,16 +2687,36 @@ module.exports = async function docRegistryRoutes(fastify) {
       };
 
       // Кэш: повторный запрос того же счёта не конвертируем заново.
+      // D-384: письмо для ОБС отдаём с ОФИЦИАЛЬНОГО БЛАНКА (шаблон
+      // customer-letter-tpl.docx: логотип, реквизиты, подпись, печать),
+      // а не текстом из PDF. Текстовый DOCX остаётся запасным вариантом
+      // для счетов поставщиков, у которых нет бланка АСГАРД.
       if (fs.existsSync(cached)) return sendDocx(fs.readFileSync(cached));
 
       try {
+        // Письмо для ОБС: официальный бланк через docxtemplater.
+        if (doc.package_type === 'letter' || kind === 'letter') {
+          // Для письма нужен РОДИТЕЛЬСКИЙ счёт: у письма package_type='letter',
+          // а данные (объект, договор, позиции) — в счёте.
+          const parent = (await db.query(
+            `SELECT id FROM doc_registry WHERE obs_letter_doc_id = $1 AND deleted_at IS NULL LIMIT 1`,
+            [id])).rows[0];
+          const srcId = parent ? parent.id : id;
+          const { generateObsLetterDocx } = require('../services/obs-letter-docx');
+          const buf = await generateObsLetterDocx(db, srcId, {
+            number: String(doc.invoice_number || '').replace(/^Исх\.\s*/i, '') || undefined,
+          });
+          try { fs.writeFileSync(cached, buf); } catch (_) { /* кэш не критичен */ }
+          return sendDocx(buf);
+        }
+
         const { pdfToDocxBuffer } = require('../services/pdf-to-docx');
         const buf = pdfToDocxBuffer(fsPath, doc.invoice_number || path.basename(basePath));
         try { fs.writeFileSync(cached, buf); } catch (_) { /* кэш не критичен */ }
         return sendDocx(buf);
       } catch (e) {
         return reply.code(500).send({
-          error: 'Не удалось конвертировать в Word',
+          error: 'Не удалось подготовить Word',
           detail: String(e.message || e).slice(0, 200),
         });
       }
@@ -2871,6 +2891,32 @@ module.exports = async function docRegistryRoutes(fastify) {
     const fsPath = safeUploadPath(decoded, { subdir: path.join('doc-hub', 'obs-letters') })
       || safeUploadPath(decoded, { subdir: 'doc-hub' });
     if (!fsPath) return reply.code(400).send({ error: 'Недопустимый путь к файлу' });
+
+    // D-384: Word для письма ОБС — с ОФИЦИАЛЬНОГО БЛАНКА, а не текст из PDF.
+    // Заказчик 27.10.2026: «нужен нормальный ворд, как шаблон Димы 1в1 на оф
+    // бланке с логотипом». Шаблон — templates/customer-letter-tpl.docx,
+    // тот же, что у всей исходящей переписки: логотип, реквизиты, подпись.
+    const wantDocx = String((req.query && req.query.format) || '').toLowerCase() === 'docx';
+    if (wantDocx) {
+      const srcId = parentId || id;
+      try {
+        const { generateObsLetterDocx } = require('../services/obs-letter-docx');
+        const buf = await generateObsLetterDocx(db, srcId, {
+          number: String(doc.invoice_number || '').replace(/^Исх\.\s*/i, '') || undefined,
+        });
+        const base = String((first && first.name) || path.basename(fsPath)).replace(/\.[^.]+$/, '');
+        const docxName = /\.docx$/i.test(base) ? base : `${base}.docx`;
+        reply.header('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+        reply.header('Content-Disposition', `attachment; filename="${encodeURIComponent(docxName)}"`);
+        return reply.send(buf);
+      } catch (e) {
+        return reply.code(500).send({
+          error: 'Не удалось подготовить Word',
+          detail: String(e.message || e).slice(0, 200),
+        });
+      }
+    }
+
     if (!fs.existsSync(fsPath)) return reply.code(404).send({ error: 'Файл отсутствует на диске' });
 
     const { safeContentType } = require('../lib/upload-ext');
