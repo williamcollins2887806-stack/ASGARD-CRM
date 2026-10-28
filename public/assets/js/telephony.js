@@ -850,7 +850,12 @@ window.AsgardTelephonyPage = (function () {
       var statusTip = STATUS_TOOLTIPS[tStatus] || '';
       var aiSt = getAiPipelineStatus(c);
       var qScore = getQualityScore(c);
-      var phone = dir === 'inbound' ? c.from_number : (c.line_number || c.to_number);
+      // НОМЕР В ЖУРНАЛЕ (инцидент 28.10.2026): приоритет у client_number —
+      // это номер АБОНЕНТА. from/to содержат ход плеч каналов, и для входящего
+      // звонка там оказывается номер Асгарда 74993223062 (плечо оператора идёт
+      // по [from-internal]), из-за чего вместо клиента показывался наш номер.
+      var phone = c.client_number
+        || (dir === 'inbound' ? c.from_number : (c.line_number || c.to_number));
       var client = c.client_name ? esc(c.client_name) : esc(fmtPhone(phone));
       var hasRecord = c.record_path || c.recording_id;
       var recordIcon = hasRecord
@@ -2072,7 +2077,7 @@ window.AsgardTelephonyPage = (function () {
       '<div class="call-detail-section">' +
         '<table class="detail-info-table">' +
           '<tr><td>Направление</td><td><span class="call-dir call-dir--' + dir + '"' + (dirTip ? ' data-tooltip="' + esc(dirTip) + '"' : '') + '>' + (DIR_ICONS[dir] || '') + '</span> ' + esc(dirLabel) + '</td></tr>' +
-          '<tr><td>От</td><td>' + esc(fmtPhone(call.from_number)) + '</td></tr>' +
+          '<tr><td>От</td><td>' + esc(fmtPhone(call.client_number || call.from_number)) + '</td></tr>' +
           '<tr><td>Линия</td><td>' + esc(fmtPhone(call.line_number || call.to_number)) + '</td></tr>' +
           '<tr><td>Длительность</td><td>' + esc(fmtDuration(call.duration_seconds)) + '</td></tr>' +
           '<tr><td>Дата/время</td><td>' + esc(fmtDate(call.created_at)) + '</td></tr>' +
