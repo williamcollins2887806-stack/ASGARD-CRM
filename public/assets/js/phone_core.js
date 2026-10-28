@@ -1023,25 +1023,18 @@
         })
         .catch(function (e) {
           var msg = (e && e.message) || '';
-          // GSM-путь: канала нет вовсе — переводим через транк (набор плеча).
-          if (/channel required/i.test(msg)) {
-            var digits = normalizePhone(target);
-            return pbxApi('/call/outbound', {
-              method: 'POST',
-              body: JSON.stringify({ number: digits, transfer: 'gsm' }),
-            }).then(function (r2) {
-              emit('transfer', { kind: kind, target: target, via: 'gsm' });
-              return r2;
-            });
-          }
-          // 409 про WebRTC больше не означает «канала нет»: сервер сам находит
-          // плечо по pbx_uid/sip_username. Если всё же пришёл — не дозваниваемся
-          // серверным путём (иначе вызов ушёл бы на мобильный вместо перевода),
-          // а показываем понятную причину.
-          if (/webrtc/i.test(msg)) {
-            throw new Error('Перевод не удался: не нашли плечо звонка в Asterisk. Проверьте, что вы на линии, и повторите.');
-          }
-          throw e;
+          // ИНЦИДЕНТ 28.10.2026: перевод «не удался» — НЕ дозваниваемся сами.
+          // Раньше при ошибке канала фронт звонил на цель через /call/outbound
+          // (transfer:'gsm'), то есть оператор сбрасывал клиента и звонил коллеге
+          // как обычный исходящий («Дима сбросил меня и сам созвонился с Викой,
+          // а должен был перевести»). Это потеря живого клиента — запрещено.
+          // Правильное поведение при неудаче: оставить клиента на линии и
+          // показать оператору причину, разговор не рвать.
+          var why = /channel required/i.test(msg)
+            ? 'не нашли плечо звонка в Asterisk'
+            : msg;
+          emit('transfer_failed', { kind: kind, target: target, reason: why });
+          throw new Error('Перевод не выполнен (' + why + '). Клиент остался на линии — повторите перевод.');
         });
     },
 

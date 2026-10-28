@@ -205,7 +205,16 @@ async function handleInboundAgi(session) {
     // Р”РµР¶СѓСЂРЅС‹Р№ РЅР° РјРѕР±РёР»СЊРЅС‹Р№ РєР°Рє Р·РІРµРЅРѕ С†РµРїРѕС‡РєРё (РµСЃР»Рё РЅРµ РѕС‚РІРµС‚РёР» РЅРёРєС‚Рѕ РёР· Р±СЂР°СѓР·РµСЂРЅС‹С…).
     if (pbxConfig.duty_mobile_fallback !== false) {
       const dutyMobile = await loadDutyMobile(client, dutyUserId);
-      if (dutyMobile) {
+      // ДУБЛЬ ЗВОНКА (28.10.2026): если мобильный дежурного уже стоит в каскаде
+      // (он на линии с receive_mode='mobile'/'both'), повторное звено
+      // ASGARD_DUTY_MOBILE звонило ему ВТОРОЙ раз — «звонок идёт на оба
+      // устройства». Плечо дежурного уже собрано buildDialVars, хвост
+      // [asgard-ring] добавлять не нужно.
+      const dutyNumberInCascade = !!dutyMobile && dial.cascade.some((c) => {
+        const digits = String(c?.dial || '').replace(/[^\d]/g, '');
+        return digits.endsWith(String(dutyMobile).replace(/[^\d]/g, ''));
+      });
+      if (dutyMobile && !dutyNumberInCascade) {
         await session.setVariable('ASGARD_DUTY_MOBILE', dutyMobile);
         await session.setVariable('ASGARD_DUTY_MOBILE_TO', String(pbxConfig.mobile_ring_sec ?? 30));
       }

@@ -1578,6 +1578,17 @@
       if (panelShown()) paintPanel();
       return;
     }
+    if (type === 'transfer_failed') {
+      // ИНЦИДЕНТ 28.10.2026: перевод не удался — клиент ОСТАЛСЯ на линии.
+      // Показываем причину явно, чтобы оператор не сбрасывал вызов и не звонил
+      // коллеге вручную (это теряло клиента).
+      var dd = (d && d.detail) || d || {};
+      toast('Перевод не выполнен', (dd.reason || 'неизвестная причина') + '. Клиент на линии — повторите перевод', 'err');
+      panelData.loadedAt = 0;
+      syncUi(P.getState());
+      if (panelShown()) paintPanel();
+      return;
+    }
     if (type === 'line_taken' || type === 'line_taken_by_me') {
       // MULTI-LINE (V442): снятие линии теперь означает НЕ перехват коллегой,
       // а фоновую гигиену (stale heartbeat / конец смены). Разговор не рвём —
