@@ -511,50 +511,50 @@ a:hover { text-decoration: underline; }
 }
 .dh-table tbody tr:hover { background: color-mix(in srgb, var(--bg4) 55%, transparent); }
 
-/* ═══ V394 + D-305 + D-383: светофор Doc Hub — ЗАЛИВКА СТРОКИ ═══
+/* ═══ V394 + D-305 + D-383 + D-385: светофор Doc Hub — ЗАЛИВКА СТРОКИ ═══
    Заказчик 20.10.2026: «сделай именно заливку строки, но так чтобы всё было читаемо».
-   Заказчик 27.10.2026: «на светлой теме светофор не работает, не видно каким
-   цветом закрашена строка».
+   Заказчик 27.10.2026: «на светлой теме светофор не работает».
+   Заказчик 28.10.2026: «строки все сливаются в единый цвет, почти ничего не видно».
 
-   Причин было две:
-     1) заливка 12 % на белом фоне почти не различима — цвет читался только
-        по 4-пиксельной полосе слева;
-     2) правило `.is-selected` шло НИЖЕ и перебивало фон светофора: выбранная
-        строка теряла свой цвет.
+   Почему предыдущая версия не сработала на светлой теме:
+     1) заливка 14–18 % поверх --bg1 давала грязный серо-бежевый оттенок —
+        на белом фоне четыре цвета выглядели почти одинаково;
+     2) полоса слева 5 px терялась между строками;
+     3) правило .is-selected шло ниже и перебивало фон.
 
-   Теперь: плотная заливка через color-mix с --bg1 (не прозрачность поверх
-   неизвестного фона), полоса слева 5px, и правила для выбранной строки
-   НЕ перебивают цвет светофора. */
+   Теперь: насыщенность поднята до 26–30 %, полоса слева 6 px, ЧЁТКАЯ
+   цветная рамка снизу — на белом фоне строка читается однозначно.
+   Тёмная тема сохраняется: color-mix с --bg1 даёт там плотный тёмный тон. */
 .dh-table tbody tr.is-traffic-red {
-  background: color-mix(in srgb, var(--err) 16%, var(--bg1));
-  box-shadow: inset 5px 0 0 var(--red);
+  background: color-mix(in srgb, var(--err) 26%, var(--bg1));
+  box-shadow: inset 6px 0 0 var(--red), inset 0 -1px 0 color-mix(in srgb, var(--err) 45%, transparent);
 }
-.dh-table tbody tr.is-traffic-red:hover { background: color-mix(in srgb, var(--err) 24%, var(--bg1)); }
+.dh-table tbody tr.is-traffic-red:hover { background: color-mix(in srgb, var(--err) 34%, var(--bg1)); }
 .dh-table tbody tr.is-traffic-blue {
-  background: color-mix(in srgb, var(--info) 15%, var(--bg1));
-  box-shadow: inset 5px 0 0 var(--blue-l);
+  background: color-mix(in srgb, var(--info) 26%, var(--bg1));
+  box-shadow: inset 6px 0 0 var(--blue-l), inset 0 -1px 0 color-mix(in srgb, var(--info) 45%, transparent);
 }
-.dh-table tbody tr.is-traffic-blue:hover { background: color-mix(in srgb, var(--info) 23%, var(--bg1)); }
+.dh-table tbody tr.is-traffic-blue:hover { background: color-mix(in srgb, var(--info) 34%, var(--bg1)); }
 .dh-table tbody tr.is-traffic-yellow {
-  background: color-mix(in srgb, var(--warn) 18%, var(--bg1));
-  box-shadow: inset 5px 0 0 var(--amber);
+  background: color-mix(in srgb, var(--warn) 30%, var(--bg1));
+  box-shadow: inset 6px 0 0 var(--amber), inset 0 -1px 0 color-mix(in srgb, var(--warn) 45%, transparent);
 }
-.dh-table tbody tr.is-traffic-yellow:hover { background: color-mix(in srgb, var(--warn) 26%, var(--bg1)); }
+.dh-table tbody tr.is-traffic-yellow:hover { background: color-mix(in srgb, var(--warn) 38%, var(--bg1)); }
 .dh-table tbody tr.is-traffic-green {
-  background: color-mix(in srgb, var(--ok) 14%, var(--bg1));
-  box-shadow: inset 5px 0 0 var(--green, #2d8659);
+  background: color-mix(in srgb, var(--ok) 24%, var(--bg1));
+  box-shadow: inset 6px 0 0 var(--green, #2d8659), inset 0 -1px 0 color-mix(in srgb, var(--ok) 45%, transparent);
 }
-.dh-table tbody tr.is-traffic-green:hover { background: color-mix(in srgb, var(--ok) 22%, var(--bg1)); }
+.dh-table tbody tr.is-traffic-green:hover { background: color-mix(in srgb, var(--ok) 32%, var(--bg1)); }
 /* Читаемость: заголовок строки (контрагент) не тонет в заливке. */
 .dh-table tbody tr.is-traffic-red .dh-stack .a { color: var(--err-t, var(--red)); }
 .dh-table tbody tr.is-traffic-green .dh-stack .a { color: var(--t1); }
 /* Выбранная строка: золотая рамка, фон светофора СОХРАНЯЕТСЯ —
    иначе пропадает главный сигнал строки. */
 .dh-table tbody tr.is-selected { outline: 2px solid var(--gold); outline-offset: -2px; }
-.dh-table tbody tr.is-selected.is-traffic-red { background: color-mix(in srgb, var(--err) 16%, var(--bg1)); }
-.dh-table tbody tr.is-selected.is-traffic-blue { background: color-mix(in srgb, var(--info) 15%, var(--bg1)); }
-.dh-table tbody tr.is-selected.is-traffic-yellow { background: color-mix(in srgb, var(--warn) 18%, var(--bg1)); }
-.dh-table tbody tr.is-selected.is-traffic-green { background: color-mix(in srgb, var(--ok) 14%, var(--bg1)); }
+.dh-table tbody tr.is-selected.is-traffic-red { background: color-mix(in srgb, var(--err) 26%, var(--bg1)); }
+.dh-table tbody tr.is-selected.is-traffic-blue { background: color-mix(in srgb, var(--info) 26%, var(--bg1)); }
+.dh-table tbody tr.is-selected.is-traffic-yellow { background: color-mix(in srgb, var(--warn) 30%, var(--bg1)); }
+.dh-table tbody tr.is-selected.is-traffic-green { background: color-mix(in srgb, var(--ok) 24%, var(--bg1)); }
 /* U3(д): исходящие строки — класс ставился из JS, но CSS не было. */
 .dh-table tbody tr.is-out {
   border-left: 3px solid var(--gold);
@@ -2684,32 +2684,83 @@ html[data-theme="light"] .dh-btn--primary { color: #1C1914; }
 html[data-theme="light"] .dh-top__eyebrow { color: var(--gold-h, #9A6E12); }
 html[data-theme="light"] .dh-pill { border-color: rgba(15,23,42,0.12); }
 html[data-theme="light"] .dh-pill--ok {
-  background: color-mix(in srgb, var(--ok) 16%, var(--bg2));
-  color: #24503B;
-  border-color: color-mix(in srgb, var(--ok) 42%, transparent);
+  background: color-mix(in srgb, var(--ok) 24%, var(--bg2));
+  color: #14532D;
+  border-color: color-mix(in srgb, var(--ok) 58%, transparent);
 }
 html[data-theme="light"] .dh-pill--warn {
-  background: color-mix(in srgb, var(--warn) 16%, var(--bg2));
-  color: #7A5607;
-  border-color: color-mix(in srgb, var(--warn) 42%, transparent);
+  background: color-mix(in srgb, var(--warn) 26%, var(--bg2));
+  color: #6B3F02;
+  border-color: color-mix(in srgb, var(--warn) 58%, transparent);
 }
 html[data-theme="light"] .dh-pill--err {
-  background: color-mix(in srgb, var(--err) 12%, var(--bg2));
-  color: #8C1828;
-  border-color: color-mix(in srgb, var(--err) 42%, transparent);
+  background: color-mix(in srgb, var(--err) 22%, var(--bg2));
+  color: #7F1220;
+  border-color: color-mix(in srgb, var(--err) 58%, transparent);
 }
 html[data-theme="light"] .dh-pill--info {
-  background: color-mix(in srgb, var(--info) 12%, var(--bg2));
-  color: #16325A;
-  border-color: color-mix(in srgb, var(--info) 40%, transparent);
+  background: color-mix(in srgb, var(--info) 22%, var(--bg2));
+  color: #14285A;
+  border-color: color-mix(in srgb, var(--info) 56%, transparent);
 }
 html[data-theme="light"] .dh-pill--gold {
-  background: color-mix(in srgb, var(--gold) 18%, var(--bg2));
-  color: #7A5607;
-  border-color: color-mix(in srgb, var(--gold) 45%, transparent);
+  background: color-mix(in srgb, var(--gold) 26%, var(--bg2));
+  color: #5F4208;
+  border-color: color-mix(in srgb, var(--gold) 60%, transparent);
 }
 html[data-theme="light"] .dh-pill--muted { background: var(--bg4); color: var(--t2); }
 html[data-theme="light"] .dh-dot { border-color: var(--bg2); }
+
+/* D-385: кнопки действий в светлой теме.
+   Заказчик 28.10.2026: «на светлой теме не видно подсветки кнопок, если на
+   тёмной кнопка горит зелёным, на светлой она почти неразличима».
+   Причина: hover-фон брался из --bg2 (#FFFFFF) — на белой карточке
+   подсветка была невидима. Теперь при наведении кнопка получает
+   золотистую рамку и заметную заливку, а иконка становится тёмной. */
+html[data-theme="light"] .dh-qa button:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--gold) 22%, var(--bg2));
+  border-color: color-mix(in srgb, var(--gold) 65%, transparent);
+  color: var(--t1);
+}
+html[data-theme="light"] .dh-qa button:focus-visible {
+  outline-color: color-mix(in srgb, var(--gold) 85%, transparent);
+}
+html[data-theme="light"] .dh-qa {
+  background: color-mix(in srgb, var(--bg4) 70%, var(--bg2));
+  border-color: rgba(15, 23, 42, 0.14);
+}
+/* Активные (включённые) кнопки действий: зелёный/красный сигнал должен читаться. */
+html[data-theme="light"] .dh-qa__corr.is-on,
+html[data-theme="light"] .dh-cmt-btn.is-filled {
+  background: color-mix(in srgb, var(--ok) 26%, var(--bg2));
+  border-color: color-mix(in srgb, var(--ok) 60%, transparent);
+  color: #14532D;
+}
+html[data-theme="light"] .dh-qa__del:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--err) 22%, var(--bg2));
+  border-color: color-mix(in srgb, var(--err) 60%, transparent);
+  color: #7F1220;
+}
+/* Основная кнопка: в светлой теме золото тёмное, чернила светлые —
+   иначе текст #1C1914 на тёмном золоте не читается. */
+html[data-theme="light"] .dh-btn--primary {
+  background: linear-gradient(90deg, #8E6212, #A97418);
+  color: #FFFFFF;
+  box-shadow: 0 4px 14px rgba(142, 98, 18, 0.28);
+}
+html[data-theme="light"] .dh-btn--primary:hover {
+  filter: brightness(1.12);
+}
+html[data-theme="light"] .dh-btn--ok {
+  background: color-mix(in srgb, var(--ok) 20%, var(--bg2));
+  color: #14532D;
+  border-color: color-mix(in srgb, var(--ok) 55%, transparent);
+}
+html[data-theme="light"] .dh-btn--danger {
+  background: color-mix(in srgb, var(--err) 18%, var(--bg2));
+  color: #7F1220;
+  border-color: color-mix(in srgb, var(--err) 55%, transparent);
+}
 
 /* ── Светлая тема: шторка (drawer) сверена с пиксельными замерами ──
    Раньше хардкод тёмных заливок/светлых чернил (#0b1220, #f8fafc, #cbd5e1,
