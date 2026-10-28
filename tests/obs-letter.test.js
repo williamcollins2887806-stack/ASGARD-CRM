@@ -421,6 +421,44 @@ console.log('\n=== Письмо на одном листе (D-392f) ===');
     'шаблон снимает docGrid 360 (форсированный интерлиньяж 1.5)');
 }
 
+// ─── D-393: проверка сигнатуры файла при загрузке ─────────────────────────
+// 28.10.2026 в uploads лежали «архивы» по 302 байта, внутри — HTML-заглушка
+// прокси Газпром-Нефти (скачивание оборвалось, сервер вернул страницу ошибки).
+// Система трижды пыталась распаковать этот HTML и сдавалась с невнятным
+// «Ни один файл не распознан». Теперь говорим прямо: файл повреждён.
+console.log('\n=== Проверка сигнатуры файла (D-393) ===');
+{
+  const { checkFileSignature, looksLikeHtml, explainSignatureFailure } =
+    require('../src/lib/file-signature');
+
+  // Точное содержимое битого файла с прода.
+  const html = Buffer.from('<html><head><meta http-equiv="Content-Type" content="text/html; charset=utf-8">'
+    + '</head><script type="text/javascript"> location.href = "http://spb99-prx-sa.gazprom-neft.local:8002/'
+    + 'block/?&m=connection&reason=connection_error&param1=unexpected_disconnect&link=" + escape(location.href);'
+    + '</script></html>');
+
+  ok(looksLikeHtml(html), 'HTML-заглушка распознана');
+  for (const ext of ['.7z', '.rar', '.zip', '.pdf', '.docx', '.xlsx']) {
+    const r = checkFileSignature(html, ext);
+    ok(r.ok === false && r.reason === 'html_instead_of_file',
+      `${ext} с HTML внутри — отклонён как повреждённый`);
+  }
+  ok(/повреждён/.test(explainSignatureFailure(checkFileSignature(html, '.7z'), 'a.7z')),
+    'объяснение понятное: «файл повреждён», а не «не распознан»');
+
+  // Настоящие файлы обязаны проходить — иначе сломаем загрузку.
+  ok(checkFileSignature(Buffer.from([0x50, 0x4b, 0x03, 0x04, 0x14, 0]), '.zip').ok, 'ZIP принят');
+  ok(checkFileSignature(Buffer.from([0x50, 0x4b, 0x03, 0x04, 0x14, 0]), '.docx').ok, 'DOCX принят');
+  ok(checkFileSignature(Buffer.from([0x37, 0x7a, 0xbc, 0xaf, 0x27, 0x1c]), '.7z').ok, '7z принят');
+  ok(checkFileSignature(Buffer.from([0x52, 0x61, 0x72, 0x21, 0x1a, 0x07]), '.rar').ok, 'RAR принят');
+  ok(checkFileSignature(Buffer.from('%PDF-1.7'), '.pdf').ok, 'PDF принят');
+  ok(checkFileSignature(Buffer.from([0xff, 0xd8, 0xff, 0xe0]), '.jpg').ok, 'JPEG принят');
+  ok(checkFileSignature(Buffer.from('просто текст'), '.txt').ok, 'текст без сигнатуры не судится');
+  ok(checkFileSignature(Buffer.alloc(0), '.pdf').reason === 'empty_file', 'пустой файл отклонён');
+  ok(checkFileSignature(Buffer.from([0x37, 0x7a, 0xbc, 0xaf, 0x27, 0x1c]), '.zip').ok === false,
+    'чужой формат под .zip отклонён');
+}
+
 console.log(`\n────────────────────────────────────────`);
 console.log(`ИТОГ письма ОБС: PASS ${pass} / FAIL ${fail}`);
 if (fail) process.exitCode = 1;

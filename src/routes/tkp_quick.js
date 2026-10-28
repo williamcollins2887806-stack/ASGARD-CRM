@@ -424,6 +424,30 @@ async function routes(fastify, options) {
 
     const filename = data.filename || 'file';
     const mime = data.mimetype || '';
+
+    // D-393: ПРОВЕРКА СИГНАТУРЫ. 28.10.2026 в uploads лежали «архивы» по
+    // 302 байта, внутри — HTML-заглушка прокси Газпром-Нефти (скачивание
+    // оборвалось, сервер вернул страницу ошибки). Система трижды пыталась
+    // распаковать этот HTML и сдавалась с невнятным «Ни один файл не
+    // распознан». Теперь говорим прямо: файл повреждён, скачайте заново —
+    // и не тратим OCR-попытки впустую.
+    {
+      const { checkFileSignature, explainSignatureFailure } = require('../lib/file-signature');
+      const ext = require('path').extname(filename).toLowerCase();
+      const sig = checkFileSignature(buf, ext);
+      if (!sig.ok) {
+        request.log.warn(`[tkp_quick upload] файл «${filename}» не прошёл проверку: ${sig.reason}`);
+        return reply.code(422).send({
+          error: 'file_corrupted',
+          message: explainSignatureFailure(sig, filename),
+          detail: sig.detail,
+          hint: 'Скачайте файл заново и загрузите снова. Если он открывается у вас — '
+            + 'возможно, его подменяет корпоративный прокси при скачивании.',
+          file: filename,
+        });
+      }
+    }
+
     const warnings = [];
     const chunks = []; // { prio, name, text, usedOcr } — без гонки при параллели
     let usedOcr = false;

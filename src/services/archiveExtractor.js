@@ -185,6 +185,30 @@ async function extractArchive(archivePath, filename, targetDir, opts = {}) {
     return err('EMPTY_FILE', 'Файл пустой', 'Проверьте что архив скачался полностью');
   }
 
+  // D-393: ПРОВЕРКА СИГНАТУРЫ перед распаковкой.
+  // В uploads встречаются «архивы» по 300 байт, внутри которых HTML-страница
+  // ошибки прокси (скачивание оборвалось). 7z/unrar на таком файле пишут
+  // «Cannot open the file as archive», и человек получает невнятное сообщение.
+  // Говорим прямо, что файл повреждён — и не тратим попытки OCR.
+  try {
+    const { checkFileSignature, explainSignatureFailure } = require('../lib/file-signature');
+    const fd = fs.openSync(archivePath, 'r');
+    const head = Buffer.alloc(512);
+    let read = 0;
+    try { read = fs.readSync(fd, head, 0, 512, 0); } finally { fs.closeSync(fd); }
+    const sample = head.slice(0, read);
+    const ext = path.extname(archivePath).toLowerCase();
+    const sig = checkFileSignature(sample, ext);
+    if (!sig.ok) {
+      return err('FILE_CORRUPTED',
+        explainSignatureFailure(sig, path.basename(archivePath)),
+        'Файл повреждён при скачивании. Запросите его заново и загрузите повторно.');
+    }
+  } catch (e) {
+    // Проверка не должна ломать нормальную распаковку — только логируем.
+    console.warn('[archive] signature check skipped:', e.message);
+  }
+
   try {
     fs.mkdirSync(targetDir, { recursive: true });
   } catch (e) {
