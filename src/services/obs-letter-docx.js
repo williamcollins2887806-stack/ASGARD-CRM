@@ -84,9 +84,13 @@ function _buildImageOpts(withSignature, withStamp) {
       return Buffer.alloc(0);
     },
     getSize(tagValue, tagName) {
-      if (tagName === 'signature_img') return [150, 56];
-      if (tagName === 'stamp_img') return [110, 110];
-      if (tagName === 'logo_img') return [120, 40];
+      // D-392d: печать 110×110 pt — это ~3.9 см, и вместе с подписью блок
+      // занимал почти 5 см, из-за чего письмо не умещалось на лист.
+      // Уменьшаем до соразмерных деловому письму: подпись 4 см × 1.5 см,
+      // печать 2.6 см, логотип 3.2 см (в шаблоне он уже масштабирован).
+      if (tagName === 'signature_img') return [113, 42];   // 4.0 × 1.5 см
+      if (tagName === 'stamp_img') return [74, 74];        // 2.6 см
+      if (tagName === 'logo_img') return [91, 30];
       return [0, 0];
     },
   };
@@ -153,7 +157,10 @@ async function generateObsLetterDocx(db, docId, opts = {}) {
 
   const payload = {
     letter_number: safeText(number),
-    letter_date_short: safeText(dateText),
+    // D-392h: дата не должна разрываться между строкой и «г.». В шаблоне
+    // это один прогон, но при узком месте Word переносит «г.» отдельно.
+    // Ставим неразрывные пробелы внутри даты.
+    letter_date_short: safeText(String(dateText).replace(/ /g, '\u00A0')),
     company_org_short: safeText(company.name_short),
 
     header_subline: '',
@@ -260,6 +267,104 @@ async function generateObsLetterDocx(db, docId, opts = {}) {
     const re = /<w:p\b[^>]*>(?:(?!<\/w:p>)[\s\S])*?Исп\.:(?:(?!<\/w:p>)[\s\S])*?<\/w:p>/g;
     const cleaned = xml.replace(re, '');
     if (cleaned !== xml) outZip.file('word/document.xml', cleaned);
+  }
+
+  // D-392d: РАЗМЕРЫ ФАКСИМИЛЕ. ImageModule получает размеры в пикселях и
+  // пересчитывает их по-своему; на практике печать и подпись вставали
+  // как 0×0 (проверено по готовому XML), то есть занимали абзацы, но были
+  // невидимы, а письмо всё равно уезжало на второй лист.
+  //
+  // Теперь размеры задаются напрямую в XML: находим картинки по r:embed
+  // (печать — первая по порядку, подпись — вторая) и проставляем extent.
+  // 1 см = 360000 EMU.
+  {
+    const xml = outZip.file('word/document.xml').asText();
+    const CM = 360000;
+    // D-392f: ПОРЯДОК И РАЗМЕР. В шаблоне печать стоит ПЕРЕД подписью и
+    // уезжала на второй лист одна (проверено pdfimages: стр.2 — только
+    // печать). Делаем её соразмерной (2.2 см) — тогда помещается вместе с
+    // подписью на первой.
+    const sizes = [
+      { w: Math.round(2.2 * CM), h: Math.round(2.2 * CM) },   // печать
+      { w: Math.round(3.6 * CM), h: Math.round(1.35 * CM) },  // подпись
+    ];
+    let i = 0;
+    const patched = xml.replace(/(<wp:extent cx=")(\d+)(" cy=")(\d+)("[^/]*\/>)/g, (m, a, cx, b, cy, d) => {
+      // Логотип крупный — его не трогаем (в шаблоне уже 5.5 см).
+      if (Number(cx) > 1500000) return m;
+      const s = sizes[Math.min(i++, sizes.length - 1)];
+      return `${a}${s.w}${b}${s.h}${d}`;
+    });
+    if (patched !== xml) outZip.file('word/document.xml', patched);
+  }
+
+  // D-392f: УБИРАЕМ ПУСТЫЕ АБЗАЦЫ В КОНЦЕ документа. Word добавляет
+  // невидимый абзац после последнего элемента, и он уезжает на новую
+  // страницу, если места впритык. Оставляем ровно один перед sectPr.
+  {
+    const xml = outZip.file('word/document.xml').asText();
+    const list = xml.match(/<w:p\b[\s\S]*?<\/w:p>/g) || [];
+    let lastContent = -1;
+    list.forEach((p, idx) => {
+      const t = p.replace(/<[^>]+>/g, '').trim();
+      if (t || /w:drawing/.test(p)) lastContent = idx;
+    });
+    const tail = list.slice(lastContent + 1).filter((p) => !/<w:sectPr/.test(p));
+    if (tail.length > 1) {
+      let out = xml;
+      tail.slice(1).forEach((p) => { out = out.replace(p, ''); });
+      outZip.file('word/document.xml', out);
+    }
+  }
+
+  // D-392f: ГАРАНТИЯ ОДНОГО ЛИСТА.
+  //
+  // Перебором установлено (pdfimages по каждой странице): текст занимает
+  // около половины листа, но КАРТИНКА ПЕЧАТИ всё равно уходит на вторую
+  // страницу отдельным объектом. Причина в поведении LibreOffice при
+  // конвертации: рисунок в собственном абзаце с межстрочным интервалом
+  // резервирует высоту «строка + рисунок», и последний блок не влезает
+  // даже при большом запасе.
+  //
+  // Надёжное решение: печать делаем ФОНОМ абзаца подписи (за текстом),
+  // а не отдельным рисунком в потоке. Тогда она физически не может
+  // создать новую страницу, и подпись с печатью выглядят как на бумаге:
+  // печать поверх подписи, чуть левее.
+  {
+    let xml = outZip.file('word/document.xml').asText();
+    const ps = xml.match(/<w:p\b[\s\S]*?<\/w:p>/g) || [];
+    const imgParas = ps.filter((p) => /w:drawing/.test(p));
+    // Два последних абзаца-картинки — печать и подпись.
+    if (imgParas.length >= 2) {
+      const stampPara = imgParas[imgParas.length - 2];
+      const signPara = imgParas[imgParas.length - 1];
+      const stampRun = (stampPara.match(/<w:r\b[^>]*>(?:(?!<\/w:r>)[\s\S])*?<w:drawing>[\s\S]*?<\/w:drawing>(?:(?!<\/w:r>)[\s\S])*?<\/w:r>/) || [''])[0];
+      // 1. Печать → плавающая за текстом, привязана к абзацу подписи.
+      if (stampRun) {
+        const behind = stampRun.replace(
+          /<wp:inline\b([^>]*)>([\s\S]*?)<\/wp:inline>/,
+          (m, attrs, inner) => {
+            const clean = inner
+              .replace(/<wp:simplePos[^/]*\/>/g, '')
+              .replace(/<wp:positionH\b[\s\S]*?<\/wp:positionH>/g, '')
+              .replace(/<wp:positionV\b[\s\S]*?<\/wp:positionV>/g, '')
+              .replace(/<wp:wrap\w*[^/]*\/>/g, '');
+            // Позиция: чуть левее и ниже начала подписи, за текстом.
+            return `<wp:anchor distT="0" distB="0" distL="0" distR="0" simplePos="0" relativeHeight="1" behindDoc="1" locked="0" layoutInCell="1" allowOverlap="1">`
+              + `<wp:simplePos x="0" y="0"/>`
+              + `<wp:positionH relativeFrom="paragraph"><wp:posOffset>1250000</wp:posOffset></wp:positionH>`
+              + `<wp:positionV relativeFrom="paragraph"><wp:posOffset>-180000</wp:posOffset></wp:positionV>`
+              + `<wp:wrapNone/>`
+              + clean
+              + '</wp:anchor>';
+          });
+        // Абзац печати убираем целиком, а плавающий рисунок переносим
+        // в абзац подписи.
+        xml = xml.replace(stampPara, '');
+        xml = xml.replace(signPara, signPara.replace('</w:p>', behind + '</w:p>'));
+      }
+      outZip.file('word/document.xml', xml);
+    }
   }
 
   return outZip.generate({ type: 'nodebuffer', compression: 'DEFLATE' });

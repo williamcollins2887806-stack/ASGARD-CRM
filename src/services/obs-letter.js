@@ -682,14 +682,6 @@ function buildHtml(data, opts) {
     <span class="doc-number__date">от ${esc(o.dateText || _shared.formatRuDate(new Date()))}</span>
   </div>
 
-  <!-- D-392: заголовок и подзаголовок документа. Без них письмо выглядело
-       как сплошной текст: получатель не понимал с первых строк, что это
-       основание платежа. В Word-версии эти строки есть — теперь совпадает. -->
-  <div class="doc-title">
-    <div class="doc-title__main">${esc(o.title || 'Письмо для оплаты через ОБС')}</div>
-    <div class="doc-title__sub">по счёту № ${esc(invoiceNo)}${invoiceDate ? ` от ${esc(invoiceDate)}` : ''}${data.subcontract ? ` · договор ${esc(data.subcontract.number)}` : ''}</div>
-  </div>
-
   <div class="salute">Уважаемые коллеги!</div>
 
   <div class="body">
