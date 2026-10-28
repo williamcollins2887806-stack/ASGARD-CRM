@@ -2060,8 +2060,31 @@ window.AsgardTelephonyPage = (function () {
         '<div><b>Записи нет</b><div class="call-section-hint call-section-hint--tight">Субтитры и ИИ-резюме появятся только если звонок был записан.</div></div></div>';
     }
 
-    var emptySubtitles = '';
-    if (!hasSegments && !transcriptText) {
+    // ПЕРЕВОДЫ ЗВОНКА (инцидент 28.10.2026): раньше карточка их не показывала
+    // вовсе — оператор переводил клиента на коллегу, а в деталях звонка об этом
+    // не было ни строки («всё равно не видно, что я на Хосе перевёл»).
+    // Источник: pbx_call_legs с role transfer_* (пишется в /call/transfer).
+    var transfers = Array.isArray(call.transfers) ? call.transfers : [];
+    var transfersHtml = '';
+    if (transfers.length) {
+      var trRows = transfers.map(function (t) {
+        var who = t.to_name
+          ? esc(t.to_name)
+          : (t.to_target ? esc(fmtPhone(t.to_target)) : '\u2014');
+        var how = t.target_mode === 'mobile'
+          ? 'на мобильный'
+          : (t.target_mode === 'webrtc' ? 'в браузер' : '');
+        var when = t.at ? fmtDate(t.at) : '';
+        return '<tr><td>' + who + (how ? ' <span class="call-section-hint">(' + how + ')</span>' : '') + '</td><td>' + esc(when) + '</td></tr>';
+      }).join('');
+      transfersHtml =
+        '<div class="call-detail-section">' +
+          '<div class="telephony-chart-title">Переводы</div>' +
+          '<table class="detail-info-table">' + trRows + '</table>' +
+        '</div>';
+    }
+
+    var emptySubtitles = '';    if (!hasSegments && !transcriptText) {
       if (tStatus === 'done') {
         emptySubtitles = '<div class="call-detail-section"><div class="telephony-chart-title">Субтитры разговора</div>' +
           '<p class="call-section-hint">Расшифровка помечена готовой, но текст пуст. Нажмите \u00ABПовторить расшифровку\u00BB.</p></div>';
@@ -2083,7 +2106,7 @@ window.AsgardTelephonyPage = (function () {
           '<tr><td>Дата/время</td><td>' + esc(fmtDate(call.created_at)) + '</td></tr>' +
           (call.started_at ? '<tr><td>Начало</td><td>' + esc(fmtDate(call.started_at)) + '</td></tr>' : '') +
           (call.ended_at ? '<tr><td>Завершение</td><td>' + esc(fmtDate(call.ended_at)) + '</td></tr>' : '') +
-          '<tr><td>Менеджер</td><td>' + esc(call.manager_name || (call.user_id ? 'Сотрудник #' + call.user_id : 'Не назначен')) + '</td></tr>' +
+          '<tr><td>Менеджер</td><td>' + esc(call.manager_name || (call.answered_by ? 'Сотрудник #' + call.answered_by : (call.user_id ? 'Сотрудник #' + call.user_id : 'Не назначен'))) + '</td></tr>' +
           '<tr><td>Статус звонка</td><td>' + esc(call.duration_seconds > 0 ? 'Отвечен' : (dir === 'missed' ? 'Пропущен' : (dir === 'outbound' ? 'Без ответа' : 'Пропущен'))) + '</td></tr>' +
           '<tr><td>Расшифровка</td><td><span class="call-status-badge call-status-badge--' + tStatus + '"' + (statusTip ? ' data-tooltip="' + esc(statusTip) + '"' : '') + '>' + esc(STATUS_LABELS[tStatus] || '\u2014') + '</span></td></tr>' +
           '<tr><td>ИИ-анализ</td><td><span class="call-ai-status call-ai-status--' + aiSt.key + '"' + (aiSt.tip ? ' data-tooltip="' + esc(aiSt.tip) + '"' : '') + '>' + esc(aiSt.label) + '</span></td></tr>' +
@@ -2095,6 +2118,8 @@ window.AsgardTelephonyPage = (function () {
       '</div>' +
 
       (hasRecord ? '<div class="call-detail-section"><div class="telephony-chart-title">Запись</div><div class="audio-player" id="audioPlayerWrap"></div></div>' : '') +
+
+      transfersHtml +
 
       (hasSegments ? segmentsHtml : (transcriptText ? renderTranscript(transcriptText) : emptySubtitles)) +
 
