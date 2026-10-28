@@ -127,9 +127,12 @@ async function generateObsLetterDocx(db, docId, opts = {}) {
   }
   if (!number) number = await obs.nextOutgoingNumber(db, new Date());
 
-  // Тело: те же абзацы, что в PDF. Собираем плоский текст — шаблон ждёт
-  // `body_paragraphs` массивом объектов { text }.
-  const paragraphs = obs.buildLetterParagraphs(data, { number, dateText });
+  // D-392: текст письма раскладывается по СМЫСЛОВЫМ блокам, как в эталонном
+  // письме заказчика. Раньше всё уходило одним массивом body_paragraphs, и
+  // шаблон печатал сплошной комок. Теперь у каждого блока свой цикл в шаблоне,
+  // со своим форматированием: обоснование, перечень, счёт, обоснование
+  // необходимости, просьба об оплате.
+  const blocks = obs.buildLetterBlocks(data, { number, dateText });
 
   const { Docxtemplater, PizZip, ImageModule } = _loadLibs();
   // Если спец-шаблон ещё не собран — падаем на официальный бланк, чтобы
@@ -145,6 +148,8 @@ async function generateObsLetterDocx(db, docId, opts = {}) {
   const ratePct = Number(doc.vat_rate || 0) > 1
     ? Number(doc.vat_rate)
     : Number(doc.vat_rate || 0) * 100;
+
+  const asParas = (arr) => (Array.isArray(arr) ? arr : []).map((t) => ({ text: safeText(t) }));
 
   const payload = {
     letter_number: safeText(number),
@@ -175,7 +180,14 @@ async function generateObsLetterDocx(db, docId, opts = {}) {
     recipient_greeting: 'Уважаемые Коллеги!',
 
     body_html: '',
-    body_paragraphs: paragraphs.map((t) => ({ text: safeText(t) })),
+    body_paragraphs: asParas(blocks.all),
+
+    // D-392: блоки эталонного письма — каждый со своим форматированием.
+    intro_paragraphs: asParas(blocks.intro),
+    items: asParas(blocks.items),
+    invoice_paragraphs: asParas(blocks.invoice),
+    outro_paragraphs: asParas(blocks.outro),
+    request_paragraphs: asParas(blocks.request),
 
     procurement_intro: [],
     procurement_lot: [],

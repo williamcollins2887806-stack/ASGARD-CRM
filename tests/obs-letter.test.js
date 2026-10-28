@@ -341,6 +341,64 @@ console.log('\n=== Счёт и письмо: разные кнопки (D-391) =
   ok(/package_type !== 'letter'/.test(routeSrc), 'letter-file отказывает строке, которая не письмо');
 }
 
+// ─── D-392: письмо по эталону заказчика ───────────────────────────────────
+// «Вот так выглядит письмо. оно не красиво... Вот пример вот так надо делать
+// и пдф и ворд» (28.10.2026, образец Исх. №261023-11).
+//
+// Главный дефект был не в шрифтах: тело письма СЛИПАЛОСЬ в один абзац, потому
+// что в шаблоне цикл `{#body_paragraphs}{text}{/body_paragraphs}` стоял ВНУТРИ
+// одного абзаца, а docxtemplater с paragraphLoop размножает абзацы только
+// когда теги стоят отдельными абзацами.
+console.log('\n=== Письмо по эталону (D-392) ===');
+{
+  const fs = require('fs');
+  const PizZip = require('pizzip');
+  const { buildLetterBlocks, buildLetterParagraphs } = require('../src/services/obs-letter');
+
+  const company = {
+    name_short: 'ООО «Асгард-Сервис»', name_full: 'ООО «Асгард-Сервис»',
+    inn: '1', kpp: '2', ogrn: '3', legal_address: 'адрес', phone: 'тел', email: 'e',
+    bank_name: 'б', bank_rs: 'р', bank_ks: 'к', bank_bik: 'бик',
+  };
+  const data = {
+    doc: { id: 1, invoice_number: 'ДС-1', invoice_date: '2026-10-28', amount_gross: 17537,
+      vat_amount: 0, vat_rate: 0, counterparty_name: 'ООО «ЭТК»', comment_text: '' },
+    work: null, subcontract: null, contractLabel: '', contractDate: '',
+    items: ['Позиция один — 1 шт', 'Позиция два — 2 шт'],
+    company, gendir: { name: 'Кудряшов О.С.', position: 'Генеральный директор' }, initiator: null,
+  };
+
+  const b = buildLetterBlocks(data, { number: 'X', dateText: '28.10.2026 г.' });
+  const flat = buildLetterParagraphs(data, { number: 'X', dateText: '28.10.2026 г.' });
+
+  ok(b.intro.length >= 2, `intro заполнен (${b.intro.length})`);
+  ok(b.items.length === 2, `items заполнен (${b.items.length})`);
+  ok(b.invoice.length === 1, 'invoice выделен отдельным блоком (жирный)');
+  ok(b.request.length === 1, 'request выделен отдельным блоком (жирный)');
+  const fromBlocks = [...b.intro, ...b.items.map((t) => '— ' + t), ...b.invoice, ...b.outro, ...b.request];
+  ok(fromBlocks.join('|') === flat.join('|'), 'PDF и Word получат одинаковый текст');
+
+  // Шаблон: теги цикла обязаны быть ОТДЕЛЬНЫМИ абзацами.
+  const path = require('path');
+  const tplPath = path.join(__dirname, '..', 'templates', 'obs-letter-tpl.docx');
+  ok(fs.existsSync(tplPath), 'шаблон письма на диске');
+  const zip = new PizZip(fs.readFileSync(tplPath, 'binary'));
+  const xml = zip.file('word/document.xml').asText();
+  const paras = (xml.match(/<w:p\b[\s\S]*?<\/w:p>/g) || []).map((p) => p.replace(/<[^>]+>/g, '').trim());
+
+  for (const name of ['intro_paragraphs', 'items', 'invoice_paragraphs', 'outro_paragraphs', 'request_paragraphs']) {
+    const open = paras.filter((t) => t === `{#${name}}`).length;
+    const close = paras.filter((t) => t === `{/${name}}`).length;
+    ok(open === 1 && close === 1, `цикл ${name}: открытие ${open}, закрытие ${close} (по одному)`);
+  }
+  ok(paras.some((t) => t === '{text}'), 'тело цикла — отдельный абзац {text}');
+  ok(!paras.some((t) => /\{#\w+\}[\s\S]*\{text\}[\s\S]*\{\/\w+\}/.test(t)),
+    'НЕТ цикла «всё в одном абзаце» (это и вызывало слипание)');
+  ok(zip.file(/^word\/media\//).length >= 1, 'логотип в шаблоне есть');
+  ok(paras.some((t) => t.includes('{%signature_img}')), 'подпись-факсимиле в шаблоне');
+  ok(paras.some((t) => t.includes('{%stamp_img}')), 'печать в шаблоне');
+}
+
 console.log(`\n────────────────────────────────────────`);
 console.log(`ИТОГ письма ОБС: PASS ${pass} / FAIL ${fail}`);
 if (fail) process.exitCode = 1;

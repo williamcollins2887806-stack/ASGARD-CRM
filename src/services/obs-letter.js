@@ -531,6 +531,33 @@ function buildHtml(data, opts) {
   .doc-number {
     font-size: 11pt;
     margin: 5mm 0 6mm;
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 8mm;
+  }
+  /* D-392: номер и дата разнесены по краям — как в деловом письме, и не
+     сливаются с текстом, когда слева логотип. */
+  .doc-number__no { font-weight: bold; }
+  .doc-number__date { color: #333; }
+
+  /* D-392: заголовок документа — единый вид для всех писем. */
+  .doc-title {
+    text-align: center;
+    margin: 0 0 7mm;
+  }
+  .doc-title__main {
+    font-size: 13pt;
+    font-weight: bold;
+    letter-spacing: 0.02em;
+    color: #0b3d2e;
+    text-transform: none;
+  }
+  .doc-title__sub {
+    font-size: 10pt;
+    color: #333;
+    font-style: italic;
+    margin-top: 1.5mm;
   }
   .salute { margin: 0 0 4mm; font-size: 12pt; }
   .body p {
@@ -550,6 +577,15 @@ function buildHtml(data, opts) {
   .body li { margin-bottom: ${liGap}mm; text-align: left; }
   .body li.more { font-style: italic; color: #444; }
   .body p { margin-bottom: 2.4mm; text-indent: 6mm; }
+  /* D-392: перечень позиций — с маркерами, без вылета за поля. */
+  .body ul.items {
+    margin: 2mm 0 3mm 0;
+    padding-left: 9mm;
+    list-style: disc;
+  }
+  .body ul.items li { text-indent: 0; padding-left: 1mm; }
+  /* Просьба об оплате — главная строка письма, отделяем от текста. */
+  .body p.request { margin-top: 4mm; font-weight: normal; }
   .salute { margin: 0 0 3mm; }
   .doc-number { margin: 3mm 0 4mm; }
   .signature-block {
@@ -642,10 +678,19 @@ function buildHtml(data, opts) {
   </div>
 
   <div class="doc-number">
-    Исх. № ${esc(o.number || 'б/н')} от ${esc(o.dateText || _shared.formatRuDate(new Date()))}
+    <span class="doc-number__no">Исх. № ${esc(o.number || 'б/н')}</span>
+    <span class="doc-number__date">от ${esc(o.dateText || _shared.formatRuDate(new Date()))}</span>
   </div>
 
-  <div class="salute">Уважаемые Коллеги!</div>
+  <!-- D-392: заголовок и подзаголовок документа. Без них письмо выглядело
+       как сплошной текст: получатель не понимал с первых строк, что это
+       основание платежа. В Word-версии эти строки есть — теперь совпадает. -->
+  <div class="doc-title">
+    <div class="doc-title__main">${esc(o.title || 'Письмо для оплаты через ОБС')}</div>
+    <div class="doc-title__sub">по счёту № ${esc(invoiceNo)}${invoiceDate ? ` от ${esc(invoiceDate)}` : ''}${data.subcontract ? ` · договор ${esc(data.subcontract.number)}` : ''}</div>
+  </div>
+
+  <div class="salute">Уважаемые коллеги!</div>
 
   <div class="body">
     <p>${basisText}</p>
@@ -653,13 +698,13 @@ function buildHtml(data, opts) {
        подтверждающие возможность выполнения работ на объекте Заказчика.</p>
     <p>Чтобы обеспечить допуск персонала к работам, ${esc(company.name_short)} привлекло
        ${esc(counterparty)} для оказания услуг${contractText}, а именно:</p>
-    ${data.items.length ? `<ul>${itemsHtml}</ul>` : ''}
-    <p>${esc(company.name_short)} получило счёт на оплату № ${esc(invoiceNo)}${invoiceDate ? ` от ${esc(invoiceDate)}` : ''}
-       на сумму ${money(gross)} руб.${esc(vatLine)}.</p>
+    ${data.items.length ? `<ul class="items">${itemsHtml}</ul>` : ''}
+    <p>${esc(company.name_short)} получило счёт на оплату <strong>№ ${esc(invoiceNo)}</strong>${invoiceDate ? ` от ${esc(invoiceDate)}` : ''}
+       на сумму <strong>${money(gross)} руб.</strong>${esc(vatLine)}.</p>
     ${limitNote}
     <p>Расходы обязательные и напрямую связаны с исполнением обязательств по договору:
        без этих документов работы на объекте Заказчика выполнять нельзя.</p>
-    <p>Просим оплатить счёт (100% суммы) в размере ${money(gross)} руб.
+    <p class="request">Просим оплатить счёт (100% суммы) в размере <strong>${money(gross)} руб.</strong>
        (${esc(amountInWords(gross))})${esc(vatTail)}</p>
   </div>
 
@@ -923,10 +968,65 @@ function buildLetterParagraphs(data, opts = {}) {
   return out;
 }
 
+/**
+ * D-392: то же письмо, но разложенное по СМЫСЛОВЫМ БЛОКАМ эталонного письма.
+ *
+ * Зачем отдельно. Заказчик прислал образец (`Исх. №261023-11`) и сказал
+ * «вот так надо делать и пдф и ворд». В образце у блоков РАЗНОЕ оформление:
+ * обоснование и просьба об оплате — жирным, перечень — обычным, каждый блок
+ * отделён отбивкой. Если отдавать шаблону плоский массив абзацев, всё
+ * печатается одним шрифтом и слипается.
+ *
+ * Поэтому блоки:
+ *   intro    — зачем работы и допуски (обычный текст);
+ *   items    — перечень услуг (обычный, с маркером «—»);
+ *   invoice  — счёт и сумма (жирный, как в образце);
+ *   outro    — почему расход обязателен (обычный);
+ *   request  — просьба об оплате (жирный).
+ *
+ * `all` — тот же текст плоским списком, для PDF и для совместимости.
+ *
+ * @param {object} data — результат loadLetterData
+ * @param {{number?:string, dateText?:string}} [opts]
+ * @returns {{intro:string[], items:string[], invoice:string[], outro:string[], request:string[], all:string[]}}
+ */
+function buildLetterBlocks(data, opts = {}) {
+  const all = buildLetterParagraphs(data, opts);
+
+  // Перечень в плоском списке идёт строками «— …»; вынимаем его отдельно,
+  // чтобы шаблон напечатал его своим (обычным) форматированием.
+  const items = all.filter((t) => t.startsWith('— ')).map((t) => t.replace(/^—\s*/, ''));
+
+  // «Получило счёт …» — ключевой абзац, в образце жирный.
+  const invoice = all.filter((t) => /получило сч[её]т на оплату/i.test(t));
+
+  // «Просим оплатить …» — тоже жирный.
+  const request = all.filter((t) => /^Просим оплатить/i.test(t));
+
+  // Всё остальное делим на «до перечня» (intro) и «после счёта» (outro).
+  const startItems = all.findIndex((t) => t.startsWith('— '));
+  const invoiceIdx = all.findIndex((t) => /получило сч[её]т на оплату/i.test(t));
+  const requestIdx = all.findIndex((t) => /^Просим оплатить/i.test(t));
+
+  const introEnd = startItems >= 0 ? startItems : (invoiceIdx >= 0 ? invoiceIdx : all.length);
+  const intro = all.slice(0, introEnd);
+
+  const outroStart = invoiceIdx >= 0 ? invoiceIdx + 1 : introEnd;
+  const outroEnd = requestIdx >= 0 ? requestIdx : all.length;
+  const outro = all.slice(outroStart, outroEnd)
+    // лимит существенности остаётся в общем потоке — это справочная строка
+    .filter((t) => !/^Просим оплатить/i.test(t));
+
+  // Инвариант: сумма строк блоков должна совпадать с плоским списком,
+  // иначе текст PDF и Word разойдётся (это проверяется тестом).
+  return { intro, items, invoice, outro, request, all };
+}
+
 module.exports = {
   generateObsLetterPdf,
   buildHtml,
   buildLetterParagraphs,
+  buildLetterBlocks,
   loadLetterData,
   buildItems,
   selectLetterItems,
