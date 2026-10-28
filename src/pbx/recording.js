@@ -245,12 +245,20 @@ async function finalizeRecording(pool, opts) {
     try {
       if (pbxUid) {
         const upd = await client.query(
+          // НАПРАВЛЕНИЕ: НЕ перезаписываем уже определённое (инцидент 28.10.2026).
+          // `h`-расширения dialplan шлют direction=outbound безусловно, в том
+          // числе для ПЛЕЧА ОПЕРАТОРА входящего звонка (канал PJSIP/u<id> живёт в
+          // контексте [from-internal], а не во входящем). Из-за этого входящий
+          // «клиент → 74993223062» переписывался в исходящий, и в журнале вместо
+          // номера клиента показывался номер Асгарда. Авторитетный источник —
+          // вебхук Mango (call_direction 1/2), он же и создаёт строку.
+          // Поэтому: направление ставим только если оно ещё не задано.
           `UPDATE call_history SET
              recording_url = $1, record_path = $2,
              user_id = COALESCE(user_id, $4),
              answered_by = COALESCE(answered_by, $4),
-             direction = COALESCE($5, direction),
-             call_type = COALESCE($6, call_type),
+             direction = CASE WHEN direction IS NULL THEN $5 ELSE direction END,
+             call_type = CASE WHEN call_type IS NULL THEN $6 ELSE call_type END,
              from_number = COALESCE(from_number, $7),
              to_number = COALESCE(to_number, $8),
              updated_at = NOW()
