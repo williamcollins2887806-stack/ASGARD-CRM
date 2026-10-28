@@ -944,6 +944,87 @@ a:hover { text-decoration: underline; }
 .dh-obs-state.is-bad { color: var(--danger-ink, #ef4444); }
 .dh-obs-state .dh-obs-gen { margin-left: 8px; }
 .dh-obs-state .dh-att-dl__btn { height: 20px; padding: 0 8px; font-size: 10.5px; }
+
+/* ═══ D-386: справочник договоров ОБС (настройка, только админ) ══════════ */
+.dh-cn { display: flex; flex-direction: column; gap: 14px; }
+.dh-cn__head {
+  display: flex; justify-content: space-between; align-items: flex-start;
+  gap: 16px; flex-wrap: wrap;
+}
+.dh-cn__title { font-size: 17px; font-weight: 800; color: var(--t1); }
+.dh-cn__hint { font-size: 12px; color: var(--t2); margin-top: 4px; max-width: 62ch; line-height: 1.4; }
+.dh-cn__num { font-weight: 750; color: var(--t1); font-size: 13px; }
+.dh-cn__sub { font-size: 11px; color: var(--t3); margin-top: 2px; }
+.dh-cn__num-r { text-align: right; font-variant-numeric: tabular-nums; }
+.dh-cn__act { white-space: nowrap; text-align: right; }
+.dh-cn__act .dh-btn + .dh-btn { margin-left: 4px; }
+
+/* Сводка по всем договорам */
+.dh-cn__totals {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 10px;
+}
+.dh-cn__total {
+  padding: 10px 12px; border-radius: 10px;
+  border: 1px solid var(--brd); background: var(--bg4);
+  display: flex; flex-direction: column; gap: 3px;
+}
+.dh-cn__total span { font-size: 11px; color: var(--t3); }
+.dh-cn__total strong { font-size: 15px; color: var(--t1); font-variant-numeric: tabular-nums; }
+.dh-cn__total.is-bad { border-color: color-mix(in srgb, var(--danger-ink, #ef4444) 55%, var(--brd)); }
+.dh-cn__total.is-bad strong { color: var(--danger-ink, #ef4444); }
+
+/* Таблица */
+.dh-cn__wrap {
+  border: 1px solid var(--brd); border-radius: 12px; overflow: auto;
+  background: color-mix(in srgb, var(--bg3, #1e293b) 40%, transparent);
+}
+.dh-cn__table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+.dh-cn__table thead th {
+  text-align: left; padding: 9px 12px; font-size: 11px; font-weight: 700;
+  color: var(--t3); text-transform: uppercase; letter-spacing: .04em;
+  background: color-mix(in srgb, var(--bg2, #0f172a) 80%, transparent);
+  border-bottom: 1px solid var(--brd); white-space: nowrap;
+}
+.dh-cn__table td {
+  padding: 10px 12px; border-bottom: 1px solid
+    color-mix(in srgb, var(--brd) 60%, transparent); vertical-align: middle;
+}
+.dh-cn__table tbody tr:last-child td { border-bottom: 0; }
+.dh-cn__table tbody tr:hover { background: color-mix(in srgb, var(--bg4) 60%, transparent); }
+.dh-cn__table tr.is-off { opacity: .55; }
+
+/* Индикатор лимита внутри строки таблицы — компактный */
+.dh-lim--inline { margin: 0; padding: 0; border: 0; background: transparent; }
+.dh-lim--inline .dh-lim__nums { margin-top: 4px; font-size: 10.5px; gap: 2px 10px; }
+
+/* Форма договора — чуть шире обычной модалки */
+.dh-cmodal__card--form { max-width: 560px; }
+.dh-cmodal__body { padding: 16px 18px; display: flex; flex-direction: column; gap: 10px; }
+.dh-cmodal__err {
+  margin-top: 6px; padding: 8px 10px; border-radius: 8px; font-size: 12px;
+  color: var(--danger-ink, #ef4444);
+  background: color-mix(in srgb, var(--danger-ink, #ef4444) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--danger-ink, #ef4444) 35%, transparent);
+}
+
+/* D-386: предупреждение о счетах без договора — лимит по ним не считается */
+.dh-cn__warn {
+  display: flex; gap: 12px; align-items: flex-start;
+  padding: 12px 14px; border-radius: 12px;
+  border: 1px solid color-mix(in srgb, var(--gold, #c8a84e) 55%, var(--brd));
+  background: color-mix(in srgb, var(--gold, #c8a84e) 10%, transparent);
+}
+.dh-cn__warn-ico {
+  flex: 0 0 auto; width: 22px; height: 22px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-weight: 800; font-size: 13px;
+  background: var(--gold, #c8a84e); color: var(--bg0, #0b1220);
+}
+.dh-cn__warn strong { font-size: 13px; color: var(--t1); }
+.dh-cn__warn p { margin: 4px 0 0; font-size: 12px; color: var(--t2); line-height: 1.45; max-width: 78ch; }
+
+
 /* Спиннер «Формируется…» — тот же смысл, что у плашки, без сторонних картинок */
 .dh-spin {
   width: 9px;

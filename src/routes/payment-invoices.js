@@ -1805,12 +1805,23 @@ async function routes(fastify) {
     if (!rows[0]) return reply.code(404).send({ error: 'Не найдено' });
     if (rows[0].status !== 'awaiting_dir') return reply.code(409).send({ error: 'Счёт не на согласовании директора' });
 
-    // D-378: способ оплаты выбирает директор В МОМЕНТ согласования.
-    // Раньше этот выбор жил только в тексте писем («Оплату проводим через
-    // ОБС "АГПЗ"»), и бухгалтерия узнавала его из переписки. Теперь это
-    // явное поле. 'regular' — по умолчанию, если директор не выбрал.
+    // D-386: способ оплаты здесь БОЛЬШЕ НЕ ВЫБИРАЕТСЯ.
+    // Заказчик 28.10.2026: «выбор откуда платим — с ОБС или нет — должна быть
+    // у бухгалтерии. Не у инициатора и не у директора». Директор согласует
+    // расход, а платёжный контур (и договор с лимитом) определяет бухгалтерия
+    // в карточке счёта через PATCH /payment-source и PATCH /subcontract.
+    //
+    // Раньше здесь читался body.payment_source и по умолчанию ставился
+    // 'regular' — то есть директор де-факто решал контур, даже не замечая.
+    // Теперь значение НЕ трогаем: если бухгалтерия уже выбрала 'obs' (или
+    // выбрала раньше), оно сохраняется; новая заявка остаётся без контура
+    // до решения бухгалтерии.
     const rawSrc = req.body && req.body.payment_source;
-    const paySrc = (rawSrc === 'obs' || rawSrc === 'regular') ? rawSrc : 'regular';
+    if (rawSrc === 'obs' || rawSrc === 'regular') {
+      // Игнорируем молча не можем: пишем в лог, чтобы при разборе было видно,
+      // что клиент прислал устаревший параметр.
+      req.log?.warn(`[dir-approve] payment_source в теле проигнорирован (D-386): ${rawSrc}`);
+    }
 
     const timing = (req.body && req.body.pay_timing) || rows[0].pay_timing;
     if (timing === 'deferred' || timing === 'immediate') {
@@ -1824,17 +1835,19 @@ async function routes(fastify) {
       rows[0].dir_comment = dirComment;
     }
 
-    // Запоминаем выбор в заявке ДО решения: если applyDecision упадёт,
-    // выбор директора всё равно не потеряется.
-    await db.query(`UPDATE payment_invoices SET payment_source=$2, updated_at=NOW() WHERE id=$1`, [id, paySrc]);
-    rows[0].payment_source = paySrc;
+    // D-386: способ оплаты НЕ перезаписываем. Бухгалтерия могла выбрать его
+    // заранее (или выберет после согласования) — решение директора не должно
+    // сбрасывать контур обратно в 'regular'.
+    const paySrc = rows[0].payment_source || null;
 
     const result = await paymentMail.applyDecision(db, rows[0], 'approve', req.user);
 
-    // Применяем способ оплаты к строке реестра. Письмо для ОБС генерируем
-    // АСИНХРОННО: согласование не должно ждать puppeteer, иначе кнопка
-    // «Согласовать» висит несколько секунд.
-    if (result && result.status === 'pending_payment') {
+    // Применяем способ оплаты к строке реестра ТОЛЬКО если бухгалтерия его уже
+    // определила. Если контура ещё нет — заявка уходит в оплату, а контур
+    // бухгалтерия выберет в карточке счёта (там же договор и лимит).
+    // Письмо для ОБС генерируем АСИНХРОННО: согласование не должно ждать
+    // puppeteer, иначе кнопка «Согласовать» висит несколько секунд.
+    if (result && result.status === 'pending_payment' && paySrc) {
       await applyPaymentSourceToRegistry(db, fastify, rows[0], paySrc, req.user, result);
     }
 

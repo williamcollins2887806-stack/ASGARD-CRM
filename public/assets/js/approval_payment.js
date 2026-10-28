@@ -953,14 +953,16 @@ window.AsgardApprovalPaymentPage = (function() {
                 <button type="button" class="proc-pay-timing__opt ${timing === 'deferred' ? 'proc-pay-timing__opt--on' : ''}" data-t="deferred"><strong>По дате</strong></button>
               </div>
             </div>
+            <!-- D-386 (заказчик 28.10.2026): «выбор откуда платим — с ОБС или
+                 нет — должна быть у бухгалтерии, НЕ у инициатора и не у
+                 директора». Здесь выбора больше нет: директор согласует
+                 расход, а платёжный контур определяет бухгалтерия в карточке
+                 счёта (там же договор и лимит существенности). -->
             <div class="proc-pay-modal__section">
               <div class="proc-pay-modal__section-title">Как платим</div>
-              <div class="proc-pay-timing" id="dir-source">
-                <button type="button" class="proc-pay-timing__opt" data-s="regular"><strong>С расчётного счёта</strong></button>
-                <button type="button" class="proc-pay-timing__opt" data-s="obs"><strong>Через ОБС</strong></button>
-              </div>
-              <div class="proc-pay-modal__hint" id="dir-source-hint" style="font-size:12px;opacity:.75;margin-top:6px">
-                Обычный счёт — письмо для ОБС не требуется.
+              <div class="proc-pay-modal__hint" style="font-size:12px;opacity:.75">
+                Способ оплаты (с расчётного счёта или через ОБС) и договор
+                определяет бухгалтерия — в карточке счёта, после согласования.
               </div>
             </div>
             <div class="proc-pay-modal__section">
@@ -1002,24 +1004,12 @@ window.AsgardApprovalPaymentPage = (function() {
       };
     });
 
-    // ── D-378: способ оплаты ──────────────────────────────────────────────
-    // Выбор обязателен: по умолчанию НЕ предвыбран, чтобы директор не
-    // согласовал «на автомате» не тот платёжный контур. Подсказка меняется,
-    // чтобы было понятно последствие выбора.
-    let dirSource = '';
-    const srcHint = modalRoot.querySelector('#dir-source-hint');
-    const SRC_HINT = {
-      regular: 'Обычный счёт — письмо для ОБС не требуется.',
-      obs: 'Через ОБС: CRM сформирует письмо на бланке с подписью и печатью и приложит его к карточке счёта.'
-    };
-    modalRoot.querySelectorAll('#dir-source .proc-pay-timing__opt').forEach(el => {
-      el.onclick = () => {
-        dirSource = el.dataset.s;
-        modalRoot.querySelectorAll('#dir-source .proc-pay-timing__opt').forEach(x =>
-          x.classList.toggle('proc-pay-timing__opt--on', x.dataset.s === dirSource));
-        if (srcHint) srcHint.textContent = SRC_HINT[dirSource] || '';
-      };
-    });
+    // ── D-386: способ оплаты директору больше НЕ принадлежит ──────────────
+    // Заказчик 28.10.2026: «выбор откуда платим — с ОБС или нет — должна быть
+    // у бухгалтерии. Не у инициатора и не у директора». Раньше здесь был
+    // переключатель regular/obs с обязательным выбором; теперь контур
+    // определяет бухгалтерия в карточке счёта. Директор только согласует.
+    // На бэкенде выбор тоже снят: /dir-approve не принимает payment_source.
 
     // Защита от двойного клика: без неё три быстрых нажатия «Согласовать» давали три POST
     // (все 200) и три тоста «Готово» — ложное поведение, хотя БД спасала транзакция.
@@ -1059,27 +1049,11 @@ window.AsgardApprovalPaymentPage = (function() {
     const rj = modalRoot.querySelector('#dir-reject');
     const cm = modalRoot.querySelector('#dir-comment');
     if (ap) ap.onclick = () => {
-      // D-378: без выбора способа оплаты не согласовываем. Раньше выбор жил
-      // только в тексте письма, и бухгалтерия узнавала его из переписки —
-      // теперь это осознанное действие директора.
-      if (!dirSource) {
-        if (srcHint) {
-          srcHint.textContent = 'Выберите, как платим: с расчётного счёта или через ОБС.';
-          srcHint.style.opacity = '1';
-          // D-378: цвет только токеном, без хардкод-фолбэка. Если токен
-          // не объявлен — останется цвет по умолчанию, а не чужой красный.
-          srcHint.classList.add('proc-pay-hint--err');
-        }
-        modalRoot.querySelectorAll('#dir-source .proc-pay-timing__opt').forEach(x => {
-          x.classList.add('proc-pay-need');
-          setTimeout(() => x.classList.remove('proc-pay-need'), 900);
-        });
-        return;
-      }
+      // D-386: способ оплаты директор больше не выбирает — его определяет
+      // бухгалтерия в карточке счёта. Директор согласует только сам расход.
       closeAfter(`/api/payment-invoices/${pay.id}/dir-approve`, {
         pay_timing: dirTiming,
         comment: cm ? cm.value.trim() : '',
-        payment_source: dirSource
       });
     };
     if (rj) rj.onclick = () => closeAfter(`/api/payment-invoices/${pay.id}/dir-reject`, { comment: cm ? cm.value.trim() : '' });

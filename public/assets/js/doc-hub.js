@@ -93,6 +93,7 @@ window.AsgardDocHubPage = (function () {
     obsLetterMissing: false,
     actsTab: false,      // V394: вкладка «Акты сверки»
     archiveTab: false,   // паритет с «Выплатами»: вкладка «Архив»
+    obsContractsTab: false, // D-386: справочник договоров ОБС (только админ)
     archTab: 'summary',  // D-291: внутри Архива — сводка по месяцам или корзина
     payTab: false,       // D-291: вкладка «График оплат»
     payMode: 'approved', // D-292: 'approved' — только согласованные директором
@@ -243,6 +244,14 @@ window.AsgardDocHubPage = (function () {
    * роли на клиенте и на сервере разойдутся, победит сервер.
    */
   function canManageObs() { return ['BUH', 'ADMIN'].includes(role()); }
+
+  /**
+   * D-386 (заказчик 28.10.2026): «нужна настройка договоров ОБС счета админу».
+   * Справочник договоров и лимитов существенности ведёт админ: лимит — это
+   * условие договора, а не текущая бухгалтерская операция. Зеркало
+   * SUBCONTRACT_ADMIN_ROLES на бэке.
+   */
+  function canManageSubcontracts() { return role() === 'ADMIN'; }
   function canCorrect() { return CORR_ROLES.includes(role()); }
   /**
    * D-327 (заказчик 21.10.2026): «кнопка удалить строку почему-то есть только
@@ -916,14 +925,16 @@ window.AsgardDocHubPage = (function () {
     if (letterStatus === 'generating') {
       letterBlock = `<div class="dh-obs-state"><span class="dh-spin"></span> Письмо формируется — Word и PDF появятся здесь через несколько секунд.</div>`;
     } else if (letterDocId) {
+      // D-391: здесь ОБЯЗАТЕЛЬНЫ data-as-letter="1" — иначе обработчик
+      // открывает файл СТРОКИ (счёт поставщика), а не письмо на бланке.
+      // Ровно это и было жалобой «нажимаю на Word — скачивается счёт».
       letterBlock = `<div class="dh-obs-state is-ok">Письмо готово и приложено к карточке.
         <div class="dh-att-dl" style="margin-top:6px">
-          <button type="button" class="dh-att-dl__btn" data-doc-dl="${letterDocId}" data-fmt="pdf" title="Скачать PDF с подписью и печатью">PDF</button>
-          <button type="button" class="dh-att-dl__btn" data-doc-dl="${letterDocId}" data-fmt="docx" title="Скачать Word на бланке">Word</button>
+          <button type="button" class="dh-att-dl__btn" data-doc-dl="${letterDocId}" data-fmt="pdf" data-as-letter="1" title="Скачать ПИСЬМО для ОБС в PDF (бланк, подпись, печать)">Письмо PDF</button>
+          <button type="button" class="dh-att-dl__btn" data-doc-dl="${letterDocId}" data-fmt="docx" data-as-letter="1" title="Скачать ПИСЬМО для ОБС в Word (редактируемый бланк)">Письмо Word</button>
         </div>
       </div>`;
-    } else if (letterStatus === 'failed') {
-      letterBlock = `<div class="dh-obs-state is-bad">Письмо не сформировано${letterErr ? ': ' + esc(String(letterErr).slice(0, 200)) : ''}.
+    } else if (letterStatus === 'failed') {      letterBlock = `<div class="dh-obs-state is-bad">Письмо не сформировано${letterErr ? ': ' + esc(String(letterErr).slice(0, 200)) : ''}.
         ${manage ? '<button type="button" class="dh-obs-gen" data-obs-gen="' + Number(row.id) + '">Повторить</button>' : ''}</div>`;
     } else {
       letterBlock = `<div class="dh-obs-state">Письма нет.
@@ -2029,6 +2040,7 @@ window.AsgardDocHubPage = (function () {
               <button class="dh-btn dh-btn--ghost ${state.sfTab ? 'is-on' : ''}" type="button" id="dhBtnSf">Входящие СФ</button>
               <button class="dh-btn dh-btn--ghost ${state.payTab ? 'is-on' : ''}" type="button" id="dhBtnPay">График оплат</button>
               <button class="dh-btn dh-btn--ghost ${state.archiveTab ? 'is-on' : ''}" type="button" id="dhBtnArchive">Архив</button>
+              ${canManageSubcontracts() ? `<button class="dh-btn dh-btn--ghost ${state.obsContractsTab ? 'is-on' : ''}" type="button" id="dhBtnObsContracts" title="Справочник договоров субподряда и лимитов существенности">Договоры ОБС</button>` : ''}
               <button class="dh-btn dh-btn--ghost ${isGuide ? 'is-on' : ''}" type="button" id="dhBtnGuide">${isGuide ? 'К реестру' : 'Справка'}</button>
               <button class="dh-btn dh-btn--ghost" type="button" id="dhBtnHelp" title="Подсказка">?</button>
               <button class="dh-btn dh-btn--ghost" type="button" id="dhBtnImport1c">Из 1С</button>
@@ -2039,11 +2051,12 @@ window.AsgardDocHubPage = (function () {
           </header>
           <main class="dh-main">
             ${isGuide ? renderGuideView() : (isWizard ? '<div class="dh-wizard-page" id="dhWizardHost"></div>'
+              : (state.obsContractsTab ? '<div class="dh-obs-contracts" id="dhObsContractsHost"><div class="dh-empty">Загрузка справочника договоров…</div></div>'
               : (state.actsTab ? '<div class="dh-acts" id="dhActsHost"><div class="dh-empty">Загрузка актов сверки…</div></div>'
                 : (state.sfTab ? '<div class="dh-sf" id="dhSfHost"><div class="dh-empty">Загрузка входящих СФ…</div></div>'
                 : (state.payTab ? '<div class="dh-paysched" id="dhPaySchedHost"><div class="dh-empty">Загрузка графика оплат…</div></div>'
                 : (state.archiveTab ? '<div class="dh-archive" id="dhArchiveHost"><div class="dh-empty">Загрузка архива…</div></div>'
-                  : registryMainHtml(scopeAll))))))}
+                  : registryMainHtml(scopeAll)))))))}
           </main>
         </div>
         <div class="dh-overlay" id="dhOverlay" hidden></div>
@@ -3361,8 +3374,267 @@ window.AsgardDocHubPage = (function () {
   /**
    * Паритет с эталоном «Выплаты»: вкладка «Архив» (год/месяц + разбивка + график).
    */
-  async function renderArchiveTab() {
-    const host = document.getElementById('dhArchiveHost');
+  /**
+   * D-386 (заказчик 28.10.2026): «нужна настройка договоров ОБС счета админу».
+   *
+   * Справочник договоров субподряда с лимитом существенности. До этого его
+   * можно было только читать — завести договор или поправить лимит было
+   * нечем, только руками в psql. Здесь полный набор: создать, изменить,
+   * деактивировать, удалить (если к договору не привязаны счета).
+   *
+   * Почему только админ: лимит — условие договора с контрагентом, а не
+   * текущая бухгалтерская операция. Ошибка в лимите разрешает или запрещает
+   * платежи по всему договору.
+   */
+  async function renderObsContractsTab() {
+    const host = document.getElementById('dhObsContractsHost');
+    if (!host) return;
+
+    let data = null;
+    try { data = await api('/subcontracts/admin'); } catch (e) {
+      host.innerHTML = `<div class="dh-empty"><div class="dh-empty__t">Не удалось загрузить справочник</div>
+        <p>${esc(e.message || 'ошибка сети')}</p></div>`;
+      return;
+    }
+    const items = (data && data.items) || [];
+
+    // D-386: СЧЕТА БЕЗ ДОГОВОРА. Лимит существенности считается только по
+    // строкам с заполненным subcontract_id. Счета, оплачиваемые через ОБС, но
+    // без привязки, лимит НЕ расходуют — остаток завышен, и бухгалтерия может
+    // провести платёж, который на самом деле выводит за лимит.
+    // Нашёл 28.10.2026: 16 счетов на 1,02 млн ₽ без договора. Показываем это
+    // прямо в справочнике, чтобы не забывалось.
+    let unlinked = { count: 0, amount: 0 };
+    try {
+      const u = await api('/subcontracts/unlinked');
+      unlinked = { count: Number(u.count) || 0, amount: Number(u.amount) || 0 };
+    } catch (_) { /* не критично — просто не покажем баннер */ }
+
+    // Сводка сверху: сколько договоров и сколько лимита свободно всего.
+    const active = items.filter((x) => x.is_active);
+    const totalLimit = active.reduce((a, x) => a + (Number(x.limit_amount) || 0), 0);
+    const totalSpent = active.reduce((a, x) => a + (Number(x.spent_amount) || 0), 0);
+    const totalLeft = totalLimit - totalSpent;
+
+    const rows = items.map((s) => {
+      const pct = Math.max(0, Math.min(100, Number(s.used_pct) || 0));
+      const tone = s.exhausted ? 'is-bad'
+        : (Number(s.remaining) < Number(s.limit_amount) * 0.5 ? 'is-warn' : 'is-ok');
+      return `<tr data-sid="${s.id}" class="${s.is_active ? '' : 'is-off'}">
+        <td>
+          <div class="dh-cn__num">${esc(s.number)}</div>
+          <div class="dh-cn__sub">${fmtDate(s.agreement_date) || '—'}${s.customer_name ? ' · ' + esc(s.customer_name) : ''}</div>
+        </td>
+        <td>
+          <div class="dh-lim ${tone} dh-lim--inline">
+            <div class="dh-lim__bar"><span style="width:${pct}%"></span></div>
+            <div class="dh-lim__nums">
+              <span>${esc(money(Number(s.spent_amount) || 0))} из ${esc(money(Number(s.limit_amount) || 0))}</span>
+              <span><strong>остаток ${esc(money(Number(s.remaining) || 0))}</strong></span>
+            </div>
+          </div>
+          ${s.exhausted ? '<div class="dh-lim__warn">Лимит выработан — ОБС по договору недоступен</div>' : ''}
+        </td>
+        <td class="dh-cn__num-r">${pct.toFixed(1)}%</td>
+        <td class="dh-cn__num-r">${Number(s.docs_count) || 0}</td>
+        <td>
+          ${s.is_active
+            ? '<span class="dh-pill dh-pill--ok">активен</span>'
+            : '<span class="dh-pill dh-pill--muted">выключен</span>'}
+        </td>
+        <td class="dh-cn__act">
+          <button type="button" class="dh-btn dh-btn--ghost dh-btn--sm" data-cn-edit="${s.id}">Изменить</button>
+          <button type="button" class="dh-btn dh-btn--ghost dh-btn--sm" data-cn-toggle="${s.id}" data-on="${s.is_active ? '1' : '0'}">
+            ${s.is_active ? 'Выключить' : 'Включить'}
+          </button>
+          ${(Number(s.docs_count) || 0) === 0
+            ? `<button type="button" class="dh-btn dh-btn--danger dh-btn--sm" data-cn-del="${s.id}">Удалить</button>`
+            : `<button type="button" class="dh-btn dh-btn--ghost dh-btn--sm" disabled
+                 title="К договору привязано счетов: ${Number(s.docs_count) || 0} — удалять нельзя, только выключить">Удалить</button>`}
+        </td>
+      </tr>`;
+    }).join('');
+
+    host.innerHTML = `
+      <div class="dh-cn">
+        <div class="dh-cn__head">
+          <div>
+            <div class="dh-cn__title">Договоры ОБС</div>
+            <div class="dh-cn__hint">Лимит существенности по каждому договору. Выключенный договор
+              перестаёт предлагаться в карточках счетов, история сохраняется.</div>
+          </div>
+          <button type="button" class="dh-btn dh-btn--primary" id="dhCnAdd">+ Добавить договор</button>
+        </div>
+
+        ${unlinked.count > 0 ? `<div class="dh-cn__warn">
+          <div class="dh-cn__warn-ico">!</div>
+          <div>
+            <strong>${unlinked.count} ${unlinked.count === 1 ? 'счёт' : (unlinked.count < 5 ? 'счёта' : 'счетов')}
+            через ОБС без договора — ${esc(money(unlinked.amount))} ₽</strong>
+            <p>Лимит существенности по ним не расходуется, поэтому остаток по договорам
+              завышен. Откройте такой счёт в реестре и выберите договор, чтобы суммы
+              учитывались.</p>
+          </div>
+        </div>` : ''}
+
+        ${active.length ? `<div class="dh-cn__totals">
+          <div class="dh-cn__total"><span>Договоров</span><strong>${active.length}</strong></div>
+          <div class="dh-cn__total"><span>Лимит всего</span><strong>${esc(money(totalLimit))}</strong></div>
+          <div class="dh-cn__total"><span>Израсходовано</span><strong>${esc(money(totalSpent))}</strong></div>
+          <div class="dh-cn__total ${totalLeft <= 0 ? 'is-bad' : ''}"><span>Свободно</span><strong>${esc(money(totalLeft))}</strong></div>
+        </div>` : ''}
+
+        ${items.length ? `<div class="dh-cn__wrap">
+          <table class="dh-cn__table">
+            <thead><tr>
+              <th>Договор</th><th>Лимит и остаток</th><th class="dh-cn__num-r">Исп.</th>
+              <th class="dh-cn__num-r" title="Сколько счетов привязано">Счетов</th>
+              <th>Статус</th><th></th>
+            </tr></thead>
+            <tbody>${rows}</tbody>
+          </table>
+        </div>` : `<div class="dh-empty">
+          <div class="dh-empty__t">Договоров пока нет</div>
+          <p>Добавьте договор субподряда с лимитом существенности — тогда бухгалтерия
+             сможет выбирать его в карточках счетов и видеть остаток.</p>
+        </div>`}
+      </div>`;
+
+    // ── Обработчики ─────────────────────────────────────────────────────
+    host.querySelector('#dhCnAdd')?.addEventListener('click', () => openContractModal(null));
+    host.querySelectorAll('[data-cn-edit]').forEach((b) => {
+      b.addEventListener('click', () => {
+        const id = Number(b.getAttribute('data-cn-edit'));
+        const item = items.find((x) => Number(x.id) === id);
+        if (item) openContractModal(item);
+      });
+    });
+    host.querySelectorAll('[data-cn-toggle]').forEach((b) => {
+      b.addEventListener('click', async () => {
+        const id = Number(b.getAttribute('data-cn-toggle'));
+        const item = items.find((x) => Number(x.id) === id);
+        if (!item) return;
+        b.disabled = true;
+        try {
+          await api(`/subcontracts/${id}`, {
+            method: 'PATCH',
+            body: JSON.stringify({ ...item, is_active: !item.is_active }),
+          });
+          toast('Сохранено', item.is_active ? 'Договор выключен' : 'Договор включён', 'ok');
+          await paint(window.__docHubLayout || window.layout);
+        } catch (e) {
+          b.disabled = false;
+          toast('Не удалось', e.message || 'ошибка', 'err');
+        }
+      });
+    });
+    host.querySelectorAll('[data-cn-del]').forEach((b) => {
+      b.addEventListener('click', async () => {
+        const id = Number(b.getAttribute('data-cn-del'));
+        if (!window.confirm('Удалить договор из справочника? Если к нему привязаны счета, удаление будет отклонено.')) return;
+        b.disabled = true;
+        try {
+          await api(`/subcontracts/${id}`, { method: 'DELETE' });
+          toast('Удалено', 'Договор убран из справочника', 'ok');
+          await paint(window.__docHubLayout || window.layout);
+        } catch (e) {
+          b.disabled = false;
+          toast('Не удалось', e.message || 'ошибка', 'err');
+        }
+      });
+    });
+  }
+
+  /** Модалка создания/изменения договора ОБС. */
+  function openContractModal(item) {
+    const isEdit = !!(item && item.id);
+    const s = item || {};
+    document.getElementById('dhCnModal')?.remove();
+    const wrap = document.createElement('div');
+    wrap.id = 'dhCnModal';
+    wrap.className = 'dh-cmodal';
+    wrap.innerHTML = `
+      <div class="dh-cmodal__card dh-cmodal__card--form" role="dialog" aria-modal="true">
+        <header class="dh-cmodal__head">
+          <strong>${isEdit ? 'Договор ' + esc(s.number || '') : 'Новый договор ОБС'}</strong>
+          <button type="button" class="dh-cmodal__x" aria-label="Закрыть">✕</button>
+        </header>
+        <div class="dh-cmodal__body">
+          <div class="dh-grid2">
+            <div class="dh-field"><label>Номер договора *</label>
+              <input id="cnNumber" value="${esc(s.number || '')}" placeholder="КР320п26" autocomplete="off"/></div>
+            <div class="dh-field"><label>Дата договора *</label>
+              <input id="cnDate" type="date" value="${esc(String(s.agreement_date || '').slice(0, 10))}"/></div>
+          </div>
+          <div class="dh-field"><label>Контрагент</label>
+            <input id="cnCustomer" value="${esc(s.customer_name || '')}" placeholder="ООО «ГСП Ремонт»"/></div>
+          <div class="dh-grid2">
+            <div class="dh-field"><label>ИНН</label>
+              <input id="cnInn" value="${esc(s.customer_inn || '')}" placeholder="10 или 12 цифр" inputmode="numeric"/></div>
+            <div class="dh-field"><label>Лимит существенности, ₽ *</label>
+              <input id="cnLimit" value="${s.limit_amount != null ? esc(money(Number(s.limit_amount))) : ''}" placeholder="1 500 000,00" inputmode="decimal"/></div>
+          </div>
+          <div class="dh-field"><label>Объект <span class="dh-help">(если договор по конкретному объекту)</span></label>
+            <input id="cnWork" value="${esc(s.work_id != null ? String(s.work_id) : '')}" placeholder="ID объекта или пусто" inputmode="numeric"/></div>
+          <div class="dh-field"><label>Примечание</label>
+            <textarea id="cnNote" rows="2">${esc(s.note || '')}</textarea></div>
+          ${isEdit ? `<div class="dh-help" style="margin-top:4px">
+            Изменение лимита ниже фактических расходов будет отклонено — иначе остаток станет отрицательным.</div>` : ''}
+          <div class="dh-cmodal__err" id="cnErr" hidden></div>
+        </div>
+        <footer class="dh-cmodal__foot">
+          <button type="button" class="dh-btn dh-btn--ghost" id="cnCancel">Отмена</button>
+          <button type="button" class="dh-btn dh-btn--primary" id="cnSave">${isEdit ? 'Сохранить' : 'Добавить'}</button>
+        </footer>
+      </div>`;
+    document.body.appendChild(wrap);
+
+    const close = () => wrap.remove();
+    wrap.querySelector('.dh-cmodal__x')?.addEventListener('click', close);
+    wrap.querySelector('#cnCancel')?.addEventListener('click', close);
+
+    wrap.querySelector('#cnSave')?.addEventListener('click', async (ev) => {
+      const btn = ev.currentTarget;
+      const errEl = wrap.querySelector('#cnErr');
+      const showErr = (t) => { if (errEl) { errEl.textContent = t; errEl.hidden = false; } };
+      if (errEl) errEl.hidden = true;
+
+      const body = {
+        number: (wrap.querySelector('#cnNumber')?.value || '').trim(),
+        agreement_date: wrap.querySelector('#cnDate')?.value || '',
+        customer_name: (wrap.querySelector('#cnCustomer')?.value || '').trim() || null,
+        customer_inn: (wrap.querySelector('#cnInn')?.value || '').trim() || null,
+        limit_amount: moneyParse(wrap.querySelector('#cnLimit')?.value),
+        work_id: (wrap.querySelector('#cnWork')?.value || '').trim() || null,
+        note: (wrap.querySelector('#cnNote')?.value || '').trim() || null,
+        is_active: isEdit ? !!s.is_active : true,
+      };
+      if (!body.number) return showErr('Укажите номер договора');
+      if (!body.agreement_date) return showErr('Укажите дату договора');
+      if (!Number.isFinite(body.limit_amount) || body.limit_amount < 0) {
+        return showErr('Лимит существенности — число не меньше нуля');
+      }
+
+      btn.disabled = true;
+      try {
+        if (isEdit) {
+          await api(`/subcontracts/${s.id}`, { method: 'PATCH', body: JSON.stringify(body) });
+          toast('Сохранено', 'Договор обновлён', 'ok');
+        } else {
+          await api('/subcontracts', { method: 'POST', body: JSON.stringify(body) });
+          toast('Добавлено', 'Договор в справочнике', 'ok');
+        }
+        close();
+        await paint(window.__docHubLayout || window.layout);
+      } catch (e) {
+        btn.disabled = false;
+        showErr(e.message || 'Не удалось сохранить');
+      }
+    });
+    setTimeout(() => wrap.querySelector('#cnNumber')?.focus(), 30);
+  }
+
+  async function renderArchiveTab() {    const host = document.getElementById('dhArchiveHost');
     if (!host) return;
     const now = new Date();
     const y = state.archYear || now.getFullYear();
@@ -4885,6 +5157,18 @@ window.AsgardDocHubPage = (function () {
       if (location.hash !== hash) { location.hash = hash; return; }
       await paint(window.__docHubLayout || window.layout);
     });
+    // D-386 (заказчик 28.10.2026): справочник договоров ОБС — только админ.
+    root.querySelector('#dhBtnObsContracts')?.addEventListener('click', async () => {
+      state.view = 'registry';
+      state.actsTab = false;
+      state.sfTab = false;
+      state.payTab = false;
+      state.archiveTab = false;
+      state.obsContractsTab = !state.obsContractsTab;
+      const hash = state.obsContractsTab ? '#/doc-hub?tab=obs-contracts' : '#/doc-hub';
+      if (location.hash !== hash) { location.hash = hash; return; }
+      await paint(window.__docHubLayout || window.layout);
+    });
     // Паритет с «Выплатами»: вкладка «Архив».
     root.querySelector('#dhBtnArchive')?.addEventListener('click', async () => {
       state.view = 'registry';
@@ -5350,6 +5634,9 @@ window.AsgardDocHubPage = (function () {
     if (state.archiveTab) {
       await renderArchiveTab();
     }
+    if (state.obsContractsTab) {
+      await renderObsContractsTab();
+    }
     if (state.view === 'wizard') {
       const host = document.getElementById('dhWizardHost');
       if (host) paintWizard(host);
@@ -5384,6 +5671,7 @@ window.AsgardDocHubPage = (function () {
     state.archiveTab = false;
     state.sfTab = false;
     state.payTab = false;
+    state.obsContractsTab = false;
     readHashFilters(); // scope/quarter/year from #/doc-hub?...
     // V394: вкладка актов сверки по #/doc-hub?tab=acts
     try {
@@ -5392,6 +5680,8 @@ window.AsgardDocHubPage = (function () {
       if (tab === 'archive') state.archiveTab = true;
       if (tab === 'sf') state.sfTab = true;
       if (tab === 'pay') state.payTab = true;
+      // D-386: справочник договоров ОБС — только админ
+      if (tab === 'obs-contracts' && canManageSubcontracts()) state.obsContractsTab = true;
     } catch (_) { /* ignore */ }
     // Кладовщик живёт на экране «Входящие СФ» — это его рабочий стол (канонический доступ).
     if (user.role === 'WAREHOUSE' && !state.actsTab && !state.archiveTab && !state.sfTab && !state.payTab) {

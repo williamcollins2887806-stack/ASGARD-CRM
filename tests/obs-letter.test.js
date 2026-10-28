@@ -459,6 +459,55 @@ console.log('\n=== Проверка сигнатуры файла (D-393) ===');
     'чужой формат под .zip отклонён');
 }
 
+// ─── D-386: контур оплаты у бухгалтерии, справочник договоров у админа ────
+// Заказчик 28.10.2026: «у согласующего убрал выбор оплаты? ОБС выбирает только
+// бухгалтерия? они выбирают договор и видят лимит ответственности + нужна
+// настройка договоров ОБС счета админу».
+console.log('\n=== Контур оплаты и справочник договоров (D-386) ===');
+{
+  const fs = require('fs');
+  const docRoute = fs.readFileSync(require.resolve('../src/routes/doc-registry'), 'utf8');
+  const payRoute = fs.readFileSync(require.resolve('../src/routes/payment-invoices'), 'utf8');
+  const hub = fs.readFileSync(require.resolve('../public/assets/js/doc-hub.js'), 'utf8');
+  const approval = fs.readFileSync(require.resolve('../public/assets/js/approval_payment.js'), 'utf8');
+
+  // 1. Директор больше НЕ выбирает контур
+  ok(!/dirSource/.test(approval), 'в модалке директора выбора способа оплаты НЕТ');
+  ok(!/payment_source: dirSource/.test(approval), 'директор не отправляет payment_source');
+  ok(/const paySrc = rows\[0\]\.payment_source/.test(payRoute),
+    'бэкенд берёт контур из заявки, а не из тела согласования');
+  ok(/payment_source в теле проигнорирован/.test(payRoute), 'устаревший параметр логируется');
+
+  // 2. Контур меняет только бухгалтерия
+  const m = docRoute.match(/const OBS_ROLES = \[([^\]]*)\]/);
+  const roles = (m ? m[1] : '').split(',').map((s) => s.trim().replace(/^['"]|['"]$/g, '')).filter(Boolean);
+  ok(roles.includes('BUH'), 'контур меняет бухгалтерия');
+  ok(!roles.some((r) => /DIRECTOR|^PM$/.test(r)), 'директор и инициатор контур не меняют');
+
+  // 3. Справочник договоров — только админ
+  ok(/SUBCONTRACT_ADMIN_ROLES = \['ADMIN'\]/.test(docRoute), 'справочник договоров только для ADMIN');
+  for (const r of ['/subcontracts/admin', 'fastify.post(\'/subcontracts\'',
+    'fastify.patch(\'/subcontracts/:sid\'', 'fastify.delete(\'/subcontracts/:sid\'']) {
+    ok(docRoute.includes(r), `роут есть: ${r.replace("fastify.", "")}`);
+  }
+  ok(/validateSubcontract/.test(docRoute), 'поля договора валидируются на сервере');
+
+  // 4. Защита от порчи данных
+  ok(/Лимит не может быть меньше/.test(docRoute), 'лимит ниже расходов запрещён');
+  ok(/Деактивируйте договор/.test(docRoute), 'договор со счетами нельзя удалить — только выключить');
+
+  // 5. Счётчик счетов без договора
+  ok(/subcontracts\/unlinked/.test(docRoute), 'есть подсчёт ОБС-счетов без договора');
+  ok(/dh-cn__warn/.test(hub), 'справочник показывает предупреждение о таких счетах');
+
+  // 6. Кнопка справочника только у админа
+  ok(/function canManageSubcontracts\(\) \{ return role\(\) === 'ADMIN'; \}/.test(hub),
+    'кнопка «Договоры ОБС» только у админа');
+
+  // 7. Кнопки письма в карточке ведут на письмо, а не на счёт
+  ok(/data-as-letter="1"/.test(hub), 'кнопки «Письмо …» помечены отдельно');
+}
+
 console.log(`\n────────────────────────────────────────`);
 console.log(`ИТОГ письма ОБС: PASS ${pass} / FAIL ${fail}`);
 if (fail) process.exitCode = 1;

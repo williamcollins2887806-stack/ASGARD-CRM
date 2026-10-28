@@ -2795,6 +2795,225 @@ module.exports = async function docRegistryRoutes(fastify) {
   });
 
   /**
+   * D-386: НАСТРОЙКА ДОГОВОРОВ ОБС — только админ.
+   *
+   * Заказчик 28.10.2026: «нужна настройка договоров ОБС счета админу».
+   * До этого договоры можно было только ЧИТАТЬ: список приходил из
+   * /subcontracts, а завести новый или поправить лимит было нечем — только
+   * руками в psql. Теперь у админа есть полный набор операций.
+   *
+   * Почему только ADMIN, а не BUH: лимит существенности — это условие
+   * договора с контрагентом, а не текущая бухгалтерская операция. Ошибка в
+   * лимите разрешает или запрещает платежи по всему договору, поэтому
+   * правит тот, кто отвечает за договорную базу.
+   */
+  const SUBCONTRACT_ADMIN_ROLES = ['ADMIN'];
+  const isSubcontractAdmin = (role) => String(role || '').toUpperCase() === 'ADMIN';
+
+  /** Проверка полей договора. Возвращает {ok, error, data}. */
+  function validateSubcontract(body) {
+    const b = body || {};
+    const number = String(b.number || '').trim();
+    if (!number) return { ok: false, error: 'Укажите номер договора' };
+    if (number.length > 60) return { ok: false, error: 'Номер договора слишком длинный' };
+
+    const dateRaw = String(b.agreement_date || '').trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(dateRaw)) {
+      return { ok: false, error: 'Укажите дату договора в формате ГГГГ-ММ-ДД' };
+    }
+    const d = new Date(dateRaw + 'T00:00:00Z');
+    if (isNaN(d.getTime())) return { ok: false, error: 'Дата договора некорректна' };
+
+    const limit = Number(b.limit_amount);
+    if (!Number.isFinite(limit) || limit < 0) {
+      return { ok: false, error: 'Лимит существенности — неотрицательное число' };
+    }
+    if (limit > 1e12) return { ok: false, error: 'Лимит слишком большой — проверьте сумму' };
+
+    const workId = b.work_id === null || b.work_id === '' || b.work_id === undefined
+      ? null : parseInt(b.work_id, 10);
+    if (workId !== null && !Number.isFinite(workId)) {
+      return { ok: false, error: 'Объект (work_id) — число или пусто' };
+    }
+
+    return {
+      ok: true,
+      data: {
+        number,
+        agreement_date: dateRaw,
+        customer_name: b.customer_name ? String(b.customer_name).trim().slice(0, 300) : null,
+        customer_inn: b.customer_inn ? String(b.customer_inn).replace(/\D/g, '').slice(0, 12) : null,
+        work_id: workId,
+        limit_amount: limit,
+        currency: String(b.currency || 'RUB').toUpperCase().slice(0, 3),
+        note: b.note ? String(b.note).trim().slice(0, 1000) : null,
+        is_active: b.is_active === undefined ? true : !!b.is_active,
+      },
+    };
+  }
+
+  // GET /subcontracts/admin — список для настройки (с остатком и привязкой)
+  fastify.get('/subcontracts/admin', { preHandler: [fastify.requireRoles(SUBCONTRACT_ADMIN_ROLES)] },
+    async (req) => {
+      const { rows } = await db.query(
+        `SELECT a.*, s.spent_amount, s.remaining, s.used_pct, s.exhausted,
+                w.work_title, w.object_name,
+                (SELECT count(*)::int FROM doc_registry d
+                  WHERE d.subcontract_id = a.id AND d.deleted_at IS NULL) AS docs_count
+           FROM subcontract_agreements a
+           LEFT JOIN works w ON w.id = a.work_id,
+                subcontract_limit_state(a.id) s
+          ORDER BY a.is_active DESC, a.agreement_date DESC`);
+      return {
+        items: rows.map((r) => ({
+          ...r,
+          limit_amount: Number(r.limit_amount) || 0,
+          spent_amount: Number(r.spent_amount) || 0,
+          remaining: Number(r.remaining) || 0,
+          used_pct: Number(r.used_pct) || 0,
+          exhausted: !!r.exhausted,
+          docs_count: Number(r.docs_count) || 0,
+        })),
+      };
+    });
+
+  // POST /subcontracts — создать договор
+  fastify.post('/subcontracts', { preHandler: [fastify.requireRoles(SUBCONTRACT_ADMIN_ROLES)] },
+    async (req, reply) => {
+      const v = validateSubcontract(req.body);
+      if (!v.ok) return reply.code(400).send({ error: v.error });
+      const d = v.data;
+      try {
+        const { rows } = await db.query(
+          `INSERT INTO subcontract_agreements
+             (number, agreement_date, customer_name, customer_inn, work_id,
+              limit_amount, currency, note, is_active)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
+          [d.number, d.agreement_date, d.customer_name, d.customer_inn, d.work_id,
+            d.limit_amount, d.currency, d.note, d.is_active]);
+        return { ok: true, item: rows[0] };
+      } catch (e) {
+        if (e.code === '23505') {
+          return reply.code(409).send({
+            error: `Договор ${d.number} от ${d.agreement_date} уже есть в справочнике`,
+            hint: 'Откройте существующий и поправьте лимит — дубль создавать нельзя.',
+          });
+        }
+        throw e;
+      }
+    });
+
+  // PATCH /subcontracts/:sid — изменить договор (номер, дата, лимит, объект)
+  fastify.patch('/subcontracts/:sid', { preHandler: [fastify.requireRoles(SUBCONTRACT_ADMIN_ROLES)] },
+    async (req, reply) => {
+      const sid = parseInt(req.params.sid, 10);
+      if (!Number.isFinite(sid)) return reply.code(400).send({ error: 'Неверный ID договора' });
+
+      const cur = await db.query('SELECT * FROM subcontract_agreements WHERE id=$1', [sid]);
+      const old = cur.rows[0];
+      if (!old) return reply.code(404).send({ error: 'Договор не найден' });
+
+      const v = validateSubcontract(req.body);
+      if (!v.ok) return reply.code(400).send({ error: v.error });
+      const d = v.data;
+
+      // D-386: смена лимита вниз не должна молча ломать уже привязанные счета.
+      // Считаем, сколько расходов уже проведено по договору.
+      const used = await db.query(
+        'SELECT spent_amount FROM subcontract_limit_state($1)', [sid]);
+      const spent = Number(used.rows[0] && used.rows[0].spent_amount) || 0;
+      if (d.limit_amount < spent) {
+        return reply.code(409).send({
+          error: `Лимит не может быть меньше уже израсходованного (${spent.toFixed(2)} руб.)`,
+          hint: 'Уменьшить лимит ниже фактических расходов нельзя — это исказит остаток.',
+          spent_amount: spent,
+        });
+      }
+
+      try {
+        const { rows } = await db.query(
+          `UPDATE subcontract_agreements SET
+             number=$2, agreement_date=$3, customer_name=$4, customer_inn=$5,
+             work_id=$6, limit_amount=$7, currency=$8, note=$9, is_active=$10,
+             updated_at=NOW()
+           WHERE id=$1 RETURNING *`,
+          [sid, d.number, d.agreement_date, d.customer_name, d.customer_inn,
+            d.work_id, d.limit_amount, d.currency, d.note, d.is_active]);
+        return { ok: true, item: rows[0], limit_changed: Number(old.limit_amount) !== d.limit_amount };
+      } catch (e) {
+        if (e.code === '23505') {
+          return reply.code(409).send({ error: 'Договор с таким номером и датой уже есть' });
+        }
+        throw e;
+      }
+    });
+
+  /**
+   * DELETE /subcontracts/:sid — удалить договор из справочника.
+   *
+   * Удалять можно ТОЛЬКО пустой: если к договору привязаны счета, удаление
+   * стёрло бы основание платежей. Тогда предлагаем деактивировать — он
+   * перестанет предлагаться в карточке, но история останется.
+   */
+  fastify.delete('/subcontracts/:sid', { preHandler: [fastify.requireRoles(SUBCONTRACT_ADMIN_ROLES)] },
+    async (req, reply) => {
+      const sid = parseInt(req.params.sid, 10);
+      if (!Number.isFinite(sid)) return reply.code(400).send({ error: 'Неверный ID договора' });
+
+      const linked = await db.query(
+        `SELECT count(*)::int AS n FROM doc_registry
+          WHERE subcontract_id=$1 AND deleted_at IS NULL`, [sid]);
+      const n = Number(linked.rows[0] && linked.rows[0].n) || 0;
+      if (n > 0) {
+        return reply.code(409).send({
+          error: `К договору привязано счетов: ${n}. Удалить нельзя`,
+          hint: 'Деактивируйте договор — он перестанет предлагаться, история сохранится.',
+          docs_count: n,
+        });
+      }
+      const del = await db.query('DELETE FROM subcontract_agreements WHERE id=$1 RETURNING id', [sid]);
+      if (!del.rowCount) return reply.code(404).send({ error: 'Договор не найден' });
+      return { ok: true, deleted: sid };
+    });
+
+  /**
+   * GET /subcontracts/unlinked — ОБС-счета БЕЗ привязки к договору.
+   *
+   * D-386, найдено 28.10.2026: 16 из 17 ОБС-счетов (1,02 млн ₽) шли без
+   * subcontract_id, из-за чего лимит существенности по ним НЕ расходовался.
+   * Остаток выглядел больше, чем есть, и бухгалтерия могла провести платёж
+   * за пределы лимита, не заметив этого.
+   *
+   * Отдаём счётчик и сумму — справочник показывает предупреждение.
+   */
+  fastify.get('/subcontracts/unlinked', { preHandler: [fastify.requireRoles(SUBCONTRACT_ADMIN_ROLES)] },
+    async () => {
+      const { rows } = await db.query(
+        `SELECT count(*)::int AS count, COALESCE(SUM(amount_gross), 0)::numeric AS amount
+           FROM doc_registry
+          WHERE payment_source = 'obs' AND subcontract_id IS NULL AND deleted_at IS NULL`);
+      const r = rows[0] || {};
+      return { count: Number(r.count) || 0, amount: Number(r.amount) || 0 };
+    });
+
+  /**
+   * GET /subcontracts/unlinked/list — сами счета, чтобы бухгалтерия их нашла.
+   */
+  fastify.get('/subcontracts/unlinked/list', { preHandler: [fastify.requireRoles(SUBCONTRACT_ADMIN_ROLES)] },
+    async () => {
+      const { rows } = await db.query(
+        `SELECT id, invoice_number, invoice_date, counterparty_name, amount_gross,
+                contract_label, payment_source
+           FROM doc_registry
+          WHERE payment_source = 'obs' AND subcontract_id IS NULL AND deleted_at IS NULL
+          ORDER BY amount_gross DESC NULLS LAST, id DESC
+          LIMIT 200`);
+      return {
+        items: rows.map((r) => ({ ...r, amount_gross: Number(r.amount_gross) || 0 })),
+      };
+    });
+
+  /**
    * PATCH /:id/subcontract — выбрать договор для строки реестра.
    * body: { subcontract_id: number | null }
    *
