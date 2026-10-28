@@ -748,13 +748,19 @@ window.AsgardDocHubPage = (function () {
    * браузер открывает blob без имени и типа, и при сохранении подставляет
    * своё расширение. Для скачивания нужен `<a download="имя.pdf">` —
    * тогда имя и расширение берутся из атрибута, а не угадываются.
+   *
+   * D-391: `letterDocId` — скачать ПИСЬМО для ОБС (роут /letter-file), а не
+   * файл строки. Иначе кнопка «Word» у счёта отдавала счёт поставщика.
    */
-  async function downloadDocFile(row, kind, format) {
-    const id = typeof row === 'object' ? Number(row.id) : Number(row);
+  async function downloadDocFile(row, kind, format, letterDocId) {
+    const id = Number.isFinite(Number(letterDocId)) && Number(letterDocId) > 0
+      ? Number(letterDocId)
+      : (typeof row === 'object' ? Number(row.id) : Number(row));
     if (!id) return;
     const fmt = format === 'docx' ? 'docx' : 'pdf';
 
-    let url = kind === 'letter'
+    const isLetter = kind === 'letter';
+    let url = isLetter
       ? `/api/doc-registry/${id}/letter-file`
       : `/api/doc-registry/${id}/file`;
     if (fmt === 'docx') url += (url.includes('?') ? '&' : '?') + 'format=docx';
@@ -1491,16 +1497,35 @@ window.AsgardDocHubPage = (function () {
 
     // D-383: открыть + скачать в PDF + скачать в Word.
     // Заказчик 27.10.2026: «нужно не только в PDF, но и в Word».
+    //
+    // D-391 (заказчик 28.10.2026: «нажимаю на ворд — скачивается счёт в ворд,
+    // а не письмо для ОБС»). Две кнопки «PDF»/«Word» относились к СЧЁТУ и
+    // молча конвертировали PDF поставщика в текст. Человек ждал письмо на
+    // бланке — получал скан чужого счёта. Теперь:
+    //   • у строки со счётом кнопки подписаны явно — «Счёт PDF / Счёт Word»;
+    //   • если письмо для ОБС готово, рядом отдельная пара «Письмо PDF /
+    //     Письмо Word», которая открывает именно письмо с бланком, подписью
+    //     и печатью. Спутать их больше нельзя.
     const label = n > 1 ? `файлов ${n}` : 'файл';
+    const letterId = Number(row.obs_letter_doc_id || 0);
+    const letterReady = letterId > 0 && String(row.obs_letter_status || '') === 'ready';
+    const letterBtns = letterReady ? `
+      <div class="dh-att-dl dh-att-dl--letter">
+        <button type="button" class="dh-att-dl__btn dh-att-dl__btn--letter" data-doc-dl="${letterId}" data-fmt="pdf"
+          data-as-letter="1" title="Скачать ПИСЬМО для ОБС в PDF (бланк, подпись, печать)">Письмо PDF</button>
+        <button type="button" class="dh-att-dl__btn dh-att-dl__btn--letter" data-doc-dl="${letterId}" data-fmt="docx"
+          data-as-letter="1" title="Скачать ПИСЬМО для ОБС в Word (редактируемый бланк)">Письмо Word</button>
+      </div>` : '';
     return `<div class="dh-att-box">
       <button type="button" class="dh-pill dh-pill--info dh-att dh-att--yes"
         data-doc-file="${Number(row.id)}" title="Открыть файл вложения">${label}</button>
       <div class="dh-att-dl">
         <button type="button" class="dh-att-dl__btn" data-doc-dl="${Number(row.id)}" data-fmt="pdf"
-          title="Скачать PDF">PDF</button>
+          title="Скачать сам счёт (вложение) в PDF">Счёт PDF</button>
         <button type="button" class="dh-att-dl__btn" data-doc-dl="${Number(row.id)}" data-fmt="docx"
-          title="Скачать в Word (DOCX)">Word</button>
+          title="Скачать счёт в Word — это текст из PDF счёта, не письмо для ОБС">Счёт Word</button>
       </div>
+      ${letterBtns}
     </div>`;
   }
 
@@ -4456,6 +4481,30 @@ window.AsgardDocHubPage = (function () {
       d.querySelectorAll('[data-qa]').forEach((btn) => {
         btn.addEventListener('click', () => quick(id, btn.getAttribute('data-qa')));
       });
+
+      // D-391: кнопки скачивания ВНУТРИ карточки. Раньше у них не было
+      // обработчика вовсе: атрибуты data-doc-dl/data-doc-file были, а клик
+      // ничего не делал — потому что единственный делегат висел на таблице.
+      // Теперь «Письмо Word/PDF» открывает письмо на бланке, «Счёт …» — счёт.
+      d.querySelectorAll('[data-doc-dl]').forEach((btn) => {
+        btn.addEventListener('click', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          const targetId = Number(btn.getAttribute('data-doc-dl'));
+          const fmt = btn.getAttribute('data-fmt') || 'pdf';
+          const asLetter = btn.getAttribute('data-as-letter') === '1';
+          btn.disabled = true;
+          downloadDocFile(row, asLetter ? 'letter' : undefined, fmt, asLetter ? targetId : null)
+            .finally(() => { btn.disabled = false; });
+        });
+      });
+      d.querySelectorAll('[data-doc-file]').forEach((btn) => {
+        btn.addEventListener('click', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          openDocFile(Number(btn.getAttribute('data-doc-file')));
+        });
+      });
       d.querySelector('#dhParseCatalog')?.addEventListener('click', async () => {
         const ok = await confirm('В каталог', 'Разобрать позиции и обновить номенклатуру — ' + docSummary(row) + '?');
         if (!ok) return;
@@ -4925,11 +4974,16 @@ window.AsgardDocHubPage = (function () {
         e.stopPropagation();
         const docId = Number(dlBtn.getAttribute('data-doc-dl'));
         const fmt = dlBtn.getAttribute('data-fmt') || 'pdf';
+        // D-391: кнопки «Письмо …» ведут на роут письма (letter-file), а не
+        // на файл строки. Иначе открывался бы счёт поставщика вперемешку с
+        // письмом, и «Word» конвертировал бы чужой PDF.
+        const asLetter = dlBtn.getAttribute('data-as-letter') === '1';
         const rowEl = dlBtn.closest('tr[data-id]');
         const rowId = rowEl ? Number(rowEl.getAttribute('data-id')) : docId;
         const row = (state.rows || []).find((x) => Number(x.id) === rowId) || { id: docId };
         dlBtn.disabled = true;
-        downloadDocFile(row, undefined, fmt).finally(() => { dlBtn.disabled = false; });
+        downloadDocFile(row, asLetter ? 'letter' : undefined, fmt, asLetter ? docId : null)
+          .finally(() => { dlBtn.disabled = false; });
         return;
       }
 

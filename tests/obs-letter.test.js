@@ -303,6 +303,44 @@ console.log('\n=== Колонки «Завершено» и «Корзина» (
   ok(c.status === 'new' && c.closed === false, '«Вернуть» → карта снова в работе, закрытие снято');
 }
 
+// ─── D-391: кнопки счёта и письма ведут в РАЗНЫЕ места ────────────────────
+// «Нажимаю на ворд — скачивается счёт в ворд, а не письмо для ОБС»
+// (заказчик 28.10.2026). Причина: две кнопки «PDF»/«Word» относились к счёту
+// и конвертировали PDF поставщика, а кнопки в карточке вообще не имели
+// обработчика. Теперь у счёта и письма отдельные кнопки с явными подписями.
+console.log('\n=== Счёт и письмо: разные кнопки (D-391) ===');
+{
+  const fs = require('fs');
+  const hub = fs.readFileSync(require.resolve('../public/assets/js/doc-hub.js'), 'utf8');
+
+  ok(/data-as-letter/.test(hub), 'у кнопок письма есть отдельный признак data-as-letter');
+  ok(/downloadDocFile\(row, kind, format, letterDocId\)/.test(hub),
+    'downloadDocFile принимает id письма отдельно от строки счёта');
+  ok(/kind === 'letter'/.test(hub) && /letter-file/.test(hub), 'письмо идёт на роут letter-file');
+  ok(/Счёт PDF/.test(hub) && /Счёт Word/.test(hub), 'кнопки счёта подписаны явно');
+  ok(/Письмо PDF/.test(hub) && /Письмо Word/.test(hub), 'кнопки письма подписаны явно');
+  ok(/d\.querySelectorAll\('\[data-doc-dl\]'\)/.test(hub),
+    'в карточке счёта у кнопок ЕСТЬ обработчик (раньше клик не работал)');
+
+  // Маршрутизация: что куда уходит.
+  const route = (kind, fmt, letterId, rowId) => {
+    const id = letterId > 0 ? letterId : rowId;
+    const base = kind === 'letter' ? `/api/doc-registry/${id}/letter-file` : `/api/doc-registry/${id}/file`;
+    return fmt === 'docx' ? base + '?format=docx' : base;
+  };
+  ok(route('letter', 'pdf', 2150, 2148) === '/api/doc-registry/2150/letter-file',
+    'PDF письма → letter-file письма');
+  ok(route('letter', 'docx', 2150, 2148) === '/api/doc-registry/2150/letter-file?format=docx',
+    'Word письма → letter-file + format=docx');
+  ok(route(undefined, 'docx', null, 2148) === '/api/doc-registry/2148/file?format=docx',
+    'Word счёта → file счёта');
+
+  // Серверная часть: письмо рендерится с бланка, а не из PDF счёта.
+  const routeSrc = fs.readFileSync(require.resolve('../src/routes/doc-registry'), 'utf8');
+  ok(/generateObsLetterDocx/.test(routeSrc), 'сервер собирает Word письма с бланка (docxtemplater)');
+  ok(/package_type !== 'letter'/.test(routeSrc), 'letter-file отказывает строке, которая не письмо');
+}
+
 console.log(`\n────────────────────────────────────────`);
 console.log(`ИТОГ письма ОБС: PASS ${pass} / FAIL ${fail}`);
 if (fail) process.exitCode = 1;
