@@ -185,6 +185,39 @@
     if (state === next) return;
     state = next;
     emit('state', extra || {});
+    try { syncCallPopup(); } catch (_) {}
+  }
+
+  /**
+   * ОКНО ПОВЕРХ ВСЕХ ПРИЛОЖЕНИЙ (Windows PWA, задача 28.10.2026).
+   * Оператор работает в другом окне и не видит тост внутри вкладки — держим
+   * отдельное всегда-сверху окно (Document Picture-in-Picture). Пока мы на
+   * линии — компактная плашка; при входящем/разговоре — номер и кнопки.
+   */
+  function syncCallPopup() {
+    var P = window.AsgardCallPopup;
+    if (!P || !P.isSupported || !P.isSupported()) return;
+    var onLine = state === STATES.on_line_browser || state === STATES.on_line_mobile;
+    if (state === STATES.ringing && callMeta && callMeta.direction === 'inbound') {
+      var info = callMeta.lookup || {};
+      P.showCall({
+        state: 'ringing',
+        number: callMeta.number || '',
+        name: info.name || info.contact_person || info.company || '',
+      });
+    } else if (state === STATES.in_call || state === STATES.held) {
+      var info2 = (callMeta && callMeta.lookup) || {};
+      P.showCall({
+        state: 'incall',
+        number: (callMeta && callMeta.number) || '',
+        name: info2.name || info2.contact_person || info2.company || '',
+      });
+    } else if (onLine) {
+      P.setOnLine(true);
+    } else {
+      P.clearCall();
+      P.setOnLine(false);
+    }
   }
 
   function wsUrlFromCreds(creds) {

@@ -941,6 +941,18 @@
       if (opSt.online_count === 1) {
         banners.push('<div class="ph-dp-hint">Сейчас на линии только вы — входящие пойдут вам.</div>');
       }
+      // ОКНО ПОВЕРХ ВСЕХ ПРИЛОЖЕНИЙ (Windows PWA, 28.10.2026). Без клика
+      // браузер не даёт открыть плавающее окно, поэтому показываем кнопку один
+      // раз — дальше окно живёт само и разворачивается на входящем звонке.
+      try {
+        var CP = window.AsgardCallPopup;
+        if (CP && CP.isSupported && CP.isSupported() && !CP.isArmed()) {
+          banners.push('<div class="ph-dp-banner ph-dp-banner--warn">' +
+            'Не видите звонок, когда работаете в другом окне? ' +
+            '<button type="button" class="btn sm" data-cp-enable style="margin-left:8px">Включить окно поверх всех</button>' +
+            '</div>');
+        }
+      } catch (_) {}
     }
     if (panelData.transferStatus) {
       var ts = panelData.transferStatus;
@@ -1174,6 +1186,24 @@
     var t = e.target;
     if (!t || !t.closest) return;
     var P = window.AsgardPhone;
+    // Включение окна поверх всех приложений (нужен клик пользователя).
+    var cpBtn = t.closest('[data-cp-enable]');
+    if (cpBtn) {
+      var CP = window.AsgardCallPopup;
+      if (CP && CP.open) {
+        CP.open().then(function (r) {
+          if (r && r.ok) {
+            toast('Телефон', 'Окно звонка включено — будет поверх всех приложений', 'ok');
+            CP.setOnLine(true);
+          } else {
+            toast('Телефон', 'Не удалось открыть окно: ' + ((r && r.reason) || 'браузер не поддерживает'), 'err');
+          }
+          panelData.loadedAt = 0;
+          paintPanel();
+        });
+      }
+      return;
+    }
     var filterBtn = t.closest('[data-ph-filter]');
     if (filterBtn) {
       phoneListFilter = filterBtn.getAttribute('data-ph-filter') === 'missed' ? 'missed' : 'all';
