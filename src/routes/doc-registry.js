@@ -2641,8 +2641,11 @@ module.exports = async function docRegistryRoutes(fastify) {
       return reply.code(404).send({ error: 'Не найдено' });
     }
 
+    // D-385: `package_type` нужен ниже, чтобы отличить письмо ОБС от счёта и
+    // отдать для письма бланк, а не текст из PDF. В выборке его не было, а
+    // условие всё равно проверяло `doc.package_type` — то есть всегда false.
     const { rows } = await db.query(
-      `SELECT id, attachments, original_path_url, invoice_number
+      `SELECT id, attachments, original_path_url, invoice_number, package_type
          FROM doc_registry WHERE id=$1 AND deleted_at IS NULL`, [id]);
     const doc = rows[0];
     if (!doc) return reply.code(404).send({ error: 'Не найдено' });
@@ -2695,7 +2698,13 @@ module.exports = async function docRegistryRoutes(fastify) {
 
       try {
         // Письмо для ОБС: официальный бланк через docxtemplater.
-        if (doc.package_type === 'letter' || kind === 'letter') {
+        //
+        // D-385: здесь стояло `kind === 'letter'` — переменная `kind` в этой
+        // функции не объявлена, поэтому обращение бросало ReferenceError,
+        // ловилось в catch и отдавало 500 «Не удалось подготовить Word».
+        // Word не собирался НИ РАЗУ для письма ОБС. Тип документа
+        // берём из самой строки реестра.
+        if (doc.package_type === 'letter') {
           // Для письма нужен РОДИТЕЛЬСКИЙ счёт: у письма package_type='letter',
           // а данные (объект, договор, позиции) — в счёте.
           const parent = (await db.query(
@@ -2732,11 +2741,22 @@ module.exports = async function docRegistryRoutes(fastify) {
     return reply.send(fs.createReadStream(fsPath));
   });
 
-  // ─── D-381: договоры субподряда и лимиты существенности ─────────────────
+  // ─── D-381/D-386: договоры субподряда и лимиты существенности ────────────
   //
-  // Кто может менять способ оплаты и выбирать договор: бухгалтерия и
-  // директора. Объявлено ДО роутов, которые это используют.
-  const OBS_ROLES = ['ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV', 'BUH'];
+  // D-386 (заказчик 28.10.2026): «выбор откуда платим — с ОБС или нет —
+  // должна быть у бухгалтерии, может в карточке счёта. Не у инициатора и не
+  // у директора а у бухгалтерии. Там же они выбирают с какого договора
+  // именно, там же видят индикатор лимита существенности».
+  //
+  // Поэтому решение по платёжному контуру — ТОЛЬКО бухгалтерия. Раньше здесь
+  // были и директора; это расходилось с решением заказчика: директор
+  // согласует расход, но каким контуром его провести — вопрос учёта.
+  // ADMIN проходит всегда (переопределяется в fastify.requireRoles).
+  const OBS_ROLES = ['BUH'];
+
+  // D-386: ADMIN проходит всегда (см. fastify.requireRoles), поэтому здесь
+  // он явно, чтобы карточка не прятала блок у админа при отладке.
+  const canManageObs = (role) => role === 'ADMIN' || OBS_ROLES.includes(String(role || ''));
 
   // Директор и бухгалтерия должны видеть остаток лимита по каждому договору
   // и выбрать договор ПЕРЕД созданием письма. Если лимит выработан, ОБС по
@@ -2927,7 +2947,9 @@ module.exports = async function docRegistryRoutes(fastify) {
     return reply.send(fs.createReadStream(fsPath));
   });
 
-  // Способ оплаты меняют ТОЛЬКО бухгалтерия и директора (решение 24.10.2026).
+  // D-386: способ оплаты и договор определяет ТОЛЬКО бухгалтерия
+  // (ADMIN проходит всегда). Решение заказчика 28.10.2026: директор
+  // согласует расход, но каким контуром его провести — вопрос учёта.
 
   /**
    * PATCH /:id/payment-source — сменить способ оплаты.
@@ -2989,6 +3011,95 @@ module.exports = async function docRegistryRoutes(fastify) {
     await audit(db, id, req.user.id, 'payment_source', { from: prev, to: src });
 
     return { ok: true, changed: true, ...rows[0] };
+  });
+
+  /**
+   * D-386: данные для блока «Откуда платим» в карточке счёта.
+   *
+   * Заказчик 28.10.2026: «там же они выбирают с какого договора именно, и
+   * там же они видят индикатор лимита существенности сколько денег осталось
+   * и сколько % использовано по этой фирме».
+   *
+   * Один запрос отдаёт всё, что нужно блоку: текущий способ оплаты, статус
+   * письма, список договоров с остатком лимита и — отдельно — остаток по
+   * КАЖДОМУ договору с учётом ИМЕННО этого счёта. Считать на клиенте нельзя:
+   * процент считается по ОБС-расходам в базе, и второй реализации той же
+   * формулы быть не должно.
+   *
+   * `can_manage` — решает сервер: показывать ли переключатели. Фронт не
+   * должен угадывать права по роли в localStorage.
+   */
+  fastify.get('/:id/obs-options', auth, async (req, reply) => {
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id)) return reply.code(400).send({ error: 'Неверный ID' });
+
+    if (!(await assertDocVisible(db, { role: req.user.role, userId: req.user.id }, id))) {
+      return reply.code(404).send({ error: 'Не найдено' });
+    }
+
+    const found = await db.query(
+      `SELECT id, work_id, amount_gross, payment_source, subcontract_id,
+              obs_letter_status, obs_letter_doc_id, obs_letter_error, invoice_number
+         FROM doc_registry WHERE id=$1 AND deleted_at IS NULL`, [id]);
+    const doc = found.rows[0];
+    if (!doc) return reply.code(404).send({ error: 'Не найдено' });
+
+    // Договоры: по объекту счёта, иначе все активные. Остаток считается
+    // функцией subcontract_limit_state, она учитывает только ОБС-расходы.
+    const params = [];
+    let where = 'a.is_active = TRUE';
+    if (doc.work_id) {
+      params.push(doc.work_id);
+      where += ` AND (a.work_id = $${params.length} OR a.work_id IS NULL)`;
+    }
+    const subs = await db.query(
+      `SELECT a.id, a.number, a.agreement_date, a.customer_name, a.work_id,
+              a.limit_amount, a.note,
+              s.spent_amount, s.remaining, s.used_pct, s.exhausted
+         FROM subcontract_agreements a, subcontract_limit_state(a.id, $${params.length + 1}) s
+        WHERE ${where}
+        ORDER BY a.agreement_date DESC`,
+      [...params, id]);
+
+    const amount = Number(doc.amount_gross) || 0;
+    const items = subs.rows.map((r) => {
+      const limit = Number(r.limit_amount) || 0;
+      const remaining = Number(r.remaining) || 0;
+      const usedPct = Number(r.used_pct) || 0;
+      // «Хватит ли лимита на этот счёт» — главный вопрос бухгалтера при
+      // выборе договора. Считаем на сервере, чтобы карточка и письмо
+      // опирались на одно и то же число.
+      return {
+        id: r.id,
+        number: r.number,
+        agreement_date: r.agreement_date,
+        customer_name: r.customer_name,
+        work_id: r.work_id,
+        limit_amount: limit,
+        spent_amount: Number(r.spent_amount) || 0,
+        remaining,
+        used_pct: usedPct,
+        exhausted: !!r.exhausted,
+        covers_invoice: remaining >= amount,
+        short_by: remaining >= amount ? 0 : Number((amount - remaining).toFixed(2)),
+      };
+    });
+
+    return {
+      doc_id: id,
+      invoice_number: doc.invoice_number,
+      amount_gross: amount,
+      payment_source: doc.payment_source || 'regular',
+      subcontract_id: doc.subcontract_id || null,
+      obs_letter_status: doc.obs_letter_status || 'none',
+      obs_letter_doc_id: doc.obs_letter_doc_id || null,
+      obs_letter_error: doc.obs_letter_error || null,
+      // Права: переключать контур и договор может только бухгалтерия
+      // (ADMIN проходит всегда). Инициатор и директор видят блок, но
+      // не меняют.
+      can_manage: canManageObs(req.user.role),
+      subcontracts: items,
+    };
   });
 
   /**

@@ -214,7 +214,7 @@ function ids(email, attachment) {
  * @param {object} db
  * @param {{email:object, attachment:object, text:string, userId?:number, dryRun?:boolean}} opts
  */
-async function intakeOne(db, { email, attachment, text, userId = null, dryRun = false }) {
+async function intakeOne(db, { email, attachment, text, userId = null, dryRun = false, invoicesInEmail = 1 }) {
   const { emailId, attachmentId } = ids(email, attachment);
   // ДЕФЕКТ (заказчик 19.10.2026): строка реестра создавалась БЕЗ ссылки на скан —
   // «счёт не приложен», хотя файл в письме есть. Достаём путь вложения сразу,
@@ -370,14 +370,35 @@ async function intakeOne(db, { email, attachment, text, userId = null, dryRun = 
         `SELECT id, filename, original_filename, file_path, mime_type, size
            FROM email_attachments WHERE email_id=$1 ORDER BY id`, [emailId])).rows;
       if (files.length) {
+        // D-388 (заказчик 28.10.2026: «и почему 2 счета в одной строчке????»).
+        // В ОДНОМ письме бывает НЕСКОЛЬКО счетов, и раньше все файлы письма
+        // крепились к каждой строке: у счёта КР-4724 лежали счёт и УПД от
+        // КР-4536. Теперь файл идёт только к «своему» счёту по номеру в имени;
+        // файлы без номера (договор, ТЗ) — только если счёт в письме один,
+        // иначе один и тот же ПФ размножился бы по всем строкам.
+        const invoiceCount = Math.max(1, Number(invoicesInEmail) || 1);
+        const perFile = files
+          .map((f) => {
+            const nm = String(f.original_filename || f.filename || '');
+            const rel = docAtt.fileMatchesInvoice(nm, parsed.invoice_number);
+            return { ...f, __rel: rel, __name: nm };
+          })
+          .filter((f) => {
+            if (f.__rel === 'match') return true;
+            if (f.__rel === 'unknown') return invoiceCount === 1;
+            // 'other' — в имени чужой номер счёта: к этой строке не относится.
+            console.log(`[intake] письмо ${emailId}: файл «${f.__name}» относится к другому счёту — пропуск для ${parsed.invoice_number || '?'}`);
+            return false;
+          });
+
         // D-357 (23.10.2026): kind определяем ПО ФАЙЛУ, а не по типу письма.
         // Раньше всё письмо получало один kind: если классификатор считал письмо
         // счётом, наши Исх. письма помечались 'scan' — то есть «это скан счёта»,
         // хотя это обоснование. Теперь: файл с «счёт/invoice» в имени и с
         // extracted-текстом счёта = scan, остальное (Исх., договор, ТЗ) =
         // justification. Так карточка честно показывает, что где.
-        const perFile = files.map((f) => {
-          const nm = String(f.original_filename || f.filename || '').toLowerCase();
+        const withKind = perFile.map((f) => {
+          const nm = String(f.__name || '').toLowerCase();
           // «Исх. №… — счёт № УТ-2372.pdf» содержит «счёт», но это НАШЕ
           // сопроводительное письмо. Приоритет: «исх.» → обоснование.
           const isOutgoing = /(^|\s)исх\.?\s*№|исходящ/.test(nm);
@@ -388,7 +409,7 @@ async function intakeOne(db, { email, attachment, text, userId = null, dryRun = 
         });
         // Прикрепляем группами, чтобы у каждого файла был свой kind.
         for (const kind of ['scan', 'justification']) {
-          const group = perFile.filter((f) => f.__kind === kind);
+          const group = withKind.filter((f) => f.__kind === kind);
           if (!group.length) continue;
           const r = await docAtt.attachFilesToDoc(db, targetDoc.id, emailId, group, { kind, log: console });
           if (!attachResult) attachResult = r;
@@ -1121,8 +1142,14 @@ async function aiLines(text) {
  */
 async function intakeEmail(db, { email, invoices, userId = null }) {
   const results = [];
+  // D-388: сколько счетов в письме — влияет на раскладку файлов.
+  // Один счёт → файлы без номера (договор, ТЗ) считаются его обоснованием.
+  // Несколько → такие файлы ни к кому не крепим, чтобы не размножить.
+  const total = (invoices || []).length;
   for (const inv of (invoices || [])) {
-    results.push(await intakeOne(db, { email, attachment: inv.attachment, text: inv.text, userId }));
+    results.push(await intakeOne(db, {
+      email, attachment: inv.attachment, text: inv.text, userId, invoicesInEmail: total,
+    }));
   }
   const created = results.filter((r) => r.status === 'created').length;
   const needsManual = results.filter((r) => r.status === 'needs_manual').length;

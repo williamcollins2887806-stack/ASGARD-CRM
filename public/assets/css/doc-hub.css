@@ -848,6 +848,102 @@ a:hover { text-decoration: underline; }
   opacity: .55;
   cursor: default;
 }
+
+/* ═══ D-386: блок «Откуда платим» в карточке счёта ═══════════════════════
+   Заказчик 28.10.2026: переключатель контура, выбор договора и индикатор
+   лимита существенности — всё в карточке, у бухгалтерии. Цвета только
+   токенами темы (гейт: нет хардкод-цветов). */
+.dh-src-cards {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+.dh-src-card {
+  text-align: left;
+  padding: 12px 12px;
+  border-radius: 10px;
+  cursor: pointer;
+  font-family: inherit;
+  background: transparent;
+  border: 1px solid var(--brd);
+  color: var(--t1);
+  transition: border-color .12s, background .12s;
+}
+.dh-src-card:hover:not(:disabled) { background: var(--bg4); }
+.dh-src-card.is-on {
+  border-color: var(--gold, var(--brd-strong, var(--brd)));
+  background: color-mix(in srgb, var(--gold, #c8a84e) 12%, transparent);
+}
+.dh-src-card:disabled { cursor: default; opacity: .75; }
+.dh-src-card .t { font-weight: 800; font-size: 13px; margin-bottom: 3px; }
+.dh-src-card .s { font-size: 11.5px; color: var(--t2); line-height: 1.3; }
+
+/* Индикатор лимита существенности: остаток и использованный процент. */
+.dh-lim {
+  margin-top: 10px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--brd);
+  background: var(--bg4);
+}
+.dh-lim__top {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+.dh-lim__lab { font-size: 11.5px; font-weight: 750; color: var(--t1); }
+.dh-lim__pct { font-size: 11.5px; font-weight: 800; color: var(--t2); }
+.dh-lim__bar {
+  height: 7px;
+  border-radius: 99px;
+  background: color-mix(in srgb, var(--t3, #94a3b8) 22%, transparent);
+  overflow: hidden;
+}
+.dh-lim__bar > span {
+  display: block;
+  height: 100%;
+  border-radius: 99px;
+  background: var(--ok, #22c55e);
+  transition: width .3s;
+}
+.dh-lim__nums {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  margin-top: 7px;
+  font-size: 11px;
+  color: var(--t2);
+}
+.dh-lim__nums strong { color: var(--t1); }
+.dh-lim__warn,
+.dh-lim__note {
+  margin-top: 7px;
+  font-size: 11px;
+  line-height: 1.35;
+}
+.dh-lim__note { color: var(--t2); }
+.dh-lim__warn { color: var(--danger-ink, #ef4444); font-weight: 700; }
+
+/* Тон индикатора: зелёный — лимита хватает; жёлтый — остаток меньше
+   половины; красный — счёт в остаток не влезает. */
+.dh-lim.is-ok .dh-lim__bar > span { background: var(--ok, #22c55e); }
+.dh-lim.is-warn { border-color: color-mix(in srgb, var(--gold, #c8a84e) 55%, var(--brd)); }
+.dh-lim.is-warn .dh-lim__bar > span { background: var(--gold, #c8a84e); }
+.dh-lim.is-bad { border-color: color-mix(in srgb, var(--danger-ink, #ef4444) 55%, var(--brd)); }
+.dh-lim.is-bad .dh-lim__bar > span { background: var(--danger-ink, #ef4444); }
+
+/* Состояние письма внутри карточки + кнопки скачивания. */
+.dh-obs-state {
+  font-size: 11.5px;
+  color: var(--t2);
+  line-height: 1.4;
+}
+.dh-obs-state.is-ok { color: var(--ok, #22c55e); }
+.dh-obs-state.is-bad { color: var(--danger-ink, #ef4444); }
+.dh-obs-state .dh-obs-gen { margin-left: 8px; }
+.dh-obs-state .dh-att-dl__btn { height: 20px; padding: 0 8px; font-size: 10.5px; }
 /* Спиннер «Формируется…» — тот же смысл, что у плашки, без сторонних картинок */
 .dh-spin {
   width: 9px;

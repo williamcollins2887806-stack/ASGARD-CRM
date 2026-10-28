@@ -185,12 +185,17 @@ async function generateObsLetterDocx(db, docId, opts = {}) {
 
     gendir_name: safeText(gendir.name),
     gendir_position: safeText(gendir.position),
-    // D-384: шаблон печатает «Исп.: {executor_name}» даже при пустом
-    // значении — получается висячее «Исп.:» в исходящем документе.
-    // Подставляем данные инициатора, если они есть; иначе непустую
-    // нейтральную строку, чтобы шаблон не оставил пустой хвост.
-    executor_name: safeText(data.doc.created_by_name || company.name_short),
-    executor_phone_email: safeText(company.phone || ''),
+    // D-385 (Д. Путков, 28.10.2026: «убрать исполнителя письма или переделать
+    // на кого-то, например на инициатора»). Раньше при отсутствии имени
+    // подставлялось название компании — получалось «Исп.: ООО «Асгард-Сервис»»,
+    // строка без смысла. Теперь исполнитель — тот, кто завёл счёт.
+    executor_name: safeText((data.initiator && data.initiator.name) || ''),
+    executor_phone_email: safeText(
+      [
+        (data.initiator && data.initiator.phone) || '',
+        (data.initiator && data.initiator.email) || '',
+      ].filter(Boolean).join(' · ')
+    ),
 
     bank_name: company.bank_name,
     bank_account: company.bank_rs,
@@ -233,7 +238,19 @@ async function generateObsLetterDocx(db, docId, opts = {}) {
   });
   docx.render(payload);
 
-  return docx.getZip().generate({ type: 'nodebuffer', compression: 'DEFLATE' });
+  // D-385: если исполнителя нет (счёт завёл служебный аккаунт), шаблон
+  // оставил бы висячее «Исп.:» — в исходящем документе это брак. Убираем
+  // весь абзац целиком, как когда-то тендерные строки в шаблоне.
+  const outZip = docx.getZip();
+  const hasExecutor = !!(payload.executor_name || payload.executor_phone_email);
+  if (!hasExecutor) {
+    const xml = outZip.file('word/document.xml').asText();
+    const re = /<w:p\b[^>]*>(?:(?!<\/w:p>)[\s\S])*?Исп\.:(?:(?!<\/w:p>)[\s\S])*?<\/w:p>/g;
+    const cleaned = xml.replace(re, '');
+    if (cleaned !== xml) outZip.file('word/document.xml', cleaned);
+  }
+
+  return outZip.generate({ type: 'nodebuffer', compression: 'DEFLATE' });
 }
 
 module.exports = { generateObsLetterDocx, TPL_DEFAULT };

@@ -89,21 +89,108 @@ async function routes(fastify, options) {
     return { count: used, chars: text.length, text, docs: ocrDocs };
   }
 
-  /** Зависший calculating после рестарта/обрыва SSE → draft, чтобы можно было пересчитать */
+  /**
+   * Зависший calculating после рестарта/обрыва SSE → draft, чтобы можно было пересчитать.
+   *
+   * D-389 (инцидент 28.10.2026, сессия 895c144b): признаком «жив» был только
+   * `updated_at`, а его двигал heartbeat внутри процесса. Любой рестарт
+   * (а в тот день их было 10) означал: расчёт мёртв физически, но запись
+   * выглядит живой до истечения окна — а после — «Расчёт прерван», хотя
+   * человек видел 41% и работал. Хуже: если расчёт УСПЕЛ закончиться до
+   * истечения окна, reclaim его не тронет, но и человек не узнает, что
+   * результат лежит в БД — он ждёт SSE, которого уже нет.
+   *
+   * Теперь у записи есть `calc_owner_pid` — PID процесса, который её ведёт.
+   * Если PID не совпадает с текущим и процесс мёртв, запись освобождается
+   * СРАЗУ, без ожидания окна: сервер точно знает, что расчёт умер.
+   * Окно по времени остаётся запасным случаем (зависание без падения).
+   *
+   * Возвращает true, если сессия была освобождена.
+   */
   async function reclaimStaleCalculating(sessionUid, authorId) {
     const { rows } = await db.query(
       `UPDATE tkp_quick_sessions
        SET status = 'draft',
            error_text = COALESCE(error_text, 'Расчёт прерван — можно запустить снова'),
+           calc_owner_pid = NULL,
            updated_at = NOW()
        WHERE session_uid = $1
          AND author_id = $2
          AND status = 'calculating'
-         AND updated_at < NOW() - make_interval(mins => $3::int)
+         AND (
+           -- процесс-владелец умер: сервер перезапускался, расчёт не жив
+           (calc_owner_pid IS NOT NULL AND calc_owner_pid <> $4)
+           -- запасной случай: завис без падения процесса
+           OR updated_at < NOW() - make_interval(mins => $3::int)
+         )
        RETURNING session_uid`,
-      [sessionUid, authorId, STALE_CALCULATING_MIN]
+      [sessionUid, authorId, STALE_CALCULATING_MIN, process.pid]
     );
     return rows.length > 0;
+  }
+
+  /**
+   * D-389: кто имеет право работать с сессией просчёта.
+   *
+   * Инцидент 28.10.2026: пользователь открыл чужой просчёт, и каждый запрос
+   * возвращал 404 — снаружи «выкинуло из просчёта», а затем «нельзя запустить».
+   * Причина: ВСЕ операции фильтровались по `author_id`.
+   *
+   * Правило: черновик без объекта — личный (там автор единственный владелец,
+   * иначе чужие наброски ТЗ были бы видны всем). Просчёт по ОБЪЕКТУ — общий:
+   * его видит автор и те, кому доступен объект. Директора и бухгалтерия видят
+   * всё — как в матрице реестра документов.
+   *
+   * @param {object} db
+   * @param {{id:number, role:string}} user
+   * @param {object} session — строка tkp_quick_sessions
+   * @returns {Promise<boolean>}
+   */
+  async function canSeeSession(db, user, session) {
+    if (!session) return false;
+    const role = String(user.role || '').toUpperCase();
+    if (role === 'ADMIN') return true;
+    if (Number(session.author_id) === Number(user.id)) return true;
+
+    const workId = Number(session.parent_work_id) || null;
+    const tenderId = Number(session.tender_id) || null;
+    // Чужой черновик без объекта — не показываем: личные наброски ТЗ.
+    if (!workId && !tenderId) return false;
+
+    const FULL = ['BUH', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV', 'DIRECTOR',
+      'OFFICE_MANAGER', 'HEAD_PM'];
+    if (FULL.includes(role)) return true;
+
+    // Объект доступен, если человек по нему ответственный (РП) либо уже имеет
+    // видимые документы по этому объекту — та же матрица, что у реестра.
+    try {
+      if (workId) {
+        const own = await db.query(
+          `SELECT 1 FROM works w
+            WHERE w.id = $1 AND (w.pm_id = $2 OR w.manager_id = $2) LIMIT 1`,
+          [workId, user.id]).catch(() => ({ rows: [] }));
+        if (own.rows.length) return true;
+
+        const { visibilitySql } = require('../lib/doc-visibility');
+        return await (async () => {
+          const params = [workId];
+          const vis = visibilitySql(params, role, user.id, { scope: 'all' });
+          const viaDocs = await db.query(
+            `SELECT 1 FROM doc_registry d
+              WHERE d.work_id = $1 AND d.deleted_at IS NULL${vis} LIMIT 1`, params);
+          return viaDocs.rows.length > 0;
+        })();
+      }
+      // Тендер: автор тендера или его РП.
+      const r = await db.query(
+        `SELECT 1 FROM pre_tenders pt
+          WHERE pt.id = $1 AND (pt.created_by = $2 OR pt.pm_id = $2) LIMIT 1`,
+        [tenderId, user.id]).catch(() => ({ rows: [] }));
+      return r.rows.length > 0;
+    } catch (e) {
+      console.warn('[tkp_quick] canSeeSession: ' + (e && e.message));
+      return false;
+    }
   }
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -267,11 +354,16 @@ async function routes(fastify, options) {
     preHandler: [fastify.requireRoles(ROLES)]
   }, async (request, reply) => {
     await reclaimStaleCalculating(request.params.uid, request.user.id);
+    // D-389: читать сессию может не только автор — но и тот, кому доступен
+    // объект просчёта (см. canSeeSession). Иначе коллега получал 404.
     const { rows: [session] } = await db.query(
-      'SELECT * FROM tkp_quick_sessions WHERE session_uid = $1 AND author_id = $2',
-      [request.params.uid, request.user.id]
+      'SELECT * FROM tkp_quick_sessions WHERE session_uid = $1',
+      [request.params.uid]
     );
     if (!session) return reply.code(404).send({ error: 'Сессия не найдена' });
+    if (!(await canSeeSession(db, request.user, session))) {
+      return reply.code(404).send({ error: 'Сессия не найдена' });
+    }
     return { session };
   });
 
@@ -782,17 +874,27 @@ async function routes(fastify, options) {
   }, async (request, reply) => {
     await reclaimStaleCalculating(request.params.uid, request.user.id);
 
+    // D-389: запустить расчёт может и коллега, если просчёт по объекту ему
+    // доступен. Фильтр по author_id оставлял его с 404 «сессия не найдена».
     const { rows: [session] } = await db.query(
-      "SELECT * FROM tkp_quick_sessions WHERE session_uid = $1 AND author_id = $2 AND status IN ('draft','error')",
-      [request.params.uid, request.user.id]
+      "SELECT * FROM tkp_quick_sessions WHERE session_uid = $1 AND status IN ('draft','error')",
+      [request.params.uid]
     );
-    if (!session) return reply.code(404).send({ error: 'Сессия не найдена или уже рассчитана' });
+    if (!session) return reply.code(404).send({
+      error: 'Сессия не найдена или уже рассчитана',
+      hint: 'Обновите страницу: возможно, расчёт уже идёт или готов',
+    });
+    if (!(await canSeeSession(db, request.user, session))) {
+      return reply.code(404).send({ error: 'Сессия не найдена или уже рассчитана' });
+    }
     if (!session.tz_text?.trim()) return reply.code(400).send({ error: 'Добавьте техническое задание перед расчётом' });
 
-    // Пометить как calculating
+    // Пометить как calculating. D-389: calc_owner_pid — признак живого
+    // владельца. Без него после рестарта нельзя отличить «расчёт идёт»
+    // от «расчёт умер вместе с процессом».
     await db.query(
-      "UPDATE tkp_quick_sessions SET status='calculating', error_text=NULL, updated_at=NOW() WHERE session_uid=$1",
-      [request.params.uid]
+      "UPDATE tkp_quick_sessions SET status='calculating', error_text=NULL, calc_owner_pid=$2, updated_at=NOW() WHERE session_uid=$1",
+      [request.params.uid, process.pid]
     );
 
     // SSE headers
@@ -942,6 +1044,7 @@ async function routes(fastify, options) {
           chat_messages    = $3,
           total_input_tokens  = COALESCE(total_input_tokens,0) + $4,
           total_output_tokens = COALESCE(total_output_tokens,0) + $5,
+          calc_owner_pid = NULL,
           updated_at = NOW()
         WHERE session_uid = $6
       `, [
@@ -957,7 +1060,7 @@ async function routes(fastify, options) {
     } catch (err) {
       fastify.log.error(err, '[tkp_quick calculate]');
       await db.query(
-        "UPDATE tkp_quick_sessions SET status='error', error_text=$1, updated_at=NOW() WHERE session_uid=$2",
+        "UPDATE tkp_quick_sessions SET status='error', error_text=$1, calc_owner_pid=NULL, updated_at=NOW() WHERE session_uid=$2",
         [String(err.message).substring(0, 1000), request.params.uid]
       );
       sendEvent({ type: 'error', message: err.message });

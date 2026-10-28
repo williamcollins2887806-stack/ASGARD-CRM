@@ -1497,6 +1497,10 @@ window.AsgardPersonalKanbanPage = (function () {
 
     const universalButtons = `
       ${letterBtn}
+      ${(card.col === 'trash')
+        ? `<button class="btn primary" id="pk-card-restore" title="Вернуть карту из корзины в работу">↩ Вернуть из корзины</button>`
+        : `<button class="btn ghost" id="pk-card-done" title="Отметить как завершённую — уйдёт из активной работы">✅ Завершить</button>
+           <button class="btn ghost" id="pk-card-trash" title="В корзину — карту можно будет вернуть">🗑 В корзину</button>`}
       <button class="btn ghost" id="pk-card-transfer">↻ Передать другому РП</button>
       <button class="btn ghost" id="pk-card-note">＋ Заметка</button>
       <button class="btn ghost" id="pk-card-remind">⏰ Напоминание</button>
@@ -1557,6 +1561,23 @@ window.AsgardPersonalKanbanPage = (function () {
     $('#pk-card-transfer')?.addEventListener('click', () => openTransferModal(card));
     $('#pk-card-note')?.addEventListener('click', () => openAddNoteModal(card));
     $('#pk-card-remind')?.addEventListener('click', () => openAddReminderModal(card));
+
+    // D-390: «Завершить», «В корзину», «Вернуть из корзины».
+    // Переход идёт через тот же /transition, что и drag&drop, — значит
+    // пишется история карточки, рассылается SSE и доска обновляется.
+    // Тост и перерисовку делает _v3DoTransition, дублировать их не нужно.
+    $('#pk-card-done')?.addEventListener('click', async () => {
+      if (!window.confirm('Отметить как завершённую? Карта уйдёт из активной работы в «Работы завершены».')) return;
+      await _v3DoTransition(card.id, 'done', {});
+    });
+    $('#pk-card-trash')?.addEventListener('click', async () => {
+      if (!window.confirm('Убрать в корзину? Карту можно будет вернуть — она не удаляется.')) return;
+      await _v3DoTransition(card.id, 'trash', {});
+    });
+    $('#pk-card-restore')?.addEventListener('click', async () => {
+      if (!window.confirm('Вернуть карту из корзины в активную работу?')) return;
+      await _v3DoTransition(card.id, 'new', {});
+    });
 
     // bind inbox actions
     $('#pk-act-accept')?.addEventListener('click', () => doInboxAction(card, 'accept', detailItem));
@@ -2064,8 +2085,8 @@ window.AsgardPersonalKanbanV3 = (function () {
   // ── State ────────────────────────────────────────────────────────────
   let _layout = null;
   let _user = null;
-  let _columns = { new: [], calc: [], approval: [], kp_prep: [], sent: [], addendum: [], win: [], lose: [], work: [] };
-  let _counts = { new: 0, calc: 0, approval: 0, kp_prep: 0, sent: 0, addendum: 0, win: 0, lose: 0, work: 0, total: 0 };
+  let _columns = { new: [], calc: [], approval: [], kp_prep: [], sent: [], addendum: [], win: [], lose: [], work: [], done: [], trash: [] };
+  let _counts = { new: 0, calc: 0, approval: 0, kp_prep: 0, sent: 0, addendum: 0, win: 0, lose: 0, work: 0, done: 0, trash: 0, total: 0 };
   let _flowFilter = 'all';
   let _searchQ = '';
   let _draggingCardId = null;
@@ -2088,13 +2109,21 @@ window.AsgardPersonalKanbanV3 = (function () {
     { id: 'win',      ic: '🏆', title: 'Выиграно', cls: 'pk3-col-win' },
     { id: 'lose',     ic: '❌', title: 'Проиграно', cls: 'pk3-col-lose' },
     { id: 'work',     ic: '🏗', title: 'В работе' },
+    // D-390 (заказчик 28.10.2026): «добавить колонку работы завершены и
+    // корзина куда мусор скинуть можно». Обе — служебные: «Завершено» убирает
+    // карту из активной работы, «Корзина» — мягкое удаление с возможностью
+    // вернуть (в отличие от окончательного удаления).
+    { id: 'done',     ic: '✅', title: 'Работы завершены', cls: 'pk3-col-done' },
+    { id: 'trash',    ic: '🗑', title: 'Корзина', cls: 'pk3-col-trash' },
   ];
+  /** D-390: служебные колонки — карта не участвует в воронке. */
+  const SERVICE_COLS = new Set(['done', 'trash']);
   // 23.10.2026: FLOW_TABS (Все типы / Заявки / Пре-тендеры / Тендеры / Работы)
   // удалён — вкладки не имели смысла: «Все типы» показывал то же самое, а
   // остальные лишь скрывали карты других типов, и пользователь думал, что
   // данные пропали. Доска всегда показывает все типы.
-  const STAGE_LABELS = ['Новая', 'Просчёт', 'Согласование', 'КП готов', 'КП ушло', 'Дозапрос', 'Выиграно', 'Проиграно', 'В работе'];
-  const COL_TO_STAGE = { new: 0, calc: 1, approval: 2, kp_prep: 3, sent: 4, addendum: 5, win: 6, lose: 7, work: 8 };
+  const STAGE_LABELS = ['Новая', 'Просчёт', 'Согласование', 'КП готов', 'КП ушло', 'Дозапрос', 'Выиграно', 'Проиграно', 'В работе', 'Завершено', 'Корзина'];
+  const COL_TO_STAGE = { new: 0, calc: 1, approval: 2, kp_prep: 3, sent: 4, addendum: 5, win: 6, lose: 7, work: 8, done: 9, trash: 10 };
   const PK3_FIN_COLS = new Set(['kp_prep', 'approval', 'sent', 'addendum', 'win', 'work']);
   let _docExplorerSelKey = null;
   let _docExplorerSelKeys = [];
@@ -2356,6 +2385,13 @@ window.AsgardPersonalKanbanV3 = (function () {
 .pk3-col-body.pk3-drop-hover { background: var(--gold-bg); }
 .pk3-col-win .pk3-col-head { background: linear-gradient(180deg, var(--ok-bg), transparent); }
 .pk3-col-lose .pk3-col-head { background: linear-gradient(180deg, var(--err-bg), transparent); }
+/* D-390: «Работы завершены» и «Корзина» — спокойные, приглушённые:
+   это не этапы воронки, а место, куда карту убирают. */
+.pk3-col-done .pk3-col-head { background: linear-gradient(180deg, var(--ok-bg), transparent); opacity: .85; }
+.pk3-col-trash .pk3-col-head { background: linear-gradient(180deg, var(--bg-elevated), transparent); opacity: .7; }
+.pk3-col-trash .pk3-card { opacity: .75; }
+.pk3-col-done .pk3-col-body,
+.pk3-col-trash .pk3-col-body { min-height: 80px; }
 /* S-15: 9-я колонка «Дозапрос» — золотой акцент + pulse */
 .pk3-col-addendum .pk3-col-head {
   background: linear-gradient(180deg, rgba(212,168,67,0.18), transparent);
@@ -2975,8 +3011,8 @@ html[data-theme="light"] .pk3-stk-float-bar { background: rgba(255,255,255,.94);
     ]);
     if (boardRes.ok && boardRes.data && boardRes.data.columns) {
       _columns = boardRes.data.columns;
-      // S-15: гарантируем что 9 ключей всегда есть (даже если backend вернул 8 для старых клонов)
-      ['new','calc','approval','kp_prep','sent','addendum','win','lose','work'].forEach(k => {
+      // S-15: гарантируем что все ключи всегда есть (даже если backend вернул 8 для старых клонов)
+      ['new','calc','approval','kp_prep','sent','addendum','win','lose','work','done','trash'].forEach(k => {
         if (!Array.isArray(_columns[k])) _columns[k] = [];
       });
       // 22.06.2026 BUG-FIX: backend отдаёт `v3_column`, фронт везде ждёт `card.col`.

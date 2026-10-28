@@ -236,6 +236,13 @@ window.AsgardDocHubPage = (function () {
   }
   // Акты сверки ведёт бухгалтерия/офис/директора — зеркало RECON_ROLES на бэке.
   function canReconAct() { return ['BUH', 'ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV', 'DIRECTOR', 'OFFICE_MANAGER'].includes(role()); }
+  /**
+   * D-386 (заказчик 28.10.2026): способ оплаты и договор определяет
+   * БУХГАЛТЕРИЯ — не инициатор и не директор. Это зеркало OBS_ROLES на
+   * бэке. Основной источник правды — `can_manage` из /obs-options: если
+   * роли на клиенте и на сервере разойдутся, победит сервер.
+   */
+  function canManageObs() { return ['BUH', 'ADMIN'].includes(role()); }
   function canCorrect() { return CORR_ROLES.includes(role()); }
   /**
    * D-327 (заказчик 21.10.2026): «кнопка удалить строку почему-то есть только
@@ -696,6 +703,11 @@ window.AsgardDocHubPage = (function () {
   /**
    * D-381: блок выбора договора субподряда и остатка лимита.
    *
+   * D-386: выбор договора перенесён в карточку счёта (блок «Откуда платим»,
+   * см. obsSectionHtml) — там же переключатель контура и индикатор лимита.
+   * Эти хелперы оставлены для выбора договора в других местах реестра;
+   * в карточке используется /:id/obs-options, потому что процент и остаток
+   * считает сервер, а не клиент.
    * Директор и бухгалтерия должны видеть, сколько лимита осталось и не
    * выработан ли он. Если лимит выработан — ОБС по договору запрещён,
    * поэтому опция помечается и недоступна.
@@ -816,6 +828,136 @@ window.AsgardDocHubPage = (function () {
   }
 
   /**
+   * D-386 (заказчик 28.10.2026): блок «Откуда платим» в карточке счёта.
+   *
+   * Раньше выбора способа оплаты в карточке НЕ БЫЛО ВООБЩЕ: хелперы
+   * loadSubcontracts / subcontractOptionsHtml существовали, но ни разу не
+   * вызывались. Бухгалтерия не могла ни переключить контур, ни выбрать
+   * договор, ни увидеть остаток лимита — только плашку в реестре.
+   *
+   * Здесь всё, что просил заказчик: переключатель «с ОБС / с расчётного
+   * счёта», выбор договора с остатком, индикатор использованного процента и
+   * кнопка формирования письма. Менять может только бухгалтерия — решение
+   * принимает сервер (`can_manage`), фронт его не угадывает.
+   */
+  async function obsSectionHtml(row, canManage) {
+    // Данные считает сервер: процент по ОБС-расходам в базе, второй
+    // реализации той же формулы на клиенте быть не должно.
+    let opt = null;
+    try { opt = await api(`/${row.id}/obs-options`); } catch (_) { opt = null; }
+
+    const src = String((opt && opt.payment_source) || row.payment_source || 'regular');
+    const isObs = src === 'obs';
+    const manage = !!(opt ? opt.can_manage : canManage);
+    const subs = (opt && opt.subcontracts) || [];
+    const curSub = subs.find((s) => Number(s.id) === Number(opt && opt.subcontract_id));
+    const letterStatus = String((opt && opt.obs_letter_status) || row.obs_letter_status || 'none');
+    const letterDocId = Number((opt && opt.obs_letter_doc_id) || row.obs_letter_doc_id || 0);
+    const letterErr = (opt && opt.obs_letter_error) || row.obs_letter_error || '';
+    const amount = Number((opt && opt.amount_gross) || row.amount_gross || 0);
+
+    // Индикатор лимита: сколько денег осталось и сколько процентов уже
+    // израсходовано по этой фирме. Цвет — по существу: зелёный, пока лимита
+    // хватает на счёт; жёлтый, если хватает, но остаток меньше половины;
+    // красный, когда счёт в остаток не влезает.
+    let meter = '';
+    if (isObs && curSub) {
+      const pct = Math.max(0, Math.min(100, Number(curSub.used_pct) || 0));
+      const over = !curSub.covers_invoice;
+      const tight = !over && (Number(curSub.remaining) || 0) < (Number(curSub.limit_amount) || 0) * 0.5;
+      const tone = over ? 'is-bad' : (tight ? 'is-warn' : 'is-ok');
+      meter = `<div class="dh-lim ${tone}" data-lim-meter="${esc(String(curSub.id))}">
+        <div class="dh-lim__top">
+          <span class="dh-lim__lab">Лимит существенности · договор ${esc(curSub.number)}</span>
+          <span class="dh-lim__pct">${pct.toFixed(1)}% использовано</span>
+        </div>
+        <div class="dh-lim__bar"><span style="width:${pct}%"></span></div>
+        <div class="dh-lim__nums">
+          <span>Лимит ${esc(money(Number(curSub.limit_amount) || 0))}</span>
+          <span>Израсходовано ${esc(money(Number(curSub.spent_amount) || 0))}</span>
+          <span><strong>Остаток ${esc(money(Number(curSub.remaining) || 0))}</strong></span>
+        </div>
+        ${over
+          ? `<div class="dh-lim__warn">Остатка не хватает на этот счёт: недостаёт ${esc(money(Number(curSub.short_by) || 0))}. Письмо по этому договору не сформируется.</div>`
+          : `<div class="dh-lim__note">Счёт ${esc(money(amount))} укладывается в остаток.</div>`}
+      </div>`;
+    } else if (isObs && !curSub) {
+      meter = `<div class="dh-lim is-warn">
+        <div class="dh-lim__note">Договор не выбран — лимит не считается. Выберите договор, чтобы увидеть остаток.</div>
+      </div>`;
+    }
+
+    // Список договоров: остаток и процент прямо в подписи опции, чтобы выбор
+    // не требовал открывать ещё один экран.
+    const subOpts = subs.map((s) => {
+      const lim = Number(s.limit_amount) || 0;
+      const rem = Number(s.remaining) || 0;
+      const pct = Number(s.used_pct) || 0;
+      const label = `${s.number} от ${String(s.agreement_date).slice(0, 10)} · `
+        + (s.exhausted
+          ? 'лимит выработан'
+          : `остаток ${money(rem)} из ${money(lim)} · ${pct.toFixed(1)}%`)
+        + (s.covers_invoice ? '' : ' · не хватает на счёт');
+      return `<option value="${s.id}" ${Number(s.id) === Number(opt && opt.subcontract_id) ? 'selected' : ''}
+        ${(s.exhausted || !s.covers_invoice) ? 'disabled' : ''}>${esc(label)}</option>`;
+    }).join('');
+
+    const dis = manage ? '' : 'disabled';
+
+    // Письмо: состояния повторяют плашку реестра, но здесь же и кнопки
+    // скачивания — заказчик просил «смогут скачать» из карточки.
+    let letterBlock = '';
+    if (letterStatus === 'generating') {
+      letterBlock = `<div class="dh-obs-state"><span class="dh-spin"></span> Письмо формируется — Word и PDF появятся здесь через несколько секунд.</div>`;
+    } else if (letterDocId) {
+      letterBlock = `<div class="dh-obs-state is-ok">Письмо готово и приложено к карточке.
+        <div class="dh-att-dl" style="margin-top:6px">
+          <button type="button" class="dh-att-dl__btn" data-doc-dl="${letterDocId}" data-fmt="pdf" title="Скачать PDF с подписью и печатью">PDF</button>
+          <button type="button" class="dh-att-dl__btn" data-doc-dl="${letterDocId}" data-fmt="docx" title="Скачать Word на бланке">Word</button>
+        </div>
+      </div>`;
+    } else if (letterStatus === 'failed') {
+      letterBlock = `<div class="dh-obs-state is-bad">Письмо не сформировано${letterErr ? ': ' + esc(String(letterErr).slice(0, 200)) : ''}.
+        ${manage ? '<button type="button" class="dh-obs-gen" data-obs-gen="' + Number(row.id) + '">Повторить</button>' : ''}</div>`;
+    } else {
+      letterBlock = `<div class="dh-obs-state">Письма нет.
+        ${manage ? '<button type="button" class="dh-obs-gen" data-obs-gen="' + Number(row.id) + '">Сформировать</button>' : ''}</div>`;
+    }
+
+    return `
+      <div class="dh-section dh-section--obs">
+        <div class="dh-section__h">Откуда платим</div>
+        <div class="dh-section__b">
+          ${manage ? '' : `<div class="dh-help" style="margin-bottom:8px">Способ оплаты и договор определяет бухгалтерия. Ниже — для сведения.</div>`}
+          <div class="dh-src-cards" id="drSrcCards">
+            <button type="button" class="dh-src-card${!isObs ? ' is-on' : ''}" data-obs-src="regular" ${dis}>
+              <div class="t">Расчётный счёт</div>
+              <div class="s">Письмо не требуется</div>
+            </button>
+            <button type="button" class="dh-src-card${isObs ? ' is-on' : ''}" data-obs-src="obs" ${dis}>
+              <div class="t">Через ОБС</div>
+              <div class="s">Нужно письмо на бланке</div>
+            </button>
+          </div>
+          <input type="hidden" id="drObsSrc" value="${esc(src)}"/>
+
+          <div id="drObsSubWrap" ${isObs ? '' : 'hidden'}>
+            <div class="dh-field" style="margin-top:10px">
+              <label>Договор субподряда <span class="dh-help">(основание письма и лимит)</span></label>
+              <select id="drObsSub" ${dis}>
+                ${subs.length ? '' : '<option value="">— договоров нет —</option>'}
+                ${subOpts}
+              </select>
+              <input type="hidden" id="drObsSubId" value="${esc(String((opt && opt.subcontract_id) || ''))}"/>
+            </div>
+            ${meter}
+            <div class="dh-obs-letter-block" style="margin-top:10px">${letterBlock}</div>
+          </div>
+        </div>
+      </div>`;
+  }
+
+  /**
    * D-378: дождаться окончания генерации письма.
    *
    * Генерация идёт в фоне на бэке (puppeteer + рендер). Держим короткий
@@ -825,8 +967,10 @@ window.AsgardDocHubPage = (function () {
    *
    * @param {number} docId
    * @param {HTMLElement|null} tr — строка таблицы (для точечной замены плашки)
+   * @param {Function} [onDone] — D-386: вызывается по завершении, чтобы
+   *   карточка обновила блок «Откуда платим», не перезагружая страницу.
    */
-  function pollObsLetter(docId, tr) {
+  function pollObsLetter(docId, tr, onDone) {
     let tries = 0;
     const tick = async () => {
       tries++;
@@ -835,13 +979,17 @@ window.AsgardDocHubPage = (function () {
         const status = String(row && row.obs_letter_status || '');
         if (status === 'ready' || status === 'failed') {
           refresh();
+          if (typeof onDone === 'function') { try { await onDone(); } catch (_) { /* */ } }
           if (status === 'ready') toast('Письмо готово', 'PDF с подписью и печатью в карточке счёта', 'ok');
           else toast('Письмо не сформировано', (row && row.obs_letter_error) || 'нажмите «Сформировать» ещё раз', 'err');
           return;
         }
       } catch (_) { /* сеть мигнула — пробуем ещё */ }
       if (tries < 10) setTimeout(tick, 1200);
-      else refresh();
+      else {
+        refresh();
+        if (typeof onDone === 'function') { try { await onDone(); } catch (_) { /* */ } }
+      }
     };
     setTimeout(tick, 1000);
   }
@@ -1388,8 +1536,9 @@ window.AsgardDocHubPage = (function () {
 
     const obsPill = `<span class="dh-pill dh-pill--gold dh-obs-pill" title="Оплата через ОБС">ОБС</span>`;
 
-    // D-381: пометка договора — чтобы директор видел, по какому основанию
-    // пойдёт письмо. Без договора плашка серая: письмо писать не с чего.
+    // D-381: пометка договора — чтобы в реестре было видно, по какому
+    // основанию пойдёт письмо. Без договора плашка серая: письмо писать
+    // не с чего. D-386: выбирает договор бухгалтерия в карточке счёта.
     const subPill = row.subcontract_id
       ? ''
       : `<span class="dh-pill dh-pill--muted dh-obs-sub" title="Договор субподряда не выбран — письмо ОБС не сформировать">договор?</span>`;
@@ -3632,6 +3781,12 @@ window.AsgardDocHubPage = (function () {
 
       const vitya_states = ['', 'ожидает', 'принято', 'отклонено'];
 
+      // D-386: блок «Откуда платим» собирается ДО шаблона — функция
+      // асинхронная (данные лимитов считает сервер), а внутри `${}` попал бы
+      // [object Promise]. Права берём с сервера; canManageObs — запасной
+      // вариант, если /obs-options недоступен.
+      const obsHtml = await obsSectionHtml(row, canManageObs());
+
       d.innerHTML = `
         <div class="dh-drawer__card">
           <header class="dh-drawer__head">
@@ -3687,6 +3842,9 @@ window.AsgardDocHubPage = (function () {
                 </div>
               </div>
             </div>
+
+            <!-- ─── Откуда платим (D-386) ─── -->
+            ${obsHtml}
 
             <!-- ─── Договор ─── -->
             <div class="dh-section">
@@ -4193,6 +4351,76 @@ window.AsgardDocHubPage = (function () {
 
       d.querySelector('#dhDrawerClose')?.addEventListener('click', closeDrawer);
       d.querySelector('#dhDrawerClose2')?.addEventListener('click', closeDrawer);
+
+      // ─── D-386: «Откуда платим» ──────────────────────────────────────────
+      // Переключение контура и выбор договора сохраняются СРАЗУ, не по
+      // «Сохранить»: это отдельное решение бухгалтерии, и терять его при
+      // случайном закрытии карточки нельзя. Оба вызова пишутся в аудит.
+      const reloadObs = async () => {
+        const keep = d.querySelector('.dh-drawer__body')?.scrollTop || 0;
+        const keepRow = captureScroll();
+        await refreshRow(id);
+        restoreScroll(keepRow);
+        await openDrawer(id);
+        const bodyAfter = d.querySelector('.dh-drawer__body');
+        if (bodyAfter) bodyAfter.scrollTop = keep;
+      };
+
+      d.querySelectorAll('[data-obs-src]').forEach((btn) => {
+        btn.addEventListener('click', async () => {
+          const next = btn.getAttribute('data-obs-src');
+          const cur = d.querySelector('#drObsSrc')?.value || 'regular';
+          if (next === cur) return;
+          btn.disabled = true;
+          try {
+            await api(`/${id}/payment-source`, {
+              method: 'PATCH',
+              body: JSON.stringify({ payment_source: next }),
+            });
+            toast(next === 'obs' ? 'Оплата через ОБС' : 'Оплата с расчётного счёта',
+              next === 'obs' ? 'Выберите договор — и можно формировать письмо' : 'Письмо больше не требуется', 'ok');
+            await reloadObs();
+          } catch (e) {
+            btn.disabled = false;
+            toast('Не удалось', e.message || 'способ оплаты не изменён', 'err');
+          }
+        });
+      });
+
+      d.querySelector('#drObsSub')?.addEventListener('change', async (ev) => {
+        const subId = parseInt(ev.target.value, 10);
+        const sel = ev.target;
+        sel.disabled = true;
+        try {
+          await api(`/${id}/subcontract`, {
+            method: 'PATCH',
+            body: JSON.stringify({ subcontract_id: Number.isFinite(subId) ? subId : null }),
+          });
+          toast('Договор выбран', 'Основание письма и лимит обновлены', 'ok');
+          await reloadObs();
+        } catch (e) {
+          sel.disabled = false;
+          toast('Не удалось', e.message || 'договор не выбран', 'err');
+        }
+      });
+
+      // Формирование письма прямо из карточки. Тело обязано быть JSON-строкой:
+      // объект fetch отправит как «[object Object]», и Fastify ответит 400.
+      d.querySelector('[data-obs-gen]')?.addEventListener('click', async (ev) => {
+        const btn = ev.currentTarget;
+        btn.disabled = true;
+        btn.textContent = 'Формируется…';
+        try {
+          await api(`/${id}/obs-letter`, { method: 'POST', body: JSON.stringify({}) });
+          toast('Письмо формируется', 'Word и PDF появятся в карточке через несколько секунд', 'ok');
+          pollObsLetter(id, null, () => reloadObs());
+        } catch (e) {
+          btn.disabled = false;
+          btn.textContent = 'Сформировать';
+          toast('Не удалось', e.message || 'письмо не сформировано', 'err');
+        }
+      });
+
       d.querySelector('#dhDrawerSave')?.addEventListener('click', saveDrawer);
       // D-291: удаление документа → в корзину (soft-delete на бэке, восстановимо).
       d.querySelector('#dhDrawerDelete')?.addEventListener('click', async () => {
@@ -4724,7 +4952,10 @@ window.AsgardDocHubPage = (function () {
         obsGen.disabled = true;
         const prevText = obsGen.textContent;
         obsGen.textContent = 'Формируется…';
-        api(`/${docId}/obs-letter`, { method: 'POST', body: {} })
+        // D-385: `body: {}` в fetch превращается в строку «[object Object]» —
+        // это невалидный JSON, и Fastify отвечал 400 ещё до роута. Кнопка
+        // «Сформировать» не работала ни разу. Тело надо сериализовать.
+        api(`/${docId}/obs-letter`, { method: 'POST', body: JSON.stringify({}) })
           .then(() => {
             toast('Письмо формируется', 'Плашка станет зелёной, когда PDF будет готов', 'ok');
             pollObsLetter(docId, tr);

@@ -446,7 +446,13 @@ async function closeKanbanCardsForEntity(runner, entityKind, entityId, actorUser
 // ─────────────────────────────────────────────────────────────────────────────
 // S-2/V250: добавлена 9-я колонка 'addendum' (статус «Дозапрос» — заказчик
 // прислал дозапрос после «КП отправлено», карта временно туда до ответа).
-const V3_COLUMNS = ['new', 'calc', 'addendum', 'kp_prep', 'approval', 'sent', 'win', 'lose', 'work'];
+// D-390 (заказчик 28.10.2026): добавлены 'done' («Работы завершены») и
+// 'trash' («Корзина» — мягкое удаление, восстановимо). Это служебные колонки:
+// они общие для всех типов карточек и определяются статусами done/trash.
+const V3_COLUMNS = ['new', 'calc', 'addendum', 'kp_prep', 'approval', 'sent', 'win', 'lose', 'work', 'done', 'trash'];
+
+/** D-390: служебные колонки — не участвуют в переходах этапов «вперёд». */
+const SERVICE_COLUMNS = new Set(['done', 'trash']);
 
 // Маппинг (toColumn, flow_type) → canonical main_status (целевой при transition).
 // Возвращает строку или null если переход недопустим для данного flow.
@@ -2079,7 +2085,10 @@ module.exports = async function (fastify) {
 
     // Строим WHERE по scope.
     const scopeRes = await buildScopeWhere(db, user, scope, ownerId, 'c');
-    const where = ['c.is_closed = FALSE', ...scopeRes.where];
+    // D-390: корзина и «Завершено» живут на is_closed, но должны быть ВИДНЫ
+    // на доске. Раньше безусловное `is_closed = FALSE` просто прятал их, и
+    // колонка «Корзина» была бы всегда пустой.
+    const where = ['(c.is_closed = FALSE OR c.current_main_status IN (\'trash\',\'done\'))', ...scopeRes.where];
     const params = [...scopeRes.params];
 
     // flow_filter: пользовательский. Для to_personal/to_team всегда форсим 'tender'
@@ -2142,8 +2151,11 @@ module.exports = async function (fastify) {
     // и пустой секцией «Документы», хотя SQL-аггрегат уже отдавал данные правильно —
     // они просто оседали в card.entity и UI до них не доходил.
     // row побеждает по конфликтным ключам (id/entity_id/v3_column).
-    // Группировка по 9 колонкам (V250 добавил 'addendum').
-    const columns = { new: [], calc: [], approval: [], kp_prep: [], sent: [], addendum: [], win: [], lose: [], work: [] };
+    // Группировка по 11 колонкам (D-390: + done, trash; V271: addendum).
+    const columns = {
+      new: [], calc: [], approval: [], kp_prep: [], sent: [], addendum: [],
+      win: [], lose: [], work: [], done: [], trash: [],
+    };
     for (const row of rows) {
       const map = snapshotsByKind[row.entity_kind];
       const snap = (map && row.entity_id != null) ? (map.get(row.entity_id) || null) : null;
@@ -2288,7 +2300,11 @@ module.exports = async function (fastify) {
         await client.query('ROLLBACK');
         return reply.code(403).send({ error: 'forbidden' });
       }
-      if (card.is_closed) {
+      // D-390: карточку из КОРЗИНЫ можно вернуть (она is_closed, но это не
+      // «закрыта навсегда»). Разрешаем переход, если цель — обычная колонка.
+      const isRestore = !!card.is_closed && String(card.current_main_status) === 'trash'
+        && !SERVICE_COLUMNS.has(toCol);
+      if (card.is_closed && !isRestore) {
         await client.query('ROLLBACK');
         return reply.code(409).send({ error: 'card_closed' });
       }
@@ -2297,6 +2313,41 @@ module.exports = async function (fastify) {
       if (reqVersion !== null && card.version !== reqVersion) {
         await client.query('ROLLBACK');
         return reply.code(409).send({ error: 'version_conflict', current_version: card.version });
+      }
+
+      // D-390: «Корзина» и «Завершено» — служебные колонки, не этапы воронки.
+      // Обрабатываем ДО проверки маппинга: у них нет обратного main_status
+      // в воронке, и старый код вернул бы 409 «такой переход недоступен».
+      if (SERVICE_COLUMNS.has(toCol)) {
+        const newStatus = toCol === 'trash' ? 'trash' : 'done';
+        const newClosed = toCol === 'trash';
+        const prevStatus = card.current_main_status;
+        const upd = await client.query(
+          `UPDATE personal_kanban_cards
+              SET current_main_status = $2,
+                  is_closed = $3,
+                  version = version + 1,
+                  last_moved_at = NOW(),
+                  updated_at = NOW()
+            WHERE id = $1
+            RETURNING id, owner_user_id, flow_type, entity_kind, entity_id,
+                      current_main_status, is_closed, version, last_moved_at`,
+          [id, newStatus, newClosed]);
+        await client.query(
+          `INSERT INTO personal_kanban_card_history
+             (card_id, action, from_main_status, to_main_status, note, actor_user_id)
+           VALUES ($1, $2, $3, $4, $5, $6)`,
+          [id, newStatus === 'trash' ? 'trash' : 'complete', prevStatus, newStatus, note, userId]);
+        await client.query('COMMIT');
+        broadcast('personal_kanban:card_moved', {
+          card_id: id, to_v3_column: toCol, from_v3_column: null,
+          is_closed: newClosed, actor_user_id: userId,
+        });
+        return {
+          success: true, card_id: id, to_v3_column: toCol,
+          current_main_status: newStatus, is_closed: newClosed,
+          version: upd.rows[0].version,
+        };
       }
 
       // Маппинг колонки → main_status.
@@ -2398,12 +2449,15 @@ module.exports = async function (fastify) {
       }
 
       // UPDATE карты.
+      // D-390: возврат из КОРЗИНЫ (is_closed) снимает закрытие — иначе карта
+      // вернулась бы в колонку, но осталась помеченной закрытой.
       const upd = await client.query(
         `UPDATE personal_kanban_cards
             SET current_substage_id = $1, current_main_status = $2,
+                is_closed = CASE WHEN current_main_status = 'trash' THEN FALSE ELSE is_closed END,
                 last_moved_at = now(), version = version + 1, updated_at = now()
           WHERE id = $3
-          RETURNING id, owner_user_id, flow_type, current_main_status, current_substage_id, version`,
+          RETURNING id, owner_user_id, flow_type, current_main_status, current_substage_id, version, is_closed`,
         [newSubstageId, newMainStatus, id]);
 
       // INSERT history (action='move').

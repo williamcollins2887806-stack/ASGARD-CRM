@@ -268,7 +268,7 @@ function buildItems(doc, lines) {
 async function loadLetterData(db, docId) {
   const docRes = await db.query(
     `SELECT d.*, pi.line_items_json AS pi_lines, pi.basis_text AS pi_basis,
-            pi.payment_source AS pi_source
+            pi.payment_source AS pi_source, pi.created_by AS pi_created_by
        FROM doc_registry d
        LEFT JOIN payment_invoices pi ON pi.id = d.payment_invoice_id
       WHERE d.id = $1 AND d.deleted_at IS NULL`,
@@ -345,6 +345,13 @@ async function loadLetterData(db, docId) {
   const company = await _shared.loadCompanyProfile(db);
   const gendir = await _shared.loadAsgardGendir(db);
 
+  // D-385: «Исп.:» в письме. Раньше здесь подставлялось название компании —
+  // в исходящем документе появлялось «Исп.: ООО «Асгард-Сервис»», то есть
+  // строка без смысла (Д. Путков, 28.10.2026: «убрать исполнителя письма или
+  // переделать на кого-то, например на инициатора»). Исполнитель — тот, кто
+  // завёл счёт: его имя и контакт и нужны получателю, если возникнет вопрос.
+  const initiatorId = doc.created_by || (doc.pi_created_by || null);
+  const initiator = initiatorId ? await _shared.loadUserById(initiatorId, db) : null;
   return {
     doc,
     work,
@@ -356,6 +363,7 @@ async function loadLetterData(db, docId) {
     items: buildItems(doc, lines),
     company,
     gendir,
+    initiator,
   };
 }
 
@@ -364,8 +372,18 @@ function buildHtml(data, opts) {
   const o = opts || {};
   const { doc, work, company, gendir } = data;
 
+  // D-385: ступень уплотнения перечня (см. COMPACT_STEPS). 0 — как раньше.
+  // Всё остальное в письме не масштабируется: суммы и реквизиты должны
+  // читаться одинаково при любом объёме позиций.
+  const step = Math.max(0, Math.min(COMPACT_STEPS.length - 1, Number(o.compact) || 0));
+  const ulFont = [9.5, 8.8, 8.2][step];
+  const ulLine = [1.15, 1.08, 1.02][step];
+  const liGap = [0.2, 0.1, 0][step];
+
   const signature = o.with_signature === false ? '' : _shared.getSignatureBase64();
   const stamp = o.with_stamp === false ? '' : _shared.getStampBase64();
+  // D-387: логотип в бланке — как в Word-версии (templates/*.docx).
+  const logo = _shared.getLogoBase64();
 
   // D-378: в образце письма даты записаны числами («23.10.2026 г.»), а не
   // словами. formatRuDate даёт «23 октября 2026 г.» — для официальной бумаги
@@ -439,7 +457,12 @@ function buildHtml(data, opts) {
       + `Остаток до настоящего счёта: ${money(data.subcontract.remaining || 0)} руб.</p>`
     : '';
 
-  const itemsHtml = data.items.map((t) => `<li>${esc(t)}</li>`).join('');
+  // D-385: длинный перечень. Д. Путков 28.10.2026: «всегда умещать на 1 листе
+  // письмо или как-то делить его на части». Делить на части — плохо: письмо
+  // читают как основание платежа, разорванный перечень сбивает.
+  const sel = selectLetterItems(data.items, doc.invoice_number);
+  const itemsHtml = sel.shown.map((t) => `<li>${esc(t)}</li>`).join('')
+    + (sel.rest > 0 ? `<li class="more">${esc(sel.restLine)}</li>` : '');
 
   const vatLine = hasVat
     ? ` (включая НДС ${ratePct ? String(Math.round(ratePct)) + '%' : ''} — ${money(vat)} руб.)`
@@ -474,7 +497,20 @@ function buildHtml(data, opts) {
     border-bottom: 1pt solid #0b3d2e;
     padding-bottom: 6mm;
     margin-bottom: 6mm;
+    display: flex;
+    align-items: flex-start;
+    gap: 6mm;
   }
+  /* D-387: логотип в бланке PDF. Раньше его не было вовсе — бланк был
+     текстовым, хотя в Word-версии логотип есть. Заказчик 28.10.2026:
+     «почему он создает 2 письма без лого и с лого» — расхождение форматов. */
+  .letterhead .logo {
+    width: 26mm;
+    height: auto;
+    flex: 0 0 auto;
+    margin-top: 1mm;
+  }
+  .letterhead .head-text { flex: 1 1 auto; }
   .letterhead .co {
     font-size: 13pt;
     font-weight: bold;
@@ -508,10 +544,11 @@ function buildHtml(data, opts) {
     /* D-381: счета за спецодежду дают 9–11 позиций, и письмо уезжало на
        2 страницы — подпись отдельно от текста. Перечень справочный,
        поэтому уплотняем: читаемость важнее «воздуха». */
-    font-size: 9.5pt;
-    line-height: 1.15;
+    font-size: ${ulFont}pt;
+    line-height: ${ulLine};
   }
-  .body li { margin-bottom: 0.2mm; text-align: left; }
+  .body li { margin-bottom: ${liGap}mm; text-align: left; }
+  .body li.more { font-style: italic; color: #444; }
   .body p { margin-bottom: 2.4mm; text-indent: 6mm; }
   .salute { margin: 0 0 3mm; }
   .doc-number { margin: 3mm 0 4mm; }
@@ -569,6 +606,13 @@ function buildHtml(data, opts) {
     width: 40mm;
     margin-left: 88mm;
   }
+  /* D-385: «Исп.:» — тот, кто завёл счёт. Строка мелкая и внизу, как в
+     деловом письме; в блок подписи не входит, чтобы не спорить с печатью. */
+  .executor-line {
+    margin-top: 3mm;
+    font-size: 9pt;
+    color: #444;
+  }
   .footer {
     position: absolute;
     left: 22mm;
@@ -585,12 +629,15 @@ function buildHtml(data, opts) {
 <div class="page">
 
   <div class="letterhead">
-    <div class="co">${esc(company.name_full)}</div>
-    <div class="meta">
-      ${esc(company.legal_address)}<br>
-      ИНН / КПП: ${esc(company.inn)} / ${esc(company.kpp)}${company.ogrn ? ` · ОГРН ${esc(company.ogrn)}` : ''}<br>
-      ${esc(company.bank_name)} · р/с ${esc(company.bank_rs)} · к/с ${esc(company.bank_ks)} · БИК ${esc(company.bank_bik)}<br>
-      e-mail: ${esc(company.email)} · тел.: ${esc(company.phone)}
+    ${logo ? `<img class="logo" src="${logo}" alt=""/>` : ''}
+    <div class="head-text">
+      <div class="co">${esc(company.name_full)}</div>
+      <div class="meta">
+        ${esc(company.legal_address)}<br>
+        ИНН / КПП: ${esc(company.inn)} / ${esc(company.kpp)}${company.ogrn ? ` · ОГРН ${esc(company.ogrn)}` : ''}<br>
+        ${esc(company.bank_name)} · р/с ${esc(company.bank_rs)} · к/с ${esc(company.bank_ks)} · БИК ${esc(company.bank_bik)}<br>
+        e-mail: ${esc(company.email)} · тел.: ${esc(company.phone)}
+      </div>
     </div>
   </div>
 
@@ -627,6 +674,10 @@ function buildHtml(data, opts) {
     ${(!signature && !stamp) ? '<div class="mp-placeholder">М.П.</div>' : ''}
   </div>
 
+  ${(data.initiator && data.initiator.name && data.initiator.name !== '—') ? `<div class="executor-line">
+    Исп.: ${esc(data.initiator.name)}${data.initiator.phone ? ` · тел.: ${esc(data.initiator.phone)}` : ''}
+  </div>` : ''}
+
   <div class="footer">
     ${esc(company.name_short)} · ${esc(company.legal_address)} · ${esc(company.phone)} · ${esc(company.email)}
   </div>
@@ -650,6 +701,56 @@ function ensureDir() {
   if (!fs.existsSync(STORAGE_DIR)) fs.mkdirSync(STORAGE_DIR, { recursive: true });
 }
 
+// ─── Уместить письмо на один лист (D-385) ─────────────────────────────────
+/**
+ * Ступени уплотнения перечня. 0 — обычный вид; дальше по порядку ужимаем
+ * ТОЛЬКО список позиций и отбивки абзацев. Реквизиты, суммы, подпись и
+ * печать не масштабируются: это платёжный документ, а не листовка.
+ *
+ * Почему ступени, а не «подобрать шрифт по числу позиций»: высота строки
+ * зависит от длины наименований (переносы), поэтому число позиций —
+ * плохой предсказатель. Рендерим и меряем фактически.
+ */
+const COMPACT_STEPS = [0, 1, 2];
+
+/**
+ * Сколько позиций печатать в письме.
+ *
+ * Общее правило для PDF и Word: до 28 позиций — весь перечень, сверх —
+ * первые 20 и явная строка «и ещё N позиций по счёту». Врать про количество
+ * нельзя, поэтому остаток назван прямо, а не спрятан. Почему не режем
+ * молча: письмо служит основанием платежа, и получатель должен видеть, что
+ * перечень в письме неполный, а полный — в счёте.
+ *
+ * @param {string[]} items
+ * @param {string} [invoiceNo]
+ * @returns {{shown:string[], rest:number, restLine:string}}
+ */
+function selectLetterItems(items, invoiceNo) {
+  const all = Array.isArray(items) ? items : [];
+  const FULL_LIMIT = 28;
+  const HEAD = 20;
+  if (all.length <= FULL_LIMIT) return { shown: all, rest: 0, restLine: '' };
+  const rest = all.length - HEAD;
+  return {
+    shown: all.slice(0, HEAD),
+    rest,
+    restLine: `… и ещё ${rest} ${_plural(rest, 'позиция', 'позиции', 'позиций')} `
+      + `по счёту № ${invoiceNo || 'б/н'} — полный перечень в счёте.`,
+  };
+}
+
+/** Сколько страниц в готовом PDF. Встроенный счётчик, без внешних бинарей. */
+async function _pageCount(buf) {
+  try {
+    const pdfParse = require('pdf-parse');
+    const d = await pdfParse(buf);
+    return Number(d && d.numpages) || 1;
+  } catch (_) {
+    return 1; // счётчик недоступен — считаем, что уместилось
+  }
+}
+
 /**
  * Сформировать PDF письма и сохранить на диск.
  *
@@ -663,8 +764,6 @@ async function generateObsLetterPdf(db, docId) {
 
   const number = await nextOutgoingNumber(db, new Date());
   const dateText = _shared.formatRuDate(new Date());
-
-  const html = buildHtml(data, { number, dateText });
 
   ensureDir();
   const safeNo = String(doc.invoice_number || doc.id).replace(/[^\p{L}\p{N}-]+/gu, '_').slice(0, 40);
@@ -680,13 +779,27 @@ async function generateObsLetterPdf(db, docId) {
   const browser = await _getBrowser();
   const page = await browser.newPage();
   try {
-    await page.setContent(html, { waitUntil: 'networkidle0' });
-    const buf = await page.pdf({
-      format: 'A4',
-      printBackground: true,
-      margin: { top: '0', bottom: '0', left: '0', right: '0' },
-      displayHeaderFooter: false,
-    });
+    // D-385: письмо обязано уместиться на ОДНОМ листе (Д. Путков, 28.10.2026:
+    // «всегда умещать на 1 листе письмо или как-то делить его на части»).
+    // Замер: 16 позиций — ещё 1 лист, 25 — уже 2, и подпись с печатью
+    // уезжали на второй лист отдельно от текста.
+    //
+    // Делить письмо не нужно: перечень справочный, поэтому сначала ужимаем
+    // его (шрифт/интерлиньяж), а суммы и реквизиты не трогаем. Подгонка
+    // детерминированная — масштабы пробуем по порядку и берём первый,
+    // который дал одну страницу.
+    let buf = null;
+    for (const compact of COMPACT_STEPS) {
+      const html = buildHtml(data, { number, dateText, compact });
+      await page.setContent(html, { waitUntil: 'networkidle0' });
+      buf = await page.pdf({
+        format: 'A4',
+        printBackground: true,
+        margin: { top: '0', bottom: '0', left: '0', right: '0' },
+        displayHeaderFooter: false,
+      });
+      if (await _pageCount(buf) <= 1) break;
+    }
     fs.writeFileSync(pdfPath, buf);
   } finally {
     try { await page.close(); } catch (_) { /* */ }
@@ -773,10 +886,14 @@ function buildLetterParagraphs(data, opts = {}) {
   out.push(`Чтобы обеспечить допуск персонала к работам, ${company.name_short} привлекло `
     + `${counterparty} для оказания услуг${contractTail}, а именно:`);
 
-  // 4. Перечень услуг — по строке на позицию.
-  for (const item of (data.items || [])) {
+  // 4. Перечень услуг — по строке на позицию. Отбор общий с PDF (см.
+  // selectLetterItems): если перечень длинный, в обоих форматах остаётся
+  // одинаковый хвост «и ещё N позиций», иначе PDF и Word разойдутся.
+  const sel = selectLetterItems(data.items, invoiceNo);
+  for (const item of sel.shown) {
     out.push(`— ${item}`);
   }
+  if (sel.rest > 0) out.push(`— ${sel.restLine}`);
 
   // 5. Счёт и сумма.
   const vatLine = hasVat
@@ -812,6 +929,7 @@ module.exports = {
   buildLetterParagraphs,
   loadLetterData,
   buildItems,
+  selectLetterItems,
   amountInWords,
   nextOutgoingNumber,
   closeBrowser,

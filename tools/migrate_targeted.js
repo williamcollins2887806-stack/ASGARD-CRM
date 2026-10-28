@@ -93,7 +93,20 @@ const TARGETS = [
   'V434__ai_error_classes',                     // классы ошибок ИИ (чужая сессия)
   'V435__equipment_requests_schema_align',       // D-340: схема equipment_requests = прод
   'V436__close_director_review_on_terminal',     // D-344: снятие согласования при закрытии тендера
-  'V437__obs_payment'                            // D-378: способ оплаты и письмо для ОБС
+  'V437__obs_payment',                          // D-378: способ оплаты и письмо для ОБС
+  // D-386: блок «Откуда платим» в карточке счёта опирается на эти объекты.
+  // Без них на проде нет ни таблицы договоров, ни функции лимита — блок и
+  // письмо падают. Список обязан догонять репозиторий (см. комментарий D-302).
+  'V438__doc_shared_visibility',                 // D-379: doc_registry_shared_view
+  'V439__subcontract_limits',                    // D-381/D-386: договоры + лимит существенности
+  'V440__doc_full_view_flag',                    // D-382: users.doc_full_view
+  'V441__ppe_sizes_girth_and_height_ranges',     // СИЗ: диапазоны роста/обхвата
+  'V442__pbx_multi_line',                        // АТС: несколько линий
+  'V443__expense_vat_basis',                     // V439: база НДС расхода (gross/net)
+  'V444__panh_406_vat_fix',                      // правка одной строки #406 (идемпотентно, по id)
+  'V445__call_history_client_number',            // журнал: client_number, parent_call_id
+  'V446__tkp_quick_restart_safety',              // D-389: расчёт Quick переживает рестарт + доступ коллег
+  'V447__kanban_done_and_trash_columns'          // D-390: колонки «Завершено» и «Корзина»
 ];
 
 /**
