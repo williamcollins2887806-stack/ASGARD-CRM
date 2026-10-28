@@ -38,6 +38,8 @@
   var micMuted = false;
   var _hbTimer = null;
   var HEARTBEAT_MS = 45000;
+  // Пометка «был на линии» для возврата после перезагрузки страницы.
+  var REJOIN_KEY = 'asgard_phone_rejoin';
   // JsSIP (эта сборка) НЕ умеет trickle ICE: перед отправкой INVITE он ждёт
   // iceGatheringState === "complete". Chrome/Chromium может держать сбор ~40с
   // даже когда ВСЕ нужные кандидаты собраны за ~1.2с (прямой замер в живом
@@ -87,6 +89,11 @@
       var t = token();
       var url = '/api/telephony/pbx/operator/status';
       var body = JSON.stringify({ on_line: false });
+      // ПЕРЕЗАГРУЗКА (инцидент 28.10.2026): Ctrl+Shift+R тоже вызывает pagehide,
+      // поэтому мы честно уходим офлайн, но запоминаем намерение «был на линии».
+      // sessionStorage живёт до закрытия вкладки: после reload вернёмся сами,
+      // а при реальном закрытии вкладки флаг исчезнет и линия останется снятой.
+      try { sessionStorage.setItem(REJOIN_KEY, mode || 'browser'); } catch (_) {}
       if (navigator.sendBeacon) {
         var blob = new Blob([body], { type: 'application/json' });
         // sendBeacon can't set Authorization — use keepalive fetch
@@ -891,6 +898,9 @@
 
     goOffline: function () {
       stopHeartbeat();
+      // Штатный выход: пометку авто-возврата убираем, иначе после reload
+      // оператор вернулся бы на линию против своего решения.
+      try { sessionStorage.removeItem(REJOIN_KEY); } catch (_) {}
       return pbxApi('/operator/status', { method: 'POST', body: JSON.stringify({ on_line: false }) })
         .catch(function () {})
         .then(function () {
@@ -1109,6 +1119,22 @@
 
   window.AsgardPhone = api;
   emit('ready', {});
+
+  // ВОЗВРАТ НА ЛИНИЮ ПОСЛЕ ПЕРЕЗАГРУЗКИ (инцидент 28.10.2026).
+  // Оператор стоял на линии, нажал Ctrl+Shift+R — pagehide снял on_line=false,
+  // и после загрузки сотрудник оказывался «не на линии» без объяснения.
+  // Если пометка о намерении есть (sessionStorage), сами встаём обратно.
+  // Пометка НЕ переживает закрытие вкладки, поэтому случайный уход с линии
+  // через закрытие окна не превращается в бесконечный авто-возврат.
+  try {
+    var rejoinMode = sessionStorage.getItem(REJOIN_KEY);
+    if (rejoinMode && !isOnLineState()) {
+      sessionStorage.removeItem(REJOIN_KEY);
+      setTimeout(function () {
+        api.goOnline(rejoinMode === 'mobile' ? 'mobile' : 'browser').catch(function () {});
+      }, 800);
+    }
+  } catch (_) {}
 
   // Клик-ту-колл (CRM) открывает этот URL после приёма вызова на телефоне оператора.
   try {

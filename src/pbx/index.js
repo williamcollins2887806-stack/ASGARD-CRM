@@ -1046,6 +1046,35 @@ function createCmdServer() {
                   }),
                 ]
               );
+              // ОДНА КАРТОЧКА НА КЛИЕНТА (инцидент 28.10.2026): перевод не должен
+              // выглядеть в журнале как отдельный исходящий на номер Асгарда
+              // (было: «14:45 +7 499 322-30-62, 03:29» и «перевод Хосе, 02:47» —
+              // две строки вместо одного звонка). Строку перевода привязываем к
+              // головному звонку через parent_call_id и переносим номер клиента.
+              try {
+                const parent = await c.query(
+                  `SELECT id, client_number,
+                          CASE WHEN direction = 'inbound' THEN from_number ELSE to_number END AS num
+                     FROM call_history
+                    WHERE pbx_uid = $1 OR call_id = $1 OR call_id = $2
+                    ORDER BY (pbx_uid = $1) DESC NULLS LAST, id ASC
+                    LIMIT 1`,
+                  [callId, 'pbx_' + callId]
+                );
+                const p = parent.rows[0];
+                if (p && p.id) {
+                  const clientNum = p.client_number
+                    || (/mangosip|bitrix24|^sip:|^92\.242\.61\.184$/i.test(String(p.num || '')) ? null : p.num);
+                  await c.query(
+                    `UPDATE call_history
+                        SET parent_call_id = COALESCE(parent_call_id, $1),
+                            client_number = COALESCE(client_number, $2),
+                            updated_at = NOW()
+                      WHERE pbx_uid = $3 OR call_id = $3 OR call_id = $4`,
+                    [p.id, clientNum || null, callId, 'pbx_' + callId]
+                  );
+                }
+              } catch (_) { /* свёртка не критична для перевода */ }
             } finally { c.release(); }
           }
         } catch (_) { /* персистенция не должна ронять перевод */ }

@@ -504,6 +504,17 @@ module.exports = async function telephonyRoutes(fastify, opts) {
 
     // Ищем клиента
     const clientNumber = direction === 'inbound' ? fromNum : toNum;
+    // client_number для журнала: только реальный абонент, без служебных плеч.
+    // Внешние плечи Mango приходят как sip:bitrix24@...mangosip.ru, наши — как
+    // 92.242.61.184 (адрес сервера). Такие значения клиентом не считаем
+    // (инцидент 28.10.2026: в журнале вместо номера клиента стоял номер Асгарда).
+    const journalClientNumber = (() => {
+      const raw = String(clientNumber || '').trim();
+      if (!raw) return null;
+      if (/mangosip\.ru|bitrix24|^sip:/i.test(raw)) return null;
+      if (raw === '92.242.61.184') return null;
+      return raw.replace(/[^\d+]/g, '') || null;
+    })();
     const normalized = normalizePhone(clientNumber);
     let clientInn = null;
     const cust = await db.query(
@@ -534,6 +545,7 @@ module.exports = async function telephonyRoutes(fastify, opts) {
         `UPDATE call_history SET
           mango_entry_id = COALESCE(mango_entry_id, $15::text),
           direction = $1, call_type = $2, from_number = $3, to_number = $4,
+          client_number = COALESCE(NULLIF($16, ''), client_number),
           duration = $5, duration_seconds = $5, started_at = $6, ended_at = $7,
           recording_id = COALESCE(NULLIF($8, ''), recording_id),
           user_id = $9, client_inn = $10,
@@ -542,25 +554,26 @@ module.exports = async function telephonyRoutes(fastify, opts) {
         WHERE id = $14`,
         [direction, callType, fromNum, toNum, talkTime, createTime, endTime,
          recFromLog, userId, clientInn, lineNumber, disconnectReason,
-         JSON.stringify(event), callHistoryId, entryId || null]
+         JSON.stringify(event), callHistoryId, entryId || null,
+         journalClientNumber || null]
       );
     } else {
       const callIdStr = entryId || ('gen_' + Date.now());
       const res = await db.query(
         `INSERT INTO call_history (
           call_id, mango_entry_id, direction, call_type,
-          caller_number, called_number, from_number, to_number,
+          caller_number, called_number, from_number, to_number, client_number,
           duration, duration_seconds, started_at, ended_at, timestamp,
           recording_id, user_id, client_inn, customer_id,
           line_number, disconnect_reason, status, webhook_payload, created_at
-        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,NOW())
+        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$22,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,NOW())
         RETURNING id`,
         [callIdStr, entryId, direction, callType,
          fromNum, toNum, fromNum, toNum,
          talkTime, talkTime, createTime, endTime, createTime,
          recFromLog, userId, clientInn, clientInn,
          lineNumber, disconnectReason, callType === 'missed' ? 'missed' : 'completed',
-         JSON.stringify(event)]
+         JSON.stringify(event), journalClientNumber || null]
       );
       callHistoryId = res.rows[0].id;
     }
@@ -800,6 +813,13 @@ module.exports = async function telephonyRoutes(fastify, opts) {
       OR ch.transcript_status IN ('done', 'processing', 'pending')
       OR COALESCE(ch.pbx_uid, '') <> ''
     )`);
+
+    // ОДНА КАРТОЧКА НА КЛИЕНТА (инцидент 28.10.2026): строка, привязанная к
+    // головному звонку через parent_call_id, — это плечо/перевод, а не отдельный
+    // звонок. В списке её не показываем (иначе «14:45 03:29» и перевод «02:47»
+    // выглядели двумя исходящими на номер Асгарда). В карточке звонка перевод
+    // по-прежнему виден — он берётся из pbx_call_legs.
+    conditions.push('ch.parent_call_id IS NULL');
 
     if (date_from) { conditions.push(`ch.created_at >= $${paramIdx++}`); params.push(date_from); }
     if (date_to) { conditions.push(`ch.created_at <= $${paramIdx++}`); params.push(date_to + 'T23:59:59'); }
