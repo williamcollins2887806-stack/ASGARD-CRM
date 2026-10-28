@@ -2333,11 +2333,17 @@ module.exports = async function (fastify) {
             RETURNING id, owner_user_id, flow_type, entity_kind, entity_id,
                       current_main_status, is_closed, version, last_moved_at`,
           [id, newStatus, newClosed]);
+        // D-391b: action ограничен CHECK-ом (move/create/transfer/reopen/
+        // close/convert). Свои значения ('trash', 'complete') схема не
+        // принимает, поэтому используем существующие: уход в корзину — это
+        // закрытие карточки, «Завершить» — тоже закрытие по смыслу, но
+        // карточка остаётся видимой. Что именно произошло, видно по
+        // to_main_status (trash/done).
         await client.query(
           `INSERT INTO personal_kanban_card_history
-             (card_id, action, from_main_status, to_main_status, note, actor_user_id)
-           VALUES ($1, $2, $3, $4, $5, $6)`,
-          [id, newStatus === 'trash' ? 'trash' : 'complete', prevStatus, newStatus, note, userId]);
+             (card_id, action, from_main_status, to_main_status, note, moved_by)
+           VALUES ($1, 'close', $2, $3, $4, $5)`,
+          [id, prevStatus, newStatus, note, userId]);
         await client.query('COMMIT');
         broadcast('personal_kanban:card_moved', {
           card_id: id, to_v3_column: toCol, from_v3_column: null,
