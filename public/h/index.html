@@ -10,10 +10,10 @@
   <link rel="manifest" href="/h/manifest.webmanifest"/>
   <link rel="apple-touch-icon" href="/assets/img/apple-touch-icon.png"/>
   <title>Хугинн</title>
-  <link rel="stylesheet" href="/assets/css/design-tokens.css?v=20.28.316"/>
-  <link rel="stylesheet" href="/assets/css/huginn_dock.css?v=20.28.316"/>
+  <link rel="stylesheet" href="/assets/css/design-tokens.css?v=20.28.317"/>
+  <link rel="stylesheet" href="/assets/css/huginn_dock.css?v=20.28.317"/>
   <!-- Звонки (PBX-панель) на /h/: те же файлы, что на десктопе. -->
-  <link rel="stylesheet" href="/assets/css/phone.css?v=20.28.316"/>
+  <link rel="stylesheet" href="/assets/css/phone.css?v=20.28.317"/>
   <style>
     html, body {
       margin: 0; height: 100%;
@@ -219,18 +219,18 @@
   <div id="app"></div>
   <!-- ?v= обязателен: /assets/* отдаётся с Cache-Control: immutable, max-age=30д.
        Без версии в URL телефон держал старый JS/CSS месяцами и «не видел» деплой. -->
-  <script src="/assets/js/huginn_icons.js?v=20.28.316"></script>
-  <script src="/assets/js/phone_mask.js?v=20.28.316"></script>
-  <script src="/assets/js/huginn_sse.js?v=20.28.316"></script>
+  <script src="/assets/js/huginn_icons.js?v=20.28.317"></script>
+  <script src="/assets/js/phone_mask.js?v=20.28.317"></script>
+  <script src="/assets/js/huginn_sse.js?v=20.28.317"></script>
   <!-- TingSound: рингтон звонка (startRing/stopRing). Обязателен ДО модуля
        звонков: без него звонок в /h/ был молчаливым (методы не находились). -->
-  <script src="/assets/js/ting_common.js?v=20.28.316"></script>
-  <script src="/assets/js/huginn_calls.js?v=20.28.316"></script>
-  <script src="/assets/js/huginn_dock.js?v=20.28.316"></script>
-  <script src="/assets/vendor/jssip.min.js?v=20.28.316"></script>
-  <script src="/assets/js/phone_core.js?v=20.28.316"></script>
-  <script src="/assets/js/phone_ui.js?v=20.28.316"></script>
-  <script src="/h/app.js?v=20.28.316"></script>
+  <script src="/assets/js/ting_common.js?v=20.28.317"></script>
+  <script src="/assets/js/huginn_calls.js?v=20.28.317"></script>
+  <script src="/assets/js/huginn_dock.js?v=20.28.317"></script>
+  <script src="/assets/vendor/jssip.min.js?v=20.28.317"></script>
+  <script src="/assets/js/phone_core.js?v=20.28.317"></script>
+  <script src="/assets/js/phone_ui.js?v=20.28.317"></script>
+  <script src="/h/app.js?v=20.28.317"></script>
   <script>
     (function () {
       var saved = localStorage.getItem('asgard_theme') || localStorage.getItem('hg_theme');
@@ -267,7 +267,7 @@
     // ≠ сторож (старый) → бесконечная перезагрузка у клиента.
     // Не переименовывать переменную VER — на неё завязан bump.
     (function () {
-      var VER = '20.28.316';
+      var VER = '20.28.317';
       var _busy = false;
       function check() {
         if (_busy) return;

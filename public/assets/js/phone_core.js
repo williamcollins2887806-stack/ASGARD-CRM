@@ -557,8 +557,17 @@
   var _lineCheckTimer = null;
   function checkLineOwnership() {
     if (!onDuty) return;
+    // ПЕРЕЗАГРУЗКА/ДЕПЛОЙ (инцидент 28.10.2026): пока мы на линии, любая
+    // просадка бэкенда (restart asgard-crm на деплое, 502 от nginx) возвращала
+    // on_line=false или не отвечала вовсе. Раньше это могло трактоваться как
+    // «вас сняли» и выкидывало оператора. Различаем два случая:
+    //   • ответ 200 с on_line=false  → нас действительно сняли (гигиена/смена);
+    //   • ошибка/таймаут/не-200      → это сбой связи, НЕ повод уходить с линии.
     fetch('/api/telephony/pbx/operator/status', { headers: { Authorization: 'Bearer ' + token() } })
-      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (r) {
+        if (!r.ok) return null; // 502/503/504 при рестарте — не снятие
+        return r.json().catch(function () { return null; });
+      })
       .then(function (st) {
         if (!st || typeof st.on_line === 'undefined') return;
         // MULTI-LINE (V442): линию больше никто не «забирает» — быть на линии
@@ -570,7 +579,7 @@
           emit('line_taken', { reason: 'status_poll', in_call: !!(res && res.keptCall) });
         }
       })
-      .catch(function () {});
+      .catch(function () { /* сеть недоступна — линию не трогаем */ });
   }
 
   var _lockRelease = null;
