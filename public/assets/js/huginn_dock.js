@@ -2252,7 +2252,7 @@
         const firstChild = listEl.firstElementChild;
         if (firstChild) {
           const translated = getComputedStyle(firstChild).translate;
-          const parts = String(translated || '').split(/\\s+/);
+          const parts = String(translated || '').split(' ');
           const currentY = parts.length > 1 ? parseFloat(parts[1]) : 0;
           if (Number.isFinite(currentY)) pull = Math.max(-MAX_PULL, Math.min(MAX_PULL, currentY));
         }
@@ -2276,7 +2276,7 @@
         const dy = touch.clientY - lastY;
         lastY = touch.clientY;
         if (!axis && (Math.abs(dx) > 8 || Math.abs(touch.clientY - startY) > 8)) {
-          axis = Math.abs(dx) > Math.abs(dy) * 1.15 ? 'x' : 'y';
+          axis = Math.abs(dx) > Math.abs(touch.clientY - startY) * 1.15 ? 'x' : 'y';
         }
         if (axis !== 'y') return;
 
