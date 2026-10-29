@@ -1809,14 +1809,17 @@ html[data-theme="light"] .hg-bubble {
 }
 .hg-voice {
   display: grid;
-  grid-template-columns: 44px minmax(0, 1fr) auto;
+  /* Keep play, waveform and Aa inside the available bubble width. */
+  grid-template-columns: 44px minmax(0, 1fr) 32px;
   grid-template-rows: 1fr auto;
-  column-gap: 10px;
+  column-gap: 8px;
   row-gap: 3px;
   align-items: center;
-  min-width: 216px;
+  min-width: 0;
   min-height: 54px;
-  width: min(300px, 78vw);
+  width: 100%;
+  max-width: 300px;
+  box-sizing: border-box;
   padding: 1px 0;
 }
 .hg-voice-play {
@@ -1869,6 +1872,7 @@ html[data-theme="light"] .hg-bubble {
   height: 28px;
   min-width: 0;
   width: 100%;
+  overflow: hidden;
   cursor: pointer;
 }
 .hg-voice-wave i {
@@ -1916,9 +1920,15 @@ html[data-theme="light"] .hg-bubble {
 .hg-voice-aa {
   grid-column: 3;
   grid-row: 1;
+  justify-self: end;
   flex: none;
   align-self: center;
-  width: 32px; height: 32px; border-radius: 50%;
+  width: 32px;
+  min-width: 32px;
+  max-width: 32px;
+  height: 32px;
+  box-sizing: border-box;
+  border-radius: 50%;
   border: 0; cursor: pointer;
   background: color-mix(in srgb, var(--t1, #fff) 13%, transparent);
   color: color-mix(in srgb, var(--t1, #fff) 88%, transparent);
@@ -2538,10 +2548,18 @@ html[data-theme="light"] .hg-pin-banner .hg-pin-ico {
 }
 .hg-file-card a { color: var(--hg-accent-chat); text-decoration: none; font: 500 var(--hg-font-meta) var(--hg-font); }
 .hg-transcript {
-  margin-top: 8px; padding: 8px 10px; border-radius: 10px;
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
+  margin-top: 8px;
+  padding: 8px 10px;
+  border-radius: 10px;
   background: rgba(0, 0, 0, 0.2);
   font: 400 var(--hg-font-preview) var(--hg-font);
   color: var(--hg-muted);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: normal;
 }
 html[data-theme="light"] .hg-transcript { background: rgba(0, 0, 0, 0.06); }
 
