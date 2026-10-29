@@ -2278,7 +2278,7 @@
         if (!axis && (Math.abs(dx) > 8 || Math.abs(touch.clientY - startY) > 8)) {
           axis = Math.abs(dx) > Math.abs(dy) * 1.15 ? 'x' : 'y';
         }
-        if (axis === 'x') return;
+        if (axis !== 'y') return;
 
         const maxScroll = Math.max(0, listEl.scrollHeight - listEl.clientHeight);
         if (maxScroll <= 1) {
