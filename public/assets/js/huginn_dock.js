@@ -3443,7 +3443,6 @@
     // Keep row DOM stable during SSE/presence refreshes. Replacing every row
     // on every event caused flicker, restarted visual states and lost scroll anchors.
     // Search and intentional filtering still redraw when the displayed IDs change.
-    cleanupChatRowGestures(box);
     const query = (q || '').toLowerCase().trim();
     // Honest state: if the list failed to load (e.g. guest 403), say so instead
     // of pretending the user has no chats.
