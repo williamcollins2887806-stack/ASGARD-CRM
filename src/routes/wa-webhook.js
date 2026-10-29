@@ -34,9 +34,19 @@ module.exports = async function waWebhookRoutes(fastify, opts) {
     const webhookUrl = `https://asgard-crm.ru/api/wa-webhook/event?secret=${encodeURIComponent(secret)}`;
     try {
       await ga.setWebhook(webhookUrl);
-      return reply.send({ ok: true, webhookUrl: webhookUrl.replace(secret, '***') });
+      let maxConfigured = false;
+      if (ga.isMaxEnabled() && typeof ga.setMaxWebhook === 'function') {
+        await ga.setMaxWebhook(webhookUrl);
+        maxConfigured = true;
+      }
+      return reply.send({
+        ok: true,
+        webhookUrl: webhookUrl.replace(secret, '***'),
+        maxDeliveryReceiptsConfigured: maxConfigured,
+      });
     } catch (e) {
-      return reply.code(500).send({ error: e.message });
+      fastify.log.error('[WA webhook] setup failed: ' + (e.code || 'provider_error'));
+      return reply.code(502).send({ error: 'Не удалось настроить вебхук доставки провайдера. Проверьте конфигурацию Green API.' });
     }
   });
 
@@ -78,6 +88,44 @@ module.exports = async function waWebhookRoutes(fastify, opts) {
       if (!body) return reply.send({ ok: true });
       const ga = require('../services/green-api');
       const type = body.typeWebhook;
+
+      // Green API emits API-message status callbacks separately from sendMessage's
+      // idMessage acknowledgement. Only these callbacks can confirm delivery.
+      if (type === 'outgoingMessageStatus') {
+        const messageId = String(body.idMessage || '').trim();
+        const rawStatus = String(body.status || '').trim().toLowerCase();
+        if (!messageId) {
+          fastify.log.warn('[MAX delivery webhook] receipt missing message id');
+          return reply.send({ ok: true, ignored: true });
+        }
+        let deliveryStatus = null;
+        if (rawStatus === 'delivered' || rawStatus === 'read') deliveryStatus = 'delivered';
+        else if (['failed', 'error', 'noaccount', 'notingroup', 'suspended', 'blocked', 'deleted'].includes(rawStatus)) deliveryStatus = 'failed';
+        else if (rawStatus === 'sent' || rawStatus === 'accepted') deliveryStatus = 'accepted';
+        if (!deliveryStatus) {
+          return reply.send({ ok: true, ignored: true });
+        }
+        const { rowCount } = await db.query(
+          `UPDATE huginn_login_codes
+              SET delivery_status = CASE
+                    WHEN delivery_status = 'delivered' THEN 'delivered'
+                    WHEN delivery_status = 'failed' THEN 'failed'
+                    WHEN $1 = 'failed' THEN 'failed'
+                    WHEN $1 = 'delivered' THEN 'delivered'
+                    ELSE 'accepted'
+                  END,
+                  delivery_error = CASE WHEN $1 = 'failed' THEN 'max_delivery_failed' ELSE delivery_error END,
+                  delivery_updated_at = NOW(),
+                  used = CASE WHEN $1 = 'failed' THEN true ELSE used END
+            WHERE delivery_channel = 'max'
+              AND provider_message_id = $2
+              AND kind = 'sms'`,
+          [deliveryStatus, messageId]
+        );
+        // No phone, message body, token or OTP belongs in logs.
+        fastify.log.info('[MAX delivery webhook] status=' + deliveryStatus + ' matched=' + rowCount);
+        return reply.send({ ok: true });
+      }
 
       if (type === 'incomingMessageReceived') {
         const msgData = body.messageData;
