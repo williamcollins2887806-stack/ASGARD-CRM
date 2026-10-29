@@ -800,8 +800,12 @@ html[data-hg-fx="reduced"] #huginnDock .hg-story-item.is-unread .hg-story-ring {
     color-mix(in srgb, var(--blue-l, #4A90D9) 70%, var(--hg-muted) 30%),
     color-mix(in srgb, #8B5CF6 45%, var(--hg-muted) 55%));
 }
-#huginnDock.hg-power-off .hg-story-ring,
-html[data-hg-fx="off"] #huginnDock .hg-story-ring {
+#huginnDock.hg-power-off .hg-story-item.is-unread .hg-story-ring,
+html[data-hg-fx="off"] #huginnDock .hg-story-item.is-unread .hg-story-ring {
+  background: color-mix(in srgb, var(--hg-muted) 40%, var(--blue-l, #4A90D9) 18%);
+}
+#huginnDock.hg-power-off .hg-story-item:not(.is-unread) .hg-story-ring,
+html[data-hg-fx="off"] #huginnDock .hg-story-item:not(.is-unread) .hg-story-ring {
   background: color-mix(in srgb, var(--hg-muted) 40%, transparent);
 }
 #huginnDock.hg-power-off .hg-ripple,
