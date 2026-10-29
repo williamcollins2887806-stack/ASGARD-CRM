@@ -1953,10 +1953,10 @@ module.exports = async function registerHuginnExt(fastify, { db, uploadDir, getC
 
     const rawPhone = String(body.phone || '').trim();
     const entered = String(body.code || '').replace(/\D/g, '');
-    if (!rawPhone || entered.length < 6) {
-      return reply.code(400).send({ error: 'Укажите телефон и 6-значный код' });
-    }
     const phone = normPhone(rawPhone);
+    if (!phone || !/^\+[1-9]\d{7,14}$/.test(phone) || entered.length !== 6) {
+      return reply.code(400).send({ error: 'Укажите корректный телефон и 6-значный код' });
+    }
     const { rows: codes } = await db.query(
       `SELECT * FROM huginn_login_codes
         WHERE phone = $1 AND kind = 'sms' AND used = false AND expires_at > NOW()
