@@ -3495,6 +3495,7 @@
     box.innerHTML = html;
     box.querySelectorAll('[data-cid]').forEach((el) => {
       el.onclick = () => {
+        if (Date.now() < (el._hgGestureSuppressUntil || 0)) return;
         const cid = Number(el.getAttribute('data-cid'));
         if (state.listEditMode) {
           if (state.selectedChatIds.has(cid)) state.selectedChatIds.delete(cid);
@@ -3509,63 +3510,190 @@
     syncRailBadge();
   }
 
+  function closeChatPeek() {
+    if (!root) return;
+    const peek = root.querySelector('.hg-peek-backdrop');
+    if (peek) {
+      peek.classList.add('is-closing');
+      setTimeout(() => peek.remove(), 180);
+    }
+  }
+
+  function openChatPeek(chat) {
+    if (!root || !chat) return;
+    closeChatPeek();
+    const raw = chat.last_message || chat.last_message_text || '';
+    const type = chat.last_message_type || 'text';
+    const preview = humanizeDisplayText(raw, { message_type: type });
+    const name = displayChatName(chat);
+    const avatar = chat.peer_avatar || chat.avatar_url || chat.direct_user_avatar || '';
+    const backdrop = document.createElement('div');
+    backdrop.className = 'hg-peek-backdrop';
+    backdrop.innerHTML = `
+      <section class="hg-peek-card" role="dialog" aria-modal="true" aria-label="Предварительный просмотр чата">
+        <button type="button" class="hg-peek-close" aria-label="Закрыть">×</button>
+        <div class="hg-peek-head">
+          <div class="hg-chat-av hg-peek-avatar" style="${avatar ? avatarStyle(avatar, name) : avatarStyle('', name)}">${avatar ? '' : esc(initials(name))}</div>
+          <div class="hg-peek-title-wrap"><div class="hg-peek-title">${esc(name)}</div><div class="hg-peek-sub">${Number(chat.unread_count) ? esc(String(chat.unread_count)) + ' непрочитанных' : 'Предварительный просмотр'}</div></div>
+        </div>
+        <div class="hg-peek-message"><div class="hg-peek-message-label">Последнее сообщение</div><div class="hg-peek-message-text">${esc(preview || 'Пока нет сообщений')}</div></div>
+        <button type="button" class="hg-peek-open">Открыть чат</button>
+      </section>`;
+    backdrop.addEventListener('click', (event) => {
+      if (event.target === backdrop) closeChatPeek();
+    });
+    backdrop.querySelector('.hg-peek-close').onclick = closeChatPeek;
+    backdrop.querySelector('.hg-peek-open').onclick = () => {
+      closeChatPeek();
+      openChat(Number(chat.id));
+    };
+    root.appendChild(backdrop);
+    requestAnimationFrame(() => backdrop.classList.add('is-open'));
+  }
+
   /**
-   * ТЗ 2.2 (P0) — свайпы по строке чата. Вправо: закрепить/открепить;
-   * влево: без звука (mute). Действия уже есть на бэке и в меню.
-   * Жест навешивается на саму строку, вертикальный скролл не перехватываем.
+   * Direction-aware row gestures: right = archive, left = existing delete flow,
+   * long press = preview. In-range/vertical movement remains native scrolling.
    */
   function wireChatRowSwipe(row) {
     if (!row || row._hgSwipe) return;
     row._hgSwipe = true;
-    const TRIG = 56;
-    let start = null;
-    row.addEventListener('touchstart', (e) => {
-      if (state.listEditMode) return;
-      const t = e.touches && e.touches[0];
-      if (!t) return;
-      start = { x: t.clientX, y: t.clientY, dx: 0, active: false, cid: Number(row.getAttribute('data-cid')) };
-    }, { passive: true });
-    row.addEventListener('touchmove', (e) => {
-      if (!start) return;
-      const t = e.touches && e.touches[0];
-      if (!t) return;
-      const dx = t.clientX - start.x;
-      const dy = t.clientY - start.y;
-      if (!start.active && Math.abs(dy) > Math.abs(dx)) { start = null; return; }
-      start.active = true;
-      start.dx = Math.max(-90, Math.min(90, dx));
-      row.style.transition = 'none';
-      row.style.transform = 'translateX(' + start.dx + 'px)';
-    }, { passive: true });
-    const finish = async () => {
-      if (!start) return;
-      const s = start; start = null;
-      row.style.transition = 'transform 180ms cubic-bezier(.34,1.36,.64,1)';
+    const TRIG = 76;
+    const AXIS_SLOP = 9;
+    const LONG_PRESS_MS = 480;
+    const MAX_OFFSET = 112;
+    let gesture = null;
+    let longPressTimer = 0;
+    let suppressClick = false;
+    let action = row.parentElement && row.parentElement.querySelector(':scope > .hg-swipe-action');
+    if (!action) {
+      action = document.createElement('div');
+      action.className = 'hg-swipe-action';
+      action.setAttribute('aria-hidden', 'true');
+      row.parentElement.insertBefore(action, row);
+    }
+
+    const clearLongPress = () => {
+      if (longPressTimer) clearTimeout(longPressTimer);
+      longPressTimer = 0;
+    };
+    const resetRow = (animate = true) => {
+      row.classList.toggle('hg-swipe-returning', animate);
+      row.classList.remove('hg-swipe-active');
       row.style.transform = '';
-      if (Math.abs(s.dx) < TRIG) return;
+      row.style.removeProperty('--hg-swipe-progress');
+      action.classList.remove('is-archive', 'is-delete', 'is-visible');
+      action.textContent = '';
+      setTimeout(() => row.classList.remove('hg-swipe-returning'), 230);
+    };
+    const paint = (dx) => {
+      const offset = Math.max(-MAX_OFFSET, Math.min(MAX_OFFSET, dx));
+      row.classList.add('hg-swipe-active');
+      row.classList.remove('hg-swipe-returning');
+      row.style.transform = 'translate3d(' + offset + 'px,0,0)';
+      row.style.setProperty('--hg-swipe-progress', String(Math.min(1, Math.abs(offset) / TRIG)));
+      action.classList.toggle('is-visible', Math.abs(offset) > 8);
+      action.classList.toggle('is-archive', offset > 0);
+      action.classList.toggle('is-delete', offset < 0);
+      action.textContent = offset > 0 ? 'Архив' : 'Удалить';
+    };
+    const runAction = async (s) => {
+      const chat = state.chats.find((c) => Number(c.id) === s.cid);
+      if (!chat) { resetRow(); return; }
       haptic('medium');
-      const chat = state.chats.find((c) => Number(c.id) === Number(s.cid));
-      if (!chat) return;
       try {
         if (s.dx > 0) {
-          const next = !(chat.is_pinned || chat.pinned_at);
-          await api('/api/chat-groups/' + s.cid + '/pin', { method: 'PUT', body: { pin: next } });
-          chat.is_pinned = next;
-          if (!next) chat.pinned_at = null;
-          showToast(next ? 'Закреплено' : 'Откреплено');
+          await api('/api/chat-groups/' + s.cid + '/archive', { method: 'PUT', body: { archive: true } });
+          state.chats = state.chats.filter((c) => Number(c.id) !== s.cid);
+          showToast('Чат архивирован');
         } else {
-          const muted = chat.muted_now === true || (chat.muted_until && new Date(chat.muted_until) > new Date());
-          await api('/api/chat-groups/' + s.cid + '/mute', { method: 'PUT', body: { until: muted ? null : new Date(Date.now() + 8 * 3600 * 1000).toISOString() } });
-          chat.muted_now = !muted;
-          showToast(muted ? 'Звук включён' : 'Без звука 8 ч');
+          if (!(await hgConfirm({ title: 'Удалить чат?', body: displayChatName(chat), okText: 'Удалить', danger: true }))) {
+            resetRow();
+            return;
+          }
+          await api('/api/chat-groups/' + s.cid, { method: 'DELETE' });
+          state.chats = state.chats.filter((c) => Number(c.id) !== s.cid);
+          showToast('Чат удалён');
         }
         renderPanel();
       } catch (err) {
-        showToast(err.message || 'Не удалось');
+        resetRow();
+        showToast(err.message || 'Не удалось выполнить действие');
       }
     };
-    row.addEventListener('touchend', finish, { passive: true });
-    row.addEventListener('touchcancel', finish, { passive: true });
+    const onDown = (e) => {
+      if (state.listEditMode || (e.pointerType === 'mouse' && e.button !== 0)) return;
+      if (e.target.closest('button:not(.hg-chat-row), a, input, textarea, select')) return;
+      clearLongPress();
+      const cid = Number(row.getAttribute('data-cid'));
+      gesture = { id: e.pointerId, x: e.clientX, y: e.clientY, lastX: e.clientX, lastY: e.clientY, dx: 0, axis: '', cid, moved: false, peeked: false };
+      longPressTimer = setTimeout(() => {
+        if (!gesture || gesture.moved || gesture.axis) return;
+        const chat = state.chats.find((c) => Number(c.id) === cid);
+        if (!chat) return;
+        gesture.peeked = true;
+        suppressClick = true;
+        row._hgGestureSuppressUntil = Date.now() + 700;
+        openChatPeek(chat);
+      }, LONG_PRESS_MS);
+    };
+    const onMove = (e) => {
+      if (!gesture || gesture.id !== e.pointerId) return;
+      const dx = e.clientX - gesture.x;
+      const dy = e.clientY - gesture.y;
+      gesture.lastX = e.clientX;
+      gesture.lastY = e.clientY;
+      if (!gesture.axis && (Math.abs(dx) > AXIS_SLOP || Math.abs(dy) > AXIS_SLOP)) {
+        gesture.axis = Math.abs(dx) > Math.abs(dy) * 1.2 ? 'x' : 'y';
+        clearLongPress();
+      }
+      if (gesture.axis === 'y') {
+        gesture.moved = true;
+        gesture = null;
+        return;
+      }
+      if (gesture.axis !== 'x') return;
+      gesture.moved = true;
+      gesture.dx = dx;
+      clearLongPress();
+      paint(dx);
+      if (e.cancelable) e.preventDefault();
+    };
+    const onUp = (e) => {
+      if (!gesture || gesture.id !== e.pointerId) return;
+      clearLongPress();
+      const s = gesture;
+      gesture = null;
+      if (s.peeked) {
+        row._hgGestureSuppressUntil = Date.now() + 700;
+        return;
+      }
+      if (s.axis === 'x' && Math.abs(s.dx) >= TRIG) {
+        row._hgGestureSuppressUntil = Date.now() + 700;
+        suppressClick = true;
+        resetRow(false);
+        runAction(s);
+      } else {
+        resetRow(true);
+        if (s.moved) row._hgGestureSuppressUntil = Date.now() + 350;
+      }
+      setTimeout(() => { suppressClick = false; }, 750);
+    };
+    const onCancel = (e) => {
+      if (gesture && (e.pointerId == null || gesture.id === e.pointerId)) {
+        clearLongPress();
+        gesture = null;
+      }
+      resetRow(true);
+    };
+    row.addEventListener('pointerdown', onDown, { passive: true });
+    row.addEventListener('pointermove', onMove, { passive: false });
+    row.addEventListener('pointerup', onUp, { passive: true });
+    row.addEventListener('pointercancel', onCancel, { passive: true });
+    row.addEventListener('lostpointercapture', onCancel, { passive: true });
+    row.addEventListener('contextmenu', (e) => {
+      if (e.pointerType === 'touch') e.preventDefault();
+    });
   }
 
   /** Contacts source: full Huginn directory (all active users), not just chats. */
