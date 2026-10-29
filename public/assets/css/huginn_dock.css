@@ -1392,6 +1392,18 @@ html[data-hg-fx="off"] #huginnDock .hg-list-me-btn {
   padding: 0;
   scrollbar-width: thin;
 }
+/* Short, resisted spring only for touch pulls beyond the chat-list edges. */
+.hg-list > * {
+  translate: 0 var(--hg-list-spring-y, 0px);
+  transition: translate 420ms cubic-bezier(.2, .72, .28, 1);
+}
+.hg-list.hg-overscroll-active > * { transition: none; }
+.hg-list.hg-overscroll-returning > * {
+  transition: translate 420ms cubic-bezier(.22, 1.35, .42, 1);
+}
+@media (prefers-reduced-motion: reduce) {
+  .hg-list > * { transition-duration: 1ms !important; }
+}
 .hg-chat-row {
   display: grid;
   grid-template-columns: var(--hg-av-list) 1fr auto;
