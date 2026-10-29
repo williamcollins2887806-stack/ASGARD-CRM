@@ -94,6 +94,35 @@
 
   bindHuginnViewport();
 
+  let hgComposerSizeObserver = null;
+  function clearHgComposerSizeObserver() {
+    if (!hgComposerSizeObserver) return;
+    try { hgComposerSizeObserver.disconnect(); } catch (_) {}
+    hgComposerSizeObserver = null;
+  }
+
+  function observeHgComposerSize(panel) {
+    clearHgComposerSizeObserver();
+    const thread = panel && panel.querySelector('.hg-thread');
+    const composer = thread && thread.querySelector('.hg-composer');
+    if (!thread || !composer) return;
+
+    const updateClearance = () => {
+      if (!thread.isConnected || !composer.isConnected) return;
+      const height = Math.ceil(composer.getBoundingClientRect().height);
+      if (height <= 0) return;
+      const value = height + 'px';
+      if (thread.style.getPropertyValue('--hg-composer-height') !== value) {
+        thread.style.setProperty('--hg-composer-height', value);
+      }
+    };
+    updateClearance();
+    if (typeof global.ResizeObserver === 'function') {
+      hgComposerSizeObserver = new global.ResizeObserver(updateClearance);
+      hgComposerSizeObserver.observe(composer);
+    }
+  }
+
   function draftKey(cid) { return 'hg_draft_' + cid; }
   function loadDraft(cid) {
     try { return localStorage.getItem(draftKey(cid)) || ''; } catch (_) { return ''; }
@@ -1786,6 +1815,7 @@
   function renderPanel() {
     const panel = root.querySelector('#hgPanel');
     if (!panel) return;
+    clearHgComposerSizeObserver();
     // renderPanel can replace the entire panel while a pointer is still down.
     cleanupChatRowGestures(panel);
     attachRippleDelegate(panel);
@@ -1996,6 +2026,7 @@
         </div>`;
       wireThread(panel);
       wireReplyClear(panel);
+      observeHgComposerSize(panel);
       if (!mimirMode) refreshPeerPresence();
       scrollMsgs(true);
       return;
