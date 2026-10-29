@@ -330,6 +330,21 @@ async function setWebhook(webhookUrl) {
   });
 }
 
+/**
+ * Configure receipt notifications on the MAX-specific Green API instance.
+ * This only runs when an administrator explicitly invokes the existing setup
+ * endpoint; deploys and application startup never change provider settings.
+ */
+async function setMaxWebhook(webhookUrl) {
+  if (!isMaxEnabled()) throw new Error('MAX Green API is not configured');
+  return gaMaxRequest('POST', 'setSettings', {
+    webhookUrl,
+    outgoingMessageWebhook: 'yes',
+    outgoingAPIMessageWebhook: 'yes',
+    stateWebhook: 'yes',
+  });
+}
+
 async function getState() {
   try {
     const data = await gaRequest('GET', 'GetStateInstance', null);
@@ -365,6 +380,7 @@ module.exports = {
   sendGroupMessage,
   setGroupPicture,
   setWebhook,
+  setMaxWebhook,
   getState,
   getQR,
 };
