@@ -748,6 +748,103 @@ body.hg-list-edit .hg-nav-search {
 .hg-story-item.is-unread .hg-story-ring {
   background: linear-gradient(135deg, var(--blue-l, #4A90D9), color-mix(in srgb, var(--blue-l, #4A90D9) 40%, #fff));
 }
+/* Gradient story rings keep the existing unread/seen classes and hit area. */
+.hg-story-ring {
+  background: linear-gradient(135deg,
+    color-mix(in srgb, var(--blue-l, #4A90D9) 88%, #fff),
+    color-mix(in srgb, #8B5CF6 74%, var(--blue-l, #4A90D9)));
+}
+.hg-story-item:not(.is-unread) .hg-story-ring:not(.is-mine):not(.is-add):not(.is-peer) {
+  background: color-mix(in srgb, var(--hg-muted) 38%, transparent);
+}
+.hg-story-item.is-unread .hg-story-ring {
+  background: linear-gradient(135deg,
+    var(--blue-l, #4A90D9) 0%,
+    #8B5CF6 55%,
+    color-mix(in srgb, var(--blue-l, #4A90D9) 45%, #fff) 100%);
+}
+@media (hover: hover) and (pointer: fine) {
+  .hg-story-item .hg-story-ring,
+  .hg-story-item .hg-story-av,
+  .hg-chat-av,
+  .hg-contact-av,
+  .hg-settings-av,
+  .hg-list-me-btn {
+    transition: transform var(--hg-dur-mid, 200ms) var(--hg-ease-standard, ease),
+      filter var(--hg-dur-mid, 200ms) var(--hg-ease-standard, ease);
+  }
+  .hg-story-item:hover .hg-story-ring,
+  .hg-chat-row:hover .hg-chat-av,
+  .hg-contact-row:hover .hg-contact-av,
+  .hg-settings-profile.is-clickable:hover .hg-settings-av,
+  .hg-list-me-btn:hover {
+    filter: saturate(1.08) brightness(1.04);
+  }
+  .hg-story-item:hover .hg-story-av,
+  .hg-chat-row:hover .hg-chat-av,
+  .hg-contact-row:hover .hg-contact-av,
+  .hg-settings-profile.is-clickable:hover .hg-settings-av,
+  .hg-list-me-btn:hover {
+    transform: scale(1.035);
+  }
+}
+@media (hover: none), (pointer: coarse) {
+  .hg-story-item:hover .hg-story-ring,
+  .hg-story-item:hover .hg-story-av,
+  .hg-chat-row:hover .hg-chat-av,
+  .hg-contact-row:hover .hg-contact-av,
+  .hg-settings-profile.is-clickable:hover .hg-settings-av,
+  .hg-list-me-btn:hover {
+    transform: none;
+    filter: none;
+  }
+}
+#huginnDock.hg-power-reduced .hg-story-ring,
+html[data-hg-fx="reduced"] #huginnDock .hg-story-ring {
+  background: color-mix(in srgb, var(--blue-l, #4A90D9) 70%, var(--hg-muted) 30%);
+}
+#huginnDock.hg-power-off .hg-story-ring,
+html[data-hg-fx="off"] #huginnDock .hg-story-ring {
+  background: color-mix(in srgb, var(--hg-muted) 40%, transparent);
+}
+#huginnDock.hg-power-off .hg-ripple,
+html[data-hg-fx="off"] .hg-ripple {
+  display: none !important;
+}
+#huginnDock.hg-power-reduced .hg-ripple,
+html[data-hg-fx="reduced"] .hg-ripple {
+  animation-duration: 260ms;
+  opacity: 0.65;
+}
+#huginnDock.hg-power-off .hg-story-ring,
+#huginnDock.hg-power-off .hg-story-av,
+#huginnDock.hg-power-off .hg-chat-av,
+#huginnDock.hg-power-off .hg-contact-av,
+#huginnDock.hg-power-off .hg-settings-av,
+#huginnDock.hg-power-off .hg-list-me-btn,
+html[data-hg-fx="off"] #huginnDock .hg-story-ring,
+html[data-hg-fx="off"] #huginnDock .hg-story-av,
+html[data-hg-fx="off"] #huginnDock .hg-chat-av,
+html[data-hg-fx="off"] #huginnDock .hg-contact-av,
+html[data-hg-fx="off"] #huginnDock .hg-settings-av,
+html[data-hg-fx="off"] #huginnDock .hg-list-me-btn {
+  transition: none !important;
+  filter: none !important;
+  transform: none !important;
+}
+@media (prefers-reduced-motion: reduce) {
+  #huginnDock .hg-story-ring,
+  #huginnDock .hg-story-av,
+  #huginnDock .hg-chat-av,
+  #huginnDock .hg-contact-av,
+  #huginnDock .hg-settings-av,
+  #huginnDock .hg-list-me-btn,
+  #huginnDock .hg-ripple {
+    animation: none !important;
+    transition: none !important;
+    transform: none !important;
+  }
+}
 /* Own story ring + brand gradient (TG-like). */
 .hg-story-ring.is-mine {
   background: linear-gradient(135deg, var(--blue-l, #4A90D9), color-mix(in srgb, var(--blue-l, #4A90D9) 35%, #fff));
@@ -4436,6 +4533,71 @@ html[data-theme="light"] .hg-settings-logout { background: var(--bg2, #FDFAF5); 
   border-radius: 3px;
 }
 
+/* Targeted micro-interactions: avoid sweeping changes to navigation/layout. */
+#huginnDock .hg-settings-row,
+#huginnDock .hg-fx-btn,
+#huginnDock .hg-rail-btn,
+#huginnDock .hg-icon-btn,
+#huginnDock .hg-tool,
+#huginnDock .hg-send,
+#huginnDock .hg-bottom-nav button,
+#huginnDock .hg-sort-row {
+  transition: background-color var(--hg-dur-mid, 200ms) var(--hg-ease-standard, ease),
+    color var(--hg-dur-mid, 200ms) var(--hg-ease-standard, ease),
+    border-color var(--hg-dur-mid, 200ms) var(--hg-ease-standard, ease),
+    transform var(--hg-dur-fast, 140ms) var(--hg-ease-standard, ease);
+}
+#huginnDock input:focus-visible,
+#huginnDock textarea:focus-visible,
+#huginnDock select:focus-visible,
+#huginnDock .hg-search:focus,
+#huginnDock .hg-confirm-input:focus {
+  outline: none;
+  border-color: var(--hg-accent-chat, var(--blue-l, #4A90D9));
+  box-shadow: var(--hg-focus-glow, 0 0 0 3px color-mix(in srgb, var(--blue-l, #4A90D9) 22%, transparent));
+}
+#huginnDock .hg-fx-toggle { position: relative; }
+#huginnDock .hg-fx-btn { position: relative; }
+#huginnDock .hg-fx-btn:active,
+#huginnDock .hg-settings-row:active,
+#huginnDock .hg-icon-btn:active,
+#huginnDock .hg-tool:active,
+#huginnDock .hg-send:active,
+#huginnDock .hg-bottom-nav button:active {
+  transform: scale(0.985);
+}
+#huginnDock.hg-power-off .hg-story-item:hover .hg-story-ring,
+#huginnDock.hg-power-off .hg-story-item:hover .hg-story-av,
+#huginnDock.hg-power-off .hg-chat-row:hover .hg-chat-av,
+#huginnDock.hg-power-off .hg-contact-row:hover .hg-contact-av,
+#huginnDock.hg-power-off .hg-settings-profile.is-clickable:hover .hg-settings-av,
+html[data-hg-fx="off"] #huginnDock .hg-story-item:hover .hg-story-ring,
+html[data-hg-fx="off"] #huginnDock .hg-story-item:hover .hg-story-av,
+html[data-hg-fx="off"] #huginnDock .hg-chat-row:hover .hg-chat-av,
+html[data-hg-fx="off"] #huginnDock .hg-contact-row:hover .hg-contact-av,
+html[data-hg-fx="off"] #huginnDock .hg-settings-profile.is-clickable:hover .hg-settings-av {
+  transform: none !important;
+  filter: none !important;
+}
+@media (prefers-reduced-motion: reduce) {
+  #huginnDock .hg-settings-row,
+  #huginnDock .hg-fx-btn,
+  #huginnDock .hg-rail-btn,
+  #huginnDock .hg-icon-btn,
+  #huginnDock .hg-tool,
+  #huginnDock .hg-send,
+  #huginnDock .hg-bottom-nav button,
+  #huginnDock .hg-sort-row {
+    transition-duration: 0.01ms !important;
+  }
+  #huginnDock .hg-settings-row:active,
+  #huginnDock .hg-icon-btn:active,
+  #huginnDock .hg-tool:active,
+  #huginnDock .hg-send:active,
+  #huginnDock .hg-bottom-nav button:active {
+    transform: none !important;
+  }
+}
 /* Phase 7.5 micro-interactions (bottom-nav timings owned by P9 block above) */
 .hg-rail-btn,
 .hg-icon-btn,
