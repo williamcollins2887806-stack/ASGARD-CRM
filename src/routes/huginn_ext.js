@@ -305,10 +305,12 @@ module.exports = async function registerHuginnExt(fastify, { db, uploadDir, getC
     preHandler: [fastify.authenticate]
   }, async (request, reply) => {
     const body = request.body || {};
-    const phone = body.phone ? String(body.phone).trim() : null;
+    const rawPhone = body.phone ? String(body.phone).trim() : '';
+    const phone = rawPhone ? require('../services/huginn-notify').normalizePhone(rawPhone) : null;
     const email = body.email ? String(body.email).trim().toLowerCase() : null;
     const displayName = body.display_name ? String(body.display_name).trim() : null;
     const chatId = body.chat_id != null ? parsePositiveInt(body.chat_id) : null;
+    if (rawPhone && !phone) return reply.code(400).send({ error: 'Некорректный номер телефона' });
     if (!phone && !email) return reply.code(400).send({ error: 'phone или email обязателен' });
 
     if (chatId != null) {
@@ -417,7 +419,6 @@ module.exports = async function registerHuginnExt(fastify, { db, uploadDir, getC
     const token = String(request.params.token || '').trim();
     const body = request.body || {};
     const name = String(body.name || body.display_name || '').trim();
-    const phone = String(body.phone || '').trim();
 
     const { rows } = await db.query(
       `SELECT * FROM huginn_invites WHERE token = $1 FOR UPDATE`,
@@ -429,6 +430,14 @@ module.exports = async function registerHuginnExt(fastify, { db, uploadDir, getC
       return reply.code(410).send({ error: 'Приглашение недействительно' });
     }
     if (!name || name.length < 2) return reply.code(400).send({ error: 'Укажите имя' });
+    const rawPhone = String(body.phone || inv.phone || '').trim();
+    const phone = normPhone(rawPhone);
+    if (!phone) return reply.code(400).send({ error: 'Укажите корректный телефон для подтверждения' });
+    const invitedPhone = inv.phone ? normPhone(inv.phone) : '';
+    if (invitedPhone && invitedPhone !== phone) {
+      return reply.code(409).send({ error: 'Номер не совпадает с приглашением. Уточните номер у пригласившего.' });
+    }
+    const phoneDigits = phone.replace(/\D/g, '');
     // Passwordless guests: an invite does not force a password anymore. If one is
     // supplied we honour it (legacy/dev flows); otherwise we store a random secret
     // nobody knows, so login happens only via SMS code / email link.
@@ -437,42 +446,40 @@ module.exports = async function registerHuginnExt(fastify, { db, uploadDir, getC
       return reply.code(400).send({ error: 'Пароль минимум 6 символов' });
     }
 
-    const loginPhone = phone || inv.phone || '';
-    // Единый ключ: у гостя telefon/login хранятся цифрами (11 цифр с ведущей 7).
-    // Ищем и пишем одним и тем же значением, иначе повторный вход «по сырому» invite не найдёт гостя.
-    const invPhoneDigits = inv.phone ? (toDigitsRu(inv.phone) || String(inv.phone).replace(/\D/g, '')) : '';
     const bcrypt = require('bcryptjs');
     const hash = await bcrypt.hash(password || crypto.randomBytes(24).toString('hex'), 10);
 
-    // Reuse ONLY existing huginn guests by phone — never overwrite CRM staff passwords
+    // Match by the submitted, normalized phone in every invite flow. Previously
+    // email-only invites stored NULL in users.phone, so later SMS verification
+    // could not find the newly-created guest. Never overwrite a CRM staff account.
     let userId = null;
-    if (inv.phone) {
-      const existing = await db.query(
-        `SELECT id, COALESCE(is_huginn_guest, false) AS is_huginn_guest, role, login
-         FROM users WHERE phone = $1 OR login = $1 LIMIT 1`,
-        [invPhoneDigits || loginPhone]
-      );
-      if (existing.rows[0]) {
-        const u = existing.rows[0];
-        if (!u.is_huginn_guest) {
-          return reply.code(409).send({
-            error: 'Телефон уже привязан к учётной записи CRM. Войдите как сотрудник или используйте другой номер.'
-          });
-        }
-        userId = u.id;
-      }
+    const existing = await db.query(
+      `SELECT id, COALESCE(is_huginn_guest, false) AS is_huginn_guest, role, login
+         FROM users
+        WHERE phone = $1 OR login = $2
+           OR RIGHT(REGEXP_REPLACE(COALESCE(phone,''), '\\D', '', 'g'), 10) = RIGHT($2, 10)
+        ORDER BY id DESC
+        LIMIT 20`,
+      [phoneDigits, phoneDigits]
+    );
+    const guestRoles = ['huginn_guest', 'HUGINN_GUEST'];
+    const staffMatch = existing.rows.find((u) => !u.is_huginn_guest && !guestRoles.includes(String(u.role || '')));
+    if (staffMatch) {
+      return reply.code(409).send({
+        error: 'Телефон уже привязан к учётной записи CRM. Войдите как сотрудник или используйте другой номер.'
+      });
     }
+    const existingGuest = existing.rows.find((u) => u.is_huginn_guest || guestRoles.includes(String(u.role || '')));
+    if (existingGuest) userId = existingGuest.id;
 
     if (!userId) {
-      // Login must be the phone itself: the /h/ login screen asks for a phone, and
-      // auth lookup is by login/email. Store it normalized so SMS login finds the guest.
-      const digits = String(loginPhone).replace(/\D/g, '');
-      const login = digits || ('hg_guest_' + inv.id);
+      // The login and phone share one canonical digits value so request/verify can match it.
+      const login = phoneDigits;
       const { rows: created } = await db.query(
         `INSERT INTO users (name, login, password_hash, role, is_active, phone, email, created_at)
          VALUES ($1, $2, $3, 'FIELD_WORKER', true, $4, $5, NOW())
          RETURNING id, name, login, role`,
-        [name, login, hash, invPhoneDigits || null, inv.email || null]
+        [name, login, hash, phoneDigits, inv.email || null]
       );
       userId = created[0].id;
       try {
@@ -487,7 +494,7 @@ module.exports = async function registerHuginnExt(fastify, { db, uploadDir, getC
                 email = COALESCE($5, email),
                 is_huginn_guest = true
           WHERE id = $1`,
-        [userId, hash, name, invPhoneDigits || null, inv.email || null]
+        [userId, hash, name, phoneDigits, inv.email || null]
       );
     }
 
@@ -548,15 +555,6 @@ module.exports = async function registerHuginnExt(fastify, { db, uploadDir, getC
       ).catch(() => {});
     }
 
-    const huginnAcl = require('../services/huginn-acl');
-    const jwtUser = huginnAcl.guestJwtClaims({
-      id: userId,
-      role: 'huginn_guest',
-      name,
-      login: 'hg_guest_' + userId
-    });
-    const tokenJwt = fastify.jwt.sign(jwtUser, { expiresIn: '30d' });
-
     await huginnEvents.publish(db, {
       userIds: [inv.inviter_user_id],
       eventType: 'huginn:invite_accepted',
@@ -564,7 +562,9 @@ module.exports = async function registerHuginnExt(fastify, { db, uploadDir, getC
       chatId
     });
 
-    return { success: true, token: tokenJwt, user: jwtUser, chat_id: chatId };
+    // Acceptance creates the guest record but MUST NOT issue a session token.
+    // The only login token is issued by /auth/verify after the SMS code validates.
+    return { success: true, accepted: true, chat_id: chatId };
   });
 
   fastify.post('/invites/:token/revoke', {
@@ -1701,12 +1701,7 @@ module.exports = async function registerHuginnExt(fastify, { db, uploadDir, getC
   }
 
   function normPhone(raw) {
-    try {
-      const m = require('../services/mango');
-      const n = (m.normalizePhone || (m.default && m.default.normalizePhone));
-      if (typeof n === 'function') return n(String(raw || ''));
-    } catch (_) {}
-    return String(raw || '').replace(/\D/g, '');
+    return require('../services/huginn-notify').normalizePhone(raw);
   }
 
   function publicBaseUrl() {
