@@ -4779,7 +4779,7 @@ body.hg-dock-collapsed { padding-right: calc(var(--hg-rail-w) + 24px); }
   .hg-chrome:not(.is-composer-focus):not(.is-recording):not(.is-thread) .hg-list,
   .hg-chrome:not(.is-composer-focus):not(.is-recording):not(.is-thread) .hg-contacts-list,
   .hg-chrome:not(.is-composer-focus):not(.is-recording):not(.is-thread) .hg-settings {
-    padding-bottom: calc(var(--hg-tg-nav-h) + 24px + env(safe-area-inset-bottom, 0px));
+    padding-bottom: var(--hg-bottom-nav-clearance, calc(var(--hg-tg-nav-h, 64px) + 22px + env(safe-area-inset-bottom, 0px)));
   }
   .hg-chrome:not(.is-composer-focus):not(.is-recording):not(.is-thread) .hg-contacts {
     padding-bottom: 0;
@@ -4793,10 +4793,10 @@ body.hg-dock-collapsed { padding-right: calc(var(--hg-rail-w) + 24px); }
   }
   .hg-chrome.is-thread .hg-msgs {
     /* Reserve only the composer footprint; safe area is handled by the composer. */
-    padding-bottom: calc(var(--hg-tg-input-h) + 28px) !important;
+    padding-bottom: calc(var(--hg-composer-height, calc(var(--hg-tg-input-h, 40px) + 22px + env(safe-area-inset-bottom, 0px))) + 8px) !important;
   }
   .hg-chrome:not(.is-thread):not(.is-composer-focus):not(.is-recording) .hg-msgs {
-    padding-bottom: calc(56px + 12px + env(safe-area-inset-bottom, 0px)) !important;
+    padding-bottom: var(--hg-bottom-nav-clearance, calc(var(--hg-tg-nav-h, 64px) + 22px + env(safe-area-inset-bottom, 0px))) !important;
   }
   .hg-composer {
     /* keep absolute-over-msgs from base rule — relative here killed underlap */
@@ -4857,7 +4857,7 @@ body.hg-dock-collapsed { padding-right: calc(var(--hg-rail-w) + 24px); }
   /* Enough scroll room to clear last row above nav, but keep rows able to park under glass */
   .hg-list,
   .hg-contacts-list {
-    padding-bottom: calc(var(--hg-tg-nav-h) + 12px + env(safe-area-inset-bottom, 0px));
+    padding-bottom: var(--hg-bottom-nav-clearance, calc(var(--hg-tg-nav-h, 64px) + 22px + env(safe-area-inset-bottom, 0px)));
   }
   .hg-contacts,
   .hg-contacts-body {
