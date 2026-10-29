@@ -298,6 +298,9 @@
 
   function ensureDom() {
     if (root && document.body && document.body.contains(root)) return root;
+    // If navigation removed the dock, don't leave a pending long-press or
+    // document-level pointer handlers attached to its old chat rows.
+    if (root) cleanupChatRowGestures(root);
     if (root && root.parentNode) {
       try { root.parentNode.removeChild(root); } catch (_) {}
     }
