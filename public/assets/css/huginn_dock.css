@@ -6251,3 +6251,57 @@ html[data-theme="light"] .hg-invite-modes .hg-compose-mode.is-active {
 @media (prefers-reduced-motion: reduce) {
   .hg-ripple { display: none !important; }
 }
+
+
+/* Huginn motion polish — scoped to the live dock, sharing the existing power mode. */
+#huginnDock {
+  --hg-motion-duration: 180ms;
+  --hg-motion-ease: cubic-bezier(0.2, 0.6, 0.2, 1);
+}
+#huginnDock.hg-power-reduced {
+  --hg-motion-duration: 100ms;
+  --hg-motion-ease: ease-out;
+}
+#huginnDock.hg-power-off {
+  --hg-motion-duration: 0ms;
+}
+#huginnDock .hg-chat-row,
+#huginnDock .hg-contact-row,
+#huginnDock .hg-settings-row,
+#huginnDock .hg-rail-btn,
+.hg-bottom-nav button,
+#huginnDock .hg-icon-btn,
+#huginnDock .hg-fx-btn,
+#huginnDock .hg-search {
+  transition:
+    background-color var(--hg-motion-duration) var(--hg-motion-ease),
+    color var(--hg-motion-duration) var(--hg-motion-ease),
+    border-color var(--hg-motion-duration) var(--hg-motion-ease),
+    box-shadow var(--hg-motion-duration) var(--hg-motion-ease);
+}
+#huginnDock .hg-search:focus-visible {
+  outline: 2px solid var(--hg-active-edge, var(--blue-l, #4A90D9));
+  outline-offset: 1px;
+}
+#huginnDock.hg-power-off .hg-chat-row,
+#huginnDock.hg-power-off .hg-contact-row,
+#huginnDock.hg-power-off .hg-settings-row,
+#huginnDock.hg-power-off .hg-rail-btn,
+.hg-bottom-nav button,
+#huginnDock.hg-power-off .hg-icon-btn,
+#huginnDock.hg-power-off .hg-fx-btn,
+#huginnDock.hg-power-off .hg-search {
+  transition: none !important;
+}
+@media (prefers-reduced-motion: reduce) {
+  #huginnDock .hg-chat-row,
+  #huginnDock .hg-contact-row,
+  #huginnDock .hg-settings-row,
+  #huginnDock .hg-rail-btn,
+  .hg-bottom-nav button,
+  #huginnDock .hg-icon-btn,
+  #huginnDock .hg-fx-btn,
+  #huginnDock .hg-search {
+    transition-duration: 0.01ms !important;
+  }
+}
