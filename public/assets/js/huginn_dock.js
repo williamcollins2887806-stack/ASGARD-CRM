@@ -60,6 +60,34 @@
     connecting: false
   };
 
+  // Track the actual visible viewport (not a guessed keyboard height).
+  // Mobile browsers/WebViews resize VisualViewport when the system keyboard opens.
+  function syncHuginnViewport() {
+    const vv = global.visualViewport;
+    const doc = document.documentElement;
+    if (!doc) return;
+    const height = vv && Number.isFinite(vv.height) && vv.height > 0
+      ? vv.height
+      : (global.innerHeight || doc.clientHeight || 0);
+    const offsetTop = vv && Number.isFinite(vv.offsetTop) ? vv.offsetTop : 0;
+    if (height > 0) doc.style.setProperty('--hg-visual-viewport-height', height + 'px');
+    doc.style.setProperty('--hg-visual-viewport-top', Math.max(0, offsetTop) + 'px');
+  }
+
+  function bindHuginnViewport() {
+    if (global._hgViewportGeometryBound) return;
+    global._hgViewportGeometryBound = true;
+    syncHuginnViewport();
+    global.addEventListener('resize', syncHuginnViewport, { passive: true });
+    global.addEventListener('orientationchange', syncHuginnViewport, { passive: true });
+    if (global.visualViewport) {
+      global.visualViewport.addEventListener('resize', syncHuginnViewport, { passive: true });
+      global.visualViewport.addEventListener('scroll', syncHuginnViewport, { passive: true });
+    }
+  }
+
+  bindHuginnViewport();
+
   function draftKey(cid) { return 'hg_draft_' + cid; }
   function loadDraft(cid) {
     try { return localStorage.getItem(draftKey(cid)) || ''; } catch (_) { return ''; }
