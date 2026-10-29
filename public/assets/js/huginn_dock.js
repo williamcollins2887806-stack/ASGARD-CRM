@@ -2113,60 +2113,70 @@
       state.searchQ = e.target.value;
       renderChatList(e.target.value);
     };
-    // Stories rail (ТЗ Часть 5): скрытие/возврат ПРИВЯЗАНО к позиции скролла,
-    // а не триггером. Свайп вниз — кружочки уезжают вверх; свайп вверх в самом
-    // верху — плавно вытягиваются обратно (как в Telegram 12.4+).
+    // Stories rail follows the real chat-list scroll direction. A small
+    // accumulated delta filters touch jitter; reversing direction reveals it
+    // before the list reaches the top. The rail and list remain in normal flow,
+    // so collapsing the rail gives the list the freed height automatically.
     const listEl = panel.querySelector('#hgList');
     const railEl = panel.querySelector('#hgStoriesRail');
     if (listEl && railEl) {
-      // progress 0→1 на первых ~88px скролла. Пишем ТОЛЬКО CSS-переменную на
-      // каждый кадр (compositor: transform/opacity). Класс .is-hidden (схлоп
-      // высоты) переключаем с гистерезисом — иначе на границе порога класс
-      // дёргался каждый кадр и панель «моргала».
-      const REVEAL_RANGE = 88;
+      const JITTER_PX = 10;
+      let lastTop = Math.max(0, listEl.scrollTop || 0);
+      let pendingDelta = 0;
+      let direction = 0;
+      let hiddenState = false;
       let raf = 0;
-      let hiddenState = railEl.classList.contains('is-hidden');
-      const apply = () => {
+
+      const setHidden = (hide) => {
+        hiddenState = !!hide;
+        railEl.classList.toggle('is-hidden', hiddenState);
+        railEl.setAttribute('aria-hidden', hiddenState ? 'true' : 'false');
+      };
+      const syncScrollState = () => {
         raf = 0;
-        const top = listEl.scrollTop;
-        const progress = Math.max(0, Math.min(1, (top - 8) / REVEAL_RANGE));
-        railEl.style.setProperty('--hg-rail-hide', progress.toFixed(3));
-        // Гистерезис: прячем при progress>=1, показываем при <=0.55.
-        if (!hiddenState && progress >= 1) {
-          hiddenState = true;
-          railEl.classList.add('is-hidden');
-        } else if (hiddenState && progress <= 0.55) {
-          hiddenState = false;
-          railEl.classList.remove('is-hidden');
+        const top = Math.max(0, listEl.scrollTop || 0);
+        const maxScroll = Math.max(0, listEl.scrollHeight - listEl.clientHeight);
+        if (maxScroll <= 1 || top <= 0) {
+          pendingDelta = 0;
+          direction = 0;
+          lastTop = top;
+          setHidden(false);
+          return;
+        }
+
+        const delta = top - lastTop;
+        lastTop = top;
+        if (Math.abs(delta) < 0.5) return;
+        const nextDirection = delta > 0 ? 1 : -1;
+        if (nextDirection !== direction) {
+          direction = nextDirection;
+          pendingDelta = delta;
+        } else {
+          pendingDelta += delta;
+        }
+
+        if (direction > 0 && !hiddenState && pendingDelta >= JITTER_PX) {
+          setHidden(true);
+          pendingDelta = 0;
+        } else if (direction < 0 && hiddenState && pendingDelta <= -JITTER_PX) {
+          setHidden(false);
+          pendingDelta = 0;
         }
       };
+
+      // The list node is created once per panel render; this guard prevents
+      // duplicate listeners if the same node is initialized more than once.
       if (!listEl._hgRailBound) {
         listEl._hgRailBound = true;
         listEl.addEventListener('scroll', () => {
           if (raf) return;
-          raf = requestAnimationFrame(apply);
-        }, { passive: true });
-        // Overscroll-пружина: «потянул вниз в самом верху» → кружочки
-        // вытягиваются с мягким бэком (ТЗ §5.4). touch-only, desktop — no-op.
-        listEl.addEventListener('touchstart', (e) => {
-          const t = e.touches && e.touches[0];
-          if (!t) return;
-          listEl._hgTouchY = t.clientY;
-        }, { passive: true });
-        listEl.addEventListener('touchmove', (e) => {
-          const t = e.touches && e.touches[0];
-          if (!t || listEl._hgTouchY == null) return;
-          const dy = t.clientY - listEl._hgTouchY;
-          if (listEl.scrollTop <= 0 && dy > 6 && hiddenState) {
-            hiddenState = false;
-            railEl.classList.add('is-spring');
-            railEl.style.setProperty('--hg-rail-hide', '0');
-            railEl.classList.remove('is-hidden');
-            setTimeout(() => railEl.classList.remove('is-spring'), 360);
-          }
+          raf = requestAnimationFrame(syncScrollState);
         }, { passive: true });
       }
-      apply();
+      // Each newly rendered panel starts in a safe visible state. Short lists
+      // and restored scroll positions are normalized without waiting for input.
+      setHidden(false);
+      syncScrollState();
     }
     // Вкладки списка убраны (решение заказчика). «Контакты» доступны из
     // нижней навигации / rail, inline-режим больше не переключается.
