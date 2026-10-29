@@ -699,7 +699,17 @@ window.AsgardPmDutyPage = (function () {
         '</div>';
     }
 
+    /**
+     * D-348 (29.10.2026). Счётчик поколений отрисовки. Переключение вкладки
+     * запускает запросы, а ответы приходят не по порядку: медленный ответ
+     * СТАРОЙ вкладки мог прийти после быстрого ответа новой и перерисовать
+     * экран чужими данными (выглядело как «страница дважды грузится» и мигание
+     * чужого списка). Номер поколения отсекает такие ответы.
+     */
+    let renderSeq = 0;
+
     async function refreshUI() {
+      const seq = ++renderSeq;
       await Promise.all([
         loadQueue(),
         loadCounts(),
@@ -707,7 +717,9 @@ window.AsgardPmDutyPage = (function () {
         tab !== 'norms' ? loadRoster() : Promise.resolve(),
         loadRatings()
       ]);
+      if (seq !== renderSeq) return;   // ответ от устаревшего переключения
       await layout(renderPage(), { title: title || 'Просчёты РП' });
+      if (seq !== renderSeq) return;   // за время layout() переключили вкладку
       bindEvents();
       if (tab === 'norms' && window.AsgardWorkNormsUi) {
         const el = document.getElementById('workNormsRoot');
@@ -723,9 +735,26 @@ window.AsgardPmDutyPage = (function () {
     function bindEvents() {
       document.querySelectorAll('[data-tab]').forEach((b) => {
         b.addEventListener('click', () => {
-          tab = b.dataset.tab;
-          location.hash = '#/pm-calculations?tab=' + tab;
-          refreshUI();
+          const next = b.dataset.tab;
+          if (next === tab) return;   // повторный клик по активной вкладке ничего не грузит
+          tab = next;
+          /**
+           * D-348 (29.10.2026). Раньше здесь было И `location.hash = ...`, И
+           * `refreshUI()`. Смена хэша — это `hashchange`, а на него подписан
+           * `AsgardRouter.start()` → он заново вызывает `render()` всей страницы.
+           * В итоге на одно переключение вкладки приходилось ДВА полных цикла:
+           *   1) наш refreshUI()    — 6 запросов + layout()
+           *   2) router → render()  — ещё 6 запросов + layout()
+           * Пользователь видел, что «страница как будто 2 раза грузится».
+           *
+           * Теперь единственный источник правды — хэш: он и адресную строку
+           * обновляет, и запускает один рендер через роутер. Если хэш уже
+           * такой (например, пришли с #/all-estimates), роутер молчит —
+           * тогда обновляем сами.
+           */
+          const want = '#/pm-calculations?tab=' + next;
+          if (location.hash === want) refreshUI();
+          else location.hash = want;
         });
       });
       document.querySelectorAll('[data-preset]').forEach((b) => {
