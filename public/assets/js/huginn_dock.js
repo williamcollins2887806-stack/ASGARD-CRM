@@ -3440,7 +3440,9 @@
   function renderChatList(q) {
     const box = root.querySelector('#hgList');
     if (!box) return;
-    // Search/filter redraws can replace rows without rebuilding the whole panel.
+    // Keep row DOM stable during SSE/presence refreshes. Replacing every row
+    // on every event caused flicker, restarted visual states and lost scroll anchors.
+    // Search and intentional filtering still redraw when the displayed IDs change.
     cleanupChatRowGestures(box);
     const query = (q || '').toLowerCase().trim();
     // Honest state: if the list failed to load (e.g. guest 403), say so instead
@@ -3530,21 +3532,64 @@
       if (pinnedRows.length) html += `<div class="hg-list-sep" aria-hidden="true"></div>`;
       html += ordinary.map(rowHtml).join('');
     }
-    box.innerHTML = html;
-    box.querySelectorAll('[data-cid]').forEach((el) => {
-      el.onclick = () => {
-        if (Date.now() < (el._hgGestureSuppressUntil || 0)) return;
-        const cid = Number(el.getAttribute('data-cid'));
-        if (state.listEditMode) {
-          if (state.selectedChatIds.has(cid)) state.selectedChatIds.delete(cid);
-          else state.selectedChatIds.add(cid);
-          renderPanel();
-          return;
-        }
-        openChat(cid);
-      };
-      wireChatRowSwipe(el);
-    });
+    // Preserve the list node/scroll position and existing row elements when only
+    // message previews, timestamps, unread counters or presence have changed.
+    // This avoids re-running row entrance/gesture setup on every SSE event.
+    const renderSignature = rows.map((chat) => String(chat.id)).join(',');
+    const previousSignature = box.getAttribute('data-render-signature');
+    if (previousSignature !== renderSignature || box.innerHTML === '') {
+      box.innerHTML = html;
+      box.setAttribute('data-render-signature', renderSignature);
+      box.querySelectorAll('[data-cid]').forEach((el) => {
+        el.onclick = () => {
+          if (Date.now() < (el._hgGestureSuppressUntil || 0)) return;
+          const cid = Number(el.getAttribute('data-cid'));
+          if (state.listEditMode) {
+            if (state.selectedChatIds.has(cid)) state.selectedChatIds.delete(cid);
+            else state.selectedChatIds.add(cid);
+            renderPanel();
+            return;
+          }
+          openChat(cid);
+        };
+        wireChatRowSwipe(el);
+      });
+    } else {
+      // IDs and ordering are unchanged: patch only row contents/classes in place.
+      // Retain each row DOM node and its gesture listeners while applying fresh state.
+      const nextRows = new Map();
+      const nextDoc = document.createElement('div');
+      nextDoc.innerHTML = html;
+      nextDoc.querySelectorAll('[data-cid]').forEach((el) => nextRows.set(el.getAttribute('data-cid'), el));
+      box.querySelectorAll('[data-cid]').forEach((current) => {
+        const next = nextRows.get(current.getAttribute('data-cid'));
+        if (!next) return;
+        if (current.className !== next.className) current.className = next.className;
+        if (current.innerHTML !== next.innerHTML) current.innerHTML = next.innerHTML;
+      });
+      // Update separators/pinned block labels only when row ordering is unchanged.
+      const currentStructure = Array.from(box.children).map((el) => el.className).join('|');
+      const nextStructure = Array.from(nextDoc.children).map((el) => el.className).join('|');
+      if (currentStructure !== nextStructure) {
+        // Structural grouping changed (e.g. pinned state) so replace the list once.
+        cleanupChatRowGestures(box);
+        box.innerHTML = html;
+        box.querySelectorAll('[data-cid]').forEach((el) => {
+          el.onclick = () => {
+            if (Date.now() < (el._hgGestureSuppressUntil || 0)) return;
+            const cid = Number(el.getAttribute('data-cid'));
+            if (state.listEditMode) {
+              if (state.selectedChatIds.has(cid)) state.selectedChatIds.delete(cid);
+              else state.selectedChatIds.add(cid);
+              renderPanel();
+              return;
+            }
+            openChat(cid);
+          };
+          wireChatRowSwipe(el);
+        });
+      }
+    }
     syncRailBadge();
   }
 
