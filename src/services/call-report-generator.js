@@ -36,6 +36,11 @@ class CallReportGenerator {
     const db = this.db;
 
     // 1. Общая статистика (новые метрики)
+    //
+    // ПЛЕЧИ НЕ СЧИТАЕМ (29.10.2026): строка перевода/плеча (parent_call_id
+    // не пуст) — это часть того же разговора, который уже посчитан головным
+    // звонком. Без фильтра отчёт за 28.10 показывал 11 звонков вместо 10:
+    // перевод Хосе (167 с) шёл отдельной строкой к тому же клиенту.
     const totalsRes = await db.query(`
       SELECT
         COUNT(*) as total_calls,
@@ -48,26 +53,31 @@ class CallReportGenerator {
         AVG(duration_seconds) FILTER (WHERE duration_seconds > 0) as avg_duration
       FROM call_history
       WHERE created_at >= $1::date AND created_at < ($2::date + INTERVAL '1 day')
+        AND parent_call_id IS NULL
     `, [dateFrom, dateTo]);
     const totals = totalsRes.rows[0];
 
     // 2. По сотрудникам
+    //
+    // АТРИБУЦИЯ (29.10.2026). Было две ошибки:
+    //  • звонки, взятые оператором, но без user_id (входящие, отвечено через
+    //    answered_by), попадали в «Неизвестный» — за 28.10 их было 8 из 11;
+    //  • LEFT JOIN users u2 по телефону подмешивал ВТОРОГО пользователя
+    //    (владельца номера), из-за чего GROUP BY размножал строки и «Андросов»
+    //    получал 3 звонка вместо 5.
+    // Теперь: оператор = COALESCE(user_id, answered_by), один JOIN.
     const byEmployeeRes = await db.query(`
       SELECT
-        COALESCE(u.name, u2.name) as name,
+        COALESCE(u.name, 'Неизвестный') as name,
         COUNT(*) as total,
         COUNT(*) FILTER (WHERE ch.ai_is_target = true) as target,
         COUNT(*) FILTER (WHERE ch.call_type = 'missed' AND COALESCE(ch.missed_acknowledged, false) = false AND ch.missed_callback_at IS NULL) as missed,
         AVG(ch.duration_seconds) FILTER (WHERE ch.duration_seconds > 0) as avg_duration
       FROM call_history ch
-      LEFT JOIN users u ON ch.user_id = u.id
-      LEFT JOIN users u2 ON u.id IS NULL AND u2.is_active = true
-        AND replace(replace(COALESCE(u2.phone,''), '+', ''), '-', '') LIKE '%' ||
-            RIGHT(replace(replace(
-              CASE WHEN ch.direction = 'inbound' THEN ch.to_number ELSE ch.from_number END,
-            '+', ''), '-', ''), 10)
+      LEFT JOIN users u ON u.id = COALESCE(ch.user_id, ch.answered_by)
       WHERE ch.created_at >= $1::date AND ch.created_at < ($2::date + INTERVAL '1 day')
-      GROUP BY ch.user_id, u.name, u2.name
+        AND ch.parent_call_id IS NULL
+      GROUP BY COALESCE(u.name, 'Неизвестный')
       ORDER BY total DESC
       LIMIT 20
     `, [dateFrom, dateTo]);

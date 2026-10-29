@@ -1047,16 +1047,24 @@ function createCmdServer() {
                 ]
               );
               // ОДНА КАРТОЧКА НА КЛИЕНТА (инцидент 28.10.2026): перевод не должен
-              // выглядеть в журнале как отдельный исходящий на номер Асгарда
-              // (было: «14:45 +7 499 322-30-62, 03:29» и «перевод Хосе, 02:47» —
-              // две строки вместо одного звонка). Строку перевода привязываем к
-              // головному звонку через parent_call_id и переносим номер клиента.
+              // выглядеть в журнале как отдельный исходящий на номер Асгарда.
+              //
+              // ДВА ИСПРАВЛЕНИЯ 29.10.2026 (баг был мой):
+              // 1) Строка плеча оператора создаётся С ТЕМ ЖЕ pbx_uid (передаётся
+              //    в finalize), поэтому поиск «головной» строки по pbx_uid
+              //    находил её саму → parent_call_id = id, и журнал прятал
+              //    ХОРОШИЙ звонок (фильтр parent_call_id IS NULL). Ищем строго
+              //    по direction <> 'internal'.
+              // 2) У внутреннего звонка нет pbx_uid, поэтому установка не
+              //    привязывалась к исходному входящему. Окно поиска 2 минуты —
+              //    время разговора с клиентом до перевода.
               try {
                 const parent = await c.query(
                   `SELECT id, client_number,
                           CASE WHEN direction = 'inbound' THEN from_number ELSE to_number END AS num
                      FROM call_history
-                    WHERE pbx_uid = $1 OR call_id = $1 OR call_id = $2
+                    WHERE COALESCE(direction, '') <> 'internal'
+                      AND (pbx_uid = $1 OR call_id = $1 OR call_id = $2)
                     ORDER BY (pbx_uid = $1) DESC NULLS LAST, id ASC
                     LIMIT 1`,
                   [callId, 'pbx_' + callId]
@@ -1070,8 +1078,28 @@ function createCmdServer() {
                         SET parent_call_id = COALESCE(parent_call_id, $1),
                             client_number = COALESCE(client_number, $2),
                             updated_at = NOW()
-                      WHERE pbx_uid = $3 OR call_id = $3 OR call_id = $4`,
+                      WHERE (pbx_uid = $3 OR call_id = $3 OR call_id = $4)
+                        AND COALESCE(direction, '') <> 'internal'
+                        AND id <> $1`,
                     [p.id, clientNum || null, callId, 'pbx_' + callId]
+                  );
+                  // Внутренняя строка (сама установка) — привязываем отдельно:
+                  // у неё нет pbx_uid, ищем по номеру цели + времени.
+                  await c.query(
+                    `UPDATE call_history
+                        SET parent_call_id = COALESCE(parent_call_id, $1),
+                            client_number = COALESCE(client_number, $2),
+                            updated_at = NOW()
+                      WHERE id = (
+                        SELECT id FROM call_history
+                         WHERE direction = 'internal'
+                           AND parent_call_id IS NULL
+                           AND to_number = $3
+                           AND ABS(EXTRACT(EPOCH FROM (created_at - NOW()))) < 150
+                         ORDER BY created_at DESC
+                         LIMIT 1
+                      )`,
+                    [p.id, clientNum || null, String(body.target || '')]
                   );
                 }
               } catch (_) { /* свёртка не критична для перевода */ }
