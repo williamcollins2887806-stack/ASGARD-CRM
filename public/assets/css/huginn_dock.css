@@ -1404,6 +1404,89 @@ html[data-hg-fx="off"] #huginnDock .hg-list-me-btn {
 @media (prefers-reduced-motion: reduce) {
   .hg-list > * { transition-duration: 1ms !important; }
 }
+/* Swipe affordances sit behind the moving row; the row itself remains the real chat button. */
+.hg-swipe-action {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  height: var(--hg-row-h);
+  min-height: var(--hg-row-h);
+  margin-bottom: calc(-1 * var(--hg-row-h));
+  padding-left: 20px;
+  box-sizing: border-box;
+  color: #fff;
+  font: 600 13px/1 var(--hg-font);
+  opacity: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+.hg-swipe-action.is-visible { opacity: 1; }
+.hg-swipe-action.is-archive { background: #26845B; }
+.hg-swipe-action.is-delete { justify-content: flex-end; padding-left: 0; padding-right: 20px; background: #C83D4D; }
+.hg-chat-row.hg-swipe-active { z-index: 1; will-change: transform; }
+.hg-chat-row.hg-swipe-returning { transition: transform 220ms cubic-bezier(.22,1.25,.36,1); }
+.hg-peek-backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 120;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  box-sizing: border-box;
+  background: rgba(0,0,0,.36);
+  opacity: 0;
+  transition: opacity 170ms ease;
+}
+.hg-peek-backdrop.is-open { opacity: 1; }
+.hg-peek-backdrop.is-closing { opacity: 0; }
+.hg-peek-card {
+  position: relative;
+  width: min(100%, 340px);
+  padding: 20px;
+  border: 1px solid var(--hg-border, rgba(255,255,255,.12));
+  border-radius: 20px;
+  background: var(--hg-panel, var(--bg2, #171B24));
+  color: var(--hg-text, #fff);
+  box-shadow: var(--hg-elev-4, 0 18px 60px rgba(0,0,0,.32));
+  transform: translateY(8px) scale(.98);
+  transition: transform 190ms cubic-bezier(.2,.8,.2,1);
+}
+.hg-peek-backdrop.is-open .hg-peek-card { transform: translateY(0) scale(1); }
+.hg-peek-close {
+  position: absolute;
+  top: 8px;
+  right: 10px;
+  width: 32px;
+  height: 32px;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(128,128,128,.16);
+  color: inherit;
+  font: 400 24px/1 var(--hg-font);
+}
+.hg-peek-head { display: flex; align-items: center; gap: 12px; padding-right: 24px; }
+.hg-peek-avatar { flex: 0 0 auto; width: 48px; height: 48px; border-radius: 50%; }
+.hg-peek-title-wrap { min-width: 0; }
+.hg-peek-title { font: 600 17px/1.3 var(--hg-font); overflow-wrap: anywhere; }
+.hg-peek-sub { margin-top: 3px; font: 400 12px/1.3 var(--hg-font); color: var(--hg-muted, #8E8E93); }
+.hg-peek-message { margin-top: 18px; padding: 13px; border-radius: 12px; background: var(--bg3, rgba(128,128,128,.12)); }
+.hg-peek-message-label { margin-bottom: 6px; font: 500 11px/1.3 var(--hg-font); color: var(--hg-muted, #8E8E93); }
+.hg-peek-message-text { font: 400 14px/1.45 var(--hg-font); overflow-wrap: anywhere; }
+.hg-peek-open {
+  width: 100%;
+  min-height: 44px;
+  margin-top: 14px;
+  border: 0;
+  border-radius: 12px;
+  background: var(--hg-accent-chat, var(--blue-l, #4A90D9));
+  color: #fff;
+  font: 600 14px/1.2 var(--hg-font);
+}
+@media (prefers-reduced-motion: reduce) {
+  .hg-chat-row.hg-swipe-returning, .hg-peek-backdrop, .hg-peek-card { transition-duration: 1ms !important; }
+}
 .hg-chat-row {
   display: grid;
   grid-template-columns: var(--hg-av-list) 1fr auto;
