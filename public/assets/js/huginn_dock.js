@@ -4614,6 +4614,9 @@
       openMsgMenu(Number(bubble.getAttribute('data-mid')), e.clientX, e.clientY);
     });
     msgs.addEventListener('dblclick', (e) => {
+      // Чек-лист внутри сообщения должен обрабатывать повторные нажатия
+      // только как переключение пункта, без быстрого добавления реакции.
+      if (e.target.closest('.hg-checklist-row[data-check-item], .hg-checklist')) return;
       const bubble = e.target.closest('.hg-bubble');
       if (!bubble || bubble.classList.contains('system')) return;
       toggleReaction(Number(bubble.getAttribute('data-mid')), '👍');
@@ -4670,6 +4673,11 @@
     });
     let pressTimer = null;
     msgs.addEventListener('pointerdown', (e) => {
+      // Не открываем quick-reaction при удержании пункта чек-листа.
+      if (e.target.closest('.hg-checklist-row[data-check-item], .hg-checklist')) {
+        clearTimeout(pressTimer);
+        return;
+      }
       const bubble = e.target.closest('.hg-bubble');
       if (!bubble || bubble.classList.contains('system')) return;
       pressTimer = setTimeout(() => showQuickReact(bubble), 450);
