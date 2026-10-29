@@ -6313,3 +6313,170 @@ html[data-theme="light"] .hg-invite-modes .hg-compose-mode.is-active {
   }
 }
 
+/* Responsive geometry fixes for the live Huginn dock (no layout redesign). */
+@media (max-width: 768px) {
+  .hg-chrome {
+    left: var(--hg-visual-viewport-left, 0px);
+    right: auto;
+    width: var(--hg-visual-viewport-width, 100vw);
+    box-sizing: border-box;
+  }
+
+  /* The shell already accounts for the top safe area. Do not let a 100%-height
+     panel add that inset a second time or force the scroll area beyond viewport. */
+  .hg-chrome > .hg-panel {
+    width: 100%;
+    height: auto;
+    min-width: 0;
+    min-height: 0;
+    flex: 1 1 auto;
+    box-sizing: border-box;
+  }
+  .hg-panel > .hg-thread {
+    width: 100%;
+    height: 100%;
+    min-width: 0;
+    min-height: 0;
+    flex: 1 1 auto;
+  }
+  .hg-thread,
+  .hg-float-chrome,
+  .hg-thread-head,
+  .hg-thread-actions,
+  .hg-msgs-wrap,
+  .hg-msgs {
+    min-width: 0;
+  }
+  .hg-thread-head { width: 100%; }
+  .hg-thread-title {
+    flex: 1 1 0%;
+    min-width: 0;
+    max-width: 100%;
+    padding-left: clamp(6px, 2vw, 14px);
+    padding-right: clamp(6px, 2vw, 14px);
+  }
+  .hg-thread-title strong,
+  .hg-thread-title strong .hg-title-text {
+    min-width: 0;
+    max-width: 100%;
+  }
+  .hg-thread-title strong .hg-title-text {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* Prevent long links, code and unbroken names from widening the scroll area. */
+  .hg-msgs {
+    min-height: 0;
+    overflow-x: hidden;
+  }
+  .hg-msg-group,
+  .hg-msg-row,
+  .hg-bubble {
+    min-width: 0;
+    max-width: 100%;
+  }
+  .hg-msg-stack { min-width: 0; }
+  .hg-bubble { overflow-wrap: anywhere; }
+  .hg-bubble a,
+  .hg-bubble code,
+  .hg-bubble pre {
+    max-width: 100%;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
+  .hg-bubble pre { white-space: pre-wrap; }
+  .hg-bubble img,
+  .hg-bubble video,
+  .hg-bubble iframe {
+    display: block;
+    max-width: 100%;
+    height: auto;
+  }
+
+  /* Keep the composer controls fixed-width and let only the input shrink. */
+  .hg-composer {
+    min-width: 0;
+    max-width: 100%;
+    box-sizing: border-box;
+  }
+  .hg-composer-row {
+    width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
+  }
+  .hg-composer-row .hg-input-wrap,
+  .hg-composer-row .hg-input-main,
+  .hg-composer-row .hg-input-main textarea {
+    min-width: 0;
+  }
+  .hg-composer-row .hg-input-wrap { flex: 1 1 0%; }
+  .hg-composer-row .hg-input-main textarea {
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+  }
+
+  /* Use the measured composer height so multi-line drafts/replies/attachments
+     cannot cover the final messages in the independent scroll area. */
+  .hg-chrome.is-thread .hg-msgs {
+    padding-bottom: calc(
+      var(--hg-composer-height,
+        calc(var(--hg-tg-input-h) + 20px + env(safe-area-inset-bottom, 0px))
+      ) + 8px
+    ) !important;
+  }
+
+  .hg-bottom-nav {
+    min-width: 0;
+    box-sizing: border-box;
+  }
+  .hg-bottom-nav button {
+    min-width: 0;
+    padding-left: 2px;
+    padding-right: 2px;
+  }
+  .hg-bottom-nav .hg-nav-label {
+    max-width: 100%;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+}
+
+/* The four real navigation items should remain legible at 320px and below. */
+@media (max-width: 359px) {
+  :root {
+    --hg-tg-nav-inset: 8px;
+    --hg-tg-fab-size: 52px;
+    --hg-tg-fab-gap: 6px;
+    --hg-tg-nav-h: 58px;
+  }
+  .hg-bottom-nav { padding-left: 4px; padding-right: 4px; }
+  .hg-bottom-nav button { gap: 2px; }
+  .hg-bottom-nav .hg-nav-ico { width: 23px; height: 23px; }
+  .hg-bottom-nav .hg-nav-ico svg {
+    width: 22px !important;
+    height: 22px !important;
+    min-width: 22px;
+    min-height: 22px;
+  }
+  .hg-bottom-nav .hg-nav-label {
+    font-size: 10px;
+    letter-spacing: -0.02em;
+  }
+}
+
+/* Landscape phones have little vertical space; keep controls reachable without
+   changing the desktop/tablet layout. */
+@media (max-width: 768px) and (max-height: 500px) and (orientation: landscape) {
+  :root {
+    --hg-tg-header-inset: 8px;
+    --hg-tg-header-h: 40px;
+    --hg-tg-nav-h: 54px;
+    --hg-tg-fab-size: 50px;
+  }
+  .hg-chrome.is-thread .hg-composer textarea { max-height: 96px; }
+}
+
