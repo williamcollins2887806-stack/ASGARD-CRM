@@ -2643,8 +2643,8 @@ html[data-theme="light"] .hg-scroll-fab {
   display: none;
 }
 .hg-thread .hg-msgs-wrap {
-  /* suggest bar removed — reserve composer row only */
-  padding-bottom: calc(var(--hg-tg-input-h) + 20px + env(safe-area-inset-bottom, 0px));
+  /* The composer overlays the thread; reserve its scroll clearance inside .hg-msgs only. */
+  padding-bottom: 0;
 }
 .hg-composer > * { position: relative; z-index: 1; }
 html[data-theme="light"] .hg-composer {
