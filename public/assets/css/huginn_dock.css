@@ -1,5 +1,12 @@
 /* Huginn dock — TG iOS pixel chrome (ATLAS). Gold ONLY on rail chrome. */
 
+/* Unified Huginn motion cadence — driven by the existing Energy Saving mode. */
+#huginnDock.hg-power-full {
+  --hg-motion-duration: 180ms;
+  --hg-motion-ease: cubic-bezier(0.2, 0.6, 0.2, 1);
+}
+
+
 :root {
   --hg-rail-w: 56px;
   --hg-panel-w: 400px;
