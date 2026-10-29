@@ -1421,7 +1421,6 @@ html[data-hg-fx="off"] #huginnDock .hg-list-me-btn {
   pointer-events: none;
   overflow: hidden;
 }
-.hg-swipe-action.is-visible { opacity: 1; }
 .hg-swipe-action.is-archive { background: #26845B; }
 .hg-swipe-action.is-delete { justify-content: flex-end; padding-left: 0; padding-right: 20px; background: #C83D4D; }
 .hg-chat-row.hg-swipe-active { z-index: 1; will-change: transform; }
@@ -1504,6 +1503,7 @@ html[data-hg-fx="off"] #huginnDock .hg-list-me-btn {
   border-bottom: 1px solid var(--hg-sep);
   width: 100%;
   background: transparent;
+  touch-action: pan-y;
   text-align: left;
   color: inherit;
   align-items: center;
