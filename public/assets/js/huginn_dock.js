@@ -1338,6 +1338,8 @@
         '.hg-chat-row,.hg-contact-row,.hg-settings-row,.hg-bubble,.hg-bottom-nav button,.hg-icon-btn,.hg-send'
       );
       if (!host) return;
+      // The "off" mode suppresses decoration but leaves native press/focus feedback.
+      if (document.documentElement.getAttribute('data-hg-fx') === 'off') return;
       try {
         const r = host.getBoundingClientRect();
         const size = Math.max(r.width, r.height);
@@ -4058,6 +4060,9 @@
     const email = me.email || '—';
     const uname = me.username ? ('@' + me.username) : (me.login ? ('@' + me.login) : '—');
     const fx = applyFxMode(localStorage.getItem('hg_power_saving') || localStorage.getItem('hg_fx'));
+    // "Энергосбережение" is ON whenever effects are reduced or disabled.
+    // The effective mode includes the existing prefers-reduced-motion fallback.
+    const powerSavingEnabled = fx !== 'full';
     const quick = [
       { label: 'Мой профиль', ico: ICO.user || ICO.contacts || '👤', tone: 'is-red', set: 'profile' },
       { label: 'Избранное', ico: ICO.bookmark || ICO.pin || '🔖', tone: 'is-blue', set: 'favorites' },
@@ -4071,7 +4076,7 @@
         { label: 'Оформление', ico: ICO.palette || ICO.settings || '🎨', tone: 'is-blue', key: 'appearance' }
       ],
       [
-        { label: 'Энергосбережение', ico: ICO.battery || '🔋', tone: 'is-yellow', key: 'fx', value: fx === 'full' ? 'Выкл.' : 'Вкл.' },
+        { label: 'Энергосбережение', ico: ICO.battery || '🔋', tone: 'is-yellow', key: 'fx', value: powerSavingEnabled ? 'Вкл.' : 'Выкл.' },
         { label: 'Язык', ico: ICO.languages || ICO.globe || '🌐', tone: 'is-purple', key: 'lang', value: (state.lang === 'en' ? 'English' : 'Русский') }
       ]
     ];
@@ -4138,7 +4143,7 @@
           </div>
           <div class="hg-fx-toggle" role="group" aria-label="Эффекты">
             ${['full', 'reduced', 'off'].map((m) => {
-              const labels = { full: 'Полные', reduced: 'Меньше', off: 'Выкл' };
+              const labels = { full: 'Все', reduced: 'Меньше', off: 'Выкл.' };
               return `<button type="button" class="hg-fx-btn${fx === m ? ' is-active' : ''}" data-fx="${m}">${labels[m]}</button>`;
             }).join('')}
           </div>
