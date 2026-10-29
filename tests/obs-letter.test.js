@@ -508,6 +508,48 @@ console.log('\n=== Контур оплаты и справочник догов�
   ok(/data-as-letter="1"/.test(hub), 'кнопки «Письмо …» помечены отдельно');
 }
 
+// ─── D-394: окно расчёта Мимира — читаемость ──────────────────────────────
+// Заказчик 29.10.2026: «Почти не видно то что он там пишет. очень маленькое
+// окошко и я не успеваю даже ничего прочитать».
+console.log('\n=== Окно расчёта Мимира (D-394) ===');
+{
+  const fs = require('fs');
+  const kb = fs.readFileSync(require.resolve('../public/assets/js/personal_kanban.js'), 'utf8');
+
+  ok(/\.pk3-bz-card\{[^}]*width:min\(920px/.test(kb), 'окно расширено до 920px (было 620)');
+  ok(/-webkit-line-clamp:12/.test(kb), 'текст модели до 12 строк (было 2 — не успевали читать)');
+  ok(/\.pk3-bz-live-text\{[^}]*font-size:13\.5px/.test(kb), 'кегль текста 13.5px (было 12.5)');
+  ok(/pk3-bz-card \.pk3-mimir-thoughts\{[^}]*max-height:340px/.test(kb),
+    'журнал «Ход расчёта» вырос до 340px (было 136)');
+  ok(/is-default-open/.test(kb), 'журнал раскрыт по умолчанию — видно, что модель пишет');
+  ok(/is-default-open \.pk3-mimir-thoughts\{display:block\}/.test(kb), 'правило раскрытия есть в CSS');
+}
+
+// ─── D-395: ИИ не заполнял заявку на закупку ──────────────────────────────
+// Причина: модель по умолчанию — deepseek-v4.1-flash, это reasoning-модель.
+// Она тратит весь max_tokens на размышления и возвращает finish_reason=length
+// с ПУСТЫМ content. Плюс промпт без примера давал пустой шаблон.
+console.log('\n=== ИИ заявки на закупку (D-395) ===');
+{
+  const fs = require('fs');
+  const proc = fs.readFileSync(require.resolve('../src/routes/procurement.js'), 'utf8');
+
+  // Все вызовы модели в этом файле обязаны отключать reasoning.
+  const completes = (proc.match(/aiProvider\.complete\(\{/g) || []).length;
+  const withOff = (proc.match(/reasoning:\s*\{\s*enabled:\s*false\s*\}/g) || []).length;
+  ok(withOff > 0, `reasoning:{enabled:false} передан (${withOff} раз)`);
+  ok(withOff >= completes, `все ${completes} вызовов модели отключают reasoning`);
+
+  // Промпт обязан содержать пример — иначе модель возвращает пустой шаблон.
+  ok(/Пример:/.test(proc), 'в промпте есть пример «текст → ответ»');
+  ok(/Болты М12/.test(proc), 'пример конкретный, не «...»');
+  ok(/не оставляй name пустым/i.test(proc), 'промпт прямо запрещает пустые названия');
+
+  // Пустой ответ модели отличается от «не нашёл позиций».
+  ok(/ai_empty/.test(proc), 'пустой ответ модели отдаётся отдельным флагом');
+  ok(/Модель не ответила/.test(proc), 'пользователю объясняют, что дело в модели');
+}
+
 console.log(`\n────────────────────────────────────────`);
 console.log(`ИТОГ письма ОБС: PASS ${pass} / FAIL ${fail}`);
 if (fail) process.exitCode = 1;

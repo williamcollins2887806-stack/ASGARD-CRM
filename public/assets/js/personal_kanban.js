@@ -8537,7 +8537,12 @@ html[data-theme="light"] .pk3-mimir-busy{background:rgba(244,246,248,.80)}
 .pk3-modal:has(.pk3-mimir-busy) #pk3-q-progress,
 .pk3-modal:has(.pk3-mimir-busy) #pk3-q-prog-line{visibility:hidden}
 
-.pk3-bz-card{position:relative;width:min(620px,100%);max-height:100%;overflow:auto;box-sizing:border-box;
+/* D-394: окно расчёта было тесным — 620px шириной, текст модели обрезался
+   до двух строк, журнал «Ход расчёта» свёрнут. Заказчик 29.10.2026:
+   «Почти не видно то что он там пишет. очень маленькое окошко и я не успеваю
+   даже ничего прочитать». Теперь окно шире и выше, текст не режется,
+   а журнал раскрыт сразу. */
+.pk3-bz-card{position:relative;width:min(920px,100%);max-height:min(94vh,900px);overflow:auto;box-sizing:border-box;
   padding:26px 28px 20px;border-radius:22px;background:var(--bg2);
   border:1px solid var(--brd);
   box-shadow:0 26px 70px rgba(3,6,12,.42),0 1px 0 rgba(255,255,255,.05) inset,0 0 0 1px rgba(212,168,67,.10)}
@@ -8597,12 +8602,14 @@ html[data-theme="light"] .pk3-bz-stage.is-now{color:var(--gold-h);background:rgb
 .pk3-bz-pct{color:var(--gold);font-weight:700}
 html[data-theme="light"] .pk3-bz-pct{color:var(--gold)}
 
-.pk3-bz-live{display:flex;gap:10px;align-items:flex-start;padding:11px 14px;border-radius:12px;
-  background:var(--bg3);border:1px solid var(--brd-m);min-height:46px}
+/* D-394: текст модели больше НЕ обрезается до двух строк — это была главная
+   причина «не успеваю прочитать». Даём до 12 строк и нормальный кегль. */
+.pk3-bz-live{display:flex;gap:10px;align-items:flex-start;padding:14px 16px;border-radius:12px;
+  background:var(--bg3);border:1px solid var(--brd-m);min-height:56px}
 .pk3-bz-live-bar{flex:0 0 auto;align-self:stretch;width:2px;border-radius:2px;
   background:linear-gradient(180deg,var(--gold),transparent);opacity:.85}
-.pk3-bz-live-text{margin:0;flex:1;min-width:0;font-size:12.5px;line-height:1.55;color:var(--t2);
-  overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;word-break:break-word}
+.pk3-bz-live-text{margin:0;flex:1;min-width:0;font-size:13.5px;line-height:1.6;color:var(--t1);
+  overflow:hidden;display:-webkit-box;-webkit-line-clamp:12;-webkit-box-orient:vertical;word-break:break-word}
 .pk3-bz-live-text.is-stream::after{content:'';display:inline-block;width:5px;height:12px;margin-left:4px;border-radius:1px;
   background:var(--gold);vertical-align:-2px;animation:bzCaret 1.05s steps(1,end) infinite}
 
@@ -8615,13 +8622,16 @@ html[data-theme="light"] .pk3-bz-pct{color:var(--gold)}
 .pk3-bz-more.is-open .pk3-bz-more-btn{color:rgba(255,255,255,.72)}
 /* Перебиваем старые стили журнала из drawer-CSS (там тёмная плашка
    rgba(255,255,255,.04) и width 560px — на светлой теме это мыльное пятно). */
-.pk3-bz-card .pk3-mimir-thoughts{display:none;width:auto;max-height:136px;overflow-y:auto;
-  text-align:left;scrollbar-width:thin;margin-top:9px;padding:0 4px 0 0;
+.pk3-bz-card .pk3-mimir-thoughts{display:none;width:auto;max-height:340px;overflow-y:auto;
+  text-align:left;scrollbar-width:thin;margin-top:9px;padding:0 6px 0 0;
   background:transparent;border:0;border-radius:0}
 .pk3-bz-card .pk3-bz-more.is-open .pk3-mimir-thoughts{display:block}
 .pk3-mimir-thoughts::-webkit-scrollbar{width:6px}
 .pk3-mimir-thoughts::-webkit-scrollbar-thumb{background:var(--brd);border-radius:3px}
-.pk3-bz-card .pk3-thought-row{display:flex;gap:8px;font-size:11.5px;line-height:1.5;color:var(--t3);padding:2px 0;
+/* D-394: журнал раскрыт по умолчанию — иначе человек не видит, что модель
+   пишет, и не успевает прочитать. Кнопка остаётся, чтобы свернуть. */
+.pk3-bz-card .pk3-bz-more.is-default-open .pk3-mimir-thoughts{display:block}
+.pk3-bz-card .pk3-thought-row{display:flex;gap:8px;font-size:12.5px;line-height:1.55;color:var(--t3);padding:3px 0;
   background:none;animation:bzIn .18s ease both}
 .pk3-bz-card .pk3-thought-row:last-child{color:var(--t2)}
 .pk3-bz-card .pk3-thought-row::before{content:'·';color:var(--gold);opacity:.75;flex:0 0 auto}
@@ -8774,7 +8784,7 @@ html[data-theme="light"] .pk3-qsecrow{background:var(--bg3) !important;color:var
             <span class="pk3-bz-live-bar"></span>
             <p class="pk3-bz-live-text">Подключаюсь к модели…</p>
           </div>
-          <div class="pk3-bz-more">
+          <div class="pk3-bz-more is-default-open">
             <button type="button" class="pk3-bz-more-btn"><span class="chev">▾</span> Ход расчёта</button>
             <div class="pk3-mimir-thoughts" aria-live="polite"></div>
           </div>
@@ -8783,7 +8793,13 @@ html[data-theme="light"] .pk3-qsecrow{background:var(--bg3) !important;color:var
       const btn = root.querySelector('.pk3-bz-more-btn');
       if (btn) btn.addEventListener('click', () => {
         const more = root.querySelector('.pk3-bz-more');
-        if (more) more.classList.toggle('is-open');
+        if (more) {
+          // D-394: журнал открыт по умолчанию (is-default-open), кнопка его
+          // сворачивает/разворачивает. Снимаем флаг, чтобы дальше работал
+          // только is-open — иначе журнал «залипал» бы открытым.
+          more.classList.remove('is-default-open');
+          more.classList.toggle('is-open');
+        }
         const box = root.querySelector('.pk3-mimir-thoughts');
         if (box) box.scrollTop = box.scrollHeight;
       });

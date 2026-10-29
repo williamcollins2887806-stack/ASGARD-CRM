@@ -506,7 +506,8 @@ async function routes(fastify) {
         else {
           const aiProvider=require('../services/ai-provider');
           try{const r=await aiProvider.complete({system:'Извлеки из текста счёта список позиций. Верни СТРОГО JSON {"supplier":"","items":[{"name":"","article":"","quantity":1,"unit":"шт","unit_price":0}]} без markdown.',
-            messages:[{role:'user',content:'Счёт:\n\n'+String(serverText).slice(0,14000)}],maxTokens:4000,temperature:0.1});
+            messages:[{role:'user',content:'Счёт:\n\n'+String(serverText).slice(0,14000)}],maxTokens:4000,temperature:0.1,
+            reasoning:{enabled:false}});
             const m=(r&&r.text||'').match(/\{[\s\S]*\}/); const j=m?JSON.parse(m[0]):null;
             parsedItems=j&&Array.isArray(j.items)?j.items:[]; if(!supplierName&&j&&j.supplier)supplierName=j.supplier;
           }catch(e){ return reply.send({matches:[],unmatched:[],ocr_used:true,ai_unavailable:true,message:'Текст распознан, но AI недоступен — заполните строки вручную'}); }
@@ -533,7 +534,8 @@ async function routes(fastify) {
         else {
         const aiProvider=require('../services/ai-provider');
         try{const r=await aiProvider.complete({system:'Извлеки из текста счёта список позиций. Верни СТРОГО JSON {"supplier":"","items":[{"name":"","article":"","quantity":1,"unit":"шт","unit_price":0}]} без markdown.',
-          messages:[{role:'user',content:'Счёт:\n\n'+String(b.text).slice(0,14000)}],maxTokens:4000,temperature:0.1});
+          messages:[{role:'user',content:'Счёт:\n\n'+String(b.text).slice(0,14000)}],maxTokens:4000,temperature:0.1,
+          reasoning:{enabled:false}});
           const m=(r&&r.text||'').match(/\{[\s\S]*\}/); const j=m?JSON.parse(m[0]):null;
           parsedItems=j&&Array.isArray(j.items)?j.items:[]; if(!supplierName&&j&&j.supplier)supplierName=j.supplier;
         }catch(e){ return reply.send({matches:[],unmatched:[],ai_unavailable:true,message:'AI временно недоступен'}); }
@@ -1496,7 +1498,19 @@ async function routes(fastify) {
 НЕ придумывай цены и поставщиков. Если количество не указано — ставь 1.
 Аренда техники (краны, погрузчики, манипуляторы) — тоже позиция, единица «смена».
 
-Верни СТРОГО валидный JSON без markdown-обёртки и без текста до/после:
+D-395: БЕЗ ПРИМЕРА модель возвращала ПУСТОЙ шаблон
+{"items":[{"name":"","quantity":1,"unit":"шт"}]} — то есть заявка не заполнялась,
+хотя текст содержал позиции. Проверено 29.10.2026 на всех моделях routerai:
+одно только добавление примера «текст → ответ» заставляет извлекать позиции.
+Поэтому пример ниже — часть контракта, не украшение.
+
+Пример:
+Текст: "Нужны болты М12 50 штук и краска белая 2 банки"
+Ответ: {"items":[{"name":"Болты М12","quantity":50,"unit":"шт"},{"name":"Краска белая","quantity":2,"unit":"банка"}]}
+
+Верни ВСЕ позиции из текста, не оставляй name пустым.
+
+Строго валидный JSON без markdown-обёртки и без текста до/после:
 {"items":[{"name":"...","quantity":1,"unit":"шт"}]}`;
 
   function parseAIItemsResponse(text) {
@@ -1517,10 +1531,20 @@ async function routes(fastify) {
     const aiProvider=require('../services/ai-provider');
     let aiResult;
     try{
+      // D-395 (29.10.2026). Заявка на закупку не заполнялась ИИ. Причина:
+      // модель по умолчанию — deepseek-v4.1-flash, это REASONING-модель.
+      // Она тратит бюджет max_tokens на размышления и возвращает
+      // finish_reason='length' с ПУСТЫМ content:
+      //   {"content":"", "reasoning":"We need answer to user..."}
+      // Проверено прямым запросом к routerai: content пустой, reasoning полный.
+      // Поэтому разбор молча не находил ни одной позиции.
+      // Лечится ровно одним параметром — reasoning:{enabled:false}; тогда весь
+      // бюджет уходит под content (см. ai-provider._callOpenAIOnce).
       aiResult=await aiProvider.complete({
         system:AI_PARSE_PROMPT,
         messages:[{role:'user',content:'Техзадание:\n\n'+tz.slice(0,12000)}],
-        maxTokens:4000, temperature:0.1
+        maxTokens:4000, temperature:0.1,
+        reasoning: { enabled: false },
       });
     }catch(e){
       fastify.log.warn('[procurement] ai-parse failed: '+e.message);
@@ -1529,7 +1553,18 @@ async function routes(fastify) {
     const parsed=parseAIItemsResponse(aiResult&&aiResult.text);
     const aiItems=parsed&&Array.isArray(parsed.items)?parsed.items.filter(it=>it&&it.name&&String(it.name).trim()):[];
     if(!aiItems.length){
-      return reply.send({items:[],count:0,ai_unavailable:!parsed,message:parsed?'AI не нашёл позиций в тексте':'AI вернул неожиданный ответ — попробуйте ввод текстом'});
+      // D-395: пустой ответ модели — отдельная причина, не «не нашёл позиций».
+      // Пользователь должен понимать, что дело в модели, а не в его тексте.
+      const empty = !aiResult || !String(aiResult.text || '').trim();
+      fastify.log.warn(`[procurement] ai-parse вернул пусто (text=${empty ? 'пусто' : 'есть'}, parsed=${!!parsed})`);
+      return reply.send({
+        items:[], count:0,
+        ai_unavailable: !parsed,
+        ai_empty: empty,
+        message: empty
+          ? 'Модель не ответила (пустой ответ). Попробуйте ещё раз или добавьте позиции текстом'
+          : (parsed ? 'AI не нашёл позиций в тексте' : 'AI вернул неожиданный ответ — попробуйте ввод текстом'),
+      });
     }
     // Вставляем распознанные позиции
     const client=await db.pool.connect();
