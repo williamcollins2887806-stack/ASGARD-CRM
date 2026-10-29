@@ -684,28 +684,26 @@ body.hg-list-edit .hg-nav-search {
 /* Stories rail + birthday banners (visual wave; no geo) */
 .hg-stories-rail {
   display: flex;
+  flex: 0 0 auto;
   gap: 12px;
   margin: 8px 0 4px;
   padding: 4px 12px 8px;
   overflow-x: auto;
   scrollbar-width: none;
-  /* ТЗ Часть 5: панель прячется ПРИВЯЗАННО к позиции скролла.
-     ВАЖНО (фикс лагов): скролл-драйв идёт ТОЛЬКО по compositor-свойствам
-     (transform/opacity) через --hg-rail-hide. Анимация max-height на каждом
-     кадре скролла вызывала layout-reflow → кружочки «прыгали» и моргали.
-     Высота схлопывается один раз классом .is-hidden (см. ниже). */
-  --hg-rail-hide: 0;
   height: 96px;
-  opacity: calc(1 - var(--hg-rail-hide));
-  transform: translateY(calc(-100% * var(--hg-rail-hide)));
+  opacity: 1;
+  transform: translateY(0);
   will-change: transform, opacity;
-  /* Без transition на базовом состоянии: var обновляется каждый кадр скролла,
-     transition «догонял» бы её → панель отставала и дёргалась.
-     Переходы живут только на .is-hidden / .is-spring. */
-  transition: none;
+  transition: height 160ms var(--hg-ease-std, ease),
+    flex-basis 160ms var(--hg-ease-std, ease),
+    margin 160ms var(--hg-ease-std, ease),
+    padding 160ms var(--hg-ease-std, ease),
+    opacity 140ms linear,
+    transform 160ms var(--hg-ease-std, ease);
 }
-/* Полностью скрыта: высоту убираем ОДИН раз (не на каждый кадр скролла). */
+/* Collapse the flex item itself so the chat list receives the freed height. */
 .hg-stories-rail.is-hidden {
+  flex-basis: 0;
   height: 0;
   min-height: 0;
   margin: 0;
@@ -714,15 +712,7 @@ body.hg-list-edit .hg-nav-search {
   opacity: 0;
   transform: translateY(-100%);
   overflow: hidden;
-  transition: height 140ms var(--hg-ease-std, ease), margin 140ms var(--hg-ease-std, ease),
-    opacity 120ms linear, transform 120ms linear;
-}
-/* Пружинистое появление при «потягивании» в самом верху (overscroll, ТЗ §5.4) */
-.hg-stories-rail.is-spring {
-  transition: height 320ms var(--hg-ease-spring, cubic-bezier(.34,1.36,.64,1)),
-    margin 320ms var(--hg-ease-spring, cubic-bezier(.34,1.36,.64,1)),
-    opacity 260ms var(--hg-ease-std, ease),
-    transform 320ms var(--hg-ease-spring, cubic-bezier(.34,1.36,.64,1));
+  pointer-events: none;
 }
 .hg-stories-rail::-webkit-scrollbar { display: none; }
 .hg-story-item {
@@ -834,6 +824,9 @@ html[data-hg-fx="off"] #huginnDock .hg-list-me-btn {
   transform: none !important;
 }
 @media (prefers-reduced-motion: reduce) {
+  #huginnDock .hg-stories-rail {
+    transition: none !important;
+  }
   #huginnDock .hg-story-ring,
   #huginnDock .hg-story-av,
   #huginnDock .hg-chat-av,
