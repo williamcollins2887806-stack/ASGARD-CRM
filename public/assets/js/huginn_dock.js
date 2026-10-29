@@ -2249,14 +2249,21 @@
           return;
         }
         const touch = event.touches[0];
+        const firstChild = listEl.firstElementChild;
+        if (firstChild) {
+          const translated = getComputedStyle(firstChild).translate;
+          const parts = String(translated || '').split(/\\s+/);
+          const currentY = parts.length > 1 ? parseFloat(parts[1]) : 0;
+          if (Number.isFinite(currentY)) pull = Math.max(-MAX_PULL, Math.min(MAX_PULL, currentY));
+        }
         startX = touch.clientX;
         startY = touch.clientY;
         lastY = touch.clientY;
         activeTouchId = touch.identifier;
         dragging = true;
         axis = '';
-        // A new gesture takes over cleanly from any previous spring return.
-        setPull(0, false);
+        // Continue from the in-flight spring position to avoid a visible jump.
+        setPull(pull, false);
       };
       const onTouchMove = (event) => {
         if (!dragging || activeTouchId === null || !event.touches) return;
@@ -2305,8 +2312,6 @@
       listEl.addEventListener('touchmove', onTouchMove, { passive: false });
       listEl.addEventListener('touchend', onTouchEnd, { passive: true });
       listEl.addEventListener('touchcancel', onTouchEnd, { passive: true });
-      global.addEventListener('blur', resetPull);
-      global.addEventListener('orientationchange', resetPull, { passive: true });
     }
     // Вкладки списка убраны (решение заказчика). «Контакты» доступны из
     // нижней навигации / rail, inline-режим больше не переключается.
