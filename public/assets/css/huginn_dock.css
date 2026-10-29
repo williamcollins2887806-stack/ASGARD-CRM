@@ -749,12 +749,7 @@ body.hg-list-edit .hg-nav-search {
   background: linear-gradient(135deg, var(--blue-l, #4A90D9), color-mix(in srgb, var(--blue-l, #4A90D9) 40%, #fff));
 }
 /* Gradient story rings keep the existing unread/seen classes and hit area. */
-.hg-story-ring {
-  background: linear-gradient(135deg,
-    color-mix(in srgb, var(--blue-l, #4A90D9) 88%, #fff),
-    color-mix(in srgb, #8B5CF6 74%, var(--blue-l, #4A90D9)));
-}
-.hg-story-item:not(.is-unread) .hg-story-ring:not(.is-mine):not(.is-add):not(.is-peer) {
+.hg-story-item:not(.is-unread):not(.is-mine):not(.is-add):not(.is-peer) .hg-story-ring {
   background: color-mix(in srgb, var(--hg-muted) 38%, transparent);
 }
 .hg-story-item.is-unread .hg-story-ring {
@@ -799,9 +794,11 @@ body.hg-list-edit .hg-nav-search {
     filter: none;
   }
 }
-#huginnDock.hg-power-reduced .hg-story-ring,
-html[data-hg-fx="reduced"] #huginnDock .hg-story-ring {
-  background: color-mix(in srgb, var(--blue-l, #4A90D9) 70%, var(--hg-muted) 30%);
+#huginnDock.hg-power-reduced .hg-story-item.is-unread .hg-story-ring,
+html[data-hg-fx="reduced"] #huginnDock .hg-story-item.is-unread .hg-story-ring {
+  background: linear-gradient(135deg,
+    color-mix(in srgb, var(--blue-l, #4A90D9) 70%, var(--hg-muted) 30%),
+    color-mix(in srgb, #8B5CF6 45%, var(--hg-muted) 55%));
 }
 #huginnDock.hg-power-off .hg-story-ring,
 html[data-hg-fx="off"] #huginnDock .hg-story-ring {
