@@ -1744,6 +1744,27 @@
     </div>`;
   }
 
+  // One axis resolver shared by row gestures and the list-edge spring.
+  // Small/diagonal movements remain pending; ambiguous gestures are cancelled.
+  const HG_GESTURE_START_PX = 12;
+  const HG_GESTURE_X_MIN_PX = 18;
+  const HG_GESTURE_Y_MIN_PX = 16;
+  const HG_GESTURE_AMBIGUOUS_PX = 32;
+  const HG_SWIPE_TRIGGER_PX = 52;
+  const HG_SWIPE_MAX_PX = 104;
+  const HG_LONG_PRESS_MS = 560;
+  const HG_PEEK_MOVE_SLOP_PX = 8;
+
+  function classifyHgGestureAxis(dx, dy) {
+    const ax = Math.abs(dx);
+    const ay = Math.abs(dy);
+    if (Math.max(ax, ay) < HG_GESTURE_START_PX) return '';
+    if (ax >= HG_GESTURE_X_MIN_PX && ax > ay * 1.12) return 'x';
+    if (ay >= HG_GESTURE_Y_MIN_PX && ay > ax * 1.08) return 'y';
+    if (Math.max(ax, ay) > HG_GESTURE_AMBIGUOUS_PX) return 'cancelled';
+    return '';
+  }
+
   let lastPanelTab = null;
   let lastThreadState = null;
   function renderPanel() {
@@ -2275,8 +2296,11 @@
         const dx = touch.clientX - startX;
         const dy = touch.clientY - lastY;
         lastY = touch.clientY;
-        if (!axis && (Math.abs(dx) > 8 || Math.abs(touch.clientY - startY) > 8)) {
-          axis = Math.abs(dx) > Math.abs(touch.clientY - startY) * 1.15 ? 'x' : 'y';
+        if (!axis) {
+          // Match the row recognizer so the edge spring cannot steal a diagonal
+          // swipe with a different, earlier direction decision.
+          axis = classifyHgGestureAxis(touch.clientX - startX, touch.clientY - startY);
+          if (!axis) return;
         }
         if (axis !== 'y') return;
 
@@ -3404,6 +3428,10 @@
   function renderChatList(q) {
     const box = root.querySelector('#hgList');
     if (!box) return;
+    // End gestures before replacing rows during search, filtering or refresh.
+    box.querySelectorAll('.hg-chat-row').forEach((oldRow) => {
+      if (typeof oldRow._hgSwipeCleanup === 'function') oldRow._hgSwipeCleanup();
+    });
     const query = (q || '').toLowerCase().trim();
     // Honest state: if the list failed to load (e.g. guest 403), say so instead
     // of pretending the user has no chats.
@@ -3558,12 +3586,14 @@
   function wireChatRowSwipe(row) {
     if (!row || row._hgSwipe) return;
     row._hgSwipe = true;
-    const TRIG = 76;
-    const AXIS_SLOP = 9;
-    const LONG_PRESS_MS = 480;
-    const MAX_OFFSET = 112;
+
+    const TRIG = HG_SWIPE_TRIGGER_PX;
+    const MAX_OFFSET = HG_SWIPE_MAX_PX;
     let gesture = null;
     let longPressTimer = 0;
+    let returnTimer = 0;
+    let documentTracking = false;
+
     let action = row.parentElement && row.parentElement.querySelector(':scope > .hg-swipe-action');
     if (!action) {
       action = document.createElement('div');
@@ -3576,38 +3606,75 @@
       if (longPressTimer) clearTimeout(longPressTimer);
       longPressTimer = 0;
     };
+    const stopTracking = () => {
+      if (!documentTracking) return;
+      document.removeEventListener('pointermove', onMove, true);
+      document.removeEventListener('pointerup', onUp, true);
+      document.removeEventListener('pointercancel', onCancel, true);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+      window.removeEventListener('blur', onWindowBlur);
+      documentTracking = false;
+    };
+    const startTracking = () => {
+      if (documentTracking) return;
+      // Document capture keeps tracking if the pointer leaves the row and is
+      // removed immediately at each terminal state, including blur/unmount.
+      document.addEventListener('pointermove', onMove, { passive: true, capture: true });
+      document.addEventListener('pointerup', onUp, { passive: true, capture: true });
+      document.addEventListener('pointercancel', onCancel, { passive: true, capture: true });
+      document.addEventListener('visibilitychange', onVisibilityChange);
+      window.addEventListener('blur', onWindowBlur);
+      documentTracking = true;
+    };
     const resetRow = (animate = true) => {
-      row.classList.toggle('hg-swipe-returning', animate);
+      if (returnTimer) clearTimeout(returnTimer);
+      returnTimer = 0;
       row.classList.remove('hg-swipe-active');
+      if (animate) row.classList.add('hg-swipe-returning');
+      else row.classList.remove('hg-swipe-returning');
       row.style.transform = '';
       row.style.removeProperty('--hg-swipe-progress');
       action.classList.remove('is-archive', 'is-delete', 'is-visible');
       action.textContent = '';
-      setTimeout(() => row.classList.remove('hg-swipe-returning'), 230);
+      action.style.opacity = '';
+      if (animate) {
+        returnTimer = setTimeout(() => {
+          row.classList.remove('hg-swipe-returning');
+          returnTimer = 0;
+        }, 240);
+      }
     };
     const paint = (dx) => {
       const offset = Math.max(-MAX_OFFSET, Math.min(MAX_OFFSET, dx));
       row.classList.add('hg-swipe-active');
       row.classList.remove('hg-swipe-returning');
+      if (returnTimer) clearTimeout(returnTimer);
+      returnTimer = 0;
       row.style.transform = 'translate3d(' + offset + 'px,0,0)';
       row.style.setProperty('--hg-swipe-progress', String(Math.min(1, Math.abs(offset) / TRIG)));
-      action.classList.toggle('is-visible', Math.abs(offset) > 8);
       action.classList.toggle('is-archive', offset > 0);
       action.classList.toggle('is-delete', offset < 0);
-      action.textContent = offset > 0 ? 'Архив' : 'Удалить';
+      action.textContent = offset > 0 ? 'Архив' : (offset < 0 ? 'Удалить' : '');
+      action.style.opacity = String(Math.min(1, Math.abs(offset) / 48));
     };
+
     const runAction = async (s) => {
-      const chat = state.chats.find((c) => Number(c.id) === s.cid);
-      if (!chat) { resetRow(); return; }
-      haptic('medium');
+      if (row._hgActionPending) return;
+      row._hgActionPending = true;
       try {
+        const chat = state.chats.find((c) => Number(c.id) === s.cid);
+        if (!chat) {
+          resetRow(true);
+          return;
+        }
+        haptic('medium');
         if (s.dx > 0) {
           await api('/api/chat-groups/' + s.cid + '/archive', { method: 'PUT', body: { archive: true } });
           state.chats = state.chats.filter((c) => Number(c.id) !== s.cid);
           showToast('Чат архивирован');
         } else {
           if (!(await hgConfirm({ title: 'Удалить чат?', body: displayChatName(chat), okText: 'Удалить', danger: true }))) {
-            resetRow();
+            resetRow(true);
             return;
           }
           await api('/api/chat-groups/' + s.cid, { method: 'DELETE' });
@@ -3616,84 +3683,155 @@
         }
         renderPanel();
       } catch (err) {
-        resetRow();
+        resetRow(true);
         showToast(err.message || 'Не удалось выполнить действие');
+      } finally {
+        row._hgActionPending = false;
       }
     };
-    const onDown = (e) => {
-      if (state.listEditMode || (e.pointerType === 'mouse' && e.button !== 0)) return;
-      if (e.target.closest('button:not(.hg-chat-row), a, input, textarea, select')) return;
+
+    const cancelGesture = (suppressClick = true, animate = true) => {
       clearLongPress();
+      gesture = null;
+      stopTracking();
+      if (suppressClick) row._hgGestureSuppressUntil = Date.now() + 400;
+      resetRow(animate);
+    };
+
+    const onDown = (e) => {
+      if (e.isPrimary === false) return;
+      if (state.listEditMode || row._hgActionPending || (e.pointerType === 'mouse' && e.button !== 0)) return;
+      if (e.target.closest('button:not(.hg-chat-row), a, input, textarea, select')) return;
+      if (gesture) cancelGesture(true, false);
+      clearLongPress();
+      resetRow(false);
+
       const cid = Number(row.getAttribute('data-cid'));
-      gesture = { id: e.pointerId, x: e.clientX, y: e.clientY, lastX: e.clientX, lastY: e.clientY, dx: 0, axis: '', cid, moved: false, peeked: false };
+      gesture = {
+        id: e.pointerId,
+        x: e.clientX,
+        y: e.clientY,
+        lastX: e.clientX,
+        lastY: e.clientY,
+        dx: 0,
+        dy: 0,
+        mode: 'pending',
+        cid,
+        peeked: false
+      };
+      startTracking();
       longPressTimer = setTimeout(() => {
-        if (!gesture || gesture.moved || gesture.axis) return;
+        if (!gesture || gesture.id !== e.pointerId || gesture.mode !== 'pending') return;
         const chat = state.chats.find((c) => Number(c.id) === cid);
         if (!chat) return;
+        longPressTimer = 0;
+        gesture.mode = 'peek';
         gesture.peeked = true;
         row._hgGestureSuppressUntil = Date.now() + 700;
         openChatPeek(chat);
-      }, LONG_PRESS_MS);
+      }, HG_LONG_PRESS_MS);
     };
+
     const onMove = (e) => {
       if (!gesture || gesture.id !== e.pointerId) return;
       const dx = e.clientX - gesture.x;
       const dy = e.clientY - gesture.y;
       gesture.lastX = e.clientX;
       gesture.lastY = e.clientY;
-      if (!gesture.axis && (Math.abs(dx) > AXIS_SLOP || Math.abs(dy) > AXIS_SLOP)) {
-        gesture.axis = Math.abs(dx) > Math.abs(dy) * 1.2 ? 'x' : 'y';
+      gesture.dx = dx;
+      gesture.dy = dy;
+
+      if (Math.max(Math.abs(dx), Math.abs(dy)) >= HG_PEEK_MOVE_SLOP_PX) clearLongPress();
+      if (gesture.mode === 'peek' || gesture.mode === 'vertical' || gesture.mode === 'cancelled') return;
+
+      if (gesture.mode === 'pending') {
+        const axis = classifyHgGestureAxis(dx, dy);
+        if (!axis) return;
         clearLongPress();
-        if (gesture.axis === 'x' && row.setPointerCapture) {
-          try { row.setPointerCapture(e.pointerId); } catch (_) {}
+        if (axis === 'x') {
+          gesture.mode = 'horizontal';
+        } else {
+          // Let native scrolling/inertia handle vertical and ambiguous movement.
+          gesture.mode = axis;
+          cancelGesture(true, true);
+          return;
         }
       }
-      if (gesture.axis === 'y') {
-        gesture.moved = true;
-        gesture = null;
-        return;
-      }
-      if (gesture.axis !== 'x') return;
-      gesture.moved = true;
-      gesture.dx = dx;
-      clearLongPress();
-      paint(dx);
-      if (e.cancelable) e.preventDefault();
+      if (gesture && gesture.mode === 'horizontal') paint(dx);
     };
+
     const onUp = (e) => {
       if (!gesture || gesture.id !== e.pointerId) return;
-      clearLongPress();
       const s = gesture;
+      s.lastX = e.clientX;
+      s.lastY = e.clientY;
+      s.dx = e.clientX - s.x;
+      s.dy = e.clientY - s.y;
+      if (s.mode === 'pending') {
+        const axis = classifyHgGestureAxis(s.dx, s.dy);
+        if (axis === 'x') s.mode = 'horizontal';
+        else if (axis) s.mode = axis;
+      }
+      clearLongPress();
       gesture = null;
-      if (s.peeked) {
+      stopTracking();
+
+      if (s.mode === 'peek' || s.peeked) {
         row._hgGestureSuppressUntil = Date.now() + 700;
+        resetRow(false);
         return;
       }
-      if (s.axis === 'x' && Math.abs(s.dx) >= TRIG) {
+
+      const moved = Math.max(Math.abs(s.dx), Math.abs(s.dy)) >= HG_PEEK_MOVE_SLOP_PX;
+      const horizontalAtRelease = Math.abs(s.dx) > Math.abs(s.dy) * 1.12;
+      if (s.mode === 'horizontal' && Math.abs(s.dx) >= TRIG && horizontalAtRelease) {
         row._hgGestureSuppressUntil = Date.now() + 700;
-        suppressClick = true;
         resetRow(false);
         runAction(s);
       } else {
+        if (moved || s.mode === 'horizontal' || s.mode === 'vertical' || s.mode === 'cancelled') {
+          row._hgGestureSuppressUntil = Date.now() + 400;
+        }
         resetRow(true);
-        if (s.moved) row._hgGestureSuppressUntil = Date.now() + 350;
       }
     };
+
     const onCancel = (e) => {
-      if (gesture && (e.pointerId == null || gesture.id === e.pointerId)) {
-        clearLongPress();
-        gesture = null;
-      }
-      resetRow(true);
+      if (!gesture || gesture.id !== e.pointerId) return;
+      cancelGesture(true, true);
     };
+    const onLostCapture = (e) => {
+      if (!gesture || gesture.id !== e.pointerId) return;
+      cancelGesture(true, true);
+    };
+    const onWindowBlur = () => {
+      if (gesture) cancelGesture(true, true);
+      else stopTracking();
+    };
+    const onVisibilityChange = () => {
+      if (document.hidden && gesture) cancelGesture(true, true);
+    };
+    const onContextMenu = (e) => {
+      e.preventDefault();
+    };
+
     row.addEventListener('pointerdown', onDown, { passive: true });
-    row.addEventListener('pointermove', onMove, { passive: false });
-    row.addEventListener('pointerup', onUp, { passive: true });
-    row.addEventListener('pointercancel', onCancel, { passive: true });
-    row.addEventListener('lostpointercapture', onCancel, { passive: true });
-    row.addEventListener('contextmenu', (e) => {
-      if (e.pointerType === 'touch') e.preventDefault();
-    });
+    row.addEventListener('lostpointercapture', onLostCapture, { passive: true });
+    row.addEventListener('contextmenu', onContextMenu);
+
+    row._hgSwipeCleanup = () => {
+      clearLongPress();
+      gesture = null;
+      stopTracking();
+      if (returnTimer) clearTimeout(returnTimer);
+      returnTimer = 0;
+      resetRow(false);
+      row.removeEventListener('pointerdown', onDown);
+      row.removeEventListener('lostpointercapture', onLostCapture);
+      row.removeEventListener('contextmenu', onContextMenu);
+      row._hgSwipe = false;
+      row._hgSwipeCleanup = null;
+    };
   }
 
   /** Contacts source: full Huginn directory (all active users), not just chats. */
