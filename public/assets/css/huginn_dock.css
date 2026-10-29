@@ -4682,12 +4682,16 @@ body.hg-dock-collapsed { padding-right: calc(var(--hg-rail-w) + 24px); }
   .hg-chrome:not(.is-composer-focus):not(.is-recording):not(.is-thread) .hg-contacts {
     padding-bottom: 0;
   }
-  .hg-chrome.is-composer-focus .hg-composer,
+  .hg-chrome.is-composer-focus .hg-composer {
+    /* The keyboard edge is the new bottom boundary; don't add device safe-area twice. */
+    padding-bottom: 6px !important;
+  }
   .hg-chrome.is-recording .hg-composer {
     padding-bottom: 12px;
   }
   .hg-chrome.is-thread .hg-msgs {
-    padding-bottom: calc(72px + env(safe-area-inset-bottom, 0px) + 16px) !important;
+    /* Reserve only the composer footprint; safe area is handled by the composer. */
+    padding-bottom: calc(var(--hg-tg-input-h) + 28px) !important;
   }
   .hg-chrome:not(.is-thread):not(.is-composer-focus):not(.is-recording) .hg-msgs {
     padding-bottom: calc(56px + 12px + env(safe-area-inset-bottom, 0px)) !important;
@@ -4699,9 +4703,16 @@ body.hg-dock-collapsed { padding-right: calc(var(--hg-rail-w) + 24px); }
   }
   .hg-chrome {
     position: fixed;
-    inset: 0;
+    top: var(--hg-visual-viewport-top, 0px);
+    right: 0;
+    bottom: auto;
+    left: 0;
+    height: 100vh;
+    height: var(--hg-visual-viewport-height, 100dvh);
+    min-height: 0;
+    box-sizing: border-box;
     border-radius: 0;
-    /* iPhone: не прячем шапку/поиск под чёлкой и не режем по боковым вырезам */
+    /* Keep the shell inside the visible viewport and respect device cutouts. */
     padding-top: env(safe-area-inset-top, 0px);
     padding-left: env(safe-area-inset-left, 0px);
     padding-right: env(safe-area-inset-right, 0px);
