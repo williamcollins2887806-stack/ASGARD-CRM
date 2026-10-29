@@ -2131,6 +2131,7 @@
         hiddenState = !!hide;
         railEl.classList.toggle('is-hidden', hiddenState);
         railEl.setAttribute('aria-hidden', hiddenState ? 'true' : 'false');
+        railEl.toggleAttribute('inert', hiddenState);
       };
       const syncScrollState = () => {
         raf = 0;
