@@ -607,9 +607,17 @@ window.AsgardRpCalcModal = (function () {
    *
    * Раньше порог был жёстким триггером: свыше 10 млн согласование навязывалось, и
    * отказаться РП не мог. Теперь порог — лишь УСЛОВИЕ ВОЗМОЖНОСТИ, а решение за РП.
+   *
+   * ВАЖНО: `state` передаётся аргументом. Функция живёт на уровне модуля, а `state`
+   * создаётся внутри `createSession()`. Пока она читала `state` из замыкания, любой
+   * вызов падал с `ReferenceError: state is not defined` — и кнопка «Отправить
+   * просчёт» молча ничего не делала (preview не достраивался).
+   *
+   * @param {object} state — состояние сессии (см. createSession)
+   * @returns {boolean}
    */
-  function wantApproval() {
-    return stateApprovalNeeded(state) && state.wantApproval === true;
+  function wantApproval(state) {
+    return !!state && stateApprovalNeeded(state) && state.wantApproval === true;
   }
 
   function renderShell(state) {
@@ -1614,7 +1622,7 @@ window.AsgardRpCalcModal = (function () {
      * `approvalWanted()` — порог И галочка РП. Именно по нему решается исход.
      */
     function approvalWanted() {
-      return wantApproval();
+      return wantApproval(state);
     }
 
     /** Порог согласования: с бэкенда, иначе 10 млн (D-185). */

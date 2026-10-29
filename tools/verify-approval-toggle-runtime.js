@@ -83,13 +83,13 @@ for (const [price, flag, expected, label] of cases) {
     wantApproval: flag,
     estimate: { totals: { price_no_vat: price } },
   };
-  // Функции модуля берут `state` из замыкания, поэтому собираем скоуп заново
-  // с подставленным state — проверяем НАСТОЯЩИЙ код формул, не пересказ.
+  // state передаётся аргументом (см. правку ReferenceError): функции модуля не
+  // имеют доступа к state из createSession, поэтому подставляем его явно.
   const f = new Function('state', `
     ${extractFn('stateDirectorThreshold')}
     ${fnApproval}
     ${fnWant}
-    return { needed: stateApprovalNeeded(state), wanted: wantApproval() };
+    return { needed: stateApprovalNeeded(state), wanted: wantApproval(state) };
   `);
   const res = f(state);
   const pass = res.wanted === expected;

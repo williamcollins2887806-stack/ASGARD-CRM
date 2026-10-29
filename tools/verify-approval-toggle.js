@@ -65,10 +65,23 @@ if (/wantApproval:\s*false/.test(front)) {
 } else {
   bad('нет значения по умолчанию — согласование может включиться само');
 }
-if (/function wantApproval\(\) \{\s*return stateApprovalNeeded\(state\) && state\.wantApproval === true;/.test(front)) {
+if (/function wantApproval\(state\) \{\s*return !!state && stateApprovalNeeded\(state\) && state\.wantApproval === true;/.test(front)) {
   ok('wantApproval = порог И галочка (порог — условие, не принуждение)');
 } else {
   bad('wantApproval не связывает порог и галочку');
+}
+// Функция живёт на уровне модуля, а state — в createSession(). Без аргумента
+// она читала несуществующую переменную и падала с ReferenceError (кнопка
+// «Отправить просчёт» молча не работала). Регресс-защита: state только параметром.
+if (/function wantApproval\(\)/.test(front)) {
+  bad('wantApproval() без аргумента — снова ReferenceError: state is not defined');
+} else {
+  ok('wantApproval(state) получает состояние аргументом (нет ReferenceError)');
+}
+if (/return wantApproval\(state\);/.test(front)) {
+  ok('внутренний approvalWanted() передаёт state в wantApproval');
+} else {
+  bad('approvalWanted() не передаёт state — обработчик кнопки упадёт');
 }
 // Получателей требуем только когда согласование выбрано.
 if (/if \(approvalWanted\(\) && selectedRecipients\(\)\.length === 0\)/.test(front)) {
