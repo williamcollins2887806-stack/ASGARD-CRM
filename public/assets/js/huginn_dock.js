@@ -69,9 +69,15 @@
     const height = vv && Number.isFinite(vv.height) && vv.height > 0
       ? vv.height
       : (global.innerHeight || doc.clientHeight || 0);
+    const width = vv && Number.isFinite(vv.width) && vv.width > 0
+      ? vv.width
+      : (global.innerWidth || doc.clientWidth || 0);
     const offsetTop = vv && Number.isFinite(vv.offsetTop) ? vv.offsetTop : 0;
+    const offsetLeft = vv && Number.isFinite(vv.offsetLeft) ? vv.offsetLeft : 0;
     if (height > 0) doc.style.setProperty('--hg-visual-viewport-height', height + 'px');
+    if (width > 0) doc.style.setProperty('--hg-visual-viewport-width', width + 'px');
     doc.style.setProperty('--hg-visual-viewport-top', Math.max(0, offsetTop) + 'px');
+    doc.style.setProperty('--hg-visual-viewport-left', Math.max(0, offsetLeft) + 'px');
   }
 
   function bindHuginnViewport() {
