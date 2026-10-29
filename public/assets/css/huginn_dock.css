@@ -6480,3 +6480,41 @@ html[data-theme="light"] .hg-invite-modes .hg-compose-mode.is-active {
   .hg-chrome.is-thread .hg-composer textarea { max-height: 96px; }
 }
 
+/* Dynamic spacing: clearance comes from the real bottom-nav/composer geometry,
+   not a hard-coded 56px nav or a second Safe Area allowance. */
+@media (max-width: 768px) {
+  .hg-chrome:not(.is-composer-focus):not(.is-recording):not(.is-thread) .hg-list,
+  .hg-chrome:not(.is-composer-focus):not(.is-recording):not(.is-thread) .hg-contacts-list,
+  .hg-chrome:not(.is-composer-focus):not(.is-recording):not(.is-thread) .hg-settings {
+    padding-bottom: var(
+      --hg-bottom-nav-clearance,
+      calc(var(--hg-tg-nav-h, 64px) + 22px + env(safe-area-inset-bottom, 0px))
+    ) !important;
+  }
+
+  .hg-chrome:not(.is-composer-focus):not(.is-recording):not(.is-thread) .hg-msgs {
+    padding-bottom: var(
+      --hg-bottom-nav-clearance,
+      calc(var(--hg-tg-nav-h, 64px) + 22px + env(safe-area-inset-bottom, 0px))
+    ) !important;
+  }
+
+  /* In a thread the nav is intentionally hidden; only measured composer height
+     plus the design's small 8px clearance is reserved under the final message. */
+  .hg-chrome.is-thread .hg-msgs {
+    padding-bottom: calc(
+      var(--hg-composer-height, calc(var(--hg-tg-input-h, 40px) + 22px + env(safe-area-inset-bottom, 0px))) + 8px
+    ) !important;
+  }
+
+  /* The composer owns its safe-area padding while the keyboard is closed.
+     When focused, visualViewport already ends at the keyboard edge: don't add
+     that device inset again. */
+  .hg-chrome:not(.is-composer-focus) .hg-composer {
+    padding-bottom: calc(6px + env(safe-area-inset-bottom, 0px));
+  }
+  .hg-chrome.is-composer-focus .hg-composer {
+    padding-bottom: 6px !important;
+  }
+}
+
