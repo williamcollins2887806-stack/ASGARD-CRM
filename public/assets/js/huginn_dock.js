@@ -2148,6 +2148,14 @@
         const delta = top - lastTop;
         lastTop = top;
         if (Math.abs(delta) < 0.5) return;
+        // Collapsing the rail increases the list viewport and can clamp
+        // scrollTop at the bottom. Do not mistake that layout correction for
+        // a real upward gesture that should reveal the rail.
+        if (hiddenState && delta < 0 && top >= maxScroll - 2) {
+          pendingDelta = 0;
+          direction = 0;
+          return;
+        }
         const nextDirection = delta > 0 ? 1 : -1;
         if (nextDirection !== direction) {
           direction = nextDirection;
