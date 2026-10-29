@@ -3564,7 +3564,6 @@
     const MAX_OFFSET = 112;
     let gesture = null;
     let longPressTimer = 0;
-    let suppressClick = false;
     let action = row.parentElement && row.parentElement.querySelector(':scope > .hg-swipe-action');
     if (!action) {
       action = document.createElement('div');
@@ -3632,7 +3631,6 @@
         const chat = state.chats.find((c) => Number(c.id) === cid);
         if (!chat) return;
         gesture.peeked = true;
-        suppressClick = true;
         row._hgGestureSuppressUntil = Date.now() + 700;
         openChatPeek(chat);
       }, LONG_PRESS_MS);
@@ -3646,6 +3644,9 @@
       if (!gesture.axis && (Math.abs(dx) > AXIS_SLOP || Math.abs(dy) > AXIS_SLOP)) {
         gesture.axis = Math.abs(dx) > Math.abs(dy) * 1.2 ? 'x' : 'y';
         clearLongPress();
+        if (gesture.axis === 'x' && row.setPointerCapture) {
+          try { row.setPointerCapture(e.pointerId); } catch (_) {}
+        }
       }
       if (gesture.axis === 'y') {
         gesture.moved = true;
@@ -3677,7 +3678,6 @@
         resetRow(true);
         if (s.moved) row._hgGestureSuppressUntil = Date.now() + 350;
       }
-      setTimeout(() => { suppressClick = false; }, 750);
     };
     const onCancel = (e) => {
       if (gesture && (e.pointerId == null || gesture.id === e.pointerId)) {
