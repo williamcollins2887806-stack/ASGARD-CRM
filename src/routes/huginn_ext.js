@@ -1749,86 +1749,148 @@ module.exports = async function registerHuginnExt(fastify, { db, uploadDir, getC
     const rawPhone = String(body.phone || '').trim();
     if (!rawPhone) return reply.code(400).send({ error: 'Укажите телефон' });
     const phone = normPhone(rawPhone);
-    if (String(phone).replace(/\D/g, '').length < 11) {
+    if (!/^\+[1-9]\d{7,14}$/.test(phone)) {
       return reply.code(400).send({ error: 'Некорректный номер телефона' });
     }
     await db.query('DELETE FROM huginn_login_codes WHERE expires_at < NOW() - INTERVAL \'1 day\'').catch(() => {});
 
     const recent = await db.query(
-      `SELECT id FROM huginn_login_codes
+      `SELECT id, delivery_ref, delivery_status, delivery_channel
+         FROM huginn_login_codes
         WHERE phone = $1 AND kind = 'sms' AND used = false
-          AND created_at > NOW() - ($2 || ' seconds')::interval LIMIT 1`,
+          AND created_at > NOW() - ($2 || ' seconds')::interval
+        ORDER BY created_at DESC LIMIT 1`,
       [phone, String(LOGIN_COOLDOWN_SEC)]
     ).catch(() => ({ rows: [] }));
     if (recent.rows && recent.rows.length) {
-      return reply.code(429).send({ error: 'Код уже отправлен. Подождите минуту' });
+      const latest = recent.rows[0];
+      return reply.code(429).send({
+        ok: false,
+        sent: false,
+        error: 'Код уже запрошен. Подождите перед повторной отправкой.',
+        delivery_ref: latest.delivery_ref || undefined,
+        delivery_status: latest.delivery_status || 'pending',
+        channel: latest.delivery_channel || null,
+        delivery_confirmed: latest.delivery_status === 'delivered',
+      });
     }
 
     const code = String(crypto.randomInt(100000, 1000000));
     const codeHash = await require('bcryptjs').hash(code, 8);
-    await db.query(
-      `INSERT INTO huginn_login_codes (phone, code_hash, kind, expires_at)
-       VALUES ($1, $2, 'sms', NOW() + ($3 || ' minutes')::interval)`,
-      [phone, codeHash, String(LOGIN_CODE_TTL_MIN)]
+    const deliveryRef = crypto.randomBytes(24).toString('hex');
+    const inserted = await db.query(
+      `INSERT INTO huginn_login_codes (phone, code_hash, kind, expires_at, delivery_ref, delivery_status)
+       VALUES ($1, $2, 'sms', NOW() + ($3 || ' minutes')::interval, $4, 'pending')
+       RETURNING id`,
+      [phone, codeHash, String(LOGIN_CODE_TTL_MIN), deliveryRef]
     );
+    const loginCodeId = inserted.rows[0].id;
 
-    // Доставка кода — КАСКАД (MAX → SMS), как в field-auth.
-    //
-    // Раньше код шёл ТОЛЬКО через Mango SMS. Инцидент 17.10.2026: Даше и Косте
-    // код «уходил» (result 1000), но не приходил — Mango принимает отправку, но
-    // доставку не подтверждает ни разу за всю историю. Фактически рабочий канал
-    // в компании — MAX (Green API): твоему номеру idMessage приходит, а Mango
-    // молчит. Теперь сначала MAX (если номер заведён), затем SMS как резерв.
-    let sent = false;
-    let sendError = null;
-    let commandId = null;
-    let mangoRaw = null;
-    let channelUsed = null;
+    let result = { ok: false, status: 'failed', channel: null, attempts: [], error: 'delivery_failed' };
     try {
       const huginnNotify = require('../services/huginn-notify');
       const codeText = `Kod vhoda Huginn: ${code}`;
-      const res = await huginnNotify.deliver(db, {
+      result = await huginnNotify.deliver(db, {
         phone,
         text: codeText,
-        order: ['max', 'sms'],   // email тут не нужен: код входа по SMS/MAX
+        order: ['max', 'sms'],
         logger: request.log,
       });
-      sent = !!res.ok;
-      channelUsed = res.channel;
-      const smsAttempt = (res.attempts || []).find((a) => a.channel === 'sms' && a.ok);
-      commandId = smsAttempt ? smsAttempt.detail : null;
-      mangoRaw = { attempts: res.attempts };
-      if (!res.ok) sendError = res.error || 'ни один канал не сработал';
-    } catch (e) {
-      sendError = e.message;
+    } catch (_) {
+      // Provider exceptions are returned as a generic delivery failure. Never log
+      // the OTP, phone, raw provider payload or credentials.
+      result = { ok: false, status: 'failed', channel: null, attempts: [], error: 'provider_error' };
     }
 
-    // Журналируем отправку: раньше вход в Хугинн НЕ логировался, поэтому 3 попытки
-    // Кости (15:24/15:40) вообще не были видны в field_sms_log и отладка слепла.
-    // Пишем всегда — и успех, и ошибку (status фиксирует результат).
+    const deliveryStatus = result.ok ? 'accepted' : (result.status === 'unknown' ? 'unknown' : 'failed');
+    const providerMessageId = result.providerMessageId ? String(result.providerMessageId) : null;
+    const channelUsed = result.channel || null;
+    const deliveryError = deliveryStatus === 'failed' ? (result.error || 'delivery_failed') : null;
+    await db.query(
+      `UPDATE huginn_login_codes
+          SET delivery_channel = $2,
+              delivery_status = $3,
+              provider_message_id = $4,
+              delivery_error = $5,
+              delivery_updated_at = NOW(),
+              used = CASE WHEN $3 = 'failed' THEN true ELSE used END
+        WHERE id = $1`,
+      [loginCodeId, channelUsed, deliveryStatus, providerMessageId, deliveryError]
+    );
+
+    // A login code is never written in plaintext to logs/field_sms_log. Keep only
+    // redacted content plus provider attempt status; Mango command IDs are kept
+    // only for SMS, where the delivery webhook uses them for correlation.
     try {
-      const emp = await db.query('SELECT id FROM employees WHERE user_id IN (SELECT id FROM users WHERE phone = $1 OR login = $1) LIMIT 1', [phone]).catch(() => ({ rows: [] }));
+      const digits = phone.replace(/\D/g, '');
+      const emp = await db.query(
+        `SELECT e.id
+           FROM employees e JOIN users u ON u.id = e.user_id
+          WHERE RIGHT(REGEXP_REPLACE(COALESCE(u.phone,''), '\\D', '', 'g'), 10) = RIGHT($1, 10)
+             OR RIGHT(REGEXP_REPLACE(COALESCE(u.login,''), '\\D', '', 'g'), 10) = RIGHT($1, 10)
+          LIMIT 1`,
+        [digits]
+      ).catch(() => ({ rows: [] }));
       const employeeId = emp.rows[0] ? emp.rows[0].id : null;
+      const smsCommandId = channelUsed === 'sms' ? providerMessageId : null;
       await db.query(
         `INSERT INTO field_sms_log (employee_id, phone, message_type, message_text, status, mango_response, command_id)
          VALUES ($1, $2, 'auth_code', $3, $4, $5::jsonb, $6)`,
-        [employeeId, phone, `Kod ${code}`, sent ? 'sent' : 'error',
-         JSON.stringify(sent ? mangoRaw : { error: sendError }), commandId]
+        [employeeId, phone, '[confirmation code redacted]', deliveryStatus,
+          JSON.stringify({ channel: channelUsed, delivery_status: deliveryStatus,
+            attempts: (result.attempts || []).map((a) => ({ channel: a.channel, status: a.status, detail: a.detail })) }),
+          smsCommandId]
       );
     } catch (logErr) {
-      // журнал не должен ломать вход
-      request.log && request.log.warn && request.log.warn('huginn auth_code log failed: ' + logErr.message);
+      request.log && request.log.warn && request.log.warn('huginn auth-code log write failed');
     }
 
-    // A guest who is already known gets a Max/Telegram-free path too: the code is
-    // never returned in the response, only the delivery status.
-    return {
-      ok: true,
-      sent,
-      channel: channelUsed || 'none',
+    const statusBody = {
+      ok: !!result.ok,
+      sent: !!result.ok,
+      accepted: !!result.ok,
+      delivery_status: deliveryStatus,
+      delivery_confirmed: false,
+      delivery_ref: deliveryRef,
+      channel: channelUsed,
       expires_in: LOGIN_CODE_TTL_MIN * 60,
-      error: sent ? undefined : (sendError || 'Не удалось отправить код')
     };
+    if (deliveryStatus === 'failed') {
+      statusBody.error = 'Не удалось передать код провайдеру. Проверьте номер и попробуйте снова.';
+      return reply.code(502).send(statusBody);
+    }
+    if (deliveryStatus === 'unknown') {
+      statusBody.error = 'Провайдер не подтвердил результат запроса. Подождите подтверждения перед повторной отправкой.';
+      return reply.code(202).send(statusBody);
+    }
+    return reply.code(200).send(statusBody);
+  });
+
+  // POST /auth/delivery-status { delivery_ref } — return provider receipt state,
+  // never the code, recipient or raw provider response.
+  fastify.post('/auth/delivery-status', async (request, reply) => {
+    const ref = String((request.body || {}).delivery_ref || '').trim();
+    if (!/^[a-f0-9]{48}$/.test(ref)) {
+      return reply.code(400).send({ ok: false, error: 'Некорректный идентификатор отправки' });
+    }
+    const { rows } = await db.query(
+      `SELECT delivery_channel, delivery_status, delivery_error, expires_at
+         FROM huginn_login_codes
+        WHERE delivery_ref = $1 AND kind = 'sms'
+        ORDER BY created_at DESC LIMIT 1`,
+      [ref]
+    );
+    const row = rows[0];
+    if (!row) return reply.code(404).send({ ok: false, error: 'Статус отправки не найден' });
+    const deliveryStatus = row.delivery_status || 'pending';
+    return reply.send({
+      ok: true,
+      channel: row.delivery_channel || null,
+      delivery_status: deliveryStatus,
+      delivery_confirmed: deliveryStatus === 'delivered',
+      error: deliveryStatus === 'failed' ? 'Провайдер не подтвердил доставку. Запросите новый код.' : undefined,
+      expires_in: Math.max(0, Math.floor((new Date(row.expires_at).getTime() - Date.now()) / 1000)),
+    });
   });
 
   // POST /auth/request-link  { email } — magic link (always 200: no user enumeration)
