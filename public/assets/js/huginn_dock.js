@@ -1765,11 +1765,20 @@
     return '';
   }
 
+  function cleanupChatRowGestures(container) {
+    if (!container) return;
+    container.querySelectorAll('.hg-chat-row').forEach((row) => {
+      if (typeof row._hgSwipeCleanup === 'function') row._hgSwipeCleanup();
+    });
+  }
+
   let lastPanelTab = null;
   let lastThreadState = null;
   function renderPanel() {
     const panel = root.querySelector('#hgPanel');
     if (!panel) return;
+    // renderPanel can replace the entire panel while a pointer is still down.
+    cleanupChatRowGestures(panel);
     attachRippleDelegate(panel);
       const tabChanged = state.tab !== lastPanelTab;
       const enteringContacts = state.tab === 'contacts' && lastPanelTab !== 'contacts';
@@ -3428,10 +3437,8 @@
   function renderChatList(q) {
     const box = root.querySelector('#hgList');
     if (!box) return;
-    // End gestures before replacing rows during search, filtering or refresh.
-    box.querySelectorAll('.hg-chat-row').forEach((oldRow) => {
-      if (typeof oldRow._hgSwipeCleanup === 'function') oldRow._hgSwipeCleanup();
-    });
+    // Search/filter redraws can replace rows without rebuilding the whole panel.
+    cleanupChatRowGestures(box);
     const query = (q || '').toLowerCase().trim();
     // Honest state: if the list failed to load (e.g. guest 403), say so instead
     // of pretending the user has no chats.
