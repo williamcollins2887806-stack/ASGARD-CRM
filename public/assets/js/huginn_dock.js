@@ -3798,7 +3798,8 @@
       const horizontalAtRelease = Math.abs(s.dx) > Math.abs(s.dy) * 1.12;
       if (s.mode === 'horizontal' && Math.abs(s.dx) >= TRIG && horizontalAtRelease) {
         row._hgGestureSuppressUntil = Date.now() + 700;
-        resetRow(false);
+        // Keep the row revealed while the real API/confirmation is pending.
+        // Successful refresh removes it; cancellation or failure animates it home.
         runAction(s);
       } else {
         if (moved || s.mode === 'horizontal' || s.mode === 'vertical' || s.mode === 'cancelled') {
