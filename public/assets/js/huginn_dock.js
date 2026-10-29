@@ -2215,6 +2215,99 @@
       setHidden(false);
       syncScrollState();
     }
+
+    // Touch-only boundary spring for the actual chat-list scroller. Let the
+    // browser own all in-range scrolling/inertia; cancel movement only when a
+    // predominantly vertical drag is pulling beyond a measured edge.
+    if (listEl && !listEl._hgOverscrollSpringBound) {
+      listEl._hgOverscrollSpringBound = true;
+      const MAX_PULL = 34;
+      const RESISTANCE = 0.32;
+      let startX = 0;
+      let startY = 0;
+      let lastY = 0;
+      let pull = 0;
+      let dragging = false;
+      let axis = '';
+      let activeTouchId = null;
+
+      const setPull = (value, animate) => {
+        pull = Math.max(-MAX_PULL, Math.min(MAX_PULL, value));
+        listEl.classList.toggle('hg-overscroll-active', !animate && Math.abs(pull) > 0.1);
+        listEl.classList.toggle('hg-overscroll-returning', !!animate);
+        listEl.style.setProperty('--hg-list-spring-y', pull.toFixed(2) + 'px');
+      };
+      const resetPull = () => {
+        dragging = false;
+        axis = '';
+        activeTouchId = null;
+        setPull(0, true);
+      };
+      const onTouchStart = (event) => {
+        if (!event.touches || event.touches.length !== 1) {
+          resetPull();
+          return;
+        }
+        const touch = event.touches[0];
+        startX = touch.clientX;
+        startY = touch.clientY;
+        lastY = touch.clientY;
+        activeTouchId = touch.identifier;
+        dragging = true;
+        axis = '';
+        // A new gesture takes over cleanly from any previous spring return.
+        setPull(0, false);
+      };
+      const onTouchMove = (event) => {
+        if (!dragging || activeTouchId === null || !event.touches) return;
+        let touch = null;
+        for (let i = 0; i < event.touches.length; i++) {
+          if (event.touches[i].identifier === activeTouchId) { touch = event.touches[i]; break; }
+        }
+        if (!touch) return;
+        const dx = touch.clientX - startX;
+        const dy = touch.clientY - lastY;
+        lastY = touch.clientY;
+        if (!axis && (Math.abs(dx) > 8 || Math.abs(touch.clientY - startY) > 8)) {
+          axis = Math.abs(dx) > Math.abs(dy) * 1.15 ? 'x' : 'y';
+        }
+        if (axis === 'x') return;
+
+        const maxScroll = Math.max(0, listEl.scrollHeight - listEl.clientHeight);
+        if (maxScroll <= 1) {
+          if (pull !== 0) setPull(0, false);
+          return;
+        }
+        const atTop = listEl.scrollTop <= 1;
+        const atBottom = listEl.scrollTop >= maxScroll - 1;
+        const fingerDelta = dy;
+        const pastTop = atTop && fingerDelta > 0;
+        const pastBottom = atBottom && fingerDelta < 0;
+        if (!pastTop && !pastBottom) {
+          if (Math.abs(pull) > 0.1) setPull(0, true);
+          return;
+        }
+        if (event.cancelable) event.preventDefault();
+        const next = pull + fingerDelta * RESISTANCE;
+        setPull(pastTop ? Math.max(0, next) : Math.min(0, next), false);
+      };
+      const onTouchEnd = (event) => {
+        if (activeTouchId !== null && event.changedTouches) {
+          let matched = false;
+          for (let i = 0; i < event.changedTouches.length; i++) {
+            if (event.changedTouches[i].identifier === activeTouchId) { matched = true; break; }
+          }
+          if (!matched) return;
+        }
+        resetPull();
+      };
+      listEl.addEventListener('touchstart', onTouchStart, { passive: true });
+      listEl.addEventListener('touchmove', onTouchMove, { passive: false });
+      listEl.addEventListener('touchend', onTouchEnd, { passive: true });
+      listEl.addEventListener('touchcancel', onTouchEnd, { passive: true });
+      global.addEventListener('blur', resetPull);
+      global.addEventListener('orientationchange', resetPull, { passive: true });
+    }
     // Вкладки списка убраны (решение заказчика). «Контакты» доступны из
     // нижней навигации / rail, inline-режим больше не переключается.
     panel.querySelector('#hgCompose').onclick = () => {
