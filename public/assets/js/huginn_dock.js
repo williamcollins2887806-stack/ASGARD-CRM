@@ -60,6 +60,45 @@
     connecting: false
   };
 
+  // Measure the visible system navigation pill instead of assuming a fixed 56/64px clearance.
+  // The nav is attached to <body> for backdrop-filter, so publish its dimensions on :root.
+  let hgBottomNavSizeObserver = null;
+  function syncHuginnBottomNavClearance() {
+    const doc = document.documentElement;
+    const nav = document.querySelector('.hg-bottom-nav');
+    if (!doc || !nav) return;
+    let style;
+    try { style = global.getComputedStyle(nav); } catch (_) { return; }
+    if (!style || style.display === 'none') {
+      doc.style.removeProperty('--hg-bottom-nav-height');
+      doc.style.removeProperty('--hg-bottom-nav-clearance');
+      return;
+    }
+    const rect = nav.getBoundingClientRect();
+    const height = Math.ceil(rect.height || nav.offsetHeight || parseFloat(style.height) || 0);
+    // Computed 'bottom' resolves calc(14px + env(safe-area-inset-bottom)) to the
+    // actual device inset on browsers which expose a resolved computed value.
+    const bottomValue = parseFloat(style.bottom);
+    const bottom = Number.isFinite(bottomValue) ? Math.max(0, bottomValue) : 14;
+    if (height <= 0) return;
+    doc.style.setProperty('--hg-bottom-nav-height', height + 'px');
+    doc.style.setProperty('--hg-bottom-nav-clearance', Math.ceil(height + bottom + 8) + 'px');
+  }
+
+  function observeHuginnBottomNav() {
+    const nav = document.querySelector('.hg-bottom-nav');
+    if (!nav) return;
+    if (hgBottomNavSizeObserver) {
+      try { hgBottomNavSizeObserver.disconnect(); } catch (_) {}
+      hgBottomNavSizeObserver = null;
+    }
+    syncHuginnBottomNavClearance();
+    if (typeof global.ResizeObserver === 'function') {
+      hgBottomNavSizeObserver = new global.ResizeObserver(syncHuginnBottomNavClearance);
+      hgBottomNavSizeObserver.observe(nav);
+    }
+  }
+
   // Track the actual visible viewport (not a guessed keyboard height).
   // Mobile browsers/WebViews resize VisualViewport when the system keyboard opens.
   function syncHuginnViewport() {
@@ -78,6 +117,7 @@
     if (width > 0) doc.style.setProperty('--hg-visual-viewport-width', width + 'px');
     doc.style.setProperty('--hg-visual-viewport-top', Math.max(0, offsetTop) + 'px');
     doc.style.setProperty('--hg-visual-viewport-left', Math.max(0, offsetLeft) + 'px');
+    syncHuginnBottomNavClearance();
   }
 
   function bindHuginnViewport() {
@@ -396,6 +436,8 @@
     const navSearch = root.querySelector('#hgNavSearch');
     if (bottomNavEl) document.body.appendChild(bottomNavEl);
     if (navSearch) document.body.appendChild(navSearch);
+    observeHuginnBottomNav();
+    syncHuginnViewport();
     bindComposerChrome();
     syncNavIconStrokes();
     if (navSearch) {
