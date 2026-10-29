@@ -3703,6 +3703,8 @@
       if (state.listEditMode || row._hgActionPending || (e.pointerType === 'mouse' && e.button !== 0)) return;
       if (e.target.closest('button:not(.hg-chat-row), a, input, textarea, select')) return;
       if (gesture) cancelGesture(true, false);
+      // A fresh pointer sequence must not inherit click suppression from an old scroll.
+      row._hgGestureSuppressUntil = 0;
       clearLongPress();
       resetRow(false);
 
