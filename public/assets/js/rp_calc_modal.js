@@ -1487,7 +1487,28 @@ window.AsgardRpCalcModal = (function () {
       root.querySelectorAll('[data-drop]').forEach(function (zone) {
         const kind = zone.getAttribute('data-drop');
         const fileInp = zone.querySelector('[data-file-input="' + kind + '"]');
-        zone.addEventListener('click', function () { if (fileInp) fileInp.click(); });
+        /**
+         * D-347 (29.10.2026). Клик по ссылкам «Просмотр»/«Скачать» внутри зоны
+         * всплывал до обработчика зоны и вызывал `fileInp.click()`. Активация
+         * пользователя к этому моменту уже израсходована переходом по ссылке,
+         * и браузер писал: «File chooser dialog can only be shown with a user
+         * activation». Теперь по ссылкам и любым элементам внутри `.fname`
+         * диалог не открываем — только по самой зоне.
+         */
+        function isFileLink(target) {
+          return !!(target && target.closest && target.closest('a, .rp-calc-file-links, .rp-calc-file-link'));
+        }
+        zone.addEventListener('click', function (e) {
+          if (isFileLink(e.target)) return;   // клик по ссылке — не повод открывать выбор файла
+          if (fileInp) fileInp.click();
+        });
+        // Клавиатура: зона имеет tabindex=0, значит должна работать и с Enter/Space.
+        zone.addEventListener('keydown', function (e) {
+          if (e.key !== 'Enter' && e.key !== ' ') return;
+          if (isFileLink(e.target)) return;
+          e.preventDefault();
+          if (fileInp) fileInp.click();
+        });
         zone.addEventListener('dragover', function (e) {
           e.preventDefault();
           zone.classList.add('is-drag');
@@ -1603,6 +1624,21 @@ window.AsgardRpCalcModal = (function () {
         const f = d.estimate_file || d.tkp_file || d.report_file || d.file || { name: file.name };
         state.files[kind] = f;
         if (d.review) state.review = d.review;
+        /**
+         * D-347 (29.10.2026). Загрузка файла на бэкенде двигает `updated_at`
+         * (`UPDATE ... updated_at = NOW()`), а клиент об этом не знал и продолжал
+         * слать старый `expected_updated_at` → 409 «Отчёт изменился у другого
+         * пользователя» на следующем же сохранении. Симптом РП: «добавляю ТКП —
+         * отправить не даёт, выхожу-захожу — даёт».
+         *
+         * Теперь бэкенд возвращает `review_updated_at`, и мы обновляем токен
+         * блокировки сразу. Если сервер его не прислал (старая версия) — сбрасываем
+         * токен, чтобы не словить ложный конфликт: лучше пусть lock проверит сам
+         * сервер, чем блокировать отправку из-за собственной загрузки.
+         */
+        if (!state.review) state.review = {};
+        if (d.review_updated_at) state.review.updated_at = d.review_updated_at;
+        else state.review.updated_at = null;
         toast('Загружено', file.name, 'ok');
       }).catch(function (e) {
         toast('Ошибка', e.message || 'Не удалось загрузить', 'err');
@@ -1923,8 +1959,19 @@ window.AsgardRpCalcModal = (function () {
           autosaveIndicatorTimer = setTimeout(function () { paintSaveIndicator('', ''); }, 4000);
           return;
         }
-        toast(finalize ? 'Отправлено' : 'Сохранено',
-          finalize ? 'Просчёт ушёл директору' : 'Черновик просчёта сохранён', 'ok');
+        // D-347: текст тоста врал. При финализации он ВСЕГДА писал «Просчёт ушёл
+        // директору», даже когда согласование не запрашивали и отчёт по факту уходил
+        // сразу в ТО. РП видел «ушёл директору» и шёл выяснять, почему директор ждёт.
+        // Теперь говорим по фактическому исходу (см. request_director_approval).
+        let okTitle = 'Сохранено';
+        let okMsg = 'Черновик просчёта сохранён';
+        if (finalize) {
+          okTitle = 'Отправлено';
+          okMsg = approvalWanted()
+            ? 'Просчёт отправлен директору на согласование'
+            : 'Просчёт завершён и ушёл в ТО (согласование не требуется)';
+        }
+        toast(okTitle, okMsg, 'ok');
         if (typeof state.onRefresh === 'function') {
           try { state.onRefresh(); } catch (_) { /* ignore */ }
         }

@@ -2033,8 +2033,12 @@ async function reviewRoutes(fastify) {
     `, [safeName, data.filename || safeName, data.mimetype || 'application/octet-stream', buffer.length, tenderId, userId, downloadUrl]);
 
     const fileId = docRes.rows[0].id;
-    await db.query(
-      'UPDATE tender_rp_reviews SET estimate_file_id = $1, updated_at = NOW() WHERE id = $2',
+    // D-347 (29.10.2026). `updated_at` обязан вернуться клиенту: следующее сохранение
+    // шлёт `expected_updated_at` (optimistic lock) и получало 409 «Отчёт изменился у
+    // другого пользователя» сразу после своей же загрузки файла. РП видел «добавил ТКП —
+    // отправить нельзя, вышел-зашёл — можно».
+    const revRes = await db.query(
+      'UPDATE tender_rp_reviews SET estimate_file_id = $1, updated_at = NOW() WHERE id = $2 RETURNING updated_at',
       [fileId, review.id]
     );
     await writeReviewLog(db, {
@@ -2042,7 +2046,11 @@ async function reviewRoutes(fastify) {
       action: 'attach_estimate', payload: { file_id: fileId, name: data.filename }
     });
     broadcast('tender:registry:changed', { id: parseInt(tenderId, 10) });
-    return { estimate_file_id: fileId, estimate_file: docRes.rows[0] };
+    return {
+      estimate_file_id: fileId,
+      estimate_file: docRes.rows[0],
+      review_updated_at: revRes.rows[0] ? revRes.rows[0].updated_at : null
+    };
   });
 
   fastify.post('/:id/rp-review/report', {
@@ -2097,8 +2105,9 @@ async function reviewRoutes(fastify) {
     `, [safeName, data.filename || safeName, data.mimetype || 'application/octet-stream', buffer.length, tenderId, userId, downloadUrl]);
 
     const fileId = docRes.rows[0].id;
-    await db.query(
-      'UPDATE tender_rp_reviews SET report_file_id = $1, updated_at = NOW() WHERE id = $2',
+    // D-347: `updated_at` возвращаем клиенту — иначе следующее сохранение ловит 409.
+    const revRes = await db.query(
+      'UPDATE tender_rp_reviews SET report_file_id = $1, updated_at = NOW() WHERE id = $2 RETURNING updated_at',
       [fileId, review.id]
     );
     await writeReviewLog(db, {
@@ -2106,7 +2115,11 @@ async function reviewRoutes(fastify) {
       action: 'attach_report', payload: { file_id: fileId, name: data.filename }
     });
     broadcast('tender:registry:changed', { id: parseInt(tenderId, 10) });
-    return { report_file_id: fileId, report_file: docRes.rows[0] };
+    return {
+      report_file_id: fileId,
+      report_file: docRes.rows[0],
+      review_updated_at: revRes.rows[0] ? revRes.rows[0].updated_at : null
+    };
   });
 
   fastify.post('/:id/rp-review/tkp', {
@@ -2161,8 +2174,9 @@ async function reviewRoutes(fastify) {
     `, [safeName, data.filename || safeName, data.mimetype || 'application/octet-stream', buffer.length, tenderId, userId, downloadUrl]);
 
     const fileId = docRes.rows[0].id;
-    await db.query(
-      'UPDATE tender_rp_reviews SET tkp_file_id = $1, updated_at = NOW() WHERE id = $2',
+    // D-347: `updated_at` возвращаем клиенту — иначе следующее сохранение ловит 409.
+    const revRes = await db.query(
+      'UPDATE tender_rp_reviews SET tkp_file_id = $1, updated_at = NOW() WHERE id = $2 RETURNING updated_at',
       [fileId, review.id]
     );
     await writeReviewLog(db, {
@@ -2170,7 +2184,11 @@ async function reviewRoutes(fastify) {
       action: 'attach_tkp', payload: { file_id: fileId, name: data.filename }
     });
     broadcast('tender:registry:changed', { id: parseInt(tenderId, 10) });
-    return { tkp_file_id: fileId, tkp_file: docRes.rows[0] };
+    return {
+      tkp_file_id: fileId,
+      tkp_file: docRes.rows[0],
+      review_updated_at: revRes.rows[0] ? revRes.rows[0].updated_at : null
+    };
   });
 
   fastify.get('/:id/rp-review/history', {
