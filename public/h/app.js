@@ -164,9 +164,11 @@
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ phone: full })
         });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error || 'Не удалось отправить код');
-        renderCodeStep(full, !data.sent ? (data.error || 'SMS не ушла — попробуйте ссылку на почту') : '');
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok && res.status !== 429 && res.status < 500) {
+          throw new Error(data.error || 'Не удалось отправить код');
+        }
+        renderCodeStep(full, (!data.sent ? (data.error || 'Канал ещё не подтвердил отправку') : ''), data);
       } catch (e) { setErr(e.message); }
     }
 
@@ -185,8 +187,10 @@
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ phone: full })
         });
-        const reqData = await req.json();
-        renderCodeStep(full, (!req.ok || !reqData.sent) ? ((reqData && reqData.error) || 'SMS не ушла') : '');
+        const reqData = await req.json().catch(() => ({}));
+        // The invite is already accepted at this point. Keep the code/retry screen
+        // even if delivery failed; do not make the user accept the one-time invite again.
+        renderCodeStep(full, (!req.ok || !reqData.sent) ? ((reqData && reqData.error) || 'Канал ещё не подтвердил отправку') : '', reqData);
       } catch (e) { setErr(e.message); }
     }
 
@@ -200,19 +204,53 @@
   /** SMS code step. Бэкенд шлёт 6-значный код (randomInt(100000,1000000)),
    *  ячеек ровно 6. */
   const SMS_CODE_LEN = 6;
-  function renderCodeStep(phone, warn) {
+  function renderCodeStep(phone, warn, initialDelivery) {
+    const channelLabel = (channel) => channel === 'max' ? 'MAX' : channel === 'sms' ? 'SMS' : channel === 'email' ? 'email' : 'провайдер';
+    const deliveryMessage = (data) => {
+      if (!data) return 'После запроса здесь появится статус доставки.';
+      const channel = channelLabel(data.channel);
+      if (data.delivery_confirmed || data.delivery_status === 'delivered') return 'Доставка подтверждена: ' + channel + '. Введите полученный код.';
+      if (data.delivery_status === 'failed') return 'Доставка не удалась через ' + channel + '. Можно запросить новый код.';
+      if (data.delivery_status === 'unknown') return 'Результат запроса через ' + channel + ' неизвестен. Подождите подтверждения, чтобы не создавать дубликат.';
+      if (data.delivery_status === 'accepted' || data.accepted || data.sent) return channel + ' принял запрос. Фактическая доставка пока не подтверждена.';
+      if (data.delivery_status === 'pending') return 'Ожидаем ответ канала доставки.';
+      return data.error || 'Отправка не подтверждена. Можно запросить код повторно.';
+    };
     const cells = Array.from({ length: SMS_CODE_LEN }, (_, i) =>
       `<input class="h-code-cell" inputmode="numeric" maxlength="1" data-cell="${i}" ${i === 0 ? 'autofocus' : ''} />`).join('');
     stepShell(`
       <div class="h-step-top"><button type="button" class="h-step-cancel" id="back">Назад</button></div>
       <div class="h-step-art" aria-hidden="true">💬</div>
       <h1 class="h-step-title">Введите код</h1>
-      <p class="h-step-sub">Мы отправили SMS с кодом проверки на ${esc(phone)}.</p>
+      <p class="h-step-sub">Подтвердите номер ${esc(phone)}.</p>
+      <p class="h-step-sub" id="deliveryStatus" aria-live="polite">${esc(deliveryMessage(initialDelivery))}</p>
       <div class="h-err" id="err">${warn ? esc(warn) : ''}</div>
       <div class="h-code-cells" id="cells">${cells}</div>
       <button type="button" class="h-step-cta" id="verify" disabled>Продолжить</button>
       <button type="button" class="h-step-link" id="again">Отправить код ещё раз</button>
     `);
+    const deliveryStatusEl = document.getElementById('deliveryStatus');
+    let deliveryPolls = 0;
+    const pollDeliveryStatus = async (ref) => {
+      if (!ref || deliveryPolls >= 12 || !deliveryStatusEl || !deliveryStatusEl.isConnected) return;
+      deliveryPolls += 1;
+      try {
+        const res = await fetch('/api/chat-groups/auth/delivery-status', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ delivery_ref: ref })
+        });
+        const data = await res.json().catch(() => ({}));
+        if (res.ok) {
+          deliveryStatusEl.textContent = deliveryMessage(data);
+          if (data.delivery_status === 'delivered' || data.delivery_status === 'failed') return;
+        }
+      } catch (_) { /* A missed status poll never changes code verification state. */ }
+      setTimeout(() => pollDeliveryStatus(ref), 2500);
+    };
+    if (initialDelivery && initialDelivery.delivery_ref &&
+        !['delivered', 'failed'].includes(initialDelivery.delivery_status)) {
+      setTimeout(() => pollDeliveryStatus(initialDelivery.delivery_ref), 1500);
+    }
     const inputs = Array.from(document.querySelectorAll('.h-code-cell'));
     const verify = document.getElementById('verify');
     const read = () => inputs.map((i) => i.value.replace(/\D/g, '')).join('');
@@ -283,12 +321,20 @@
           tick();
           return;
         }
-        if (!res.ok) throw new Error(data.error || 'Не удалось отправить код');
-        if (data.sent === false) {
-          e.textContent = data.error || 'SMS не ушла — можно войти по ссылке на почту';
+        if (!res.ok || data.sent === false) {
+          e.textContent = data.error || 'Доставка не подтверждена. Попробуйте ещё раз позже.';
+          if (deliveryStatusEl) deliveryStatusEl.textContent = deliveryMessage(data);
+          if (data.delivery_ref && !['delivered', 'failed'].includes(data.delivery_status)) {
+            deliveryPolls = 0;
+            pollDeliveryStatus(data.delivery_ref);
+          }
         } else {
-          const ch = data.channel === 'max' ? 'MAX' : 'SMS';
-          e.textContent = 'Код отправлен повторно (' + ch + ')';
+          if (deliveryStatusEl) deliveryStatusEl.textContent = deliveryMessage(data);
+          e.textContent = '';
+          if (data.delivery_ref) {
+            deliveryPolls = 0;
+            pollDeliveryStatus(data.delivery_ref);
+          }
         }
         resetAgain();
       } catch (ex) {

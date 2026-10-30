@@ -83,32 +83,49 @@ class MangoService {
         let data = '';
         res.on('data', (chunk) => { data += chunk; });
         res.on('end', () => {
-          try {
-            const contentType = res.headers['content-type'] || '';
-            if (contentType.includes('application/json') || contentType.includes('text/')) {
-              const parsed = JSON.parse(data);
-              // Mango: успех = code 1000 ИЛИ отсутствие кода при HTTP 2xx.
-              // Поле result !== '1000' / result с ошибкой — тоже фейл (D-253g).
-              const code = parsed.code != null ? Number(parsed.code) : null;
-              const resultField = parsed.result != null ? String(parsed.result) : null;
-              const httpOk = res.statusCode >= 200 && res.statusCode < 300;
-              const codeFail = code != null && code !== 1000;
-              const resultFail = resultField != null && resultField !== '1000' && resultField !== '0' && !/^ok$/i.test(resultField);
-              if (!httpOk || codeFail || resultFail) {
-                const err = new Error(`Mango API error: ${parsed.message || parsed.result || 'Unknown'} (code: ${code != null ? code : resultField}, http: ${res.statusCode})`);
-                err.code = code != null ? code : resultField;
-                err.response = parsed;
-                err.statusCode = res.statusCode;
-                reject(err);
-              } else {
-                resolve(parsed);
-              }
-            } else {
-              resolve({ raw: Buffer.from(data, 'binary'), contentType });
+          const contentType = res.headers['content-type'] || '';
+          const httpOk = res.statusCode >= 200 && res.statusCode < 300;
+          const isTextResponse = contentType.includes('application/json') || contentType.includes('text/');
+          if (!isTextResponse) {
+            if (!httpOk) {
+              reject(new Error(`Mango HTTP error (http: ${res.statusCode})`));
+              return;
             }
-          } catch (e) {
-            resolve({ raw: data, statusCode: res.statusCode });
+            resolve({ raw: Buffer.from(data, 'binary'), contentType });
+            return;
           }
+
+          let parsed;
+          try {
+            parsed = JSON.parse(data);
+          } catch (_) {
+            // Некоторые методы Mango отвечают текстовым числовым кодом (например,
+            // "1000"). Не превращаем такой ответ и любой другой 4xx/5xx текст в
+            // объект raw, который вызывающая сторона могла ошибочно принять за успех.
+            const plainCode = String(data || '').trim();
+            if (/^\\d{1,4}$/.test(plainCode)) parsed = { result: plainCode };
+            else {
+              reject(new Error(httpOk
+                ? 'Mango returned an unreadable response'
+                : `Mango HTTP error (http: ${res.statusCode})`));
+              return;
+            }
+          }
+
+          const code = parsed.code != null ? Number(parsed.code) : null;
+          const resultField = parsed.result != null ? String(parsed.result) : null;
+          const codeFail = code != null && code !== 1000;
+          const resultFail = resultField != null &&
+            resultField !== '1000' && resultField !== '0' && !/^ok$/i.test(resultField);
+          if (!httpOk || codeFail || resultFail) {
+            const err = new Error(`Mango API error: ${parsed.message || parsed.result || 'Unknown'} (code: ${code != null ? code : resultField}, http: ${res.statusCode})`);
+            err.code = code != null ? code : resultField;
+            err.response = parsed;
+            err.statusCode = res.statusCode;
+            reject(err);
+            return;
+          }
+          resolve(parsed);
         });
       });
 
@@ -196,7 +213,16 @@ class MangoService {
     // Пустой sender → дефолт из ЛК Mango (обычно цифровой номер).
     const sender = (senderName || process.env.MANGO_SMS_SENDER || '').trim();
     if (sender && !/^ASGARD$/i.test(sender)) payload.sms_sender = sender;
-    return this.request('commands/sms', payload);
+    const response = await this.request('commands/sms', payload);
+    // command_id is generated locally for webhook correlation. Some Mango
+    // responses omit it; never replace it with a synthetic "sent" placeholder.
+    const responseObject = response && typeof response === 'object' && !Buffer.isBuffer(response)
+      ? response
+      : { response };
+    return {
+      ...responseObject,
+      command_id: String(responseObject.command_id || payload.command_id),
+    };
   }
 
   // 26.06.2026: Прямая проверка статуса SMS через Mango Office API.

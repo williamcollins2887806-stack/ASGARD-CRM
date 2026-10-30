@@ -673,10 +673,13 @@ module.exports = async function telephonyRoutes(fastify, opts) {
 
     try {
       const commandId = event.command_id || event.message_id || null;
-      const rawStatus = event.reason ?? event.sms_status ?? event.status ?? event.delivery_status ?? event.state ?? null;
+      const hasDeliveryField = event.reason != null || event.sms_status != null ||
+        event.delivery_status != null || event.state != null || event.status != null;
+      const rawStatus = event.reason ?? event.sms_status ?? event.delivery_status ?? event.state ?? event.status ?? null;
       const statusStr = rawStatus != null ? String(rawStatus).toLowerCase() : null;
 
-      // Маппинг: сначала текстовые статусы Mango, затем числовые коды результата.
+      // Mango request/result code 1000 means the command was accepted, not delivered.
+      // Only a delivery callback (reason/status) can move an SMS to "delivered".
       let normalized = 'unknown';
       if (statusStr) {
         const num = Number(statusStr);
@@ -684,14 +687,17 @@ module.exports = async function telephonyRoutes(fastify, opts) {
           if (num === 1000 || num === 0) normalized = 'delivered';
           else if (num === 4300 || num === 4391 || num === 4392 || num === 4393) normalized = 'not_delivered';
           else if (num === 4301) normalized = 'expired';
-          else if (num >= 3100 && num < 3200) normalized = 'rejected'; // номер/оператор
+          else if (num >= 3100 && num < 3200) normalized = 'rejected';
           else normalized = 'error_' + num;
-        } else if (['1', 'delivered', 'success', 'ok'].includes(statusStr)) normalized = 'delivered';
-        else if (['2', 'not_delivered', 'failed', 'fail', 'undelivered'].includes(statusStr)) normalized = 'not_delivered';
-        else if (['3', 'expired', 'timeout'].includes(statusStr)) normalized = 'expired';
-        else if (['4', 'rejected', 'blocked', 'denied'].includes(statusStr)) normalized = 'rejected';
-        else if (['0', 'sent', 'accepted', 'queued'].includes(statusStr)) normalized = 'sent';
+        } else if (['delivered', 'read', 'success', 'ok'].includes(statusStr)) normalized = 'delivered';
+        else if (['not_delivered', 'failed', 'fail', 'undelivered'].includes(statusStr)) normalized = 'not_delivered';
+        else if (['expired', 'timeout'].includes(statusStr)) normalized = 'expired';
+        else if (['rejected', 'blocked', 'denied'].includes(statusStr)) normalized = 'rejected';
+        else if (['sent', 'accepted', 'queued'].includes(statusStr)) normalized = 'sent';
         else normalized = statusStr.slice(0, 32);
+      } else if (event.result != null) {
+        const resultStr = String(event.result).trim().toLowerCase();
+        normalized = ['1000', '0', 'ok', 'accepted'].includes(resultStr) ? 'accepted' : 'rejected';
       }
 
       if (commandId) {
@@ -701,11 +707,34 @@ module.exports = async function telephonyRoutes(fastify, opts) {
                  delivered_at = CASE WHEN $1::text = 'delivered' THEN NOW() ELSE delivered_at END,
                  delivery_payload = $2
            WHERE command_id::text = $3::text`,
-          [normalized, JSON.stringify(event), String(commandId)]
+          [normalized, JSON.stringify({ command_id: String(commandId), status: normalized, has_delivery_field: hasDeliveryField }) , String(commandId)]
         );
-        fastify.log.info(`[telephony] SMS delivery status: command_id=${commandId} status=${normalized} matched=${rowCount}`);
+        const loginStatus = normalized === 'delivered'
+          ? 'delivered'
+          : (['sent', 'accepted'].includes(normalized) ? 'accepted'
+            : (normalized === 'unknown' ? null : 'failed'));
+        if (loginStatus) {
+          await db.query(
+            `UPDATE huginn_login_codes
+                SET delivery_status = CASE
+                      WHEN delivery_status = 'delivered' THEN 'delivered'
+                      WHEN delivery_status = 'failed' THEN 'failed'
+                      WHEN $1 = 'delivered' THEN 'delivered'
+                      WHEN $1 = 'failed' THEN 'failed'
+                      ELSE 'accepted'
+                    END,
+                    delivery_error = CASE WHEN $1 = 'failed' THEN 'sms_delivery_failed' ELSE delivery_error END,
+                    delivery_updated_at = NOW(),
+                    used = CASE WHEN $1 = 'failed' THEN true ELSE used END
+              WHERE kind = 'sms'
+                AND delivery_channel = 'sms'
+                AND provider_message_id = $2`,
+            [loginStatus, String(commandId)]
+          );
+        }
+        fastify.log.info(`[telephony] SMS status processed: status=${normalized} matched=${rowCount}`);
       } else {
-        fastify.log.warn(`[telephony] SMS webhook без command_id: ${JSON.stringify(event)}`);
+        fastify.log.warn('[telephony] SMS webhook ignored: missing command id');
       }
     } catch (e) {
       fastify.log.error(`[telephony] SMS webhook error: ${e.message}`);
