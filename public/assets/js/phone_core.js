@@ -37,7 +37,11 @@
   var _pendingReload = false;
   var micMuted = false;
   var _hbTimer = null;
-  var HEARTBEAT_MS = 45000;
+  // ИНЦИДЕНТ 30.10.2026: было 45000, но в фоновой вкладке Chromium душит
+  // таймеры — реальные интервалы доходили до 5 минут (13:40:59 → 13:46:05),
+  // и сервер считал оператора недоступным. 20 секунд дают запас: даже при
+  // троекратном пропуске таймера TTL сервера (4 мин) не будет превышен.
+  var HEARTBEAT_MS = 20000;
   // Пометка «был на линии» для возврата после перезагрузки страницы.
   var REJOIN_KEY = 'asgard_phone_rejoin';
   // JsSIP (эта сборка) НЕ умеет trickle ICE: перед отправкой INVITE он ждёт
@@ -123,7 +127,19 @@
   }
 
   function onVisibilityHeartbeat() {
+    // Возврат в вкладку/окно: сразу сообщаем серверу, что мы живы. Пока вкладка
+    // была скрыта, браузер мог не отправлять heartbeat минутами, и на сервере
+    // оператор считался недоступным (инцидент 30.10.2026: звонок ушёл на
+    // мобильный, хотя человек стоял на линии в браузере).
     if (document.visibilityState === 'visible' && isOnLineState()) sendHeartbeat();
+  }
+
+  // Страховка для свёрнутого/фонового окна: visibilitychange там не всегда
+  // приходит. Периодический дешёвый пинг «мы живы» — только когда на линии.
+  if (!window.__asgardHbGuard) {
+    window.__asgardHbGuard = setInterval(function () {
+      if (isOnLineState()) sendHeartbeat();
+    }, 60000);
   }
 
   function maybeConsumePendingReload() {
