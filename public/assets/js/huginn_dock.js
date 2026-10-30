@@ -2061,7 +2061,7 @@
             ${state.recording && state.recording.kind === 'voice' ? renderVoiceRecordingHtml(state.recording) : ''}
             ${attachPrev}
             ${state.replyTo ? renderReplyBar() : ''}
-            <div class="hg-composer-row${state.recording && state.recording.kind !== 'circle' ? ' is-hidden-for-rec' : ''}">
+            <div class="hg-composer-row${state.recording && state.recording.kind === 'voice' && ['recording', 'paused', 'stopping'].includes(state.recording.status) ? ' is-hidden-for-rec' : ''}">
               <div class="hg-composer-left">
                 <button type="button" class="hg-tool hg-ai-btn hg-glass" data-role="composer" id="hgAiEditorBtn" hidden aria-label="ИИ-редактор" title="ИИ-редактор">${ICO.sparkles || ICO.ai || '✦'}<span class="hg-ai-btn-label">Ai</span></button>
                 <button type="button" class="hg-tool hg-attach-out hg-glass is-mic" data-role="composer" id="hgAttach" aria-label="Прикрепить файл" title="Вложение">${ICO.attach}</button>
@@ -5878,6 +5878,21 @@
     if (!silent && root && state.chatId) renderPanel();
   }
 
+  function restoreComposerAfterRecording() {
+    if (activeRecordPress) {
+      clearTimeout(activeRecordPress.timerId);
+      activeRecordPress.cancelled = true;
+      activeRecordPress = null;
+    }
+    document.body.classList.remove('hg-circle-recording');
+    if (root) {
+      root.classList.remove('is-recording');
+      const row = root.querySelector('.hg-composer-row');
+      if (row) row.classList.remove('is-hidden-for-rec');
+    }
+    setRecordingChrome(false);
+  }
+
   async function sendRecording() {
     const recording = state.recording;
     if (!recording || recording.status !== 'preview' || !recording.blob) return;
@@ -5898,16 +5913,21 @@
     try {
       await uploadSelected(file, recording.kind === 'circle' ? 'circle' : 'voice',
         recording.durationSeconds, { deferRender: true, fileName });
-      clearRecordingPreview(recording);
-      state.recording = null;
-      clearRecordingUi();
-      renderPanel();
     } catch (error) {
       recording.status = 'preview';
       showToast(error.message || 'Не удалось отправить запись');
       if (recording.kind === 'circle') mountCircleOverlay(recording);
       else renderPanel();
+      return;
     }
+
+    // The server has confirmed the message. Always clear capture chrome and
+    // restore the normal composer before rebuilding the current chat thread.
+    clearRecordingPreview(recording);
+    state.recording = null;
+    clearRecordingUi();
+    restoreComposerAfterRecording();
+    if (root && state.chatId) renderPanel();
   }
 
   async function recordMedia(kind, press) {
