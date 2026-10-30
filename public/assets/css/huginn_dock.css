@@ -1667,7 +1667,12 @@ html[data-hg-fx="off"] #huginnDock .hg-list-me-btn {
 
 .hg-msgs-wrap { position: relative; flex: 1; min-height: 0; display: flex; flex-direction: column; }
 .hg-msgs {
-  flex: 1;
+  /* Keep the message list as the scrollable flex child. Without min-height:0,
+     long histories/media previews can expand the thread and push the composer
+     outside the visible viewport after a voice or circle message is added. */
+  flex: 1 1 0%;
+  min-height: 0;
+  min-width: 0;
   overflow-y: auto;
   overflow-x: clip;
   padding: 12px 16px 16px;
