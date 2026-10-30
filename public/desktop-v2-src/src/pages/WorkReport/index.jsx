@@ -195,6 +195,7 @@ function Report({ data, openCats, setOpenCats }) {
       />
 
       <Hero data={data} wm={wm} statusColor={statusColor} marginColor={marginColor} />
+      <DataQuality data={data} />
       <KpiStrip data={data} marginColor={marginColor} />
 
       <div className="wr-grid">
@@ -301,9 +302,9 @@ function KpiStrip({ data, marginColor }) {
   const profitColor = data.profit.net >= 0 ? 'var(--ok)' : 'var(--err)';
   const cards = [
     { label: 'Выручка',          target: data.revenue.with_vat,        suffix: ' ₽', sub: 'Без НДС: ' + fmtMoneyR(data.revenue.ex_vat),     color: 'var(--info)', icon: '↗' },
-    { label: 'Расходы + налоги', target: data.expenses.total_with_tax, suffix: ' ₽', sub: 'Расходы: ' + fmtMoneyR(data.expenses.total),     color: 'var(--err)',  icon: '↘' },
+    { label: 'Расходы + налоги', target: data.expenses.total_with_tax, suffix: ' ₽', sub: 'Без НДС: ' + fmtMoneyR(data.expenses.total),     color: 'var(--err)',  icon: '↘' },
     { label: 'Чистая прибыль',   target: data.profit.net,              suffix: ' ₽', sub: 'До налога: ' + fmtMoneyR(data.profit.before_tax), color: profitColor,   icon: '₽' },
-    { label: 'Маржа',            target: data.profit.margin,           suffix: '%',  sub: 'НДС: ' + data.vat_pct + '%',                      color: marginColor,   icon: '◐' }
+    { label: 'Маржа',            target: data.profit.margin,           suffix: '%',  sub: 'от выручки без НДС',                               color: marginColor,   icon: '◐' }
   ];
   return (
     <div className="wr-kpi-strip">
@@ -431,23 +432,34 @@ function ExpenseAccordion({ data, openCats, setOpenCats }) {
                 <table className="wr-acc-table">
                   <thead>
                     <tr>
+                      <th>Дата</th>
                       <th>Поставщик</th>
-                      <th className="wr-r">Сумма</th>
+                      <th className="wr-r">Сумма без НДС</th>
+                      <th className="wr-r">НДС</th>
                       <th>Комментарий</th>
                       <th>Документ</th>
                       <th>С/Ф</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {c.items.map((it, j) => (
-                      <tr key={it.id || j}>
-                        <td>{it.supplier || '—'}</td>
-                        <td className="wr-r">{fmtMoneyR(it.amount)}</td>
-                        <td>{it.comment || ''}</td>
-                        <td>{it.doc_number || '—'}</td>
-                        <td>{it.invoice_received ? '✅' : it.invoice_needed ? '⏳' : '—'}</td>
-                      </tr>
-                    ))}
+                    {c.items.map((it, j) => {
+                      const net = it.amount_net != null ? Number(it.amount_net) : Number(it.amount) || 0;
+                      const vat = it.vat_deductible != null ? Number(it.vat_deductible) : Number(it.vat_amount) || 0;
+                      return (
+                        <tr key={it.id || j} style={it.inconsistent ? { background: 'rgba(245,158,11,.08)' } : undefined}>
+                          <td>{fmtDate(it.date)}</td>
+                          <td>
+                            {it.supplier || '—'}
+                            {it.inconsistent && <span title="Сумма не сходится с нетто + НДС — требует сверки" style={{ color: 'var(--gold)' }}> ⚠</span>}
+                          </td>
+                          <td className="wr-r">{fmtMoneyR(net)}</td>
+                          <td className="wr-r">{vat > 0 ? fmtMoneyR(vat) : '—'}</td>
+                          <td>{it.comment || it.description || ''}</td>
+                          <td>{it.doc_number || '—'}</td>
+                          <td>{it.invoice_received ? '✅' : it.invoice_needed ? '⏳' : '—'}</td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -456,11 +468,27 @@ function ExpenseAccordion({ data, openCats, setOpenCats }) {
         );
       })}
       <div className="wr-acc-total">
-        <span>Итого расходов</span>
+        <span>Итого расходов без НДС</span>
         <span>{fmtMoneyR(data.expenses.total)}</span>
       </div>
+      {(data.expenses.total_vat_inside > 0) && (
+        <>
+          <div className="wr-acc-total-sub">
+            <span>С НДС (как в счетах)</span>
+            <span>{fmtMoneyR(data.expenses.total_gross)}</span>
+          </div>
+          <div className="wr-acc-total-sub">
+            <span>− НДС внутри расходов</span>
+            <span className="wr-blue">{fmtMoneyR(data.expenses.total_vat_inside)}</span>
+          </div>
+        </>
+      )}
       <div className="wr-acc-total-sub">
-        <span>С учётом налогов ({data.taxes.rate}%)</span>
+        <span>Налоговая нагрузка {data.taxes.rate}% (от {fmtMoneyR(data.taxes.base != null ? data.taxes.base : data.expenses.total)})</span>
+        <span className="wr-red">+{fmtMoneyR(data.taxes.burden)}</span>
+      </div>
+      <div className="wr-acc-total">
+        <span>Итого расходы + налоги</span>
         <span>{fmtMoneyR(data.expenses.total_with_tax)}</span>
       </div>
     </div>
@@ -471,18 +499,20 @@ function ExpenseAccordion({ data, openCats, setOpenCats }) {
 function VatBlock({ data }) {
   return (
     <div className="wr-card">
-      <div className="wr-card-title">НДС</div>
+      <div className="wr-card-title">НДС — расчёт с бюджетом</div>
       <div className="wr-row"><span>НДС начисленный</span><span>{fmtMoneyR(data.vat.charged)}</span></div>
       <div className="wr-row-desc">Выручка {fmtMoneyR(data.revenue.with_vat)} × {data.vat_pct}/{100 + Math.round(data.vat_pct)}</div>
       <div className="wr-row"><span>НДС к вычету</span><span className="wr-blue">{fmtMoneyR(data.vat.deductible)}</span></div>
       <div className="wr-row-desc">Из безналичных расходов с НДС</div>
       <div className="wr-row wr-row-bold"><span>НДС к уплате</span><span className="wr-red">{fmtMoneyR(data.vat.payable)}</span></div>
+      <div className="wr-row-desc">НДС не уменьшает прибыль: он уже исключён и из выручки, и из расходов</div>
     </div>
   );
 }
 
 /* ─── 6. TAX BLOCK ───────────────────────────────────────────────────── */
 function TaxBlock({ data }) {
+  const base = data.taxes?.base;
   return (
     <div className="wr-card">
       <div className="wr-card-title">Налоговая нагрузка</div>
@@ -490,7 +520,34 @@ function TaxBlock({ data }) {
         <span>НДФЛ + взносы / обналичка ({data.taxes.rate}%)</span>
         <span className="wr-red">{fmtMoneyR(data.taxes.burden)}</span>
       </div>
-      <div className="wr-row-desc">На ФОТ, наличные, суточные, субподряд</div>
+      <div className="wr-row-desc">
+        {base != null
+          ? `Начислено на ${fmtMoneyR(base)}: ФОТ, наличные, суточные и самозанятые (безнал по счёту не облагается)`
+          : 'НДФЛ + взносы / обналичка от суммы без НДС'}
+      </div>
+    </div>
+  );
+}
+
+/* Плашка качества данных: строки, которые сами себе противоречат. */
+function DataQuality({ data }) {
+  const dq = data.data_quality;
+  if (!dq || dq.ok || !dq.inconsistent_count) return null;
+  return (
+        <div className="wr-card" style={{ borderColor: 'var(--gold)' }}>
+      <div className="wr-card-title" style={{ color: 'var(--gold)' }}>⚠ Есть строки под сверку</div>
+      <div className="wr-row-desc">
+        {dq.inconsistent_count} шт. на {fmtMoneyR(dq.inconsistent_amount)}: сумма расхода не равна
+        «нетто + НДС», поэтому непонятно, с НДС она или без. В расчёт такие строки
+        вошли по нетто; точность прибыли под вопросом.
+      </div>
+      {(dq.inconsistent || []).slice(0, 10).map((i) => (
+        <div className="wr-row" key={i.expense_id}>
+          <span>{i.supplier || '—'} <span style={{ color: 'var(--t-3)', fontSize: 11 }}>#{i.expense_id}</span></span>
+          <span className="wr-red">{fmtMoneyR(i.amount)}</span>
+        </div>
+      ))}
+      <div className="wr-row-desc">Сверьте сумму и НДС по документу, затем поправьте расход.</div>
     </div>
   );
 }
@@ -517,8 +574,8 @@ function ProfitBlock({ data, marginColor }) {
       <div className="wr-profit-grid">
         <div className="wr-profit-formula">
           <div className="wr-row"><span>Выручка без НДС</span><span>{fmtMoneyR(data.revenue.ex_vat)}</span></div>
-          <div className="wr-row"><span className="wr-red">− Расходы + налоги</span><span className="wr-red">{fmtMoneyR(data.expenses.total_with_tax)}</span></div>
-          <div className="wr-row"><span className="wr-blue">+ НДС к вычету</span><span className="wr-blue">{fmtMoneyR(data.vat.deductible)}</span></div>
+          <div className="wr-row"><span className="wr-red">− Расходы без НДС</span><span className="wr-red">{fmtMoneyR(data.expenses.total)}</span></div>
+          <div className="wr-row"><span className="wr-red">− Налоговая нагрузка</span><span className="wr-red">{fmtMoneyR(data.taxes.burden)}</span></div>
           <div className="wr-divider" />
           <div className="wr-row wr-row-bold"><span>Прибыль до налога</span><span>{fmtMoneyR(data.profit.before_tax)}</span></div>
           <div className="wr-row"><span className="wr-red">− Налог на прибыль ({data.profit.income_tax_rate}%)</span><span className="wr-red">{fmtMoneyR(data.profit.income_tax)}</span></div>
@@ -552,12 +609,11 @@ function ProfitBlock({ data, marginColor }) {
 /* ─── 8. WATERFALL ───────────────────────────────────────────────────── */
 function Waterfall({ data }) {
   const items = useMemo(() => [
-    { label: 'Выручка',     value: data.revenue.ex_vat,         type: 'pos' },
-    { label: 'Расходы',     value: data.expenses.total,         type: 'neg' },
-    { label: 'Нал.нагрузка',value: data.taxes.burden,           type: 'neg' },
-    { label: 'НДС к выч.',  value: data.vat.deductible,         type: 'pos' },
-    { label: 'Налог приб.', value: data.profit.income_tax,      type: 'neg' },
-    { label: 'Прибыль',     value: data.profit.net,             type: 'total' }
+    { label: 'Выручка без НДС', value: data.revenue.ex_vat,     type: 'pos' },
+    { label: 'Расходы без НДС', value: data.expenses.total,     type: 'neg' },
+    { label: 'Нал.нагрузка',    value: data.taxes.burden,       type: 'neg' },
+    { label: 'Налог приб.',     value: data.profit.income_tax,  type: 'neg' },
+    { label: 'Прибыль',         value: data.profit.net,         type: 'total' }
   ], [data]);
 
   const W = 400, H = 240, padTop = 30, padBot = 28, padLeft = 10, padRight = 10;
@@ -689,7 +745,7 @@ function PlanVsFact({ data }) {
   const devColor = devDays === null ? 'var(--t-2)' : devDays <= 0 ? 'var(--ok)' : 'var(--err)';
   const devText = devDays === null ? '—' : devDays === 0 ? 'В срок ✓' : (devDays > 0 ? `Задержка +${devDays} дн.` : `Раньше на ${Math.abs(devDays)} дн.`);
 
-  const costDev = wm.cost_plan > 0 ? Math.round((wm.cost_fact - wm.cost_plan) / wm.cost_plan * 100) : null;
+  const costDev = wm.cost_plan > 0 ? Math.round((data.expenses.total - wm.cost_plan) / wm.cost_plan * 100) : null;
   const costColor = costDev === null ? 'var(--t-2)' : costDev <= 0 ? 'var(--ok)' : 'var(--err)';
   const costText = costDev === null ? '—' : (costDev > 0 ? `Перерасход +${costDev}%` : `Экономия ${Math.abs(costDev)}%`);
 
@@ -710,12 +766,12 @@ function PlanVsFact({ data }) {
           <div className="wr-pvf-val" style={{ color: devColor }}>{devText}</div>
         </div>
         <div className="wr-pvf-item">
-          <div className="wr-pvf-label">Себест. план</div>
+          <div className="wr-pvf-label">Себест. план (без НДС)</div>
           <div className="wr-pvf-val">{wm.cost_plan ? fmtMoneyR(wm.cost_plan) : '—'}</div>
         </div>
         <div className="wr-pvf-item">
-          <div className="wr-pvf-label">Себест. факт</div>
-          <div className="wr-pvf-val">{wm.cost_fact ? fmtMoneyR(wm.cost_fact) : '—'}</div>
+          <div className="wr-pvf-label">Себест. факт (без НДС)</div>
+          <div className="wr-pvf-val">{fmtMoneyR(data.expenses.total)}</div>
         </div>
         <div className="wr-pvf-item">
           <div className="wr-pvf-label">Отклонение</div>
@@ -760,7 +816,9 @@ function Crew({ data }) {
 /* ─── 12. PAYMENTS ───────────────────────────────────────────────────── */
 function Payments({ data }) {
   const p = data.payments;
-  if (!p || !p.items || p.items.length === 0) return null;
+  // Блок виден всегда: если платежей нет, это важнее показать, чем скрыть раздел.
+  if (!p) return null;
+  const hasItems = Array.isArray(p.items) && p.items.length > 0;
 
   const today = new Date().toISOString().slice(0, 10);
   const pctFilled = Math.min(p.payment_pct, 100);
@@ -782,6 +840,12 @@ function Payments({ data }) {
         </div>
       </div>
 
+      {!hasItems && (
+        <div className="wr-empty" style={{ padding: '10px 0' }}>
+          По этой работе платежей ещё не зарегистрировано — все {fmtMoneyR(data.contract_value)} числятся в дебиторке.
+        </div>
+      )}
+
       <table className="wr-pay-table">
         <thead>
           <tr>
@@ -789,7 +853,7 @@ function Payments({ data }) {
           </tr>
         </thead>
         <tbody>
-          {p.items.map((inc, i) => {
+          {(p.items || []).map((inc, i) => {
             const isOverdue = !inc.confirmed && inc.date && String(inc.date).slice(0, 10) < today;
             const statusEl = inc.confirmed
               ? <span className="wr-pay-ok">✅ Оплачен</span>

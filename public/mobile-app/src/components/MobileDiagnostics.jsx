@@ -24,6 +24,15 @@ export default function MobileDiagnostics() {
   const [on, setOn] = useState(false);
   const [hidden, setHidden] = useState(false);
   const [data, setData] = useState(null);
+  /**
+   * ЖУРНАЛ ДВИЖЕНИЯ БАРА (27.10.2026).
+   *
+   * Заказчик: «тап-бар туда-сюда прыгает». Причина прыжков = смещение низа бара
+   * относительно окна. Здесь пишем КАЖДОЕ изменение позиции с меткой времени —
+   * тогда видно, что именно происходит: прыгает по кругу, растёт, дёргается
+   * при скролле. Без этого остаются догадки.
+   */
+  const [log, setLog] = useState([]);
 
   // Активация: ?diag=1 в адресе или сохранённый флаг.
   useEffect(() => {
@@ -35,6 +44,41 @@ export default function MobileDiagnostics() {
     } catch { enabled = false; }
     setOn(enabled);
   }, []);
+
+  /**
+   * Слежение за низом бара. Пишем запись только когда позиция изменилась —
+   * иначе журнал забьётся одинаковыми строками. Метка времени в мс от старта
+   * показывает частоту: «10 раз в секунду» или «только при скролле».
+   */
+  useEffect(() => {
+    if (!on) return undefined;
+    const t0 = Date.now();
+    let last = null;
+    const tick = () => {
+      const nav = document.querySelector('nav.fixed.bottom-0');
+      if (!nav) return;
+      const r = nav.getBoundingClientRect();
+      const val = Math.round(r.bottom * 100) / 100;
+      if (last !== null && Math.abs(val - last) > 0.5) {
+        setLog((L) => {
+          const next = [...L, {
+            t: Date.now() - t0,
+            from: last,
+            to: val,
+            win: window.innerHeight,
+            // ключевое: прокрутка документа — типичный триггер пересчёта dvh
+            scrollY: Math.round(window.scrollY),
+            vv: window.visualViewport ? Math.round(window.visualViewport.height) : null,
+          }];
+          // держим последние 40 записей, чтобы не тормозить оверлей
+          return next.length > 40 ? next.slice(-40) : next;
+        });
+      }
+      last = val;
+    };
+    const id = setInterval(tick, 100);
+    return () => clearInterval(id);
+  }, [on]);
 
   /** Собирает все показатели одним снимком. */
   const measure = useCallback(() => {
@@ -231,6 +275,35 @@ export default function MobileDiagnostics() {
       <Row k="navigator.standalone" v={String(data.navStandalone)} />
       <Row k="html.class" v={data.htmlClass || '(пусто)'} />
       <div style={{ marginTop: 6, color: '#7d8aa0', fontSize: 10, wordBreak: 'break-all' }}>{data.ua}</div>
+
+      {/* ── ЖУРНАЛ ПРЫЖКОВ БАРА ──────────────────────────────────────────────
+          Показывает каждое смещение низа тап-бара: время (мс от старта), было →
+          стало, высоту окна и прокрутку документа. По нему видно ПРИЧИНУ:
+          если в строках меняется `scrollY` — бар двигает скролл; если меняется
+          `win` — у тебя сворачивается адресная строка Safari; если ни то, ни
+          другое — пересчитывается вьюпорт сам. */}
+      <div style={{ height: 8, borderTop: '1px solid #2a3550', marginTop: 8, paddingTop: 6 }}>
+        <b style={{ color: '#c8a84e', fontSize: 11 }}>
+          ПРЫЖКИ БАРА: {log.length}{log.length >= 40 ? ' (последние 40)' : ''}
+        </b>
+        {log.length === 0 && (
+          <div style={{ color: '#7d8aa0', fontSize: 10, marginTop: 3 }}>
+            смещений не было — бар стоит ровно
+          </div>
+        )}
+        {log.slice(-10).reverse().map((e, i) => (
+          <div key={i} style={{ fontSize: 10, marginTop: 2, color: '#e8eef7', fontVariantNumeric: 'tabular-nums' }}>
+            {String(e.t).padStart(6)}мс: {e.from} → <b style={{ color: '#ffd479' }}>{e.to}</b>
+            {' '}окно {e.win}{e.vv !== null ? ` (vv ${e.vv})` : ''} скролл {e.scrollY}
+          </div>
+        ))}
+        {log.length > 0 && (
+          <div style={{ color: '#7d8aa0', fontSize: 10, marginTop: 4, lineHeight: 1.35 }}>
+            Если в строках меняется «скролл» — бар двигает прокрутка страницы.
+            Если меняется «окно» — сворачивается адресная строка Safari.
+          </div>
+        )}
+      </div>
     </div>
   );
 }

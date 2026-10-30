@@ -295,6 +295,13 @@ window.AsgardFieldTab = (function () {
   let _ftRowId = 0;
   const _ftTariffIds = [];  // track tariff CRSelect IDs for category-change re-population
   let _crewAutosaveTimer = null;
+  // Хук перезагрузки табеля: ячейки живут вне renderTimesheetTab, им нужен способ
+  // обновить итоги после сохранения (иначе «Баллов/Итого» остаются старыми).
+  let _ftTimesheetReload = null;
+  function _reloadTimesheetKeepView() {
+    if (typeof _ftTimesheetReload === 'function') return _ftTimesheetReload();
+    return Promise.resolve();
+  }
   let _crewAutosaveBusy = false;
 
   // ═══════════════════════════════════════════════════════════════════
@@ -2515,7 +2522,13 @@ window.AsgardFieldTab = (function () {
       syncMonthLabel(b.from, b.to);
     }
 
-    async function loadTimesheet() {
+    // D-3xx: после правки ячейки табель перезагружается (иначе «Баллов/Зараб./Итого»
+    // остаются старыми и РП думает, что не сохранилось). При перезагрузке нельзя
+    // прыгать на «сегодня» — иначе таблица уезжает от того места, где человек вводит.
+    async function loadTimesheet(opts) {
+      const keepView = !!(opts && opts.keepView);
+      const prevScrollLeft = keepView ? tableWrap.scrollLeft : 0;
+      const prevWinY = keepView ? window.scrollY : 0;
       const from = document.getElementById('tsFrom')?.value || dfFrom;
       const to = document.getElementById('tsTo')?.value || dfTo;
       // Произвольный период > месяца — ок. Предупреждаем только при экстремальной длине
@@ -2527,7 +2540,7 @@ window.AsgardFieldTab = (function () {
         toast('Табель', 'Длинный период (' + daysSpan + ' дн.) — таблица может тормозить. Для правок удобнее месяц ← → или «Этот месяц».', 'warn');
       }
       syncMonthLabel(from, to);
-      tableWrap.innerHTML = '<div class="help">Загрузка…</div>';
+      if (!keepView) tableWrap.innerHTML = '<div class="help">Загрузка…</div>';
 
       try {
         const data = await api(`/projects/${work.id}/timesheet?from=${from}&to=${to}`);
@@ -2557,7 +2570,12 @@ window.AsgardFieldTab = (function () {
           } catch (_) { /* dashboard endpoint недоступен — оставляем пустоту */ }
         }
 
-        renderTimesheetTable(tableWrap, data, from, to, editMode, work, pointValue);
+        renderTimesheetTable(tableWrap, data, from, to, editMode, work, pointValue, keepView);
+        if (keepView) {
+          // Сохраняем место правки: возвращаем горизонтальный скролл и позицию страницы.
+          tableWrap.scrollLeft = prevScrollLeft;
+          if (prevWinY) window.scrollTo({ top: prevWinY });
+        }
       } catch (e) {
         tableWrap.innerHTML = '<div class="help" style="color:#ef4444">Ошибка загрузки табеля</div>';
       }
@@ -2593,6 +2611,9 @@ window.AsgardFieldTab = (function () {
     });
 
     document.getElementById('tsLoad')?.addEventListener('click', loadTimesheet);
+
+    // Отдаём хук правкам ячеек: после сохранения перерисовать с сохранением скролла.
+    _ftTimesheetReload = () => loadTimesheet({ keepView: true });
 
     document.getElementById('tsExport')?.addEventListener('click', () => {
       const from = document.getElementById('tsFrom')?.value || dfFrom;
@@ -2638,7 +2659,7 @@ window.AsgardFieldTab = (function () {
     loadTimesheet();
   }
 
-  function renderTimesheetTable(wrap, data, from, to, editMode, work, pv) {
+  function renderTimesheetTable(wrap, data, from, to, editMode, work, pv, keepView) {
     const timesheet = data.timesheet || [];
     const perDiem = data.per_diem_rate || 0;
     pv = pv || 500; // point_value из тарифа, fallback 500
@@ -2999,9 +3020,11 @@ window.AsgardFieldTab = (function () {
     wrap.innerHTML = '';
     wrap.appendChild(table);
 
-    // Прокрутить к сегодняшнему дню (если колонка есть в периоде)
+    // Прокрутить к сегодняшнему дню — ТОЛЬКО при первой отрисовке.
+    // При перерисовке после правки ячейки прыжок запрещён: таблица уезжала
+    // от места ввода, и РП терял день, который заполнял.
     const todayTh = wrap.querySelector('th[data-ymd="' + todayStr + '"]');
-    if (todayTh && typeof todayTh.scrollIntoView === 'function') {
+    if (!keepView && todayTh && typeof todayTh.scrollIntoView === 'function') {
       try { todayTh.scrollIntoView({ inline: 'center', block: 'nearest', behavior: 'smooth' }); } catch (_) {
         try { todayTh.scrollIntoView(false); } catch (__) {}
       }
@@ -3190,6 +3213,7 @@ window.AsgardFieldTab = (function () {
         freshTd.title = 'Добавить смену';
         freshTd.addEventListener('click', () => addCheckinCell(freshTd, emp, date, work, pv));
         toast('Табель', `Смена ${date} удалена`, 'ok');
+        await _reloadTimesheetKeepView();
       } catch (e) {
         const msg = (e && (e.message_ru || e.message || e.error)) || 'Не удалось удалить смену';
         toast('Ошибка', String(msg), 'err');
@@ -3215,6 +3239,10 @@ window.AsgardFieldTab = (function () {
           td.style.transition = 'outline 0.5s';
           td.style.outline = '2px solid rgba(16,185,129,0.5)';
           setTimeout(() => { td.style.outline = ''; }, 800);
+          toast('Табель', 'Сохранено · ' + newPts + ' бал.', 'ok');
+          // Пересчёт строки и ИТОГО: без этого «Баллов/Зараб./Итого» оставались
+          // старыми, и РП считал, что правка не сохранилась.
+          await _reloadTimesheetKeepView();
         } catch (e) {
           if (e && e.cancelled) { restore(); return; }
           const msg = (e && (e.message_ru || e.message || e.error)) || 'Не удалось сохранить';
@@ -3280,6 +3308,7 @@ window.AsgardFieldTab = (function () {
           td.style.outline = '2px solid rgba(16,185,129,0.5)';
           setTimeout(() => { td.style.outline = ''; }, 800);
           toast('Табель', `${si.label} ${date} добавлена`, 'ok');
+          await _reloadTimesheetKeepView();
         } catch (e) {
           if (e && e.cancelled) { restore(); return; }
           toast('Ошибка', (e && e.message) || 'Не удалось создать запись', 'err');

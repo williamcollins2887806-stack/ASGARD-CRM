@@ -11,7 +11,7 @@ const WRITE_ROLES = ['ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'PM', 'BUH'];
 const WORK_EXP_COLS = new Set([
   'work_id', 'category', 'subcategory', 'description', 'amount', 'date', 'receipt_url',
   'supplier', 'notes', 'status', 'created_by', 'created_at', 'updated_at',
-  'doc_number', 'vat_rate', 'vat_amount', 'amount_ex_vat', 'payment_method',
+  'doc_number', 'vat_rate', 'vat_amount', 'amount_ex_vat', 'vat_basis', 'payment_method',
   'comment', 'invoice_needed', 'invoice_received',
   // ФОТ-поля (V050) — нужны для редактирования зарплатных строк
   'fot_employee_id', 'fot_employee_name', 'fot_base_pay', 'fot_per_diem', 'fot_bonus',

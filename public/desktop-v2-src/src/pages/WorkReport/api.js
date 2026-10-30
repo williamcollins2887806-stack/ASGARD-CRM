@@ -135,11 +135,17 @@ export async function exportWorkReportExcel(d) {
     ['Объект', wm.object_name || ''],
     ['Статус', wm.work_status || ''], [''],
     ['Выручка с НДС', d.revenue.with_vat],
+    ['НДС начисленный', d.vat.charged],
     ['Выручка без НДС', d.revenue.ex_vat],
-    ['Расходы', d.expenses.total],
-    ['Налоговая нагрузка', d.taxes.burden],
-    ['Расходы с налогами', d.expenses.total_with_tax],
-    ['НДС к уплате', d.vat.payable],
+    [''],
+    ['Расходы без НДС', d.expenses.total],
+    ['НДС внутри расходов (к вычету)', d.expenses.total_vat_inside != null ? d.expenses.total_vat_inside : d.vat.deductible],
+    ['Расходы с НДС (как в счетах)', d.expenses.total_gross != null ? d.expenses.total_gross : d.expenses.total],
+    ['Налоговая нагрузка ' + d.taxes.rate + '%', d.taxes.burden],
+    ['Расходы + налоги (без НДС)', d.expenses.total_with_tax],
+    [''],
+    ['НДС к уплате (не уменьшает прибыль)', d.vat.payable],
+    [''],
     ['Прибыль до налога', d.profit.before_tax],
     ['Налог на прибыль', d.profit.income_tax],
     ['Чистая прибыль', d.profit.net],
@@ -164,7 +170,7 @@ export async function exportWorkReportExcel(d) {
   // 3. Расходы по категориям
   const s3 = [
     ['Расходы по категориям'], [''],
-    ['Категория', 'Кол-во', 'Сумма', 'НДС к вычету', 'Налог ' + d.taxes.rate + '%', 'Итого с налогом']
+    ['Категория', 'Кол-во', 'Сумма без НДС', 'НДС', 'Налог ' + d.taxes.rate + '%', 'Итого с налогом']
   ];
   for (const c of cats) {
     const info = CAT_LABELS[c.category] || { label: c.category };
@@ -178,20 +184,23 @@ export async function exportWorkReportExcel(d) {
   // 4. Детализация расходов
   const s4 = [
     ['Детализация расходов'], [''],
-    ['Категория', 'Поставщик', 'Сумма', 'Комментарий', 'Документ', 'Счёт-фактура']
+    ['Категория', 'Поставщик', 'Сумма без НДС', 'НДС', 'Комментарий', 'Документ', 'Счёт-фактура', 'Проверка']
   ];
   for (const c of cats) {
     const info = CAT_LABELS[c.category] || { label: c.category };
     for (const it of (c.items || [])) {
+      const net = it.amount_net != null ? Number(it.amount_net) : (parseFloat(it.amount) || 0);
+      const vat = it.vat_deductible != null ? Number(it.vat_deductible) : (parseFloat(it.vat_amount) || 0);
       s4.push([
-        info.label, it.supplier || '', parseFloat(it.amount) || 0,
+        info.label, it.supplier || '', net, vat,
         it.comment || '', it.doc_number || '',
-        it.invoice_received ? 'Да' : it.invoice_needed ? 'Ожидается' : 'Нет'
+        it.invoice_received ? 'Да' : it.invoice_needed ? 'Ожидается' : 'Нет',
+        it.inconsistent ? 'СВЕРИТЬ' : ''
       ]);
     }
   }
   const ws4 = XLSX.utils.aoa_to_sheet(s4);
-  ws4['!cols'] = [{ wch: 20 }, { wch: 22 }, { wch: 14 }, { wch: 30 }, { wch: 14 }, { wch: 12 }];
+  ws4['!cols'] = [{ wch: 20 }, { wch: 22 }, { wch: 14 }, { wch: 12 }, { wch: 30 }, { wch: 14 }, { wch: 12 }, { wch: 10 }];
   XLSX.utils.book_append_sheet(wb, ws4, 'Детали расходов');
 
   // 5. НДС
@@ -223,12 +232,14 @@ export async function exportWorkReportExcel(d) {
     ['Прибыль'], [''],
     ['Показатель', 'Сумма, руб.'],
     ['Выручка без НДС', d.revenue.ex_vat],
-    ['Расходы + налоги', d.expenses.total_with_tax],
-    ['НДС к вычету (+)', d.vat.deductible],
-    ['Прибыль до налога', d.profit.before_tax],
-    ['Налог на прибыль', d.profit.income_tax],
-    ['Чистая прибыль', d.profit.net],
-    ['Маржа, %', d.profit.margin]
+    ['− Расходы без НДС', d.expenses.total],
+    ['− Налоговая нагрузка ' + d.taxes.rate + '%', d.taxes.burden],
+    ['= Прибыль до налога', d.profit.before_tax],
+    ['− Налог на прибыль', d.profit.income_tax],
+    ['= Чистая прибыль', d.profit.net],
+    ['Маржа, %', d.profit.margin],
+    [''],
+    ['Справка: НДС к уплате (в прибыли не участвует)', d.vat.payable]
   ];
   const ws7 = XLSX.utils.aoa_to_sheet(s7);
   ws7['!cols'] = [{ wch: 22 }, { wch: 18 }];

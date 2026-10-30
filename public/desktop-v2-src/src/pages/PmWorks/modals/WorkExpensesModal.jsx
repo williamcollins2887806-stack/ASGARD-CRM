@@ -234,7 +234,8 @@ function AddExpenseForm({ work, taxo, onCancel, onSaved }) {
     comment: '',
     payment_method: 'cash',
     vat_rate: '',
-    vat_amount: ''
+    vat_amount: '',
+    vat_basis: 'gross'
   });
   const [file, setFile] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -268,8 +269,11 @@ function AddExpenseForm({ work, taxo, onCancel, onSaved }) {
         vat_rate: form.vat_rate ? Number(form.vat_rate) : null,
         vat_amount: form.vat_amount ? Number(form.vat_amount) : null,
         amount_ex_vat: (form.vat_amount && form.amount)
-          ? Math.max(0, Number(form.amount) - Number(form.vat_amount))
-          : null
+          ? (form.vat_basis === 'net'
+              ? Number(form.amount)
+              : Math.max(0, Number(form.amount) - Number(form.vat_amount)))
+          : null,
+        vat_basis: form.vat_rate ? (form.vat_basis || 'gross') : null
       });
       const newId = created?.id || created?.expense?.id || created?.item?.id;
       if (file && newId) {
@@ -318,15 +322,42 @@ function AddExpenseForm({ work, taxo, onCancel, onSaved }) {
           <TextInput value={form.doc_number} onChange={(v) => set('doc_number', v)} />
         </Field>
         <Field label="НДС, % (если есть счёт-фактура)">
-          <TextInput value={form.vat_rate} onChange={(v) => set('vat_rate', v)} placeholder="20 / 22 / 10" />
+          <TextInput value={form.vat_rate} onChange={(v) => set('vat_rate', v)} placeholder="22 / 20 / 10" />
         </Field>
         <Field label="Сумма НДС, ₽">
           <MoneyInput value={form.vat_amount} onChange={(v) => set('vat_amount', v)} />
+        </Field>
+        <Field label="Введённая сумма — это">
+          <select
+            className="input"
+            value={form.vat_basis || 'gross'}
+            onChange={(e) => set('vat_basis', e.target.value)}
+          >
+            <option value="gross">С НДС (как в счёте, всего к оплате)</option>
+            <option value="net">Без НДС (НДС сверху)</option>
+          </select>
         </Field>
         <Field label="Комментарий">
           <TextInput value={form.comment} onChange={(v) => set('comment', v)} />
         </Field>
       </div>
+      {form.vat_rate > 0 && form.amount > 0 && (
+        <div className="fs-12 c-t3 p-6 bg-card r-sm">
+          {(() => {
+            const r = Number(form.vat_rate) || 0;
+            const a = Number(form.amount) || 0;
+            const basis = form.vat_basis || 'gross';
+            const round2 = (x) => Math.round(x * 100) / 100;
+            const vat = basis === 'net'
+              ? round2(a * r / 100)
+              : round2(a - a / (1 + r / 100));
+            const net = basis === 'net' ? a : round2(a - vat);
+            const gross = basis === 'net' ? round2(a + vat) : a;
+            const f = (v) => Number(v).toLocaleString('ru-RU', { maximumFractionDigits: 2 });
+            return <>→ без НДС <b>{f(net)} ₽</b> + НДС <b>{f(vat)} ₽</b> = с НДС <b>{f(gross)} ₽</b></>;
+          })()}
+        </div>
+      )}
       {taxableSelected && (
         <div className="fs-12 c-t3 p-6 bg-card r-sm">
           ℹ️ На эту запись начислится <b>55% налоговая нагрузка</b> (источник правды — payment_method).

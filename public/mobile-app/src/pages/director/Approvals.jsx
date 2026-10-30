@@ -664,6 +664,8 @@ export default function DirectorApprovals() {
    ══════════════════════════════════════════════════════════════ */
 function PayoutsTab({ items, toPay, busy, onDecide, onApproveAll, onRejectAll }) {
   const toPayList = Array.isArray(toPay) ? toPay : [];
+  /** 27.10.2026: просмотр уже согласованной выплаты (заказчик: не открывалась). */
+  const [viewOpened, setViewOpened] = useState(null);
   if ((!items || !items.length) && !toPayList.length) {
     return (
       <div className="pb-4">
@@ -682,7 +684,8 @@ function PayoutsTab({ items, toPay, busy, onDecide, onApproveAll, onRejectAll })
   if (!items || !items.length) {
     return (
       <div className="flex flex-col gap-2 pb-4">
-        <PayoutToPaySection list={toPayList} />
+        <PayoutToPaySection list={toPayList} onOpen={setViewOpened} />
+        {viewOpened && <PayoutViewSheet item={viewOpened} onClose={() => setViewOpened(null)} />}
       </div>
     );
   }
@@ -751,8 +754,10 @@ function PayoutsTab({ items, toPay, busy, onDecide, onApproveAll, onRejectAll })
 
       {/* 19.10.2026: «К выплате» — одобрено, но перевод ещё не выполнен.
           Это ровно те позиции, что считает виджет «К исполнению» на главной,
-          поэтому число на виджете и здесь теперь совпадает. */}
-      <PayoutToPaySection list={toPayList} />
+          поэтому число на виджете и здесь теперь совпадает.
+          27.10.2026: карточки КЛИКАБЕЛЬНЫ — открываются на просмотр. */}
+      <PayoutToPaySection list={toPayList} onOpen={setViewOpened} />
+      {viewOpened && <PayoutViewSheet item={viewOpened} onClose={() => setViewOpened(null)} />}
     </div>
   );
 }
@@ -763,7 +768,7 @@ function PayoutsTab({ items, toPay, busy, onDecide, onApproveAll, onRejectAll })
    ещё не переведены. Данные: GET /api/payout-cart/to-pay (тот же срез,
    что toExecute.payouts в /director-summary/queues).
    ══════════════════════════════════════════════════════════════ */
-function PayoutToPaySection({ list }) {
+function PayoutToPaySection({ list, onOpen }) {
   if (!list || !list.length) return null;
   const total = list.reduce((s, x) => s + Number(x.pay_amount || 0), 0);
   return (
@@ -782,14 +787,17 @@ function PayoutToPaySection({ list }) {
         <span style={{ fontWeight: 500, opacity: 0.7 }}>на {formatMoney(total)}</span>
       </div>
       {list.map((it, i) => (
-        <div
+        <button
           key={it.item_id || it.id || i}
-          className="rounded-2xl"
+          type="button"
+          onClick={() => onOpen?.(it)}
+          className="rounded-2xl w-full text-left spring-tap"
           style={{
             background: 'color-mix(in srgb, var(--bg-surface) 92%, transparent)',
             border: '0.5px solid color-mix(in srgb, var(--orange, #ff9f0a) 35%, var(--border-norse))',
             padding: '12px 14px',
             animation: `fadeInUp var(--motion-normal) var(--ease-spring) ${i * 35}ms both`,
+            cursor: 'pointer',
           }}
         >
           <div className="flex items-center justify-between gap-2">
@@ -803,11 +811,14 @@ function PayoutToPaySection({ list }) {
                 ждёт перевода
               </p>
             </div>
-            <span style={{ fontSize: 15.5, fontWeight: 800, color: 'var(--text-primary)', flexShrink: 0 }}>
-              {formatMoney(Number(it.pay_amount || 0))}
+            <span className="flex items-center gap-1.5" style={{ flexShrink: 0 }}>
+              <span style={{ fontSize: 15.5, fontWeight: 800, color: 'var(--text-primary)' }}>
+                {formatMoney(Number(it.pay_amount || 0))}
+              </span>
+              <ChevronRight size={16} style={{ color: 'var(--text-tertiary)' }} />
             </span>
           </div>
-        </div>
+        </button>
       ))}
       <p style={{ fontSize: 10.5, color: 'var(--text-tertiary)', padding: '0 4px', lineHeight: 1.4 }}>
         Решение принято. Выплату выполняет сотрудник выплат — позиции исчезнут
@@ -963,6 +974,12 @@ function InvoicesTab({ items, toPay, busy, onDecide }) {
   const toPayList = Array.isArray(toPay) ? toPay : [];
   /** 20.10.2026: раскрытый счёт для детального просмотра. */
   const [opened, setOpened] = useState(null);
+  /**
+   * 27.10.2026: счёт, открытый из блока «К ОПЛАТЕ» — только посмотреть.
+   * Заказчик: «согласованные счета не могу открыть». Теперь открываются,
+   * но без кнопок решения (решение уже принято).
+   */
+  const [viewOpened, setViewOpened] = useState(null);
   /** Срок оплаты, выбранный в деталке: уходит на бэкенд при согласовании. */
   const [payTiming, setPayTiming] = useState('immediate');
   if ((!items || !items.length) && !toPayList.length) {
@@ -983,7 +1000,14 @@ function InvoicesTab({ items, toPay, busy, onDecide }) {
   if (!items || !items.length) {
     return (
       <div className="flex flex-col gap-2 pb-4">
-        <InvoicesToPaySection list={toPayList} />
+        <InvoicesToPaySection list={toPayList} onOpen={setViewOpened} />
+        {viewOpened && (
+          <InvoiceDetailSheet
+            invoice={viewOpened}
+            readOnly
+            onClose={() => setViewOpened(null)}
+          />
+        )}
       </div>
     );
   }
@@ -1077,8 +1101,9 @@ function InvoicesTab({ items, toPay, busy, onDecide }) {
       ))}
 
       {/* 19.10.2026: счета, одобренные директором и ждущие оплаты бухгалтерией.
-          Ровно то, что считает виджет «Счета к оплате» на главной. */}
-      <InvoicesToPaySection list={toPayList} />
+          Ровно то, что считает виджет «Счета к оплате» на главной.
+          27.10.2026: карточки КЛИКАБЕЛЬНЫ — открываются в режиме просмотра. */}
+      <InvoicesToPaySection list={toPayList} onOpen={setViewOpened} />
 
       {/* 20.10.2026: деталка счёта с превью файла (на десктопе это есть). */}
       {opened && (
@@ -1091,7 +1116,109 @@ function InvoicesTab({ items, toPay, busy, onDecide }) {
           onDecide={(id, action) => { setOpened(null); onDecide(id, action, payTiming); }}
         />
       )}
+
+      {/* 27.10.2026: просмотр согласованного счёта — без кнопок решения. */}
+      {viewOpened && (
+        <InvoiceDetailSheet
+          invoice={viewOpened}
+          readOnly
+          onClose={() => setViewOpened(null)}
+        />
+      )}
     </div>
+  );
+}
+
+/**
+ * PayoutViewSheet — просмотр УЖЕ СОГЛАСОВАННОЙ выплаты (27.10.2026).
+ *
+ * Заказчик: согласованные позиции не открывались. Здесь показываем состав
+ * выплаты (сколько переведено, сколько к получению, удержание) без кнопок
+ * решения — они уже не нужны.
+ *
+ * Расчёт повторяет `PayoutCard`, чтобы цифры не разошлись:
+ *   transfer_amount — сумма перевода, info_amount — что получит сотрудник,
+ *   pay_amount — к выплате, tax = transfer − info (сбор/НДФЛ).
+ */
+function PayoutViewSheet({ item, onClose }) {
+  if (!item) return null;
+  const got = Number(item.info_amount || 0);
+  const transfer = Number(item.transfer_amount || 0);
+  const pay = Number(item.pay_amount || 0);
+  const tax = transfer - got;
+  const taxNote = item.is_self_employed ? 'сбор + НДС 22%' : (item.official_transfer ? 'НДФЛ 15%' : '1:1');
+
+  const rows = [
+    ['Сотрудник', item.fio],
+    item.kind ? ['Тип выплаты', item.kind] : null,
+    (item.period_month && item.period_year) ? ['Период', `${item.period_month}.${item.period_year}`] : null,
+    item.employee_id ? ['ID сотрудника', String(item.employee_id)] : null,
+    item.batch_id ? ['Корзина', `№${item.batch_id}`] : null,
+  ].filter(Boolean);
+
+  return (
+    <BottomSheet open onClose={onClose} title={item.fio ? `Выплата · ${String(item.fio).split(' ').slice(0, 2).join(' ')}` : 'Выплата'} maxHeight="90vh">
+      <div className="flex flex-col gap-3 pb-4">
+        <div className="rounded-2xl px-4 py-3" style={{ background: 'var(--bg-surface-alt)' }}>
+          <p style={{ fontSize: 11.5, color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '.05em' }}>
+            К выплате
+          </p>
+          <p style={{ fontSize: 26, fontWeight: 800, color: 'var(--text-primary)', lineHeight: 1.15, marginTop: 2 }}>
+            {formatMoney(pay)}
+          </p>
+        </div>
+
+        {rows.length > 0 && (
+          <div className="rounded-2xl overflow-hidden" style={{ border: '0.5px solid var(--border-norse)' }}>
+            {rows.map(([label, value], i) => (
+              <div
+                key={label}
+                className="flex items-start justify-between gap-3 px-3.5 py-2.5"
+                style={{ borderTop: i ? '0.5px solid var(--border-norse)' : 'none' }}
+              >
+                <span style={{ fontSize: 12.5, color: 'var(--text-tertiary)', flexShrink: 0 }}>{label}</span>
+                <span style={{ fontSize: 13.5, color: 'var(--text-primary)', textAlign: 'right', fontWeight: 600 }}>{value || '—'}</span>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Состав суммы: перевод, удержание, к получению */}
+        <div className="rounded-2xl px-3.5 py-3" style={{ background: 'var(--bg-surface-alt)' }}>
+          <p style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--text-secondary)', marginBottom: 8 }}>Состав суммы</p>
+          <div className="flex flex-col gap-1.5">
+            {transfer > 0 && (
+              <div className="flex justify-between gap-2">
+                <span style={{ fontSize: 12.5, color: 'var(--text-secondary)' }}>Сумма перевода</span>
+                <span style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text-primary)' }}>{formatMoney(transfer)}</span>
+              </div>
+            )}
+            {tax > 0 && (
+              <div className="flex justify-between gap-2">
+                <span style={{ fontSize: 12.5, color: 'var(--text-secondary)' }}>Удержано ({taxNote})</span>
+                <span style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text-primary)' }}>−{formatMoney(tax)}</span>
+              </div>
+            )}
+            {got > 0 && (
+              <div className="flex justify-between gap-2">
+                <span style={{ fontSize: 12.5, color: 'var(--text-secondary)' }}>К получению</span>
+                <span style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--gold)' }}>{formatMoney(got)}</span>
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div
+          className="rounded-2xl px-4 py-3"
+          style={{ background: 'var(--bg-surface-alt)', border: '0.5px solid var(--border-norse)' }}
+        >
+          <p style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-secondary)' }}>Выплата согласована</p>
+          <p style={{ fontSize: 11.5, color: 'var(--text-tertiary)', marginTop: 3, lineHeight: 1.4 }}>
+            Ждёт перевода. Позиция исчезнет отсюда после подтверждения выплаты.
+          </p>
+        </div>
+      </div>
+    </BottomSheet>
   );
 }
 
@@ -1102,7 +1229,7 @@ function InvoicesTab({ items, toPay, busy, onDecide }) {
    № и дату счёта, основание, договор с флагом «нет в CRM», объект, просьбу
    инициатора, НДС, позиции и превью файла.
    ══════════════════════════════════════════════════════════════ */
-function InvoiceDetailSheet({ invoice, busy, payTiming: payTimingProp, onPayTiming, onClose, onDecide }) {
+function InvoiceDetailSheet({ invoice, busy, payTiming: payTimingProp, onPayTiming, onClose, onDecide, readOnly = false }) {
   const [full, setFull] = useState(null);
   const [loading, setLoading] = useState(true);
   const [previewOpen, setPreviewOpen] = useState(false);
@@ -1253,7 +1380,10 @@ function InvoiceDetailSheet({ invoice, busy, payTiming: payTimingProp, onPayTimi
                 </div>
               )}
 
-              {/* Срок оплаты: срочно или отложенно (как на десктопе) */}
+              {/* Срок оплаты: срочно или отложенно (как на десктопе).
+                  В режиме просмотра не показываем — решение уже принято,
+                  менять срок в закрытом счёте нельзя. */}
+              {!readOnly && (
               <div className="rounded-2xl px-3.5 py-3" style={{ background: 'var(--bg-surface-alt)' }}>
                 <p style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--text-secondary)', marginBottom: 8 }}>Срок оплаты</p>
                 <div className="flex gap-2">
@@ -1275,8 +1405,24 @@ function InvoiceDetailSheet({ invoice, busy, payTiming: payTimingProp, onPayTimi
                   ))}
                 </div>
               </div>
+              )}
 
-              {/* Действия */}
+              {/* Действия. В режиме просмотра (счёт уже одобрен) кнопок нет —
+                  вместо них понятная подпись, чтобы не искать, почему нельзя
+                  нажать. Решение принято, дальше счёт ведёт бухгалтерия. */}
+              {readOnly ? (
+                <div
+                  className="rounded-2xl px-4 py-3"
+                  style={{ background: 'var(--bg-surface-alt)', border: '0.5px solid var(--border-norse)' }}
+                >
+                  <p style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-secondary)' }}>
+                    Счёт согласован
+                  </p>
+                  <p style={{ fontSize: 11.5, color: 'var(--text-tertiary)', marginTop: 3, lineHeight: 1.4 }}>
+                    Ждёт оплаты бухгалтерией. Изменения здесь недоступны.
+                  </p>
+                </div>
+              ) : (
               <div className="flex gap-2">
                 <button
                   type="button"
@@ -1305,6 +1451,7 @@ function InvoiceDetailSheet({ invoice, busy, payTiming: payTimingProp, onPayTimi
                   Вернуть
                 </button>
               </div>
+              )}
             </>
           )}
         </div>
@@ -1330,7 +1477,19 @@ function InvoiceDetailSheet({ invoice, busy, payTiming: payTimingProp, onPayTimi
    Данные: GET /api/payment-invoices?status=pending_payment
    (тот же срез, что toExecute.invoices в /director-summary/queues).
    ══════════════════════════════════════════════════════════════ */
-function InvoicesToPaySection({ list }) {
+/**
+ * InvoicesToPaySection — счета, ОДОБРЕННЫЕ директором и ждущие оплаты.
+ *
+ * ДЕФЕКТ, который здесь исправлен (27.10.2026). Заказчик: «счета, которые уже
+ * согласованы и стоят к оплате, я не могу открыть». Причина: этот блок выводил
+ * строки как простой `<div>` БЕЗ обработчика — ни клика, ни деталки. Директор
+ * видел поставщика и сумму, но не мог посмотреть реквизиты, позиции и файл.
+ *
+ * Теперь карточка открывается в том же `InvoiceDetailSheet`, что и счета на
+ * согласовании, но в режиме ПРОСМОТРА (`readOnly`): решение уже принято,
+ * поэтому кнопки «Согласовать»/«Вернуть» и выбор срока оплаты не показываем.
+ */
+function InvoicesToPaySection({ list, onOpen }) {
   if (!list || !list.length) return null;
   const total = list.reduce((s, x) => s + Number(x.amount || 0), 0);
   return (
@@ -1349,14 +1508,17 @@ function InvoicesToPaySection({ list }) {
         <span style={{ fontWeight: 500, opacity: 0.7 }}>на {formatMoney(total)}</span>
       </div>
       {list.map((inv, i) => (
-        <div
+        <button
           key={inv.id || i}
-          className="rounded-2xl"
+          type="button"
+          onClick={() => onOpen?.(inv)}
+          className="rounded-2xl w-full text-left spring-tap"
           style={{
             background: 'color-mix(in srgb, var(--bg-surface) 92%, transparent)',
             border: '0.5px solid color-mix(in srgb, var(--orange, #ff9f0a) 35%, var(--border-norse))',
             padding: '12px 14px',
             animation: `fadeInUp var(--motion-normal) var(--ease-spring) ${i * 35}ms both`,
+            cursor: 'pointer',
           }}
         >
           <div className="flex items-center justify-between gap-2">
@@ -1369,15 +1531,18 @@ function InvoicesToPaySection({ list }) {
                 одобрен, ждёт оплаты бухгалтерией
               </p>
             </div>
-            <span style={{ fontSize: 15.5, fontWeight: 800, color: 'var(--text-primary)', flexShrink: 0 }}>
-              {formatMoney(Number(inv.amount || 0))}
+            <span className="flex items-center gap-1.5" style={{ flexShrink: 0 }}>
+              <span style={{ fontSize: 15.5, fontWeight: 800, color: 'var(--text-primary)' }}>
+                {formatMoney(Number(inv.amount || 0))}
+              </span>
+              <ChevronRight size={16} style={{ color: 'var(--text-tertiary)' }} />
             </span>
           </div>
-        </div>
+        </button>
       ))}
       <p style={{ fontSize: 10.5, color: 'var(--text-tertiary)', padding: '0 4px', lineHeight: 1.4 }}>
         Решение принято. Счёт оплачивает бухгалтерия — он исчезнет отсюда
-        после проведения платежа.
+        после проведения платежа. Коснитесь счёта, чтобы посмотреть детали.
       </p>
     </div>
   );

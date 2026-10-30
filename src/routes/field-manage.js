@@ -97,6 +97,11 @@ async function routes(fastify, options) {
 
       const pdOnCheckins = per_diem_on_checkins == null ? null : !!per_diem_on_checkins;
       const roleRatesJson = role_base_rates != null ? JSON.stringify(role_base_rates) : null;
+      // МЛСП (вахта на платформе): суточные за смены НЕ начисляются — только за дни
+      // дороги/логистики. Раньше два флага писались независимо, и на объекте 354
+      // (site_category='mlsp') остался per_diem_on_checkins=true → суточные капали
+      // за каждую смену. Держим инвариант на сервере, а не в UI.
+      const effectiveCategory = site_category || null;
 
       // Upsert project settings
       const { rows: existing } = await db.query(
@@ -104,6 +109,11 @@ async function routes(fastify, options) {
       );
 
       if (existing.length > 0) {
+        // Категория, которая останется после апдейта: нужна, чтобы применить инвариант МЛСП.
+        const { rows: curCat } = await db.query(
+          `SELECT site_category FROM field_project_settings WHERE work_id = $1`, [workId]
+        );
+        const finalCategory = effectiveCategory || (curCat[0] && curCat[0].site_category) || null;
         await db.query(`
           UPDATE field_project_settings SET
             is_active = true,
@@ -130,7 +140,8 @@ async function routes(fastify, options) {
             geo_lat || null, geo_lng || null, geo_radius || null,
             geo_required != null ? geo_required : null,
             shift_start_reminder || null, daily_report_reminder || null,
-            rounding_rule || null, rounding_step || null, userId, pdOnCheckins,
+            rounding_rule || null, rounding_step || null, userId,
+            finalCategory === 'mlsp' ? false : pdOnCheckins,
             roleRatesJson]);
       } else {
         await db.query(`
@@ -147,7 +158,8 @@ async function routes(fastify, options) {
             geo_required || false,
             shift_start_reminder || null, daily_report_reminder || null,
             rounding_rule || 'half_up', rounding_step || 0.5,
-            pdOnCheckins != null ? pdOnCheckins : true,
+            (site_category || 'ground') === 'mlsp' ? false
+              : (pdOnCheckins != null ? pdOnCheckins : true),
             roleRatesJson]);
       }
 
@@ -373,7 +385,12 @@ async function routes(fastify, options) {
           // иначе API 200, а UI оставляет человека в «Уехали» (ghost после автовыезда).
           await db.query(`
             UPDATE employee_assignments SET
-              field_role = $2, tariff_id = $3, tariff_points = $4,
+              field_role = $2,
+              -- Пустой селект тарифа в бригаде НЕ должен стирать уже заданный тариф:
+              -- автосейв каждые 30 сек слал tariff_id=null и закреплял «тариф не задан»
+              -- навсегда, из-за чего новая смена падала в дефолт 13 баллов.
+              tariff_id = COALESCE($3, tariff_id),
+              tariff_points = COALESCE($4, tariff_points),
               combination_tariff_id = $5, per_diem = $6, shift_type = $7,
               combo_tariff_ids = $9::int[], manual_extra_points = $10,
               is_active = CASE WHEN $8::boolean THEN is_active ELSE true END,

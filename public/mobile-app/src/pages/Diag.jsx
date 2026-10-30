@@ -21,6 +21,48 @@ export default function Diag() {
   const [results, setResults] = useState([]);
   const [storageInfo, setStorageInfo] = useState(null);
   const [swInfo, setSwInfo] = useState(null);
+  /**
+   * ЖУРНАЛ ПРЫЖКОВ БАРА (27.10.2026).
+   *
+   * Заказчик в PWA: «тап-бар туда-сюда прыгает». В PWA нет адресной строки,
+   * поэтому `?diag=1` недостижим — а именно так раньше включался оверлей с
+   * журналом. Здесь журнал доступен со СТРАНИЦЫ, которая открывается из меню
+   * («Ещё → Диагностика»), то есть замер реально можно снять на устройстве.
+   *
+   * Пишем каждое смещение низа бара: время, было → стало, высоту окна,
+   * visualViewport и прокрутку. По этим полям причина определяется однозначно:
+   *   • меняется `окно`  → iOS пересчитывает коробку вьюпорта;
+   *   • меняется `скролл` → бар двигает прокрутка страницы;
+   *   • меняется только `vv` → дёргается visualViewport (клавиатура/шторка).
+   */
+  const [jumps, setJumps] = useState([]);
+  const [recording, setRecording] = useState(true);
+
+  useEffect(() => {
+    if (!recording) return undefined;
+    const t0 = Date.now();
+    let last = null;
+    const id = setInterval(() => {
+      const nav = document.querySelector('nav.fixed.bottom-0');
+      if (!nav) return;
+      const val = Math.round(nav.getBoundingClientRect().bottom * 100) / 100;
+      if (last !== null && Math.abs(val - last) > 0.5) {
+        setJumps((J) => {
+          const next = [...J, {
+            t: Date.now() - t0,
+            from: last,
+            to: val,
+            win: window.innerHeight,
+            vv: window.visualViewport ? Math.round(window.visualViewport.height) : null,
+            scroll: Math.round(window.scrollY),
+          }];
+          return next.length > 50 ? next.slice(-50) : next;
+        });
+      }
+      last = val;
+    }, 100);
+    return () => clearInterval(id);
+  }, [recording]);
 
   const runTests = () => {
     haptic.light();
@@ -97,6 +139,53 @@ export default function Diag() {
               {r.passed ? <CheckCircle size={16} className="c-green" /> : <XCircle size={16} className="c-red" />}
             </div>
           ))}
+        </div>
+
+        {/* ─── ПРЫЖКИ ТАП-БАРА ───────────────────────────────────────────────
+            Ключевой блок для дефекта «бар прыгает». Показывает каждое смещение
+            низа бара с причиной: меняется окно (вьюпорт) или прокрутка.
+            Скролль страницу ниже и обратно — записи появятся сами. */}
+        <div className="rounded-2xl overflow-hidden card-glass" style={{ animation: 'fadeInUp var(--motion-normal) var(--ease-spring) 220ms both' }}>
+          <div className="flex items-center justify-between px-4 pt-3 pb-2">
+            <p className="text-[11px] font-semibold uppercase tracking-wider c-tertiary">
+              Прыжки тап-бара: {jumps.length}
+            </p>
+            <button
+              type="button"
+              className="spring-tap"
+              onClick={() => { haptic.light(); setRecording((r) => !r); }}
+              style={{
+                fontSize: 11, fontWeight: 700, padding: '4px 10px', borderRadius: 8,
+                background: recording ? 'color-mix(in srgb, var(--green) 15%, transparent)' : 'var(--bg-surface-alt)',
+                color: recording ? 'var(--green)' : 'var(--text-tertiary)',
+                border: '0.5px solid var(--border-norse)',
+              }}
+            >
+              {recording ? '● пишу' : '▶ писать'}
+            </button>
+          </div>
+
+          {jumps.length === 0 ? (
+            <div className="px-4 pb-3">
+              <p className="text-[12px] c-tertiary" style={{ lineHeight: 1.45 }}>
+                Смещений пока не было. Пролистайте страницу вниз и вверх — если бар
+                прыгнет, записи появятся здесь.
+              </p>
+            </div>
+          ) : (
+            <div className="px-4 pb-3">
+              {jumps.slice(-12).reverse().map((j, i) => (
+                <div key={i} className="text-[11px] c-primary" style={{ marginTop: 4, fontVariantNumeric: 'tabular-nums' }}>
+                  {j.t}мс: {j.from} → <b className="c-gold">{j.to}</b>
+                  {' '}окно {j.win}{j.vv !== null ? ` (vv ${j.vv})` : ''} скролл {j.scroll}
+                </div>
+              ))}
+              <p className="text-[11px] c-tertiary" style={{ marginTop: 8, lineHeight: 1.45 }}>
+                Если меняется «окно» — дело во вьюпорте iOS. Если «скролл» — бар
+                двигает прокрутка. Пришлите этот экран разработчику.
+              </p>
+            </div>
+          )}
         </div>
       </div>
     </PageShell>
