@@ -6518,3 +6518,220 @@ html[data-theme="light"] .hg-invite-modes .hg-compose-mode.is-active {
   }
 }
 
+
+
+/* Huginn voice/circle recorder: real capture, preview and explicit send. */
+.hg-rec-overlay[data-status="preview"],
+.hg-rec-overlay[data-status="sending"] {
+  background: linear-gradient(180deg, rgba(20, 32, 52, .92), rgba(8, 16, 30, .96));
+  border-top: 1px solid rgba(91, 160, 224, .22);
+}
+.hg-rec-caption {
+  color: rgba(225, 238, 255, .78);
+  font: 500 12px/1.2 var(--hg-font);
+  white-space: nowrap;
+}
+.hg-rec-wave {
+  min-height: 38px;
+  flex: 1 1 100px;
+  min-width: 56px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  padding: 0 8px;
+  overflow: hidden;
+}
+.hg-rec-wave i {
+  display: block;
+  width: 3px;
+  min-width: 2px;
+  height: 4px;
+  max-height: 30px;
+  border-radius: 3px;
+  background: linear-gradient(180deg, #83c8ff, #428fda);
+  opacity: .9;
+  transition: height 70ms linear;
+}
+.hg-rec-preview-audio {
+  flex: 1 1 150px;
+  min-width: 110px;
+  max-width: 240px;
+  height: 34px;
+  filter: saturate(.8);
+}
+.hg-rec-right {
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+}
+.hg-rec-overlay .hg-rec-pause {
+  border-style: solid;
+  border-color: rgba(116, 181, 238, .4);
+  background: rgba(54, 117, 178, .22);
+}
+.hg-rec-overlay .hg-rec-send {
+  width: 46px;
+  height: 46px;
+  background: linear-gradient(135deg, #5E9CD6, #3679bb);
+  box-shadow: 0 3px 12px rgba(35, 102, 166, .36);
+}
+.hg-rec-overlay button:disabled {
+  opacity: .48;
+  pointer-events: none;
+}
+.hg-rec-overlay[data-status="sending"] .hg-rec-dot {
+  animation: none;
+  background: #79baff;
+}
+.hg-send.is-mic { touch-action: none; user-select: none; -webkit-user-select: none; }
+
+/* Video-circle capture is Huginn navy/blue, not a black Telegram clone. */
+.hg-circle-record {
+  background:
+    radial-gradient(ellipse at 50% 32%, rgba(48, 91, 138, .32), transparent 52%),
+    linear-gradient(160deg, #101d31, #07111f 72%);
+  color: #f5f8ff;
+}
+.hg-circle-topbar {
+  position: absolute;
+  z-index: 2;
+  top: calc(18px + env(safe-area-inset-top, 0px));
+  left: 16px;
+  right: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.hg-circle-status {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 42px;
+  padding: 7px 14px;
+  border: 1px solid rgba(128, 183, 235, .2);
+  border-radius: 999px;
+  background: rgba(13, 28, 49, .82);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, .18);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+}
+.hg-circle-status .hg-rec-dot {
+  width: 8px;
+  height: 8px;
+  flex: 0 0 8px;
+  border-radius: 50%;
+  background: #ff5d67;
+  box-shadow: 0 0 0 4px rgba(255, 93, 103, .12);
+}
+.hg-circle-status .hg-rec-timer {
+  color: #fff;
+  font: 650 15px/1 tabular-nums var(--hg-font);
+}
+.hg-circle-status-label {
+  color: rgba(221, 236, 255, .72);
+  font: 500 12px/1.2 var(--hg-font);
+}
+.hg-circle-record .hg-circle-stage {
+  width: min(78vw, 390px);
+  height: min(78vw, 390px);
+  border: 1px solid rgba(126, 190, 248, .32);
+  box-shadow: 0 18px 54px rgba(0, 0, 0, .42), 0 0 0 8px rgba(53, 116, 179, .08);
+}
+.hg-circle-record .hg-circle-preview {
+  width: 100%;
+  height: 100%;
+  display: block;
+  border-radius: 50%;
+  object-fit: cover;
+  background: #0d1c30;
+}
+.hg-circle-record .hg-circle-fallback { display: block; }
+.hg-circle-record.has-stream .hg-circle-fallback { display: none; }
+.hg-circle-record .hg-circle-progress {
+  position: absolute;
+  inset: -5px;
+  width: calc(100% + 10px);
+  height: calc(100% + 10px);
+  overflow: visible;
+  transform: rotate(-90deg);
+  pointer-events: none;
+  z-index: 1;
+}
+.hg-circle-record .hg-circle-progress circle {
+  fill: none;
+  stroke: #69b6f3;
+  stroke-width: 2.4;
+  stroke-linecap: round;
+  stroke-dasharray: 295.31;
+  stroke-dashoffset: 295.31;
+  filter: drop-shadow(0 0 4px rgba(83, 170, 242, .48));
+}
+.hg-circle-record .hg-circle-controls {
+  position: absolute;
+  left: 18px;
+  right: 18px;
+  bottom: calc(22px + env(safe-area-inset-bottom, 0px));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+}
+.hg-circle-record .hg-circle-cancel,
+.hg-circle-record .hg-circle-pause,
+.hg-circle-record .hg-circle-send {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 46px;
+  border-radius: 999px;
+  border: 1px solid rgba(137, 186, 232, .24);
+  background: rgba(15, 34, 57, .88);
+  color: #eaf4ff;
+  font: 600 14px/1.1 var(--hg-font);
+  cursor: pointer;
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+}
+.hg-circle-record .hg-circle-cancel { padding: 0 20px; }
+.hg-circle-record .hg-circle-pause {
+  width: 48px;
+  height: 48px;
+  min-width: 48px;
+  padding: 0;
+}
+.hg-circle-record .hg-circle-pause svg,
+.hg-circle-record .hg-circle-send svg { width: 21px; height: 21px; }
+.hg-circle-record .hg-circle-send {
+  width: 58px;
+  height: 58px;
+  min-width: 58px;
+  padding: 0;
+  background: linear-gradient(135deg, #6eb7f1, #347fc0);
+  color: #fff;
+  border-color: transparent;
+  box-shadow: 0 6px 20px rgba(32, 113, 184, .34);
+}
+.hg-circle-record .hg-circle-controls button:disabled { opacity: .45; pointer-events: none; }
+.hg-circle-record.is-paused .hg-rec-dot {
+  background: #7cb8e8;
+  box-shadow: none;
+}
+.hg-circle-record.is-preview .hg-circle-stage { box-shadow: 0 18px 54px rgba(0,0,0,.42), 0 0 0 8px rgba(70,145,211,.12); }
+@media (max-width: 480px) {
+  .hg-circle-record .hg-circle-stage {
+    width: min(82vw, 360px);
+    height: min(82vw, 360px);
+  }
+  .hg-circle-topbar { left: 12px; right: 12px; }
+  .hg-circle-record .hg-circle-controls { left: 12px; right: 12px; gap: 10px; }
+  .hg-rec-overlay-inner { flex-wrap: wrap; }
+  .hg-rec-wave { order: 3; flex-basis: 100%; }
+  .hg-rec-preview-audio { order: 3; flex: 1 1 100%; max-width: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .hg-rec-overlay .hg-rec-dot,
+  .hg-circle-record .hg-rec-dot { animation: none !important; }
+  .hg-rec-wave i { transition: none !important; }
+}
