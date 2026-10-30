@@ -1,5 +1,12 @@
 /* Huginn dock — TG iOS pixel chrome (ATLAS). Gold ONLY on rail chrome. */
 
+/* Unified Huginn motion cadence — driven by the existing Energy Saving mode. */
+#huginnDock.hg-power-full {
+  --hg-motion-duration: 180ms;
+  --hg-motion-ease: cubic-bezier(0.2, 0.6, 0.2, 1);
+}
+
+
 :root {
   --hg-rail-w: 56px;
   --hg-panel-w: 400px;
@@ -684,28 +691,26 @@ body.hg-list-edit .hg-nav-search {
 /* Stories rail + birthday banners (visual wave; no geo) */
 .hg-stories-rail {
   display: flex;
+  flex: 0 0 auto;
   gap: 12px;
   margin: 8px 0 4px;
   padding: 4px 12px 8px;
   overflow-x: auto;
   scrollbar-width: none;
-  /* ТЗ Часть 5: панель прячется ПРИВЯЗАННО к позиции скролла.
-     ВАЖНО (фикс лагов): скролл-драйв идёт ТОЛЬКО по compositor-свойствам
-     (transform/opacity) через --hg-rail-hide. Анимация max-height на каждом
-     кадре скролла вызывала layout-reflow → кружочки «прыгали» и моргали.
-     Высота схлопывается один раз классом .is-hidden (см. ниже). */
-  --hg-rail-hide: 0;
   height: 96px;
-  opacity: calc(1 - var(--hg-rail-hide));
-  transform: translateY(calc(-100% * var(--hg-rail-hide)));
+  opacity: 1;
+  transform: translateY(0);
   will-change: transform, opacity;
-  /* Без transition на базовом состоянии: var обновляется каждый кадр скролла,
-     transition «догонял» бы её → панель отставала и дёргалась.
-     Переходы живут только на .is-hidden / .is-spring. */
-  transition: none;
+  transition: height 160ms var(--hg-ease-std, ease),
+    flex-basis 160ms var(--hg-ease-std, ease),
+    margin 160ms var(--hg-ease-std, ease),
+    padding 160ms var(--hg-ease-std, ease),
+    opacity 140ms linear,
+    transform 160ms var(--hg-ease-std, ease);
 }
-/* Полностью скрыта: высоту убираем ОДИН раз (не на каждый кадр скролла). */
+/* Collapse the flex item itself so the chat list receives the freed height. */
 .hg-stories-rail.is-hidden {
+  flex-basis: 0;
   height: 0;
   min-height: 0;
   margin: 0;
@@ -714,15 +719,7 @@ body.hg-list-edit .hg-nav-search {
   opacity: 0;
   transform: translateY(-100%);
   overflow: hidden;
-  transition: height 140ms var(--hg-ease-std, ease), margin 140ms var(--hg-ease-std, ease),
-    opacity 120ms linear, transform 120ms linear;
-}
-/* Пружинистое появление при «потягивании» в самом верху (overscroll, ТЗ §5.4) */
-.hg-stories-rail.is-spring {
-  transition: height 320ms var(--hg-ease-spring, cubic-bezier(.34,1.36,.64,1)),
-    margin 320ms var(--hg-ease-spring, cubic-bezier(.34,1.36,.64,1)),
-    opacity 260ms var(--hg-ease-std, ease),
-    transform 320ms var(--hg-ease-spring, cubic-bezier(.34,1.36,.64,1));
+  pointer-events: none;
 }
 .hg-stories-rail::-webkit-scrollbar { display: none; }
 .hg-story-item {
@@ -747,6 +744,107 @@ body.hg-list-edit .hg-nav-search {
 }
 .hg-story-item.is-unread .hg-story-ring {
   background: linear-gradient(135deg, var(--blue-l, #4A90D9), color-mix(in srgb, var(--blue-l, #4A90D9) 40%, #fff));
+}
+/* Gradient story rings keep the existing unread/seen classes and hit area. */
+.hg-story-item:not(.is-unread):not(.is-mine):not(.is-add):not(.is-peer) .hg-story-ring {
+  background: color-mix(in srgb, var(--hg-muted) 38%, transparent);
+}
+.hg-story-item.is-unread .hg-story-ring {
+  background: linear-gradient(135deg,
+    var(--blue-l, #4A90D9) 0%,
+    #8B5CF6 55%,
+    color-mix(in srgb, var(--blue-l, #4A90D9) 45%, #fff) 100%);
+}
+@media (hover: hover) and (pointer: fine) {
+  .hg-story-item .hg-story-ring,
+  .hg-story-item .hg-story-av,
+  .hg-chat-av,
+  .hg-contact-av,
+  .hg-settings-av,
+  .hg-list-me-btn {
+    transition: transform var(--hg-dur-mid, 200ms) var(--hg-ease-standard, ease),
+      filter var(--hg-dur-mid, 200ms) var(--hg-ease-standard, ease);
+  }
+  .hg-story-item:hover .hg-story-ring,
+  .hg-chat-row:hover .hg-chat-av,
+  .hg-contact-row:hover .hg-contact-av,
+  .hg-settings-profile.is-clickable:hover .hg-settings-av,
+  .hg-list-me-btn:hover {
+    filter: saturate(1.08) brightness(1.04);
+  }
+  .hg-story-item:hover .hg-story-av,
+  .hg-chat-row:hover .hg-chat-av,
+  .hg-contact-row:hover .hg-contact-av,
+  .hg-settings-profile.is-clickable:hover .hg-settings-av,
+  .hg-list-me-btn:hover {
+    transform: scale(1.035);
+  }
+}
+@media (hover: none), (pointer: coarse) {
+  .hg-story-item:hover .hg-story-ring,
+  .hg-story-item:hover .hg-story-av,
+  .hg-chat-row:hover .hg-chat-av,
+  .hg-contact-row:hover .hg-contact-av,
+  .hg-settings-profile.is-clickable:hover .hg-settings-av,
+  .hg-list-me-btn:hover {
+    transform: none;
+    filter: none;
+  }
+}
+#huginnDock.hg-power-reduced .hg-story-item.is-unread .hg-story-ring,
+html[data-hg-fx="reduced"] #huginnDock .hg-story-item.is-unread .hg-story-ring {
+  background: linear-gradient(135deg,
+    color-mix(in srgb, var(--blue-l, #4A90D9) 70%, var(--hg-muted) 30%),
+    color-mix(in srgb, #8B5CF6 45%, var(--hg-muted) 55%));
+}
+#huginnDock.hg-power-off .hg-story-item.is-unread .hg-story-ring,
+html[data-hg-fx="off"] #huginnDock .hg-story-item.is-unread .hg-story-ring {
+  background: color-mix(in srgb, var(--hg-muted) 40%, var(--blue-l, #4A90D9) 18%);
+}
+#huginnDock.hg-power-off .hg-story-item:not(.is-unread) .hg-story-ring,
+html[data-hg-fx="off"] #huginnDock .hg-story-item:not(.is-unread) .hg-story-ring {
+  background: color-mix(in srgb, var(--hg-muted) 40%, transparent);
+}
+#huginnDock.hg-power-off .hg-ripple,
+html[data-hg-fx="off"] .hg-ripple {
+  display: none !important;
+}
+#huginnDock.hg-power-reduced .hg-ripple,
+html[data-hg-fx="reduced"] .hg-ripple {
+  animation-duration: 260ms;
+  opacity: 0.65;
+}
+#huginnDock.hg-power-off .hg-story-ring,
+#huginnDock.hg-power-off .hg-story-av,
+#huginnDock.hg-power-off .hg-chat-av,
+#huginnDock.hg-power-off .hg-contact-av,
+#huginnDock.hg-power-off .hg-settings-av,
+#huginnDock.hg-power-off .hg-list-me-btn,
+html[data-hg-fx="off"] #huginnDock .hg-story-ring,
+html[data-hg-fx="off"] #huginnDock .hg-story-av,
+html[data-hg-fx="off"] #huginnDock .hg-chat-av,
+html[data-hg-fx="off"] #huginnDock .hg-contact-av,
+html[data-hg-fx="off"] #huginnDock .hg-settings-av,
+html[data-hg-fx="off"] #huginnDock .hg-list-me-btn {
+  transition: none !important;
+  filter: none !important;
+  transform: none !important;
+}
+@media (prefers-reduced-motion: reduce) {
+  #huginnDock .hg-stories-rail {
+    transition: none !important;
+  }
+  #huginnDock .hg-story-ring,
+  #huginnDock .hg-story-av,
+  #huginnDock .hg-chat-av,
+  #huginnDock .hg-contact-av,
+  #huginnDock .hg-settings-av,
+  #huginnDock .hg-list-me-btn,
+  #huginnDock .hg-ripple {
+    animation: none !important;
+    transition: none !important;
+    transform: none !important;
+  }
 }
 /* Own story ring + brand gradient (TG-like). */
 .hg-story-ring.is-mine {
@@ -1301,6 +1399,100 @@ body.hg-list-edit .hg-nav-search {
   padding: 0;
   scrollbar-width: thin;
 }
+/* Short, resisted spring only for touch pulls beyond the chat-list edges. */
+.hg-list > * {
+  translate: 0 var(--hg-list-spring-y, 0px);
+  transition: translate 420ms cubic-bezier(.2, .72, .28, 1);
+}
+.hg-list.hg-overscroll-active > * { transition: none; }
+.hg-list.hg-overscroll-returning > * {
+  transition: translate 420ms cubic-bezier(.22, 1.35, .42, 1);
+}
+@media (prefers-reduced-motion: reduce) {
+  .hg-list > * { transition-duration: 1ms !important; }
+}
+/* Swipe affordances sit behind the moving row; the row itself remains the real chat button. */
+.hg-swipe-action {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  height: var(--hg-row-h);
+  min-height: var(--hg-row-h);
+  margin-bottom: calc(-1 * var(--hg-row-h));
+  padding-left: 20px;
+  box-sizing: border-box;
+  color: #fff;
+  font: 600 13px/1 var(--hg-font);
+  opacity: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+.hg-swipe-action.is-archive { background: #26845B; }
+.hg-swipe-action.is-delete { justify-content: flex-end; padding-left: 0; padding-right: 20px; background: #C83D4D; }
+.hg-chat-row.hg-swipe-active { z-index: 1; will-change: transform; }
+.hg-chat-row.hg-swipe-returning { transition: transform 220ms cubic-bezier(.22,1.25,.36,1); }
+.hg-peek-backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 120;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  box-sizing: border-box;
+  background: rgba(0,0,0,.36);
+  opacity: 0;
+  transition: opacity 170ms ease;
+}
+.hg-peek-backdrop.is-open { opacity: 1; }
+.hg-peek-backdrop.is-closing { opacity: 0; }
+.hg-peek-card {
+  position: relative;
+  width: min(100%, 340px);
+  padding: 20px;
+  border: 1px solid var(--hg-border, rgba(255,255,255,.12));
+  border-radius: 20px;
+  background: var(--hg-panel, var(--bg2, #171B24));
+  color: var(--hg-text, #fff);
+  box-shadow: var(--hg-elev-4, 0 18px 60px rgba(0,0,0,.32));
+  transform: translateY(8px) scale(.98);
+  transition: transform 190ms cubic-bezier(.2,.8,.2,1);
+}
+.hg-peek-backdrop.is-open .hg-peek-card { transform: translateY(0) scale(1); }
+.hg-peek-close {
+  position: absolute;
+  top: 8px;
+  right: 10px;
+  width: 32px;
+  height: 32px;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(128,128,128,.16);
+  color: inherit;
+  font: 400 24px/1 var(--hg-font);
+}
+.hg-peek-head { display: flex; align-items: center; gap: 12px; padding-right: 24px; }
+.hg-peek-avatar { flex: 0 0 auto; width: 48px; height: 48px; border-radius: 50%; }
+.hg-peek-title-wrap { min-width: 0; }
+.hg-peek-title { font: 600 17px/1.3 var(--hg-font); overflow-wrap: anywhere; }
+.hg-peek-sub { margin-top: 3px; font: 400 12px/1.3 var(--hg-font); color: var(--hg-muted, #8E8E93); }
+.hg-peek-message { margin-top: 18px; padding: 13px; border-radius: 12px; background: var(--bg3, rgba(128,128,128,.12)); }
+.hg-peek-message-label { margin-bottom: 6px; font: 500 11px/1.3 var(--hg-font); color: var(--hg-muted, #8E8E93); }
+.hg-peek-message-text { font: 400 14px/1.45 var(--hg-font); overflow-wrap: anywhere; }
+.hg-peek-open {
+  width: 100%;
+  min-height: 44px;
+  margin-top: 14px;
+  border: 0;
+  border-radius: 12px;
+  background: var(--hg-accent-chat, var(--blue-l, #4A90D9));
+  color: #fff;
+  font: 600 14px/1.2 var(--hg-font);
+}
+@media (prefers-reduced-motion: reduce) {
+  .hg-chat-row.hg-swipe-returning, .hg-peek-backdrop, .hg-peek-card { transition-duration: 1ms !important; }
+}
 .hg-chat-row {
   display: grid;
   grid-template-columns: var(--hg-av-list) 1fr auto;
@@ -1318,6 +1510,7 @@ body.hg-list-edit .hg-nav-search {
   border-bottom: 1px solid var(--hg-sep);
   width: 100%;
   background: transparent;
+  touch-action: pan-y;
   text-align: left;
   color: inherit;
   align-items: center;
@@ -1474,7 +1667,12 @@ body.hg-list-edit .hg-nav-search {
 
 .hg-msgs-wrap { position: relative; flex: 1; min-height: 0; display: flex; flex-direction: column; }
 .hg-msgs {
-  flex: 1;
+  /* Keep the message list as the scrollable flex child. Without min-height:0,
+     long histories/media previews can expand the thread and push the composer
+     outside the visible viewport after a voice or circle message is added. */
+  flex: 1 1 0%;
+  min-height: 0;
+  min-width: 0;
   overflow-y: auto;
   overflow-x: clip;
   padding: 12px 16px 16px;
@@ -1711,14 +1909,17 @@ html[data-theme="light"] .hg-bubble {
 }
 .hg-voice {
   display: grid;
-  grid-template-columns: 44px minmax(0, 1fr) auto;
+  /* Keep play, waveform and Aa inside the available bubble width. */
+  grid-template-columns: 44px minmax(0, 1fr) 32px;
   grid-template-rows: 1fr auto;
-  column-gap: 10px;
+  column-gap: 8px;
   row-gap: 3px;
   align-items: center;
-  min-width: 216px;
+  min-width: 0;
   min-height: 54px;
-  width: min(300px, 78vw);
+  width: 100%;
+  max-width: 300px;
+  box-sizing: border-box;
   padding: 1px 0;
 }
 .hg-voice-play {
@@ -1771,6 +1972,7 @@ html[data-theme="light"] .hg-bubble {
   height: 28px;
   min-width: 0;
   width: 100%;
+  overflow: hidden;
   cursor: pointer;
 }
 .hg-voice-wave i {
@@ -1818,9 +2020,15 @@ html[data-theme="light"] .hg-bubble {
 .hg-voice-aa {
   grid-column: 3;
   grid-row: 1;
+  justify-self: end;
   flex: none;
   align-self: center;
-  width: 32px; height: 32px; border-radius: 50%;
+  width: 32px;
+  min-width: 32px;
+  max-width: 32px;
+  height: 32px;
+  box-sizing: border-box;
+  border-radius: 50%;
   border: 0; cursor: pointer;
   background: color-mix(in srgb, var(--t1, #fff) 13%, transparent);
   color: color-mix(in srgb, var(--t1, #fff) 88%, transparent);
@@ -2440,10 +2648,18 @@ html[data-theme="light"] .hg-pin-banner .hg-pin-ico {
 }
 .hg-file-card a { color: var(--hg-accent-chat); text-decoration: none; font: 500 var(--hg-font-meta) var(--hg-font); }
 .hg-transcript {
-  margin-top: 8px; padding: 8px 10px; border-radius: 10px;
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
+  margin-top: 8px;
+  padding: 8px 10px;
+  border-radius: 10px;
   background: rgba(0, 0, 0, 0.2);
   font: 400 var(--hg-font-preview) var(--hg-font);
   color: var(--hg-muted);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: normal;
 }
 html[data-theme="light"] .hg-transcript { background: rgba(0, 0, 0, 0.06); }
 
@@ -2534,8 +2750,8 @@ html[data-theme="light"] .hg-scroll-fab {
   display: none;
 }
 .hg-thread .hg-msgs-wrap {
-  /* suggest bar removed — reserve composer row only */
-  padding-bottom: calc(var(--hg-tg-input-h) + 20px + env(safe-area-inset-bottom, 0px));
+  /* The composer overlays the thread; reserve its scroll clearance inside .hg-msgs only. */
+  padding-bottom: 0;
 }
 .hg-composer > * { position: relative; z-index: 1; }
 html[data-theme="light"] .hg-composer {
@@ -4436,6 +4652,71 @@ html[data-theme="light"] .hg-settings-logout { background: var(--bg2, #FDFAF5); 
   border-radius: 3px;
 }
 
+/* Targeted micro-interactions: avoid sweeping changes to navigation/layout. */
+#huginnDock .hg-settings-row,
+#huginnDock .hg-fx-btn,
+#huginnDock .hg-rail-btn,
+#huginnDock .hg-icon-btn,
+#huginnDock .hg-tool,
+#huginnDock .hg-send,
+#huginnDock .hg-bottom-nav button,
+#huginnDock .hg-sort-row {
+  transition: background-color var(--hg-dur-mid, 200ms) var(--hg-ease-standard, ease),
+    color var(--hg-dur-mid, 200ms) var(--hg-ease-standard, ease),
+    border-color var(--hg-dur-mid, 200ms) var(--hg-ease-standard, ease),
+    transform var(--hg-dur-fast, 140ms) var(--hg-ease-standard, ease);
+}
+#huginnDock input:focus-visible,
+#huginnDock textarea:focus-visible,
+#huginnDock select:focus-visible,
+#huginnDock .hg-search:focus,
+#huginnDock .hg-confirm-input:focus {
+  outline: none;
+  border-color: var(--hg-accent-chat, var(--blue-l, #4A90D9));
+  box-shadow: var(--hg-focus-glow, 0 0 0 3px color-mix(in srgb, var(--blue-l, #4A90D9) 22%, transparent));
+}
+#huginnDock .hg-fx-toggle { position: relative; }
+#huginnDock .hg-fx-btn { position: relative; }
+#huginnDock .hg-fx-btn:active,
+#huginnDock .hg-settings-row:active,
+#huginnDock .hg-icon-btn:active,
+#huginnDock .hg-tool:active,
+#huginnDock .hg-send:active,
+#huginnDock .hg-bottom-nav button:active {
+  transform: scale(0.985);
+}
+#huginnDock.hg-power-off .hg-story-item:hover .hg-story-ring,
+#huginnDock.hg-power-off .hg-story-item:hover .hg-story-av,
+#huginnDock.hg-power-off .hg-chat-row:hover .hg-chat-av,
+#huginnDock.hg-power-off .hg-contact-row:hover .hg-contact-av,
+#huginnDock.hg-power-off .hg-settings-profile.is-clickable:hover .hg-settings-av,
+html[data-hg-fx="off"] #huginnDock .hg-story-item:hover .hg-story-ring,
+html[data-hg-fx="off"] #huginnDock .hg-story-item:hover .hg-story-av,
+html[data-hg-fx="off"] #huginnDock .hg-chat-row:hover .hg-chat-av,
+html[data-hg-fx="off"] #huginnDock .hg-contact-row:hover .hg-contact-av,
+html[data-hg-fx="off"] #huginnDock .hg-settings-profile.is-clickable:hover .hg-settings-av {
+  transform: none !important;
+  filter: none !important;
+}
+@media (prefers-reduced-motion: reduce) {
+  #huginnDock .hg-settings-row,
+  #huginnDock .hg-fx-btn,
+  #huginnDock .hg-rail-btn,
+  #huginnDock .hg-icon-btn,
+  #huginnDock .hg-tool,
+  #huginnDock .hg-send,
+  #huginnDock .hg-bottom-nav button,
+  #huginnDock .hg-sort-row {
+    transition-duration: 0.01ms !important;
+  }
+  #huginnDock .hg-settings-row:active,
+  #huginnDock .hg-icon-btn:active,
+  #huginnDock .hg-tool:active,
+  #huginnDock .hg-send:active,
+  #huginnDock .hg-bottom-nav button:active {
+    transform: none !important;
+  }
+}
 /* Phase 7.5 micro-interactions (bottom-nav timings owned by P9 block above) */
 .hg-rail-btn,
 .hg-icon-btn,
@@ -4512,20 +4793,24 @@ body.hg-dock-collapsed { padding-right: calc(var(--hg-rail-w) + 24px); }
   .hg-chrome:not(.is-composer-focus):not(.is-recording):not(.is-thread) .hg-list,
   .hg-chrome:not(.is-composer-focus):not(.is-recording):not(.is-thread) .hg-contacts-list,
   .hg-chrome:not(.is-composer-focus):not(.is-recording):not(.is-thread) .hg-settings {
-    padding-bottom: calc(var(--hg-tg-nav-h) + 24px + env(safe-area-inset-bottom, 0px));
+    padding-bottom: var(--hg-bottom-nav-clearance, calc(var(--hg-tg-nav-h, 64px) + 22px + env(safe-area-inset-bottom, 0px)));
   }
   .hg-chrome:not(.is-composer-focus):not(.is-recording):not(.is-thread) .hg-contacts {
     padding-bottom: 0;
   }
-  .hg-chrome.is-composer-focus .hg-composer,
+  .hg-chrome.is-composer-focus .hg-composer {
+    /* The keyboard edge is the new bottom boundary; don't add device safe-area twice. */
+    padding-bottom: 6px !important;
+  }
   .hg-chrome.is-recording .hg-composer {
     padding-bottom: 12px;
   }
   .hg-chrome.is-thread .hg-msgs {
-    padding-bottom: calc(72px + env(safe-area-inset-bottom, 0px) + 16px) !important;
+    /* Reserve only the composer footprint; safe area is handled by the composer. */
+    padding-bottom: calc(var(--hg-composer-height, calc(var(--hg-tg-input-h, 40px) + 22px + env(safe-area-inset-bottom, 0px))) + 8px) !important;
   }
   .hg-chrome:not(.is-thread):not(.is-composer-focus):not(.is-recording) .hg-msgs {
-    padding-bottom: calc(56px + 12px + env(safe-area-inset-bottom, 0px)) !important;
+    padding-bottom: var(--hg-bottom-nav-clearance, calc(var(--hg-tg-nav-h, 64px) + 22px + env(safe-area-inset-bottom, 0px))) !important;
   }
   .hg-composer {
     /* keep absolute-over-msgs from base rule — relative here killed underlap */
@@ -4534,9 +4819,16 @@ body.hg-dock-collapsed { padding-right: calc(var(--hg-rail-w) + 24px); }
   }
   .hg-chrome {
     position: fixed;
-    inset: 0;
+    top: var(--hg-visual-viewport-top, 0px);
+    right: 0;
+    bottom: auto;
+    left: 0;
+    height: 100vh;
+    height: var(--hg-visual-viewport-height, 100dvh);
+    min-height: 0;
+    box-sizing: border-box;
     border-radius: 0;
-    /* iPhone: не прячем шапку/поиск под чёлкой и не режем по боковым вырезам */
+    /* Keep the shell inside the visible viewport and respect device cutouts. */
     padding-top: env(safe-area-inset-top, 0px);
     padding-left: env(safe-area-inset-left, 0px);
     padding-right: env(safe-area-inset-right, 0px);
@@ -4579,7 +4871,7 @@ body.hg-dock-collapsed { padding-right: calc(var(--hg-rail-w) + 24px); }
   /* Enough scroll room to clear last row above nav, but keep rows able to park under glass */
   .hg-list,
   .hg-contacts-list {
-    padding-bottom: calc(var(--hg-tg-nav-h) + 12px + env(safe-area-inset-bottom, 0px));
+    padding-bottom: var(--hg-bottom-nav-clearance, calc(var(--hg-tg-nav-h, 64px) + 22px + env(safe-area-inset-bottom, 0px)));
   }
   .hg-contacts,
   .hg-contacts-body {
@@ -5979,4 +6271,487 @@ html[data-theme="light"] .hg-invite-modes .hg-compose-mode.is-active {
 }
 @media (prefers-reduced-motion: reduce) {
   .hg-ripple { display: none !important; }
+}
+
+
+/* Huginn motion polish — scoped to the live dock, sharing the existing power mode. */
+#huginnDock {
+  --hg-motion-duration: 180ms;
+  --hg-motion-ease: cubic-bezier(0.2, 0.6, 0.2, 1);
+}
+#huginnDock.hg-power-reduced {
+  --hg-motion-duration: 100ms;
+  --hg-motion-ease: ease-out;
+}
+#huginnDock.hg-power-off {
+  --hg-motion-duration: 0ms;
+}
+#huginnDock .hg-chat-row,
+#huginnDock .hg-contact-row,
+#huginnDock .hg-settings-row,
+#huginnDock .hg-rail-btn,
+.hg-bottom-nav button,
+#huginnDock .hg-icon-btn,
+#huginnDock .hg-fx-btn,
+#huginnDock .hg-search {
+  transition:
+    background-color var(--hg-motion-duration) var(--hg-motion-ease),
+    color var(--hg-motion-duration) var(--hg-motion-ease),
+    border-color var(--hg-motion-duration) var(--hg-motion-ease),
+    box-shadow var(--hg-motion-duration) var(--hg-motion-ease);
+}
+#huginnDock .hg-search:focus-visible {
+  outline: 2px solid var(--hg-active-edge, var(--blue-l, #4A90D9));
+  outline-offset: 1px;
+}
+#huginnDock.hg-power-off .hg-chat-row,
+#huginnDock.hg-power-off .hg-contact-row,
+#huginnDock.hg-power-off .hg-settings-row,
+#huginnDock.hg-power-off .hg-rail-btn,
+.hg-bottom-nav button,
+#huginnDock.hg-power-off .hg-icon-btn,
+#huginnDock.hg-power-off .hg-fx-btn,
+#huginnDock.hg-power-off .hg-search {
+  transition: none !important;
+}
+@media (prefers-reduced-motion: reduce) {
+  #huginnDock .hg-chat-row,
+  #huginnDock .hg-contact-row,
+  #huginnDock .hg-settings-row,
+  #huginnDock .hg-rail-btn,
+  .hg-bottom-nav button,
+  #huginnDock .hg-icon-btn,
+  #huginnDock .hg-fx-btn,
+  #huginnDock .hg-search {
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* Responsive geometry fixes for the live Huginn dock (no layout redesign). */
+@media (max-width: 768px) {
+  .hg-chrome {
+    left: var(--hg-visual-viewport-left, 0px);
+    right: auto;
+    width: var(--hg-visual-viewport-width, 100vw);
+    box-sizing: border-box;
+  }
+
+  /* The shell already accounts for the top safe area. Do not let a 100%-height
+     panel add that inset a second time or force the scroll area beyond viewport. */
+  .hg-chrome > .hg-panel {
+    width: 100%;
+    height: auto;
+    min-width: 0;
+    min-height: 0;
+    flex: 1 1 auto;
+    box-sizing: border-box;
+  }
+  .hg-panel > .hg-thread {
+    width: 100%;
+    height: 100%;
+    min-width: 0;
+    min-height: 0;
+    flex: 1 1 auto;
+  }
+  .hg-thread,
+  .hg-float-chrome,
+  .hg-thread-head,
+  .hg-thread-actions,
+  .hg-msgs-wrap,
+  .hg-msgs {
+    min-width: 0;
+  }
+  .hg-thread-head { width: 100%; }
+  .hg-thread-title {
+    flex: 1 1 0%;
+    min-width: 0;
+    max-width: 100%;
+    padding-left: clamp(6px, 2vw, 14px);
+    padding-right: clamp(6px, 2vw, 14px);
+  }
+  .hg-thread-title strong,
+  .hg-thread-title strong .hg-title-text {
+    min-width: 0;
+    max-width: 100%;
+  }
+  .hg-thread-title strong .hg-title-text {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* Prevent long links, code and unbroken names from widening the scroll area. */
+  .hg-msgs {
+    min-height: 0;
+    overflow-x: hidden;
+  }
+  .hg-msg-group,
+  .hg-msg-row,
+  .hg-bubble {
+    min-width: 0;
+    max-width: 100%;
+  }
+  .hg-msg-stack { min-width: 0; }
+  .hg-bubble { overflow-wrap: anywhere; }
+  .hg-bubble a,
+  .hg-bubble code,
+  .hg-bubble pre {
+    max-width: 100%;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
+  .hg-bubble pre { white-space: pre-wrap; }
+  .hg-bubble img,
+  .hg-bubble video,
+  .hg-bubble iframe {
+    display: block;
+    max-width: 100%;
+    height: auto;
+  }
+
+  /* Keep the composer controls fixed-width and let only the input shrink. */
+  .hg-composer {
+    min-width: 0;
+    max-width: 100%;
+    box-sizing: border-box;
+  }
+  .hg-composer-row {
+    width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
+  }
+  .hg-composer-row .hg-input-wrap,
+  .hg-composer-row .hg-input-main,
+  .hg-composer-row .hg-input-main textarea {
+    min-width: 0;
+  }
+  .hg-composer-row .hg-input-wrap { flex: 1 1 0%; }
+  .hg-composer-row .hg-input-main textarea {
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+  }
+
+  /* Use the measured composer height so multi-line drafts/replies/attachments
+     cannot cover the final messages in the independent scroll area. */
+  .hg-chrome.is-thread .hg-msgs {
+    padding-bottom: calc(
+      var(--hg-composer-height,
+        calc(var(--hg-tg-input-h) + 20px + env(safe-area-inset-bottom, 0px))
+      ) + 8px
+    ) !important;
+  }
+
+  .hg-bottom-nav {
+    min-width: 0;
+    box-sizing: border-box;
+  }
+  .hg-bottom-nav button {
+    min-width: 0;
+    padding-left: 2px;
+    padding-right: 2px;
+  }
+  .hg-bottom-nav .hg-nav-label {
+    max-width: 100%;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+}
+
+/* The four real navigation items should remain legible at 320px and below. */
+@media (max-width: 359px) {
+  :root {
+    --hg-tg-nav-inset: 8px;
+    --hg-tg-fab-size: 52px;
+    --hg-tg-fab-gap: 6px;
+    --hg-tg-nav-h: 58px;
+  }
+  .hg-bottom-nav { padding-left: 4px; padding-right: 4px; }
+  .hg-bottom-nav button { gap: 2px; }
+  .hg-bottom-nav .hg-nav-ico { width: 23px; height: 23px; }
+  .hg-bottom-nav .hg-nav-ico svg {
+    width: 22px !important;
+    height: 22px !important;
+    min-width: 22px;
+    min-height: 22px;
+  }
+  .hg-bottom-nav .hg-nav-label {
+    font-size: 10px;
+    letter-spacing: -0.02em;
+  }
+}
+
+/* Landscape phones have little vertical space; keep controls reachable without
+   changing the desktop/tablet layout. */
+@media (max-width: 768px) and (max-height: 500px) and (orientation: landscape) {
+  :root {
+    --hg-tg-header-inset: 8px;
+    --hg-tg-header-h: 40px;
+    --hg-tg-nav-h: 54px;
+    --hg-tg-fab-size: 50px;
+  }
+  .hg-chrome.is-thread .hg-composer textarea { max-height: 96px; }
+}
+
+/* Dynamic spacing: clearance comes from the real bottom-nav/composer geometry,
+   not a hard-coded 56px nav or a second Safe Area allowance. */
+@media (max-width: 768px) {
+  .hg-chrome:not(.is-composer-focus):not(.is-recording):not(.is-thread) .hg-list,
+  .hg-chrome:not(.is-composer-focus):not(.is-recording):not(.is-thread) .hg-contacts-list,
+  .hg-chrome:not(.is-composer-focus):not(.is-recording):not(.is-thread) .hg-settings {
+    padding-bottom: var(
+      --hg-bottom-nav-clearance,
+      calc(var(--hg-tg-nav-h, 64px) + 22px + env(safe-area-inset-bottom, 0px))
+    ) !important;
+  }
+
+  .hg-chrome:not(.is-composer-focus):not(.is-recording):not(.is-thread) .hg-msgs {
+    padding-bottom: var(
+      --hg-bottom-nav-clearance,
+      calc(var(--hg-tg-nav-h, 64px) + 22px + env(safe-area-inset-bottom, 0px))
+    ) !important;
+  }
+
+  /* In a thread the nav is intentionally hidden; only measured composer height
+     plus the design's small 8px clearance is reserved under the final message. */
+  .hg-chrome.is-thread .hg-msgs {
+    padding-bottom: calc(
+      var(--hg-composer-height, calc(var(--hg-tg-input-h, 40px) + 22px + env(safe-area-inset-bottom, 0px))) + 8px
+    ) !important;
+  }
+
+  /* The composer owns its safe-area padding while the keyboard is closed.
+     When focused, visualViewport already ends at the keyboard edge: don't add
+     that device inset again. */
+  .hg-chrome:not(.is-composer-focus) .hg-composer {
+    padding-bottom: calc(6px + env(safe-area-inset-bottom, 0px));
+  }
+  .hg-chrome.is-composer-focus .hg-composer {
+    padding-bottom: 6px !important;
+  }
+}
+
+
+
+/* Huginn voice/circle recorder: real capture, preview and explicit send. */
+.hg-rec-overlay[data-status="preview"],
+.hg-rec-overlay[data-status="sending"] {
+  position: relative;
+  left: auto;
+  right: auto;
+  bottom: auto;
+  width: 100%;
+  margin: 0 0 8px;
+  background: linear-gradient(180deg, rgba(20, 32, 52, .92), rgba(8, 16, 30, .96));
+  border-top: 1px solid rgba(91, 160, 224, .22);
+}
+.hg-rec-caption {
+  color: rgba(225, 238, 255, .78);
+  font: 500 12px/1.2 var(--hg-font);
+  white-space: nowrap;
+}
+.hg-rec-wave {
+  min-height: 38px;
+  flex: 1 1 100px;
+  min-width: 56px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  padding: 0 8px;
+  overflow: hidden;
+}
+.hg-rec-wave i {
+  display: block;
+  width: 3px;
+  min-width: 2px;
+  height: 4px;
+  max-height: 30px;
+  border-radius: 3px;
+  background: linear-gradient(180deg, #83c8ff, #428fda);
+  opacity: .9;
+  transition: height 70ms linear;
+}
+.hg-rec-preview-audio {
+  flex: 1 1 150px;
+  min-width: 110px;
+  max-width: 240px;
+  height: 34px;
+  filter: saturate(.8);
+}
+.hg-rec-right {
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+}
+.hg-rec-overlay .hg-rec-pause {
+  border-style: solid;
+  border-color: rgba(116, 181, 238, .4);
+  background: rgba(54, 117, 178, .22);
+}
+.hg-rec-overlay .hg-rec-send {
+  width: 46px;
+  height: 46px;
+  background: linear-gradient(135deg, #5E9CD6, #3679bb);
+  box-shadow: 0 3px 12px rgba(35, 102, 166, .36);
+}
+.hg-rec-overlay button:disabled {
+  opacity: .48;
+  pointer-events: none;
+}
+.hg-rec-overlay[data-status="sending"] .hg-rec-dot {
+  animation: none;
+  background: #79baff;
+}
+.hg-send.is-mic { touch-action: none; user-select: none; -webkit-user-select: none; }
+
+/* Video-circle capture is Huginn navy/blue, not a black Telegram clone. */
+.hg-circle-record {
+  background:
+    radial-gradient(ellipse at 50% 32%, rgba(48, 91, 138, .32), transparent 52%),
+    linear-gradient(160deg, #101d31, #07111f 72%);
+  color: #f5f8ff;
+}
+.hg-circle-topbar {
+  position: absolute;
+  z-index: 2;
+  top: calc(18px + env(safe-area-inset-top, 0px));
+  left: 16px;
+  right: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.hg-circle-status {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 42px;
+  padding: 7px 14px;
+  border: 1px solid rgba(128, 183, 235, .2);
+  border-radius: 999px;
+  background: rgba(13, 28, 49, .82);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, .18);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+}
+.hg-circle-status .hg-rec-dot {
+  width: 8px;
+  height: 8px;
+  flex: 0 0 8px;
+  border-radius: 50%;
+  background: #ff5d67;
+  box-shadow: 0 0 0 4px rgba(255, 93, 103, .12);
+}
+.hg-circle-status .hg-rec-timer {
+  color: #fff;
+  font: 650 15px/1 tabular-nums var(--hg-font);
+}
+.hg-circle-status-label {
+  color: rgba(221, 236, 255, .72);
+  font: 500 12px/1.2 var(--hg-font);
+}
+.hg-circle-record .hg-circle-stage {
+  width: min(78vw, 390px);
+  height: min(78vw, 390px);
+  border: 1px solid rgba(126, 190, 248, .32);
+  box-shadow: 0 18px 54px rgba(0, 0, 0, .42), 0 0 0 8px rgba(53, 116, 179, .08);
+}
+.hg-circle-record .hg-circle-preview {
+  width: 100%;
+  height: 100%;
+  display: block;
+  border-radius: 50%;
+  object-fit: cover;
+  background: #0d1c30;
+}
+.hg-circle-record .hg-circle-fallback { display: block; }
+.hg-circle-record.has-stream .hg-circle-fallback { display: none; }
+.hg-circle-record .hg-circle-progress {
+  position: absolute;
+  inset: -5px;
+  width: calc(100% + 10px);
+  height: calc(100% + 10px);
+  overflow: visible;
+  transform: rotate(-90deg);
+  pointer-events: none;
+  z-index: 1;
+}
+.hg-circle-record .hg-circle-progress circle {
+  fill: none;
+  stroke: #69b6f3;
+  stroke-width: 2.4;
+  stroke-linecap: round;
+  stroke-dasharray: 295.31;
+  stroke-dashoffset: 295.31;
+  filter: drop-shadow(0 0 4px rgba(83, 170, 242, .48));
+}
+.hg-circle-record .hg-circle-controls {
+  position: absolute;
+  left: 18px;
+  right: 18px;
+  bottom: calc(22px + env(safe-area-inset-bottom, 0px));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+}
+.hg-circle-record .hg-circle-cancel,
+.hg-circle-record .hg-circle-pause,
+.hg-circle-record .hg-circle-send {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 46px;
+  border-radius: 999px;
+  border: 1px solid rgba(137, 186, 232, .24);
+  background: rgba(15, 34, 57, .88);
+  color: #eaf4ff;
+  font: 600 14px/1.1 var(--hg-font);
+  cursor: pointer;
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+}
+.hg-circle-record .hg-circle-cancel { padding: 0 20px; }
+.hg-circle-record .hg-circle-pause {
+  width: 48px;
+  height: 48px;
+  min-width: 48px;
+  padding: 0;
+}
+.hg-circle-record .hg-circle-pause svg,
+.hg-circle-record .hg-circle-send svg { width: 21px; height: 21px; }
+.hg-circle-record .hg-circle-send {
+  width: 58px;
+  height: 58px;
+  min-width: 58px;
+  padding: 0;
+  background: linear-gradient(135deg, #6eb7f1, #347fc0);
+  color: #fff;
+  border-color: transparent;
+  box-shadow: 0 6px 20px rgba(32, 113, 184, .34);
+}
+.hg-circle-record .hg-circle-controls button:disabled { opacity: .45; pointer-events: none; }
+.hg-circle-record.is-paused .hg-rec-dot {
+  background: #7cb8e8;
+  box-shadow: none;
+}
+.hg-circle-record.is-preview .hg-circle-stage { box-shadow: 0 18px 54px rgba(0,0,0,.42), 0 0 0 8px rgba(70,145,211,.12); }
+@media (max-width: 480px) {
+  .hg-circle-record .hg-circle-stage {
+    width: min(82vw, 360px);
+    height: min(82vw, 360px);
+  }
+  .hg-circle-topbar { left: 12px; right: 12px; }
+  .hg-circle-record .hg-circle-controls { left: 12px; right: 12px; gap: 10px; }
+  .hg-rec-overlay-inner { flex-wrap: wrap; }
+  .hg-rec-wave { order: 3; flex-basis: 100%; }
+  .hg-rec-preview-audio { order: 3; flex: 1 1 100%; max-width: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .hg-rec-overlay .hg-rec-dot,
+  .hg-circle-record .hg-rec-dot { animation: none !important; }
+  .hg-rec-wave i { transition: none !important; }
 }
