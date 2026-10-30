@@ -11,6 +11,8 @@
   const QUICK_EMOJI = ['👍', '❤️', '🔥', '😂', '🎉', '✅'];
   let root = null;
   let hoverTimer = null;
+  let activeRecordPress = null;
+  let recordGestureBound = false;
   let state = {
     collapsed: localStorage.getItem('hg_dock_collapsed') === '1',
     tab: 'huginn',
@@ -25,6 +27,9 @@
     sheet: null,
     callStrip: null,
     recording: null,
+    recordMode: (function () {
+      try { return localStorage.getItem('hg_record_mode') === 'circle' ? 'circle' : 'voice'; } catch (_) { return 'voice'; }
+    })(),
     knownMsgIds: new Set(),
     firstUnreadId: null,
     stickToBottom: true,
@@ -1240,13 +1245,14 @@
         ? new Date(m.created_at).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })
         : '';
       // TG-like layout: round play | bars | [Aa transcript] ; duration + time beneath.
+      const durationValue = dur || m.file_duration || 0;
       let body = `<div class="hg-voice" data-voice-src="${esc(m.file_url)}">
         <button type="button" class="hg-voice-play" aria-label="Воспроизвести">${ICO.play}</button>
         <div class="hg-voice-wave" aria-hidden="true">${voiceWaveBars(m.id)}</div>
         <button type="button" class="hg-voice-aa" aria-label="Расшифровка" title="Расшифровка">Aa</button>
-        <span class="hg-voice-dur">${esc(dur ? String(dur) : '0:00')}</span>
+        <span class="hg-voice-dur">${esc(durationValue ? formatMediaDuration(durationValue) : '0:00')}</span>
         ${time ? `<span class="hg-voice-time">${esc(time)}</span>` : ''}
-        <audio preload="metadata" src="${esc(m.file_url)}" hidden></audio>
+        <audio preload="none" data-protected-url="${esc(m.file_url)}" hidden></audio>
       </div>`;
       // Transcript lives in a collapsible block; «Aa» toggles it (auto-loaded).
       const trInner = tr ? esc(tr) : (trPending ? 'Расшифровка…' : 'Расшифровки пока нет');
@@ -1255,7 +1261,7 @@
     }
     if (type === 'circle' && m.file_url) {
       // TG-like: tap toggles play/pause; ring shows progress; not looped forever.
-      return `<div class="hg-circle-wrap" data-circle><video class="hg-circle" src="${esc(m.file_url)}" playsinline muted preload="metadata"></video><svg class="hg-circle-progress" viewBox="0 0 100 100" aria-hidden="true"><circle cx="50" cy="50" r="48"/></svg><span class="hg-circle-play" aria-hidden="true">${ICO.play || ''}</span></div>`;
+      return `<div class="hg-circle-wrap" data-circle><video class="hg-circle" data-protected-url="${esc(m.file_url)}" playsinline preload="none"></video><svg class="hg-circle-progress" viewBox="0 0 100 100" aria-hidden="true"><circle cx="50" cy="50" r="48"/></svg><span class="hg-circle-play" aria-hidden="true">${ICO.play || ''}</span></div>`;
     }
     if (type === 'image' && m.file_url) {
       return `<img class="hg-media-photo" src="${esc(m.file_url)}" alt="Фото" data-lightbox="${esc(m.file_url)}">`;
@@ -1634,6 +1640,7 @@
   function renderMessagesIntoBox() {
     const box = root && root.querySelector('.hg-msgs');
     if (!box) return;
+    releaseProtectedChatMedia(box);
     box.innerHTML = renderMessagesHtml(state.messages);
     wireMsgInteractions(box);
   }
@@ -1702,9 +1709,14 @@
         btn.setAttribute('aria-label', playing ? 'Пауза' : 'Воспроизвести');
         wrap.classList.toggle('is-playing', playing);
       };
-      btn.onclick = (e) => {
+      btn.onclick = async (e) => {
         e.stopPropagation();
-        if (audio.paused) audio.play().catch(() => {}); else audio.pause();
+        try {
+          if (!audio.src) await ensureProtectedChatMedia(audio);
+          if (audio.paused) await audio.play(); else audio.pause();
+        } catch (error) {
+          showToast(error.message || 'Не удалось загрузить голосовое сообщение');
+        }
       };
       audio.onplay = () => syncBtn(true);
       audio.onpause = () => syncBtn(false);
@@ -1755,7 +1767,14 @@
         if (prog) prog.style.strokeDashoffset = String(LEN * (1 - frac));
         if (badge) badge.style.opacity = video.paused ? '1' : '0';
       };
-      wrap.onclick = () => { if (video.paused) video.play().catch(() => {}); else video.pause(); };
+      wrap.onclick = async () => {
+        try {
+          if (!video.src) await ensureProtectedChatMedia(video);
+          if (video.paused) await video.play(); else video.pause();
+        } catch (error) {
+          showToast(error.message || 'Не удалось загрузить видеосообщение');
+        }
+      };
       video.onplay = () => { wrap.classList.add('is-playing'); sync(); };
       video.onpause = () => { wrap.classList.remove('is-playing'); sync(); };
       video.ontimeupdate = sync;
@@ -2033,20 +2052,7 @@
             <button type="button" class="hg-scroll-fab" id="hgScrollFab" title="Вниз">${ICO.scrollDown || ICO['chevron-down'] || '↓'}</button>
           </div>
           <div class="hg-composer${mimirMode ? ' is-mimir' : ''}">
-            ${state.recording && state.recording.kind !== 'circle' ? `<div class="hg-rec-overlay" data-role="rec-chrome">
-              <div class="hg-rec-overlay-inner">
-                <div class="hg-rec-left">
-                  <span class="hg-rec-dot"></span>
-                  <span class="hg-rec-timer" id="hgRecTimer">${esc(state.recording.timerText || '0:00,00')}</span>
-                  <button type="button" class="hg-rec-cancel" id="hgRecCancel" aria-label="Отмена">Отмена</button>
-                </div>
-                <div class="hg-rec-right">
-                  <button type="button" class="hg-rec-once ${state.recording.locked ? 'is-on' : ''}" id="hgRecLock" title="1" aria-label="Однократно">1</button>
-                  <button type="button" class="hg-rec-pause" id="hgRecPause" aria-label="Пауза">⏸</button>
-                  <button type="button" class="hg-rec-send" id="hgRecStop" aria-label="Отправить">${ICO.sendUp || ICO['arrow-up'] || ICO.send || '↑'}</button>
-                </div>
-              </div>
-            </div>` : ''}
+            ${state.recording && state.recording.kind === 'voice' ? renderVoiceRecordingHtml(state.recording) : ''}
             ${attachPrev}
             ${state.replyTo ? renderReplyBar() : ''}
             <div class="hg-composer-row${state.recording && state.recording.kind !== 'circle' ? ' is-hidden-for-rec' : ''}">
@@ -4827,7 +4833,7 @@
     const input = root && root.querySelector('#hgInput');
     const send = root && root.querySelector('#hgSend');
     if (!input || !send) return;
-    if (state.recording) {
+    if (state.recording && ['recording', 'paused', 'stopping'].includes(state.recording.status)) {
       send.classList.remove('is-mic', 'is-send', 'is-ready');
       send.classList.add('is-recording');
       send.innerHTML = ICO.stop || ICO.square || ICO.close;
@@ -4852,9 +4858,9 @@
     send.classList.toggle('is-mic', !has);
     send.classList.toggle('is-ready', has);
     send.classList.remove('is-recording');
-    send.innerHTML = has ? (ICO.sendUp || ICO['arrow-up'] || ICO.send) : ICO.mic;
-    send.setAttribute('aria-label', has ? 'Отправить' : 'Голосовое сообщение');
-    send.title = has ? 'Отправить' : 'Голосовое';
+    send.innerHTML = has ? (ICO.sendUp || ICO['arrow-up'] || ICO.send) : (state.recordMode === 'circle' ? (ICO.videoMessage || ICO.circleMsg || ICO.video) : ICO.mic);
+    send.setAttribute('aria-label', has ? 'Отправить' : (state.recordMode === 'circle' ? 'Видеокружок: нажмите для смены режима, удерживайте для записи' : 'Голосовое сообщение: нажмите для смены режима, удерживайте для записи'));
+    send.title = has ? 'Отправить' : (state.recordMode === 'circle' ? 'Видеокружок' : 'Голосовое сообщение');
     if (has && !wasSend) {
       send.style.animation = 'none';
       // reflow to retrigger enter animation
@@ -4896,14 +4902,10 @@
     el.className = 'hg-attach-menu hg-glass';
     el.setAttribute('data-role', 'menu');
     el.setAttribute('role', 'menu');
-    const mimirAttach = isMimirMode();
     el.innerHTML = `
       <button type="button" data-kind="image" role="menuitem">${ICO.image}<span>Фото</span></button>
       <button type="button" data-kind="file" role="menuitem">${ICO.file}<span>Файл</span></button>
-      <button type="button" data-kind="document" role="menuitem">${ICO.file}<span>Документ</span></button>
       <button type="button" data-kind="checklist" role="menuitem">${ICO.check || ICO.list || '☑'}<span>Чек-лист</span></button>
-      ${mimirAttach ? '' : `<button type="button" data-kind="voice" role="menuitem">${ICO.mic}<span>Голосовое</span></button>`}
-      ${mimirAttach ? '' : `<button type="button" data-kind="circle" role="menuitem">${ICO.video || ICO.circle || '◎'}<span>Кружок</span></button>`}
     `;
     thread.appendChild(el);
     if (root) root.classList.add('is-composer-focus');
@@ -4911,8 +4913,6 @@
       btn.onclick = () => {
         const kind = btn.getAttribute('data-kind');
         el.remove();
-        if (kind === 'voice') { recordMedia('voice'); return; }
-        if (kind === 'circle') { recordMedia('circle'); return; }
         if (kind === 'checklist') { openChecklistComposer(); return; }
         const file = root.querySelector('#hgFile');
         if (kind === 'image') file.accept = 'image/*';
@@ -4968,6 +4968,12 @@
 
   /** Back from a thread: also unwind the History entry we pushed for it. */
   function goBack() {
+    if (state.recording) cancelRecording(true);
+    if (activeRecordPress) {
+      activeRecordPress.cancelled = true;
+      clearTimeout(activeRecordPress.timerId);
+      activeRecordPress = null;
+    }
     state.chatId = null;
     state.replyTo = null;
     if (state.isMimirThread || state.tab === 'mimir') {
@@ -5060,23 +5066,7 @@
     const replyClr = panel.querySelector('#hgReplyClear');
     if (replyClr) replyClr.onclick = () => setReplyTo(null);
     const sendBtn = panel.querySelector('#hgSend');
-    sendBtn.onclick = () => {
-      if (state.recording && state.recording.rec) {
-        try { state.recording.rec.stop(); } catch (_) {}
-        return;
-      }
-      if (sendBtn.classList.contains('is-send') || sendBtn.classList.contains('is-ready')) {
-        if (state.pendingFile && state.pendingFile.file) {
-          const f = state.pendingFile.file;
-          state.pendingFile = null;
-          uploadSelected(f);
-          return;
-        }
-        sendText();
-      } else {
-        if (!isMimirMode()) recordMedia('voice');
-      }
-    };
+    wireRecordingButton(sendBtn);
     const input = panel.querySelector('#hgInput');
     let morphTimer = null;
     input.addEventListener('input', () => {
@@ -5241,27 +5231,13 @@
     wireMsgInteractions(msgs);
     const stop = panel.querySelector('#hgRecStop');
     if (stop) stop.onclick = () => {
-      if (state.recording && state.recording.rec && state.recording.rec.state === 'recording') {
-        state.recording.discard = false;
-        state.recording.rec.stop();
-      }
+      if (state.recording && state.recording.status === 'preview') sendRecording();
+      else finishRecordingPreview();
     };
     const cancelRec = panel.querySelector('#hgRecCancel');
-    if (cancelRec) cancelRec.onclick = () => {
-      if (state.recording && state.recording.rec && state.recording.rec.state === 'recording') {
-        state.recording.discard = true;
-        state.recording.rec.stop();
-      }
-    };
-    const lockRec = panel.querySelector('#hgRecLock');
-    if (lockRec) lockRec.onclick = () => {
-      if (!state.recording) return;
-      state.recording.locked = !state.recording.locked;
-      lockRec.classList.toggle('is-on', !!state.recording.locked);
-      showToast(state.recording.locked ? 'Однократно' : 'Обычная запись');
-    };
+    if (cancelRec) cancelRec.onclick = () => cancelRecording();
     const pauseRec = panel.querySelector('#hgRecPause');
-    if (pauseRec) pauseRec.onclick = () => showToast('Пауза');
+    if (pauseRec) pauseRec.onclick = () => togglePauseRecording();
     const aiBtn = panel.querySelector('#hgAiEditorBtn');
     if (aiBtn) aiBtn.onclick = () => openAiEditorSheet();
     syncSendButton();
@@ -5457,30 +5433,101 @@
     }
   }
 
-  async function uploadSelected(file, messageType) {
-    if (!file || !state.chatId) return;
+
+  function renderVoiceRecordingHtml(recording) {
+    const preview = recording.status === 'preview' || recording.status === 'sending';
+    const sending = recording.status === 'sending';
+    return '<div class="hg-rec-overlay" data-role="rec-chrome" data-status="' + esc(recording.status) + '">' +
+      '<div class="hg-rec-overlay-inner">' +
+        '<div class="hg-rec-left"><span class="hg-rec-dot"></span>' +
+          '<span class="hg-rec-timer" id="hgRecTimer">' + esc(recording.timerText || '0:00,00') + '</span>' +
+          '<span class="hg-rec-caption">' + (sending ? 'Отправка…' : preview ? 'Прослушайте запись' : recording.status === 'paused' ? 'Пауза' : 'Запись голоса') + '</span>' +
+        '</div>' +
+        (preview ? '<audio class="hg-rec-preview-audio" controls preload="metadata" src="' + esc(recording.previewUrl || '') + '"></audio>' :
+          '<div class="hg-rec-wave" aria-label="Визуализация звука">' + recordingWaveHtml() + '</div>') +
+        '<div class="hg-rec-right">' +
+          '<button type="button" class="hg-rec-cancel" id="hgRecCancel" aria-label="Отмена"' + (sending ? ' disabled' : '') + '>Отмена</button>' +
+          (preview ? '' : '<button type="button" class="hg-rec-pause" id="hgRecPause" aria-label="' + (recording.status === 'paused' ? 'Продолжить' : 'Пауза') + '">' + (recording.status === 'paused' ? (ICO.play || '▶') : (ICO.pause || 'Ⅱ')) + '</button>') +
+          '<button type="button" class="hg-rec-send" id="hgRecStop" aria-label="' + (preview ? 'Отправить' : 'Остановить запись') + '"' + (sending ? ' disabled' : '') + '>' + (preview ? (sending ? '…' : (ICO.sendUp || ICO['arrow-up'] || '↑')) : (ICO.stop || ICO.square || '■')) + '</button>' +
+        '</div>' +
+      '</div></div>';
+  }
+
+
+  async function uploadSelected(file, messageType, durationSeconds, options) {
+    options = options || {};
+    if (!file || !state.chatId) throw new Error('Нет активного чата или файла');
+    const fallbackName = options.fileName || (messageType === 'circle' ? 'circle.webm' : messageType === 'voice' ? 'voice.webm' : 'attachment');
     const fd = new FormData();
-    fd.append('file', file, file.name || (messageType === 'circle' ? 'circle.webm' : file.name));
     if (messageType) fd.append('message_type', messageType);
+    if (Number.isFinite(Number(durationSeconds)) && Number(durationSeconds) > 0) {
+      fd.append('file_duration', String(Math.max(1, Math.round(Number(durationSeconds)))));
+    }
+    fd.append('file', file, file.name || fallbackName);
     const res = await fetch('/api/chat-groups/' + state.chatId + '/upload-file', {
       method: 'POST',
       headers: { Authorization: 'Bearer ' + token() },
       body: fd
     });
-    const data = await res.json();
-    if (data.message && !state.knownMsgIds.has(data.message.id)) {
-      state.knownMsgIds.add(data.message.id);
-      state.messages.push(data.message);
-      state.stickToBottom = true;
-      renderPanel();
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || data.error) {
+      const messages = {
+        413: 'Файл слишком большой (макс. 50 МБ)',
+        415: 'Формат записи не поддерживается сервером',
+        403: 'Нет доступа к этому чату',
+        401: 'Сессия истекла. Войдите заново'
+      };
+      throw new Error(data.error || messages[res.status] || 'Не удалось отправить медиа (' + res.status + ')');
     }
+    if (!data.message || !data.message.id) throw new Error('Сервер не подтвердил сохранение сообщения');
+    const message = data.message;
+    if (!state.knownMsgIds.has(Number(message.id))) {
+      state.knownMsgIds.add(Number(message.id));
+      state.messages.push(message);
+      state.stickToBottom = true;
+    }
+    if (!options.deferRender) renderPanel();
+    return message;
   }
 
-  function clearRecordingUi() {
-    document.querySelectorAll('.hg-circle-record').forEach((el) => el.remove());
-    if (state.recording && state.recording.timerId) {
-      try { clearInterval(state.recording.timerId); } catch (_) {}
-    }
+  function getProtectedChatMediaUrl(fileUrl) {
+    const raw = String(fileUrl || '');
+    const match = raw.match(/(?:^|\/)uploads\/chat\/([A-Za-z0-9_.-]+)(?:[?#]|$)/);
+    if (!match || !state.chatId) return null;
+    return '/api/chat-groups/' + Number(state.chatId) + '/files/' + encodeURIComponent(match[1]);
+  }
+
+  async function ensureProtectedChatMedia(mediaEl) {
+    if (!mediaEl) throw new Error('Медиаэлемент не найден');
+    if (mediaEl.dataset.objectUrl && mediaEl.src) return mediaEl.src;
+    if (mediaEl._hgMediaPromise) return mediaEl._hgMediaPromise;
+    const url = getProtectedChatMediaUrl(mediaEl.getAttribute('data-protected-url'));
+    if (!url) throw new Error('Некорректная ссылка на медиафайл');
+    mediaEl._hgMediaPromise = (async () => {
+      const res = await fetch(url, { headers: { Authorization: 'Bearer ' + token() } });
+      if (!res.ok) throw new Error(res.status === 403 ? 'Нет доступа к медиафайлу' : 'Не удалось загрузить медиафайл');
+      const blob = await res.blob();
+      if (!blob.size) throw new Error('Медиафайл пуст');
+      const objectUrl = URL.createObjectURL(blob);
+      mediaEl.dataset.objectUrl = objectUrl;
+      mediaEl.src = objectUrl;
+      if (typeof mediaEl.load === 'function') mediaEl.load();
+      return objectUrl;
+    })().catch((error) => {
+      mediaEl._hgMediaPromise = null;
+      throw error;
+    });
+    return mediaEl._hgMediaPromise;
+  }
+
+  function releaseProtectedChatMedia(container) {
+    if (!container || typeof URL === 'undefined' || typeof URL.revokeObjectURL !== 'function') return;
+    container.querySelectorAll('audio[data-object-url],video[data-object-url]').forEach((mediaEl) => {
+      try { mediaEl.pause(); } catch (_) {}
+      try { URL.revokeObjectURL(mediaEl.dataset.objectUrl); } catch (_) {}
+      delete mediaEl.dataset.objectUrl;
+      mediaEl.removeAttribute('src');
+    });
   }
 
   function formatRecTimer(sec) {
@@ -5491,149 +5538,497 @@
     return m + ':' + String(s).padStart(2, '0') + ',' + String(cs).padStart(2, '0');
   }
 
-  function mountCircleOverlay(stream, onCancel, onSend, onFlip, onTorch) {
-    document.querySelectorAll('.hg-circle-record').forEach((el) => el.remove());
+  function formatMediaDuration(value) {
+    const seconds = Math.max(0, Math.floor(Number(value) || 0));
+    return Math.floor(seconds / 60) + ':' + String(seconds % 60).padStart(2, '0');
+  }
+
+  function recordingElapsed(recording) {
+    if (!recording || !recording.startedAt) return 0;
+    const now = recording.pausedAt ? recording.pausedAt : Date.now();
+    return Math.max(0, now - recording.startedAt - (recording.pausedTotalMs || 0)) / 1000;
+  }
+
+  function toggleRecordMode() {
+    const input = root && root.querySelector('#hgInput');
+    if (isMimirMode() || (input && input.value.trim()) || state.pendingFile || state.recording) return;
+    state.recordMode = state.recordMode === 'circle' ? 'voice' : 'circle';
+    try { localStorage.setItem('hg_record_mode', state.recordMode); } catch (_) {}
+    syncSendButton();
+  }
+
+  function bindRecordPointerLifecycle() {
+    if (recordGestureBound) return;
+    recordGestureBound = true;
+    document.addEventListener('pointerup', (event) => {
+      const press = activeRecordPress;
+      if (!press || press.pointerId !== event.pointerId) return;
+      clearTimeout(press.timerId);
+      press.released = true;
+      if (!press.started) {
+        activeRecordPress = null;
+        toggleRecordMode();
+        return;
+      }
+      if (state.recording && state.recording.press === press
+        && (state.recording.status === 'recording' || state.recording.status === 'paused')) {
+        finishRecordingPreview();
+      }
+      activeRecordPress = null;
+    }, true);
+    document.addEventListener('pointercancel', (event) => {
+      const press = activeRecordPress;
+      if (!press || press.pointerId !== event.pointerId) return;
+      clearTimeout(press.timerId);
+      press.cancelled = true;
+      activeRecordPress = null;
+      if (state.recording && state.recording.press === press) cancelRecording(true);
+    }, true);
+  }
+
+  function wireRecordingButton(sendBtn) {
+    if (!sendBtn) return;
+    bindRecordPointerLifecycle();
+    bindRecordingLifecycle();
+    sendBtn.onpointerdown = (event) => {
+      if (isMimirMode() || state.recording) return;
+      const input = root && root.querySelector('#hgInput');
+      if ((input && input.value.trim()) || state.pendingFile) return;
+      if (!event.isPrimary || (event.pointerType === 'mouse' && event.button !== 0)) return;
+      event.preventDefault();
+      if (activeRecordPress) return;
+      const press = {
+        pointerId: event.pointerId,
+        pointerType: event.pointerType,
+        mode: state.recordMode === 'circle' ? 'circle' : 'voice',
+        started: false,
+        released: false,
+        cancelled: false,
+        timerId: null
+      };
+      activeRecordPress = press;
+      press.timerId = setTimeout(() => {
+        if (activeRecordPress !== press || press.cancelled || press.released) return;
+        press.started = true;
+        recordMedia(press.mode, press).catch((error) => {
+          if (state.recording && state.recording.press === press) cancelRecording(true);
+          if (!press.cancelled) showToast(error.message || 'Не удалось начать запись');
+        });
+      }, 230);
+    };
+    sendBtn.oncontextmenu = (event) => event.preventDefault();
+    sendBtn.onclick = (event) => {
+      const input = root && root.querySelector('#hgInput');
+      const hasPayload = !!((input && input.value.trim()) || state.pendingFile);
+      if (!isMimirMode() && !hasPayload) {
+        event.preventDefault();
+        if (event.detail === 0) toggleRecordMode();
+        return;
+      }
+      if (state.recording) return;
+      if (state.pendingFile && state.pendingFile.file) {
+        const file = state.pendingFile.file;
+        state.pendingFile = null;
+        uploadSelected(file).catch((error) => showToast(error.message || 'Не удалось загрузить файл'));
+        return;
+      }
+      sendText();
+    };
+  }
+
+  function clearRecordingRuntime(recording) {
+    if (!recording) return;
+    if (recording.timerId) {
+      clearInterval(recording.timerId);
+      recording.timerId = null;
+    }
+    if (recording.waveRaf) {
+      cancelAnimationFrame(recording.waveRaf);
+      recording.waveRaf = null;
+    }
+    try { if (recording.audioSource) recording.audioSource.disconnect(); } catch (_) {}
+    try { if (recording.analyser) recording.analyser.disconnect(); } catch (_) {}
+    recording.audioSource = null;
+    recording.analyser = null;
+    recording.drawWave = null;
+    if (recording.audioContext && recording.audioContext.state !== 'closed') {
+      try { recording.audioContext.close().catch(() => {}); } catch (_) {}
+    }
+    recording.audioContext = null;
+    if (recording.stream) {
+      recording.stream.getTracks().forEach((track) => {
+        try { track.stop(); } catch (_) {}
+      });
+      recording.stream = null;
+    }
+  }
+
+  function clearRecordingPreview(recording) {
+    if (recording && recording.previewUrl) {
+      try { URL.revokeObjectURL(recording.previewUrl); } catch (_) {}
+      recording.previewUrl = null;
+    }
+    if (recording && recording.blob) recording.blob = null;
+  }
+
+  function clearRecordingUi() {
+    document.querySelectorAll('.hg-circle-record').forEach((element) => element.remove());
+    document.body.classList.remove('hg-circle-recording');
+    setRecordingChrome(false);
+  }
+
+  function recordingWaveHtml() {
+    return Array.from({ length: 28 }, (_, index) =>
+      '<i style="height:' + (4 + ((index * 7) % 9)) + 'px"></i>'
+    ).join('');
+  }
+
+  function startVoiceWaveform(recording) {
+    if (!recording || !recording.stream) return;
+    if (recording.drawWave) {
+      recording.waveRaf = requestAnimationFrame(recording.drawWave);
+      return;
+    }
+    const AudioContextClass = global.AudioContext || global.webkitAudioContext;
+    if (!AudioContextClass) return;
+    try {
+      const context = new AudioContextClass();
+      const source = context.createMediaStreamSource(recording.stream);
+      const analyser = context.createAnalyser();
+      analyser.fftSize = 256;
+      source.connect(analyser);
+      recording.audioContext = context;
+      recording.audioSource = source;
+      recording.analyser = analyser;
+      const samples = new Uint8Array(analyser.fftSize);
+      const draw = () => {
+        if (state.recording !== recording || recording.status !== 'recording') return;
+        analyser.getByteTimeDomainData(samples);
+        let total = 0;
+        for (let i = 0; i < samples.length; i++) {
+          const value = (samples[i] - 128) / 128;
+          total += value * value;
+        }
+        const level = Math.min(1, Math.sqrt(total / samples.length) * 3.2);
+        const bars = root && root.querySelectorAll('.hg-rec-wave i');
+        if (bars && bars.length) {
+          bars.forEach((bar, index) => {
+            const wave = 0.25 + (0.75 * Math.abs(Math.sin((index + 1) * 1.7 + Date.now() / 130)));
+            bar.style.height = Math.max(3, 4 + level * wave * 26) + 'px';
+          });
+        }
+        recording.waveRaf = requestAnimationFrame(draw);
+      };
+      recording.drawWave = draw;
+      if (context.state === 'suspended') context.resume().catch(() => {});
+      recording.waveRaf = requestAnimationFrame(draw);
+    } catch (_) {}
+  }
+
+  function updateCircleRecordingUi(recording) {
+    const overlay = document.querySelector('.hg-circle-record');
+    if (!overlay || !recording) return;
+    const timer = overlay.querySelector('#hgCircleTimer');
+    if (timer) timer.textContent = recording.timerText || formatRecTimer(recordingElapsed(recording));
+    const ring = overlay.querySelector('.hg-circle-progress circle');
+    if (ring) {
+      const length = 2 * Math.PI * 47;
+      const elapsed = recordingElapsed(recording);
+      ring.style.strokeDasharray = String(length);
+      ring.style.strokeDashoffset = String(length * (1 - Math.min(1, elapsed / recording.maxDurationSec)));
+    }
+    overlay.classList.toggle('is-paused', recording.status === 'paused');
+    const label = overlay.querySelector('.hg-circle-status-label');
+    if (label) label.textContent = recording.status === 'paused' ? 'Пауза' : 'Запись кружка';
+    const pause = overlay.querySelector('#hgCirclePause');
+    if (pause) pause.innerHTML = recording.status === 'paused' ? (ICO.play || '▶') : (ICO.pause || 'Ⅱ');
+  }
+
+  function mountCircleOverlay(recording) {
+    document.querySelectorAll('.hg-circle-record').forEach((element) => element.remove());
     const overlay = document.createElement('div');
-    overlay.className = 'hg-circle-record';
+    overlay.className = 'hg-circle-record' + (recording.status === 'preview' || recording.status === 'sending' ? ' is-preview' : '');
     overlay.setAttribute('data-role', 'circle-record');
-    overlay.innerHTML = `
-      <div class="hg-circle-stage">
-        <video class="hg-circle-preview" playsinline muted autoplay></video>
-        <div class="hg-circle-fallback" aria-hidden="true"></div>
-      </div>
-      <div class="hg-circle-chrome">
-        <div class="hg-circle-bar">
-          <button type="button" class="hg-circle-flip" id="hgCircleFlip" aria-label="Камера">↻</button>
-          <button type="button" class="hg-circle-flash" id="hgCircleFlash" aria-label="Вспышка">⚡</button>
-          <div class="hg-circle-mid">
-            <span class="hg-rec-dot"></span>
-            <span class="hg-rec-timer" id="hgCircleTimer">0:00,00</span>
-            <button type="button" class="hg-circle-cancel" id="hgCircleCancel">Отмена</button>
-          </div>
-        </div>
-        <div class="hg-circle-side">
-          <button type="button" class="hg-rec-once" aria-label="1">1</button>
-          <button type="button" class="hg-rec-pause" aria-label="Пауза">⏸</button>
-          <button type="button" class="hg-circle-send" id="hgCircleSend" aria-label="Отправить">${ICO.sendUp || ICO['arrow-up'] || '↑'}</button>
-        </div>
-      </div>`;
+    const preview = recording.status === 'preview' || recording.status === 'sending';
+    overlay.innerHTML = '<div class="hg-circle-topbar">' +
+      '<button type="button" class="hg-circle-flip" id="hgCircleFlip" aria-label="Переключить камеру"' + (preview ? ' hidden' : '') + '>' + (ICO.video || ICO.camera || '↻') + '</button>' +
+      '<div class="hg-circle-status"><span class="hg-rec-dot"></span>' +
+        '<span class="hg-rec-timer" id="hgCircleTimer">' + esc(recording.timerText || '0:00,00') + '</span>' +
+        '<span class="hg-circle-status-label">' + (preview ? (recording.status === 'sending' ? 'Отправка…' : 'Предпросмотр') : recording.status === 'paused' ? 'Пауза' : 'Запись кружка') + '</span></div></div>' +
+      '<div class="hg-circle-stage"><video class="hg-circle-preview" playsinline ' + (preview ? 'controls' : 'muted autoplay') + '></video>' +
+        '<svg class="hg-circle-progress" viewBox="0 0 100 100" aria-hidden="true"><circle cx="50" cy="50" r="47"/></svg>' +
+        '<div class="hg-circle-fallback" aria-hidden="true"></div></div>' +
+      '<div class="hg-circle-controls">' +
+        '<button type="button" class="hg-circle-cancel" id="hgCircleCancel"' + (recording.status === 'sending' ? ' disabled' : '') + '>Отмена</button>' +
+        '<button type="button" class="hg-circle-pause" id="hgCirclePause"' + (preview ? ' hidden' : '') + '>' + (recording.status === 'paused' ? (ICO.play || '▶') : (ICO.pause || 'Ⅱ')) + '</button>' +
+        '<button type="button" class="hg-circle-send" id="hgCircleAction" aria-label="' + (preview ? 'Отправить' : 'Остановить запись') + '"' + (recording.status === 'sending' ? ' disabled' : '') + '>' +
+          (preview ? (recording.status === 'sending' ? '…' : (ICO.sendUp || ICO['arrow-up'] || '↑')) : (ICO.stop || ICO.square || '■')) + '</button></div>';
     document.body.appendChild(overlay);
     const video = overlay.querySelector('video');
-    if (video && stream) {
-      video.srcObject = stream;
-      try { video.play(); } catch (_) {}
+    if (preview && recording.previewUrl) {
+      video.src = recording.previewUrl;
+      video.muted = false;
+      video.controls = recording.status !== 'sending';
+      video.load();
+      overlay.classList.add('has-stream');
+      overlay.querySelector('.hg-circle-fallback').hidden = true;
+    } else if (recording.stream && video) {
+      video.srcObject = recording.stream;
+      video.muted = true;
+      video.autoplay = true;
+      video.play().catch(() => {});
       overlay.classList.add('has-stream');
     }
-    overlay.querySelector('#hgCircleCancel').onclick = () => onCancel && onCancel();
-    overlay.querySelector('#hgCircleSend').onclick = () => onSend && onSend();
-    const flipBtn = overlay.querySelector('#hgCircleFlip');
-    if (flipBtn) flipBtn.onclick = () => { if (onFlip) onFlip(); };
-    const torchBtn = overlay.querySelector('#hgCircleFlash');
-    if (torchBtn) torchBtn.onclick = () => { if (onTorch) onTorch(); };
+    overlay.querySelector('#hgCircleCancel').onclick = () => cancelRecording();
+    const pause = overlay.querySelector('#hgCirclePause');
+    if (pause) pause.onclick = () => togglePauseRecording();
+    overlay.querySelector('#hgCircleAction').onclick = () => {
+      if (preview) sendRecording();
+      else finishRecordingPreview();
+    };
+    const flip = overlay.querySelector('#hgCircleFlip');
+    if (flip && !preview) {
+      flip.onclick = async () => {
+        const track = recording.stream && recording.stream.getVideoTracks()[0];
+        if (!track || typeof track.applyConstraints !== 'function') {
+          showToast('Переключение камеры не поддерживается устройством');
+          return;
+        }
+        const next = recording.facing === 'user' ? 'environment' : 'user';
+        try {
+          await track.applyConstraints({ facingMode: { ideal: next } });
+          recording.facing = next;
+        } catch (_) {
+          showToast('Не удалось переключить камеру на этом устройстве');
+        }
+      };
+    }
+    updateCircleRecordingUi(recording);
     return overlay;
   }
 
-  async function recordMedia(kind) {
+  function finishRecordingPreview() {
+    const recording = state.recording;
+    if (!recording || (recording.status !== 'recording' && recording.status !== 'paused')) return;
+    recording.status = 'stopping';
+    if (recording.rec && recording.rec.state !== 'inactive') {
+      try { recording.rec.stop(); } catch (_) {}
+    }
+  }
+
+  function togglePauseRecording() {
+    const recording = state.recording;
+    if (!recording || !recording.rec) return;
     try {
-      clearRecordingUi();
-      const stream = await navigator.mediaDevices.getUserMedia(
-        kind === 'circle' ? { audio: true, video: { facingMode: 'user' } } : { audio: true }
-      );
-      const mime = kind === 'circle'
-        ? (MediaRecorder.isTypeSupported('video/webm;codecs=vp9,opus') ? 'video/webm;codecs=vp9,opus' : 'video/webm')
-        : (MediaRecorder.isTypeSupported('audio/webm;codecs=opus') ? 'audio/webm;codecs=opus' : 'audio/webm');
-      const rec = new MediaRecorder(stream, { mimeType: mime });
-      const chunks = [];
-      let cancelled = false;
-      let startedAt = Date.now();
-      rec.ondataavailable = (e) => { if (e.data.size) chunks.push(e.data); };
-      rec.onstop = async () => {
-        stream.getTracks().forEach((t) => t.stop());
-        clearRecordingUi();
-        document.body.classList.remove('hg-circle-recording');
-        const was = state.recording;
-        const discard = cancelled || !!(was && was.discard);
-        state.recording = null;
-        setRecordingChrome(false);
-        renderPanel();
-        if (was && was.timerId) {
-          try { clearInterval(was.timerId); } catch (_) {}
+      if (recording.status === 'recording') {
+        if (typeof recording.rec.pause !== 'function' || recording.rec.state !== 'recording') {
+          showToast('Пауза записи не поддерживается браузером');
+          return;
         }
-        if (discard || !chunks.length) return;
-        const blob = new Blob(chunks, { type: mime });
-        const file = new File([blob], kind === 'circle' ? 'circle.webm' : 'voice.webm', { type: mime });
-        await uploadSelected(file, kind === 'circle' ? 'circle' : 'voice');
-      };
-      const stopRec = (asCancel) => {
-        cancelled = !!asCancel;
-        if (state.recording) state.recording.discard = cancelled;
-        if (rec.state === 'recording') {
-          try { rec.stop(); } catch (_) {}
-        } else {
-          stream.getTracks().forEach((t) => t.stop());
-          clearRecordingUi();
-          document.body.classList.remove('hg-circle-recording');
-          state.recording = null;
-          setRecordingChrome(false);
-          renderPanel();
+        recording.rec.pause();
+        recording.pausedAt = Date.now();
+        recording.status = 'paused';
+      } else if (recording.status === 'paused') {
+        if (typeof recording.rec.resume !== 'function' || recording.rec.state !== 'paused') {
+          showToast('Продолжение записи не поддерживается браузером');
+          return;
         }
-      };
-      rec.start(250);
-      const timerId = setInterval(() => {
-        if (!state.recording) return;
-        const sec = (Date.now() - startedAt) / 1000;
-        state.recording.elapsed = sec;
-        state.recording.timerText = formatRecTimer(sec);
-        const tEl = document.querySelector('#hgRecTimer, #hgCircleTimer');
-        if (tEl) tEl.textContent = state.recording.timerText;
-      }, 200);
-      state.recording = {
-        rec,
-        kind,
-        locked: false,
-        label: kind === 'circle' ? 'Запись кружка…' : 'Запись голоса…',
-        timerText: '0:00',
-        elapsed: 0,
-        timerId,
-        cancel: () => stopRec(true),
-        send: () => stopRec(false)
-      };
-      setRecordingChrome(true);
-      if (kind === 'circle') {
-        // A6: переворот камеры (facingMode) и вспышка (torch) — реальные действия,
-        // с фолбэком, когда устройство/браузер их не поддерживает.
-        let facing = 'user';
-        const flip = async () => {
-          facing = facing === 'user' ? 'environment' : 'user';
-          try {
-            const track = stream.getVideoTracks()[0];
-            if (track && track.applyConstraints) await track.applyConstraints({ facingMode: facing });
-          } catch (_) { showToast('Переключение камеры недоступно'); }
-        };
-        let torchOn = false;
-        const torch = async () => {
-          try {
-            const track = stream.getVideoTracks()[0];
-            if (!track) return;
-            torchOn = !torchOn;
-            await track.applyConstraints({ advanced: [{ torch: torchOn }] });
-          } catch (_) { showToast('Вспышка недоступна'); }
-        };
-        mountCircleOverlay(stream, () => stopRec(true), () => stopRec(false), flip, torch);
-        document.body.classList.add('hg-circle-recording');
+        recording.rec.resume();
+        recording.pausedTotalMs += Date.now() - recording.pausedAt;
+        recording.pausedAt = 0;
+        recording.status = 'recording';
+      } else return;
+      if (recording.kind === 'circle') {
+        mountCircleOverlay(recording);
       } else {
         renderPanel();
+        if (recording.status === 'recording') startVoiceWaveform(recording);
       }
-      setTimeout(() => {
-        if (state.recording && state.recording.rec === rec && rec.state === 'recording') stopRec(false);
-      }, kind === 'circle' ? 15000 : 60000);
-    } catch (e) {
-      clearRecordingUi();
-      state.recording = null;
-      setRecordingChrome(false);
-      document.body.classList.remove('hg-circle-recording');
-      showToast('Нет доступа к микрофону/камере: ' + (e.message || ''));
+    } catch (error) {
+      showToast(error.message || 'Не удалось изменить состояние записи');
     }
+  }
+
+  function cancelRecording(silent) {
+    const recording = state.recording;
+    if (!recording) return;
+    recording.discard = true;
+    if (recording.rec && recording.rec.state !== 'inactive') {
+      try { recording.rec.stop(); return; } catch (_) {}
+    }
+    clearRecordingRuntime(recording);
+    clearRecordingPreview(recording);
+    state.recording = null;
+    clearRecordingUi();
+    if (!silent && root && state.chatId) renderPanel();
+  }
+
+  async function sendRecording() {
+    const recording = state.recording;
+    if (!recording || recording.status !== 'preview' || !recording.blob) return;
+    if (recording.blob.size > 50 * 1024 * 1024) {
+      showToast('Запись превышает лимит 50 МБ. Отмените её и запишите короче');
+      return;
+    }
+    recording.status = 'sending';
+    if (recording.kind === 'voice') renderPanel();
+    else mountCircleOverlay(recording);
+    const mime = recording.blob.type || (recording.kind === 'circle' ? 'video/webm' : 'audio/webm');
+    const ext = mime.toLowerCase().includes('mp4') ? (recording.kind === 'circle' ? 'mp4' : 'm4a')
+      : mime.toLowerCase().includes('ogg') ? 'ogg' : 'webm';
+    const fileName = (recording.kind === 'circle' ? 'circle.' : 'voice.') + ext;
+    const file = typeof File === 'function'
+      ? new File([recording.blob], fileName, { type: mime })
+      : recording.blob;
+    try {
+      await uploadSelected(file, recording.kind === 'circle' ? 'circle' : 'voice',
+        recording.durationSeconds, { deferRender: true, fileName });
+      clearRecordingPreview(recording);
+      state.recording = null;
+      clearRecordingUi();
+      renderPanel();
+    } catch (error) {
+      recording.status = 'preview';
+      showToast(error.message || 'Не удалось отправить запись');
+      if (recording.kind === 'circle') mountCircleOverlay(recording);
+      else renderPanel();
+    }
+  }
+
+  async function recordMedia(kind, press) {
+    if (state.recording) return;
+    if (!global.isSecureContext || !navigator.mediaDevices || typeof navigator.mediaDevices.getUserMedia !== 'function') {
+      throw new Error('Запись доступна только в защищённом контексте HTTPS и в поддерживаемом браузере');
+    }
+    if (typeof MediaRecorder === 'undefined') throw new Error('Браузер не поддерживает запись медиа');
+    let stream = null;
+    try {
+      const constraints = kind === 'circle'
+        ? {
+          audio: { echoCancellation: true, noiseSuppression: true },
+          video: { facingMode: { ideal: 'user' }, width: { ideal: 480 }, height: { ideal: 480 }, frameRate: { ideal: 24, max: 30 } }
+        }
+        : { audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } };
+      stream = await navigator.mediaDevices.getUserMedia(constraints);
+      if (press && (press.released || press.cancelled)) {
+        stream.getTracks().forEach((track) => track.stop());
+        return;
+      }
+      const candidates = kind === 'circle'
+        ? ['video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/webm', 'video/mp4']
+        : ['audio/webm;codecs=opus', 'audio/ogg;codecs=opus', 'audio/mp4', 'audio/webm'];
+      let mime = '';
+      if (typeof MediaRecorder.isTypeSupported === 'function') {
+        mime = candidates.find((candidate) => MediaRecorder.isTypeSupported(candidate)) || '';
+      }
+      const recorder = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined);
+      const chunks = [];
+      const recording = {
+        rec: recorder,
+        stream,
+        chunks,
+        kind,
+        press,
+        status: 'recording',
+        startedAt: Date.now(),
+        pausedAt: 0,
+        pausedTotalMs: 0,
+        elapsed: 0,
+        durationSeconds: 0,
+        timerText: '0:00,00',
+        timerId: null,
+        waveRaf: null,
+        audioContext: null,
+        audioSource: null,
+        analyser: null,
+        drawWave: null,
+        previewUrl: null,
+        blob: null,
+        discard: false,
+        facing: 'user',
+        maxDurationSec: kind === 'circle' ? 15 : 60
+      };
+      recorder.ondataavailable = (event) => {
+        if (event.data && event.data.size > 0) chunks.push(event.data);
+      };
+      recorder.onerror = () => {
+        recording.discard = true;
+        showToast('Ошибка во время записи');
+        cancelRecording(true);
+      };
+      recorder.onstop = () => {
+        clearRecordingRuntime(recording);
+        recording.durationSeconds = recordingElapsed(recording);
+        if (recording.discard || state.recording !== recording || !chunks.length) {
+          clearRecordingPreview(recording);
+          if (state.recording === recording) state.recording = null;
+          clearRecordingUi();
+          if (root && state.chatId) renderPanel();
+          return;
+        }
+        const actualMime = recorder.mimeType || mime || (kind === 'circle' ? 'video/webm' : 'audio/webm');
+        const blob = new Blob(chunks, { type: actualMime });
+        if (!blob.size || recording.durationSeconds < 0.35) {
+          state.recording = null;
+          clearRecordingUi();
+          showToast('Запись слишком короткая — попробуйте ещё раз');
+          if (root && state.chatId) renderPanel();
+          return;
+        }
+        recording.blob = blob;
+        recording.previewUrl = URL.createObjectURL(blob);
+        recording.status = 'preview';
+        recording.timerText = formatRecTimer(recording.durationSeconds);
+        if (kind === 'circle') mountCircleOverlay(recording);
+        else renderPanel();
+      };
+
+      recorder.start(250);
+      state.recording = recording;
+      setRecordingChrome(true);
+      if (kind === 'circle') {
+        document.body.classList.add('hg-circle-recording');
+        mountCircleOverlay(recording);
+      } else {
+        renderPanel();
+        startVoiceWaveform(recording);
+      }
+      recording.timerId = setInterval(() => {
+        if (state.recording !== recording || (recording.status !== 'recording' && recording.status !== 'paused')) return;
+        recording.elapsed = recordingElapsed(recording);
+        recording.timerText = formatRecTimer(recording.elapsed);
+        if (kind === 'circle') updateCircleRecordingUi(recording);
+        else {
+          const timer = root && root.querySelector('#hgRecTimer');
+          if (timer) timer.textContent = recording.timerText;
+        }
+        if (recording.elapsed >= recording.maxDurationSec) finishRecordingPreview();
+      }, 100);
+    } catch (error) {
+      if (stream) stream.getTracks().forEach((track) => { try { track.stop(); } catch (_) {} });
+      if (state.recording && state.recording.press === press) {
+        clearRecordingRuntime(state.recording);
+        state.recording = null;
+        clearRecordingUi();
+      }
+      throw error;
+    }
+  }
+
+  function bindRecordingLifecycle() {
+    if (window._hgRecordingLifecycleBound) return;
+    window._hgRecordingLifecycleBound = true;
+    window.addEventListener('pagehide', () => {
+      if (state.recording) cancelRecording(true);
+      if (activeRecordPress) {
+        activeRecordPress.cancelled = true;
+        clearTimeout(activeRecordPress.timerId);
+        activeRecordPress = null;
+      }
+    });
+    document.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape' && state.recording) cancelRecording();
+    });
   }
 
   async function openStickers() {
