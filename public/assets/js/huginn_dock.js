@@ -1876,6 +1876,12 @@
   function renderPanel() {
     const panel = root.querySelector('#hgPanel');
     if (!panel) return;
+    // Release protected media object URLs before any full chat/panel rerender.
+    // Also terminate a capture if navigation switched away from its owning chat.
+    if (state.recording && Number(state.recording.chatId) !== Number(state.chatId)) {
+      cancelRecording(true);
+    }
+    releaseProtectedChatMedia(panel);
     clearHgComposerSizeObserver();
     // renderPanel can replace the entire panel while a pointer is still down.
     cleanupChatRowGestures(panel);
@@ -5539,7 +5545,16 @@
   }
 
   function formatMediaDuration(value) {
-    const seconds = Math.max(0, Math.floor(Number(value) || 0));
+    let seconds = 0;
+    if (typeof value === 'string' && value.includes(':')) {
+      const parts = value.split(':').map(Number);
+      if (parts.length === 2 && parts.every(Number.isFinite)) seconds = parts[0] * 60 + parts[1];
+      else if (parts.length === 3 && parts.every(Number.isFinite)) seconds = parts[0] * 3600 + parts[1] * 60 + parts[2];
+    } else {
+      const numeric = Number(value);
+      if (Number.isFinite(numeric)) seconds = numeric;
+    }
+    seconds = Math.max(0, Math.floor(seconds));
     return Math.floor(seconds / 60) + ':' + String(seconds % 60).padStart(2, '0');
   }
 
@@ -5926,6 +5941,7 @@
       const recording = {
         rec: recorder,
         stream,
+        chatId: Number(state.chatId),
         chunks,
         kind,
         press,
