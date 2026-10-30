@@ -6523,6 +6523,12 @@ html[data-theme="light"] .hg-invite-modes .hg-compose-mode.is-active {
 /* Huginn voice/circle recorder: real capture, preview and explicit send. */
 .hg-rec-overlay[data-status="preview"],
 .hg-rec-overlay[data-status="sending"] {
+  position: relative;
+  left: auto;
+  right: auto;
+  bottom: auto;
+  width: 100%;
+  margin: 0 0 8px;
   background: linear-gradient(180deg, rgba(20, 32, 52, .92), rgba(8, 16, 30, .96));
   border-top: 1px solid rgba(91, 160, 224, .22);
 }
