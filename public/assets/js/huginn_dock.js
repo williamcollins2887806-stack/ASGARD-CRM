@@ -1878,7 +1878,7 @@
     if (!panel) return;
     // Release protected media object URLs before any full chat/panel rerender.
     // Also terminate a capture if navigation switched away from its owning chat.
-    if (state.recording && Number(state.recording.chatId) !== Number(state.chatId)) {
+    if (state.recording && state.recording.chatId != null && Number(state.recording.chatId) !== Number(state.chatId)) {
       cancelRecording(true);
     }
     releaseProtectedChatMedia(panel);
@@ -7103,7 +7103,11 @@
       showRecChrome: (kind = 'voice') => {
         state.recording = {
           kind,
-          locked: kind === 'voice',
+          chatId: Number(state.chatId),
+          status: 'recording',
+          facing: 'user',
+          maxDurationSec: kind === 'circle' ? 15 : 60,
+          locked: false,
           label: kind === 'circle' ? 'Запись кружка…' : 'Запись голоса…',
           timerText: kind === 'circle' ? '0:00,00' : '0:02,02',
           elapsed: kind === 'circle' ? 0 : 2.02,
@@ -7114,7 +7118,7 @@
         };
         setRecordingChrome(true);
         if (kind === 'circle') {
-          mountCircleOverlay(null, () => {}, () => {});
+          mountCircleOverlay(state.recording);
           document.body.classList.add('hg-circle-recording');
         } else {
           renderPanel();
