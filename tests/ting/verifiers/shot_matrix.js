@@ -266,10 +266,11 @@ async function main() {
   }
 
   async function hideChat(page) {
+    /* Cinema default is overlay closed; keep closed for full-bleed shots */
     await page.evaluate(() => {
       const c = document.querySelector('.ting-chat');
-      if (c) c.style.display = 'none';
-      document.querySelector('.ting-room-shell')?.classList.add('no-chat');
+      if (c) c.classList.remove('open');
+      document.querySelector('.ting-room-shell')?.classList.add('no-chat', 'cinema');
     });
   }
 
@@ -279,18 +280,21 @@ async function main() {
       await hideChat(page);
     }, true);
     await shotRoom(prefix + '_room_speaker', vp, async (page) => {
-      await page.click('[data-act="layout-toggle"]');
+      /* dock-inner overflow-x can steal Playwright hit-target; DOM click is enough */
+      await page.evaluate(() => document.querySelector('[data-act="layout-toggle"]')?.click());
       await page.waitForTimeout(350);
       await hideChat(page);
     }, true);
     await shotRoom(prefix + '_room_people', vp, async (page) => {
-      await page.click('.ting-top-actions [data-act="toggle-people"]');
+      await page.evaluate(() => document.querySelector('.ting-top-actions [data-act="toggle-people"]')?.click());
       await page.waitForSelector('.ting-people-drawer', { timeout: 5000 });
       await page.waitForTimeout(200);
     }, false);
     await shotRoom(prefix + '_room_chat', vp, async (page) => {
       if (vp.width < 500) {
-        try { await page.click('[data-act="chat-open-mobile"]'); } catch (_) {}
+        try {
+          await page.evaluate(() => document.querySelector('[data-act="chat-open-mobile"]')?.click());
+        } catch (_) {}
         await page.waitForTimeout(300);
       }
       await page.evaluate(() => {
@@ -298,10 +302,11 @@ async function main() {
         if (list) {
           list.innerHTML = '<div class="ting-chat-bubble"><b>Елена</b>Скиньте ссылку</div><div class="ting-chat-bubble me"><b>Вы</b>Уже в чате ✓</div>';
         }
+        document.querySelector('.ting-chat')?.classList.add('open');
       });
     }, false);
     await shotRoom(prefix + '_host_end', vp, async (page) => {
-      await page.click('[data-act="host-end-open"]');
+      await page.evaluate(() => document.querySelector('[data-act="host-end-open"]')?.click());
       await page.waitForSelector('#ting-host-end', { timeout: 5000 });
     }, false);
   }

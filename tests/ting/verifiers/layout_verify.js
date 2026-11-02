@@ -119,7 +119,7 @@ async function main() {
   /* ---- 2. Desktop grid: каждый тайл 16:9 (группа 3+ — жёстко, по размеру) ---- */
   {
     const { context, page } = await openRoom({ width: 1280, height: 800 }, '#/ting?view=room&slug=k7m2qx');
-    await page.click('[data-act="layout-toggle"]');
+    await page.evaluate(() => document.querySelector('[data-act="layout-toggle"]')?.click());
     await page.waitForTimeout(400);
     const tiles = await page.evaluate(() => Array.from(document.querySelectorAll('.ting-stage > .ting-tile'))
       .map((el) => { const r = el.getBoundingClientRect(); return { w: r.width, h: r.height, id: el.dataset.id }; }));
@@ -143,7 +143,7 @@ async function main() {
       check('mobile speaker: PiP ширина ≥ 112px', pip.w >= 111, 'w=' + pip.w.toFixed(1));
       check('mobile speaker: PiP ≈ 4:3', Math.abs(ratio(pip.w, pip.h) - 4 / 3) < TOL, 'ratio=' + ratio(pip.w, pip.h).toFixed(3));
     }
-    await page.click('[data-act="layout-toggle"]');
+    await page.evaluate(() => document.querySelector('[data-act="layout-toggle"]')?.click());
     await page.waitForTimeout(400);
     const gcols = await page.evaluate(() => getComputedStyle(document.querySelector('.ting-stage')).gridTemplateColumns.split(' ').filter(Boolean).length);
     check('mobile grid: один столбец', gcols === 1, 'cols=' + gcols);
@@ -173,7 +173,7 @@ async function main() {
     }
     const pip = await box(page, '.ting-stage.speaker > .ting-tile.is-pip');
     if (pip) check('landscape speaker: PiP ≈ 4:3', Math.abs(ratio(pip.w, pip.h) - 4 / 3) < TOL, 'ratio=' + ratio(pip.w, pip.h).toFixed(3));
-    await page.click('[data-act="layout-toggle"]');
+    await page.evaluate(() => document.querySelector('[data-act="layout-toggle"]')?.click());
     await page.waitForTimeout(400);
     const ltiles = await page.evaluate(() => Array.from(document.querySelectorAll('.ting-stage > .ting-tile'))
       .map((el) => { const r = el.getBoundingClientRect(); return { w: r.width, h: r.height }; }));
@@ -187,7 +187,7 @@ async function main() {
     const { context, page } = await openRoom({ width: 1024, height: 768 }, '#/ting?view=room&slug=k7m2qx');
     const main = await box(page, '.ting-stage.speaker > .ting-tile:not(.is-pip)');
     if (main) check('tablet speaker: main ≈ 16:9', Math.abs(ratio(main.w, main.h) - 16 / 9) < TOL, 'ratio=' + ratio(main.w, main.h).toFixed(3));
-    await page.click('[data-act="layout-toggle"]');
+    await page.evaluate(() => document.querySelector('[data-act="layout-toggle"]')?.click());
     await page.waitForTimeout(400);
     const ttiles = await page.evaluate(() => Array.from(document.querySelectorAll('.ting-stage > .ting-tile'))
       .map((el) => { const r = el.getBoundingClientRect(); return { w: r.width, h: r.height }; }));

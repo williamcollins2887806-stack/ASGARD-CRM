@@ -97,6 +97,8 @@
     joinToken: null,
     connQuality: null,
     reconnecting: false,
+    intentionalLeave: false,
+    chatOpen: false,
     handRaised: false,
     raisedHands: {},
     reactions: [],
@@ -127,6 +129,35 @@
       .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   }
   function qs(sel, el) { return (el || document).querySelector(sel); }
+
+  /** CRM display name — never stub «Участник» when profile exists. */
+  function resolveLocalProfile() {
+    let u = {};
+    try { u = JSON.parse(localStorage.getItem('asgard_user') || '{}') || {}; } catch (_) { u = {}; }
+    try {
+      if (window.AsgardAuth && typeof AsgardAuth.getAuth === 'function') {
+        const a = AsgardAuth.getAuth();
+        if (a && a.user) u = Object.assign({}, u, a.user);
+      }
+    } catch (_) { /* */ }
+    if (window.ASGARD_USER && typeof window.ASGARD_USER === 'object') {
+      u = Object.assign({}, u, window.ASGARD_USER);
+    }
+    const name = String(u.full_name || u.name || u.email || '').trim();
+    const job = u.job_title || u.position || '';
+    return {
+      name,
+      jobTitle: job,
+      label: name ? (job ? (name + ' · ' + job) : name) : '',
+      user: u
+    };
+  }
+
+  function roomTitleDisplay(room) {
+    const t = String((room && room.title) || '').trim();
+    if (!t || /^вкс$/i.test(t) || /^vcs$/i.test(t)) return 'Тинг';
+    return t;
+  }
   function toast(msg, ok) {
     if (window.AsgardUI && typeof AsgardUI.toast === 'function') {
       AsgardUI.toast(msg, ok === false ? 'error' : 'success');
@@ -513,7 +544,7 @@
           ${logoMark(40)}
           <h2>Тинг готов</h2>
           <p class="ting-muted">Отправьте ссылку коллегам и клиентам</p>
-          <p class="ting-ready-title">${esc(r.title || 'Тинг')}</p>
+          <p class="ting-ready-title">${esc(roomTitleDisplay(r))}</p>
         </div>
         <div class="ting-link-box" id="ting-link">${esc(link)}</div>
         <div class="ting-cta-row ting-cta-center ting-stack">
@@ -568,20 +599,23 @@
   function renderLobby() {
     setIncall(false);
     const r = state.room || {};
-    const name = (window.ASGARD_USER && (ASGARD_USER.full_name || ASGARD_USER.name)) || 'Участник';
+    const profile = resolveLocalProfile();
+    const name = profile.name || '';
+    const namePh = name ? esc(name) : 'Ваше имя';
     root.innerHTML = `<div class="ting-wrap">
       ${brand('вход')}
-      <div class="ting-card ting-center-card">
-        <h2 class="ting-h2-tight">${esc(r.title || 'Тинг')}</h2>
+      <div class="ting-card ting-center-card ting-lobby-hero">
+        <h2 class="ting-h2-tight">${esc(roomTitleDisplay(r))}</h2>
         <div class="ting-preview" id="ting-preview">
-          <div class="ting-avatar tone-${avatarTone(name)} gold" id="ting-av">${esc(initials(name))}</div>
+          <div class="ting-avatar tone-${avatarTone(name || 'me')} gold" id="ting-av">${esc(initials(name || '?'))}</div>
           <video id="ting-prev-v" playsinline muted autoplay class="ting-preview-video" hidden></video>
           <div class="ting-precall-controls">
             <button type="button" class="ting-dock-btn ${state.micOn ? 'active' : 'off'}" data-act="tog-mic" id="ting-lob-mic" title="${esc(COPY.mic)}" aria-label="${esc(COPY.mic)}">${svgMic(!state.micOn)}</button>
             <button type="button" class="ting-dock-btn ${state.camOn ? 'active' : 'off'}" data-act="tog-cam" id="ting-lob-cam" title="${esc(COPY.cam)}" aria-label="${esc(COPY.cam)}">${svgCam(!state.camOn)}</button>
           </div>
         </div>
-        <input class="ting-field" id="ting-disp" value="${esc(name)}" maxlength="80" />
+        <input class="ting-field" id="ting-disp" value="${esc(name)}" placeholder="${namePh}" maxlength="80" autocomplete="name" />
+        ${profile.jobTitle ? `<p class="ting-muted ting-lobby-job">${esc(profile.jobTitle)}</p>` : ''}
         <button type="button" class="ting-btn ting-btn-primary ting-full-btn" data-act="connect">${esc(COPY.join)}</button>
         <button type="button" class="ting-btn ting-btn-ghost ting-full-btn ting-mt-8" data-act="hub">${esc(COPY.back)}</button>
       </div>
@@ -631,10 +665,11 @@
       const name = m.display_name || m.author || 'Участник';
       return `<div class="ting-chat-bubble ${mine ? 'me' : ''}"><b>${esc(name)}</b>${esc(m.text || '')}</div>`;
     }).join('') || `<div class="ting-muted">${esc(COPY.chatEmpty)}</div>`;
-    const openCls = state.chatOpenMobile ? ' open' : '';
-    return `<aside class="ting-chat${openCls}" id="ting-chat">
+    const chatOpen = !!(state.chatOpen || state.chatOpenMobile);
+    const openCls = chatOpen ? ' open' : '';
+    return `<aside class="ting-chat${openCls}" id="ting-chat" aria-hidden="${chatOpen ? 'false' : 'true'}">
       <div class="ting-chat-head"><span>${esc(COPY.chat)}</span>
-        <button type="button" class="ting-icon-btn ting-icon-sm" data-act="chat-close-mobile" title="Скрыть">✕</button>
+        <button type="button" class="ting-icon-btn ting-icon-sm" data-act="chat-close" title="Скрыть">✕</button>
       </div>
       <div class="ting-chat-list" id="ting-chat-list">${msgs}</div>
       <div class="ting-chat-input">
@@ -665,7 +700,14 @@
           : (state.lkRoom.remoteParticipants && state.lkRoom.remoteParticipants.get(p.identity))
       );
       const micOff = lk ? lk.isMicrophoneEnabled === false : false;
-      const camOff = lk ? !Array.from((lk.videoTrackPublications || new Map()).values()).some(x => x.track && x.isMuted !== true) : false;
+      const camOff = lk ? !Array.from((lk.videoTrackPublications || new Map()).values()).some((x) => {
+        if (!x || !x.track) return false;
+        try {
+          const mst = x.track.mediaStreamTrack;
+          if (mst && mst.readyState === 'live') return true;
+        } catch (_) { /* */ }
+        return x.isMuted !== true;
+      }) : false;
       const handUp = !!(state.raisedHands && state.raisedHands[p.identity]);
       return `<div class="ting-list-item ting-people-row${handUp ? ' hand-up' : ''}">
         <span class="ting-people-av">${esc(initials(label))}</span>
@@ -773,9 +815,8 @@
     const r = state.room || {};
     const n = Math.max(1, (state.participants || []).length || (state.lkRoom ? 1 + state.lkRoom.remoteParticipants.size : 1));
     const peopleOpen = !!state.peopleOpen;
-    const mobile = typeof window !== 'undefined' && window.innerWidth <= 820;
-    const hideChat = mobile && !state.chatOpenMobile;
-    root.innerHTML = `<div class="ting-room-shell${hideChat ? ' no-chat' : ''}${peopleOpen ? ' has-people-col' : ''}">
+    const chatOpen = !!(state.chatOpen || state.chatOpenMobile);
+    root.innerHTML = `<div class="ting-room-shell no-chat cinema${peopleOpen ? ' has-people-col' : ''}${chatOpen ? ' has-chat-open' : ''}">
       <div class="ting-room-main${peopleOpen ? ' has-people' : ''}">
         <div class="ting-room-top">
           ${state.recording ? `<div class="ting-consent" role="status">● ${esc(COPY.recording)}</div>` : ''}
@@ -784,15 +825,15 @@
             <div class="ting-room-title">
               ${logoMark(28)}
               <div class="ting-room-title-text">
-                <strong>${esc(r.title || 'Тинг')}</strong>
+                <strong>${esc(roomTitleDisplay(r))}</strong>
                 <span class="ting-muted" id="ting-timer">${fmtTime(state.timerSec)}</span>
               </div>
             </div>
             <div class="ting-top-actions">
               ${qualityChipHtml()}
               <span class="ting-count-chip">${n} в комнате</span>
-              <button type="button" class="ting-icon-btn" data-act="toggle-people" title="${esc(COPY.people)}">${svgPeople()}</button>
-              <button type="button" class="ting-icon-btn" data-act="chat-open-mobile" title="${esc(COPY.chat)}">
+              <button type="button" class="ting-icon-btn${peopleOpen ? ' active' : ''}" data-act="toggle-people" title="${esc(COPY.people)}" aria-pressed="${peopleOpen}">${svgPeople()}</button>
+              <button type="button" class="ting-icon-btn${chatOpen ? ' active' : ''}" data-act="toggle-chat" title="${esc(COPY.chat)}" aria-pressed="${chatOpen}">
                 ${svgChat()}
                 ${state.unreadChat ? `<span class="badge">${state.unreadChat > 9 ? '9+' : state.unreadChat}</span>` : ''}
               </button>
@@ -800,8 +841,8 @@
           </div>
         </div>
         <div class="ting-stage-wrap">
-          <div class="ting-filmstrip" id="ting-filmstrip"></div>
           <div class="ting-stage ${state.layout === 'speaker' ? 'speaker' : 'g2'}" id="ting-stage"></div>
+          <div class="ting-filmstrip" id="ting-filmstrip"></div>
           <div class="ting-react-layer" id="ting-react-layer" aria-hidden="true"></div>
           ${peopleDrawerHtml()}
           ${moreSheetHtml()}
@@ -1572,17 +1613,11 @@
       return;
     }
     connectBusy = true;
-    stopPreview();
+    state.intentionalLeave = false;
+    /* Keep preview alive until LiveKit publishes — avoids Windows cam lock race (laptop). */
     try {
       const typed = qs('#ting-disp') && qs('#ting-disp').value;
-      const fromCrm = (window.ASGARD_USER && (ASGARD_USER.full_name || ASGARD_USER.name))
-        || (window.AsgardAuth && AsgardAuth.user && (AsgardAuth.user.full_name || AsgardAuth.user.name))
-        || (function () {
-          try {
-            const u = JSON.parse(localStorage.getItem('asgard_user') || '{}');
-            return u.full_name || u.name || '';
-          } catch (_) { return ''; }
-        })();
+      const fromCrm = resolveLocalProfile().name;
       const name = String(typed || fromCrm || '').trim();
       const body = {};
       if (name && !/^участник(\s+\d+)?$/i.test(name)) body.display_name = name;
@@ -1593,6 +1628,7 @@
       tokenFailAt = 0;
       tokenFailSlug = null;
       if (tok.lobby_status === 'waiting') {
+        stopPreview();
         state.myIdentity = tok.identity || null;
         state.joinToken = tok.join_token || null;
         if (tok.room) state.room = unwrapRoom(tok);
@@ -1602,6 +1638,7 @@
       }
       await connectRoomWithCreds(slug, tok);
     } catch (e) {
+      stopPreview();
       tokenFailAt = Date.now();
       tokenFailSlug = slug;
       const detail = [e.message, e.code].filter(Boolean).join(' · ');
@@ -1661,13 +1698,25 @@
             state.chat = mergeChat(state.chat, [row]);
             if (state.chat.length === before) return;
             if (state.view === 'room') {
+              const chatOpenNow = !!(state.chatOpen || state.chatOpenMobile);
+              if (!chatOpenNow && !isChatMine(row)) {
+                state.unreadChat = (state.unreadChat || 0) + 1;
+                const badge = qs('.ting-top-actions .ting-icon-btn .badge');
+                const chatBtn = qs('.ting-top-actions [data-act="toggle-chat"]');
+                if (chatBtn && !badge) {
+                  chatBtn.insertAdjacentHTML('beforeend',
+                    `<span class="badge">${state.unreadChat > 9 ? '9+' : state.unreadChat}</span>`);
+                } else if (badge) {
+                  badge.textContent = state.unreadChat > 9 ? '9+' : String(state.unreadChat);
+                }
+              }
               const chatList = qs('#ting-chat-list');
-              if (chatList) {
+              if (chatList && chatOpenNow) {
                 const mine = isChatMine(row);
                 chatList.insertAdjacentHTML('beforeend',
                   `<div class="ting-chat-bubble ${mine ? 'me' : ''}"><b>${esc(row.display_name)}</b>${esc(row.text)}</div>`);
                 chatList.scrollTop = chatList.scrollHeight;
-              } else render();
+              } else if (!chatList) render();
             }
             return;
           }
@@ -1717,6 +1766,13 @@
         });
       }
       room.on(LK.RoomEvent.Disconnected, async () => {
+        if (state.intentionalLeave) {
+          stopLiveLoop();
+          if (state.timerId) { clearInterval(state.timerId); state.timerId = null; }
+          if (state.lkRoom === room) state.lkRoom = null;
+          state.reconnecting = false;
+          return;
+        }
         if (state.lkRoom !== room) return;
         stopLiveLoop();
         if (state.timerId) { clearInterval(state.timerId); state.timerId = null; }
@@ -1746,9 +1802,10 @@
           toast('Переподключение…', false);
         }
         try {
+          const dn = resolveLocalProfile().name || undefined;
           const fresh = await api(`/api/thing/rooms/${encodeURIComponent(slug)}/token`, {
             method: 'POST',
-            body: JSON.stringify({ display_name: (window.ASGARD_USER && ASGARD_USER.name) || undefined })
+            body: JSON.stringify({ display_name: dn })
           });
           const tok2 = fresh.token ? fresh : (fresh.data || fresh);
           await connectRoomWithCreds(slug, tok2);
@@ -1768,7 +1825,7 @@
         try {
           TingSession.adoptRoom(room, {
             slug: slug,
-            title: (tok.room && tok.room.title) || slug,
+            title: roomTitleDisplay(tok.room) || slug,
             identity: tok.identity || state.myIdentity,
             role: tok.role || null
           });
@@ -1776,10 +1833,29 @@
       }
       try {
         await room.localParticipant.setMicrophoneEnabled(state.micOn);
-        await room.localParticipant.setCameraEnabled(state.camOn);
-        // Показываем себя сразу после включения камеры, не дожидаясь событий.
+        if (state.camOn) {
+          try {
+            await room.localParticipant.setCameraEnabled(true);
+          } catch (camErr) {
+            const msg = String((camErr && camErr.message) || camErr || '');
+            const busy = /NotReadable|Device in use|Could not start|AbortError|Permission/i.test(msg);
+            toast(busy
+              ? 'Камера занята или недоступна. Закройте другие приложения и включите камеру снова.'
+              : ('Камера: ' + (msg || 'не удалось включить')), false);
+            state.camOn = false;
+          }
+        } else {
+          await room.localParticipant.setCameraEnabled(false);
+        }
+        stopPreview();
         paintTiles();
-      } catch (e) { console.warn('local media', e); }
+        setTimeout(() => { if (state.lkRoom === room && state.view === 'room') paintTiles(); }, 400);
+        setTimeout(() => { if (state.lkRoom === room && state.view === 'room') paintTiles(); }, 1200);
+      } catch (e) {
+        console.warn('local media', e);
+        stopPreview();
+        toast((e && e.message) || 'Не удалось включить микрофон/камеру', false);
+      }
       state.view = 'room';
       state.timerSec = 0;
       if (state.timerId) clearInterval(state.timerId);
@@ -1853,6 +1929,8 @@
   async function teardownLive(opts) {
     const endAll = !!(opts && opts.endAll);
     const slug = state.room && state.room.slug;
+    state.intentionalLeave = true;
+    state.reconnecting = false;
     TingSound.play('end');
     state.activeSpeakerId = null;
     state.swapPrimary = false;
@@ -1865,6 +1943,7 @@
         await api(`/api/thing/rooms/${encodeURIComponent(slug)}/end`, { method: 'POST', body: '{}' });
         if (state.room) state.room.status = 'ended';
       } catch (e) {
+        state.intentionalLeave = false;
         toast(e.message || 'Не удалось завершить Тинг', false);
         return false;
       }
@@ -1877,10 +1956,15 @@
       try { await state.lkRoom.disconnect(); } catch (_) { /* */ }
       state.lkRoom = null;
     }
-    if (window.TingSession && typeof TingSession.leave === 'function' && TingSession.isActive()) {
+    if (window.TingSession && typeof TingSession.leave === 'function') {
       try { await TingSession.leave(); } catch (_) { /* */ }
     }
+    document.body.classList.remove('ting-live', 'ting-incall');
     state.sharing = false;
+    state.chatOpen = false;
+    state.chatOpenMobile = false;
+    state.peopleOpen = false;
+    state.moreOpen = false;
     setIncall(false);
     return true;
   }
@@ -2305,13 +2389,21 @@
       }
       if (act === 'toggle-people') {
         state.peopleOpen = !state.peopleOpen;
-        if (state.peopleOpen) await refreshPeople(slug);
+        if (state.peopleOpen) {
+          state.chatOpen = false;
+          state.chatOpenMobile = false;
+          state.moreOpen = false;
+          await refreshPeople(slug);
+        }
         render();
         return;
       }
       if (act === 'toggle-more') {
         state.moreOpen = !state.moreOpen;
-        if (state.moreOpen) await refreshDeviceList();
+        if (state.moreOpen) {
+          state.peopleOpen = false;
+          await refreshDeviceList();
+        }
         render();
         return;
       }
@@ -2342,7 +2434,7 @@
           type: 'reaction',
           emoji,
           identity: state.myIdentity || '',
-          display_name: (window.ASGARD_USER && ASGARD_USER.name) || 'Вы'
+          display_name: resolveLocalProfile().name || 'Вы'
         });
         showReactionBurst(emoji, 'Вы');
         state.moreOpen = false;
@@ -2355,14 +2447,21 @@
         render();
         return;
       }
-      if (act === 'chat-open-mobile') {
-        state.chatOpenMobile = true;
-        state.unreadChat = 0;
+      if (act === 'toggle-chat' || act === 'chat-open-mobile') {
+        const next = act === 'toggle-chat' ? !(state.chatOpen || state.chatOpenMobile) : true;
+        state.chatOpen = next;
+        state.chatOpenMobile = next;
+        if (next) {
+          state.peopleOpen = false;
+          state.moreOpen = false;
+          state.unreadChat = 0;
+        }
         render();
         return;
       }
-      if (act === 'chat-close-mobile') {
-        if (window.innerWidth <= 820) state.chatOpenMobile = false;
+      if (act === 'chat-close' || act === 'chat-close-mobile') {
+        state.chatOpen = false;
+        state.chatOpenMobile = false;
         render();
         return;
       }

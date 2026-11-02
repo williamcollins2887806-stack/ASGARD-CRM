@@ -2,9 +2,20 @@
 (function (global) {
   'use strict';
 
+  function mediaTrackLive(track) {
+    if (!track) return false;
+    try {
+      var mst = track.mediaStreamTrack;
+      if (mst && mst.readyState === 'live') return true;
+    } catch (_) { /* */ }
+    return false;
+  }
+
+  /** Prefer live MediaStreamTrack even during brief SFU isMuted races (laptop cam). */
   function trackIsLive(pub) {
     if (!pub || !pub.track) return null;
     try {
+      if (mediaTrackLive(pub.track)) return pub.track;
       if (pub.isMuted === true || pub.track.isMuted === true) return null;
     } catch (_) { /* */ }
     return pub.track;

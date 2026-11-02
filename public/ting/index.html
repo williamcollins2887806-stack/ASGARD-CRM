@@ -161,7 +161,7 @@
 
   <div id="guestToast" class="ting-guest-toast hidden" role="status" aria-live="polite"></div>
 
-  <div class="ting-room-shell" id="roomView">
+  <div class="ting-room-shell no-chat cinema" id="roomView">
     <div class="ting-consent hidden" id="recConsent">Идёт запись · все участники уведомлены</div>
     <div class="ting-room-main">
       <div class="ting-room-top">
@@ -180,8 +180,8 @@
       </div>
       <div class="ting-reconnect-banner hidden" id="reconnectBanner" role="status" aria-live="polite">Переподключение…</div>
       <div class="ting-stage-wrap">
-        <div class="ting-filmstrip" id="filmstrip"></div>
         <div class="ting-stage" id="stage"></div>
+        <div class="ting-filmstrip" id="filmstrip"></div>
         <div class="ting-react-layer" id="reactLayer" aria-hidden="true"></div>
         <div class="ting-people-drawer hidden" id="peopleDrawer">
           <div class="ting-drawer-head">
@@ -299,6 +299,8 @@
       let lastCreds = null;
       let reconnecting = false;
       let reconnectAttempts = 0;
+      let intentionalLeave = false;
+      let guestChatOpen = false;
       let bgPreset = 'none';
       let guestTrackProcessors = null;
       var RECONNECT_MAX = 3;
@@ -656,7 +658,10 @@
         location.href = 'about:blank';
       });
       document.getElementById('peopleClose').addEventListener('click', function () { setPeopleOpen(false); });
-      document.getElementById('btnPeopleTop').addEventListener('click', function () { setPeopleOpen(!peopleOpen); });
+      document.getElementById('btnPeopleTop').addEventListener('click', function () {
+        if (!peopleOpen) setGuestChatOpen(false);
+        setPeopleOpen(!peopleOpen);
+      });
 
       fetch('/api/thing/public/' + encodeURIComponent(slug))
         .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
@@ -721,7 +726,11 @@
         }
         if (track.kind === 'video') {
           var mutedVid = false;
-          try { mutedVid = track.isMuted === true; } catch (_) { mutedVid = false; }
+          try {
+            var mst = track.mediaStreamTrack;
+            if (mst && mst.readyState === 'live') mutedVid = false;
+            else mutedVid = track.isMuted === true;
+          } catch (_) { mutedVid = false; }
           if (mutedVid) {
             var vKill = tile.querySelector('video');
             if (vKill) {
@@ -1002,6 +1011,14 @@
           });
         }
         next.on(window.LivekitClient.RoomEvent.Disconnected, function () {
+          if (intentionalLeave) {
+            if (timerId) clearInterval(timerId);
+            if (chatPollId) clearInterval(chatPollId);
+            setPeopleOpen(false);
+            setReconnectUi(false);
+            show('ended');
+            return;
+          }
           if (room !== next) return;
           if (reconnecting) return;
           reconnectAttempts += 1;
@@ -1123,7 +1140,16 @@
           guestToast(e.message || 'Не удалось показать экран');
         }
       });
+      function setGuestChatOpen(on) {
+        guestChatOpen = !!on;
+        var side = document.getElementById('chatSide');
+        if (side) side.classList.toggle('open', guestChatOpen);
+        var btn = document.getElementById('btnChatMob');
+        if (btn) btn.classList.toggle('active', guestChatOpen);
+        if (guestChatOpen) setPeopleOpen(false);
+      }
       document.getElementById('btnPeople').addEventListener('click', function () {
+        if (!peopleOpen) setGuestChatOpen(false);
         setPeopleOpen(!peopleOpen);
       });
       document.getElementById('btnLayout').addEventListener('click', function () {
@@ -1172,11 +1198,11 @@
         });
       });
       document.getElementById('btnChatMob').addEventListener('click', function () {
-        document.getElementById('chatSide').classList.add('open');
+        setGuestChatOpen(!guestChatOpen);
       });
       applyGuestLayout();
       document.getElementById('chatCloseMob').addEventListener('click', function () {
-        document.getElementById('chatSide').classList.remove('open');
+        setGuestChatOpen(false);
       });
       document.getElementById('chatSend').addEventListener('click', async function () {
         const inp = document.getElementById('chatIn');
@@ -1227,11 +1253,13 @@
       });
       document.getElementById('btnLeave').addEventListener('click', async function () {
         tingSound('end');
+        intentionalLeave = true;
         activeSpeakerId = null;
         if (timerId) clearInterval(timerId);
         if (chatPollId) clearInterval(chatPollId);
         stopPreview();
         setPeopleOpen(false);
+        setGuestChatOpen(false);
         await publicLeave();
         if (room) await room.disconnect();
         show('ended');
