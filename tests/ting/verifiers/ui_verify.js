@@ -23,7 +23,12 @@ check('U02_call_rows', /ting-call-row|ting-day/.test(tingPage + tingCss), 'call 
 check('U03_radius', /--ting-radius:\s*22px/.test(tingCss), 'Telemost-like radius');
 check('U04_dock_float', /ting-dock-inner/.test(tingCss), 'floating dock');
 check('U05_tile_overlay', /\.ting-tile \.lbl/.test(tingCss), 'tile name overlay');
-check('U06_chat_grid', /grid-template-areas:[\s\S]*chat/.test(tingCss), 'chat in grid');
+check('U06_cinema_chat_overlay',
+  /grid-template-areas:\s*"main"/.test(tingCss)
+  && /\.ting-chat\s*\{[\s\S]*?transform:\s*translateX\(105%\)/.test(tingCss)
+  && /\.ting-chat\.open/.test(tingCss)
+  && !/grid-template-areas:\s*"[^"]*chat[^"]*"/.test(tingCss),
+  'cinema: areas=main, chat = overlay drawer');
 check('U07_incall', /body\.ting-incall/.test(tingCss), 'hide CRM chrome');
 check('U08_guest_shared', /ting\.css/.test(guest) && /ting-room-shell/.test(guest), 'guest shared shell');
 check('U09_ru_copy', /Удалить из комнаты/.test(tingPage) && /Новый Тинг/.test(tingPage), 'RU copy');

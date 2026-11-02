@@ -30,7 +30,8 @@ check('C04_lobby_default_off', /lobby_enabled:\s*lobby/.test(tingPage) && /ting-
 check('C05_no_kick_word', !/\bКик\b|Mute all|toast\(['\"]Kick/i.test(tingPage) && !/>Kick</i.test(tingPage), 'no Kick/Mute all UI anglicisms');
 check('C06_no_modul_crm', !/модуль CRM/.test(tingPage), 'no «модуль CRM»');
 check('C07_incall_chrome', /ting-incall/.test(tingPage) && /ting-incall/.test(tingCss), 'CRM chrome hide class');
-check('C08_chat_sidebar', /ting-chat/.test(tingPage) && /grid-area:\s*chat/.test(tingCss), 'chat always side column');
+check('C08_chat_sidebar', /ting-chat/.test(tingPage) && /\.ting-chat\.open/.test(tingCss)
+  && /position:\s*absolute/.test(tingCss), 'chat overlay drawer');
 check('C09_screenshare', /setScreenShareEnabled/.test(tingPage) && /setScreenShareEnabled/.test(guest), 'screen share API');
 check('C10_live_loop', /startLiveLoop|setInterval\(async/.test(tingPage), 'live refresh loop');
 check('C11_hub_telemost', /Новый Тинг/.test(tingPage) && /Подключиться/.test(tingPage) && /Запланировать/.test(tingPage), 'hub Telemost IA');
@@ -70,8 +71,9 @@ check('C37_landscape_low_height', /orientation:\s*landscape/.test(tingCss) && /m
   'ландшафт телефона: ограничение по высоте');
 check('C38_start_live', /status\s*=\s*'live'/.test(thing) && !/status\s*=\s*'active'/.test(thing),
   '/start пишет live, не active');
-check('C39_pickvideo_skip_muted', /isMuted/.test(tingPage) && /trackLive|pickVideo/.test(tingPage),
-  'pickVideo пропускает muted → аватар');
+check('C39_pickvideo_skip_muted', /isMuted/.test(tingPage) && /trackLive|pickVideo|trackIsLive/.test(tingPage)
+  && /readyState\s*===\s*'live'|mediaStreamTrack/.test(fs.readFileSync(path.join(root, 'public/assets/js/ting_room_core.js'), 'utf8')),
+  'pickVideo: live MediaStreamTrack wins over brief isMuted');
 check('C40_people_chat_parallel', /peopleOpen \? '' : chatHtml/.test(tingPage) === false
   && /\$\{chatHtml\(\)\}/.test(tingPage),
   'people не убивает chatHtml');
@@ -101,6 +103,26 @@ check('C48_2peer_smoke_artifact', (() => {
     return !!(j.pass && j.numerator === j.denominator);
   } catch (_) { return false; }
 })(), 'TING-2PEER-MEDIA-SMOKE.json green');
+check('C49_lobby_crm_name', /resolveLocalProfile/.test(tingPage) && /asgard_user/.test(tingPage)
+  && /renderLobby/.test(tingPage),
+  'lobby берёт ФИО из CRM-профиля');
+check('C50_cinema_chat_overlay', /no-chat cinema|cinema/.test(tingPage)
+  && /toggle-chat/.test(tingPage)
+  && /transform:\s*translateX\(105%\)/.test(tingCss)
+  && /\.ting-chat\.open/.test(tingCss),
+  'desktop chat = overlay, не G-колонка');
+check('C51_intentional_leave', /intentionalLeave/.test(tingPage) && /intentionalLeave/.test(guest),
+  'leave/end без авто-reconnect reopen');
+check('C52_icon_btn_svg_size', /\.ting-icon-btn svg\s*\{[^}]*width:\s*22px/.test(tingCss)
+  && /flex-shrink:\s*0/.test(tingCss),
+  'top icons fixed size, no overlap');
+check('C53_guest_title_and_cam_race',
+  /function roomTitleDisplay/.test(guest)
+  && /\^вкс\$/.test(guest)
+  && /NotReadable/.test(guest)
+  && guest.indexOf('setCameraEnabled(true)') > -1
+  && guest.indexOf('setCameraEnabled(true)') < guest.lastIndexOf('stopPreview()'),
+  'guest: ВКС→Тинг + cam NotReadable + preview до publish');
 
 const fail = checks.filter((c) => !c.pass);
 const md = [

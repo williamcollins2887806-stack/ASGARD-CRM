@@ -663,16 +663,23 @@
         setPeopleOpen(!peopleOpen);
       });
 
+      function roomTitleDisplay(raw) {
+        var t = String(raw || '').trim();
+        if (!t || /^вкс$/i.test(t) || /^vcs$/i.test(t)) return 'Тинг';
+        return t;
+      }
+
       fetch('/api/thing/public/' + encodeURIComponent(slug))
         .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
         .then(async function (res) {
           if (!res.ok) { showError(res.j.error || 'Тинг не найден'); return; }
-          titleEl.textContent = res.j.title || 'Тинг';
-          document.getElementById('roomTitle').textContent = res.j.title || 'Тинг';
+          var dispTitle = roomTitleDisplay(res.j.title);
+          titleEl.textContent = dispTitle;
+          document.getElementById('roomTitle').textContent = dispTitle;
           recordingMode = res.j.recording_mode || 'off';
           syncRecConsent();
           if (res.j.status === 'ended' || res.j.status === 'cancelled') {
-            document.getElementById('endedMeta').textContent = res.j.title || 'Комната закрыта';
+            document.getElementById('endedMeta').textContent = dispTitle || 'Комната закрыта';
             show('ended');
             return;
           }
@@ -903,10 +910,10 @@
         }
       }
 
-      async function enterRoom(creds, opts) {
-        opts = opts || {};
+      async function enterRoom(creds, ops) {
+        var opts = ops || {};
         if (!window.LivekitClient) { showError('Видео-клиент не загрузился'); return; }
-        stopPreview();
+        /* preview держим до publish — на Windows камера иначе часто NotReadable */
         if (creds.identity) guestIdentity = creds.identity;
         if (creds.join_token) joinToken = creds.join_token;
         lastCreds = creds;
@@ -1049,11 +1056,26 @@
         try {
           await next.connect(creds.url || creds.livekit_url, creds.token);
           await next.localParticipant.setMicrophoneEnabled(localAudio);
-          await next.localParticipant.setCameraEnabled(localVideo);
+          if (localVideo) {
+            try {
+              await next.localParticipant.setCameraEnabled(true);
+            } catch (camErr) {
+              var camMsg = String((camErr && camErr.message) || camErr || '');
+              var busy = /NotReadable|Device in use|Could not start|AbortError|Permission/i.test(camMsg);
+              guestToast(busy
+                ? 'Камера занята или недоступна. Закройте другие приложения и включите камеру снова.'
+                : ('Камера: ' + (camMsg || 'не удалось включить')));
+              localVideo = false;
+            }
+          } else {
+            await next.localParticipant.setCameraEnabled(false);
+          }
+          stopPreview();
           next.localParticipant.videoTrackPublications.forEach(function (pub) {
             if (pub.track) attachTrack(pub.track, 'me', 'Вы', false);
           });
         } catch (e) {
+          stopPreview();
           try { await next.disconnect(); } catch (_) { /* */ }
           if (room === next) room = null;
           throw e;
