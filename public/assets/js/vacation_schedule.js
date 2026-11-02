@@ -184,6 +184,7 @@ window.AsgardVacationSchedulePage = (function () {
     var list = periodsOf(empId);
     for (var i = 0; i < list.length; i++) {
       var r = list[i];
+      if (r.status === 'rejected' || r.status === 'cancelled') continue;
       if (String(r.date_from) <= d && d <= String(r.date_to)) return r;
     }
     return null;
@@ -358,23 +359,31 @@ window.AsgardVacationSchedulePage = (function () {
           '<div class="vs-days__cap"><span class="vs-days__m">' + MONTHS[m - 1] + '</span>' +
           (holCount ? '<span class="vs-days__hol">' + holCount + ' празд.</span>' : '') +
           '<span class="vs-days__x">' + IC.chev + '</span></div>' +
-          '<div class="vs-days__wd">' + WEEKDAYS.map(function (w) { return '<div class="vs-d vs-d--wd">' + w + '</div>'; }).join('') + '</div>' +
+          // День недели — над КАЖДЫМ числом (не статичный ряд пн…вс на 7 колонок при 28–31 днях).
+          '<div class="vs-days__wd">' + dayCells(m).map(function (c) {
+            var wd = WEEKDAYS[(dow(S.year, m, c.d) + 6) % 7];
+            var cls = 'vs-d vs-d--wd' + (c.wk ? ' is-wk' : '') + (c.hol ? ' is-hol' : '') + (c.shift ? ' is-shift' : '');
+            return '<div class="' + cls + '" title="' + esc(WEEKDAY_FULL[dow(S.year, m, c.d)] || wd) + '">' + wd + '</div>';
+          }).join('') + '</div>' +
           '<div class="vs-days__nm">' + dayCells(m).map(function (c) {
             var cls = 'vs-d vs-d--hd' + (c.wk ? ' is-wk' : '') + (c.hol ? ' is-hol' : '') + (c.shift ? ' is-shift' : '');
             // Тултип: что за праздник / какой перенос / просто выходной.
-            var tip = '';
-            if (c.hol) tip = 'Праздник РФ: ' + (calTitle(c.iso) || 'нерабочий день') + ' — в отпуск не входит, продлевает его (ст. 120 ТК РФ)';
-            else if (c.shift) tip = 'Перенос выходного: ' + (calTitle(c.iso) || 'нерабочий день');
-            else if (c.wk) tip = 'Выходной день недели';
-            return '<div class="' + cls + '"' + (tip ? ' title="' + esc(tip) + '"' : '') + '>' + c.d + '</div>';
+            var tip = (WEEKDAY_FULL[dow(S.year, m, c.d)] || '') + ', ' + c.d + ' ' + MONTHS_GEN[m - 1];
+            if (c.hol) tip += ' · Праздник РФ: ' + (calTitle(c.iso) || 'нерабочий день') + ' — в отпуск не входит, продлевает его (ст. 120 ТК РФ)';
+            else if (c.shift) tip += ' · Перенос выходного: ' + (calTitle(c.iso) || 'нерабочий день');
+            else if (c.wk) tip += ' · выходной';
+            return '<div class="' + cls + '" title="' + esc(tip) + '">' + c.d + '</div>';
           }).join('') + '</div></div>';
       } else {
         var mk = monthMark(S.myEmployeeId, m);
+        var selInMonth = Object.keys(S.sel).filter(function (k) { return S.sel[k] && +k.slice(5, 7) === m; }).length;
         var tip = MONTHS[m - 1] + (mk ? ' · ' + mk.days + ' ' + plural(mk.days, 'день', 'дня', 'дней') + ': ' + mk.label : ' · отпусков нет');
+        if (selInMonth) tip += ' · выделено ' + selInMonth + ' ' + plural(selInMonth, 'день', 'дня', 'дней') + ' (переход месяца сохраняет выделение)';
         var tight = S.openMonth !== null;
-        cells += '<div class="vs-mon vs-mon--head' + (mk ? ' has-mark' : '') + (tight ? ' is-tight' : '') + '" data-month="' + m + '" title="' + esc(tip) + '">' +
+        cells += '<div class="vs-mon vs-mon--head' + (mk ? ' has-mark' : '') + (selInMonth ? ' has-sel' : '') + (tight ? ' is-tight' : '') + '" data-month="' + m + '" title="' + esc(tip) + '">' +
           '<span class="vs-mon__n">' + (tight ? MONTHS[m - 1].slice(0, 3) : MONTHS[m - 1]) + '</span>' +
-          (mk ? '<span class="vs-mon__mk ' + (mk.pending ? 'is-pend' : mk.status === 'rejected' ? 'is-bad' : 'is-ok') + '">' + mk.days + '</span>' : '') +
+          (selInMonth ? '<span class="vs-mon__mk is-sel">' + selInMonth + '</span>' :
+            (mk ? '<span class="vs-mon__mk ' + (mk.pending ? 'is-pend' : mk.status === 'rejected' ? 'is-bad' : 'is-ok') + '">' + mk.days + '</span>' : '')) +
           '</div>';
       }
     }
@@ -746,6 +755,7 @@ window.AsgardVacationSchedulePage = (function () {
         '<div class="vs-selbar__r">' + esc(fmtRange(v.start, v.end)) + '</div>' +
         '<div class="vs-selbar__d">' + daysWord(v.days) + ' оплачиваемых' +
           (v.hol ? ' · ' + v.hol + ' празд. не в счёт' : '') +
+          (+v.start.slice(5, 7) !== +v.end.slice(5, 7) ? ' · через границу месяца' : '') +
           (S.rules && v.days >= S.rules.SINGLE_MAX ? ' · основной отпуск (до ' + S.rules.SINGLE_MAX + ')' :
             (S.rules && v.days > S.rules.OTHER_MAX ? ' · <span class="vs-bad">кроме основного — не больше ' + S.rules.OTHER_MAX + ' дней</span>' : ' · дополнительный (до ' + (S.rules ? S.rules.OTHER_MAX : 7) + ')')) +
         '</div>' + holHtml + clashHtml +
@@ -1242,13 +1252,21 @@ window.AsgardVacationSchedulePage = (function () {
     if (a('data-vs-rules') !== null) { rulesModal(); return; }
     if (a('data-month') !== null) {
       var m = Number(a('data-month'));
-      if (S.openMonth === m) { S.openMonth = null; } else { S.openMonth = m; S.sel = {}; S.editingId = null; }
+      // Выделение не сбрасываем: можно взять 31 января, открыть февраль и добрать 1–3 —
+      // один непрерывный период через границу месяца.
+      if (S.openMonth === m) { S.openMonth = null; } else { S.openMonth = m; }
       paint(); return;
     }
     if (a('data-day') !== null) {
       var d = a('data-day'), emp = Number(a('data-emp'));
       if (!canEditDays() || !isMine(emp)) { toast('Это чужие дни', 'Править можно только свои дни', 'warn'); return; }
       if (S.blocked.indexOf(d) >= 0) { toast('Эти дни недоступны', 'Директор не согласовал их — поставьте другие дни', 'err'); return; }
+      // День уже в другом своём периоде — повторно поставить нельзя (сервер вернёт 400).
+      var occupied = cellPeriod(emp, d);
+      if (occupied && Number(occupied.id) !== Number(S.editingId)) {
+        toast('День уже занят', fmtRange(String(occupied.date_from), String(occupied.date_to)) + ' — снимите или правьте этот период', 'warn');
+        return;
+      }
       if (S.sel[d]) delete S.sel[d]; else S.sel[d] = true;
       paint(); return;
     }

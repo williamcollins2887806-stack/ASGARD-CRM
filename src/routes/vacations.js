@@ -748,7 +748,8 @@ module.exports = async function vacationsRoutes(fastify) {
       const all = await periodsYear(year);
       const org = { name: 'ООО «Асгард-Сервис»' };
 
-      if (kind === 't7') {
+      // Т-7 (docx/xlsx) — сводный график на год, vacation_id не нужен.
+      if (kind === 't7' || kind === 't7xlsx') {
         const employees = staff.map((s) => {
           const own = all.filter((v) => v.employee_id === s.id && v.status !== 'rejected' && v.status !== 'cancelled');
           return {
@@ -759,10 +760,21 @@ module.exports = async function vacationsRoutes(fastify) {
             periods: own,
           };
         });
+        if (kind === 't7xlsx') {
+          const buf = await docs.generateScheduleT7Xlsx({ organization: org, year, employees });
+          reply.header('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+          reply.header('Content-Disposition', `attachment; filename="grafik-otpuskov-T7-${year}.xlsx"`);
+          return reply.send(buf);
+        }
         const buf = await docs.generateScheduleT7({ organization: org, year, employees });
         reply.header('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
         reply.header('Content-Disposition', `attachment; filename="grafik-otpuskov-T7-${year}.docx"`);
         return reply.send(buf);
+      }
+
+      if (kind !== 'zayav' && kind !== 'prikaz') {
+        reply.code(404);
+        return { error: 'unknown_kind', message: 'Неизвестный документ. Доступны: zayav, prikaz, t7, t7xlsx.' };
       }
 
       const v = all.find((x) => String(x.id) === String(request.query.vacation_id)) ||
@@ -792,23 +804,9 @@ module.exports = async function vacationsRoutes(fastify) {
         acknowledged: { date: new Date().toISOString().slice(0, 10) },
       };
       const buf = kind === 'prikaz' ? await docs.generateOrderT6(data)
-        : kind === 't7xlsx' ? await docs.generateScheduleT7Xlsx({
-          organization: org, year,
-          employees: staff.map((s) => ({
-            full_name: s.name, position: s.role,
-            department: groupTitleOf({ role: s.role }),
-            personnel_number: 2300 + (s.id % 1000),
-            periods: all.filter((x) => x.employee_id === s.id),
-          })),
-        })
-          : await docs.generateVacationApplication(data);
-      // XLSX отдаём как XLSX (а не как DOCX) — иначе Excel не откроет файл.
-      const isXlsx = kind === 't7xlsx';
-      reply.header('Content-Type', isXlsx
-        ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-        : 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
-      reply.header('Content-Disposition',
-        `attachment; filename="${isXlsx ? `grafik-otpuskov-T7-${year}.xlsx` : `${kind}-${v.date_from}.docx`}"`);
+        : await docs.generateVacationApplication(data);
+      reply.header('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+      reply.header('Content-Disposition', `attachment; filename="${kind}-${v.date_from}.docx"`);
       return reply.send(buf);
     } catch (err) {
       logError(fastify, '[vacations] GET /docs/:kind', err, request);
