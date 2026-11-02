@@ -146,6 +146,10 @@ check('C57_guest_relayout_grids',
   && !/classList\.toggle\('g2',\s*layoutMode === 'grid'\)/.test(guest)
   && /filmstrip/.test(guest),
   'guest: g1..g10 + speaker filmstrip relayout');
+check('C58_guest_attach_searches_strip',
+  /strip\.querySelector\('\[data-id=/.test(guest)
+  && /stage && stage\.querySelector\('\[data-id=/.test(guest),
+  'attachTrack finds tiles in stage AND filmstrip');
 
 const fail = checks.filter((c) => !c.pass);
 const md = [

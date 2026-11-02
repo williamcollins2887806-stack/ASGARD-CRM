@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """Deploy Ting Telemost-parity wave (shell 20.28.335).
 
@@ -21,7 +21,7 @@ sys.path.insert(0, str(ROOT / "tools"))
 import shell_guard  # noqa: E402
 import paramiko
 
-VER = "20.28.348"
+VER = "20.28.349"
 SSH_HOST, SSH_USER = "92.242.61.184", "root"
 SSH_KEY = str(Path.home() / ".ssh" / "asgard_crm_deploy")
 REMOTE = "/var/www/asgard-crm"
@@ -72,17 +72,17 @@ def main() -> int:
 
     js = (ROOT / "public/assets/js/ting_page.js").read_text(encoding="utf-8")
     if "TING_BG_PRESETS" not in js or "switchTingDevice" not in js:
-        raise SystemExit("ting_page.js: нет device/bg wiring")
+        raise SystemExit("ting_page.js: РЅРµС‚ device/bg wiring")
     thing = (ROOT / "src/routes/thing.js").read_text(encoding="utf-8")
     if "status = 'live'" not in thing or "status = 'active'" in thing:
-        raise SystemExit("thing.js: /start должен писать live")
+        raise SystemExit("thing.js: /start РґРѕР»Р¶РµРЅ РїРёСЃР°С‚СЊ live")
     guest = (ROOT / "public/ting/index.html").read_text(encoding="utf-8")
     if "guestBgGrid" not in guest or "guestMicSelect" not in guest:
-        raise SystemExit("guest ting: нет device/bg more-sheet")
+        raise SystemExit("guest ting: РЅРµС‚ device/bg more-sheet")
 
     v2_index = ROOT / "public/v2/index.html"
     if not v2_index.exists():
-        raise SystemExit("public/v2/index.html отсутствует — нужен npm run build")
+        raise SystemExit("public/v2/index.html РѕС‚СЃСѓС‚СЃС‚РІСѓРµС‚ вЂ” РЅСѓР¶РµРЅ npm run build")
 
     key = load_pkey(SSH_KEY)
     ssh = paramiko.SSHClient()
@@ -120,7 +120,7 @@ def main() -> int:
 
     sftp = ssh.open_sftp()
     remote_tar = f"/tmp/asgard-ting-telemost-{STAMP}.tgz"
-    print(f"upload {tar_path} → {remote_tar}")
+    print(f"upload {tar_path} в†’ {remote_tar}")
     sftp.put(str(tar_path), remote_tar)
     tar_path.unlink(missing_ok=True)
 
@@ -145,7 +145,7 @@ def main() -> int:
     run("docker ps --filter name=coturn --format '{{.Names}} {{.Status}}' || true", check=False)
     ssh.close()
     if not all_same:
-        raise SystemExit("POST-UPLOAD: файлы разошлись")
+        raise SystemExit("POST-UPLOAD: С„Р°Р№Р»С‹ СЂР°Р·РѕС€Р»РёСЃСЊ")
     print(f"=== DONE shell {VER} ===")
     return 0
 

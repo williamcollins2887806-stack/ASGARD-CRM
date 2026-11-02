@@ -803,9 +803,11 @@
       function attachTrack(track, identity, name, intoStrip) {
         const stage = document.getElementById('stage');
         const strip = document.getElementById('filmstrip');
-        const host = intoStrip && strip ? strip : stage;
-        let tile = host.querySelector('[data-id="' + identity + '"]') || stage.querySelector('[data-id="' + identity + '"]');
+        /* всегда ищем и на stage, и в ленте — иначе mute/unmute плодит дубликаты */
+        let tile = (stage && stage.querySelector('[data-id="' + identity + '"]'))
+          || (strip && strip.querySelector('[data-id="' + identity + '"]'));
         if (!tile) {
+          const host = intoStrip && strip ? strip : stage;
           tile = document.createElement('div');
           tile.className = 'ting-tile';
           tile.dataset.id = identity;
