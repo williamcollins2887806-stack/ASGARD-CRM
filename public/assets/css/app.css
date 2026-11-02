@@ -13622,10 +13622,12 @@ body.hg-dock-collapsed #asgard-v2-banner {
    на узких экранах второстепенные колонки скрыты, детали — в пузырике. */
 #prs_table { table-layout: fixed; width: 100% !important; min-width: 0 !important; max-width: 100% !important; }
 #prs_table th, #prs_table td { min-width: 0 !important; overflow: hidden; }
-#prs_table th.prs-col-fio,     #prs_table td.prs-col-fio-td  { width: 15%; }
+/* A+C (02.11.2026): ФИО шире (15→20) за счёт «Объект» (22→17);
+   имя до 2 строк — при зуме читается фамилия+имя, не только «Андрюще…». */
+#prs_table th.prs-col-fio,     #prs_table td.prs-col-fio-td  { width: 20%; }
 #prs_table th.prs-col-spec,    #prs_table td:nth-child(2)    { width: 11%; }
 #prs_table th.prs-col-status,  #prs_table td:nth-child(3)    { width: 9%; }
-#prs_table th.prs-col-work,    #prs_table td:nth-child(4)    { width: 22%; }
+#prs_table th.prs-col-work,    #prs_table td:nth-child(4)    { width: 17%; }
 #prs_table th.prs-col-start,   #prs_table td:nth-child(5)    { width: 10%; }
 #prs_table th.prs-col-docs,    #prs_table td:nth-child(6)    { width: 5%; }
 #prs_table th.prs-col-permits, #prs_table td:nth-child(7)    { width: 11%; }
@@ -13655,8 +13657,18 @@ body.hg-dock-collapsed #asgard-v2-banner {
 /* Все ячейки дружины: содержимое не вылезает за правый край */
 #prs_table td { overflow: hidden; }
 #prs_table td * { max-width: 100%; }
-.prs-id-name, .prs-id-phone-num {
+.prs-id-phone-num {
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0;
+}
+.prs-id-name {
+  min-width: 0;
+  overflow: hidden;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
 }
 .prs-copy-cell { min-width: 0; }
 .prs-copy-cell > div { min-width: 0; overflow: hidden; }

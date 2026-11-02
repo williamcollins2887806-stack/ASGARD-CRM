@@ -517,6 +517,93 @@ function nextReleaseMonday() {
 
 const MIN_TEXT_CHARS = 6000;   // жёсткий лимит: не менее 6000 знаков
 const MIN_QUESTIONS = 15;      // жёсткий лимит: не менее 15 вопросов
+const GEN_MAX_COST = 150;      // ₽ на одну лекцию (совпадает с DEFAULT_MAX_COST генератора)
+const EXIT_NO_CREDIT = 42;     // tools/academy-gen-images.js
+const BLOCKED_SETTING_KEY = 'academy_gen_blocked_until';
+
+/** settings.value_json — текст; пишем JSON.stringify, читаем с parse. */
+async function getSettingJson(key) {
+  try {
+    const { rows } = await db.query('SELECT value_json FROM settings WHERE key = $1 LIMIT 1', [key]);
+    if (!rows[0]) return null;
+    let raw = rows[0].value_json;
+    try { raw = typeof raw === 'string' ? JSON.parse(raw) : raw; } catch (_) {}
+    return raw;
+  } catch (_) { return null; }
+}
+
+async function upsertSettingJson(key, value) {
+  const payload = JSON.stringify(value);
+  // ON CONFLICT (key) не годится: PK settings — по id (см. log-monitor-cron).
+  const upd = await db.query(
+    'UPDATE settings SET value_json = $1, updated_at = NOW() WHERE key = $2',
+    [payload, key]
+  );
+  if (upd.rowCount === 0) {
+    await db.query('INSERT INTO settings (key, value_json) VALUES ($1, $2)', [key, payload]);
+  }
+}
+
+async function isImageGenBlocked() {
+  const until = await getSettingJson(BLOCKED_SETTING_KEY);
+  if (!until) return false;
+  const ts = Date.parse(String(until));
+  if (!Number.isFinite(ts)) return false;
+  if (Date.now() < ts) {
+    console.log(`[AcademyCron] генерация картинок заблокирована до ${new Date(ts).toISOString()} (NO_CREDIT)`);
+    return true;
+  }
+  // Срок истёк — снимаем флаг, чтобы не копить мёртвые ключи.
+  try { await upsertSettingJson(BLOCKED_SETTING_KEY, null); } catch (_) {}
+  return false;
+}
+
+async function blockImageGenOnNoCredit(hours = 24) {
+  const until = new Date(Date.now() + hours * 3600 * 1000).toISOString();
+  await upsertSettingJson(BLOCKED_SETTING_KEY, until);
+  console.warn(`[AcademyCron] NO_CREDIT → блок генерации до ${until}`);
+  try {
+    const { rows: admins } = await db.query(
+      `SELECT id FROM users WHERE role IN ('ADMIN','PM','HEAD_PM','HR') AND is_active = true LIMIT 5`
+    );
+    for (const a of admins) {
+      await pushService.sendPush(db, a.id, {
+        title: '🏛️ Мимир: баланс RouterAI пуст',
+        body: `Генерация картинок остановлена до ${until.slice(0, 16)}. Пополни баланс.`,
+        tag: 'academy-no-credit',
+        url: '/?page=academy-admin',
+        data: { type: 'academy_no_credit' },
+      });
+    }
+  } catch (e) {
+    console.warn('[AcademyCron] push NO_CREDIT не ушёл:', e.message);
+  }
+}
+
+function runImageGen(lessonId) {
+  const { execFileSync } = require('child_process');
+  const pathMod = require('path');
+  const genScript = pathMod.join(__dirname, '..', '..', 'tools', 'academy-gen-images.js');
+  if (!require('fs').existsSync(genScript)) {
+    const err = new Error('генератор не найден');
+    err.code = 'NO_SCRIPT';
+    throw err;
+  }
+  try {
+    execFileSync(
+      process.execPath,
+      [genScript, '--lesson', String(lessonId), '--apply', '--max-cost', String(GEN_MAX_COST)],
+      { cwd: pathMod.join(__dirname, '..', '..'), encoding: 'utf8', timeout: 20 * 60 * 1000, stdio: 'pipe' }
+    );
+  } catch (e) {
+    if (e.status === EXIT_NO_CREDIT || /NO_CREDIT/.test(String(e.stdout || '') + String(e.stderr || '') + String(e.message || ''))) {
+      const err = new Error('NO_CREDIT');
+      err.code = 'NO_CREDIT';
+      throw err;
+    }
+    throw e;
+  }
+}
 
 /**
  * Найти слот, который НЕ закрыт: нет published-урока, или он неполный.
@@ -562,6 +649,9 @@ function curriculumEntryForWeek(weekNumber) {
  * срабатывает ТОЛЬКО когда published-урока на слот нет вовсе.
  */
 async function catchUpMissingLesson() {
+  // Бюджетный стоп: после NO_CREDIT не дёргаем API каждый день (инцидент 25.10.2026).
+  if (await isImageGenBlocked()) return null;
+
   // ── ПРИОРИТЕТ 0: любая published-лекция БЕЗ картинок ──────────────────────
   // Проблема (19.10.2026): лекция, опубликованная ДО заливки генератора
   // (напр. #160), не попадала в догон: он смотрел только НАЗАД-вперёд слот
@@ -581,20 +671,18 @@ async function catchUpMissingLesson() {
     for (const n of naked) {
       console.log(`[AcademyCron][catch-up] лекция #${n.id} (week ${n.week_number}) БЕЗ картинок — дорисовываю`);
       try {
-        const { execFileSync } = require('child_process');
-        const pathMod = require('path');
-        const genScript = pathMod.join(__dirname, '..', '..', 'tools', 'academy-gen-images.js');
-        if (require('fs').existsSync(genScript)) {
-          execFileSync(process.execPath, [genScript, '--lesson', String(n.id), '--apply'], {
-            cwd: pathMod.join(__dirname, '..', '..'), encoding: 'utf8', timeout: 20 * 60 * 1000, stdio: 'pipe',
-          });
-          done++;
-          console.log(`[AcademyCron][catch-up] иллюстрации для #${n.id} готовы`);
-        } else {
+        runImageGen(n.id);
+        done++;
+        console.log(`[AcademyCron][catch-up] иллюстрации для #${n.id} готовы`);
+      } catch (e) {
+        if (e.code === 'NO_SCRIPT') {
           console.log('[AcademyCron][catch-up] генератор не найден — пропуск');
           break;
         }
-      } catch (e) {
+        if (e.code === 'NO_CREDIT') {
+          await blockImageGenOnNoCredit(24);
+          break;
+        }
         console.warn(`[AcademyCron][catch-up] #${n.id}: не удалось (${(e.message || '').slice(0, 100)}) — попробуем завтра`);
       }
     }
@@ -635,17 +723,13 @@ async function catchUpMissingLesson() {
       // Текст есть, картинок нет (например, сгенерировали при сбое AI) — дорисовываем.
       console.log(`[AcademyCron][catch-up] week ${plannedWeek}: лекция #${existing.id} без картинок — генерирую иллюстрации`);
       try {
-        const { execFileSync } = require('child_process');
-        const pathMod = require('path');
-        const genScript = pathMod.join(__dirname, '..', '..', 'tools', 'academy-gen-images.js');
-        if (require('fs').existsSync(genScript)) {
-          execFileSync(process.execPath, [genScript, '--lesson', String(existing.id), '--apply'], {
-            cwd: pathMod.join(__dirname, '..', '..'), encoding: 'utf8', timeout: 20 * 60 * 1000, stdio: 'pipe',
-          });
+        if (!(await isImageGenBlocked())) {
+          runImageGen(existing.id);
           console.log(`[AcademyCron][catch-up] иллюстрации для #${existing.id} готовы`);
         }
       } catch (e) {
-        console.warn(`[AcademyCron][catch-up] иллюстрации не удались (${(e.message || '').slice(0, 100)}) — попробуем завтра`);
+        if (e.code === 'NO_CREDIT') await blockImageGenOnNoCredit(24);
+        else console.warn(`[AcademyCron][catch-up] иллюстрации не удались (${(e.message || '').slice(0, 100)}) — попробуем завтра`);
       }
     } else if (Number(nq) < MIN_QUESTIONS) {
       console.log(`[AcademyCron][catch-up] week ${plannedWeek}: есть published #${existing.id}, но вопросов ${nq} < ${MIN_QUESTIONS} — НЕ архивирую (отдельная задача на добивание)`);
@@ -1021,21 +1105,18 @@ async function generateWeeklyLesson(opts = {}) {
       // картинки — дополнение. Инструмент идемпотентен и помечает сомнительные
       // сцены (needs_review) для выборочной проверки человеком.
       try {
-        const { execFileSync } = require('child_process');
-        const pathMod = require('path');
-        const genScript = pathMod.join(__dirname, '..', '..', 'tools', 'academy-gen-images.js');
-        if (require('fs').existsSync(genScript)) {
-          console.log(`[AcademyCron] Иллюстрации: генерация для лекции #${lessonId}...`);
-          execFileSync(process.execPath, [genScript, '--lesson', String(lessonId), '--apply'], {
-            cwd: pathMod.join(__dirname, '..', '..'), encoding: 'utf8', timeout: 20 * 60 * 1000, stdio: 'pipe',
-          });
-          console.log(`[AcademyCron] Иллюстрации: готово для #${lessonId}`);
+        if (await isImageGenBlocked()) {
+          console.log(`[AcademyCron] Иллюстрации: пропуск #${lessonId} — генерация заблокирована (NO_CREDIT)`);
         } else {
-          console.log('[AcademyCron] Иллюстрации: инструмент не найден — публикую без картинок');
+          console.log(`[AcademyCron] Иллюстрации: генерация для лекции #${lessonId}...`);
+          runImageGen(lessonId);
+          console.log(`[AcademyCron] Иллюстрации: готово для #${lessonId}`);
         }
       } catch (e) {
         // НЕ роняем публикацию из-за картинок — догон/повтор добавит их позже.
-        console.warn(`[AcademyCron] Иллюстрации НЕ сгенерированы (${(e.message || '').slice(0, 120)}) — лекция публикуется без них`);
+        if (e.code === 'NO_CREDIT') await blockImageGenOnNoCredit(24);
+        else if (e.code === 'NO_SCRIPT') console.log('[AcademyCron] Иллюстрации: инструмент не найден — публикую без картинок');
+        else console.warn(`[AcademyCron] Иллюстрации НЕ сгенерированы (${(e.message || '').slice(0, 120)}) — лекция публикуется без них`);
       }
 
       await setLessonStatus(lessonId, 'published');

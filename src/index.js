@@ -1203,14 +1203,23 @@ try {
 }
 
 // ── Academy Cron: daily fact + weekly lesson generation ──
-try {
-  const academyCron = require('./services/academy-cron');
-  fastify.addHook('onReady', async () => {
-    academyCron.init();
-    fastify.log.info('[AcademyCron] Academy cron started (daily fact + weekly lesson)');
-  });
-} catch (cronErr) {
-  fastify.log.warn('[AcademyCron] Init skipped: ' + cronErr.message);
+// Гард IS_PROD_DB: локальный/клон-сервер с asgard_crm_dev НЕ должен жечь
+// RouterAI (инцидент 25.10.2026: прод + локальный :3000 рисовали параллельно
+// одним ключом → ~1000 ₽/вс). Плюс явный выключатель ACADEMY_CRON_DISABLED=1.
+if (process.env.ACADEMY_CRON_DISABLED === '1') {
+  fastify.log.warn('[AcademyCron] Skipped — ACADEMY_CRON_DISABLED=1');
+} else if ((process.env.DB_NAME || 'asgard_crm') !== 'asgard_crm' && process.env.NODE_ENV !== 'test') {
+  fastify.log.warn(`[AcademyCron] Skipped — non-prod DB (${process.env.DB_NAME})`);
+} else {
+  try {
+    const academyCron = require('./services/academy-cron');
+    fastify.addHook('onReady', async () => {
+      academyCron.init();
+      fastify.log.info('[AcademyCron] Academy cron started (daily fact + weekly lesson)');
+    });
+  } catch (cronErr) {
+    fastify.log.warn('[AcademyCron] Init skipped: ' + cronErr.message);
+  }
 }
 
 // ── Per-Diem Cron: daily check unpaid per-diem ──

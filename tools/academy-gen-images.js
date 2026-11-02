@@ -17,6 +17,15 @@
  *   node tools/academy-gen-images.js --lesson 32            # dry-run (план + смета)
  *   node tools/academy-gen-images.js --lesson 32 --apply    # сгенерировать и записать
  *   node tools/academy-gen-images.js --lesson 32 --rollback # вернуть blocks из бэкапа
+ *   node tools/academy-gen-images.js --lesson 32 --apply --max-cost 150
+ *
+ * Бюджет (инцидент 25.10.2026 — ~1000 ₽/вс из-за двойного крона):
+ *   --max-cost <₽>   потолок на ОДИН прогон (по умолчанию 150).
+ *                    При превышении — останавливаемся, уже сгенерированное
+ *                    сохраняем, exit 0 (частичный успех).
+ *   exit 42          NO_CREDIT: API сказал «нет денег» — крон ставит
+ *                    academy_gen_blocked_until и не дёргает генератор зря.
+ *   advisory-lock    pg_try_advisory_lock(42042) — одна генерация на БД.
  */
 
 const fs = require('fs');
@@ -80,6 +89,22 @@ const MODEL_PRO = 'google/gemini-3-pro-image';       // scene, ~15 ₽, PNG 2K
 const MODEL_FLASH = 'google/gemini-3.1-flash-image'; // diagram/schema, ~7,4 ₽, JPEG 1K
 const PRICE_PRO = 15.2;   // ₽/картинка (замер 15.10.2026)
 const PRICE_FLASH = 7.4;
+const DEFAULT_MAX_COST = 150; // ₽ на один прогон (~1 лекция с запасом на 1 retry)
+const EXIT_NO_CREDIT = 42;
+const ADVISORY_LOCK_KEY = 42042; // namespace: academy image generation
+
+function isNoCreditError(payload) {
+  const s = typeof payload === 'string' ? payload : JSON.stringify(payload || {});
+  return /insufficient[_ ]?(quota|funds|balance|credit)|billing|payment[_ ]required|out of credit|no credit|недостаточно|баланс.*(нулев|пуст|закончил)|402\b|credits?\s*(exhausted|depleted)/i.test(s);
+}
+
+function parseMaxCost(args) {
+  const i = args.indexOf('--max-cost');
+  if (i < 0) return DEFAULT_MAX_COST;
+  const n = Number(args[i + 1]);
+  if (!Number.isFinite(n) || n <= 0) return DEFAULT_MAX_COST;
+  return n;
+}
 
 // ── Стиль и бригада (тот же STYLE LOCK, что в утверждённых превью) ──────────
 const STYLE = `
@@ -183,14 +208,26 @@ async function generateImage(slot) {
       if (isScene && refs.length) body.input_references = refs;
       const t0 = Date.now();
       const r = await fetch(IMG_URL, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + API_KEY }, body: JSON.stringify(body) });
-      const j = await r.json();
+      const text = await r.text();
+      let j;
+      try { j = JSON.parse(text); } catch (_) { j = { error: { message: text.slice(0, 200) } }; }
+      if (r.status === 402 || isNoCreditError(j) || isNoCreditError(text)) {
+        console.log(`[gen] ${slot.slug}: NO_CREDIT (HTTP ${r.status}) — ${JSON.stringify(j).slice(0, 160)}`);
+        return { ok: false, code: 'NO_CREDIT' };
+      }
       const b64 = j.data && j.data[0] && j.data[0].b64_json;
-      if (!b64) { console.log(`[gen] ${slot.slug}: API вернул без картинки: ${JSON.stringify(j).slice(0, 160)}`); await sleep(4000); continue; }
+      if (!b64) {
+        if (isNoCreditError(j)) return { ok: false, code: 'NO_CREDIT' };
+        console.log(`[gen] ${slot.slug}: API вернул без картинки: ${JSON.stringify(j).slice(0, 160)}`);
+        await sleep(4000);
+        continue;
+      }
       const raw = Buffer.from(b64, 'base64');
       const cost = Number(j.usage?.cost) || (model === MODEL_PRO ? PRICE_PRO : PRICE_FLASH);
       console.log(`[gen] ${slot.slug}: OK ${(raw.length / 1024).toFixed(0)} KB (${model.split('/')[1]}, cast=${(slot.cast || []).join('+') || 'all'}, ${cost.toFixed(2)} ₽, ${((Date.now() - t0) / 1000).toFixed(0)}с)`);
       return { ok: true, raw, model, cost };
     } catch (e) {
+      if (isNoCreditError(e.message)) return { ok: false, code: 'NO_CREDIT' };
       console.log(`[gen] ${slot.slug}: попытка ${attempt} — ${e.message}`);
       await sleep(4000);
     }
@@ -645,6 +682,8 @@ async function main() {
   const doRecompress = args.includes('--recompress');
   const force = args.includes('--force');
   const list = args.includes('--list');
+  const maxCost = parseMaxCost(args);
+  let lockHeld = false;
 
   // Ключ может лежать не в .env, а в БД (прод) или в env процесса — пробуем всё.
   if (!API_KEY) API_KEY = await resolveApiKey();
@@ -696,7 +735,7 @@ async function main() {
   console.log(`Раздел: ${lesson.saga} | обязательная: ${lesson.is_mandatory}`);
   console.log(`Блоков сейчас: ${lesson.blocks.length} (без картинок: ${lesson._cleanBlocks.length})`);
   console.log(`Картинок в плане: ${plan.length} (scene/Pro: ${nPro}, diagram/Flash: ${nFlash})`);
-  console.log(`Оценка стоимости: ~${est.toFixed(1)} ₽`);
+  console.log(`Оценка стоимости: ~${est.toFixed(1)} ₽ (лимит --max-cost ${maxCost} ₽)`);
   console.log(`Режим: ${apply ? 'ЗАПИСЬ (--apply)' : 'dry-run (только план)'}`);
   console.log('──────────────────────────────────────────────');
   for (const s of plan) {
@@ -706,11 +745,26 @@ async function main() {
 
   if (!apply) { console.log('\nDry-run завершён. Запусти с --apply, чтобы сгенерировать и записать.'); await pool.end(); return; }
 
+  // Одна генерация на БД — защита от двух локальных серверов / двойного крона.
+  try {
+    const { rows: lockRows } = await pool.query('SELECT pg_try_advisory_lock($1) AS got', [ADVISORY_LOCK_KEY]);
+    if (!lockRows[0]?.got) {
+      console.error(`[lock] другая генерация уже идёт (advisory ${ADVISORY_LOCK_KEY}) — выхожу без оплаты`);
+      await pool.end();
+      process.exit(0);
+    }
+    lockHeld = true;
+  } catch (e) {
+    console.warn(`[lock] advisory недоступен (${e.message}) — продолжаю без замка`);
+  }
+
   const dir = path.join(ROOT, 'uploads', 'academy', `lesson-${lesson.id}`);
   fs.mkdirSync(dir, { recursive: true });
 
   const results = [];
   let spent = 0;
+  let hitBudget = false;
+  let hitNoCredit = false;
   for (const slot of plan) {
     // Идемпотентность (B7): если файл уже есть и не --force — не тратим деньги.
     const existing = ['webp', 'png', 'jpg', 'jpeg']
@@ -726,8 +780,25 @@ async function main() {
       continue;
     }
 
+    // Бюджетный стоп ДО вызова API — не тратим сверх лимита.
+    const nextEst = (slot.kind === 'scene' ? PRICE_PRO : PRICE_FLASH);
+    if (spent + nextEst > maxCost) {
+      console.log(`[budget] ${slot.slug}: spent=${spent.toFixed(1)} + ${nextEst} > max-cost ${maxCost} — стоп`);
+      slot._skipped_budget = true;
+      hitBudget = true;
+      break;
+    }
+
     const g = await generateImage(slot);
-    if (!g.ok) { console.warn(`[gen] ${slot.slug}: ПРОПУЩЕН (все попытки неудачны)`); continue; }
+    if (!g.ok) {
+      if (g.code === 'NO_CREDIT') {
+        console.warn(`[gen] ${slot.slug}: NO_CREDIT — останавливаю прогон`);
+        hitNoCredit = true;
+        break;
+      }
+      console.warn(`[gen] ${slot.slug}: ПРОПУЩЕН (все попытки неудачны)`);
+      continue;
+    }
     spent += g.cost;
 
     // ── Слой 2: vision-арбитр для сцен (проверка примет бригады) ──
@@ -741,9 +812,16 @@ async function main() {
       let attemptNo = 1;
       while (!judged.ok && judged.score != null && attemptNo < JUDGE_ATTEMPTS) {
         attemptNo++;
+        if (spent + PRICE_PRO > maxCost) {
+          console.log(`[budget] ${slot.slug}: retry не влезает в max-cost ${maxCost} — оставляю текущий`);
+          break;
+        }
         console.log(`[judge] ${slot.slug}: приметы не прошли (${judged.score}) — перегенерация ${attemptNo}/${JUDGE_ATTEMPTS}`);
         const g2 = await generateImage(slot);
-        if (!g2.ok) break;
+        if (!g2.ok) {
+          if (g2.code === 'NO_CREDIT') { hitNoCredit = true; break; }
+          break;
+        }
         spent += g2.cost;
         const j2 = await judgeScene(g2.raw, slot.cast);
         if (j2.score != null) console.log(`[judge] ${slot.slug}: попытка ${attemptNo} → score=${j2.score} ${j2.ok ? '✓' : '✗'}`);
@@ -751,6 +829,7 @@ async function main() {
         judged = j2;
         if (judged.ok) break;
       }
+      if (hitNoCredit) break;
       // Берём лучший вариант (или первый, если арбитр молчал)
       buf = judged.score != null ? best.buf : g.raw;
       if (judged.score != null && !judged.ok) {
@@ -782,24 +861,34 @@ async function main() {
 
   await closeBrowser();
 
+  async function releaseLock() {
+    if (!lockHeld) return;
+    try { await pool.query('SELECT pg_advisory_unlock($1)', [ADVISORY_LOCK_KEY]); } catch (_) {}
+    lockHeld = false;
+  }
+
   if (!results.length) {
     console.error('\n[abort] ни одной картинки не сгенерировано — blocks НЕ тронуты.');
+    if (hitNoCredit) console.error('[abort] причина: NO_CREDIT');
+    if (hitBudget) console.error('[abort] причина: BUDGET (max-cost)');
+    await releaseLock();
     await pool.end();
+    if (hitNoCredit) process.exit(EXIT_NO_CREDIT);
     return;
   }
 
-    const newBlocks = buildBlocks(lesson.blocks, results);
+  const newBlocks = buildBlocks(lesson.blocks, results);
 
-    // ВАЖНО (16.10.2026): помечаем в самих блоках сцены, которые НЕ прошли порог
-    // даже после авто-перегенерации. Иначе тихо-плохая картинка уходит в прод,
-    // и о ней никто не узнаёт (был класс: quality-пометка жила только в логе).
-    for (const r of results) {
-      if (!r._needsReview) continue;
-      const blk = newBlocks.find((b) => b.type === 'illustration' && b.slug === r.slug);
-      if (blk) { blk.needs_review = true; }
-    }
+  // ВАЖНО (16.10.2026): помечаем в самих блоках сцены, которые НЕ прошли порог
+  // даже после авто-перегенерации. Иначе тихо-плохая картинка уходит в прод,
+  // и о ней никто не узнаёт (был класс: quality-пометка жила только в логе).
+  for (const r of results) {
+    if (!r._needsReview) continue;
+    const blk = newBlocks.find((b) => b.type === 'illustration' && b.slug === r.slug);
+    if (blk) { blk.needs_review = true; }
+  }
 
-    const addedCount = newBlocks.length - lesson._cleanBlocks.length;
+  const addedCount = newBlocks.length - lesson._cleanBlocks.length;
 
   // Бэкап только если реально добавляем новые блоки (иначе повторный прогон
   // затирал бы хорошую версию своей же копией — B7c).
@@ -835,13 +924,17 @@ async function main() {
   console.log(`  id лекции: ${chk[0].id} (не изменился: ${chk[0].id === lesson.id})`);
   console.log(`  вопросов теста на месте: ${chk[0].nq}`);
   console.log(`  строк прогресса по этой лекции: ${prog[0].n} (не тронуты)`);
-  console.log(`  потрачено: ~${spent.toFixed(1)} ₽`);
+  console.log(`  потрачено: ~${spent.toFixed(1)} ₽ / лимит ${maxCost} ₽`);
+  if (hitBudget) console.log('  стоп: BUDGET (часть слотов отложена)');
+  if (hitNoCredit) console.log('  стоп: NO_CREDIT');
   const totalOut = results.reduce((s, r) => s + Number(r.outKB), 0);
   console.log(`  суммарный вес картинок: ${(totalOut / 1024).toFixed(2)} МБ`);
   console.log(`  откат: node tools/academy-gen-images.js --lesson ${lesson.id} --rollback`);
   console.log('══════════════════════════════════════════════');
 
+  await releaseLock();
   await pool.end();
+  if (hitNoCredit) process.exit(EXIT_NO_CREDIT);
 }
 
 main()
@@ -849,12 +942,16 @@ main()
     // Явное успешное завершение: глушим возможные зависшие хэндлы (браузер,
     // пул) — иначе посторонняя async-ошибка давала exit_code=1 при УСПЕШНОЙ работе.
     await closeBrowser();
+    try { await pool.query('SELECT pg_advisory_unlock($1)', [ADVISORY_LOCK_KEY]); } catch (_) {}
     try { await pool.end(); } catch (_) {}
+    // process.exit уже мог быть вызван из main (NO_CREDIT=42) — не перетираем.
+    if (typeof process.exitCode === 'number') process.exit(process.exitCode);
     process.exit(0);
   })
   .catch(async (e) => {
     console.error('FATAL', e);
     await closeBrowser();
+    try { await pool.query('SELECT pg_advisory_unlock($1)', [ADVISORY_LOCK_KEY]); } catch (_) {}
     try { await pool.end(); } catch (_) {}
     process.exit(1);
   });
