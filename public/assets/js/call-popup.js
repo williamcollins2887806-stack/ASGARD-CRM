@@ -193,13 +193,26 @@ window.AsgardCallPopup = (function () {
     if (!w) return;
     var doc = w.document;
     var call = current;
-    var ringing = call && call.state === 'ringing';
-    var inCall = call && call.state === 'incall';
+    // БАГ 02.11.2026: «после сброса в окне продолжался разговор».
+    // render() вызывался при завершении звонка с current = null, но продолжал
+    // рисовать: ringing=false, inCall=null → заголовок «Разговор» и номер
+    // прошлого вызова. Теперь без активного звонка окно очищается.
+    if (!call) {
+      try {
+        if (doc.body) {
+          doc.body.innerHTML = '';
+          doc.body.setAttribute('data-cp', 'closed');
+        }
+      } catch (_) {}
+      return;
+    }
+    var ringing = call.state === 'ringing';
+    var inCall = call.state === 'incall';
 
     var cls = ringing ? 'ringing' : 'incall';
     var title = ringing ? 'Входящий звонок' : 'Разговор';
-    var num = call ? fmtPhone(call.number) : '';
-    var name = call && call.name ? String(call.name) : '';
+    var num = fmtPhone(call.number);
+    var name = call.name ? String(call.name) : '';
 
     var html = ''
       + '<div class="wrap ' + cls + '">'

@@ -198,9 +198,13 @@
   }
 
   function setState(next, extra) {
-    if (state === next) return;
-    state = next;
-    emit('state', extra || {});
+    var changed = state !== next;
+    if (changed) state = next;
+    if (changed) emit('state', extra || {});
+    // Окно синхронизируем ВСЕГДА, даже если состояние формально не изменилось.
+    // Баг 02.11.2026: после сброса 'ended' пытался вернуть то же on_line_*,
+    // setState выходил по раннему return, syncCallPopup не вызывался — и в окне
+    // оставался «Разговор» с прошлым номером.
     try { syncCallPopup(); } catch (_) {}
   }
 
@@ -359,9 +363,13 @@
     session.on('ended', function () {
       activeSession = null;
       micMuted = false;
-      callMeta = {};
+      // Порядок важен (баг 02.11.2026 «окно продолжало показывать разговор»):
+      // сначала переводим состояние в «на линии» — setState вызывает
+      // syncCallPopup, который закрывает окно, — и только ПОТОМ чистим callMeta.
+      // Раньше callMeta={} стоял выше, и syncCallPopup читал уже пустой объект.
       if (onDuty) setState(mode === 'mobile' ? STATES.on_line_mobile : STATES.on_line_browser);
       else setState(STATES.offline);
+      callMeta = {};
       emit('ended', {});
       maybeConsumePendingReload();
     });
@@ -377,9 +385,10 @@
         try { retryViaServer(pendingOutbound); } catch (_) {}
       }
       pendingOutbound = null;
-      callMeta = {};
+      // Тот же порядок, что и в 'ended'.
       if (onDuty) setState(mode === 'mobile' ? STATES.on_line_mobile : STATES.on_line_browser);
       else setState(STATES.offline);
+      callMeta = {};
       emit('failed', { cause: cause || null });
       maybeConsumePendingReload();
     });
@@ -1030,6 +1039,7 @@
       }) })
         .catch(function () {})
         .then(function () {
+          // Порядок: сначала состояние (закроет окно), потом очистка callMeta.
           setState(onDuty ? (mode === 'mobile' ? STATES.on_line_mobile : STATES.on_line_browser) : STATES.offline);
           callMeta = {};
           emit('hangup', {});
