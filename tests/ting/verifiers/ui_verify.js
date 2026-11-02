@@ -38,6 +38,18 @@ check('U12_mobile_sheets', /ting-chat\.open/.test(tingCss) && /ting-people-drawe
 check('U13_no_modul', !/модуль CRM/.test(tingPage), 'no modul CRM');
 check('U14_qr', /ting-qr/.test(tingPage + tingCss), 'QR box');
 check('U15_proto_contrast', /\.ting-proto-doc[\s\S]*color:\s*#1a1a1a/.test(tingCss), 'protocol contrast');
+check('U16_no_http_toast_copy',
+  /friendlyHttpStatus/.test(tingPage)
+  && /Не найдено/.test(tingPage)
+  && /Не найдено/.test(guest)
+  && !/AsgardUI\.toast\([^)]*HTTP /.test(tingPage),
+  'room UI maps HTTP codes to RU copy');
+check('U17_premium_grids_css',
+  /\.ting-stage\.g6\s*\{/.test(tingCss)
+  && /\.ting-stage\.g9\s*\{/.test(tingCss)
+  && /\.ting-stage\.g10\s*\{/.test(tingCss)
+  && /align-content:\s*center/.test(tingCss),
+  'g6/g9/g10 + centered stage');
 
 const fail = checks.filter((c) => !c.pass);
 const md = [

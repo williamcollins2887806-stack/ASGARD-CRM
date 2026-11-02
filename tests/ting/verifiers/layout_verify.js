@@ -269,6 +269,65 @@ async function main() {
     await context.close();
   }
 
+  /* ---- 8. Premium grid N=5 / N=10: класс + 16:9 + нет native controls / HTTP ---- */
+  for (const n of [5, 10]) {
+    const { context, page } = await openRoom({ width: 1280, height: 800 }, '#/ting?view=room&slug=k7m2qx&n=' + n);
+    await page.evaluate((nn) => {
+      window.__TING_DEMO_N__ = nn;
+      const btn = document.querySelector('[data-act="layout-toggle"]');
+      if (document.querySelector('.ting-stage.speaker')) btn?.click();
+      else { btn?.click(); btn?.click(); }
+    }, n);
+    await page.waitForTimeout(450);
+    const info = await page.evaluate(() => {
+      const stage = document.querySelector('.ting-stage');
+      const tiles = Array.from(document.querySelectorAll('.ting-stage > .ting-tile')).map((el) => {
+        const r = el.getBoundingClientRect();
+        return { w: r.width, h: r.height };
+      });
+      return {
+        cls: stage ? stage.className : '',
+        n: tiles.length,
+        ratios: tiles.map((t) => (t.h > 0 ? t.w / t.h : 0)),
+        controls: Array.from(document.querySelectorAll('.ting-tile video')).some((v) => v.controls),
+        http: !!(document.body.innerText || '').match(/\bHTTP\s+\d+/),
+        gapY: (() => {
+          if (tiles.length < 2) return 0;
+          const tops = tiles.map((t) => {
+            /* re-query for top */
+            return null;
+          });
+          return 0;
+        })()
+      };
+    });
+    const expectCls = n <= 4 ? ('g' + n) : (n <= 6 ? 'g6' : (n <= 9 ? 'g9' : 'g10'));
+    check('desktop N=' + n + ': класс ' + expectCls, new RegExp('\\b' + expectCls + '\\b').test(info.cls), 'cls=' + info.cls);
+    check('desktop N=' + n + ': число тайлов', info.n === n, 'n=' + info.n);
+    const badR = (info.ratios || []).filter((r) => Math.abs(r - 16 / 9) > TOL);
+    check('desktop N=' + n + ': все тайлы ≈ 16:9', badR.length === 0, JSON.stringify((info.ratios || []).map((r) => r.toFixed(2))));
+    check('desktop N=' + n + ': нет native video.controls', !info.controls, 'controls=' + info.controls);
+    check('desktop N=' + n + ': нет HTTP-тоста в viewport', !info.http, 'http=' + info.http);
+    await context.close();
+  }
+
+  /* ---- 9. Speaker N=5: filmstrip не пустой, thumbs ≥72px ---- */
+  {
+    const { context, page } = await openRoom({ width: 1280, height: 800 }, '#/ting?view=room&slug=k7m2qx&n=5');
+    const strip = await page.evaluate(() => {
+      const tiles = Array.from(document.querySelectorAll('.ting-filmstrip .ting-tile'));
+      return tiles.map((el) => {
+        const r = el.getBoundingClientRect();
+        return { w: r.width, h: r.height, id: el.dataset.id };
+      });
+    });
+    check('speaker N=5: лента ≥4 thumbs', strip.length >= 4, 'n=' + strip.length);
+    const small = strip.filter((t) => t.w < 71 || t.h < 40);
+    check('speaker N=5: thumbs ≥72px шириной', small.length === 0, JSON.stringify(strip));
+    check('speaker N=5: нет PiP на стейдже', (await page.$$('.ting-stage > .ting-tile.is-pip')).length === 0, 'ok');
+    await context.close();
+  }
+
   await browser.close();
   server.close();
 

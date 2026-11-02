@@ -158,9 +158,34 @@
     if (!t || /^вкс$/i.test(t) || /^vcs$/i.test(t)) return 'Тинг';
     return t;
   }
+  function friendlyHttpStatus(status) {
+    const s = Number(status) || 0;
+    if (s === 401 || s === 403) return 'Нет доступа';
+    if (s === 404) return 'Не найдено';
+    if (s === 409) return 'Конфликт состояния';
+    if (s === 429) return 'Слишком много запросов';
+    if (s >= 500) return 'Сервер временно недоступен';
+    if (s >= 400) return 'Не удалось выполнить запрос';
+    return 'Ошибка сети';
+  }
+  function friendlyErrorMessage(errOrMsg, fallback) {
+    const raw = errOrMsg && typeof errOrMsg === 'object'
+      ? (errOrMsg.message || '')
+      : String(errOrMsg || '');
+    const status = errOrMsg && typeof errOrMsg === 'object' ? errOrMsg.status : null;
+    if (status && /^HTTP\s+\d+/i.test(raw)) return friendlyHttpStatus(status);
+    if (/^HTTP\s+(\d+)/i.test(raw)) {
+      const m = raw.match(/^HTTP\s+(\d+)/i);
+      return friendlyHttpStatus(m && m[1]);
+    }
+    const t = String(raw || '').trim();
+    if (!t || /^HTTP\b/i.test(t)) return fallback || friendlyHttpStatus(status) || 'Ошибка';
+    return t;
+  }
   function toast(msg, ok) {
+    const text = friendlyErrorMessage(msg, typeof msg === 'string' ? msg : 'Ошибка');
     if (window.AsgardUI && typeof AsgardUI.toast === 'function') {
-      AsgardUI.toast(msg, ok === false ? 'error' : 'success');
+      AsgardUI.toast(text, ok === false ? 'error' : 'success');
       return;
     }
     let el = document.getElementById('ting-dom-toast');
@@ -170,7 +195,7 @@
       el.className = 'ting-guest-toast';
       document.body.appendChild(el);
     }
-    el.textContent = String(msg || '');
+    el.textContent = text;
     el.classList.remove('hidden');
     clearTimeout(el._tingToastT);
     el._tingToastT = setTimeout(() => { el.classList.add('hidden'); }, 3200);
@@ -184,13 +209,40 @@
     }));
     const j = await r.json().catch(() => ({}));
     if (!r.ok) {
-      const err = new Error(j.error || j.message || ('HTTP ' + r.status));
+      const err = new Error(j.error || j.message || friendlyHttpStatus(r.status));
       err.code = j.code || null;
       err.status = r.status;
       err.body = j;
       throw err;
     }
     return j;
+  }
+  /** Premium grid class for N=1..10 (explicit matrices, not auto-fit soup). */
+  function stageGridClass(n) {
+    const c = Math.max(1, Math.min(10, Number(n) || 1));
+    if (c === 1) return 'g1';
+    if (c === 2) return 'g2';
+    if (c === 3) return 'g3';
+    if (c === 4) return 'g4';
+    if (c <= 6) return 'g6';
+    if (c <= 9) return 'g9';
+    return 'g10';
+  }
+  function demoRoster(n) {
+    const pool = [
+      ['host', 'Никита · организатор'],
+      ['e', 'Елена'],
+      ['p', 'Гость'],
+      ['a', 'Андрей'],
+      ['b', 'Мария'],
+      ['c', 'Игорь'],
+      ['d', 'Ольга'],
+      ['f', 'Сергей'],
+      ['g', 'Анна'],
+      ['h', 'Дмитрий']
+    ];
+    const count = Math.max(1, Math.min(10, Number(n) || 2));
+    return pool.slice(0, count);
   }
   function unwrapRoom(j) { return (j && j.room) ? j.room : j; }
   function parseHash() {
@@ -841,7 +893,7 @@
           </div>
         </div>
         <div class="ting-stage-wrap">
-          <div class="ting-stage ${state.layout === 'speaker' ? 'speaker' : 'g2'}" id="ting-stage"></div>
+          <div class="ting-stage ${state.layout === 'speaker' ? 'speaker' : stageGridClass(Math.max(2, (state.participants || []).length || 2))}" id="ting-stage"></div>
           <div class="ting-filmstrip" id="ting-filmstrip"></div>
           <div class="ting-react-layer" id="ting-react-layer" aria-hidden="true"></div>
           ${peopleDrawerHtml()}
@@ -1245,6 +1297,9 @@
       if (videoTrack) {
         const v = document.createElement('video');
         v.playsInline = true; v.autoplay = true;
+        v.controls = false;
+        v.disablePictureInPicture = true;
+        try { v.setAttribute('controlsList', 'nodownload nofullscreen noremoteplayback'); } catch (_) { /* */ }
         v.muted = !!(opts && opts.mutedLocal);
         if (opts && opts.contain) v.classList.add('is-contain');
         videoTrack.attach(v);
@@ -1298,33 +1353,41 @@
     // Demo tiles ONLY in harness; otherwise connecting / empty
     if (!state.lkRoom) {
       if (harnessDemo()) {
+        /* speaker default 2 (1:1+PiP); grid default 3; __TING_DEMO_N__ / demo=group override */
+        let demoN = 2;
+        if (typeof window !== 'undefined' && window.__TING_DEMO_N__) demoN = Number(window.__TING_DEMO_N__);
+        else if (typeof window !== 'undefined' && window.__TING_DEMO_EXTRA__) demoN = 3;
+        else if (state.layout !== 'speaker') demoN = 3;
+        const roster = demoRoster(demoN);
+        const people = Object.fromEntries(roster);
+        const ids = roster.map((x) => x[0]);
         if (state.layout === 'speaker') {
           stage.className = 'ting-stage speaker';
-          // Демо зеркалит реальную логику: roster=2 → 1-на-1 (центр + PiP),
-          // roster=3 (demo=group) → группа (центр + лента, без PiP).
-          const roster = (typeof window !== 'undefined' && window.__TING_DEMO_EXTRA__) ? ['host', 'e', 'p'] : ['host', 'e'];
-          const people = { host: 'Никита · организатор', e: 'Елена', p: 'Гость' };
-          if (roster.length <= 2) {
-            const mainId = state.swapPrimary ? 'host' : 'e';
-            const pipId = mainId === 'host' ? 'e' : 'host';
+          if (ids.length <= 2) {
+            const mainId = state.swapPrimary ? ids[0] : (ids[1] || ids[0]);
+            const pipId = mainId === ids[0] ? (ids[1] || ids[0]) : ids[0];
             stage.appendChild(makeTile(mainId, null, people[mainId], false, { speak: true, gold: true, cinematic: true }));
-            stage.appendChild(makeTile(pipId, null, people[pipId], false, { pip: true, cinematic: true }));
+            if (pipId && pipId !== mainId) {
+              stage.appendChild(makeTile(pipId, null, people[pipId], false, { pip: true, cinematic: true }));
+            }
           } else {
-            const mainId = state.pinnedId || 'e';
+            const mainId = (state.pinnedId && people[state.pinnedId]) ? state.pinnedId : ids[1] || ids[0];
             stage.appendChild(makeTile(mainId, null, people[mainId], false, {
               speak: true, gold: true, cinematic: true, pin: !!state.pinnedId
             }));
             if (strip) {
-              roster.filter((id) => id !== mainId).forEach((id) => {
+              ids.filter((id) => id !== mainId).forEach((id) => {
                 strip.appendChild(makeTile(id, null, people[id], id === 'p', { cinematic: true, swap: true }));
               });
             }
           }
         } else {
-          stage.className = 'ting-stage auto';
-          stage.appendChild(makeTile('host', null, 'Никита · организатор', false, { speak: true, gold: true, cinematic: true }));
-          stage.appendChild(makeTile('e', null, 'Елена', false, { cinematic: true, gold: true }));
-          stage.appendChild(makeTile('p', null, 'Гость', true, { cinematic: true }));
+          stage.className = 'ting-stage ' + stageGridClass(ids.length);
+          ids.forEach((id, i) => {
+            stage.appendChild(makeTile(id, null, people[id], id === 'p', {
+              speak: i === 0, gold: true, cinematic: true
+            }));
+          });
         }
       } else {
         stage.className = 'ting-stage g1';
@@ -1460,15 +1523,15 @@
         });
       }
     } else {
-      const count = 1 + remotes.length;
-      stage.className = 'ting-stage auto';
+      const count = Math.min(10, 1 + remotes.length);
+      stage.className = 'ting-stage ' + stageGridClass(count);
       const localSpeak = !activeId || lp.identity === activeId;
       const hostTile = makeTile(lp.identity, localScreenTrack || localCamTrack, 'Вы', lp.isMicrophoneEnabled === false, {
         speak: localSpeak, mutedLocal: true, contain: !!localScreenTrack,
         gold: !localCamTrack && !localScreenTrack
       });
       stage.appendChild(hostTile);
-      remotes.forEach(p => {
+      remotes.slice(0, 9).forEach(p => {
         const vt = pickVideo(p);
         stage.appendChild(makeTile(p.identity, vt, p.name || p.identity, p.isMicrophoneEnabled === false, {
           speak: !!(activeId && p.identity === activeId),

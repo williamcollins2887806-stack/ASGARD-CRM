@@ -58,7 +58,8 @@ check('C30_no_iframe', !/iframe.*ting|ting.*iframe/i.test(tingPage + app), 'not 
 check('C31_no_legacy_fixed_height', !/\.ting-stage\.speaker[^{]*\{[^}]*min-height:\s*420px\s*!important/.test(tingCss),
   'легаси min-height:420px!important убран');
 check('C32_aspect_ratio_16x9', /\.ting-stage\.speaker\s*>\s*\.ting-tile[^{]*\{[^}]*aspect-ratio:\s*16\s*\/\s*9/.test(tingCss)
-  && /\.ting-stage\.auto\s+\.ting-tile\s*\{[^}]*aspect-ratio:\s*16\s*\/\s*9/.test(tingCss), 'aspect-ratio 16/9 на тайлах');
+  && (/\.ting-stage\.g4\s*>\s*\.ting-tile/.test(tingCss) || /\.ting-stage\.g10\s*>\s*\.ting-tile/.test(tingCss))
+  && /aspect-ratio:\s*16\s*\/\s*9/.test(tingCss), 'aspect-ratio 16/9 на тайлах + g4/g10');
 check('C33_pip_4x3', /\.ting-tile\.is-pip\s*\{[^}]*aspect-ratio:\s*4\s*\/\s*3/.test(tingCss) && /is-pip/.test(tingPage),
   'PiP-сам-вид 4:3');
 check('C34_swap_click', /swapPrimary/.test(tingPage) && /state\.swapPrimary\s*=\s*!state\.swapPrimary/.test(tingPage),
@@ -123,6 +124,22 @@ check('C53_guest_title_and_cam_race',
   && guest.indexOf('setCameraEnabled(true)') > -1
   && guest.indexOf('setCameraEnabled(true)') < guest.lastIndexOf('stopPreview()'),
   'guest: ВКС→Тинг + cam NotReadable + preview до publish');
+check('C54_no_video_controls',
+  /v\.controls\s*=\s*false/.test(tingPage)
+  && /hardenVideoEl|controls\s*=\s*false/.test(guest)
+  && /::-webkit-media-controls/.test(tingCss),
+  'native video controls off (CRM+guest+CSS)');
+check('C55_grid_classes_g4_g10',
+  /function stageGridClass/.test(tingPage)
+  && /\.ting-stage\.g4\s*\{/.test(tingCss)
+  && /\.ting-stage\.g10\s*\{/.test(tingCss)
+  && /stageGridClass\(count\)/.test(tingPage),
+  'premium g1..g10 matrices wired');
+check('C56_friendly_http_toast',
+  /friendlyHttpStatus|friendlyErrorMessage/.test(tingPage)
+  && !/new Error\([^)]*'HTTP '\s*\+/.test(tingPage)
+  && /Не найдено/.test(tingPage),
+  'no raw HTTP status in user toasts');
 
 const fail = checks.filter((c) => !c.pass);
 const md = [

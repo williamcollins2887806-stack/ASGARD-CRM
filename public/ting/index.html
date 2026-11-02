@@ -619,6 +619,15 @@
         } catch (_) { /* best-effort */ }
       }
       function guestToast(msg) {
+        var raw = String(msg || '').trim();
+        if (/^HTTP\s+(\d+)/i.test(raw)) {
+          var code = Number((raw.match(/^HTTP\s+(\d+)/i) || [])[1] || 0);
+          if (code === 404) raw = 'Не найдено';
+          else if (code === 401 || code === 403) raw = 'Нет доступа';
+          else if (code >= 500) raw = 'Сервер временно недоступен';
+          else raw = 'Не удалось выполнить запрос';
+        }
+        msg = raw;
         var toast = document.getElementById('guestToast');
         var lobbyMsg = document.getElementById('msg');
         if (lobbyMsg && !document.getElementById('lobby').classList.contains('hidden')) {
@@ -710,6 +719,32 @@
         })
         .catch(function () { showError('Не удалось связаться с сервером'); });
 
+      function stageGridClass(n) {
+        var c = Math.max(1, Math.min(10, Number(n) || 1));
+        if (c === 1) return 'g1';
+        if (c === 2) return 'g2';
+        if (c === 3) return 'g3';
+        if (c === 4) return 'g4';
+        if (c <= 6) return 'g6';
+        if (c <= 9) return 'g9';
+        return 'g10';
+      }
+      function syncGuestStageLayout() {
+        var stage = document.getElementById('stage');
+        if (!stage || stage.classList.contains('speaker')) return;
+        var n = stage.querySelectorAll(':scope > .ting-tile').length;
+        stage.className = 'ting-stage ' + stageGridClass(n || 1);
+      }
+      function hardenVideoEl(el) {
+        if (!el) return el;
+        try {
+          el.controls = false;
+          el.playsInline = true;
+          el.disablePictureInPicture = true;
+          el.setAttribute('controlsList', 'nodownload nofullscreen noremoteplayback');
+        } catch (_) { /* */ }
+        return el;
+      }
       function attachTrack(track, identity, name, intoStrip) {
         const stage = document.getElementById('stage');
         const strip = document.getElementById('filmstrip');
@@ -754,12 +789,13 @@
           } else {
             let el = tile.querySelector('video');
             if (!el) {
-              el = track.attach();
+              el = hardenVideoEl(track.attach());
               el.style.width = '100%'; el.style.height = '100%'; el.style.objectFit = 'cover';
               const ph = tile.querySelector('.ting-tile-ph');
               if (ph) ph.remove();
               tile.insertBefore(el, tile.firstChild);
             } else {
+              hardenVideoEl(el);
               track.attach(el);
             }
           }
@@ -770,6 +806,7 @@
         }
         const lab = tile.querySelector('.lbl .name');
         if (lab) lab.textContent = name || identity;
+        if (!intoStrip) syncGuestStageLayout();
         if (peopleOpen) renderPeople();
       }
 

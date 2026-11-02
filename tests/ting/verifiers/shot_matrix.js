@@ -163,6 +163,10 @@ window.fetch = async function(url, opts) {
 if (!location.hash || location.hash.indexOf('#/ting') !== 0) location.hash = '#/ting';
 window.__TING_HARNESS_DEMO__ = true;
 window.__TING_DEMO_EXTRA__ = /demo=group/.test(location.hash);
+(function () {
+  var m = location.hash.match(/[?&]n=(\\d+)/);
+  if (m) window.__TING_DEMO_N__ = Math.max(1, Math.min(10, parseInt(m[1], 10) || 2));
+})();
 TingPage.mount('#ting-root');
 window.addEventListener('hashchange', () => TingPage.onHash());
 </script></body></html>`;
@@ -285,6 +289,43 @@ async function main() {
       await page.waitForTimeout(350);
       await hideChat(page);
     }, true);
+    await shotRoom(prefix + '_room_grid5', vp, async (page) => {
+      await page.evaluate(() => {
+        window.__TING_DEMO_N__ = 5;
+        document.querySelector('[data-act="layout-toggle"]')?.click();
+      });
+      await page.waitForTimeout(400);
+      await hideChat(page);
+      const n = await page.evaluate(() => document.querySelectorAll('.ting-stage > .ting-tile').length);
+      if (n < 5) throw new Error('grid5 expected ≥5 tiles, got ' + n);
+      const http = await page.evaluate(() => !!(document.body.innerText || '').match(/\bHTTP\s+\d+/));
+      if (http) throw new Error('HTTP toast visible in room');
+    }, true);
+    await shotRoom(prefix + '_room_grid10', vp, async (page) => {
+      await page.evaluate(() => {
+        window.__TING_DEMO_N__ = 10;
+        const btn = document.querySelector('[data-act="layout-toggle"]');
+        /* ensure grid: if still speaker, toggle once */
+        if (document.querySelector('.ting-stage.speaker')) btn?.click();
+        else {
+          /* remount paint via toggle twice to refresh with new N */
+          btn?.click();
+          btn?.click();
+        }
+      });
+      await page.waitForTimeout(450);
+      await hideChat(page);
+      const info = await page.evaluate(() => ({
+        n: document.querySelectorAll('.ting-stage > .ting-tile').length,
+        cls: document.querySelector('.ting-stage')?.className || '',
+        controls: Array.from(document.querySelectorAll('.ting-tile video')).some((v) => v.controls),
+        http: !!(document.body.innerText || '').match(/\bHTTP\s+\d+/)
+      }));
+      if (info.n < 10) throw new Error('grid10 expected 10 tiles, got ' + info.n + ' cls=' + info.cls);
+      if (!/\bg10\b/.test(info.cls)) throw new Error('expected g10 class, got ' + info.cls);
+      if (info.controls) throw new Error('native video controls present');
+      if (info.http) throw new Error('HTTP toast visible in room');
+    }, true);
     await shotRoom(prefix + '_room_people', vp, async (page) => {
       await page.evaluate(() => document.querySelector('.ting-top-actions [data-act="toggle-people"]')?.click());
       await page.waitForSelector('.ting-people-drawer', { timeout: 5000 });
@@ -309,6 +350,21 @@ async function main() {
       await page.evaluate(() => document.querySelector('[data-act="host-end-open"]')?.click());
       await page.waitForSelector('#ting-host-end', { timeout: 5000 });
     }, false);
+  }
+
+  /* desktop light/dark grid N=5 */
+  for (const theme of THEMES) {
+    await shotRoom('crm_d_room_grid5_' + theme, desk, async (page) => {
+      await applyTheme(page, theme);
+      await page.evaluate(() => {
+        window.__TING_DEMO_N__ = 5;
+        if (document.querySelector('.ting-stage.speaker')) {
+          document.querySelector('[data-act="layout-toggle"]')?.click();
+        }
+      });
+      await page.waitForTimeout(400);
+      await hideChat(page);
+    }, true);
   }
 
   async function shotGuest(name, viewport, mode, theme) {

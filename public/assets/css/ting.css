@@ -391,12 +391,7 @@ body.ting-guest {
   width: 100%; color: inherit; font: inherit; text-align: left;
 }
 .ting-call-row:hover { background: rgba(255,255,255,.04); }
-/* ??????-??????? ??????? ? ????????????? min-height 420px ??????? (?????):
-   ??? ?????????? ????????? 16:9 ? ??????????? ????? ? ???????? ???????. */
-.ting-stage.g2 {
-  /* ????????? ??? ?????????????; ? ???? ?????????? .auto ? ?a????????? 16:9 ??????? ????? */
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-}
+/* g2 matrix defined below with premium fixed columns (not auto-fit). */
 .ting-avatar {
   width: 48px; height: 48px; border-radius: 50%; flex: 0 0 auto;
   display: grid; place-items: center;
@@ -878,14 +873,25 @@ body.ting-guest .ting-card,
     flex: 1 1 auto;
     min-height: 0;
   }
-  /* ???????: ????? ? ???? ???????, ????????? 16:9 ? ??? ??????????? */
+  /* Mobile portrait: one column stack, keep 16:9 */
   .ting-stage.g2,
+  .ting-stage.g3,
+  .ting-stage.g4,
+  .ting-stage.g6,
+  .ting-stage.g9,
+  .ting-stage.g10,
   .ting-stage.auto {
     grid-template-columns: 1fr;
     grid-template-rows: none;
     align-content: start;
+    overflow-y: auto;
   }
   .ting-stage.g2 .ting-tile,
+  .ting-stage.g3 .ting-tile,
+  .ting-stage.g4 .ting-tile,
+  .ting-stage.g6 .ting-tile,
+  .ting-stage.g9 .ting-tile,
+  .ting-stage.g10 .ting-tile,
   .ting-stage.auto .ting-tile,
   .ting-stage.speaker .ting-tile {
     aspect-ratio: 16 / 9;
@@ -921,23 +927,65 @@ body.ting-guest .ting-card,
 }
 .ting-filmstrip:empty { display: none; }
 .ting-filmstrip .ting-tile {
-  width: 148px; height: 92px; min-height: 92px; flex: 0 0 auto; border-radius: 12px;
+  width: clamp(72px, 18vw, 148px);
+  height: auto;
+  aspect-ratio: 16 / 9;
+  min-height: 72px;
+  min-width: 72px;
+  flex: 0 0 auto; border-radius: 12px;
 }
 .ting-stage {
   flex: 1; min-height: 0;
   display: grid;
   gap: 10px;
   align-content: center;
-  position: relative; /* ???? ??? PiP-???-???? */
-}
-.ting-stage.g2 {
-  grid-template-columns: 1.4fr 1fr;
-  grid-template-rows: 1fr 1fr;
+  justify-content: center;
+  position: relative;
 }
 .ting-stage.g1, .ting-stage.speaker {
   grid-template-columns: 1fr;
-  /* ?????? ?????? ???? ????????????, ????? height:100% ? ????? ???? ???? ? ?????? ???????????? */
   grid-template-rows: minmax(0, 1fr);
+}
+.ting-stage.g2 {
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: auto;
+  align-content: center;
+}
+.ting-stage.g3 {
+  grid-template-columns: 1fr 1fr 1fr;
+  grid-template-rows: auto;
+  align-content: center;
+}
+.ting-stage.g4 {
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: auto auto;
+  align-content: center;
+}
+.ting-stage.g6 {
+  grid-template-columns: repeat(3, 1fr);
+  grid-template-rows: auto auto;
+  align-content: center;
+}
+.ting-stage.g9 {
+  grid-template-columns: repeat(3, 1fr);
+  grid-template-rows: repeat(3, auto);
+  align-content: center;
+}
+.ting-stage.g10 {
+  grid-template-columns: repeat(5, 1fr);
+  grid-template-rows: auto auto;
+  align-content: center;
+}
+.ting-stage.g2 > .ting-tile,
+.ting-stage.g3 > .ting-tile,
+.ting-stage.g4 > .ting-tile,
+.ting-stage.g6 > .ting-tile,
+.ting-stage.g9 > .ting-tile,
+.ting-stage.g10 > .ting-tile {
+  aspect-ratio: 16 / 9;
+  min-height: 0;
+  width: 100%;
+  height: auto;
 }
 /* ??????: ??????? ???? ?????? 16:9 ? ??????? ??????? ? ??????.
    container-type ??????c?, ????? ??????? ?????? ?? ? ??????, ? ?????? ??????? ?
@@ -959,12 +1007,23 @@ body.ting-guest .ting-card,
   .ting-dock { bottom: calc(10px + env(safe-area-inset-bottom, 0px)); }
 }
 .ting-stage.auto {
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-  align-content: start;
-  /* ???? ?????? ?? ????? ???????? ? ????? ????? ????????; ??? ????? ?????? 16:9 */
+  /* legacy fallback — prefer g1..g10 */
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  align-content: center;
   grid-auto-rows: min-content;
 }
 .ting-stage.auto .ting-tile { aspect-ratio: 16 / 9; min-height: 0; }
+@media (max-width: 1100px) {
+  .ting-stage.g10 {
+    grid-template-columns: repeat(4, 1fr);
+  }
+}
+@media (max-width: 900px) and (min-width: 821px) {
+  .ting-stage.g3 { grid-template-columns: 1fr 1fr; }
+  .ting-stage.g6 { grid-template-columns: 1fr 1fr; }
+  .ting-stage.g9 { grid-template-columns: 1fr 1fr; }
+  .ting-stage.g10 { grid-template-columns: 1fr 1fr; }
+}
 
 .ting-tile {
   position: relative; min-height: 160px; border-radius: 18px;
@@ -1019,6 +1078,11 @@ body.ting-guest .ting-card,
 /* PiP-???-???: ?????????? ????????????? ? ???? ???????, ???? ?? ?????.
    ???????? ?? `.ting-stage.speaker` ? ????? ??????????? `.ting-stage.speaker > .ting-tile`. */
 .ting-stage.g2 > .ting-tile.is-pip,
+.ting-stage.g3 > .ting-tile.is-pip,
+.ting-stage.g4 > .ting-tile.is-pip,
+.ting-stage.g6 > .ting-tile.is-pip,
+.ting-stage.g9 > .ting-tile.is-pip,
+.ting-stage.g10 > .ting-tile.is-pip,
 .ting-stage.auto > .ting-tile.is-pip,
 .ting-stage.g1 > .ting-tile.is-pip {
   position: relative;
@@ -1026,6 +1090,21 @@ body.ting-guest .ting-card,
   width: auto; height: auto;
   aspect-ratio: 16 / 9;
   inset: auto;
+}
+/* Never show native browser media chrome on tiles */
+.ting-tile video::-webkit-media-controls,
+.ting-tile video::-webkit-media-controls-enclosure,
+.ting-tile video::-webkit-media-controls-panel {
+  display: none !important;
+  -webkit-appearance: none;
+}
+.ting-tile video {
+  pointer-events: none;
+}
+.ting-dock-btn,
+.ting-icon-btn {
+  -webkit-appearance: none;
+  appearance: none;
 }
 .ting-stage.speaker > .ting-tile.is-pip,
 .ting-stage.speaker .ting-tile.is-pip {
@@ -1518,8 +1597,12 @@ body.ting-guest .ting-card,
   .ting-dock-cap span { display: none; }
   .ting-dock-sep { margin: 2px 4px 8px; }
   .ting-page .ting-wrap { padding-bottom: 48px; }
-  .ting-stage.g2 { grid-template-columns: 1fr; grid-template-rows: auto; }
-  /* ???????: ???? ??????? (??????? .ting-stage.g2 ???? ??? ????????? ????? ? 1fr) */
+  .ting-stage.g2,
+  .ting-stage.g3,
+  .ting-stage.g4,
+  .ting-stage.g6,
+  .ting-stage.g9,
+  .ting-stage.g10 { grid-template-columns: 1fr; grid-template-rows: none; }
   .ting-ready-foot { flex-direction: column; text-align: center; }
   .ting-count-chip { font-size: 11px; padding: 6px 10px; }
   .ting-call-row .ting-btn { padding: 8px 12px; min-height: 40px; font-size: 13px; }
