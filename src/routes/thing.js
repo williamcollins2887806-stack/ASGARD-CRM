@@ -497,15 +497,14 @@ module.exports = async function thingRoutes(fastify) {
   // ─── START (notify participants) ────────────────────────────
   fastify.post('/rooms/:id/start', { preHandler: [fastify.authenticate] }, async (request, reply) => {
     try {
-      const roomId = parseInt(request.params.id, 10);
-      const { rows: [room] } = await db.query('SELECT * FROM thing_rooms WHERE id = $1', [roomId]);
+      const room = await loadRoom(request.params.id);
       if (!room) return reply.code(404).send({ error: 'Комната не найдена' });
       if (room.host_user_id !== request.user.id && !DIRECTOR_ROLES.includes(request.user.role)) {
         return reply.code(403).send({ error: 'Только организатор может начать Тинг' });
       }
-      await db.query(
-        `UPDATE thing_rooms SET status = 'active', started_at = COALESCE(started_at, NOW()) WHERE id = $1`,
-        [roomId]
+      const { rows: [updated] } = await db.query(
+        `UPDATE thing_rooms SET status = 'live', started_at = COALESCE(started_at, NOW()) WHERE id = $1 RETURNING *`,
+        [room.id]
       );
       // Push everyone who will join: without this a Ting start is silent.
       const { rows: people } = await db.query(
@@ -514,7 +513,7 @@ module.exports = async function thingRoutes(fastify) {
             AND COALESCE(lobby_status, '') NOT IN ('rejected')
           UNION
          SELECT user_id FROM meeting_participants WHERE meeting_id = $2 AND user_id IS NOT NULL`,
-        [roomId, room.meeting_id]
+        [room.id, room.meeting_id]
       ).catch(() => ({ rows: [] }));
       const host = request.user.name || 'Коллега';
       for (const p of people) {
@@ -525,10 +524,10 @@ module.exports = async function thingRoutes(fastify) {
           type: 'ting',
           title: 'Тинг начался',
           message: `${host}: ${room.title || 'видеовстреча'}`,
-          link: `/ting/?room=${roomId}`
+          link: `/ting/?room=${room.slug || room.id}`
         }).catch(() => {});
       }
-      return { success: true, notified: people.length };
+      return { success: true, room: serializeRoom(updated || room), notified: people.length };
     } catch (e) {
       return reply.code(500).send({ error: e.message || 'Ошибка старта' });
     }

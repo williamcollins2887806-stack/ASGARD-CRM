@@ -12,6 +12,20 @@ import {
 
 const MEETING_TYPES = new Set(['meeting', 'call', 'visit']);
 
+function isAsgardTingUrl(url) {
+  const u = String(url || '').trim();
+  return /\/ting\//i.test(u) || /#\/ting\b/i.test(u);
+}
+
+function isForeignVcs(url) {
+  const u = String(url || '').trim();
+  return !!(u && !isAsgardTingUrl(u));
+}
+
+function tingDefaultFor(type, conferenceUrl) {
+  return (type === 'meeting' || type === 'call') && !isForeignVcs(conferenceUrl);
+}
+
 /**
  * Модалка создания / редактирования события или Outlook-встречи.
  */
@@ -19,6 +33,8 @@ export function EventModal({ event, defaultDate, onChanged }) {
   const { close, open } = useModal();
   const isEdit = !!event?.id;
   const isMeeting = event?.source === 'meeting' || !!event?.meeting_id;
+  const initialType = event?.type || 'meeting';
+  const tingOn = tingDefaultFor(initialType, event?.conference_url);
 
   const [tab, setTab] = useState('main');
   const [data, setData] = useState({
@@ -26,13 +42,15 @@ export function EventModal({ event, defaultDate, onChanged }) {
     date:         (event?.date || defaultDate || todayYmd()).toString().slice(0, 10),
     time:         String(event?.time || '10:00').slice(0, 5),
     end_time:     String(event?.end_time || defaultEnd(event?.time || '10:00')).slice(0, 5),
-    type:         event?.type || 'meeting',
+    type:         initialType,
     description:  event?.description || '',
     location:     event?.location || '',
     conference_url: event?.conference_url || '',
     reminder_minutes: event?.reminder_minutes ?? 30,
     recurrence_rule: event?.recurrence_rule || 'NONE',
-    send_invites: true
+    send_invites: true,
+    create_thing: tingOn,
+    protocol_enabled: false
   });
   const [participantIds, setParticipantIds] = useState([]);
   const [guests, setGuests] = useState([{ name: '', email: '' }]);
@@ -75,14 +93,16 @@ export function EventModal({ event, defaultDate, onChanged }) {
     try {
       const guestsClean = cleanGuests();
       const asMeeting = MEETING_TYPES.has(data.type) &&
-        (participantIds.length > 0 || guestsClean.length > 0 || isMeeting);
+        (participantIds.length > 0 || guestsClean.length > 0 || isMeeting || data.create_thing);
 
       if (asMeeting) {
+        const conf = String(data.conference_url || '').trim();
+        const foreignVcs = isForeignVcs(conf);
         const payload = {
           title: data.title.trim(),
           description: data.description || '',
           location: data.location || null,
-          conference_url: data.conference_url || null,
+          conference_url: conf || null,
           start_time: `${data.date}T${data.time || '10:00'}:00`,
           end_time: `${data.date}T${data.end_time || defaultEnd(data.time)}:00`,
           participant_ids: participantIds,
@@ -91,12 +111,24 @@ export function EventModal({ event, defaultDate, onChanged }) {
           notify_before_minutes: Number(data.reminder_minutes) || 15,
           recurrence_rule: data.recurrence_rule
         };
+        if (data.create_thing && !foreignVcs) {
+          payload.create_thing = true;
+          payload.protocol_enabled = !!data.protocol_enabled;
+        }
         if (isMeeting && event.meeting_id) {
-          await updateMeeting(event.meeting_id, payload);
-          toast.success('Встреча сохранена');
+          const saved = await updateMeeting(event.meeting_id, payload);
+          const thing = saved?.thing || saved?.data?.thing;
+          if (thing?.slug) {
+            toast.success(`Встреча сохранена. Тинг: ${thing.url || '/ting/' + thing.slug}`);
+          } else {
+            toast.success('Встреча сохранена');
+          }
         } else {
-          await createMeeting(payload);
-          toast.success('Встреча создана, приглашения отправлены');
+          const saved = await createMeeting(payload);
+          const thing = saved?.thing || saved?.data?.thing;
+          toast.success(thing?.slug
+            ? `Встреча создана. Тинг: ${thing.url || '/ting/' + thing.slug}`
+            : 'Встреча создана, приглашения отправлены');
         }
       } else {
         const body = {
@@ -237,7 +269,14 @@ export function EventModal({ event, defaultDate, onChanged }) {
 
             <div className="m-grid-3">
               <Field label="Тип события">
-                <Select value={data.type} onChange={(e) => set('type', e.target.value)}>
+                <Select
+                  value={data.type}
+                  onChange={(e) => {
+                    const type = e.target.value;
+                    const on = tingDefaultFor(type, data.conference_url);
+                    setData((d) => ({ ...d, type, create_thing: on, protocol_enabled: on ? d.protocol_enabled : false }));
+                  }}
+                >
                   {EVENT_TYPES.map((t) => (
                     <option key={t.code} value={t.code}>{t.label}</option>
                   ))}
@@ -264,9 +303,33 @@ export function EventModal({ event, defaultDate, onChanged }) {
                 <Input value={data.location} onChange={(e) => set('location', e.target.value)} placeholder="Переговорная" />
               </Field>
               <Field label="Ссылка ВКС">
-                <Input value={data.conference_url} onChange={(e) => set('conference_url', e.target.value)} placeholder="https://…" />
+                <Input value={data.conference_url} onChange={(e) => set('conference_url', e.target.value)} placeholder="https://… или галка Тинг ниже" />
               </Field>
             </div>
+
+            <label className="row gap-8" style={{ alignItems: 'flex-start' }}>
+              <input
+                type="checkbox"
+                checked={!!data.create_thing}
+                onChange={(e) => set('create_thing', e.target.checked)}
+              />
+              <span>
+                <strong>Тинг-конференция</strong>
+                <div className="muted" style={{ fontSize: 12 }}>Создать комнату ASGARD и подставить ссылку</div>
+              </span>
+            </label>
+            <label className="row gap-8" style={{ alignItems: 'flex-start' }}>
+              <input
+                type="checkbox"
+                checked={!!data.protocol_enabled}
+                onChange={(e) => set('protocol_enabled', e.target.checked)}
+                disabled={!data.create_thing}
+              />
+              <span>
+                <strong>AI-протокол</strong>
+                <div className="muted" style={{ fontSize: 12 }}>После записи собрать протокол</div>
+              </span>
+            </label>
 
             <Field label="Участники (CRM)">
               <MultiSelect

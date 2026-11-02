@@ -370,21 +370,7 @@ module.exports = async function(fastify) {
       await upsertGuests(db, meeting.id, guestList);
     }
 
-    const doSend = send_invites !== false;
-    let inviteResult = { sent: 0, notified: 0 };
-    if (doSend && (Array.isArray(participant_ids) && participant_ids.length || guestList.length)) {
-      try {
-        inviteResult = await sendMeetingInvites(db, meeting.id, {
-          method: 'REQUEST',
-          sendEmail: true,
-          organizerUserId: organizerId
-        });
-      } catch (e) {
-        fastify.log.warn('Meeting invite send failed: ' + e.message);
-      }
-    }
-
-    // Тинг: create_thing | ting | ting_enabled — при создании совещания
+    // Тинг ДО invites — иначе ICS уходит без conference_url
     let thing = null;
     const wantThing = create_thing === true || create_thing === 'true'
       || ting === true || ting === 'true'
@@ -415,6 +401,20 @@ module.exports = async function(fastify) {
           error: 'Совещание создано, но Тинг не поднялся: ' + e.message,
           meeting_id: meeting.id
         });
+      }
+    }
+
+    const doSend = send_invites !== false;
+    let inviteResult = { sent: 0, notified: 0 };
+    if (doSend && (Array.isArray(participant_ids) && participant_ids.length || guestList.length)) {
+      try {
+        inviteResult = await sendMeetingInvites(db, meeting.id, {
+          method: 'REQUEST',
+          sendEmail: true,
+          organizerUserId: organizerId
+        });
+      } catch (e) {
+        fastify.log.warn('Meeting invite send failed: ' + e.message);
       }
     }
 

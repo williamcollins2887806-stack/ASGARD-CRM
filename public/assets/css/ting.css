@@ -1,11 +1,11 @@
-/* ASGARD Ting — Telemost-level polish + Ting brand (gold) */
+/* ASGARD Ting ? Telemost-level polish + Ting brand (gold) */
 @import url('https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&display=swap');
 /* Above kept only for legacy "#/ting" CRM chrome; guest surfaces use --ting-font (= --ff). */
 
 :root {
-  /* Ting aliases → CRM tokens (single source of truth: design-tokens.css).
+  /* Ting aliases ? CRM tokens (single source of truth: design-tokens.css).
      Kept as --ting-* so existing rules keep working; values follow the CRM map
-     (DS §2: only CRM colours, gold = rail chrome only). */
+     (DS ?2: only CRM colours, gold = rail chrome only). */
   --ting-gold: var(--gold, #D4A843);
   --ting-gold-l: var(--gold-l, #E8C35A);
   --ting-bg0: var(--bg0, #08090C);
@@ -26,6 +26,28 @@
   --ting-dock-h: 88px;
   --ting-chat-w: 340px;
   --ting-font: var(--ff, 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif);
+
+  /* Dual-theme surfaces ? dark defaults = cinema. Light overrides below.
+     Cinema hex lives ONLY in these token defs (T02). */
+  --ting-surface: var(--ting-bg1);
+  --ting-glass-hi: rgba(255,255,255,.10);
+  --ting-glass-lo: rgba(255,255,255,.02);
+  --ting-card-bg:
+    linear-gradient(155deg, var(--ting-glass-hi) 0%, var(--ting-glass-lo) 38%, transparent 55%),
+    linear-gradient(180deg, rgba(32,40,56,.55) 0%, rgba(14,18,28,.48) 100%);
+  --ting-card-border: rgba(255,255,255,.14);
+  --ting-card-shadow:
+    0 28px 72px rgba(0,0,0,.45),
+    0 10px 28px rgba(0,0,0,.3),
+    inset 0 1px 0 rgba(255,255,255,.14),
+    inset 0 -1px 0 rgba(0,0,0,.2);
+  --ting-dock-bg: rgba(10,14,22,.52);
+  --ting-chat-bg: rgba(14,18,26,.92);
+  --ting-drawer-bg: rgba(14,18,26,.90);
+  --ting-preview-bg: #0a0e12;
+  --ting-room-bg: #0a0c10;
+  /* Always light ink on cinema media ? never CRM --t1 inside room */
+  --ting-on-media: rgba(255,255,255,.95);
 }
 
 /* Press/tap hygiene: no native grey flash, custom focus ring everywhere. */
@@ -48,8 +70,22 @@ button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
   .ting-btn, .ting-dock-btn, .ting-card, .ting-modal { transition: none !important; }
 }
 
-/* Light theme — design-tokens.css owns the values (html[data-theme="light"]);
-   Ting inherits them via the var() aliases above. No hardcoded light palette here. */
+/* Light theme ? hub/lobby/ready cards readable; room stays cinema + --ting-on-media. */
+html[data-theme="light"] {
+  --ting-surface: var(--bg1, #F4F6F8);
+  --ting-glass-hi: rgba(255,255,255,.92);
+  --ting-glass-lo: rgba(255,255,255,.55);
+  --ting-card-bg: var(--bg2, #FFFFFF);
+  --ting-card-border: var(--brd, rgba(15,23,42,.09));
+  --ting-card-shadow: var(--shadow-md, 0 2px 4px rgba(16,24,40,.05), 0 8px 22px rgba(16,24,40,.10));
+  /* In-call chrome stays cinema (Telemost); ink via --ting-on-media */
+  --ting-dock-bg: rgba(10,14,22,.52);
+  --ting-chat-bg: rgba(14,18,26,.92);
+  --ting-drawer-bg: rgba(14,18,26,.90);
+  --ting-preview-bg: #0a0e12;
+  --ting-room-bg: #0a0c10;
+  --ting-on-media: rgba(255,255,255,.95);
+}
 
 html[data-theme="light"] .ting-page,
 html[data-theme="light"] body.ting-guest {
@@ -62,7 +98,7 @@ html[data-theme="light"] body.ting-guest {
 }
 
 html[data-theme="light"] body.ting-incall {
-  background: var(--ting-bg0);
+  background: var(--ting-room-bg);
 }
 
 /* Hub canvas: rounded content plate inside CRM chrome */
@@ -85,14 +121,14 @@ main:has(.ting-page) {
   border-radius: max(var(--ting-radius-min), var(--ting-radius-sm));
 }
 
-/* Guest SPA + CRM share the same controls — box-sizing must be global for Ting */
+/* Guest SPA + CRM share the same controls ? box-sizing must be global for Ting */
 .ting-card, .ting-card *, .ting-field, .ting-btn, .ting-preview,
 .ting-chat, .ting-chat *, .ting-room-shell, .ting-room-shell *,
 .ting-modal, .ting-modal *, .g-screen, .g-screen * {
   box-sizing: border-box;
 }
 
-/* ── CRM chrome off during call ── */
+/* ?? CRM chrome off during call ?? */
 body.ting-incall #sidebar,
 body.ting-incall .sidebar,
 body.ting-incall aside.sidebar,
@@ -223,7 +259,7 @@ body.ting-guest {
   100% { transform: scale(1.35); opacity: 0; }
 }
 .ting-wait-copy {
-  color: #E8EEF6 !important;
+  color: var(--ting-t1);
   font-weight: 650;
   opacity: 1;
   font-size: 15px;
@@ -304,7 +340,7 @@ body.ting-guest {
 }
 .ting-chip.gold { border-color: rgba(212,168,67,.45); color: var(--ting-gold); background: rgba(212,168,67,.08); }
 
-/* Hub — Telemost «Звонки» */
+/* Hub ? Telemost ???????? */
 .ting-hub-hero {
   display: grid;
   grid-template-columns: 1.4fr 1fr 1fr;
@@ -355,10 +391,10 @@ body.ting-guest {
   width: 100%; color: inherit; font: inherit; text-align: left;
 }
 .ting-call-row:hover { background: rgba(255,255,255,.04); }
-/* Легаси-правило спикера с фиксированной min-height 420px удалено (важно):
-   оно перебивало пропорции 16:9 и растягивало тайлы в «плоские полосы». */
+/* ??????-??????? ??????? ? ????????????? min-height 420px ??????? (?????):
+   ??? ?????????? ????????? 16:9 ? ??????????? ????? ? ???????? ???????. */
 .ting-stage.g2 {
-  /* Оставлено для совместимости; в коде используем .auto — гaрантирует 16:9 каждому тайлу */
+  /* ????????? ??? ?????????????; ? ???? ?????????? .auto ? ?a????????? 16:9 ??????? ????? */
   grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
 }
 .ting-avatar {
@@ -455,17 +491,11 @@ body.ting-guest {
 .ting-cta-row .ting-btn { flex: 1 1 auto; min-width: 120px; }
 
 .ting-card {
-  border: 1px solid rgba(255,255,255,.14);
+  border: 1px solid var(--ting-card-border);
   border-radius: var(--ting-radius);
   padding: 22px 20px;
-  background:
-    linear-gradient(155deg, rgba(255,255,255,.1) 0%, rgba(255,255,255,.02) 38%, transparent 55%),
-    linear-gradient(180deg, rgba(32,40,56,.55) 0%, rgba(14,18,28,.48) 100%);
-  box-shadow:
-    0 28px 72px rgba(0,0,0,.45),
-    0 10px 28px rgba(0,0,0,.3),
-    inset 0 1px 0 rgba(255,255,255,.14),
-    inset 0 -1px 0 rgba(0,0,0,.2);
+  background: var(--ting-card-bg);
+  box-shadow: var(--ting-card-shadow);
   backdrop-filter: blur(28px) saturate(1.35);
   -webkit-backdrop-filter: blur(28px) saturate(1.35);
 }
@@ -482,7 +512,7 @@ body.ting-guest .ting-card,
   margin: 0 0 10px;
   box-sizing: border-box;
   min-height: 48px;
-  color-scheme: dark;
+  color-scheme: light dark;
 }
 .ting-field[type="datetime-local"],
 .ting-field[type="date"],
@@ -530,7 +560,7 @@ body.ting-guest .ting-card,
 }
 .ting-dial-lg {
   font-size: 40px; font-weight: 800; letter-spacing: .14em;
-  color: #fff; font-variant-numeric: tabular-nums; margin: 8px 0;
+  color: var(--ting-t1); font-variant-numeric: tabular-nums; margin: 8px 0;
 }
 .ting-check {
   display: flex; align-items: center; gap: 8px;
@@ -662,7 +692,7 @@ body.ting-guest .ting-card,
 
 .ting-preview {
   position: relative; height: 220px; border-radius: var(--ting-radius);
-  overflow: hidden; background: #0a0e12; border: 1px solid var(--ting-line); margin: 12px 0;
+  overflow: hidden; background: var(--ting-preview-bg); border: 1px solid var(--ting-line); margin: 12px 0;
 }
 .ting-preview video { width: 100%; height: 100%; object-fit: cover; }
 .ting-preview .avatar,
@@ -675,19 +705,20 @@ body.ting-guest .ting-card,
   box-shadow: 0 0 0 6px rgba(255,255,255,.06), 0 12px 36px rgba(0,0,0,.35);
 }
 
-/* In-call shell — Telemost polish + Ting rev-room */
+/* In-call shell ? Telemost polish + Ting rev-room */
 .ting-room-shell {
   position: fixed; inset: 0; z-index: 12000;
-  /* iPhone: не заезжаем под чёлку и домашний индикатор */
+  /* iPhone: ?? ???????? ??? ????? ? ???????? ????????? */
   padding-top: env(safe-area-inset-top, 0px);
   padding-bottom: env(safe-area-inset-bottom, 0px);
   padding-left: env(safe-area-inset-left, 0px);
   padding-right: env(safe-area-inset-right, 0px);
   box-sizing: border-box;
+  color: var(--ting-on-media);
   background:
     radial-gradient(900px 480px at 20% 0%, rgba(212,168,67,.08) 0%, transparent 50%),
     radial-gradient(800px 500px at 90% 20%, rgba(70,100,160,.12) 0%, transparent 45%),
-    #0a0c10;
+    var(--ting-room-bg);
   display: grid;
   grid-template-columns: 1fr var(--ting-chat-w);
   grid-template-rows: 1fr;
@@ -711,7 +742,20 @@ body.ting-guest .ting-card,
   background: linear-gradient(180deg, rgba(0,0,0,.55), transparent);
   pointer-events: none;
 }
-.ting-room-top > * { pointer-events: auto; }
+/* ?????? ???????????? ???????? ? ????? title/timer ??????????? filmstrip (layout_verify group pin) */
+.ting-room-top .ting-top-actions,
+.ting-room-top .ting-consent,
+.ting-room-top button,
+.ting-room-top a,
+.ting-room-top .ting-icon-btn,
+.ting-room-top .ting-count-chip,
+.ting-room-top .ting-quality-chip { pointer-events: auto; }
+.ting-filmstrip {
+  position: relative; z-index: 6;
+  pointer-events: auto;
+}
+.ting-filmstrip .ting-tile,
+.ting-filmstrip .ting-tile * { pointer-events: auto; }
 .ting-room-top-row {
   display: flex; justify-content: space-between; align-items: flex-start;
   gap: 12px; width: 100%;
@@ -729,6 +773,23 @@ body.ting-guest .ting-card,
 .ting-room-title-text #ting-timer {
   font-variant-numeric: tabular-nums; font-size: 12px;
 }
+/* In-call ink: never CRM --t1 (breaks on light theme over cinema) */
+.ting-room-shell .ting-muted,
+.ting-room-shell .ting-room-title-text,
+.ting-room-shell .ting-room-title-text strong,
+.ting-room-shell .ting-chat-head,
+.ting-room-shell .ting-chat-bubble,
+.ting-room-shell .ting-drawer-head,
+.ting-room-shell .ting-list-item,
+.ting-room-shell .ting-people-meta,
+.ting-room-shell .ting-dock-cap span {
+  color: var(--ting-on-media);
+}
+.ting-room-shell .ting-muted,
+.ting-room-shell .ting-chat-bubble b,
+.ting-room-shell .ting-dock-cap span {
+  color: color-mix(in srgb, var(--ting-on-media) 65%, transparent);
+}
 .ting-room-top .ting-top-actions {
   display: flex; gap: 8px; align-items: center; flex: 0 0 auto;
 }
@@ -736,11 +797,11 @@ body.ting-guest .ting-card,
   display: inline-flex; align-items: center; gap: 6px;
   padding: 7px 12px; border-radius: 999px; font-size: 12px; font-weight: 700;
   background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.1);
-  color: var(--ting-t1);
+  color: var(--ting-on-media);
 }
 .ting-icon-btn {
   width: 44px; height: 44px; border-radius: 14px; border: 0;
-  background: rgba(255,255,255,.08); color: var(--ting-t1);
+  background: rgba(255,255,255,.08); color: var(--ting-on-media);
   cursor: pointer; display: grid; place-items: center; position: relative;
 }
 .ting-icon-btn .badge {
@@ -774,8 +835,8 @@ body.ting-guest .ting-card,
 }
 @media (max-width: 820px) {
   .ting-consent { top: 8px; font-size: 10px; padding: 5px 10px; }
-  /* Верхний бар уводим в поток: иначе absolute-бар (z-index:3) перекрывает ленту
-     и тайлы становятся некликабельными на телефоне. */
+  /* ??????? ??? ?????? ? ?????: ????? absolute-??? (z-index:3) ??????????? ?????
+     ? ????? ?????????? ??????????????? ?? ????????. */
   .ting-room-shell .ting-room-top {
     position: static;
     background: none;
@@ -793,7 +854,7 @@ body.ting-guest .ting-card,
     flex: 1 1 auto;
     min-height: 0;
   }
-  /* Портрет: сетка в один столбец, пропорции 16:9 — без сплющивания */
+  /* ???????: ????? ? ???? ???????, ????????? 16:9 ? ??? ??????????? */
   .ting-stage.g2,
   .ting-stage.auto {
     grid-template-columns: 1fr;
@@ -812,11 +873,11 @@ body.ting-guest .ting-card,
     right: 10px;
     bottom: 84px;
   }
-  /* Шелл уже fixed inset:0 + safe-area padding — не растягиваем main на 100dvh,
-     иначе док (absolute bottom) уезжает за нижний край экрана. */
+  /* ???? ??? fixed inset:0 + safe-area padding ? ?? ??????????? main ?? 100dvh,
+     ????? ??? (absolute bottom) ??????? ?? ?????? ???? ??????. */
   .ting-room-shell { min-height: 0; }
   .ting-room-main { display: flex; flex-direction: column; min-height: 0; }
-  /* Верхний бар и док уважают safe-area (чёлка снизу/сверху на iPhone) */
+  /* ??????? ??? ? ??? ??????? safe-area (????? ?????/?????? ?? iPhone) */
   .ting-room-shell .ting-room-top {
     padding-top: calc(12px + env(safe-area-inset-top, 0px));
   }
@@ -843,7 +904,7 @@ body.ting-guest .ting-card,
   display: grid;
   gap: 10px;
   align-content: center;
-  position: relative; /* база для PiP-сам-вида */
+  position: relative; /* ???? ??? PiP-???-???? */
 }
 .ting-stage.g2 {
   grid-template-columns: 1.4fr 1fr;
@@ -851,12 +912,12 @@ body.ting-guest .ting-card,
 }
 .ting-stage.g1, .ting-stage.speaker {
   grid-template-columns: 1fr;
-  /* Строка должна быть определённой, иначе height:100% у тайла даёт цикл и строка схлопывается */
+  /* ?????? ?????? ???? ????????????, ????? height:100% ? ????? ???? ???? ? ?????? ???????????? */
   grid-template-rows: minmax(0, 1fr);
 }
-/* Спикер: главный тайл всегда 16:9 и целиком влезает в стейдж.
-   container-type задаётcя, чтобы считать размер из И ширины, И высоты стейджа —
-   иначе на низком (ландшафт) тайл либо схлопывается, либо растягивается в полосу. */
+/* ??????: ??????? ???? ?????? 16:9 ? ??????? ??????? ? ??????.
+   container-type ??????c?, ????? ??????? ?????? ?? ? ??????, ? ?????? ??????? ?
+   ????? ?? ?????? (????????) ???? ???? ????????????, ???? ????????????? ? ??????. */
 .ting-stage.speaker { container-type: size; align-content: center; }
 .ting-stage.speaker > .ting-tile {
   width: min(100cqw, calc(100cqh * 16 / 9));
@@ -866,8 +927,8 @@ body.ting-guest .ting-card,
   justify-self: center;
   align-self: center;
 }
-/* Ландшафт телефона: высота стейджа низкая — учитывается через cqh в правиле выше.
-   Бар тоже уводим в поток (ширина > 820px, поэтому правило выше не сработало). */
+/* ???????? ????????: ?????? ??????? ?????? ? ??????????? ????? cqh ? ??????? ????.
+   ??? ???? ?????? ? ????? (?????? > 820px, ??????? ??????? ???? ?? ?????????). */
 @media (orientation: landscape) and (max-height: 600px) {
   .ting-room-shell .ting-room-top { position: static; background: none; }
   .ting-stage-wrap { padding: 8px 12px 96px; }
@@ -876,7 +937,7 @@ body.ting-guest .ting-card,
 .ting-stage.auto {
   grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
   align-content: start;
-  /* Одна строка не может тянуться — иначе тайлы «плющит»; все тайлы строго 16:9 */
+  /* ???? ?????? ?? ????? ???????? ? ????? ????? ????????; ??? ????? ?????? 16:9 */
   grid-auto-rows: min-content;
 }
 .ting-stage.auto .ting-tile { aspect-ratio: 16 / 9; min-height: 0; }
@@ -884,7 +945,7 @@ body.ting-guest .ting-card,
 .ting-tile {
   position: relative; min-height: 160px; border-radius: 18px;
   overflow: hidden;
-  background: #0b0e14;
+  background: var(--ting-preview-bg);
   border: 1px solid rgba(255,255,255,.06);
 }
 .ting-tile::after {
@@ -909,10 +970,10 @@ body.ting-guest .ting-card,
   width: 100%; height: 100%;
   object-fit: cover; display: block;
 }
-/* Презентация/демонстрация экрана: не режем содержимое */
+/* ???????????/???????????? ??????: ?? ????? ?????????? */
 .ting-tile video.is-contain { object-fit: contain; background: var(--ting-pip-bg); }
-/* PiP-сам-вид: аккуратный прямоугольник в углу стейджа, свап по клику.
-   Селектор со `.ting-stage.speaker` — иначе проигрывает `.ting-stage.speaker > .ting-tile`. */
+/* PiP-???-???: ?????????? ????????????? ? ???? ???????, ???? ?? ?????.
+   ???????? ?? `.ting-stage.speaker` ? ????? ??????????? `.ting-stage.speaker > .ting-tile`. */
 .ting-stage.speaker > .ting-tile.is-pip,
 .ting-tile.is-pip {
   position: absolute;
@@ -1014,7 +1075,7 @@ body.ting-guest .ting-card,
   margin-bottom: 28px;
 }
 
-/* Floating dock — glass + depth + ergonomic groups */
+/* Floating dock ? glass + depth + ergonomic groups */
 .ting-dock {
   position: absolute; left: 50%; bottom: calc(18px + env(safe-area-inset-bottom));
   transform: translateX(-50%);
@@ -1027,7 +1088,8 @@ body.ting-guest .ting-card,
   max-width: calc(100vw - 12px);
   box-sizing: border-box;
   border-radius: 28px;
-  background: rgba(10,14,22,.52);
+  background: var(--ting-dock-bg);
+  color: var(--ting-on-media);
   border: 1px solid rgba(255,255,255,.16);
   box-shadow:
     0 24px 64px rgba(0,0,0,.55),
@@ -1046,7 +1108,7 @@ body.ting-guest .ting-card,
 }
 .ting-dock-btn {
   width: clamp(44px, 11.5vw, 52px); height: clamp(44px, 11.5vw, 52px); border-radius: 50%; border: 0;
-  background: rgba(255,255,255,.1); color: var(--ting-t1);
+  background: rgba(255,255,255,.1); color: var(--ting-on-media);
   cursor: pointer; display: grid; place-items: center;
   transition: background .15s ease, transform .15s ease, color .15s ease, box-shadow .15s ease;
 }
@@ -1058,9 +1120,9 @@ body.ting-guest .ting-card,
 }
 .ting-dock-btn svg { width: 22px; height: 22px; }
 .ting-dock-btn.active {
-  background: color-mix(in srgb, var(--ting-t1) 16%, transparent);
-  color: var(--ting-t1);
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ting-t1) 22%, transparent);
+  background: color-mix(in srgb, var(--ting-on-media) 16%, transparent);
+  color: var(--ting-on-media);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ting-on-media) 22%, transparent);
 }
 .ting-dock-btn.off { background: rgba(226,75,75,.18); color: var(--ting-danger); }
 .ting-dock-btn.on-gold { background: rgba(212,168,67,.22); color: var(--ting-gold-l); }
@@ -1080,7 +1142,8 @@ body.ting-guest .ting-card,
 .ting-chat {
   grid-area: chat;
   display: flex; flex-direction: column;
-  background: rgba(14,18,26,.92);
+  background: var(--ting-chat-bg);
+  color: var(--ting-on-media);
   border-left: 1px solid rgba(255,255,255,.08);
   min-height: 0;
   box-shadow: -12px 0 40px rgba(0,0,0,.28);
@@ -1153,14 +1216,15 @@ body.ting-guest .ting-card,
   box-shadow: none;
 }
 
-/* People rail — docks to stage edge, does not float over tiles */
+/* People rail ? docks to stage edge, does not float over tiles */
 .ting-room-main.has-people .ting-stage-wrap {
   padding-right: calc(min(300px, 42vw) + 12px);
 }
 .ting-people-drawer {
   position: absolute; top: 52px; right: 10px; bottom: 100px;
   width: min(300px, 42vw); max-height: none;
-  background: rgba(14,18,26,.9); border: 1px solid rgba(255,255,255,.12);
+  background: var(--ting-drawer-bg); color: var(--ting-on-media);
+  border: 1px solid rgba(255,255,255,.12);
   border-radius: 18px; padding: 12px; overflow: auto; z-index: 6;
   box-shadow: 0 20px 56px rgba(0,0,0,.55), 0 4px 16px rgba(0,0,0,.35);
   backdrop-filter: blur(18px);
@@ -1219,7 +1283,7 @@ body.ting-guest .ting-card,
   -webkit-backdrop-filter: blur(4px);
   display: flex; align-items: center; justify-content: center; padding: 16px;
   animation: ting-fade-in .18s ease;
-  /* Modal mounts on document.body (outside .ting-page) — own ink, ignore CRM h2/body color */
+  /* Modal mounts on document.body (outside .ting-page) ? own ink, ignore CRM h2/body color */
   color: var(--ting-t1);
   font-family: Manrope, system-ui, sans-serif;
 }
@@ -1353,14 +1417,14 @@ body.ting-guest .ting-card,
   .ting-dock-sep { margin: 2px 4px 8px; }
   .ting-page .ting-wrap { padding-bottom: 48px; }
   .ting-stage.g2 { grid-template-columns: 1fr; grid-template-rows: auto; }
-  /* Портрет: один столбец (правило .ting-stage.g2 выше уже переводит сетку в 1fr) */
+  /* ???????: ???? ??????? (??????? .ting-stage.g2 ???? ??? ????????? ????? ? 1fr) */
   .ting-ready-foot { flex-direction: column; text-align: center; }
   .ting-count-chip { font-size: 11px; padding: 6px 10px; }
   .ting-call-row .ting-btn { padding: 8px 12px; min-height: 40px; font-size: 13px; }
 }
 @media (max-width: 480px) {
   .ting-hub-hero { grid-template-columns: 1fr; }
-  /* Портрет: строго один столбец (анти-«плоские полосы») */
+  /* ???????: ?????? ???? ??????? (????-???????? ???????) */
   .ting-stage.auto { grid-template-columns: 1fr; gap: 8px; }
   .ting-tile { min-height: 0; border-radius: 16px; }
   /* Dock keeps tap targets >=44px but fits 360px: clamp handles width, hide labels */
@@ -1380,3 +1444,54 @@ body.ting-guest .ting-card,
   .ting-dock { bottom: calc(8px + env(safe-area-inset-bottom)); }
   .ting-stage-wrap { padding: 8px 10px 84px; }
 }
+
+/* Wave 1+/3 ? more sheet, quality, reactions (Telemost parity) */
+.ting-more-sheet {
+  position: absolute; left: 50%; bottom: calc(110px + env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  width: min(360px, calc(100vw - 24px));
+  z-index: 8;
+  background: var(--ting-drawer-bg);
+  border: 1px solid rgba(255,255,255,.14);
+  border-radius: 18px;
+  padding: 12px 14px 14px;
+  color: var(--ting-on-media);
+  box-shadow: 0 20px 48px rgba(0,0,0,.5);
+  backdrop-filter: blur(20px);
+}
+.ting-more-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; font-size: 14px; }
+.ting-more-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.ting-more-item {
+  border: 1px solid rgba(255,255,255,.12);
+  background: rgba(255,255,255,.06);
+  color: inherit; border-radius: 12px;
+  padding: 10px 8px; font: 700 13px/1.2 var(--ting-font);
+  cursor: pointer;
+}
+.ting-more-item:hover { background: rgba(255,255,255,.12); }
+.ting-more-hint { margin: 10px 0 0; font-size: 11px; }
+.ting-quality-chip {
+  font: 700 11px/1 var(--ting-font);
+  padding: 5px 8px; border-radius: 999px;
+  background: rgba(255,255,255,.1); color: var(--ting-on-media);
+}
+.ting-quality-chip.q-poor, .ting-quality-chip.q-lost { color: var(--ting-danger); }
+.ting-react-layer { position: absolute; inset: 0; pointer-events: none; z-index: 3; overflow: hidden; }
+.ting-react-burst {
+  position: absolute; bottom: 28%;
+  font-size: 42px; animation: ting-react-up 2.1s ease forwards;
+  filter: drop-shadow(0 6px 12px rgba(0,0,0,.45));
+}
+@keyframes ting-react-up {
+  0% { opacity: 0; transform: translateY(20px) scale(.7); }
+  15% { opacity: 1; transform: translateY(0) scale(1.1); }
+  100% { opacity: 0; transform: translateY(-80px) scale(1); }
+}
+.ting-people-row.hand-up { outline: 1px solid rgba(212,168,67,.45); border-radius: 10px; }
+.ting-consent.ting-reconnect { background: rgba(74,144,217,.18); }
+
+.ting-more-section { display: flex; flex-direction: column; gap: 6px; margin-bottom: 10px; }
+.ting-more-label { font-size: 11px; font-weight: 700; color: var(--ting-on-media-muted, var(--ting-t3)); margin-top: 4px; }
+.ting-device-select { margin: 0 0 6px; min-height: 40px; font-size: 13px; }
+.ting-bg-grid { grid-template-columns: repeat(3, 1fr); }
+.ting-more-item.on { border-color: rgba(212,168,67,.65); background: rgba(212,168,67,.16); }

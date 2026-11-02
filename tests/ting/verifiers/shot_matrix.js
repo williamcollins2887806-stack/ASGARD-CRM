@@ -73,11 +73,19 @@ function startStatic() {
   });
 }
 
-const HARNESS = `<!DOCTYPE html><html lang="ru"><head>
+const HARNESS = `<!DOCTYPE html><html lang="ru" data-theme="dark"><head>
 <meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
+<link rel="stylesheet" href="/assets/css/design-tokens.css"/>
 <link rel="stylesheet" href="/assets/css/ting.css"/>
 <title>Ting harness</title>
-<style>html,body{margin:0;background:#0a0c10;min-height:100%}</style>
+<style>html,body{margin:0;background:var(--bg0,#0a0c10);min-height:100%}</style>
+<script>
+try {
+  var th = new URLSearchParams(location.search).get('theme')
+    || localStorage.getItem('asgard_theme') || 'dark';
+  if (th === 'light' || th === 'dark') document.documentElement.setAttribute('data-theme', th);
+} catch (e) {}
+</script>
 </head><body>
 <div id="ting-root" class="ting-page"></div>
 <script src="/assets/js/ting_icons.js"></script>
@@ -167,12 +175,32 @@ async function main() {
   const rows = [];
   const desk = { width: 1280, height: 800 };
   const mob = { width: 390, height: 844 };
+  /* Wave 0b T04 — dual-theme shot contract */
+  const THEMES = ['dark', 'light'];
 
-  async function shot(name, viewport, hash, after) {
+  async function applyTheme(page, theme) {
+    await page.addInitScript((t) => {
+      try {
+        localStorage.setItem('asgard_theme', t);
+        document.documentElement.setAttribute('data-theme', t);
+      } catch (_) { /* */ }
+    }, theme);
+  }
+
+  async function shot(name, viewport, hash, after, theme) {
     const context = await browser.newContext({ viewport, permissions: [] });
     const page = await context.newPage();
     try {
+      if (theme) await applyTheme(page, theme);
       await page.goto(base + '/ting-harness.html' + hash, { waitUntil: 'domcontentloaded', timeout: 30000 });
+      if (theme) {
+        await page.evaluate((t) => {
+          try {
+            localStorage.setItem('asgard_theme', t);
+            document.documentElement.setAttribute('data-theme', t);
+          } catch (_) { /* */ }
+        }, theme);
+      }
       await page.waitForSelector('.ting-page', { timeout: 15000 });
       await page.waitForTimeout(450);
       if (after) await after(page);
@@ -230,6 +258,12 @@ async function main() {
     await shot('crm_d_' + id, desk, hash);
     await shot('crm_m_' + id, mob, hash);
   }
+  /* dual-theme samples (hub/ready/lobby) — dark + light */
+  for (const theme of THEMES) {
+    await shot('crm_d_hub_' + theme, desk, '#/ting', null, theme);
+    await shot('crm_d_ready_' + theme, desk, '#/ting?view=ready&slug=k7m2qx', null, theme);
+    await shot('crm_d_lobby_' + theme, desk, '#/ting?view=lobby&slug=k7m2qx', null, theme);
+  }
 
   async function hideChat(page) {
     await page.evaluate(() => {
@@ -272,10 +306,11 @@ async function main() {
     }, false);
   }
 
-  async function shotGuest(name, viewport, mode) {
+  async function shotGuest(name, viewport, mode, theme) {
     const context = await browser.newContext({ viewport, permissions: [] });
     const page = await context.newPage();
     try {
+      if (theme) await applyTheme(page, theme);
       await page.route('**/api/thing/public/**', async (route) => {
         await route.fulfill({
           status: 200,
@@ -288,6 +323,14 @@ async function main() {
         });
       });
       await page.goto(base + '/ting/index.html', { waitUntil: 'domcontentloaded' });
+      if (theme) {
+        await page.evaluate((t) => {
+          try {
+            localStorage.setItem('asgard_theme', t);
+            document.documentElement.setAttribute('data-theme', t);
+          } catch (_) { /* */ }
+        }, theme);
+      }
       await page.waitForTimeout(500);
       await page.evaluate((m) => {
         const hide = (id) => document.getElementById(id)?.classList.add('hidden');
@@ -329,6 +372,9 @@ async function main() {
     await shotGuest(prefix + '_waiting', vp, 'waiting');
     await shotGuest(prefix + '_ended', vp, 'ended');
     await shotGuest(prefix + '_error', vp, 'error');
+  }
+  for (const theme of THEMES) {
+    await shotGuest('guest_d_lobby_' + theme, desk, 'lobby', theme);
   }
 
   await browser.close();

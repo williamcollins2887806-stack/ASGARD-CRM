@@ -76,6 +76,7 @@
     camOn: true,
     sharing: false,
     peopleOpen: false,
+    moreOpen: false,
     chatOpenMobile: false,
     chat: [],
     participants: [],
@@ -93,7 +94,17 @@
     activeSpeakerId: null,
     swapPrimary: false,
     pinnedId: null,
-    joinToken: null
+    joinToken: null,
+    connQuality: null,
+    reconnecting: false,
+    handRaised: false,
+    raisedHands: {},
+    reactions: [],
+    blurOn: false,
+    bgPreset: 'none',
+    devices: { mics: [], cams: [] },
+    audioDeviceId: '',
+    videoDeviceId: ''
   };
 
   function harnessDemo() {
@@ -654,11 +665,12 @@
           : (state.lkRoom.remoteParticipants && state.lkRoom.remoteParticipants.get(p.identity))
       );
       const micOff = lk ? lk.isMicrophoneEnabled === false : false;
-      const camOff = lk ? !Array.from((lk.videoTrackPublications || new Map()).values()).some(x => x.track) : false;
-      return `<div class="ting-list-item ting-people-row">
+      const camOff = lk ? !Array.from((lk.videoTrackPublications || new Map()).values()).some(x => x.track && x.isMuted !== true) : false;
+      const handUp = !!(state.raisedHands && state.raisedHands[p.identity]);
+      return `<div class="ting-list-item ting-people-row${handUp ? ' hand-up' : ''}">
         <span class="ting-people-av">${esc(initials(label))}</span>
         <span class="ting-people-meta">
-          <strong>${esc(label)}</strong>
+          <strong>${esc(label)}${handUp ? ' ✋' : ''}</strong>
           ${host ? '<span class="ting-host-chip">хост</span>' : ''}
           ${p.job_title && !String(label).includes(p.job_title) ? `<em class="ting-muted">${esc(p.job_title)}</em>` : ''}
         </span>
@@ -689,16 +701,71 @@
       ? svgSpeaker()
       : ((window.TingIcons && TingIcons.grid()) || svgSpeaker());
     const layoutLabel = state.layout === 'speaker' ? COPY.speaker : COPY.grid;
+    const peopleIco = (window.TingIcons && TingIcons.people && TingIcons.people()) || svgPeople();
+    const moreIco = svgMore();
     return `<div class="ting-dock"><div class="ting-dock-inner">
       <div class="ting-dock-cap"><button type="button" class="ting-dock-btn on-gold" data-act="layout-toggle" title="Сменить раскладку: ${esc(layoutLabel)}">${layoutIco}</button><span>${esc(layoutLabel)}</span></div>
       <div class="ting-dock-cap"><button type="button" class="ting-dock-btn ${state.micOn ? 'active' : 'off'}" data-act="mic" title="${esc(COPY.mic)}">${svgMic(!state.micOn)}</button><span>Мик</span></div>
       <div class="ting-dock-cap"><button type="button" class="ting-dock-btn ${state.camOn ? 'active' : 'off'}" data-act="cam" title="${esc(COPY.cam)}">${svgCam(!state.camOn)}</button><span>Камера</span></div>
       <div class="ting-dock-cap"><button type="button" class="ting-dock-btn ${state.sharing ? 'on-gold' : ''}" data-act="share" title="${esc(COPY.screen)}">${svgScreen()}</button><span>Экран</span></div>
-      <div class="ting-dock-cap"><button type="button" class="ting-dock-btn" data-act="toggle-people" title="${esc(COPY.people)}">${svgMore()}</button><span>Ещё</span></div>
+      <div class="ting-dock-cap"><button type="button" class="ting-dock-btn ${state.peopleOpen ? 'active' : ''}" data-act="toggle-people" title="${esc(COPY.people)}">${peopleIco}</button><span>Люди</span></div>
+      <div class="ting-dock-cap"><button type="button" class="ting-dock-btn ${state.moreOpen ? 'active' : ''}" data-act="toggle-more" title="Ещё">${moreIco}</button><span>Ещё</span></div>
       <div class="ting-dock-sep" aria-hidden="true"></div>
       ${state.isHost ? `<div class="ting-dock-cap"><button type="button" class="ting-dock-btn" data-act="host-end-open" title="${esc(COPY.end)}">${endIco}</button><span>${esc(COPY.end)}</span></div>` : ''}
       <div class="ting-dock-cap"><button type="button" class="ting-dock-btn danger" data-act="leave" title="${esc(COPY.leave)}">${svgHang()}</button><span>Выйти</span></div>
     </div></div>`;
+  }
+
+  const TING_BG_PRESETS = [
+    { id: 'none', label: 'Без фона', url: '' },
+    { id: 'blur', label: 'Размытие', url: '__blur__' },
+    { id: 'office-dusk', label: 'Офис', url: '/assets/img/ting-bg/office-dusk.svg' },
+    { id: 'soft-sky', label: 'Небо', url: '/assets/img/ting-bg/soft-sky.svg' },
+    { id: 'warm-studio', label: 'Студия', url: '/assets/img/ting-bg/warm-studio.svg' }
+  ];
+
+  function moreSheetHtml() {
+    if (!state.moreOpen) return '';
+    const handOn = !!state.handRaised;
+    const bg = state.bgPreset || 'none';
+    const mics = (state.devices && state.devices.mics) || [];
+    const cams = (state.devices && state.devices.cams) || [];
+    const micOpts = mics.map((d) =>
+      `<option value="${esc(d.deviceId)}"${state.audioDeviceId === d.deviceId ? ' selected' : ''}>${esc(d.label || 'Микрофон')}</option>`
+    ).join('');
+    const camOpts = cams.map((d) =>
+      `<option value="${esc(d.deviceId)}"${state.videoDeviceId === d.deviceId ? ' selected' : ''}>${esc(d.label || 'Камера')}</option>`
+    ).join('');
+    const bgBtns = TING_BG_PRESETS.map((p) =>
+      `<button type="button" class="ting-more-item${bg === p.id ? ' on' : ''}" data-act="bg-preset" data-bg="${esc(p.id)}">${esc(p.label)}</button>`
+    ).join('');
+    return `<div class="ting-more-sheet" id="ting-more-sheet" role="dialog" aria-label="Ещё">
+      <div class="ting-more-head"><strong>Ещё</strong><button type="button" class="ting-icon-btn" data-act="toggle-more" aria-label="Закрыть">×</button></div>
+      <div class="ting-more-section">
+        <label class="ting-more-label">Микрофон</label>
+        <select class="ting-field ting-device-select" data-act="device-audio">${micOpts || '<option value=\"\">По умолчанию</option>'}</select>
+        <label class="ting-more-label">Камера</label>
+        <select class="ting-field ting-device-select" data-act="device-video">${camOpts || '<option value=\"\">По умолчанию</option>'}</select>
+      </div>
+      <div class="ting-more-grid">
+        <button type="button" class="ting-more-item" data-act="hand-toggle">${handOn ? 'Опустить руку' : 'Поднять руку'}</button>
+        <button type="button" class="ting-more-item" data-act="react" data-emoji="👍">👍</button>
+        <button type="button" class="ting-more-item" data-act="react" data-emoji="👏">👏</button>
+        <button type="button" class="ting-more-item" data-act="react" data-emoji="❤️">❤️</button>
+        <button type="button" class="ting-more-item" data-act="react" data-emoji="🔥">🔥</button>
+      </div>
+      <div class="ting-more-label">Фон</div>
+      <div class="ting-more-grid ting-bg-grid">${bgBtns}</div>
+    </div>`;
+  }
+
+  function qualityChipHtml() {
+    const q = state.connQuality;
+    if (!q) return '';
+    const map = { excellent: 'Отлично', good: 'Хорошо', poor: 'Слабо', lost: 'Потеря', unknown: '' };
+    const label = map[String(q).toLowerCase()] || '';
+    if (!label) return '';
+    return `<span class="ting-quality-chip q-${esc(String(q).toLowerCase())}" id="ting-quality">${esc(label)}</span>`;
   }
 
   function renderRoom() {
@@ -706,11 +773,13 @@
     const r = state.room || {};
     const n = Math.max(1, (state.participants || []).length || (state.lkRoom ? 1 + state.lkRoom.remoteParticipants.size : 1));
     const peopleOpen = !!state.peopleOpen;
-    const hideChat = peopleOpen || (typeof window !== 'undefined' && window.innerWidth <= 820 && !state.chatOpenMobile);
-    root.innerHTML = `<div class="ting-room-shell${hideChat || peopleOpen ? ' no-chat' : ''}">
+    const mobile = typeof window !== 'undefined' && window.innerWidth <= 820;
+    const hideChat = mobile && !state.chatOpenMobile;
+    root.innerHTML = `<div class="ting-room-shell${hideChat ? ' no-chat' : ''}${peopleOpen ? ' has-people-col' : ''}">
       <div class="ting-room-main${peopleOpen ? ' has-people' : ''}">
         <div class="ting-room-top">
           ${state.recording ? `<div class="ting-consent" role="status">● ${esc(COPY.recording)}</div>` : ''}
+          ${state.reconnecting ? `<div class="ting-consent ting-reconnect" role="status">Переподключение…</div>` : ''}
           <div class="ting-room-top-row">
             <div class="ting-room-title">
               ${logoMark(28)}
@@ -720,6 +789,7 @@
               </div>
             </div>
             <div class="ting-top-actions">
+              ${qualityChipHtml()}
               <span class="ting-count-chip">${n} в комнате</span>
               <button type="button" class="ting-icon-btn" data-act="toggle-people" title="${esc(COPY.people)}">${svgPeople()}</button>
               <button type="button" class="ting-icon-btn" data-act="chat-open-mobile" title="${esc(COPY.chat)}">
@@ -732,11 +802,13 @@
         <div class="ting-stage-wrap">
           <div class="ting-filmstrip" id="ting-filmstrip"></div>
           <div class="ting-stage ${state.layout === 'speaker' ? 'speaker' : 'g2'}" id="ting-stage"></div>
+          <div class="ting-react-layer" id="ting-react-layer" aria-hidden="true"></div>
           ${peopleDrawerHtml()}
+          ${moreSheetHtml()}
         </div>
         ${dockHtml()}
       </div>
-      ${peopleOpen ? '' : chatHtml()}
+      ${chatHtml()}
     </div>`;
     paintTiles();
     const list = qs('#ting-chat-list');
@@ -970,6 +1042,133 @@
     });
   }
 
+  async function publishTingData(payload) {
+    const room = state.lkRoom;
+    if (!room || !room.localParticipant || typeof room.localParticipant.publishData !== 'function') return;
+    try {
+      const bytes = new TextEncoder().encode(JSON.stringify(Object.assign({ ts: Date.now() }, payload)));
+      await room.localParticipant.publishData(bytes, { reliable: true });
+    } catch (e) {
+      console.warn('[Ting] publishData', e);
+    }
+  }
+
+  function showReactionBurst(emoji, who) {
+    const layer = qs('#ting-react-layer');
+    if (!layer) return;
+    const el = document.createElement('div');
+    el.className = 'ting-react-burst';
+    el.textContent = emoji;
+    el.title = who || '';
+    el.style.left = (20 + Math.random() * 60) + '%';
+    layer.appendChild(el);
+    setTimeout(() => { try { el.remove(); } catch (_) { /* */ } }, 2200);
+  }
+
+  async function loadTrackProcessors() {
+    if (window.LivekitTrackProcessors) return window.LivekitTrackProcessors;
+    if (window.TrackProcessors) return window.TrackProcessors;
+    try {
+      const mod = await import('https://cdn.jsdelivr.net/npm/@livekit/track-processors@0.3.4/+esm');
+      window.LivekitTrackProcessors = mod;
+      return mod;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  function localCamPublication() {
+    const room = state.lkRoom;
+    if (!room || !room.localParticipant) return null;
+    const pubs = Array.from(room.localParticipant.videoTrackPublications.values());
+    return pubs.find((p) => p.track && !/screen/i.test(String(p.source || ''))) || null;
+  }
+
+  async function refreshDeviceList() {
+    try {
+      if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) return;
+      const list = await navigator.mediaDevices.enumerateDevices();
+      state.devices = {
+        mics: list.filter((d) => d.kind === 'audioinput'),
+        cams: list.filter((d) => d.kind === 'videoinput')
+      };
+    } catch (_) {
+      state.devices = { mics: [], cams: [] };
+    }
+  }
+
+  async function switchTingDevice(kind, deviceId) {
+    const room = state.lkRoom;
+    if (!room || !deviceId) return;
+    try {
+      if (typeof room.switchActiveDevice === 'function') {
+        await room.switchActiveDevice(kind, deviceId);
+      }
+      if (kind === 'audioinput') state.audioDeviceId = deviceId;
+      if (kind === 'videoinput') state.videoDeviceId = deviceId;
+      toast('Устройство переключено');
+    } catch (e) {
+      toast((e && e.message) || 'Не удалось сменить устройство', false);
+    }
+  }
+
+  async function applyBackgroundPreset(presetId) {
+    const room = state.lkRoom;
+    if (!room || !room.localParticipant) {
+      toast('Сначала войдите в комнату', false);
+      return;
+    }
+    const preset = TING_BG_PRESETS.find((p) => p.id === presetId) || TING_BG_PRESETS[0];
+    const cam = localCamPublication();
+    if (!cam || !cam.track) {
+      toast('Включите камеру', false);
+      return;
+    }
+    try {
+      if (typeof cam.track.stopProcessor === 'function') {
+        try { await cam.track.stopProcessor(); } catch (_) { /* */ }
+      }
+      state.blurOn = false;
+      state.bgPreset = preset.id;
+      if (!preset.url) {
+        toast('Фон выключен');
+        return;
+      }
+      const processors = await loadTrackProcessors();
+      if (!processors || typeof cam.track.setProcessor !== 'function') {
+        toast('Эффекты фона недоступны в этом браузере', false);
+        state.bgPreset = 'none';
+        return;
+      }
+      let proc = null;
+      if (preset.url === '__blur__') {
+        if (typeof processors.BackgroundBlur !== 'function') {
+          toast('Размытие недоступно', false);
+          state.bgPreset = 'none';
+          return;
+        }
+        proc = processors.BackgroundBlur(16);
+        state.blurOn = true;
+      } else if (typeof processors.VirtualBackground === 'function') {
+        proc = processors.VirtualBackground(preset.url);
+      } else {
+        toast('Виртуальный фон недоступен', false);
+        state.bgPreset = 'none';
+        return;
+      }
+      await cam.track.setProcessor(proc);
+      toast(preset.label);
+    } catch (e) {
+      state.bgPreset = 'none';
+      state.blurOn = false;
+      toast((e && e.message) || 'Не удалось сменить фон', false);
+    }
+  }
+
+  async function toggleBackgroundBlur() {
+    await applyBackgroundPreset(state.blurOn || state.bgPreset === 'blur' ? 'none' : 'blur');
+  }
+
   function paintTiles() {
     const stage = qs('#ting-stage');
     const strip = qs('#ting-filmstrip');
@@ -1101,9 +1300,34 @@
       && !Array.from(room.remoteParticipants.values()).some(p => p.identity === state.pinnedId)) {
       state.pinnedId = null;
     }
-    const localVid = Array.from(lp.videoTrackPublications.values()).find(p => p.track && p.source !== (window.LivekitClient && LivekitClient.Track && LivekitClient.Track.Source.ScreenShare));
+    const Core = window.TingRoomCore || null;
+    const trackLive = Core && Core.trackIsLive
+      ? Core.trackIsLive
+      : (pub) => {
+        if (!pub || !pub.track) return null;
+        try {
+          if (pub.isMuted === true || pub.track.isMuted === true) return null;
+        } catch (_) { /* */ }
+        return pub.track;
+      };
+    const pickVideo = Core && Core.pickVideoTrack
+      ? Core.pickVideoTrack
+      : (p) => {
+        const pubs = Array.from(p.videoTrackPublications.values());
+        const screen = pubs.find(x => trackLive(x) && /screen/i.test(String(x.source || '')));
+        if (screen) return trackLive(screen);
+        const cam = pubs.find(x => trackLive(x));
+        return cam ? trackLive(cam) : null;
+      };
+    const localVid = Array.from(lp.videoTrackPublications.values()).find(p => {
+      if (!trackLive(p)) return false;
+      try {
+        if (window.LivekitClient && LivekitClient.Track && p.source === LivekitClient.Track.Source.ScreenShare) return false;
+      } catch (_) { /* */ }
+      return !/screen/i.test(String(p.source || ''));
+    });
     const screenPub = Array.from(lp.videoTrackPublications.values()).find(p => {
-      try { return p.source === LivekitClient.Track.Source.ScreenShare; } catch (_) { return /screen/i.test(String(p.source || '')); }
+      try { return p.source === LivekitClient.Track.Source.ScreenShare && trackLive(p); } catch (_) { return /screen/i.test(String(p.source || '')) && trackLive(p); }
     });
     const remotes = Array.from(room.remoteParticipants.values());
 
@@ -1113,30 +1337,25 @@
     };
     const hasScreen = (p) => {
       try {
-        return Array.from(p.videoTrackPublications.values()).some(x => x.track && isScreenPub(x));
+        return Array.from(p.videoTrackPublications.values()).some(x => trackLive(x) && isScreenPub(x));
       } catch (_) { return false; }
     };
-    const pickVideo = (p) => {
-      const pubs = Array.from(p.videoTrackPublications.values());
-      const screen = pubs.find(x => x.track && /screen/i.test(String(x.source || '')));
-      if (screen && screen.track) return screen.track;
-      const cam = pubs.find(x => x.track);
-      return cam && cam.track;
-    };
+    const localCamTrack = localVid ? trackLive(localVid) : null;
+    const localScreenTrack = screenPub ? trackLive(screenPub) : null;
 
     if (speakerMode) {
       stage.className = 'ting-stage speaker';
       const joinCount = 1 + remotes.length;   // видимых участников (включая себя)
       let mainP = lp;
-      let mainTrack = screenPub && screenPub.track ? screenPub.track : (localVid && localVid.track);
+      let mainTrack = localScreenTrack || localCamTrack;
       let mainName = 'Вы';
-      let contain = !!(screenPub && screenPub.track);
+      let contain = !!localScreenTrack;
       /* Приоритет центра: своя презентация → свап (себя в центр) → активный спикер → первый с видео */
       let screenOwner = null;
-      if (screenPub && screenPub.track) screenOwner = lp;
+      if (localScreenTrack) screenOwner = lp;
       remotes.forEach(p => {
-        const sp = Array.from(p.videoTrackPublications.values()).find(x => x.track && /screen/i.test(String(x.source || '')));
-        if (sp && sp.track) screenOwner = p;
+        const sp = Array.from(p.videoTrackPublications.values()).find(x => trackLive(x) && /screen/i.test(String(x.source || '')));
+        if (sp) screenOwner = p;
       });
       if (screenOwner) {
         mainP = screenOwner;
@@ -1146,17 +1365,17 @@
       } else if (state.pinnedId) {
         /* Ручной пин (клик по тайлу участника) — приоритетнее активного спикера */
         if (lp.identity === state.pinnedId) {
-          mainP = lp; mainTrack = localVid && localVid.track; mainName = 'Вы';
+          mainP = lp; mainTrack = localCamTrack; mainName = 'Вы';
         } else {
           const pp = remotes.find(p => p.identity === state.pinnedId);
           if (pp) { mainP = pp; mainTrack = pickVideo(pp); mainName = pp.name || pp.identity; }
         }
       } else if (state.swapPrimary) {
-        mainP = lp; mainTrack = localVid && localVid.track; mainName = 'Вы';
+        mainP = lp; mainTrack = localCamTrack; mainName = 'Вы';
         contain = false;
       } else if (activeId) {
         if (lp.identity === activeId) {
-          mainP = lp; mainTrack = localVid && localVid.track; mainName = 'Вы';
+          mainP = lp; mainTrack = localCamTrack; mainName = 'Вы';
         } else {
           const ap = remotes.find(p => p.identity === activeId);
           if (ap) { mainP = ap; mainTrack = pickVideo(ap); mainName = ap.name || ap.identity; }
@@ -1203,9 +1422,9 @@
       const count = 1 + remotes.length;
       stage.className = 'ting-stage auto';
       const localSpeak = !activeId || lp.identity === activeId;
-      const hostTile = makeTile(lp.identity, (screenPub && screenPub.track) || (localVid && localVid.track), 'Вы', lp.isMicrophoneEnabled === false, {
-        speak: localSpeak, mutedLocal: true, contain: !!(screenPub && screenPub.track),
-        gold: !(localVid && localVid.track) && !(screenPub && screenPub.track)
+      const hostTile = makeTile(lp.identity, localScreenTrack || localCamTrack, 'Вы', lp.isMicrophoneEnabled === false, {
+        speak: localSpeak, mutedLocal: true, contain: !!localScreenTrack,
+        gold: !localCamTrack && !localScreenTrack
       });
       stage.appendChild(hostTile);
       remotes.forEach(p => {
@@ -1426,10 +1645,11 @@
           }, 200);
         });
       }
-      room.on(LK.RoomEvent.DataReceived, (payload) => {
+      room.on(LK.RoomEvent.DataReceived, (payload, _participant, _kind, topic) => {
         try {
           const msg = JSON.parse(new TextDecoder().decode(payload));
-          if (msg && msg.type === 'chat' && msg.text) {
+          if (!msg || !msg.type) return;
+          if (msg.type === 'chat' && msg.text) {
             const row = {
               text: msg.text,
               display_name: msg.display_name || msg.author || 'Участник',
@@ -1449,15 +1669,58 @@
                 chatList.scrollTop = chatList.scrollHeight;
               } else render();
             }
+            return;
+          }
+          if (msg.type === 'reaction' && msg.emoji) {
+            showReactionBurst(msg.emoji, msg.identity || msg.display_name || '');
+            return;
+          }
+          if (msg.type === 'hand_raise' || msg.type === 'hand_lower') {
+            const id = msg.identity || '';
+            if (!id) return;
+            if (msg.type === 'hand_raise') state.raisedHands[id] = true;
+            else delete state.raisedHands[id];
+            if (state.view === 'room' && state.peopleOpen) render();
+            else {
+              const badge = qs('#ting-hand-badge');
+              if (badge) badge.textContent = String(Object.keys(state.raisedHands).length || '');
+            }
           }
         } catch (_) { /* ignore */ }
+        void topic;
       });
+      if (LK.RoomEvent.ConnectionQualityChanged) {
+        room.on(LK.RoomEvent.ConnectionQualityChanged, (quality, participant) => {
+          try {
+            const local = room.localParticipant;
+            if (participant && local && participant.identity !== local.identity) return;
+            const q = (quality && quality.toString) ? quality.toString() : String(quality || '');
+            state.connQuality = q.replace(/^ConnectionQuality\./, '').toLowerCase();
+            const el = qs('#ting-quality');
+            if (el || state.view === 'room') {
+              if (state.view === 'room' && !el) {
+                /* chip created on next render */
+              }
+              const map = { excellent: 'Отлично', good: 'Хорошо', poor: 'Слабо', lost: 'Потеря' };
+              const label = map[state.connQuality];
+              if (el && label) {
+                el.textContent = label;
+                el.className = 'ting-quality-chip q-' + state.connQuality;
+              } else if (!el && label && state.view === 'room') {
+                const actions = qs('.ting-top-actions');
+                if (actions && !qs('#ting-quality')) {
+                  actions.insertAdjacentHTML('afterbegin', `<span class="ting-quality-chip q-${esc(state.connQuality)}" id="ting-quality">${esc(label)}</span>`);
+                }
+              }
+            }
+          } catch (_) { /* */ }
+        });
+      }
       room.on(LK.RoomEvent.Disconnected, async () => {
         if (state.lkRoom !== room) return;
         stopLiveLoop();
         if (state.timerId) { clearInterval(state.timerId); state.timerId = null; }
         state.lkRoom = null;
-        setIncall(false);
         let ended = state.room && (state.room.status === 'ended' || state.room.status === 'cancelled');
         if (!ended && slug) {
           try {
@@ -1467,9 +1730,33 @@
           } catch (_) { /* */ }
         }
         if (ended) {
+          setIncall(false);
           state.view = 'ended';
+          state.reconnecting = false;
           render();
+          return;
+        }
+        if (state.reconnecting) return;
+        state.reconnecting = true;
+        setIncall(true);
+        const banner = qs('.ting-room-top');
+        if (banner && !qs('.ting-reconnect')) {
+          banner.insertAdjacentHTML('afterbegin', '<div class="ting-consent ting-reconnect" role="status">Переподключение…</div>');
         } else {
+          toast('Переподключение…', false);
+        }
+        try {
+          const fresh = await api(`/api/thing/rooms/${encodeURIComponent(slug)}/token`, {
+            method: 'POST',
+            body: JSON.stringify({ display_name: (window.ASGARD_USER && ASGARD_USER.name) || undefined })
+          });
+          const tok2 = fresh.token ? fresh : (fresh.data || fresh);
+          await connectRoomWithCreds(slug, tok2);
+          state.reconnecting = false;
+          toast('Соединение восстановлено');
+        } catch (_) {
+          state.reconnecting = false;
+          setIncall(false);
           toast('Соединение прервано', false);
           go('hub');
         }
@@ -2018,15 +2305,57 @@
       }
       if (act === 'toggle-people') {
         state.peopleOpen = !state.peopleOpen;
-        if (state.peopleOpen) {
-          state.chatOpenMobile = false;
-          await refreshPeople(slug);
+        if (state.peopleOpen) await refreshPeople(slug);
+        render();
+        return;
+      }
+      if (act === 'toggle-more') {
+        state.moreOpen = !state.moreOpen;
+        if (state.moreOpen) await refreshDeviceList();
+        render();
+        return;
+      }
+      if (act === 'bg-preset') {
+        await applyBackgroundPreset(btn.dataset.bg || 'none');
+        state.moreOpen = false;
+        render();
+        return;
+      }
+      if (act === 'hand-toggle') {
+        await publishTingData({
+          type: state.handRaised ? 'hand_lower' : 'hand_raise',
+          identity: state.myIdentity || (state.lkRoom && state.lkRoom.localParticipant && state.lkRoom.localParticipant.identity)
+        });
+        state.handRaised = !state.handRaised;
+        const id = state.myIdentity || '';
+        if (id) {
+          if (state.handRaised) state.raisedHands[id] = true;
+          else delete state.raisedHands[id];
         }
+        state.moreOpen = false;
+        render();
+        return;
+      }
+      if (act === 'react') {
+        const emoji = btn.dataset.emoji || '👍';
+        await publishTingData({
+          type: 'reaction',
+          emoji,
+          identity: state.myIdentity || '',
+          display_name: (window.ASGARD_USER && ASGARD_USER.name) || 'Вы'
+        });
+        showReactionBurst(emoji, 'Вы');
+        state.moreOpen = false;
+        render();
+        return;
+      }
+      if (act === 'blur-toggle') {
+        await toggleBackgroundBlur();
+        state.moreOpen = false;
         render();
         return;
       }
       if (act === 'chat-open-mobile') {
-        state.peopleOpen = false;
         state.chatOpenMobile = true;
         state.unreadChat = 0;
         render();
@@ -2188,6 +2517,16 @@
       if (!root) return;
       root.classList.add('ting-page');
       root.onclick = onClick;
+      root.onchange = async (ev) => {
+        const sel = ev.target && ev.target.closest
+          ? ev.target.closest('[data-act="device-audio"],[data-act="device-video"]')
+          : null;
+        if (!sel) return;
+        const id = sel.value;
+        if (!id) return;
+        if (sel.getAttribute('data-act') === 'device-audio') await switchTingDevice('audioinput', id);
+        else await switchTingDevice('videoinput', id);
+      };
       route();
     },
     unmount() {
@@ -2210,7 +2549,7 @@
       }
       if (state.timerId) clearInterval(state.timerId);
       const m = qs('#ting-host-end'); if (m) m.remove();
-      if (root) { root.onclick = null; root.innerHTML = ''; }
+      if (root) { root.onclick = null; root.onchange = null; root.innerHTML = ''; }
       root = null;
     },
     onHash() { route(); }

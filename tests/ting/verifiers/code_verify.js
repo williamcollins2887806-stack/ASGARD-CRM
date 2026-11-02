@@ -68,6 +68,39 @@ check('C36_placeholder_name_fallback', /isPlaceholderDisplayName/.test(thing) &&
   'заглушка «Участник» → ФИО из users');
 check('C37_landscape_low_height', /orientation:\s*landscape/.test(tingCss) && /max-height:\s*600px/.test(tingCss),
   'ландшафт телефона: ограничение по высоте');
+check('C38_start_live', /status\s*=\s*'live'/.test(thing) && !/status\s*=\s*'active'/.test(thing),
+  '/start пишет live, не active');
+check('C39_pickvideo_skip_muted', /isMuted/.test(tingPage) && /trackLive|pickVideo/.test(tingPage),
+  'pickVideo пропускает muted → аватар');
+check('C40_people_chat_parallel', /peopleOpen \? '' : chatHtml/.test(tingPage) === false
+  && /\$\{chatHtml\(\)\}/.test(tingPage),
+  'people не убивает chatHtml');
+check('C41_more_sheet', /toggle-more|ting-more-sheet/.test(tingPage) && /hand-toggle|react/.test(tingPage),
+  'Ещё = settings + рука + реакции');
+check('C42_room_core', fs.existsSync(path.join(root, 'public/assets/js/ting_room_core.js')),
+  'ting_room_core.js shared module');
+check('C43_reconnect_ux', /reconnecting|Переподключение/.test(tingPage) && /Переподключение|tryReconnect/.test(guest),
+  'reconnect UX CRM+guest');
+check('C44_calendar_create_thing', /create_thing/.test(fs.readFileSync(path.join(root, 'public/assets/js/calendar.js'), 'utf8')),
+  'календарь шлёт create_thing');
+check('C45_turn_ops', /coturn/.test(fs.readFileSync(path.join(root, 'ops/livekit/docker-compose.yml'), 'utf8'))
+  && /turn_servers/.test(fs.readFileSync(path.join(root, 'ops/livekit/livekit.yaml'), 'utf8')),
+  'coturn + turn_servers в ops');
+check('C46_device_picker', /device-audio/.test(tingPage) && /device-video/.test(tingPage) && /switchTingDevice/.test(tingPage)
+  && /guestMicSelect/.test(guest) && /switchGuestDevice/.test(guest),
+  'device picker в Ещё CRM+guest');
+check('C47_bg_presets', /TING_BG_PRESETS/.test(tingPage) && /office-dusk/.test(tingPage) && /VirtualBackground/.test(tingPage)
+  && /guestBgGrid/.test(guest) && /warm-studio/.test(guest)
+  && fs.existsSync(path.join(root, 'public/assets/img/ting-bg/office-dusk.svg'))
+  && fs.existsSync(path.join(root, 'public/assets/img/ting-bg/soft-sky.svg'))
+  && fs.existsSync(path.join(root, 'public/assets/img/ting-bg/warm-studio.svg')),
+  '3 вирт.фона + blur wiring CRM+guest');
+check('C48_2peer_smoke_artifact', (() => {
+  try {
+    const j = JSON.parse(fs.readFileSync(path.join(root, 'tests/reports/TING-2PEER-MEDIA-SMOKE.json'), 'utf8'));
+    return !!(j.pass && j.numerator === j.denominator);
+  } catch (_) { return false; }
+})(), 'TING-2PEER-MEDIA-SMOKE.json green');
 
 const fail = checks.filter((c) => !c.pass);
 const md = [

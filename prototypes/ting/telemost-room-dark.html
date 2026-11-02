@@ -1,0 +1,477 @@
+<!DOCTYPE html>
+<html lang="ru" data-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Тинг · комната · Dark (Telemost)</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&display=swap" rel="stylesheet" />
+  <style>
+    :root, html[data-theme="dark"] {
+      --ting-gold: #D4A843;
+      --ting-gold-l: #E8C35A;
+      --ting-on-gold: #141414;
+      --ting-bg0: #08090C;
+      --ting-bg1: #0D1117;
+      --ting-bg2: #151922;
+      --ting-bg3: #1C2130;
+      --ting-line: rgba(255,255,255,.07);
+      --ting-t1: rgba(255,255,255,.95);
+      --ting-t2: rgba(255,255,255,.65);
+      --ting-t3: rgba(255,255,255,.40);
+      --ting-danger: #E8475A;
+      --ting-ok: #4ADE80;
+      --ting-radius: 22px;
+      --ting-radius-sm: 14px;
+      --ting-dock-h: 88px;
+      --ting-chat-w: 320px;
+      --ting-font: "Manrope", system-ui, sans-serif;
+
+      --ting-surface: var(--ting-bg1);
+      --ting-dock-bg: rgba(10,14,22,.62);
+      --ting-chat-bg: rgba(14,18,26,.94);
+      --ting-drawer-bg: rgba(14,18,26,.92);
+      --ting-room-bg: #0a0c10;
+      --ting-on-media: rgba(255,255,255,.95);
+      --ting-panel-t1: var(--ting-on-media);
+      --ting-panel-t2: rgba(255,255,255,.55);
+      --ting-panel-line: rgba(255,255,255,.10);
+      --ting-panel-fill: rgba(255,255,255,.06);
+      --ting-input-bg: rgba(255,255,255,.06);
+      --ting-select-bg: rgba(0,0,0,.35);
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100%; }
+    body {
+      font-family: var(--ting-font);
+      background: var(--ting-surface);
+      color: var(--ting-t1);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .proto-bar {
+      flex: 0 0 auto;
+      display: flex; align-items: center; justify-content: space-between;
+      gap: 12px; padding: 10px 16px;
+      background: var(--ting-bg2);
+      border-bottom: 1px solid var(--ting-line);
+      color: var(--ting-t1);
+    }
+    .proto-bar .brand { display: flex; align-items: center; gap: 10px; font-weight: 800; font-size: 13px; }
+    .proto-bar .brand .rune {
+      width: 28px; height: 28px; border-radius: 8px;
+      background: linear-gradient(145deg, var(--ting-gold-l), var(--ting-gold));
+      color: var(--ting-on-gold); display: grid; place-items: center; font-size: 14px;
+    }
+    .proto-bar .meta { font-size: 12px; color: var(--ting-t2); font-weight: 600; }
+    .proto-bar a {
+      color: var(--ting-gold-l); font-size: 12px; font-weight: 700; text-decoration: none;
+    }
+    .proto-bar a:hover { text-decoration: underline; }
+
+    .room-shell {
+      flex: 1; min-height: 0;
+      display: grid;
+      grid-template-columns: 1fr var(--ting-chat-w);
+      background: var(--ting-room-bg);
+    }
+    .room-main { position: relative; min-width: 0; display: flex; flex-direction: column; }
+
+    .room-top {
+      position: absolute; left: 0; right: 0; top: 0; z-index: 4;
+      padding: 14px 16px 0; pointer-events: none;
+    }
+    .room-top-row {
+      display: flex; justify-content: space-between; align-items: center; gap: 12px;
+      pointer-events: auto;
+    }
+    .room-title { display: flex; align-items: center; gap: 10px; color: var(--ting-on-media); }
+    .room-title .rune {
+      width: 26px; height: 26px; border-radius: 7px;
+      background: linear-gradient(145deg, var(--ting-gold-l), var(--ting-gold));
+      color: var(--ting-on-gold); display: grid; place-items: center; font-weight: 800; font-size: 13px;
+    }
+    .room-title strong { display: block; font-size: 14px; font-weight: 800; }
+    .room-title span { font-size: 12px; color: rgba(255,255,255,.65); font-weight: 600; }
+    .top-actions { display: flex; gap: 8px; align-items: center; }
+    .quality-chip, .count-chip {
+      font: 700 11px/1 var(--ting-font); padding: 7px 10px; border-radius: 999px;
+      background: rgba(255,255,255,.10); color: var(--ting-on-media);
+      border: 1px solid rgba(255,255,255,.08);
+    }
+    .quality-chip { display: inline-flex; align-items: center; gap: 6px; }
+    .quality-chip::before {
+      content: ""; width: 7px; height: 7px; border-radius: 50%;
+      background: var(--ting-ok); box-shadow: 0 0 0 3px rgba(74,222,128,.18);
+    }
+
+    .stage-wrap {
+      flex: 1; position: relative; min-height: 0;
+      padding: 56px 14px 8px;
+      display: flex; flex-direction: column; gap: 10px;
+    }
+    .stage-grid {
+      flex: 1; min-height: 0;
+      display: grid; gap: 10px;
+      grid-template-columns: 1.4fr 1fr; grid-template-rows: 1fr 1fr;
+    }
+    .tile {
+      background:
+        radial-gradient(ellipse at 30% 20%, rgba(212,168,67,.08), transparent 45%),
+        linear-gradient(160deg, #243049, #141924);
+      border-radius: 18px; position: relative; overflow: hidden;
+      border: 1px solid rgba(255,255,255,.06); min-height: 100px;
+    }
+    .tile.span2 { grid-row: span 2; }
+    .tile.speak { outline: 2px solid rgba(212,168,67,.65); outline-offset: -2px; }
+    .tile-inner { position: absolute; inset: 0; display: grid; place-items: center; }
+    .avatar {
+      width: 72px; height: 72px; border-radius: 50%;
+      background: linear-gradient(145deg, #3a465c, #1c2433);
+      display: grid; place-items: center; font-weight: 800; color: #fff; font-size: 22px;
+    }
+    .avatar.gold {
+      background: linear-gradient(145deg, var(--ting-gold-l), var(--ting-gold));
+      color: var(--ting-on-gold);
+    }
+    .avatar.sm { width: 36px; height: 36px; font-size: 12px; }
+    .tile-label {
+      position: absolute; left: 10px; bottom: 10px;
+      background: rgba(0,0,0,.5); padding: 5px 9px; border-radius: 8px;
+      font-size: 12px; font-weight: 700; color: var(--ting-on-media);
+      display: flex; align-items: center; gap: 6px;
+    }
+    .mute { color: #ff8a96; }
+
+    .filmstrip {
+      flex: 0 0 auto;
+      display: flex; gap: 8px; overflow-x: auto;
+      padding: 2px 2px 4px;
+      scrollbar-width: thin;
+    }
+    .filmstrip .pip {
+      flex: 0 0 148px; height: 88px;
+      border-radius: 12px; position: relative; overflow: hidden;
+      border: 1px solid rgba(255,255,255,.08);
+      background: linear-gradient(160deg, #2a3348, #151a24);
+    }
+    .filmstrip .pip.self {
+      outline: 1px solid rgba(212,168,67,.5); outline-offset: -1px;
+    }
+    .filmstrip .pip .tile-inner .avatar { width: 40px; height: 40px; font-size: 13px; }
+    .filmstrip .pip .tile-label { font-size: 11px; padding: 4px 7px; left: 6px; bottom: 6px; }
+
+    .dock {
+      position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%);
+      z-index: 6; display: flex; gap: 10px; align-items: flex-end;
+      padding: 10px 14px 8px; border-radius: 24px;
+      background: var(--ting-dock-bg);
+      border: 1px solid rgba(255,255,255,.12);
+      backdrop-filter: blur(18px);
+      color: var(--ting-on-media);
+      box-shadow: 0 12px 40px rgba(0,0,0,.45);
+    }
+    .dock-item { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+    .dock-item span { font-size: 10px; font-weight: 700; color: rgba(255,255,255,.55); }
+    .dock-sep { width: 1px; height: 36px; background: rgba(255,255,255,.14); margin: 0 2px 16px; }
+    .btn-icon {
+      width: 48px; height: 48px; border-radius: 16px; border: 1px solid rgba(255,255,255,.12);
+      background: rgba(255,255,255,.08); color: var(--ting-on-media);
+      font-size: 18px; cursor: pointer; display: grid; place-items: center;
+    }
+    .btn-icon:hover { background: rgba(255,255,255,.14); }
+    .btn-icon.active { background: rgba(255,255,255,.18); border-color: rgba(255,255,255,.28); }
+    .btn-icon.off { background: rgba(232,71,90,.18); border-color: rgba(232,71,90,.35); }
+    .btn-icon.danger {
+      background: linear-gradient(145deg, #f06575, var(--ting-danger));
+      border-color: transparent; color: #fff;
+    }
+
+    .more-sheet {
+      position: absolute; left: 50%; bottom: calc(110px + env(safe-area-inset-bottom, 0px));
+      transform: translateX(-50%);
+      width: min(380px, calc(100% - 24px));
+      z-index: 8;
+      background: var(--ting-drawer-bg);
+      border: 1px solid rgba(255,255,255,.14);
+      border-radius: 18px; padding: 12px 14px 14px;
+      color: var(--ting-panel-t1);
+      box-shadow: 0 20px 48px rgba(0,0,0,.55);
+      backdrop-filter: blur(20px);
+      max-height: min(420px, calc(100% - 140px));
+      overflow: auto;
+    }
+    .more-head {
+      display: flex; justify-content: space-between; align-items: center;
+      margin-bottom: 10px; font-size: 14px; font-weight: 800;
+    }
+    .more-head button {
+      border: 0; background: rgba(255,255,255,.08); color: inherit;
+      width: 28px; height: 28px; border-radius: 8px; cursor: pointer; font-size: 16px;
+    }
+    .more-sec { margin-top: 12px; }
+    .more-sec h4 {
+      font-size: 11px; text-transform: uppercase; letter-spacing: .06em;
+      color: var(--ting-panel-t2); margin-bottom: 8px; font-weight: 800;
+    }
+    .bg-row { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; }
+    .bg-pick {
+      border: 1px solid var(--ting-panel-line);
+      border-radius: 12px; overflow: hidden; cursor: pointer;
+      background: var(--ting-panel-fill); color: inherit;
+      padding: 0; text-align: center; font: 700 10px var(--ting-font);
+    }
+    .bg-pick .swatch { height: 42px; display: block; }
+    .bg-pick span { display: block; padding: 5px 2px 7px; line-height: 1.15; }
+    .bg-pick.on { outline: 2px solid var(--ting-gold-l); outline-offset: -2px; }
+    .bg-none { background: linear-gradient(160deg, #2a3348, #141924); }
+    .bg-blur {
+      background:
+        linear-gradient(160deg, rgba(60,80,110,.5), rgba(20,24,36,.8)),
+        repeating-linear-gradient(45deg, transparent, transparent 4px, rgba(255,255,255,.04) 4px, rgba(255,255,255,.04) 8px);
+      filter: none;
+      position: relative;
+    }
+    .bg-blur::after {
+      content: ""; position: absolute; inset: 0;
+      backdrop-filter: blur(0); background: rgba(255,255,255,.06);
+      box-shadow: inset 0 0 20px rgba(255,255,255,.08);
+    }
+    .bg-office { background: linear-gradient(160deg, #4a5568 0%, #2d3748 40%, #1a202c 100%); }
+    .bg-sky { background: linear-gradient(180deg, #7eb6e8 0%, #c5dff5 45%, #e8f0f8 100%); }
+    .bg-studio { background: linear-gradient(145deg, #3d2c22 0%, #6b4f3a 40%, #1a1410 100%); }
+
+    .dev-row { display: grid; gap: 6px; }
+    .dev-row label {
+      display: grid; gap: 4px; font-size: 11px; color: var(--ting-panel-t2); font-weight: 700;
+      text-align: left;
+    }
+    .dev-row select {
+      width: 100%; border-radius: 10px; border: 1px solid var(--ting-panel-line);
+      background: var(--ting-select-bg); color: var(--ting-panel-t1);
+      padding: 8px 10px; font: 600 12px var(--ting-font);
+    }
+
+    .chat-col {
+      background: var(--ting-chat-bg);
+      border-left: 1px solid var(--ting-panel-line);
+      color: var(--ting-panel-t1);
+      display: flex; flex-direction: column; min-height: 0;
+    }
+    .side-h {
+      padding: 14px 14px 12px; font-weight: 800; font-size: 13px;
+      border-bottom: 1px solid var(--ting-panel-line);
+      display: flex; justify-content: space-between; align-items: center;
+    }
+    .side-body { padding: 10px; overflow: auto; flex: 1; }
+    .chat-bubble {
+      max-width: 92%; padding: 9px 11px; border-radius: 12px;
+      background: var(--ting-panel-fill); font-size: 13px; margin-bottom: 8px; line-height: 1.35;
+    }
+    .chat-bubble.me { margin-left: auto; background: rgba(212,168,67,.18); }
+    .chat-bubble b { display: block; font-size: 11px; color: var(--ting-panel-t2); margin-bottom: 3px; }
+    .chat-input {
+      display: flex; gap: 8px; padding: 10px; border-top: 1px solid var(--ting-panel-line);
+    }
+    .chat-input input {
+      flex: 1; background: var(--ting-input-bg); border: 1px solid var(--ting-panel-line);
+      border-radius: 10px; padding: 10px 12px; color: var(--ting-panel-t1);
+      font: 600 13px var(--ting-font);
+    }
+    .chat-input input::placeholder { color: var(--ting-panel-t2); }
+    .chat-input button {
+      border: 0; border-radius: 10px; padding: 0 14px; cursor: pointer;
+      background: linear-gradient(145deg, var(--ting-gold-l), var(--ting-gold));
+      color: var(--ting-on-gold); font: 800 12px var(--ting-font);
+    }
+
+    @media (max-width: 960px) {
+      .room-shell { grid-template-columns: 1fr; }
+      .chat-col {
+        position: absolute; right: 10px; top: 56px; bottom: 110px;
+        width: min(300px, calc(100% - 20px)); z-index: 7;
+        border: 1px solid rgba(255,255,255,.12); border-radius: 16px;
+      }
+      .bg-row { grid-template-columns: repeat(3, 1fr); }
+      .dock { gap: 6px; padding: 8px 10px 6px; }
+      .dock-item span { display: none; }
+      .btn-icon { width: 44px; height: 44px; }
+    }
+  </style>
+</head>
+<body>
+  <header class="proto-bar">
+    <div class="brand">
+      <div class="rune" aria-hidden="true">ᚦ</div>
+      <div>
+        Тинг · Telemost room
+        <div class="meta">тема: dark · data-theme="dark"</div>
+      </div>
+    </div>
+    <a href="telemost-room-light.html">Открыть Light →</a>
+  </header>
+
+  <div class="room-shell">
+    <div class="room-main">
+      <div class="room-top">
+        <div class="room-top-row">
+          <div class="room-title">
+            <div class="rune" aria-hidden="true">ᚦ</div>
+            <div>
+              <strong>Планёрка Киров</strong>
+              <span>12:04 · 4 участника</span>
+            </div>
+          </div>
+          <div class="top-actions">
+            <span class="quality-chip" title="Качество связи">Хорошо</span>
+            <span class="count-chip">4 в комнате</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="stage-wrap">
+        <div class="stage-grid" aria-label="Сцена участников">
+          <div class="tile span2 speak">
+            <div class="tile-inner"><div class="avatar gold">НС</div></div>
+            <div class="tile-label">Никита · Вы</div>
+          </div>
+          <div class="tile">
+            <div class="tile-inner"><div class="avatar">АК</div></div>
+            <div class="tile-label">Анна ✋</div>
+          </div>
+          <div class="tile">
+            <div class="tile-inner"><div class="avatar">ИП</div></div>
+            <div class="tile-label"><span class="mute" aria-label="мик выкл">🔇</span> Игорь</div>
+          </div>
+        </div>
+
+        <div class="filmstrip" aria-label="Лента участников">
+          <div class="pip self">
+            <div class="tile-inner"><div class="avatar sm gold">НС</div></div>
+            <div class="tile-label">Вы</div>
+          </div>
+          <div class="pip">
+            <div class="tile-inner"><div class="avatar sm">АК</div></div>
+            <div class="tile-label">Анна</div>
+          </div>
+          <div class="pip">
+            <div class="tile-inner"><div class="avatar sm">ИП</div></div>
+            <div class="tile-label">Игорь</div>
+          </div>
+          <div class="pip">
+            <div class="tile-inner"><div class="avatar sm">☎</div></div>
+            <div class="tile-label">+7…4512</div>
+          </div>
+        </div>
+
+        <div class="more-sheet" role="dialog" aria-label="Ещё" id="moreSheet">
+          <div class="more-head">
+            <strong>Ещё</strong>
+            <button type="button" aria-label="Закрыть" onclick="document.getElementById('moreSheet').hidden=true;document.getElementById('btnMore').classList.remove('active')">×</button>
+          </div>
+
+          <div class="more-sec">
+            <h4>Фон</h4>
+            <div class="bg-row">
+              <button type="button" class="bg-pick" title="Без фона">
+                <i class="swatch bg-none"></i><span>Без фона</span>
+              </button>
+              <button type="button" class="bg-pick on" title="Размытие">
+                <i class="swatch bg-blur"></i><span>Размытие</span>
+              </button>
+              <button type="button" class="bg-pick" title="Офис">
+                <i class="swatch bg-office"></i><span>Офис</span>
+              </button>
+              <button type="button" class="bg-pick" title="Небо">
+                <i class="swatch bg-sky"></i><span>Небо</span>
+              </button>
+              <button type="button" class="bg-pick" title="Студия">
+                <i class="swatch bg-studio"></i><span>Студия</span>
+              </button>
+            </div>
+          </div>
+
+          <div class="more-sec">
+            <h4>Устройства</h4>
+            <div class="dev-row">
+              <label>Микрофон
+                <select>
+                  <option>По умолчанию — Realtek Mic</option>
+                  <option>USB Headset</option>
+                </select>
+              </label>
+              <label>Камера
+                <select>
+                  <option>HD Webcam</option>
+                  <option>Встроенная камера</option>
+                </select>
+              </label>
+              <label>Динамики
+                <select>
+                  <option>По умолчанию — Speakers</option>
+                  <option>USB Headset</option>
+                </select>
+              </label>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <nav class="dock" aria-label="Панель управления">
+        <div class="dock-item">
+          <button type="button" class="btn-icon off" title="Микрофон">🎤</button>
+          <span>Мик</span>
+        </div>
+        <div class="dock-item">
+          <button type="button" class="btn-icon" title="Камера">📷</button>
+          <span>Камера</span>
+        </div>
+        <div class="dock-item">
+          <button type="button" class="btn-icon" title="Демонстрация экрана">▣</button>
+          <span>Экран</span>
+        </div>
+        <div class="dock-item">
+          <button type="button" class="btn-icon" title="Участники">👥</button>
+          <span>Люди</span>
+        </div>
+        <div class="dock-item">
+          <button type="button" class="btn-icon active" id="btnMore" title="Ещё"
+            onclick="var s=document.getElementById('moreSheet');s.hidden=!s.hidden;this.classList.toggle('active',!s.hidden)">⋯</button>
+          <span>Ещё</span>
+        </div>
+        <div class="dock-sep" aria-hidden="true"></div>
+        <div class="dock-item">
+          <button type="button" class="btn-icon danger" title="Выйти">⏻</button>
+          <span>Выйти</span>
+        </div>
+      </nav>
+    </div>
+
+    <aside class="chat-col" aria-label="Чат">
+      <div class="side-h">Чат <span style="font-size:11px;font-weight:700;color:var(--ting-panel-t2)">3</span></div>
+      <div class="side-body">
+        <div class="chat-bubble"><b>Анна</b>Протокол после звонка ок?</div>
+        <div class="chat-bubble me"><b>Вы</b>Да, снимем черновик</div>
+        <div class="chat-bubble"><b>Игорь</b>Ссылку на ППР кину</div>
+      </div>
+      <div class="chat-input">
+        <input type="text" placeholder="Сообщение" aria-label="Сообщение" />
+        <button type="button">→</button>
+      </div>
+    </aside>
+  </div>
+
+  <script>
+    document.querySelectorAll('.bg-pick').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        document.querySelectorAll('.bg-pick').forEach(function (b) { b.classList.remove('on'); });
+        btn.classList.add('on');
+      });
+    });
+  </script>
+</body>
+</html>

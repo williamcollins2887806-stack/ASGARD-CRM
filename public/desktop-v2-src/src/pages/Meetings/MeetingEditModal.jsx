@@ -33,6 +33,13 @@ export function MeetingEditModal({ meeting, onSaved }) {
   const [description, setDescription] = useState(meeting?.description || '');
   const [location, setLocation] = useState(meeting?.location || '');
   const [conferenceUrl, setConferenceUrl] = useState(meeting?.conference_url || '');
+  // Новое совещание: Тинг по умолчанию, кроме уже вставленного чужого VCS
+  const [createThing, setCreateThing] = useState(() => {
+    const conf = String(meeting?.conference_url || '').trim();
+    if (!conf) return true;
+    return /\/ting\//i.test(conf) || /#\/ting\b/i.test(conf);
+  });
+  const [protocolEnabled, setProtocolEnabled] = useState(() => !!meeting?.protocol_enabled);
   const [guestEmails, setGuestEmails] = useState('');
   const [date, setDate] = useState(toDateStr(initialStart));
   const [timeStart, setTimeStart] = useState(toTimeStr(initialStart));
@@ -57,11 +64,13 @@ export function MeetingEditModal({ meeting, onSaved }) {
     try {
       const startISO = new Date(`${date}T${timeStart}:00`).toISOString();
       const endISO = timeEnd ? new Date(`${date}T${timeEnd}:00`).toISOString() : null;
+      const conf = conferenceUrl.trim();
+      const foreignVcs = !!(conf && !/\/ting\//i.test(conf) && !/#\/ting\b/i.test(conf));
       const payload = {
         title: title.trim(),
         description: description.trim(),
         location: location.trim(),
-        conference_url: conferenceUrl.trim() || null,
+        conference_url: conf || null,
         start_time: startISO,
         end_time: endISO,
         guests: guestEmails
@@ -72,13 +81,25 @@ export function MeetingEditModal({ meeting, onSaved }) {
         send_invites: true,
         participant_ids: participants
       };
+      if (!isEdit && createThing && !foreignVcs) {
+        payload.create_thing = true;
+        payload.protocol_enabled = !!protocolEnabled;
+      }
       let saved;
       if (isEdit) {
         saved = await updateMeeting(meeting.id, payload);
       } else {
         saved = await createMeeting(payload);
       }
-      toast.success(isEdit ? 'Совещание обновлено' : 'Совещание создано');
+      const thing = saved?.thing || saved?.data?.thing;
+      if (thing?.slug) {
+        toast.success(
+          (isEdit ? 'Совещание обновлено' : 'Совещание создано')
+          + `. Тинг: ${thing.url || '/ting/' + thing.slug}`
+        );
+      } else {
+        toast.success(isEdit ? 'Совещание обновлено' : 'Совещание создано');
+      }
       emit();
       onSaved?.();
       close();
@@ -121,8 +142,27 @@ export function MeetingEditModal({ meeting, onSaved }) {
             <TextInput value={location} onChange={setLocation} placeholder="Переговорная / Zoom / Telegram…" />
           </Field>
           <Field label="Ссылка ВКС">
-            <TextInput value={conferenceUrl} onChange={setConferenceUrl} placeholder="https://…" />
+            <TextInput value={conferenceUrl} onChange={setConferenceUrl} placeholder="https://… или галка Тинг" />
           </Field>
+          <label className="row gap-8" style={{ alignItems: 'flex-start' }}>
+            <input type="checkbox" checked={createThing} onChange={(e) => setCreateThing(e.target.checked)} />
+            <span>
+              <strong>Тинг-конференция</strong>
+              <div className="muted" style={{ fontSize: 12 }}>Создать комнату и подставить ссылку</div>
+            </span>
+          </label>
+          <label className="row gap-8" style={{ alignItems: 'flex-start' }}>
+            <input
+              type="checkbox"
+              checked={protocolEnabled}
+              onChange={(e) => setProtocolEnabled(e.target.checked)}
+              disabled={!createThing}
+            />
+            <span>
+              <strong>AI-протокол</strong>
+              <div className="muted" style={{ fontSize: 12 }}>После записи собрать протокол</div>
+            </span>
+          </label>
           {!isEdit && (
             <Field label="Участники" help="Можно добавить позже в карточке совещания">
               <MultiSelect

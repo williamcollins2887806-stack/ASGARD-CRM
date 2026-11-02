@@ -1,5 +1,7 @@
 # ASGARD Тинг — LiveKit stack
-# UDP: LiveKit RTC 50000-60000; SIP RTP 40000+; Asterisk RTP 10000-20000
+# UDP: Asterisk RTP 10000-20000; coturn relay 30000-39900;
+# LiveKit SIP RTP 40000+; LiveKit RTC 50000-60000
+# coturn listening: UDP 3478
 
 services:
   livekit-redis:
@@ -18,6 +20,16 @@ services:
     volumes:
       - ./livekit.yaml:/etc/livekit.yaml:ro
     command: ["--config", "/etc/livekit.yaml"]
+
+  coturn:
+    image: coturn/coturn:latest
+    restart: unless-stopped
+    # host networking: нужен для relay UDP 40000-49900 без проброса тысяч портов
+    network_mode: host
+    volumes:
+      - ./turnserver.conf:/etc/coturn/turnserver.conf:ro
+    # альтернатива без host: ports "3478:3478/udp" + "40000-49900:40000-49900/udp"
+    command: ["-c", "/etc/coturn/turnserver.conf"]
 
   livekit-egress:
     image: livekit/egress:latest

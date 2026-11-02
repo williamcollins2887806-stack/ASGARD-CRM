@@ -11433,3 +11433,27 @@ OK «calc» / «mine» / «archive»: один цикл (7 запросов)
   (снапшот `/root/snapshots/asgard-crm-pre-deploy-d348-tabs-20261029-232133`).
 - **Статус: REVIEW** — выкачено на прод, md5 сверены по 5 файлам. Независимая сертификация
   не проводилась, `DONE` не ставится.
+
+## D-349. Тинг: паритет Телемост + dual-theme + calendar one-click + TURN ops (02.11.2026)
+
+**Симптом.** Видео «не видно» (muted → чёрный кадр), people убивал чат, светлая тема ~35%, /start писал `active` (CHECK fail), из календаря нельзя создать Тинг одной кнопкой, нет coturn.
+
+**Фикс (код, без прод-деплоя compose):**
+- `thing.js` start → `live`; `meetings.js` createThing до invites
+- `ting_page.js`: trackLive/TingRoomCore, people+chat parallel, more-sheet (рука/реакции/blur), reconnect, quality
+- `ting.css` dual-theme tokens + filmstrip hit-test; guest theme/reconnect/muted
+- calendar + EventModal + MeetingEditModal `create_thing`
+- `ops/livekit` coturn + turn_servers; `ting_room_core.js`
+- гейты C38–C45, `theme_verify.js`; shell `20.28.334`
+
+**Гейт.** `code 48/48` (C38–C48), `ui 15/15`, `theme 6/6`, `layout_verify` 40/40.
+
+**Дожим 100% (02.11.2026):**
+- coturn на проде: UDP 3478, `turn_servers` в `/opt/asgard-livekit/livekit.yaml` (секреты только в `thing.env`, в git — `CHANGE_ME_*`)
+- 2-peer media smoke: `tests/reports/TING-2PEER-MEDIA-SMOKE.json` 12/12 (P07/P08 video+audio)
+- device picker + 3 вирт.фона (office-dusk/soft-sky/warm-studio) в CRM+guest «Ещё»
+- v2 build с `create_thing` (EventModal/MeetingEditModal)
+- prototypes: `telemost-room-light.html` / `telemost-room-dark.html`
+- shell `20.28.335`
+
+**Статус: VERIFIED** — L3 verify-агент по 7 критериям gaps PASS. Deploy: shell 20.28.335.

@@ -175,6 +175,11 @@ window.AsgardCalendarPage = (function(){
       const timeStart = (ev.time || '10:00').toString().slice(0, 5);
       const timeEnd = (ev.end_time || defaultEnd(timeStart)).toString().slice(0, 5);
       const meetingTypes = new Set(['meeting', 'call', 'visit']);
+      const evType = ev.type || 'meeting';
+      const evConf = String(ev.conference_url || '');
+      const evForeignConf = !!(evConf && !/\/ting\//i.test(evConf) && !/#\/ting\b/i.test(evConf));
+      // Тинг по умолчанию для meeting/call, если нет чужого VCS
+      const tingDefault = (evType === 'meeting' || evType === 'call') && !evForeignConf;
 
       const html = `
         <div class="stack cal-compose" style="gap:0">
@@ -234,10 +239,24 @@ window.AsgardCalendarPage = (function(){
                 <div class="field">
                   <label for="ev_conference">Ссылка ВКС</label>
                   <div class="cal-vcs-field">
-                    <input id="ev_conference" class="inp" value="${esc(ev.conference_url || '')}" placeholder="https://telemost… / zoom…"/>
+                    <input id="ev_conference" class="inp" value="${esc(ev.conference_url || '')}" placeholder="https://telemost… / zoom… / или Тинг ниже"/>
                   </div>
                 </div>
               </div>
+              <label class="cal-send-toggle" style="margin-top:12px">
+                <input type="checkbox" id="ev_ting"${tingDefault ? ' checked' : ''}/>
+                <div>
+                  <strong>Тинг-конференция</strong>
+                  <span>Создать комнату ASGARD и подставить ссылку автоматически</span>
+                </div>
+              </label>
+              <label class="cal-send-toggle" style="margin-top:8px">
+                <input type="checkbox" id="ev_protocol"/>
+                <div>
+                  <strong>AI-протокол</strong>
+                  <span>После записи собрать протокол встречи</span>
+                </div>
+              </label>
             </div>
 
             <div class="cal-compose-section">
@@ -331,6 +350,9 @@ window.AsgardCalendarPage = (function(){
             pill.addEventListener('click', () => {
               $$('.cal-type-pill').forEach(p => p.classList.toggle('on', p === pill));
               if ($('#ev_type')) $('#ev_type').value = pill.dataset.type;
+              const tingDefault = pill.dataset.type === 'meeting' || pill.dataset.type === 'call';
+              if ($('#ev_ting')) $('#ev_ting').checked = tingDefault;
+              if ($('#ev_protocol') && !tingDefault) $('#ev_protocol').checked = false;
             });
           });
 
@@ -536,10 +558,15 @@ window.AsgardCalendarPage = (function(){
               const conference = $('#ev_conference')?.value || '';
               const description = $('#ev_desc')?.value || '';
               const sendInvites = !!$('#ev_send')?.checked;
+              const wantTing = !!$('#ev_ting')?.checked;
+              const wantProtocol = !!$('#ev_protocol')?.checked;
               const participantIds = window.CREmployeePicker ? CREmployeePicker.getSelected(PICKER_ID) : [];
               const guests = collectGuestsFromDom();
+              const confTrim = String(conference || '').trim();
+              // Чужой VCS: непустой и не asgard /ting/ — create_thing не шлём
+              const foreignVcs = !!(confTrim && !/\/ting\//i.test(confTrim) && !/#\/ting\b/i.test(confTrim));
 
-              const asMeeting = meetingTypes.has(type) && (participantIds.length > 0 || guests.length > 0 || isMeeting);
+              const asMeeting = meetingTypes.has(type) && (participantIds.length > 0 || guests.length > 0 || isMeeting || wantTing);
 
               try {
                 btn.disabled = true;
@@ -550,7 +577,7 @@ window.AsgardCalendarPage = (function(){
                     title,
                     description,
                     location: location || null,
-                    conference_url: conference || null,
+                    conference_url: confTrim || null,
                     start_time: startISO,
                     end_time: endISO,
                     participant_ids: participantIds,
@@ -559,11 +586,21 @@ window.AsgardCalendarPage = (function(){
                     notify_before_minutes: reminder || 15,
                     recurrence_rule: recur
                   };
+                  if (wantTing && !foreignVcs) {
+                    payload.create_thing = true;
+                    payload.protocol_enabled = wantProtocol;
+                  }
+                  let saved;
                   if (isMeeting && ev.meeting_id) {
                     payload.meeting_id = ev.meeting_id;
-                    await saveMeeting(payload);
+                    saved = await saveMeeting(payload);
                   } else {
-                    await saveMeeting(payload);
+                    saved = await saveMeeting(payload);
+                  }
+                  const thing = saved && (saved.thing || (saved.data && saved.data.thing));
+                  if (thing && thing.slug) {
+                    const link = thing.url || ('#/ting?view=ready&slug=' + thing.slug);
+                    toast('Тинг создан', link, 'ok');
                   }
                 } else {
                   await savePersonal({

@@ -4,6 +4,12 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no" />
   <title>Тинг</title>
+  <script>
+    try {
+      var t = localStorage.getItem('asgard_theme');
+      if (t === 'light' || t === 'dark') document.documentElement.setAttribute('data-theme', t);
+    } catch (e) {}
+  </script>
   <link rel="stylesheet" href="/assets/css/design-tokens.css" />
   <link rel="stylesheet" href="/assets/css/ting.css" />
   <style>
@@ -15,10 +21,31 @@
     .ting-guest-brand { justify-content:center; margin-bottom:12px; }
     .ting-guest-brand .ting-logo-text { text-align:left; }
     .ting-guest-cta { display:inline-flex; text-decoration:none; }
+    .ting-quality-chip {
+      display: inline-flex; align-items: center; gap: 6px;
+      font-size: 11px; font-weight: 700; letter-spacing: .02em;
+      padding: 4px 10px; border-radius: 999px;
+      border: 1px solid rgba(255,255,255,.18);
+      background: rgba(0,0,0,.35); color: var(--ting-on-media, #fff);
+      white-space: nowrap;
+    }
+    .ting-quality-chip[data-q="excellent"] { border-color: rgba(74,222,128,.45); }
+    .ting-quality-chip[data-q="good"] { border-color: rgba(74,222,128,.35); }
+    .ting-quality-chip[data-q="poor"],
+    .ting-quality-chip[data-q="lost"] { border-color: rgba(232,71,90,.55); color: #ffb4b8; }
+    .ting-reconnect-banner {
+      position: absolute; left: 50%; top: 56px; transform: translateX(-50%);
+      z-index: 8; padding: 8px 14px; border-radius: 12px;
+      background: rgba(0,0,0,.62); color: var(--ting-on-media, #fff);
+      font-size: 13px; font-weight: 700;
+      border: 1px solid rgba(255,255,255,.16);
+      backdrop-filter: blur(12px);
+    }
   </style>
   <script src="https://cdn.jsdelivr.net/npm/livekit-client@2.9.1/dist/livekit-client.umd.min.js"></script>
   <script src="/assets/js/ting_icons.js"></script>
   <script src="/assets/js/ting_common.js"></script>
+  <script src="/assets/js/ting_room_core.js"></script>
 </head>
 <body class="ting-guest">
   <div class="g-screen" id="lobby">
@@ -146,13 +173,16 @@
           </div>
         </div>
         <div class="ting-top-actions">
+          <span class="ting-quality-chip hidden" id="qualityChip" data-q="unknown" title="Качество связи">—</span>
           <button type="button" class="ting-icon-btn" id="btnPeopleTop" title="Участники" aria-label="Участники"></button>
           <button type="button" class="ting-icon-btn" id="btnChatMob" title="Чат" aria-label="Чат"></button>
         </div>
       </div>
+      <div class="ting-reconnect-banner hidden" id="reconnectBanner" role="status" aria-live="polite">Переподключение…</div>
       <div class="ting-stage-wrap">
         <div class="ting-filmstrip" id="filmstrip"></div>
         <div class="ting-stage" id="stage"></div>
+        <div class="ting-react-layer" id="reactLayer" aria-hidden="true"></div>
         <div class="ting-people-drawer hidden" id="peopleDrawer">
           <div class="ting-drawer-head">
             <strong>Участники</strong>
@@ -160,13 +190,39 @@
           </div>
           <div id="peopleList"></div>
         </div>
+        <div class="ting-more-sheet hidden" id="moreSheet" role="dialog" aria-label="Ещё">
+          <div class="ting-more-head"><strong>Ещё</strong><button type="button" class="ting-icon-btn" id="moreClose" aria-label="Закрыть">×</button></div>
+          <div class="ting-more-section">
+            <label class="ting-more-label" for="guestMicSelect">Микрофон</label>
+            <select class="ting-field ting-device-select" id="guestMicSelect" data-act="device-audio"><option value="">По умолчанию</option></select>
+            <label class="ting-more-label" for="guestCamSelect">Камера</label>
+            <select class="ting-field ting-device-select" id="guestCamSelect" data-act="device-video"><option value="">По умолчанию</option></select>
+          </div>
+          <div class="ting-more-grid">
+            <button type="button" class="ting-more-item" id="btnHand">Поднять руку</button>
+            <button type="button" class="ting-more-item" data-react="👍">👍</button>
+            <button type="button" class="ting-more-item" data-react="👏">👏</button>
+            <button type="button" class="ting-more-item" data-react="❤️">❤️</button>
+            <button type="button" class="ting-more-item" data-react="🔥">🔥</button>
+          </div>
+          <div class="ting-more-label">Фон</div>
+          <div class="ting-more-grid ting-bg-grid" id="guestBgGrid">
+            <button type="button" class="ting-more-item on" data-bg="none">Без фона</button>
+            <button type="button" class="ting-more-item" data-bg="blur">Размытие</button>
+            <button type="button" class="ting-more-item" data-bg="office-dusk">Офис</button>
+            <button type="button" class="ting-more-item" data-bg="soft-sky">Небо</button>
+            <button type="button" class="ting-more-item" data-bg="warm-studio">Студия</button>
+          </div>
+        </div>
       </div>
       <div class="ting-dock">
         <div class="ting-dock-inner">
+          <button type="button" class="ting-dock-btn on-gold" id="btnLayout" title="Раскладка" aria-label="Раскладка"></button>
           <button type="button" class="ting-dock-btn" id="btnMic" title="Микрофон" aria-label="Микрофон"></button>
           <button type="button" class="ting-dock-btn" id="btnCam" title="Камера" aria-label="Камера"></button>
           <button type="button" class="ting-dock-btn" id="btnShare" title="Экран" aria-label="Экран"></button>
           <button type="button" class="ting-dock-btn" id="btnPeople" title="Участники" aria-label="Участники"></button>
+          <button type="button" class="ting-dock-btn" id="btnMore" title="Ещё" aria-label="Ещё"></button>
           <div class="ting-dock-sep" aria-hidden="true"></div>
           <button type="button" class="ting-dock-btn danger" id="btnLeave" title="Выйти" aria-label="Выйти"></button>
         </div>
@@ -199,6 +255,7 @@
           ['btnMic', function () { return I.mic && I.mic(false); }],
           ['btnCam', function () { return I.cam && I.cam(false); }],
           ['btnShare', I.screen], ['btnPeople', I.people], ['btnPeopleTop', I.people],
+          ['btnMore', I.more], ['btnLayout', function () { return (I.speaker && I.speaker()) || ''; }],
           ['btnChatMob', I.chat], ['btnLeave', I.hang],
           ['chatSend', I.send]
         ];
@@ -232,10 +289,26 @@
       let sharing = false;
       let guestName = '';
       let peopleOpen = false;
+      let moreOpen = false;
+      let handRaised = false;
+      let layoutMode = 'speaker';
       let recordingMode = 'off';
       let activeSpeakerId = null;
       let speakerTimer = null;
       let guestChat = [];
+      let lastCreds = null;
+      let reconnecting = false;
+      let reconnectAttempts = 0;
+      let bgPreset = 'none';
+      let guestTrackProcessors = null;
+      var RECONNECT_MAX = 3;
+      var GUEST_BG_PRESETS = {
+        none: { label: 'Без фона', url: '' },
+        blur: { label: 'Размытие', url: '__blur__' },
+        'office-dusk': { label: 'Офис', url: '/assets/img/ting-bg/office-dusk.svg' },
+        'soft-sky': { label: 'Небо', url: '/assets/img/ting-bg/soft-sky.svg' },
+        'warm-studio': { label: 'Студия', url: '/assets/img/ting-bg/warm-studio.svg' }
+      };
       function tingSound(kind) {
         if (window.TingCommon && TingCommon.TingSound) TingCommon.TingSound.play(kind);
         else if (window.TingSound) TingSound.play(kind);
@@ -355,7 +428,169 @@
         if (peopleDrawer) peopleDrawer.classList.toggle('hidden', !peopleOpen);
         document.querySelector('.ting-room-main') &&
           document.querySelector('.ting-room-main').classList.toggle('has-people', peopleOpen);
-        if (peopleOpen) renderPeople();
+        if (peopleOpen) {
+          moreOpen = false;
+          var ms = document.getElementById('moreSheet');
+          if (ms) ms.classList.add('hidden');
+          renderPeople();
+        }
+      }
+      function setMoreOpen(on) {
+        moreOpen = !!on;
+        var ms = document.getElementById('moreSheet');
+        if (ms) ms.classList.toggle('hidden', !moreOpen);
+        if (moreOpen) {
+          setPeopleOpen(false);
+          refreshGuestDevices();
+          syncGuestBgButtons();
+        }
+      }
+      function syncGuestBgButtons() {
+        document.querySelectorAll('#guestBgGrid [data-bg]').forEach(function (btn) {
+          btn.classList.toggle('on', btn.getAttribute('data-bg') === bgPreset);
+        });
+      }
+      async function refreshGuestDevices() {
+        var micSel = document.getElementById('guestMicSelect');
+        var camSel = document.getElementById('guestCamSelect');
+        if (!micSel || !camSel || !navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) return;
+        try {
+          var list = await navigator.mediaDevices.enumerateDevices();
+          var mics = list.filter(function (d) { return d.kind === 'audioinput'; });
+          var cams = list.filter(function (d) { return d.kind === 'videoinput'; });
+          var curMic = micSel.value;
+          var curCam = camSel.value;
+          micSel.innerHTML = mics.length
+            ? mics.map(function (d) {
+                return '<option value="' + String(d.deviceId).replace(/"/g, '') + '">' +
+                  String(d.label || 'Микрофон').replace(/</g, '&lt;') + '</option>';
+              }).join('')
+            : '<option value=\"\">По умолчанию</option>';
+          camSel.innerHTML = cams.length
+            ? cams.map(function (d) {
+                return '<option value="' + String(d.deviceId).replace(/"/g, '') + '">' +
+                  String(d.label || 'Камера').replace(/</g, '&lt;') + '</option>';
+              }).join('')
+            : '<option value=\"\">По умолчанию</option>';
+          if (curMic) micSel.value = curMic;
+          if (curCam) camSel.value = curCam;
+        } catch (_) { /* */ }
+      }
+      async function loadGuestTrackProcessors() {
+        if (guestTrackProcessors) return guestTrackProcessors;
+        if (window.LivekitTrackProcessors) {
+          guestTrackProcessors = window.LivekitTrackProcessors;
+          return guestTrackProcessors;
+        }
+        try {
+          guestTrackProcessors = await import('https://cdn.jsdelivr.net/npm/@livekit/track-processors@0.3.4/+esm');
+          window.LivekitTrackProcessors = guestTrackProcessors;
+          return guestTrackProcessors;
+        } catch (_) {
+          return null;
+        }
+      }
+      function guestLocalCamPub() {
+        if (!room || !room.localParticipant) return null;
+        var pubs = Array.from(room.localParticipant.videoTrackPublications.values());
+        return pubs.find(function (p) {
+          return p.track && !/screen/i.test(String(p.source || ''));
+        }) || null;
+      }
+      async function applyGuestBackground(presetId) {
+        var preset = GUEST_BG_PRESETS[presetId] || GUEST_BG_PRESETS.none;
+        var cam = guestLocalCamPub();
+        if (!cam || !cam.track) {
+          guestToast('Включите камеру');
+          return;
+        }
+        try {
+          if (typeof cam.track.stopProcessor === 'function') {
+            try { await cam.track.stopProcessor(); } catch (_) { /* */ }
+          }
+          bgPreset = presetId;
+          syncGuestBgButtons();
+          if (!preset.url) {
+            guestToast('Фон выключен');
+            return;
+          }
+          var processors = await loadGuestTrackProcessors();
+          if (!processors || typeof cam.track.setProcessor !== 'function') {
+            guestToast('Эффекты фона недоступны в этом браузере');
+            bgPreset = 'none';
+            syncGuestBgButtons();
+            return;
+          }
+          var proc = null;
+          if (preset.url === '__blur__') {
+            if (typeof processors.BackgroundBlur !== 'function') {
+              guestToast('Размытие недоступно');
+              bgPreset = 'none';
+              syncGuestBgButtons();
+              return;
+            }
+            proc = processors.BackgroundBlur(16);
+          } else if (typeof processors.VirtualBackground === 'function') {
+            proc = processors.VirtualBackground(preset.url);
+          } else {
+            guestToast('Виртуальный фон недоступен');
+            bgPreset = 'none';
+            syncGuestBgButtons();
+            return;
+          }
+          await cam.track.setProcessor(proc);
+          guestToast(preset.label);
+        } catch (e) {
+          bgPreset = 'none';
+          syncGuestBgButtons();
+          guestToast((e && e.message) || 'Не удалось сменить фон');
+        }
+      }
+      async function switchGuestDevice(kind, deviceId) {
+        if (!room || !deviceId) return;
+        try {
+          if (typeof room.switchActiveDevice === 'function') {
+            await room.switchActiveDevice(kind, deviceId);
+          }
+          guestToast('Устройство переключено');
+        } catch (e) {
+          guestToast((e && e.message) || 'Не удалось сменить устройство');
+        }
+      }
+      async function publishGuestData(payload) {
+        if (window.TingRoomCore && TingRoomCore.publishData) {
+          await TingRoomCore.publishData(room, payload);
+          return;
+        }
+        if (!room || !room.localParticipant || typeof room.localParticipant.publishData !== 'function') return;
+        var bytes = new TextEncoder().encode(JSON.stringify(Object.assign({ ts: Date.now() }, payload || {})));
+        await room.localParticipant.publishData(bytes, { reliable: true });
+      }
+      function showGuestReaction(emoji) {
+        var layer = document.getElementById('reactLayer');
+        if (!layer) return;
+        if (window.TingRoomCore && TingRoomCore.showReactionBurst) {
+          TingRoomCore.showReactionBurst(layer, emoji);
+          return;
+        }
+        var burst = document.createElement('div');
+        burst.className = 'ting-react-burst';
+        burst.textContent = emoji;
+        burst.style.left = (20 + Math.random() * 60) + '%';
+        layer.appendChild(burst);
+        setTimeout(function () { try { burst.remove(); } catch (_) {} }, 2200);
+      }
+      function applyGuestLayout() {
+        var stage = document.getElementById('stage');
+        if (!stage) return;
+        stage.classList.toggle('speaker', layoutMode === 'speaker');
+        stage.classList.toggle('g2', layoutMode === 'grid');
+        var btn = document.getElementById('btnLayout');
+        if (btn && I) {
+          btn.innerHTML = layoutMode === 'speaker'
+            ? ((I.speaker && I.speaker()) || '')
+            : ((I.grid && I.grid()) || '');
+        }
       }
 
       document.getElementById('name').addEventListener('input', syncPreviewUi);
@@ -485,15 +720,32 @@
           host.appendChild(tile);
         }
         if (track.kind === 'video') {
-          let el = tile.querySelector('video');
-          if (!el) {
-            el = track.attach();
-            el.style.width = '100%'; el.style.height = '100%'; el.style.objectFit = 'cover';
-            const ph = tile.querySelector('.ting-tile-ph');
-            if (ph) ph.remove();
-            tile.insertBefore(el, tile.firstChild);
+          var mutedVid = false;
+          try { mutedVid = track.isMuted === true; } catch (_) { mutedVid = false; }
+          if (mutedVid) {
+            var vKill = tile.querySelector('video');
+            if (vKill) {
+              try { track.detach(vKill); } catch (_) { /* */ }
+              try { vKill.remove(); } catch (_) { /* */ }
+            }
+            if (!tile.querySelector('.ting-tile-ph')) {
+              var toneM = avatarTone(identity || name);
+              var phM = document.createElement('div');
+              phM.className = 'ting-tile-ph tone-' + toneM;
+              phM.innerHTML = '<div class="ting-avatar tone-' + toneM + '">' + initials(name || identity) + '</div>';
+              tile.insertBefore(phM, tile.firstChild);
+            }
           } else {
-            track.attach(el);
+            let el = tile.querySelector('video');
+            if (!el) {
+              el = track.attach();
+              el.style.width = '100%'; el.style.height = '100%'; el.style.objectFit = 'cover';
+              const ph = tile.querySelector('.ting-tile-ph');
+              if (ph) ph.remove();
+              tile.insertBefore(el, tile.firstChild);
+            } else {
+              track.attach(el);
+            }
           }
         } else if (track.kind === 'audio') {
           const el = track.attach();
@@ -599,18 +851,66 @@
         chatPollId = setInterval(pull, 1000);
       }
 
-      async function enterRoom(creds) {
+      function setReconnectUi(on) {
+        var banner = document.getElementById('reconnectBanner');
+        if (banner) banner.classList.toggle('hidden', !on);
+      }
+
+      function setQualityChip(q) {
+        var chip = document.getElementById('qualityChip');
+        if (!chip) return;
+        var key = String(q || 'unknown').toLowerCase();
+        var label = '—';
+        if (key === 'excellent' || key === '4') { key = 'excellent'; label = 'Отлично'; }
+        else if (key === 'good' || key === '3') { key = 'good'; label = 'Хорошо'; }
+        else if (key === 'poor' || key === '2') { key = 'poor'; label = 'Слабо'; }
+        else if (key === 'lost' || key === '1' || key === '0') { key = 'lost'; label = 'Плохо'; }
+        else { key = 'unknown'; label = 'Сеть'; }
+        chip.dataset.q = key;
+        chip.textContent = label;
+        chip.classList.remove('hidden');
+      }
+
+      async function tryReconnect() {
+        if (reconnecting || !lastCreds) return false;
+        reconnecting = true;
+        setReconnectUi(true);
+        try {
+          if (room && typeof room.reconnect === 'function') {
+            await room.reconnect();
+            reconnectAttempts = 0;
+            setReconnectUi(false);
+            reconnecting = false;
+            return true;
+          }
+          await enterRoom(lastCreds, { isReconnect: true });
+          reconnectAttempts = 0;
+          setReconnectUi(false);
+          reconnecting = false;
+          return true;
+        } catch (_) {
+          reconnecting = false;
+          return false;
+        }
+      }
+
+      async function enterRoom(creds, opts) {
+        opts = opts || {};
         if (!window.LivekitClient) { showError('Видео-клиент не загрузился'); return; }
         stopPreview();
         if (creds.identity) guestIdentity = creds.identity;
         if (creds.join_token) joinToken = creds.join_token;
+        lastCreds = creds;
         if (room) {
           try { await room.disconnect(); } catch (_) { /* */ }
           room = null;
         }
         var next = new window.LivekitClient.Room({ adaptiveStream: true, dynacast: true });
         room = next;
-        next.on(window.LivekitClient.RoomEvent.TrackSubscribed, function (track, _pub, participant) {
+        next.on(window.LivekitClient.RoomEvent.TrackSubscribed, function (track, pub, participant) {
+          if (track.kind === 'video' && window.TingRoomCore && TingRoomCore.trackIsLive) {
+            if (!TingRoomCore.trackIsLive(pub || { track: track })) return;
+          }
           attachTrack(track, participant.identity, participant.name, false);
         });
         next.on(window.LivekitClient.RoomEvent.TrackUnsubscribed, function (track) {
@@ -635,7 +935,8 @@
         next.on(window.LivekitClient.RoomEvent.DataReceived, function (payload) {
           try {
             var msg = JSON.parse(new TextDecoder().decode(payload));
-            if (msg && msg.type === 'chat' && msg.text) {
+            if (!msg || !msg.type) return;
+            if (msg.type === 'chat' && msg.text) {
               var row = {
                 text: msg.text,
                 display_name: msg.display_name || 'Участник',
@@ -649,13 +950,83 @@
                 guestChat = guestChat.concat([row]);
               }
               renderChat(guestChat);
+              return;
+            }
+            if (msg.type === 'reaction' && msg.emoji) {
+              showGuestReaction(msg.emoji);
             }
           } catch (_) { /* */ }
         });
+        if (window.LivekitClient.RoomEvent.TrackMuted) {
+          next.on(window.LivekitClient.RoomEvent.TrackMuted, function (pub, participant) {
+            if (pub && pub.track && pub.track.kind === 'video') {
+              attachTrack(pub.track, participant.identity, participant.name, false);
+            }
+          });
+        }
+        if (window.LivekitClient.RoomEvent.TrackUnmuted) {
+          next.on(window.LivekitClient.RoomEvent.TrackUnmuted, function (pub, participant) {
+            if (pub && pub.track && pub.track.kind === 'video') {
+              attachTrack(pub.track, participant.identity, participant.name, false);
+            }
+          });
+        }
+        if (window.LivekitClient.RoomEvent.ConnectionQualityChanged) {
+          next.on(window.LivekitClient.RoomEvent.ConnectionQualityChanged, function (quality, participant) {
+            try {
+              if (participant && next.localParticipant && participant.identity !== next.localParticipant.identity) return;
+            } catch (_) { /* */ }
+            var name = quality;
+            if (quality && typeof quality === 'object' && quality.constructor) {
+              /* enum may arrive as number or ConnectionQuality.* */
+            }
+            if (window.LivekitClient.ConnectionQuality) {
+              var CQ = window.LivekitClient.ConnectionQuality;
+              if (quality === CQ.Excellent || quality === 'excellent') name = 'excellent';
+              else if (quality === CQ.Good || quality === 'good') name = 'good';
+              else if (quality === CQ.Poor || quality === 'poor') name = 'poor';
+              else if (quality === CQ.Lost || quality === 'lost') name = 'lost';
+            }
+            setQualityChip(name);
+          });
+        }
+        if (window.LivekitClient.RoomEvent.Reconnecting) {
+          next.on(window.LivekitClient.RoomEvent.Reconnecting, function () {
+            setReconnectUi(true);
+          });
+        }
+        if (window.LivekitClient.RoomEvent.Reconnected) {
+          next.on(window.LivekitClient.RoomEvent.Reconnected, function () {
+            reconnectAttempts = 0;
+            setReconnectUi(false);
+          });
+        }
         next.on(window.LivekitClient.RoomEvent.Disconnected, function () {
+          if (room !== next) return;
+          if (reconnecting) return;
+          reconnectAttempts += 1;
+          if (reconnectAttempts <= RECONNECT_MAX && lastCreds) {
+            setReconnectUi(true);
+            setTimeout(function () {
+              tryReconnect().then(function (ok) {
+                if (ok) return;
+                if (reconnectAttempts < RECONNECT_MAX) {
+                  setTimeout(function () { tryReconnect(); }, 1200 * reconnectAttempts);
+                  return;
+                }
+                if (timerId) clearInterval(timerId);
+                if (chatPollId) clearInterval(chatPollId);
+                setPeopleOpen(false);
+                setReconnectUi(false);
+                show('ended');
+              });
+            }, 400);
+            return;
+          }
           if (timerId) clearInterval(timerId);
           if (chatPollId) clearInterval(chatPollId);
           setPeopleOpen(false);
+          setReconnectUi(false);
           show('ended');
         });
         try {
@@ -671,6 +1042,8 @@
           throw e;
         }
         show('room');
+        setReconnectUi(false);
+        setQualityChip('good');
         syncRecConsent();
         document.getElementById('btnMic').classList.toggle('off', !localAudio);
         document.getElementById('btnMic').classList.toggle('active', localAudio);
@@ -678,8 +1051,8 @@
         document.getElementById('btnCam').classList.toggle('off', !localVideo);
         document.getElementById('btnCam').classList.toggle('active', localVideo);
         document.getElementById('btnCam').innerHTML = (I.cam && I.cam(!localVideo)) || '';
-        tingSound('join');
-        startTimer();
+        if (!opts.isReconnect) tingSound('join');
+        if (!timerId) startTimer();
         startChatPoll();
       }
 
@@ -753,10 +1126,55 @@
       document.getElementById('btnPeople').addEventListener('click', function () {
         setPeopleOpen(!peopleOpen);
       });
+      document.getElementById('btnLayout').addEventListener('click', function () {
+        layoutMode = layoutMode === 'speaker' ? 'grid' : 'speaker';
+        applyGuestLayout();
+      });
+      document.getElementById('btnMore').addEventListener('click', function () {
+        setMoreOpen(!moreOpen);
+      });
+      document.getElementById('moreClose').addEventListener('click', function () {
+        setMoreOpen(false);
+      });
+      document.getElementById('btnHand').addEventListener('click', async function () {
+        if (!room) return;
+        handRaised = !handRaised;
+        await publishGuestData({
+          type: handRaised ? 'hand_raise' : 'hand_lower',
+          identity: guestIdentity || 'guest'
+        });
+        this.textContent = handRaised ? 'Опустить руку' : 'Поднять руку';
+        setMoreOpen(false);
+      });
+      document.querySelectorAll('#moreSheet [data-react]').forEach(function (btn) {
+        btn.addEventListener('click', async function () {
+          var emoji = btn.getAttribute('data-react');
+          if (!emoji || !room) return;
+          await publishGuestData({
+            type: 'reaction',
+            emoji: emoji,
+            identity: guestIdentity || 'guest',
+            display_name: guestName || 'Гость'
+          });
+          showGuestReaction(emoji);
+          setMoreOpen(false);
+        });
+      });
+      document.getElementById('guestMicSelect').addEventListener('change', async function () {
+        await switchGuestDevice('audioinput', this.value);
+      });
+      document.getElementById('guestCamSelect').addEventListener('change', async function () {
+        await switchGuestDevice('videoinput', this.value);
+      });
+      document.querySelectorAll('#guestBgGrid [data-bg]').forEach(function (btn) {
+        btn.addEventListener('click', async function () {
+          await applyGuestBackground(btn.getAttribute('data-bg') || 'none');
+        });
+      });
       document.getElementById('btnChatMob').addEventListener('click', function () {
-        setPeopleOpen(false);
         document.getElementById('chatSide').classList.add('open');
       });
+      applyGuestLayout();
       document.getElementById('chatCloseMob').addEventListener('click', function () {
         document.getElementById('chatSide').classList.remove('open');
       });

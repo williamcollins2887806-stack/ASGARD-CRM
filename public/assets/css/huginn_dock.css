@@ -3496,7 +3496,7 @@ html[data-theme="light"] .hg-send.is-mic:hover {
 .hg-ting-tile-ph {
   width: 100%; height: 100%;
   display: flex; align-items: center; justify-content: center;
-  background: linear-gradient(145deg, #1a2030, #0d1118);
+  background: linear-gradient(145deg, var(--hg-elev, var(--ting-preview-bg, #1C2130)), var(--hg-bg, var(--bg1, #0D1117)));
 }
 .hg-ting-avatar {
   width: 56px; height: 56px; border-radius: 50%;

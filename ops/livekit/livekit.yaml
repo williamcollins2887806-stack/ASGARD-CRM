@@ -10,6 +10,14 @@ rtc:
   port_range_start: 50000
   port_range_end: 60000
   use_external_ip: true
+  # External coturn (см. turnserver.conf). Ключ по LiveKit config-sample: rtc.turn_servers
+  # PLACEHOLDER: host/secret = TURN_HOST / TURN_SECRET из thing.env
+  turn_servers:
+    - host: asgard-crm.ru
+      port: 3478
+      protocol: udp
+      secret: CHANGE_ME_TURN_SECRET
+      ttl: 14400
 
 redis:
   address: 127.0.0.1:6379

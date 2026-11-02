@@ -1,7 +1,7 @@
 # THING-CODE-VERIFY-F4
 
-at: 2026-10-07T13:56:29.769Z
-result: VERIFIED (37/37)
+at: 2026-11-02T12:11:40.058Z
+result: VERIFIED (48/48)
 
 | ID | PASS | Evidence |
 |----|------|----------|
@@ -42,5 +42,16 @@ result: VERIFIED (37/37)
 | C35_contain_screenshare | PASS | screen-share object-fit: contain + подпись track по source=screen |
 | C36_placeholder_name_fallback | PASS | заглушка «Участник» → ФИО из users |
 | C37_landscape_low_height | PASS | ландшафт телефона: ограничение по высоте |
+| C38_start_live | PASS | /start пишет live, не active |
+| C39_pickvideo_skip_muted | PASS | pickVideo пропускает muted → аватар |
+| C40_people_chat_parallel | PASS | people не убивает chatHtml |
+| C41_more_sheet | PASS | Ещё = settings + рука + реакции |
+| C42_room_core | PASS | ting_room_core.js shared module |
+| C43_reconnect_ux | PASS | reconnect UX CRM+guest |
+| C44_calendar_create_thing | PASS | календарь шлёт create_thing |
+| C45_turn_ops | PASS | coturn + turn_servers в ops |
+| C46_device_picker | PASS | device picker в Ещё CRM+guest |
+| C47_bg_presets | PASS | 3 вирт.фона + blur wiring CRM+guest |
+| C48_2peer_smoke_artifact | PASS | TING-2PEER-MEDIA-SMOKE.json green |
 
 ## All PASS
