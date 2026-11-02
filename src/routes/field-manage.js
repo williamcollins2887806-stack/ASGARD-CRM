@@ -529,7 +529,13 @@ async function routes(fastify, options) {
           }
         }
       } catch (mailErr) {
-        fastify.log.warn('[field-manage] crew email: ' + mailErr.message);
+        fastify.log.warn({
+          err: mailErr,
+          workId,
+          pm_id: wp && wp.pm_id,
+          to: wp && wp.pm_email,
+          code: mailErr && mailErr.code,
+        }, '[field-manage] crew email failed');
       }
 
       return { results, count: results.filter(r => r.ok).length };

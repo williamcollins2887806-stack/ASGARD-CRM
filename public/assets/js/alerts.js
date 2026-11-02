@@ -1,5 +1,9 @@
 
 window.AsgardAlertsPage=(function(){
+  if (!window.AsgardUI) {
+    console.warn('[AsgardAlertsPage] AsgardUI missing — stub');
+    return { render: async function () {} };
+  }
   const {$, $$, esc, toast} = AsgardUI;
   const isDirRole = (r)=> (window.AsgardAuth&&AsgardAuth.isDirectorRole)?AsgardAuth.isDirectorRole(r):(r==="DIRECTOR"||String(r||"").startsWith("DIRECTOR_"));
 

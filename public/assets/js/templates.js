@@ -1,5 +1,9 @@
 
 window.AsgardTemplates=(function(){
+  if (!window.AsgardUI) {
+    console.warn('[AsgardTemplates] AsgardUI missing — stub');
+    return {};
+  }
   const {esc, toast} = AsgardUI;
   const fmtDate = (iso) => iso ? (AsgardUI.formatDate ? AsgardUI.formatDate(iso) : new Date(iso).toLocaleDateString('ru-RU')) : '—';
 

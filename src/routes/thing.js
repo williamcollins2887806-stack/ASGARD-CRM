@@ -606,7 +606,12 @@ module.exports = async function thingRoutes(fastify) {
       );
       return { recording: rows[0], consent_required: true };
     } catch (e) {
-      fastify.log.error(e);
+      fastify.log.error({
+        err: e,
+        room_id: room.id,
+        livekit_room: room.livekit_room_name,
+        code: e && e.code,
+      }, '[thing] recording/start EGRESS_FAILED');
       return reply.code(503).send({
         error: 'Не удалось стартовать запись: ' + (e.message || e),
         code: 'EGRESS_FAILED'

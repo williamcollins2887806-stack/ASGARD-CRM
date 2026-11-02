@@ -80,7 +80,7 @@ async function resolveByInn(inn) {
  * @returns {Promise<{inn,name,full_name,kpp,ogrn,address}|null>}
  */
 async function suggestByQuery(query) {
-  const q = String(query || '').trim();
+  const q = String(query || '').trim().slice(0, 300);
   if (q.length < 2) return null;
   const data = await _post(DADATA_SUGGEST, { query: q, count: 1 });
   const s = data && data.suggestions && data.suggestions[0];

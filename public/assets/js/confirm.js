@@ -1,4 +1,9 @@
 window.AsgardConfirm=(function(){
+  // Guard: если ui.js не загрузился (404/SW) — не сыпем ReferenceError на весь shell.
+  if (!window.AsgardUI) {
+    console.warn('[AsgardConfirm] AsgardUI missing — stub');
+    return { confirm: function () { return Promise.resolve(false); }, ask: function () { return Promise.resolve(null); } };
+  }
   const { $, esc, toast } = AsgardUI;
 
   let _overlay = null;

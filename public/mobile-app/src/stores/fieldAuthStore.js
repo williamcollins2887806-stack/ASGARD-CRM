@@ -53,6 +53,8 @@ export const useFieldAuthStore = create((set, get) => ({
   loading: false,
   error: null,
   pendingResetPin: false,
+  /** Каналы доставки кода: { sms, max } из request-code */
+  codeChannels: null,
   // 'idle' | 'need_pin_setup' | 'need_pin' | 'authenticated'
   status: initialStatus(),
 
@@ -99,10 +101,10 @@ export const useFieldAuthStore = create((set, get) => ({
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Ошибка отправки кода');
-      set({ loading: false });
+      set({ loading: false, codeChannels: data.channels || null });
       return data;
     } catch (err) {
-      set({ error: err.message, loading: false });
+      set({ error: err.message, loading: false, codeChannels: null });
       throw err;
     }
   },

@@ -64,7 +64,7 @@ export default function FieldLogin() {
   const {
     requestCode, verifyCode, checkPhone, rememberForPin,
     loading, error, clearError,
-    employee, pendingResetPin,
+    employee, pendingResetPin, codeChannels,
   } = useFieldAuthStore();
 
   const [step, setStep] = useState('phone'); // phone | code | success
@@ -346,8 +346,18 @@ export default function FieldLogin() {
 
         {step === 'code' && (
           <div className="fa-slide-in" style={{ width: '100%', maxWidth: 320 }}>
-            <h2 className="fa-heading">Код из SMS или MAX</h2>
-            <p className="fa-desc">Введи 4 цифры — код придёт в SMS или MAX.</p>
+            <h2 className="fa-heading">
+              {codeChannels?.max === 'unavailable' || codeChannels?.max === 'failed'
+                ? 'Код из SMS'
+                : 'Код из SMS или MAX'}
+            </h2>
+            <p className="fa-desc">
+              {codeChannels?.max === 'unavailable'
+                ? 'Введи 4 цифры — код придёт в SMS. Этот номер не привязан к MAX.'
+                : codeChannels?.max === 'failed'
+                  ? 'Введи 4 цифры — код придёт в SMS (MAX недоступен).'
+                  : 'Введи 4 цифры — код придёт в SMS или MAX.'}
+            </p>
 
             <div className="fa-otp-wrap">
               {otp.map((digit, i) => (

@@ -20,6 +20,23 @@ class RecordingFetcher {
     this._jobQueue = null;
     this._fetchIntervalMs = 5 * 60 * 1000;
     this._lastZeroWarnAt = 0;
+    this._rateLimitedUntil = 0;
+    this._lastRateWarnAt = 0;
+  }
+
+  /** Mango 3300 / HTTP 429 / «rate limit» — не error каждые 5 мин. */
+  _isRateLimited(err) {
+    const msg = String((err && err.message) || err || '');
+    return /\b3300\b|rate limit|too many requests|\b429\b/i.test(msg);
+  }
+
+  _noteRateLimit(err) {
+    const now = Date.now();
+    this._rateLimitedUntil = now + 30 * 60 * 1000; // 30 мин backoff
+    if (now - this._lastRateWarnAt > 60 * 60 * 1000) {
+      this._lastRateWarnAt = now;
+      this.logger.warn('[RecordingFetcher] Mango stats throttled (backoff 30m): ' + (err && err.message));
+    }
   }
 
   setJobQueue(jq) {
@@ -46,11 +63,13 @@ class RecordingFetcher {
 
   async _run() {
     if (this._running) return;
+    if (Date.now() < this._rateLimitedUntil) return;
     this._running = true;
     try {
       await this._fetchAndMatch();
     } catch (err) {
-      this.logger.error('[RecordingFetcher] Error: ' + err.message);
+      if (this._isRateLimited(err)) this._noteRateLimit(err);
+      else this.logger.error('[RecordingFetcher] Error: ' + err.message);
     }
     this._running = false;
   }
@@ -199,7 +218,8 @@ class RecordingFetcher {
       const resp = await this.mango.requestStats(dateFrom, dateTo, 'records,entry_id');
       statsKey = resp.key;
     } catch (err) {
-      this.logger.error('[RecordingFetcher] Basic stats request failed: ' + err.message);
+      if (this._isRateLimited(err)) this._noteRateLimit(err);
+      else this.logger.error('[RecordingFetcher] Basic stats request failed: ' + err.message);
       return 0;
     }
     if (!statsKey) return 0;
@@ -295,6 +315,7 @@ class RecordingFetcher {
         }
         statsKey = resp.key;
       } catch (err) {
+        if (this._isRateLimited(err)) { this._noteRateLimit(err); break; }
         this.logger.error('[RecordingFetcher] Extended stats request failed: ' + err.message);
         break;
       }

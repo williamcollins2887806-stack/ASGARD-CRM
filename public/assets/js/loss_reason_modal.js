@@ -2,6 +2,10 @@
  * Loss reason modal — blocking modal on registry status «проиграли» (mockup v3)
  */
 window.AsgardLossReasonModal = (function () {
+  if (!window.AsgardUI) {
+    console.warn('[AsgardLossReasonModal] AsgardUI missing — stub');
+    return { open: async function () { return null; } };
+  }
   const { esc, toast, showModal, hideModal } = AsgardUI;
 
   const LOSS_REASONS = [

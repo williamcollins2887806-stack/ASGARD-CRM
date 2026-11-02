@@ -268,7 +268,26 @@ async function sendCrmEmail(db, userId, mailOptions) {
   if (ccList.length > 0) options.cc = Array.isArray(mailOptions.cc) ? ccList : ccList.join(', ');
   if (bccList.length > 0) options.bcc = bccList.join(', ');
 
-  const result = await transport.sendMail(options);
+  // Retry на обрыв SMTP (прод: field-manage crew email ECONNRESET).
+  const RETRYABLE = /ECONNRESET|ETIMEDOUT|ESOCKETTIMEDOUT|EPIPE|socket hang up/i;
+  let result;
+  let lastErr;
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      result = await transport.sendMail(options);
+      lastErr = null;
+      break;
+    } catch (mailErr) {
+      lastErr = mailErr;
+      const code = String((mailErr && (mailErr.code || mailErr.message)) || '');
+      if (attempt < 3 && RETRYABLE.test(code)) {
+        await new Promise((r) => setTimeout(r, 400 * attempt));
+        continue;
+      }
+      throw mailErr;
+    }
+  }
+  if (lastErr) throw lastErr;
 
   // Логируем отправку
   try {

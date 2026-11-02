@@ -2724,6 +2724,9 @@ module.exports = async function docRegistryRoutes(fastify) {
         try { fs.writeFileSync(cached, buf); } catch (_) { /* кэш не критичен */ }
         return sendDocx(buf);
       } catch (e) {
+        // detail уже уходил клиенту, но в journal не было — 16× 500 без причины в логах.
+        request.log.error({ err: e, docId: id, package_type: doc && doc.package_type },
+          '[doc-registry] file?format=docx failed');
         return reply.code(500).send({
           error: 'Не удалось подготовить Word',
           detail: String(e.message || e).slice(0, 200),
@@ -3149,6 +3152,8 @@ module.exports = async function docRegistryRoutes(fastify) {
         reply.header('Content-Disposition', `attachment; filename="${encodeURIComponent(docxName)}"`);
         return reply.send(buf);
       } catch (e) {
+        request.log.error({ err: e, docId: id, parentId: parentId || null },
+          '[doc-registry] obs-letter?format=docx failed');
         return reply.code(500).send({
           error: 'Не удалось подготовить Word',
           detail: String(e.message || e).slice(0, 200),

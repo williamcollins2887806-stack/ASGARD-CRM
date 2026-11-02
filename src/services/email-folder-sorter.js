@@ -57,8 +57,14 @@ async function classifyWithAI(email) {
 Ответь ТОЛЬКО одним словом — названием категории (tkp, tender, invoice, act, contract, correspondence, other).`;
 
   try {
-    const response = await aiProvider.ask(prompt, { maxTokens: 10, temperature: 0.1 });
-    const category = (response || '').trim().toLowerCase().replace(/[^a-z]/g, '');
+    // ai-provider экспортирует complete/completeFast, не ask (прод: ask is not a function).
+    const result = await aiProvider.completeFast({
+      messages: [{ role: 'user', content: prompt }],
+      maxTokens: 10,
+      temperature: 0.1,
+    });
+    const text = (result && (result.text || result.content)) || '';
+    const category = String(text).trim().toLowerCase().replace(/[^a-z]/g, '');
 
     if (CRM_FOLDERS[category]) return category;
     return 'other';

@@ -325,7 +325,8 @@ function createThingWorker(db, log = console) {
       if (job.recording_id && failStatus === 'failed') {
         await setRecordingProtocolStatus(db, job.recording_id, 'failed', String(e.message || e).slice(0, 500));
       }
-      log.error?.('[thing-pipeline] job failed', job.id, e.message);
+      // pino: первый аргумент-объект, иначе level 50 без текста (прод).
+      log.error?.({ err: e, jobId: job.id, type: job.type }, '[thing-pipeline] job failed');
     }
   }
 
@@ -348,7 +349,7 @@ function createThingWorker(db, log = console) {
       if (!job) return;
       await processJob(job);
     } catch (e) {
-      log.error?.('[thing-pipeline]', e.message);
+      log.error?.({ err: e }, '[thing-pipeline] tick failed');
     } finally {
       busy = false;
     }

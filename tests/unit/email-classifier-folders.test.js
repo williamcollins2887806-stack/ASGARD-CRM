@@ -10,7 +10,7 @@ jest.mock('../../src/services/imap', () => ({
   encrypt: jest.fn(v => v)
 }));
 jest.mock('../../src/services/ai-provider', () => ({
-  ask: jest.fn()
+  completeFast: jest.fn()
 }));
 jest.mock('imapflow', () => ({
   ImapFlow: jest.fn().mockImplementation(() => ({
@@ -78,19 +78,19 @@ describe('Email Folder Sorter — classifyWithAI', () => {
   const aiProvider = require('../../src/services/ai-provider');
 
   test('returns AI classification result', async () => {
-    aiProvider.ask.mockResolvedValue('tkp');
+    aiProvider.completeFast.mockResolvedValue({ text: 'tkp' });
     const result = await sorter.classifyWithAI({ subject: 'Some proposal', from_email: 'test@test.com', body_text: 'proposal details' });
     expect(result).toBe('tkp');
   });
 
   test('falls back to other on AI error', async () => {
-    aiProvider.ask.mockRejectedValue(new Error('API error'));
+    aiProvider.completeFast.mockRejectedValue(new Error('API error'));
     const result = await sorter.classifyWithAI({ subject: 'test', from_email: '', body_text: '' });
     expect(result).toBe('other');
   });
 
   test('falls back to other on invalid AI response', async () => {
-    aiProvider.ask.mockResolvedValue('unknown_category_xyz');
+    aiProvider.completeFast.mockResolvedValue({ text: 'unknown_category_xyz' });
     const result = await sorter.classifyWithAI({ subject: 'test', from_email: '', body_text: '' });
     expect(result).toBe('other');
   });

@@ -133,7 +133,8 @@ async function routes(fastify, options) {
           'Accept': 'application/json',
           'Authorization': `Token ${DADATA_TOKEN}`
         },
-        body: JSON.stringify({ query: String(q).trim(), count: 5 })
+        // Cap: длинная вставка в autocomplete → DaData/nginx 413 (прод).
+        body: JSON.stringify({ query: String(q).trim().slice(0, 300), count: 5 })
       });
 
       if (!response.ok) {

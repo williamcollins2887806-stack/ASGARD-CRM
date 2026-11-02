@@ -262,12 +262,12 @@ window.AsgardCorrespondencePage = (function(){
   }
 
   async function resolveItem(id){
+    // Нельзя читать `items` из render() — он в другом scope (ReferenceError в прод-логах).
+    // Всегда идём в API / IndexedDB.
     const numId = Number(id);
-    let item = items.find(x => Number(x.id) === numId);
-    if(item) return item;
     try {
       const data = await apiFetch('/api/data/correspondence/' + encodeURIComponent(numId));
-      item = data?.item || data?.row || data || null;
+      let item = data?.item || data?.row || data || null;
       if(item){
         item.created_by = item.created_by && typeof item.created_by === 'object'
           ? Number(item.created_by.id) : item.created_by;

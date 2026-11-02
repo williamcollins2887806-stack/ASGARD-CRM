@@ -184,14 +184,21 @@ async function routes(fastify, options) {
         fastify.log.error(`[field-auth] SMS send error to ${normalized}: ${smsErr.message}`);
       }
 
+      let maxChannel = 'disabled';
       if (greenApi.isMaxEnabled()) {
         const maxTarget = maxDeliveryPhone(employee, normalized);
         try {
           maxResponse = await greenApi.sendMaxMessage(maxTarget, maxText);
+          maxChannel = 'sent';
           fastify.log.info(`[field-auth] Max code sent to ${maxTarget} (login ${normalized}), idMessage=${maxResponse?.idMessage || ''}`);
         } catch (maxErr) {
           maxResponse = { error: maxErr.message, target: maxTarget };
-          fastify.log.warn(`[field-auth] Max code skip/fail ${maxTarget} (login ${normalized}): ${maxErr.message}`);
+          const noChat = /no max chatId/i.test(String(maxErr.message || ''));
+          maxChannel = noChat ? 'unavailable' : 'failed';
+          // Нет chatId — штатно (номер не в MAX); не warn, если SMS ушёл.
+          const line = `[field-auth] Max code skip/fail ${maxTarget} (login ${normalized}): ${maxErr.message}`;
+          if (noChat && smsStatus === 'sent') fastify.log.info(line);
+          else fastify.log.warn(line);
         }
       }
 
@@ -212,7 +219,11 @@ async function routes(fastify, options) {
         fastify.log.error('[field-auth] SMS log error:', logErr.message);
       }
 
-      return { ok: true, expires_in: SMS_CODE_TTL_MIN * 60 };
+      return {
+        ok: true,
+        expires_in: SMS_CODE_TTL_MIN * 60,
+        channels: { sms: smsStatus, max: maxChannel },
+      };
     } catch (err) {
       logError(fastify, '[field-auth] request-code error', err, req);
       return reply.code(500).send({ error: 'Ошибка сервера' });

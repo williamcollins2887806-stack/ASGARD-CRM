@@ -403,7 +403,11 @@ async function extractTextFromFile(filePath, mimeType) {
             if (rowCount++ > 200) return; // max 200 rows
             const vals = [];
             row.eachCell((cell) => {
-              const v = cell.text || cell.value;
+              // D-204: cell.text у ExcelJS дергает toString на null → TypeError.
+              // Читаем только value (как в ai-email-analyzer.js).
+              let v = null;
+              try { v = cell.value; } catch (_) { v = null; }
+              if (v !== null && v !== undefined && typeof v === 'object' && v.text != null) v = v.text;
               if (v !== null && v !== undefined && v !== '') vals.push(String(v).trim());
             });
             if (vals.length) lines.push(vals.join(' | '));

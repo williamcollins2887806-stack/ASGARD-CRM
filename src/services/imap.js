@@ -273,13 +273,17 @@ async function syncAccount(accountId) {
     console.log(`[IMAP] Sync account #${accountId}: ${newCount} new, ${updatedCount} updated, ${attachmentsSaved} attachments`);
     clearSyncBackoff(accountId);
   } catch (err) {
-    console.error(`[IMAP] Sync error account #${accountId}:`, err.message);
+    const errCode = err.code || '';
+    const errMsg = String(err.message || '');
+    console.error(`[IMAP] Sync error account #${accountId}:`, errMsg, errCode ? `(code=${errCode})` : '');
     noteSyncFailure(accountId);
-    if (err.message.includes('auth') || err.message.includes('login') || err.message.includes('credentials')) {
-      console.error(`[IMAP] ⚠️  Authentication failed for account #${accountId}. Check IMAP_USER/IMAP_PASS or email_accounts credentials.`);
-    }
-    if (err.message.includes('ECONNREFUSED') || err.message.includes('ETIMEDOUT') || err.message.includes('getaddrinfo')) {
-      console.error(`[IMAP] ⚠️  Connection failed for account #${accountId}. Check IMAP_HOST and network access.`);
+    if (/auth|login|credentials/i.test(errMsg)) {
+      console.error(`[IMAP] Authentication failed for account #${accountId}. Check IMAP_USER/IMAP_PASS or email_accounts credentials.`);
+    } else if (/ECONNRESET|EPIPE/i.test(errMsg + errCode)) {
+      // Типичный дроп long-lived TLS Яндексом — не наша кривая конфиг, сеть/peer.
+      console.warn(`[IMAP] Peer dropped connection for account #${accountId} (Yandex/IMAP TLS reset) — backoff + retry.`);
+    } else if (/ECONNREFUSED|ETIMEDOUT|ENETUNREACH|getaddrinfo/i.test(errMsg + errCode)) {
+      console.error(`[IMAP] Connection failed for account #${accountId}. Check IMAP_HOST and network access.`);
     }
 
     await db.query(

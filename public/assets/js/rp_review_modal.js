@@ -2,6 +2,10 @@
  * RP Review modal — structured report (analysis / calc) + TO decision panel
  */
 window.AsgardRpReviewModal = (function () {
+  if (!window.AsgardUI) {
+    console.warn('[AsgardRpReviewModal] AsgardUI missing — stub');
+    return { open: async function () { return null; } };
+  }
   const { esc, toast, showModal, hideModal, replaceModal } = AsgardUI;
   const API = AsgardRegistryApi;
 
