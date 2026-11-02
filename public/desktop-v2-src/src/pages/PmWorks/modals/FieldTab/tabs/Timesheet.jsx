@@ -418,10 +418,11 @@ export default function TimesheetTab({ work }) {
 
       {!loading && rows.length > 0 && (
         <div className="card ft-ts-card">
-          <table className="t-list ft-ts-table">
+          <div className="ft-ts-scroll">
+          <table className="ft-ts-table">
             <thead>
               <tr>
-                <th style={{ width: 36, textAlign: 'center' }}>#</th>
+                <th className="ft-ts-th-num">#</th>
                 <th className="ft-ts-th-fio">Сотрудник</th>
                 {dates.map((d) => {
                   const dow = dayOfWeek(d);
@@ -568,7 +569,9 @@ export default function TimesheetTab({ work }) {
                 );
               })}
               <tr className="ft-ts-totals-row">
-                <td className="ft-ts-totals-label" colSpan={dates.length + 2}>ИТОГО:</td>
+                <td className="ft-ts-num" />
+                <td className="ft-ts-fio ft-ts-totals-label">ИТОГО:</td>
+                <td colSpan={dates.length} />
                 <td className="ft-ts-total-num">{fmtInt(grandPoints)}</td>
                 <td className="ft-ts-total-num">{fmtMoney(grandEarned)}</td>
                 <td className="ft-ts-total-num">{fmtMoney(grandPerDiem)}</td>
@@ -576,6 +579,7 @@ export default function TimesheetTab({ work }) {
               </tr>
             </tbody>
           </table>
+          </div>
 
           <div className="ft-ts-legend">
             {SHIFT_TYPES.map((st) => (

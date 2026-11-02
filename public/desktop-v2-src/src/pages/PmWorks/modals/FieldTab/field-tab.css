@@ -882,35 +882,70 @@
   margin-top: 6px;
 }
 
-/* Timesheet matrix */
+/* Timesheet matrix — sticky шапка (даты) + левый блок (# + ФИО), как в общем табеле.
+   border-collapse:separate обязателен: при collapse sticky в Chromium/Edge ломается. */
 .ft-ts-card {
   padding: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  max-height: min(72vh, calc(100vh - 200px));
+}
+.ft-ts-scroll {
   overflow: auto;
-  max-height: 60vh;
+  flex: 1 1 auto;
+  min-height: 0;
+  -webkit-overflow-scrolling: touch;
+  position: relative;
 }
 .ft-ts-table {
-  width: 100%;
-  border-collapse: collapse;
+  width: max-content;
+  min-width: 100%;
+  border-collapse: separate !important; /* перекрываем .t-list collapse — иначе sticky ломается */
+  border-spacing: 0;
   font-size: 12px;
 }
-.ft-ts-table thead {
+.ft-ts-table thead th {
   position: sticky;
   top: 0;
-  z-index: 1;
+  z-index: 3;
   background: var(--inner-bg);
-}
-.ft-ts-table th.ft-ts-th-fio {
-  min-width: 160px;
-  text-align: left;
-  padding: 8px;
+  box-shadow: 0 1px 0 var(--brd-2);
 }
 .ft-ts-table th.ft-ts-th-num,
-.ft-ts-num {
+.ft-ts-table td.ft-ts-num {
+  position: sticky;
+  left: 0;
+  z-index: 2;
   width: 36px;
+  min-width: 36px;
+  max-width: 36px;
   text-align: center;
   color: var(--t2);
   font-weight: 500;
   padding: 8px 6px;
+  background: var(--card-bg);
+}
+.ft-ts-table th.ft-ts-th-fio,
+.ft-ts-table td.ft-ts-fio {
+  position: sticky;
+  left: 36px;
+  z-index: 2;
+  min-width: 168px;
+  max-width: 240px;
+  text-align: left;
+  padding: 8px;
+  background: var(--card-bg);
+  box-shadow: 4px 0 10px color-mix(in srgb, #000 14%, transparent);
+}
+.ft-ts-table thead th.ft-ts-th-num,
+.ft-ts-table thead th.ft-ts-th-fio {
+  z-index: 5;
+  background: var(--inner-bg);
+}
+.ft-ts-table tbody tr:hover td.ft-ts-num,
+.ft-ts-table tbody tr:hover td.ft-ts-fio {
+  background: var(--hover-bg, var(--inner-bg));
 }
 .ft-ts-table th.ft-ts-th-day {
   min-width: 40px;
@@ -919,6 +954,16 @@
   text-align: center;
   color: var(--t-3);
   font-weight: 600;
+}
+@media (max-width: 1280px) {
+  .ft-ts-card {
+    max-height: min(64vh, calc(100vh - 180px));
+  }
+  .ft-ts-table th.ft-ts-th-fio,
+  .ft-ts-table td.ft-ts-fio {
+    min-width: 140px;
+    max-width: 180px;
+  }
 }
 .ft-ts-table th.ft-ts-th-day--we {
   color: var(--err);
@@ -951,11 +996,9 @@
   letter-spacing: 0.05em;
 }
 .ft-ts-table th.ft-ts-th-grand { color: var(--gold); }
-.ft-ts-fio {
-  padding: 8px;
+.ft-ts-table td.ft-ts-fio {
   font-weight: 600;
   white-space: nowrap;
-  min-width: 168px;
 }
 .ft-ts-fio-main {
   line-height: 1.25;
@@ -996,11 +1039,24 @@
 .ft-ts-row--planned td {
   background: color-mix(in srgb, var(--gold) 5%, transparent);
 }
+.ft-ts-row--planned td.ft-ts-num,
+.ft-ts-row--planned td.ft-ts-fio {
+  background: color-mix(in srgb, var(--gold) 5%, var(--card-bg));
+}
 .ft-ts-row--planned:hover td {
   background: color-mix(in srgb, var(--gold) 9%, transparent);
 }
+.ft-ts-row--planned:hover td.ft-ts-num,
+.ft-ts-row--planned:hover td.ft-ts-fio {
+  background: color-mix(in srgb, var(--gold) 9%, var(--card-bg));
+}
 .ft-ts-row--was td.ft-ts-fio {
   opacity: 0.92;
+}
+.ft-ts-totals-row td.ft-ts-num,
+.ft-ts-totals-row td.ft-ts-fio {
+  background: var(--inner-bg);
+  z-index: 2;
 }
 .ft-ts-cell--plan-arrive {
   background: color-mix(in srgb, var(--gold) 22%, transparent) !important;
@@ -1102,6 +1158,7 @@
   background: var(--inner-bg);
   font-size: 11px;
   color: var(--t-2);
+  flex-shrink: 0;
 }
 .ft-ts-legend-item {
   display: inline-flex;

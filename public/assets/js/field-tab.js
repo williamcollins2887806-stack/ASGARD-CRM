@@ -30,9 +30,14 @@ window.AsgardFieldTab = (function () {
   }
 
   function ensureFieldTabTableStyles() {
-    if (document.getElementById('ft-wide-table-css')) return;
+    // v2: sticky шапка+ФИО в полевом табеле. Сносим старый инжект, если был.
+    const prev = document.getElementById('ft-wide-table-css')
+      || document.getElementById('ft-wide-table-css-v2');
+    if (prev && prev.dataset.ftTsSticky === '1') return;
+    if (prev) prev.remove();
     const st = document.createElement('style');
-    st.id = 'ft-wide-table-css';
+    st.id = 'ft-wide-table-css-v2';
+    st.dataset.ftTsSticky = '1';
     st.textContent = `
       .ft-crew-table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
       .ft-crew-table { width: 100%; min-width: max-content; border-collapse: collapse; }
@@ -47,7 +52,105 @@ window.AsgardFieldTab = (function () {
       }
       .ft-crew-table-wrap thead .ft-crew-col-fio { z-index: 3; background: var(--bg2, #1a1f2e); }
       .ft-combo-btn { max-width: 110px; }
-      #tsTableWrap.ft-wide-table--compact table { font-size: 12px; min-width: max-content; }
+      #tsTableWrap.ft-wide-table--compact .ft-ts-scroll table { font-size: 12px; }
+
+      /* Полевой табель: sticky шапка (даты) + левый блок (# + ФИО), как в общем табеле.
+         border-collapse:separate обязателен — иначе sticky в Chromium/Edge ломается. */
+      #tsTableWrap {
+        display: flex;
+        flex-direction: column;
+        gap: 0;
+        min-width: 0;
+      }
+      #tsTableWrap .ft-ts-scroll {
+        overflow: auto;
+        max-height: min(70vh, calc(100vh - 220px));
+        -webkit-overflow-scrolling: touch;
+        position: relative;
+        border: 1px solid var(--brd);
+        border-radius: 8px;
+        background: var(--bg1);
+      }
+      #tsTableWrap .ft-ts-sticky {
+        border-collapse: separate;
+        border-spacing: 0;
+        width: max-content;
+        min-width: 100%;
+        font-size: 12px;
+      }
+      #tsTableWrap .ft-ts-sticky thead th {
+        position: sticky;
+        top: 0;
+        z-index: 3;
+        background: var(--bg2);
+        color: var(--t2);
+        font-weight: 600;
+        font-size: 11px;
+        white-space: nowrap;
+        padding: 6px 8px;
+        border-bottom: 1px solid var(--brd);
+        box-shadow: 0 1px 0 var(--brd);
+      }
+      #tsTableWrap .ft-ts-sticky th.ft-ts-col-num,
+      #tsTableWrap .ft-ts-sticky td.ft-ts-col-num {
+        position: sticky;
+        left: 0;
+        z-index: 2;
+        width: 36px;
+        min-width: 36px;
+        max-width: 36px;
+        text-align: center;
+        background: var(--bg1);
+        color: var(--t3);
+        font-size: 11px;
+        padding: 6px 4px;
+      }
+      #tsTableWrap .ft-ts-sticky th.ft-ts-col-fio,
+      #tsTableWrap .ft-ts-sticky td.ft-ts-col-fio {
+        position: sticky;
+        left: 36px;
+        z-index: 2;
+        min-width: 168px;
+        max-width: 240px;
+        text-align: left;
+        font-weight: 500;
+        white-space: nowrap;
+        background: var(--bg1);
+        padding: 6px 8px;
+        box-shadow: 4px 0 10px rgba(0, 0, 0, 0.14);
+      }
+      #tsTableWrap .ft-ts-sticky thead th.ft-ts-col-num,
+      #tsTableWrap .ft-ts-sticky thead th.ft-ts-col-fio {
+        z-index: 5;
+        background: var(--bg2);
+      }
+      #tsTableWrap .ft-ts-sticky tbody tr:hover td.ft-ts-col-num,
+      #tsTableWrap .ft-ts-sticky tbody tr:hover td.ft-ts-col-fio {
+        background: var(--bg2);
+      }
+      #tsTableWrap .ft-ts-sticky tbody tr.ft-ts-row--planned td.ft-ts-col-num,
+      #tsTableWrap .ft-ts-sticky tbody tr.ft-ts-row--planned td.ft-ts-col-fio {
+        background: color-mix(in srgb, var(--gold) 5%, var(--bg1));
+      }
+      #tsTableWrap .ft-ts-sticky tbody tr.ft-ts-row--planned:hover td.ft-ts-col-num,
+      #tsTableWrap .ft-ts-sticky tbody tr.ft-ts-row--planned:hover td.ft-ts-col-fio {
+        background: color-mix(in srgb, var(--gold) 9%, var(--bg2));
+      }
+      #tsTableWrap .ft-ts-sticky tbody tr.ft-ts-totals-row td.ft-ts-col-num,
+      #tsTableWrap .ft-ts-sticky tbody tr.ft-ts-totals-row td.ft-ts-col-fio {
+        background: var(--bg2);
+        font-weight: 700;
+      }
+      @media (max-width: 1280px) {
+        #tsTableWrap .ft-ts-scroll {
+          max-height: min(62vh, calc(100vh - 200px));
+        }
+        #tsTableWrap .ft-ts-sticky th.ft-ts-col-fio,
+        #tsTableWrap .ft-ts-sticky td.ft-ts-col-fio {
+          min-width: 140px;
+          max-width: 180px;
+        }
+      }
     `;
     document.head.appendChild(st);
   }
@@ -2483,11 +2586,13 @@ window.AsgardFieldTab = (function () {
 
     const tableWrap = document.createElement('div');
     tableWrap.id = 'tsTableWrap';
-    tableWrap.style.cssText = 'overflow-x:auto';
     container.appendChild(tableWrap);
     ensureFieldTabTableStyles();
-    bindHScrollWheel(tableWrap);
     applyCompactTableClass(tableWrap, null);
+
+    function tsScrollEl() {
+      return tableWrap.querySelector('.ft-ts-scroll') || tableWrap;
+    }
 
     function todayYmd() {
       const t = new Date();
@@ -2527,8 +2632,9 @@ window.AsgardFieldTab = (function () {
     // прыгать на «сегодня» — иначе таблица уезжает от того места, где человек вводит.
     async function loadTimesheet(opts) {
       const keepView = !!(opts && opts.keepView);
-      const prevScrollLeft = keepView ? tableWrap.scrollLeft : 0;
-      const prevWinY = keepView ? window.scrollY : 0;
+      const scrollEl = tsScrollEl();
+      const prevScrollLeft = keepView ? scrollEl.scrollLeft : 0;
+      const prevScrollTop = keepView ? scrollEl.scrollTop : 0;
       const from = document.getElementById('tsFrom')?.value || dfFrom;
       const to = document.getElementById('tsTo')?.value || dfTo;
       // Произвольный период > месяца — ок. Предупреждаем только при экстремальной длине
@@ -2571,10 +2677,13 @@ window.AsgardFieldTab = (function () {
         }
 
         renderTimesheetTable(tableWrap, data, from, to, editMode, work, pointValue, keepView);
+        const scrollAfter = tsScrollEl();
+        bindHScrollWheel(scrollAfter);
+        applyCompactTableClass(tableWrap, scrollAfter.querySelector('table'));
         if (keepView) {
-          // Сохраняем место правки: возвращаем горизонтальный скролл и позицию страницы.
-          tableWrap.scrollLeft = prevScrollLeft;
-          if (prevWinY) window.scrollTo({ top: prevWinY });
+          // Сохраняем место правки: X/Y внутриутрь scroll-контейнера (шапка и ФИО sticky).
+          scrollAfter.scrollLeft = prevScrollLeft;
+          scrollAfter.scrollTop = prevScrollTop;
         }
       } catch (e) {
         tableWrap.innerHTML = '<div class="help" style="color:#ef4444">Ошибка загрузки табеля</div>';
@@ -2692,15 +2801,14 @@ window.AsgardFieldTab = (function () {
     }
 
     const table = document.createElement('table');
-    table.style.cssText = 'width:100%;border-collapse:collapse;font-size:12px';
+    table.className = 'ft-ts-sticky';
 
-    // Header: # + ФИО + дни…
-    const thStyle = 'padding:6px 8px;border-bottom:1px solid var(--brd);color:var(--t2);font-weight:500;font-size:11px;white-space:nowrap;position:sticky;top:0;background:var(--bg2)';
+    // Header: # + ФИО + дни… (sticky через CSS #tsTableWrap .ft-ts-sticky)
     const todayStr = (() => {
       const t = new Date();
       return t.getFullYear() + '-' + String(t.getMonth() + 1).padStart(2, '0') + '-' + String(t.getDate()).padStart(2, '0');
     })();
-    let headerHtml = `<tr><th style="${thStyle};text-align:center;width:36px">#</th><th style="${thStyle};text-align:left;min-width:150px">ФИО</th>`;
+    let headerHtml = '<tr><th class="ft-ts-col-num">#</th><th class="ft-ts-col-fio">ФИО</th>';
     dates.forEach(d => {
       // d может быть 'YYYY-MM-DD' или 'YYYY-MM-DDT12:00:00.000Z' (после TZ-фикса)
       // Извлекаем ровно YYYY-MM-DD и парсим как локальную дату
@@ -2710,20 +2818,20 @@ window.AsgardFieldTab = (function () {
       const label = String(day.getDate()).padStart(2, '0') + '.' + String(day.getMonth() + 1).padStart(2, '0');
       const isToday = ymd === todayStr;
       const isWe = day.getDay() === 0 || day.getDay() === 6;
-      let extra = '';
+      let extra = 'text-align:center';
       if (isToday) {
-        extra = ';background:rgba(212,168,67,0.22);color:var(--gold);box-shadow:inset 0 -2px 0 var(--gold);font-weight:700';
+        extra += 'background:rgba(212,168,67,0.22);color:var(--gold);box-shadow:inset 0 -2px 0 var(--gold);font-weight:700';
       } else if (isWe) {
-        extra = ';color:var(--err);background:rgba(239,68,68,0.08)';
+        extra += 'color:var(--err);background:rgba(239,68,68,0.08)';
       }
-      headerHtml += `<th data-ymd="${ymd}" style="${thStyle};text-align:center${extra}"${isToday ? ' title="Сегодня"' : ''}>${label}</th>`;
+      headerHtml += `<th data-ymd="${ymd}" style="${extra}"${isToday ? ' title="Сегодня"' : ''}>${label}</th>`;
     });
-    headerHtml += `<th style="${thStyle};text-align:center">Дней</th>`;
-    headerHtml += `<th style="${thStyle};text-align:right">Баллов</th>`;
-    headerHtml += `<th style="${thStyle};text-align:right">Зараб.</th>`;
-    headerHtml += `<th style="${thStyle};text-align:right">Суточные</th>`;
-    headerHtml += `<th style="${thStyle};text-align:right;color:var(--gold)">Итого</th>`;
-    if (editMode) headerHtml += `<th style="${thStyle};width:40px"></th>`;
+    headerHtml += '<th style="text-align:center">Дней</th>';
+    headerHtml += '<th style="text-align:right">Баллов</th>';
+    headerHtml += '<th style="text-align:right">Зараб.</th>';
+    headerHtml += '<th style="text-align:right">Суточные</th>';
+    headerHtml += '<th style="text-align:right;color:var(--gold)">Итого</th>';
+    if (editMode) headerHtml += '<th style="width:40px"></th>';
     headerHtml += '</tr>';
 
     const thead = document.createElement('thead');
@@ -2748,13 +2856,13 @@ window.AsgardFieldTab = (function () {
 
       // #
       const tdNum = document.createElement('td');
-      tdNum.style.cssText = 'padding:6px 4px;text-align:center;color:var(--t3);font-size:11px';
+      tdNum.className = 'ft-ts-col-num';
       tdNum.textContent = String(empIdx + 1);
       tr.appendChild(tdNum);
 
-      // Name + roster badges
+      // Name + roster badges (sticky left рядом с #)
       const tdName = document.createElement('td');
-      tdName.style.cssText = 'padding:6px 8px;font-weight:500;white-space:nowrap;min-width:160px';
+      tdName.className = 'ft-ts-col-fio';
       const reasons = emp.roster_reasons || [];
       const planFrom = emp.planned_info && emp.planned_info.planned_from
         ? String(emp.planned_info.planned_from).slice(0, 10) : null;
@@ -2787,6 +2895,7 @@ window.AsgardFieldTab = (function () {
         tdName.appendChild(badgeRow);
       }
       if (emp.is_planned_only) {
+        tr.classList.add('ft-ts-row--planned');
         tr.style.background = 'color-mix(in srgb, var(--gold) 5%, transparent)';
       }
       tr.appendChild(tdName);
@@ -2993,14 +3102,21 @@ window.AsgardFieldTab = (function () {
       tbody.appendChild(tr);
     });
 
-    // Totals row
+    // Totals row: # + ФИО sticky, чтобы «ИТОГО» не уезжало при горизонтальном скролле
     const totalTr = document.createElement('tr');
+    totalTr.className = 'ft-ts-totals-row';
     totalTr.style.cssText = 'border-top:2px solid var(--brd);font-weight:700;background:var(--bg2)';
+    const tdTotalNum = document.createElement('td');
+    tdTotalNum.className = 'ft-ts-col-num';
+    totalTr.appendChild(tdTotalNum);
     const tdTotalLabel = document.createElement('td');
-    tdTotalLabel.colSpan = dates.length + 2; // # + ФИО + дни
-    tdTotalLabel.style.cssText = 'padding:8px 10px;text-align:right';
+    tdTotalLabel.className = 'ft-ts-col-fio';
+    tdTotalLabel.style.cssText = 'text-align:right;padding:8px 10px';
     tdTotalLabel.textContent = 'ИТОГО:';
     totalTr.appendChild(tdTotalLabel);
+    const tdDaysPad = document.createElement('td');
+    tdDaysPad.colSpan = dates.length;
+    totalTr.appendChild(tdDaysPad);
 
     [
       { v: grandHours },
@@ -3018,19 +3134,22 @@ window.AsgardFieldTab = (function () {
 
     table.appendChild(tbody);
     wrap.innerHTML = '';
-    wrap.appendChild(table);
+    const scroll = document.createElement('div');
+    scroll.className = 'ft-ts-scroll';
+    scroll.appendChild(table);
+    wrap.appendChild(scroll);
 
     // Прокрутить к сегодняшнему дню — ТОЛЬКО при первой отрисовке.
     // При перерисовке после правки ячейки прыжок запрещён: таблица уезжала
     // от места ввода, и РП терял день, который заполнял.
-    const todayTh = wrap.querySelector('th[data-ymd="' + todayStr + '"]');
+    const todayTh = scroll.querySelector('th[data-ymd="' + todayStr + '"]');
     if (!keepView && todayTh && typeof todayTh.scrollIntoView === 'function') {
       try { todayTh.scrollIntoView({ inline: 'center', block: 'nearest', behavior: 'smooth' }); } catch (_) {
         try { todayTh.scrollIntoView(false); } catch (__) {}
       }
     }
 
-    // Edit mode legend
+    // Edit mode legend — вне scroll, чтобы не уезжала вместе с таблицей
     if (editMode) {
       const legend = document.createElement('div');
       legend.className = 'help';
