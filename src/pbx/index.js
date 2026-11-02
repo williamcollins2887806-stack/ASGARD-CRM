@@ -819,8 +819,12 @@ function createCmdServer() {
       }
       if (req.method === 'POST' && url.pathname === '/call/hangup') {
         if (!amiConfigured()) throw new Error('AMI not configured');
-        // РЎР±СЂРѕСЃ РІСЃРµС… РїР»РµС‡ Р·РІРѕРЅРєР°: РёС‰РµРј РєР°РЅР°Р»С‹ РїРѕ pbx_uid (Linkedid/Uniqueid) Рё
-        // СЃРЅРёРјР°РµРј РёС…; `channel` вЂ” С‡Р°СЃС‚РЅС‹Р№ СЃР»СѓС‡Р°Р№, РєРѕРіРґР° РєР»РёРµРЅС‚ Р·РЅР°РµС‚ СЃРІРѕС‘ РїР»РµС‡Рѕ.
+        // Отказ и завершение — РАЗНЫЕ операции (02.11.2026).
+        // При параллельном обзвоне Dial(PJSIP/u1&PJSIP/u2) у всех плеч ОДИН
+        // Linkedid (pbx_uid). Раньше отказ одного оператора сносил все каналы
+        // по Linkedid — клиент слышал сброс, хотя второй ещё не взял трубку.
+        // Теперь: decline — только свой канал; завершение — все плечи.
+        const isDecline = body.decline === true || body.state === 'ringing';
         const uid = String(body.pbx_uid || body.call_id || '').replace(/^pbx_/, '');
         const wantChannel = String(body.channel || '');
         // WebRTC: клиент шлёт BYE сам, но если сессия зависла — снимаем плечо по
@@ -841,11 +845,13 @@ function createCmdServer() {
               const name = String(ch.Channel || '');
               const linked = String(ch.Linkedid || '');
               const unique = String(ch.Uniqueid || '');
-              const byUid = uid && (linked === uid || unique === uid);
               // Клиент шлёт dial-string («PJSIP/79…@mango-trunk»), а живой канал
               // называется с суффиксом («…-0000001») — сверяем и по префиксу.
               const byChannel = wantChannel && (name === wantChannel || name.indexOf(wantChannel + '-') === 0);
               const bySip = sipUser && (name === 'PJSIP/' + sipUser || name.indexOf('PJSIP/' + sipUser + '-') === 0);
+              // При отказе Linkedid НЕ используем: он общий для всех операторов
+              // параллельного обзвона, иначе отказ рвал звонок у коллеги.
+              const byUid = !isDecline && uid && (linked === uid || unique === uid);
               if (byUid || byChannel || bySip) {
                 try { await ami.hangup(name); hung += 1; } catch (_) { /* next */ }
               }
@@ -858,7 +864,7 @@ function createCmdServer() {
         if (!hung && !body.channel && !uid && !sipUser) {
           return send(200, { ok: true, skipped: true, reason: 'no_channel' });
         }
-        return send(200, { ok: true, hung });
+        return send(200, { ok: true, hung, decline: isDecline });
       }
       if (req.method === 'POST' && url.pathname === '/call/redirect') {
         if (!amiConfigured()) throw new Error('AMI not configured');

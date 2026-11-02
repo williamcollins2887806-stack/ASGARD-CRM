@@ -1036,6 +1036,12 @@
         call_id: callMeta.call_id,
         user_id: uid || undefined,
         direction: callMeta.direction,
+        // ОТКАЗ vs ЗАВЕРШЕНИЕ (02.11.2026). Пока звонок ещё звонит и его не
+        // подняли, снимаем ТОЛЬКО свой канал: при параллельном обзвоне один
+        // оператор не должен рвать звонок другому. При активном разговоре
+        // сбрасываем все плечи — клиент должен уйти.
+        decline: state === STATES.ringing,
+        state: state === STATES.ringing ? 'ringing' : 'incall',
       }) })
         .catch(function () {})
         .then(function () {
