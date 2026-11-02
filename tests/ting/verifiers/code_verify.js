@@ -140,6 +140,12 @@ check('C56_friendly_http_toast',
   && !/new Error\([^)]*'HTTP '\s*\+/.test(tingPage)
   && /Не найдено/.test(tingPage),
   'no raw HTTP status in user toasts');
+check('C57_guest_relayout_grids',
+  /function relayoutGuestTiles/.test(guest)
+  && /stageGridClass\(ids\.length/.test(guest)
+  && !/classList\.toggle\('g2',\s*layoutMode === 'grid'\)/.test(guest)
+  && /filmstrip/.test(guest),
+  'guest: g1..g10 + speaker filmstrip relayout');
 
 const fail = checks.filter((c) => !c.pass);
 const md = [

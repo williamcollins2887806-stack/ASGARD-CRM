@@ -583,16 +583,74 @@
         setTimeout(function () { try { burst.remove(); } catch (_) {} }, 2200);
       }
       function applyGuestLayout() {
-        var stage = document.getElementById('stage');
-        if (!stage) return;
-        stage.classList.toggle('speaker', layoutMode === 'speaker');
-        stage.classList.toggle('g2', layoutMode === 'grid');
+        relayoutGuestTiles();
         var btn = document.getElementById('btnLayout');
         if (btn && I) {
           btn.innerHTML = layoutMode === 'speaker'
             ? ((I.speaker && I.speaker()) || '')
             : ((I.grid && I.grid()) || '');
+          btn.classList.toggle('on-gold', true);
+          btn.title = layoutMode === 'speaker' ? 'Сменить раскладку: Сетка' : 'Сменить раскладку: Спикер';
         }
+      }
+      function collectGuestTiles() {
+        var stage = document.getElementById('stage');
+        var strip = document.getElementById('filmstrip');
+        var map = {};
+        function take(root) {
+          if (!root) return;
+          Array.prototype.slice.call(root.querySelectorAll(':scope > .ting-tile')).forEach(function (tile) {
+            var id = tile.dataset.id || ('t' + Math.random());
+            map[id] = tile;
+          });
+        }
+        take(stage);
+        take(strip);
+        return map;
+      }
+      function relayoutGuestTiles() {
+        var stage = document.getElementById('stage');
+        var strip = document.getElementById('filmstrip');
+        if (!stage) return;
+        var map = collectGuestTiles();
+        var ids = Object.keys(map);
+        var me = (guestIdentity && map[guestIdentity]) ? guestIdentity
+          : (map.me ? 'me' : null);
+        /* main: active speaker → first remote → me */
+        var mainId = null;
+        if (activeSpeakerId && map[activeSpeakerId]) mainId = activeSpeakerId;
+        if (!mainId) {
+          for (var i = 0; i < ids.length; i++) {
+            if (ids[i] !== me && ids[i] !== 'me') { mainId = ids[i]; break; }
+          }
+        }
+        if (!mainId) mainId = me || ids[0] || null;
+        /* clear hosts without destroying nodes */
+        while (stage.firstChild) stage.removeChild(stage.firstChild);
+        if (strip) while (strip.firstChild) strip.removeChild(strip.firstChild);
+        ids.forEach(function (id) {
+          var tile = map[id];
+          tile.classList.remove('is-pip', 'is-swappable');
+        });
+        if (layoutMode === 'grid') {
+          stage.className = 'ting-stage ' + stageGridClass(ids.length || 1);
+          ids.forEach(function (id) { stage.appendChild(map[id]); });
+        } else {
+          stage.className = 'ting-stage speaker';
+          if (!mainId) return;
+          stage.appendChild(map[mainId]);
+          var others = ids.filter(function (id) { return id !== mainId; });
+          if (ids.length === 2 && others[0]) {
+            map[others[0]].classList.add('is-pip', 'is-swappable');
+            stage.appendChild(map[others[0]]);
+          } else if (strip) {
+            others.forEach(function (id) {
+              map[id].classList.add('is-swappable');
+              strip.appendChild(map[id]);
+            });
+          }
+        }
+        markSpeakingTiles();
       }
 
       document.getElementById('name').addEventListener('input', syncPreviewUi);
@@ -730,10 +788,7 @@
         return 'g10';
       }
       function syncGuestStageLayout() {
-        var stage = document.getElementById('stage');
-        if (!stage || stage.classList.contains('speaker')) return;
-        var n = stage.querySelectorAll(':scope > .ting-tile').length;
-        stage.className = 'ting-stage ' + stageGridClass(n || 1);
+        relayoutGuestTiles();
       }
       function hardenVideoEl(el) {
         if (!el) return el;
@@ -806,7 +861,7 @@
         }
         const lab = tile.querySelector('.lbl .name');
         if (lab) lab.textContent = name || identity;
-        if (!intoStrip) syncGuestStageLayout();
+        syncGuestStageLayout();
         if (peopleOpen) renderPeople();
       }
 
@@ -981,7 +1036,8 @@
             if (speakerTimer) clearTimeout(speakerTimer);
             speakerTimer = setTimeout(function () {
               activeSpeakerId = nextId;
-              markSpeakingTiles();
+              if (layoutMode === 'speaker') relayoutGuestTiles();
+              else markSpeakingTiles();
             }, 200);
           });
         }
