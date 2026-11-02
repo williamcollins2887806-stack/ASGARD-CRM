@@ -32,9 +32,10 @@ window.AsgardCallPopup = (function () {
 
   var win = null;
   var launched = false;      // пользователь уже разрешил окно в этой сессии
-  var wantOpen = false;      // окно должно быть открыто (мы на линии / идёт звонок)
+  var armed = false;         // право открыть окно без жеста (после первого показа)
+  var wantOpen = false;      // окно должно быть открыто (только во время звонка)
   var current = null;        // { number, name, state: 'ringing'|'incall' }
-  var hb = null;             // удержание окна (переоткрытие после закрытия ОС)
+  var hb = null;             // удержание окна на время звонка
 
   function isSupported() {
     return !!window.documentPictureInPicture;
@@ -61,7 +62,8 @@ window.AsgardCallPopup = (function () {
       .then(function (w) {
         win = w;
         launched = true;
-        wantOpen = true;
+        armed = true;
+        wantOpen = !!(current); // окно нужно только под звонок
         try {
           var st = w.document.createElement('style');
           st.textContent = CSS;
@@ -70,7 +72,9 @@ window.AsgardCallPopup = (function () {
         try {
           w.addEventListener('pagehide', function () {
             win = null;
-            if (wantOpen) setTimeout(function () { safeReopen(); }, 400);
+            // Переоткрываем только если звонок ещё идёт (wantOpen), а не
+            // «всегда», как раньше — иначе окно возвращалось после закрытия.
+            if (wantOpen && current) setTimeout(function () { safeReopen(); }, 400);
           });
         } catch (_) {}
         render();
@@ -84,7 +88,7 @@ window.AsgardCallPopup = (function () {
 
   /** Открываем повторно без жеста: допустимо, если разрешение уже выдано. */
   function safeReopen() {
-    if (!launched || !wantOpen || !isSupported()) return;
+    if (!launched || !wantOpen || !current || !isSupported()) return;
     if (ensureWindow()) return;
     try {
       var p = window.documentPictureInPicture.requestWindow({ width: 360, height: 132 });
@@ -116,27 +120,38 @@ window.AsgardCallPopup = (function () {
   function showCall(info) {
     current = info || {};
     wantOpen = true;
+    // Окно живёт ТОЛЬКО во время звонка: открываем здесь и закрываем в clearCall.
     if (!ensureWindow()) {
-      if (launched) safeReopen();
-      return launched ? { ok: true, deferred: true } : { ok: false, reason: 'needs_gesture' };
+      if (armed || launched) safeReopen();
+      return (armed || launched) ? { ok: true, deferred: true } : { ok: false, reason: 'needs_gesture' };
     }
+    startHb();
     render();
     try { if (win) win.focus(); } catch (_) {}
     return { ok: true };
   }
 
-  /** Звонок завершён — возвращаем компактную плашку «На линии». */
+  /** Звонок завершён — окно закрываем (не оставляем висеть на экране). */
   function clearCall() {
     current = null;
+    wantOpen = false;
+    stopHb();
     render();
+    // Небольшая задержка: даём отрисоваться финальному состоянию, затем убираем.
+    setTimeout(function () { if (!current) close(); }, 600);
   }
 
-  /** Мы на линии: держим окно живым (свёрнутая плашка). */
+  /**
+   * Мы на линии. НЕ держим окно открытым постоянно (жалоба 02.11.2026:
+   * «окно всегда торчит, бесит»). Окно нужно только на время звонка — открываем
+   * его по факту входящего. Здесь лишь запоминаем, что линия активна, и
+   * держим наготове право на открытие (ջест уже был выдан ранее).
+   */
   function setOnLine(on) {
     if (on) {
-      wantOpen = true;
-      if (launched && !ensureWindow()) safeReopen();
-      startHb();
+      wantOpen = false;   // само по себе окно не нужно
+      armed = launched;   // жест на открытие уже был — сможем открыть на звонке
+      stopHb();
     } else if (!current) {
       stopHb();
       close();
@@ -181,8 +196,8 @@ window.AsgardCallPopup = (function () {
     var ringing = call && call.state === 'ringing';
     var inCall = call && call.state === 'incall';
 
-    var cls = ringing ? 'ringing' : (inCall ? 'incall' : 'idle');
-    var title = ringing ? 'Входящий звонок' : (inCall ? 'Разговор' : 'На линии');
+    var cls = ringing ? 'ringing' : 'incall';
+    var title = ringing ? 'Входящий звонок' : 'Разговор';
     var num = call ? fmtPhone(call.number) : '';
     var name = call && call.name ? String(call.name) : '';
 
