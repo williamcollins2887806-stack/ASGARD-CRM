@@ -8,14 +8,13 @@ export function digitsOf(v) {
   return String(v || '').replace(/\D/g, '');
 }
 
-/** 8XXXXXXXXXX / 9XXXXXXXXX → 7XXXXXXXXXX (11 цифр) или null */
+/** 8…/9… → 7XXXXXXXXXX (до 11 цифр). Паритет с AsgardPhoneMask.toRuDigits. */
 export function normalizeRuPhoneDigits(raw) {
   let d = digitsOf(raw);
   if (!d) return '';
-  if (d.startsWith('8') && d.length === 11) d = '7' + d.slice(1);
-  if (d.length === 10) d = '7' + d;
-  if (d.length > 11) d = d.slice(0, 11);
-  return d;
+  if (d[0] === '8') d = '7' + d.slice(1);
+  if (d[0] !== '7') d = '7' + d;
+  return d.slice(0, 11);
 }
 
 /**
@@ -26,7 +25,7 @@ export function formatRuPhoneDisplay(raw) {
   const d = normalizeRuPhoneDigits(raw);
   if (!d) return '';
   if (d.length <= 1) return '+7';
-  const rest = d.startsWith('7') ? d.slice(1) : d;
+  const rest = d.slice(1);
   if (rest.length <= 3) return `+7(${rest}`;
   if (rest.length <= 6) return `+7(${rest.slice(0, 3)})-${rest.slice(3)}`;
   if (rest.length <= 8) return `+7(${rest.slice(0, 3)})-${rest.slice(3, 6)}-${rest.slice(6)}`;

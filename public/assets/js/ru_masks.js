@@ -7,20 +7,24 @@ window.AsgardRuMasks = (function () {
     return String(v || '').replace(/\D/g, '');
   }
 
+  // Как AsgardPhoneMask.toRuDigits: 8…→7…, иначе если нет ведущей 7 — дописать.
+  // НЕльзя делать «length===10 → prepend 7» вслепую: «7987019723» (7 + 9 нац.)
+  // превращалось в «7798…» → на экране +7(798)-… (двойная семёрка).
+  // И «9» при length<=1 нельзя схлопывать в «+7» — цифра пропадала, человек
+  // снова жал 7 и получал ту же двойную семёрку.
   function normalizeRuPhoneDigits(raw) {
     let d = digitsOf(raw);
     if (!d) return '';
-    if (d.startsWith('8') && d.length === 11) d = '7' + d.slice(1);
-    if (d.length === 10) d = '7' + d;
-    if (d.length > 11) d = d.slice(0, 11);
-    return d;
+    if (d[0] === '8') d = '7' + d.slice(1);
+    if (d[0] !== '7') d = '7' + d;
+    return d.slice(0, 11);
   }
 
   function formatRuPhoneDisplay(raw) {
     const d = normalizeRuPhoneDigits(raw);
     if (!d) return '';
     if (d.length <= 1) return '+7';
-    const rest = d.startsWith('7') ? d.slice(1) : d;
+    const rest = d.slice(1);
     if (rest.length <= 3) return '+7(' + rest;
     if (rest.length <= 6) return '+7(' + rest.slice(0, 3) + ')-' + rest.slice(3);
     if (rest.length <= 8) return '+7(' + rest.slice(0, 3) + ')-' + rest.slice(3, 6) + '-' + rest.slice(6);
