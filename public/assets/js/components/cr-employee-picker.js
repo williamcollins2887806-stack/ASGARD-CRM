@@ -515,13 +515,14 @@ const CREmployeePicker = (() => {
       tdCity.textContent = emp.city || '—';
       tr.appendChild(tdCity);
 
-      // Rating
+      // Rating (с API/field-tab часто приходит строка — toFixed только у Number)
       const tdRat = document.createElement('td');
       tdRat.className = 'cr-emp-picker__col-rat';
-      const rv = emp.rating > 0 ? emp.rating.toFixed(1) : '0.0';
-      tdRat.textContent = rv;
-      if (emp.rating >= 4) tdRat.classList.add('cr-emp-picker__rat--high');
-      else if (emp.rating >= 3) tdRat.classList.add('cr-emp-picker__rat--mid');
+      const rating = Number(emp.rating);
+      const ratingN = Number.isFinite(rating) ? rating : 0;
+      tdRat.textContent = ratingN > 0 ? ratingN.toFixed(1) : '0.0';
+      if (ratingN >= 4) tdRat.classList.add('cr-emp-picker__rat--high');
+      else if (ratingN >= 3) tdRat.classList.add('cr-emp-picker__rat--mid');
       tr.appendChild(tdRat);
 
       // Phone
@@ -640,7 +641,10 @@ const CREmployeePicker = (() => {
 
       const inst = {
         id,
-        employees: (config.employees || []).map((e) => ({ ...e, id: _nid(e.id) })),
+        employees: (config.employees || []).map((e) => {
+          const r = Number(e.rating);
+          return { ...e, id: _nid(e.id), rating: Number.isFinite(r) ? r : 0 };
+        }),
         selected: (config.selected || []).map(_nid),
         maxSelect: config.maxSelect ?? 0,
         placeholder: config.placeholder || 'Выберите сотрудников',
