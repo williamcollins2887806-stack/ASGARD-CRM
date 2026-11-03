@@ -522,7 +522,7 @@ export default function TimesheetMobile({ mode = 'global' }) {
                 navigate('/admin/timesheet-settings');
               }}
               className="spring-tap p-2"
-              aria-label="Настройки баллов табеля"
+              aria-label="Ставки этапов табеля"
               style={{ color: 'var(--gold)' }}
             >
               <SettingsIcon size={20} strokeWidth={2.2} />
@@ -781,7 +781,6 @@ export default function TimesheetMobile({ mode = 'global' }) {
           {tooltip.info?.type && (
             <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>
               {CELL_TYPES[tooltip.info.type]?.icon} {CELL_TYPES[tooltip.info.type]?.label}
-              {tooltip.info.points != null && ` · ${tooltip.info.points} баллов`}
               {tooltip.info.amount != null && ` · ${fmtMoney(tooltip.info.amount)}`}
             </p>
           )}
@@ -1239,12 +1238,6 @@ function CellDetail({ data, mode }) {
           {cfg.icon} {cfg.label}
         </p>
       </div>
-      {data.points != null && (
-        <div>
-          <p className="text-[11px] font-semibold uppercase tracking-wider mb-0.5" style={{ color: 'var(--text-tertiary)' }}>Баллы</p>
-          <p className="text-[15px] font-semibold" style={{ color: 'var(--gold)' }}>{data.points}</p>
-        </div>
-      )}
       {data.amount != null && (
         <div>
           <p className="text-[11px] font-semibold uppercase tracking-wider mb-0.5" style={{ color: 'var(--text-tertiary)' }}>Сумма</p>

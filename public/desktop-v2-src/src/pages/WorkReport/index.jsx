@@ -793,7 +793,6 @@ function Crew({ data }) {
       {crew.map((c, idx) => {
         const initials = (c.full_name || '?').split(' ').map((w) => w[0]).join('').slice(0, 2).toUpperCase();
         const bg = colors[Math.abs(hashCode(c.full_name || '')) % colors.length];
-        const points = Math.round(parseFloat(c.earned || 0) / parseFloat(c.point_value || 500));
         return (
           <div key={c.id || idx} className="wr-crew-row">
             <div className="wr-crew-avatar" style={{ background: bg }}>{initials}</div>
@@ -803,7 +802,6 @@ function Crew({ data }) {
             </div>
             <div className="wr-crew-stats">
               <span>{c.shifts || 0} см</span>
-              <span>{points} бал</span>
               <span className="wr-crew-earned">{fmtMoneyR(c.earned)}</span>
             </div>
           </div>

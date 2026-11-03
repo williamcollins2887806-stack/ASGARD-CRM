@@ -1024,7 +1024,7 @@ window.AsgardPayrollPage = (function(){
   }
 
   // ═══════════════════════════════════════════════════════════
-  // Экран 5: Grid-вид ведомости (табель + баллы + суточные)
+  // Экран 5: Grid-вид ведомости (табель + суммы ₽ + суточные)
   // ═══════════════════════════════════════════════════════════
   async function renderPayrollGrid({layout}){
     const auth = await AsgardAuth.requireUser();
@@ -1118,7 +1118,7 @@ window.AsgardPayrollPage = (function(){
         <th style="${thStyle};text-align:left;min-width:160px;z-index:2;left:0">ФИО</th>
         ${dayHeaders}
         <th style="${thStyle};text-align:center">Дней</th>
-        <th style="${thStyle};text-align:center">Баллов</th>
+        <th style="${thStyle};text-align:right">Сумма ₽</th>
         <th style="${thStyle};text-align:right">Заработок</th>
         <th style="${thStyle};text-align:right">Суточные</th>
         <th style="${thStyle};text-align:right">ИТОГО</th>
@@ -1130,22 +1130,24 @@ window.AsgardPayrollPage = (function(){
         const days = emp.days || {};
         let rowCells = '';
         for(let d = 1; d <= daysInMonth; d++){
-          const pts = Number(days[d] || 0);
-          const color = pts ? ptsColor(pts) : 'transparent';
+          const rub = Number(days[d] || 0);
+          const ptsApprox = rub ? Math.round(rub / 500) : 0;
+          const color = ptsApprox ? ptsColor(ptsApprox) : 'transparent';
           const editKey = emp.id + '_' + d;
+          const compact = (window.AsgardMoneyCompact && AsgardMoneyCompact.fmtCompactRub)
+            ? AsgardMoneyCompact.fmtCompactRub(rub) : (rub ? String(rub) : '');
           if(editMode){
-            const val = pendingEdits[editKey] !== undefined ? pendingEdits[editKey] : (pts || '');
+            const val = pendingEdits[editKey] !== undefined ? pendingEdits[editKey] : (rub || '');
             rowCells += `<td style="padding:2px;text-align:center;border-bottom:1px solid var(--brd-m)">
               <input type="number" class="pgrid-cell" data-emp="${emp.id}" data-day="${d}"
-                value="${val}" min="0" max="24"
-                style="width:32px;padding:2px 0;text-align:center;background:var(--bg3);border:1px dashed var(--brd);border-radius:4px;color:${pts ? ptsColor(pts) : 'var(--t2)'};font-size:12px;font-weight:700"/>
+                value="${val}" min="0" step="10"
+                style="width:48px;padding:2px 0;text-align:center;background:var(--bg3);border:1px dashed var(--brd);border-radius:4px;color:${rub ? color : 'var(--t2)'};font-size:11px;font-weight:700"/>
             </td>`;
           } else {
-            rowCells += `<td style="padding:4px 2px;text-align:center;border-bottom:1px solid var(--brd-m);color:${color};font-weight:${pts ? 700 : 400};font-size:12px">${pts || ''}</td>`;
+            rowCells += `<td title="${rub ? money(rub) : ''}" style="padding:4px 2px;text-align:center;border-bottom:1px solid var(--brd-m);color:${color};font-weight:${rub ? 700 : 400};font-size:11px">${compact}</td>`;
           }
         }
 
-        const totalPts = Number(emp.total_points || 0);
         const totalAmt = Number(emp.total_amount || 0);
         const perDiem = Number(emp.per_diem_total || 0);
         const grandTotal = totalAmt + perDiem;
@@ -1154,7 +1156,7 @@ window.AsgardPayrollPage = (function(){
           <td style="padding:6px 8px;border-bottom:1px solid var(--brd-m);white-space:nowrap;font-weight:600;position:sticky;left:0;background:var(--bg);z-index:1">${esc(emp.name || emp.fio || '')}</td>
           ${rowCells}
           <td style="padding:4px 6px;text-align:center;border-bottom:1px solid var(--brd-m);font-weight:700">${emp.days_count || 0}</td>
-          <td style="padding:4px 6px;text-align:center;border-bottom:1px solid var(--brd-m);font-weight:700;color:${ptsColor(totalPts)}">${totalPts}</td>
+          <td style="padding:4px 6px;text-align:right;border-bottom:1px solid var(--brd-m);font-weight:700">${money(totalAmt)}</td>
           <td style="padding:4px 6px;text-align:right;border-bottom:1px solid var(--brd-m)">${money(totalAmt)}</td>
           <td style="padding:4px 6px;text-align:right;border-bottom:1px solid var(--brd-m)">${money(perDiem)}</td>
           <td style="padding:4px 6px;text-align:right;border-bottom:1px solid var(--brd-m);font-weight:700;color:var(--gold)">${money(grandTotal)}</td>
@@ -1169,7 +1171,6 @@ window.AsgardPayrollPage = (function(){
         footDayCells += `<td style="padding:6px 2px;text-align:center;font-weight:700;border-top:2px solid rgba(242,208,138,.4);color:rgba(242,208,138,.95);font-size:11px">${daySum || ''}</td>`;
       }
       const footShifts = employees.reduce((s, e) => s + Number(e.days_count || 0), 0);
-      const footPts = employees.reduce((s, e) => s + Number(e.total_points || 0), 0);
       const footAmt = employees.reduce((s, e) => s + Number(e.total_amount || 0), 0);
       const footPD = employees.reduce((s, e) => s + Number(e.per_diem_total || 0), 0);
       const footTotal = footAmt + footPD;
@@ -1178,7 +1179,7 @@ window.AsgardPayrollPage = (function(){
         <td style="padding:6px 8px;font-weight:700;border-top:2px solid rgba(242,208,138,.4);color:rgba(242,208,138,.95);position:sticky;left:0;background:var(--bg);z-index:1">ИТОГО</td>
         ${footDayCells}
         <td style="padding:6px;text-align:center;font-weight:700;border-top:2px solid rgba(242,208,138,.4);color:rgba(242,208,138,.95)">${footShifts}</td>
-        <td style="padding:6px;text-align:center;font-weight:700;border-top:2px solid rgba(242,208,138,.4);color:rgba(242,208,138,.95)">${footPts}</td>
+        <td style="padding:6px;text-align:right;font-weight:700;border-top:2px solid rgba(242,208,138,.4);color:rgba(242,208,138,.95)">${money(footAmt)}</td>
         <td style="padding:6px;text-align:right;font-weight:700;border-top:2px solid rgba(242,208,138,.4);color:rgba(242,208,138,.95)">${money(footAmt)}</td>
         <td style="padding:6px;text-align:right;font-weight:700;border-top:2px solid rgba(242,208,138,.4);color:rgba(242,208,138,.95)">${money(footPD)}</td>
         <td style="padding:6px;text-align:right;font-weight:700;border-top:2px solid rgba(242,208,138,.4);color:var(--gold)">${money(footTotal)}</td>
@@ -1206,7 +1207,7 @@ window.AsgardPayrollPage = (function(){
     async function renderPage(){
       await layout(buildPage(), {
         title: 'Ведомость (расчёт с рабочими)',
-        motto: 'Табель, баллы, суточные — вся ведомость на одном экране.'
+        motto: 'Табель, ставки ₽, суточные — вся ведомость на одном экране.'
       });
       bindGridHandlers();
     }
@@ -1260,15 +1261,25 @@ window.AsgardPayrollPage = (function(){
           return;
         }
         try{
-          const changes = Object.entries(pendingEdits).map(([key, value]) => {
+          // С 01.11: amount_rub в ₽; API ждёт rows[{employee_id, days:[{date, amount_rub}]}]
+          const byEmp = {};
+          Object.entries(pendingEdits).forEach(([key, value]) => {
             const [empId, day] = key.split('_');
-            return { employee_id: Number(empId), day: Number(day), points: num(value) };
+            const id = Number(empId);
+            const dayNum = Number(day);
+            if (!byEmp[id]) byEmp[id] = [];
+            const dateStr = selYear + '-' + String(selMonth).padStart(2, '0') + '-' + String(dayNum).padStart(2, '0');
+            byEmp[id].push({ date: dateStr, amount_rub: num(value) });
           });
+          const rows = Object.entries(byEmp).map(([employee_id, days]) => ({
+            employee_id: Number(employee_id),
+            days
+          }));
           const _auth = await AsgardAuth.getAuth();
           const _sr = await fetch('/api/worker-payments/reports/payroll-grid/' + selYear + '/' + selMonth + '/save', {
             method: 'PUT',
             headers: {'Authorization': 'Bearer '+_auth.token, 'Content-Type': 'application/json'},
-            body: JSON.stringify({ changes })
+            body: JSON.stringify({ rows })
           });
           if(!_sr.ok) throw new Error((await _sr.json().catch(()=>({}))).error || 'Ошибка сохранения');
           toast('Сохранено', 'Данные ведомости обновлены', 'ok');

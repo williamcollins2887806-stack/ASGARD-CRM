@@ -22,10 +22,7 @@ window.AsgardTimesheetV2 = (function () {
 
   // FIX 7 — цвета через CSS-токены (assets/css/timesheet-types-tokens.css).
   // Передаём в style.background/color как var(--ts-*-bg)/var(--ts-*-fg).
-  // V255 (23.06.2026): добавлен 'ship' — Корабль, альтернатива дороги за повышенную
-  // ставку (12 баллов × 500 ₽). Токенов --ts-ship-* пока нет — используем travel-цвет
-  // и явный текст-эмодзи 🚢 для отличия. Это не противоречит color-gate — токены
-  // те же что у travel.
+  // V255 (23.06.2026): 'ship' — Корабль. С 01.11 ставки в ₽ (без баллов в UI).
   const TYPE_META = {
     day:       { icon: '☀️', label: 'Дневная смена', color: 'var(--ts-day-bg)',       textColor: 'var(--ts-day-fg)' },
     night:     { icon: '🌙', label: 'Ночная смена',  color: 'var(--ts-night-bg)',     textColor: 'var(--ts-night-fg)' },
@@ -39,6 +36,64 @@ window.AsgardTimesheetV2 = (function () {
     office:    { icon: '🏢', label: 'Офис',          color: 'var(--ts-office-bg)',    textColor: 'var(--ts-office-fg)' },
     remote:    { icon: '🏠', label: 'Удалёнка',      color: 'var(--ts-remote-bg)',    textColor: 'var(--ts-remote-fg)' }
   };
+
+  // Дефолтные ставки этапов, ₽ (бывшие баллы × 500).
+  const DEFAULT_STAGE_RUB = {
+    travel: 3000, waiting: 3000, helicopter: 3000,
+    medical: 3500, training: 3500,
+    warehouse: 5000, 'warehouse:слесарь': 5000, 'warehouse:мастер': 6000,
+    ship: 6000, office: 8000, remote: 5000
+  };
+
+  function snapRub(n) {
+    if (window.AsgardMoneyCompact && AsgardMoneyCompact.snapRubStep10) {
+      return AsgardMoneyCompact.snapRubStep10(n);
+    }
+    const v = Number(n);
+    if (!Number.isFinite(v) || v < 0) return 0;
+    return Math.round(v / 10) * 10;
+  }
+
+  function fmtCompact(n) {
+    if (window.AsgardMoneyCompact && AsgardMoneyCompact.fmtCompactRub) {
+      return AsgardMoneyCompact.fmtCompactRub(n);
+    }
+    const v = Math.round(Number(n) || 0);
+    if (v <= 0) return '';
+    if (v < 10000) {
+      const k = v / 1000;
+      return (Number.isInteger(k) ? String(k) : k.toFixed(1).replace(/\.0$/, '')) + 'к';
+    }
+    return Math.round(v / 1000) + 'к';
+  }
+
+  function fullRubTitle(n) {
+    if (window.AsgardMoneyCompact && AsgardMoneyCompact.compactRubTitle) {
+      return AsgardMoneyCompact.compactRubTitle(n);
+    }
+    const v = Math.round(Number(n) || 0);
+    return v > 0 ? (v.toLocaleString('ru-RU') + ' ₽') : '';
+  }
+
+  /** Сумма ячейки в ₽: amount, иначе points×500 (legacy API). */
+  function entryAmountRub(entry) {
+    if (!entry) return null;
+    if (entry.amount != null && Number.isFinite(Number(entry.amount)) && Number(entry.amount) > 0) {
+      return Number(entry.amount);
+    }
+    if (entry.points != null && Number.isFinite(Number(entry.points)) && Number(entry.points) > 0) {
+      return Math.round(Number(entry.points) * 500);
+    }
+    return null;
+  }
+
+  function defaultRubForType(type, position) {
+    if (type === 'warehouse' && position) {
+      const k = 'warehouse:' + position;
+      if (DEFAULT_STAGE_RUB[k] != null) return DEFAULT_STAGE_RUB[k];
+    }
+    return DEFAULT_STAGE_RUB[type] != null ? DEFAULT_STAGE_RUB[type] : 0;
+  }
 
   // FIX 11 — локализация ролей
   const ROLE_LABELS = {
@@ -68,7 +123,7 @@ window.AsgardTimesheetV2 = (function () {
     pm:        ['day','night','waiting'],
     warehouse: ['warehouse'],
     medical:   ['medical','training','ship','helicopter','waiting'],
-    // Ожидание (⏳ = 6 баллов) ставит офис-менеджер и рук ТО — как дорогу.
+    // Ожидание (⏳ = 3000 ₽) ставит офис-менеджер и рук ТО — как дорогу.
     travel:    ['travel','waiting'],
     global:    ['day','night','warehouse','medical','training','travel','ship','helicopter','waiting','office','remote']
   };
@@ -862,7 +917,7 @@ window.AsgardTimesheetV2 = (function () {
       showModal({
         title: 'Выгрузка табеля Excel',
         html:
-          '<p class="muted" style="font-size:12px;margin:0 0 10px">В ячейках — только баллы, цвет = тип смены. Легенда под таблицей на том же листе.</p>' +
+          '<p class="muted" style="font-size:12px;margin:0 0 10px">В ячейках — ставка в ₽ (компактно), цвет = тип смены. Легенда под таблицей на том же листе.</p>' +
           '<label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer">' +
           '<input type="checkbox" id="tsv2ExpPd" checked/> Учитывать суточные</label>' +
           '<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px">' +
@@ -891,8 +946,7 @@ window.AsgardTimesheetV2 = (function () {
   }
 
   // FIX 8 + FIX 11 — расширенный tooltip с телефоном и локализованной ролью
-  // FIX (23.06.2026): добавляем «отработано/оплачено часов» — пользователь
-  // путал баллы (13/16/18) с часами. Теперь часы видны явно.
+  // С 01.11: в ячейках/tooltip — рубли, не баллы.
   function tooltipLinesForEntry(emp, dateISO, entry) {
     const meta = TYPE_META[entry.type] || {};
     const dt = new Date(dateISO).toLocaleDateString('ru-RU');
@@ -900,10 +954,9 @@ window.AsgardTimesheetV2 = (function () {
     lines.push(`<div class="tt-title">${esc(emp.fio || '—')} · ${esc(dt)}</div>`);
     const dirLbl = entry.direction === 'to_site' ? ' · Туда' : (entry.direction === 'from_site' ? ' · Обратно' : '');
     let row1 = `${meta.icon || ''} ${esc(meta.label || entry.type)}${dirLbl}`;
-    if (entry.points != null) row1 += ` · ${esc(String(entry.points))} баллов`;
-    if (entry.amount != null) row1 += ` · ${esc(fmt(entry.amount))} ₽`;
+    const amt = entryAmountRub(entry);
+    if (amt != null) row1 += ` · ${esc(fmt(amt))} ₽`;
     lines.push(`<div class="tt-row">${row1}</div>`);
-    // Часы — отдельной строкой, чтобы их не путали с баллами
     if (entry.hours_worked != null || entry.hours_paid != null) {
       const hw = entry.hours_worked != null ? entry.hours_worked : '—';
       const hp = entry.hours_paid != null ? entry.hours_paid : '—';
@@ -951,7 +1004,7 @@ window.AsgardTimesheetV2 = (function () {
   function renderPayCells(emp, lean) {
     if (lean) {
       let html = '';
-      const earnedTitle = 'Итоговая сумма к выплате на руки за месяц.\nФормула: смены (ставка × дни + баллы × коэф) + премия − штраф';
+      const earnedTitle = 'Итоговая сумма к выплате на руки за месяц.\nФормула: смены (ставка × дни) + премия − штраф';
       html += `<td class="tsv2-total" title="${esc(earnedTitle)}">${emp.earned != null ? fmt(emp.earned) + ' ₽' : '—'}</td>`;
       const paidSalaryTotal = Number(
         emp.paid_salary_total != null
@@ -1022,7 +1075,7 @@ window.AsgardTimesheetV2 = (function () {
     html += `<td><span class="tsv2-src-cell ${srcCls}" title="${esc(srcTitle)}">${esc(srcLabel)}</span></td>`;
     // Заработано ₽ — итоговая сумма «к выплате на руки» с учётом премий и штрафов.
     // Tooltip объясняет это явно, чтобы юзер не искал отдельной колонки «К выплате».
-    const earnedTitle = 'Итоговая сумма к выплате на руки за месяц.\nФормула: смены (ставка × дни + баллы × коэф) + премия − штраф';
+    const earnedTitle = 'Итоговая сумма к выплате на руки за месяц.\nФормула: смены (ставка × дни) + премия − штраф';
     html += `<td class="tsv2-total" title="${esc(earnedTitle)}">${emp.earned != null ? fmt(emp.earned) + ' ₽' : '—'}</td>`;
     // Stage S — 📤 Уже выплачено в поле ₽ (через worker_payments status IN paid/confirmed)
     //   Фикс (23.06.2026): значение в колонке = paid_salary_total (зп + аванс + бонус),
@@ -1165,14 +1218,17 @@ window.AsgardTimesheetV2 = (function () {
     const meta = TYPE_META[entry.type] || TYPE_META.day;
     const bg = meta.color, fg = meta.textColor;
     const dirArrow = entry.direction === 'to_site' ? '→' : (entry.direction === 'from_site' ? '←' : '');
-    const content = ((entry.points != null) ? String(entry.points) : meta.icon) + dirArrow;
+    const amt = entryAmountRub(entry);
+    const compact = amt != null ? fmtCompact(amt) : '';
+    const content = (compact || meta.icon) + dirArrow;
     const editClass = cellIsEditable(canEdit, entry, mode) ? ' editable' : '';
-    // FIX 9 — title= больше не используется. Передаём данные через data-tt-json (escaped JSON).
     const ttHtml = tooltipLinesForEntry(emp, dateISO, entry);
     const ttData = encodeURIComponent(ttHtml);
+    const nativeTitle = amt != null ? fullRubTitle(amt) : '';
     return `<td${dayAttr}><div class="tsv2-cell${editClass}"
       style="background:${bg};color:${fg}"
       data-emp="${emp.id}" data-date="${dateISO}" data-work="${entry.work_id || ''}" data-type="${entry.type}"
+      title="${esc(nativeTitle)}"
       data-tt-enc="${ttData}">${esc(content)}</div></td>`;
   }
 
@@ -2272,9 +2328,9 @@ window.AsgardTimesheetV2 = (function () {
         if (d === todayD) cls += ' tsv2-day-today';
         header += `<th class="${cls.trim()}" data-day="${d}">${d}</th>`;
       }
-      // Колонки итогов: дни / баллы (если PM/GLOBAL) / ФОТ (если PM/GLOBAL) / суточные (если PM)
+      // Колонки итогов: дни / сумма ₽ (если PM/GLOBAL) / ФОТ / суточные
       header += `<th class="tsv2-total">Дни</th>`;
-      if (mode === 'pm' || mode === 'global') header += `<th class="tsv2-total">Баллы</th>`;
+      if (mode === 'pm') header += `<th class="tsv2-total">Сумма ₽</th>`;
       if (mode === 'global') header += `<th class="tsv2-total">Сумма ₽</th>`;
       if (showPerDiem) header += `<th class="tsv2-total" title="Начислено суточных за этот месяц: дорога, МО, склад, обучение, корабль, вертолёт. Вахта МЛСП не входит.">Суточные ₽</th>`;
       // Phase 1B — финансовые колонки (только global)
@@ -2329,7 +2385,20 @@ window.AsgardTimesheetV2 = (function () {
           row += renderCellHtml(emp, dateISO, entry, canEdit, d, mode);
         }
         row += `<td class="tsv2-total">${emp.days_count != null ? emp.days_count : '—'}</td>`;
-        if (mode === 'pm' || mode === 'global') row += `<td class="tsv2-total">${emp.total_points != null ? emp.total_points : '—'}</td>`;
+        if (mode === 'pm') {
+          // PM: total_amount с бэка часто null — считаем из ячеек / points×500
+          let pmSum = emp.total_amount != null ? Number(emp.total_amount) : null;
+          if (pmSum == null || !Number.isFinite(pmSum)) {
+            pmSum = 0;
+            const days = emp.days || {};
+            for (const k of Object.keys(days)) {
+              const a = entryAmountRub(days[k]);
+              if (a != null) pmSum += a;
+            }
+            if (pmSum === 0 && emp.total_points != null) pmSum = Math.round(Number(emp.total_points) * 500);
+          }
+          row += `<td class="tsv2-total" title="${esc(fullRubTitle(pmSum))}">${pmSum ? fmtCompact(pmSum) : '—'}</td>`;
+        }
         if (mode === 'global') row += `<td class="tsv2-sum">${emp.total_amount != null ? fmt(emp.total_amount) + ' ₽' : '—'}</td>`;
         if (showPerDiem) {
           const pd = Number(emp.per_diem_total || 0);
@@ -2349,8 +2418,7 @@ window.AsgardTimesheetV2 = (function () {
         const financeCols = mode === 'global' ? (lean ? 4 : 11) : 0;
         const totalCols = 1 + daysInMonth +
                           1 +                                        // Дни
-                          ((mode === 'pm' || mode === 'global') ? 1 : 0) + // Баллы
-                          ((mode === 'global') ? 1 : 0) +            // Сумма ₽
+                          ((mode === 'pm' || mode === 'global') ? 1 : 0) + // Сумма ₽
                           (showPerDiem ? 1 : 0) +                    // Суточные ₽
                           financeCols +
                           ((mode === 'global' && !lean) ? 1 : 0);    // Q3: Город (только full)
@@ -2508,9 +2576,37 @@ window.AsgardTimesheetV2 = (function () {
       pop.className = 'tsv2-popover';
       _editing = true; // FIX 13 — пауза авторефреша
 
+      // Поле ставки ₽ (шаг 10) — для этапов и смен
+      const amtWrap = document.createElement('div');
+      amtWrap.style.cssText = 'padding:6px 10px 4px;font-size:11px;color:var(--t2)';
+      const amtLab = document.createElement('label');
+      amtLab.textContent = 'Ставка, ₽';
+      amtLab.style.cssText = 'display:block;margin-bottom:4px;font-weight:600';
+      const amtInp = document.createElement('input');
+      amtInp.type = 'number';
+      amtInp.min = '0';
+      amtInp.step = '10';
+      amtInp.style.cssText = 'width:100%;padding:4px 6px;box-sizing:border-box;border:1px solid var(--brd);border-radius:4px;background:var(--bg1);color:var(--t1)';
+      const curEmp = (data?.employees || []).find((e) => Number(e.id) === empId);
+      const curEntry = curEmp && curEmp.days
+        ? (curEmp.days[String(Number(dateISO.slice(-2)))] || curEmp.days[Number(dateISO.slice(-2))])
+        : null;
+      const curAmt = entryAmountRub(curEntry);
+      amtInp.value = curAmt != null ? String(snapRub(curAmt)) : '';
+      amtInp.placeholder = curType ? String(defaultRubForType(curType) || '') : '₽';
+      amtWrap.appendChild(amtLab);
+      amtWrap.appendChild(amtInp);
+      if (!isPmLogisticsCell) pop.appendChild(amtWrap);
+
+      function readPopoverAmount(t) {
+        const raw = amtInp.value;
+        if (raw !== '' && raw != null) return snapRub(raw);
+        return defaultRubForType(t) || null;
+      }
+
       // Сохраняет отметку. Если backend вернёт 400 work_id_required —
       // откроем picker и попробуем снова с выбранным workId.
-      async function saveEntry(t, effectiveWorkId, direction) {
+      async function saveEntry(t, effectiveWorkId, direction, amountRub) {
         try {
           // Свободные этапы — никогда не привязываем к работе (даже если в ячейке/фильтре есть work_id).
           const wid = (FREE_STANDING[t] || !typeRequiresWorkIdLocal(t)) ? null : (effectiveWorkId || null);
@@ -2519,6 +2615,17 @@ window.AsgardTimesheetV2 = (function () {
             type: t, shift: (t === 'night') ? 'night' : 'day', delete: false
           };
           if (direction) payload.direction = direction;
+          // Сумма в ₽ как есть (без ×500). Для этапов — дефолт из DEFAULT_STAGE_RUB.
+          let amt = amountRub != null ? snapRub(amountRub) : null;
+          if (amt == null || !(amt > 0)) {
+            const def = defaultRubForType(t);
+            if (def > 0) amt = def;
+          }
+          if (amt != null && amt > 0) {
+            payload.amount = amt;
+            payload.day_rate = amt;
+            payload.amount_earned = amt;
+          }
           await editCellWithLockConfirm(payload);
           cell.classList.add('tsv2-saved');
           setTimeout(() => cell.classList.remove('tsv2-saved'), 700);
@@ -2541,9 +2648,9 @@ window.AsgardTimesheetV2 = (function () {
         }
       }
 
-      function askDirectionThenSave(t, effectiveWorkId) {
+      function askDirectionThenSave(t, effectiveWorkId, amountRub) {
         if (!['travel','ship','helicopter'].includes(t)) {
-          return saveEntry(t, effectiveWorkId, null);
+          return saveEntry(t, effectiveWorkId, null, amountRub);
         }
         return new Promise((resolve) => {
           const dirPop = document.createElement('div');
@@ -2558,7 +2665,7 @@ window.AsgardTimesheetV2 = (function () {
             b.textContent = lab;
             b.addEventListener('click', async () => {
               dirPop.remove();
-              await saveEntry(t, effectiveWorkId, val);
+              await saveEntry(t, effectiveWorkId, val, amountRub);
               resolve();
             });
             dirPop.appendChild(b);
@@ -2615,16 +2722,17 @@ window.AsgardTimesheetV2 = (function () {
           const btn = document.createElement('button');
           btn.innerHTML = `<span class="tsv2-cell" style="background:${meta.color};color:${meta.textColor}">${meta.icon}</span> ${meta.label}`;
           btn.addEventListener('click', async () => {
+            const rub = readPopoverAmount(t);
             pop.remove();
             _editing = false; // FIX 13
             // Если тип требует work_id и нет — открыть picker
             if (typeRequiresWorkIdLocal(t) && !workId) {
               openWorkPicker(empId, meta.label, async (pickedId) => {
-                await askDirectionThenSave(t, pickedId);
+                await askDirectionThenSave(t, pickedId, rub);
               });
               return;
             }
-            await askDirectionThenSave(t, workId);
+            await askDirectionThenSave(t, workId, rub);
           });
           pop.appendChild(btn);
         });
@@ -2719,8 +2827,8 @@ window.AsgardTimesheetV2 = (function () {
             `<option value="${t}">${esc((TYPE_META[t] || {}).label || t)}</option>`
           ).join('') +
           `</select>` +
-          `<label style="font-size:12px;display:block;margin-bottom:4px">Баллы (если нужно)</label>` +
-          `<input id="tsv2CorrPts" type="number" min="0" max="99" step="0.5" placeholder="например 13" style="width:100%;margin-bottom:8px;padding:6px"/>` +
+          `<label style="font-size:12px;display:block;margin-bottom:4px">Ставка, ₽ (если нужно)</label>` +
+          `<input id="tsv2CorrRub" type="number" min="0" step="10" placeholder="например 6500" style="width:100%;margin-bottom:8px;padding:6px"/>` +
           `<label style="font-size:12px;display:block;margin-bottom:4px">Комментарий для офиса / мастера</label>` +
           `<textarea id="tsv2CorrMsg" rows="3" style="width:100%;padding:6px" placeholder="Здесь должна быть дорога / дневная смена…"></textarea>` +
           `<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px">` +
@@ -2732,8 +2840,10 @@ window.AsgardTimesheetV2 = (function () {
             const msg = (document.getElementById('tsv2CorrMsg')?.value || '').trim();
             if (msg.length < 3) { toast('Корректировка', 'Напишите, что должно быть', 'warn'); return; }
             const expected_type = document.getElementById('tsv2CorrType')?.value || null;
-            const ptsRaw = document.getElementById('tsv2CorrPts')?.value;
-            const expected_points = ptsRaw !== '' && ptsRaw != null ? Number(ptsRaw) : null;
+            const rubRaw = document.getElementById('tsv2CorrRub')?.value;
+            const rub = rubRaw !== '' && rubRaw != null ? snapRub(rubRaw) : null;
+            // Legacy API: expected_points = ₽ / 500
+            const expected_points = Number.isFinite(rub) && rub > 0 ? Math.round(rub / 500) : null;
             try {
               await apiSend('POST', `${API_BASE}/corrections`, {
                 employee_id: empId,

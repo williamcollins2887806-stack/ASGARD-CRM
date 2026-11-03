@@ -1,32 +1,18 @@
 /**
  * ShiftPopover — inline-редактор смены табеля.
  *
- * Источник: vanilla `field-tab.js:1521-1595` (функция `_shiftEditor`).
- *
- * Открывается при клике по ячейке дня. Привязан к якорю (td.fieldset)
- * через <Popover>, рендерится в портал → не обрезается overflow родителя.
- *
- * Поля:
- *  • Тип смены (☀ день / 🌙 ночь / ½ полсмены / 🚗 в пути / ⏳ ожидание)
- *  • Часы (auto-fill по типу, можно править вручную)
- *  • Баллы (auto-fill по типу, можно править)
- *  • Заработано (₽) — авто = баллы × point_value, можно править
- *
- * Колбэки:
- *  • onSave({ shift, hours_worked, hours_paid, day_rate, amount_earned, points })
- *  • onDelete() — есть только при редактировании существующей смены
- *  • onClose() — закрыть без сохранения
+ * С 01.11.2026: сумма в ₽ (шаг 10), без баллов и без ×pointValue на сохранении.
  */
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Btn, Field } from '@/modals/parts';
 import { EDITABLE_SHIFT_TYPES, getShiftMeta } from './timesheetUtils';
+import { snapRubStep10, fmtMoneyRub } from '@/lib/moneyCompact';
 
 export function ShiftPopover({
   anchorRef,
   open,
-  initial = null,        // { shift, hours_worked, hours_paid, day_rate, amount_earned, points } или null = новая
-  pointValue = 500,
+  initial = null,        // { shift, hours_worked, hours_paid, day_rate, amount_earned } или null = новая
   isNew = false,
   date,
   employeeName,
@@ -37,24 +23,22 @@ export function ShiftPopover({
   const popRef = useRef(null);
   const [pos, setPos] = useState({ top: -9999, left: -9999 });
 
-  // Начальный стейт
   const defShift = initial?.shift || 'day';
   const defMeta = getShiftMeta(defShift);
-  const initPoints = initial?.points != null
-    ? initial.points
-    : (initial?.day_rate != null ? Math.round(parseFloat(initial.day_rate) / pointValue) : defMeta.defaultPts);
+  const initAmount = (() => {
+    const raw = initial?.amount_earned ?? initial?.day_rate;
+    if (raw != null && Number(raw) > 0) return snapRubStep10(raw);
+    return snapRubStep10(defMeta.defaultRub || (defMeta.defaultPts || 0) * 500);
+  })();
 
   const [shift, setShift] = useState(defShift);
-  const [points, setPoints] = useState(initPoints);
   const [hours, setHours] = useState(initial?.hours_worked != null ? initial.hours_worked : defMeta.hours);
-  const [amount, setAmount] = useState(initial?.amount_earned != null ? Math.round(initial.amount_earned) : initPoints * pointValue);
+  const [amount, setAmount] = useState(initAmount);
   const [userEditedAmount, setUserEditedAmount] = useState(false);
-  const [userEditedPoints, setUserEditedPoints] = useState(false);
   const [userEditedHours, setUserEditedHours] = useState(false);
   const [saving, setSaving] = useState(false);
   const inputRef = useRef(null);
 
-  // Позиционирование (без matchWidth — popover шире ячейки)
   useEffect(() => {
     if (!open) return;
     const recalc = () => {
@@ -64,10 +48,8 @@ export function ShiftPopover({
       const popW = popRef.current?.offsetWidth || 340;
       const popH = popRef.current?.offsetHeight || 260;
       const margin = 8;
-      // Вертикальный flip
       const spaceBelow = window.innerHeight - r.bottom;
       let top = (spaceBelow < popH + 16 && r.top > spaceBelow) ? Math.max(margin, r.top - popH - 6) : r.bottom + 6;
-      // Горизонтальное выравнивание по центру ячейки
       let left = r.left + r.width / 2 - popW / 2;
       if (left + popW > window.innerWidth - margin) left = window.innerWidth - popW - margin;
       if (left < margin) left = margin;
@@ -84,7 +66,6 @@ export function ShiftPopover({
     };
   }, [open, anchorRef]);
 
-  // ESC + клик снаружи
   useEffect(() => {
     if (!open) return;
     const onKey = (e) => {
@@ -93,7 +74,6 @@ export function ShiftPopover({
     };
     const onMouseDown = (e) => {
       if (popRef.current && !popRef.current.contains(e.target)) {
-        // Не закрывать если клик по самой ячейке-якорю (двойной toggle защита)
         if (anchorRef?.current && anchorRef.current.contains(e.target)) return;
         onClose?.();
       }
@@ -105,9 +85,8 @@ export function ShiftPopover({
       window.removeEventListener('mousedown', onMouseDown);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, onClose, shift, points, hours, amount]);
+  }, [open, onClose, shift, hours, amount]);
 
-  // Фокус на инпут баллов при открытии
   useEffect(() => {
     if (!open) return;
     const t = setTimeout(() => {
@@ -117,23 +96,15 @@ export function ShiftPopover({
     return () => clearTimeout(t);
   }, [open]);
 
-  // Auto-fill при смене типа смены (если юзер не редактировал поля сам)
   const pickShift = (newShift) => {
     const meta = getShiftMeta(newShift);
     setShift(newShift);
-    if (!userEditedPoints) {
-      setPoints(meta.defaultPts);
-      if (!userEditedAmount) setAmount(meta.defaultPts * pointValue);
+    if (!userEditedAmount) {
+      setAmount(snapRubStep10(meta.defaultRub || (meta.defaultPts || 0) * 500));
     }
     if (!userEditedHours) setHours(meta.hours);
   };
 
-  const onPointsChange = (v) => {
-    const n = Math.max(0, Math.min(99, parseInt(v) || 0));
-    setUserEditedPoints(true);
-    setPoints(n);
-    if (!userEditedAmount) setAmount(n * pointValue);
-  };
   const onHoursChange = (v) => {
     const n = Math.max(0, Math.min(24, parseFloat(v) || 0));
     setUserEditedHours(true);
@@ -147,16 +118,15 @@ export function ShiftPopover({
 
   async function doSave() {
     if (saving) return;
-    if (points === 0 && !isNew) {
-      // 0 баллов = удалить (vanilla parity: editCheckinCell deletes when pts=0)
+    const rub = snapRubStep10(amount);
+    if (rub === 0 && !isNew) {
       if (onDelete) {
         setSaving(true);
         try { await onDelete(); } finally { setSaving(false); }
       }
       return;
     }
-    if (points === 0) {
-      // Новая смена с 0 баллов — отмена
+    if (rub === 0) {
       onClose?.();
       return;
     }
@@ -166,9 +136,8 @@ export function ShiftPopover({
         shift,
         hours_worked: hours,
         hours_paid: hours,
-        day_rate: amount,           // bug-compat с vanilla: day_rate = total ₽, НЕ ставка
-        amount_earned: amount,
-        points
+        day_rate: rub,
+        amount_earned: rub
       });
     } finally {
       setSaving(false);
@@ -219,31 +188,22 @@ export function ShiftPopover({
             onChange={(e) => onHoursChange(e.target.value)}
           />
         </Field>
-        <Field label="Баллы">
+        <Field label="Сумма ₽">
           <input
             ref={inputRef}
             type="text"
             inputMode="numeric"
-            pattern="[0-9]*"
-            className="m-input"
-            value={points}
-            aria-label="Баллы"
-            onChange={(e) => onPointsChange(e.target.value)}
-          />
-        </Field>
-        <Field label="Заработано ₽">
-          <input
-            type="text"
-            inputMode="numeric"
             className="m-input"
             value={amount.toLocaleString('ru-RU')}
+            aria-label="Сумма в рублях"
             onChange={(e) => onAmountChange(e.target.value)}
+            onBlur={() => setAmount(snapRubStep10(amount))}
           />
         </Field>
       </div>
 
       <div className="ft-ts-pop-hint">
-        {points > 0 ? <>= {points} × {pointValue.toLocaleString('ru-RU')} ₽ = <b>{(points * pointValue).toLocaleString('ru-RU')} ₽</b></> : 'Введите баллы'}
+        {amount > 0 ? <>К начислению: <b>{fmtMoneyRub(snapRubStep10(amount))}</b> (шаг 10 ₽)</> : 'Введите сумму'}
       </div>
 
       <div className="ft-ts-pop-foot">

@@ -579,7 +579,7 @@ function ExportPerDiemModal({ onGo }) {
       <MHead icon="📥" title="Выгрузка табеля Excel" accent="gold" onClose={close} />
       <MBody>
         <p style={{ fontSize: 13, color: 'var(--t2)', margin: '0 0 12px', lineHeight: 1.45 }}>
-          В ячейках — только баллы, цвет = тип смены. Легенда под таблицей на одном листе.
+          В ячейках — сумма ₽ (компактно), цвет = тип смены. Легенда под таблицей на одном листе.
         </p>
         <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 14, cursor: 'pointer' }}>
           <input type="checkbox" checked={pd} onChange={(e) => setPd(e.target.checked)} />

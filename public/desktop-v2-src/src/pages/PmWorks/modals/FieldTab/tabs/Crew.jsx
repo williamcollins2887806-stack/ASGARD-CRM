@@ -4,7 +4,7 @@
  * Источник vanilla: field-tab.js:186-854 (renderCrewTab + addCrewRow + showDepartureModal).
  *
  * Что реализовано (100% переноса, без stub'ов):
- *   ▸ 11 столбцов: Имя · Роль · Тариф · Баллы · ₽/смена · Совмещение · Дней ·
+ *   ▸ столбцы: Имя · Роль · Тариф · ₽/смена · Доплата · Дней ·
  *     Заработано · SMS · MAX · Действия
  *   ▸ Тарификация в строке (inline-editor TariffEditor) — авто-recalc, сохранение
  *     через POST /projects/:work_id/crew (бэк upsert'ит одного).
@@ -48,6 +48,7 @@ import DepartedList from './Crew/DepartedList';
 import LaunchFieldModal from './Crew/LaunchFieldModal';
 import { openBaseRatesModal } from './Crew/BaseRatesModal';
 import { formatMoney as fmtMoney } from '@/lib/money';
+import { snapRubStep10 } from '@/lib/moneyCompact';
 
 function byFio(a, b) {
   return String(a?.employee_name || '').localeCompare(String(b?.employee_name || ''), 'ru', { sensitivity: 'base' });
@@ -88,7 +89,7 @@ export default function CrewTab({ work }) {
   const [editingMemberId, setEditingMemberId] = useState(null); // employee_id строки в режиме редактирования тарифа
   const [addForm, setAddForm] = useState({
     employee_id: '', role: 'worker', shift: 'day', tariff_id: '',
-    combo_ids: [], manual_extra: ''
+    manual_extra_rub: ''
   });
   const [busy, setBusy] = useState(false);
   const [sendingSms, setSendingSms] = useState(false);
@@ -179,7 +180,7 @@ export default function CrewTab({ work }) {
     return active.filter((m) => String(m.employee_name || '').toLowerCase().includes(q));
   }, [active, fioQuery]);
 
-  // Тарифы для совмещения = (specials ∪ tariffs с is_combinable) в категории
+  // comboTariffs — только для отображения legacy-совмещений у уже назначенных
   const comboTariffs = useMemo(() => {
     const combo = [];
     tariffs.forEach((t) => {
@@ -202,26 +203,15 @@ export default function CrewTab({ work }) {
   const addFormCalc = useMemo(() => {
     const t = addFormTariffs.find((x) => String(x.id) === String(addForm.tariff_id))
       || categoryTariffs.find((x) => String(x.id) === String(addForm.tariff_id));
-    const basePoints = t ? Number(t.points) || 0 : 0;
     const baseRate = t ? Number(t.rate_per_shift) || 0 : 0;
-    let comboPoints = 0;
-    let comboRate = 0;
-    for (const id of addForm.combo_ids || []) {
-      const c = comboTariffs.find((x) => String(x.id) === String(id));
-      if (!c) continue;
-      comboPoints += Number(c.points) || 0;
-      comboRate += Number(c.rate_per_shift) || 0;
-    }
-    let manual = Number(String(addForm.manual_extra || '').replace(',', '.'));
+    let manual = Number(String(addForm.manual_extra_rub || '').replace(',', '.').replace(/\s/g, ''));
     if (!Number.isFinite(manual) || manual < 0) manual = 0;
-    manual = Math.round(manual * 100) / 100;
-    const pv = t?.point_value != null ? Number(t.point_value) : 500;
+    manual = snapRubStep10(manual);
     return {
-      basePoints, baseRate, comboPoints, comboRate, manual,
-      totalPoints: basePoints + comboPoints + manual,
-      totalRate: baseRate + comboRate + manual * pv
+      baseRate, manual,
+      totalRate: baseRate + manual
     };
-  }, [addForm, addFormTariffs, categoryTariffs, comboTariffs]);
+  }, [addForm, addFormTariffs, categoryTariffs]);
 
   const resolveTariffForRole = (role, rates = roleBaseRates) => {
     const fromBase = tariffIdFromRoleBaseRates(rates, role);
@@ -248,22 +238,23 @@ export default function CrewTab({ work }) {
     }
     setBusy(true);
     try {
-      const ids = (addForm.combo_ids || []).map(Number).filter((n) => n > 0);
       await addCrewMember(work.id, {
         employee_id: Number(addForm.employee_id),
         field_role: addForm.role,
         shift_type: addForm.shift,
         tariff_id: addForm.tariff_id ? Number(addForm.tariff_id) : null,
-        combination_tariff_id: ids[0] || null,
-        combo_tariff_ids: ids,
-        manual_extra_points: addFormCalc.manual
+        combination_tariff_id: null,
+        combo_tariff_ids: [],
+        manual_extra_rub: addFormCalc.manual,
+        // база без доплаты — иначе resolveAssignmentRates сложит дважды
+        day_rate_rub: addFormCalc.baseRate
         // суточные — только из настроек проекта (toolbar), не per-person при добавлении
       });
       const empName = emp?.fio || available.find((e) => String(e.id) === String(addForm.employee_id))?.fio || '';
       toast('Добавлен в бригаду', empName || '', 'ok');
       setAddForm({
         employee_id: '', role: 'worker', shift: 'day', tariff_id: '',
-        combo_ids: [], manual_extra: ''
+        manual_extra_rub: ''
       });
       setShowAdd(false);
       reload();
@@ -272,6 +263,38 @@ export default function CrewTab({ work }) {
     } finally {
       setBusy(false);
     }
+  };
+
+  /* ─── Выбор сотрудника: CREmployeePicker если есть, иначе Combobox ─── */
+  const pickEmployee = async () => {
+    const Picker = typeof window !== 'undefined' ? window.CREmployeePicker : null;
+    if (!Picker?.pickOne) return false;
+    const selected = await Picker.pickOne({
+      title: 'Сотрудник в бригаду',
+      placeholder: 'Начните вводить фамилию…',
+      filter: (e) => !activeEmpIds.has(Number(e.id))
+    });
+    if (!selected?.id) return true;
+    const emp = available.find((e) => Number(e.id) === Number(selected.id)) || selected;
+    const mapped = mapRoleTagToFieldRole(emp?.role_tag);
+    const next = {
+      ...addForm,
+      employee_id: String(selected.id),
+      role: mapped,
+      tariff_id: resolveTariffForRole(mapped)
+    };
+    setAddForm(next);
+    if (emp?.is_busy && emp.busy_with?.length) {
+      const w = emp.busy_with[0];
+      const endStr = w.end_date ? new Date(w.end_date).toLocaleDateString('ru-RU') : '—';
+      const ok = window.confirm(
+        `⚠️ Этот сотрудник уже на объекте:\n«${w.work_title || '?'}»\nдо ${endStr}\n\nНазначить всё равно?`
+      );
+      if (!ok) {
+        setAddForm({ ...next, employee_id: '' });
+      }
+    }
+    return true;
   };
 
   /* ─── ✕ Убрать из бригады (назначение). Сотрудник в справочнике остаётся. ─── */
@@ -482,34 +505,47 @@ export default function CrewTab({ work }) {
       {showAdd && (
         <div className="ft-add-form">
           <Field label="Свободный сотрудник" required help={`${addEmpOptions.length} в наличии`}>
-            <Combobox
-              value={addForm.employee_id}
-              placeholder="Начните вводить фамилию…"
-              options={addEmpOptions}
-              onChange={(v) => {
-                const emp = available.find((e) => String(e.id) === String(v));
-                const mapped = mapRoleTagToFieldRole(emp?.role_tag);
-                const next = {
-                  ...addForm,
-                  employee_id: v,
-                  role: mapped,
-                  tariff_id: resolveTariffForRole(mapped),
-                  combo_ids: []
-                };
-                setAddForm(next);
-                if (emp?.is_busy && emp.busy_with?.length) {
-                  const w = emp.busy_with[0];
-                  const endStr = w.end_date ? new Date(w.end_date).toLocaleDateString('ru-RU') : '—';
-                  const ok = window.confirm(
-                    `⚠️ Этот сотрудник уже на объекте:\n«${w.work_title || '?'}»\nдо ${endStr}\n\nНазначить всё равно?`
-                  );
-                  if (!ok) {
-                    setAddForm({ ...next, employee_id: '' });
-                    return;
+            {typeof window !== 'undefined' && window.CREmployeePicker?.pickOne ? (
+              <div className="ft-row" style={{ gap: 8, alignItems: 'center' }}>
+                <Btn variant="ghost" onClick={() => { pickEmployee(); }}>
+                  {addForm.employee_id
+                    ? (available.find((e) => String(e.id) === String(addForm.employee_id))?.fio
+                      || addEmpOptions.find((o) => o.value === String(addForm.employee_id))?.label
+                      || `#${addForm.employee_id}`)
+                    : 'Выбрать сотрудника…'}
+                </Btn>
+                {addForm.employee_id && (
+                  <Btn variant="ghost" size="sm" onClick={() => setAddForm({ ...addForm, employee_id: '' })}>✕</Btn>
+                )}
+              </div>
+            ) : (
+              <Combobox
+                value={addForm.employee_id}
+                placeholder="Начните вводить фамилию…"
+                options={addEmpOptions}
+                onChange={(v) => {
+                  const emp = available.find((e) => String(e.id) === String(v));
+                  const mapped = mapRoleTagToFieldRole(emp?.role_tag);
+                  const next = {
+                    ...addForm,
+                    employee_id: v,
+                    role: mapped,
+                    tariff_id: resolveTariffForRole(mapped)
+                  };
+                  setAddForm(next);
+                  if (emp?.is_busy && emp.busy_with?.length) {
+                    const w = emp.busy_with[0];
+                    const endStr = w.end_date ? new Date(w.end_date).toLocaleDateString('ru-RU') : '—';
+                    const ok = window.confirm(
+                      `⚠️ Этот сотрудник уже на объекте:\n«${w.work_title || '?'}»\nдо ${endStr}\n\nНазначить всё равно?`
+                    );
+                    if (!ok) {
+                      setAddForm({ ...next, employee_id: '' });
+                    }
                   }
-                }
-              }}
-            />
+                }}
+              />
+            )}
           </Field>
           <div className="ft-row-grid-2">
             <Field label="Роль в поле">
@@ -545,7 +581,7 @@ export default function CrewTab({ work }) {
                     { value: '', label: '— по дефолту —' },
                     ...addFormTariffs.map((t) => ({
                       value: String(t.id),
-                      label: `${t.position_name || t.label || t.name} · ${t.points || 0}б · ${fmtMoney(t.rate_per_shift)}/смена`
+                      label: `${t.position_name || t.label || t.name} · ${fmtMoney(t.rate_per_shift)}/смена`
                     }))
                   ]}
                 />
@@ -553,40 +589,25 @@ export default function CrewTab({ work }) {
             </div>
             <div className="ft-assign-rate-col ft-assign-rate-col--extra">
               <div className="ft-assign-rate-col__title">Доплата</div>
-              <p className="ft-assign-rate-hint">Только этому человеку · галочки и/или ручные баллы (3.5…)</p>
-              <Field label="Ручные баллы">
+              <p className="ft-assign-rate-hint">Только этому человеку · шаг 10 ₽</p>
+              <Field label="Доплата ₽">
                 <input
                   className="m-input"
                   type="number"
                   min="0"
-                  step="0.5"
+                  step="10"
                   placeholder="0"
-                  value={addForm.manual_extra}
-                  onChange={(e) => setAddForm({ ...addForm, manual_extra: e.target.value })}
+                  value={addForm.manual_extra_rub}
+                  onChange={(e) => setAddForm({ ...addForm, manual_extra_rub: e.target.value })}
+                  onBlur={() => {
+                    if (addForm.manual_extra_rub === '') return;
+                    setAddForm({
+                      ...addForm,
+                      manual_extra_rub: String(snapRubStep10(addForm.manual_extra_rub))
+                    });
+                  }}
                 />
               </Field>
-              <div className="ft-assign-rate-checks">
-                {comboTariffs.filter((t) => t.is_combinable).map((t) => {
-                  const id = String(t.id);
-                  const checked = (addForm.combo_ids || []).includes(id);
-                  return (
-                    <label key={id} className="ft-assign-rate-check">
-                      <input
-                        type="checkbox"
-                        checked={checked}
-                        onChange={() => {
-                          const cur = addForm.combo_ids || [];
-                          setAddForm({
-                            ...addForm,
-                            combo_ids: checked ? cur.filter((x) => x !== id) : [...cur, id]
-                          });
-                        }}
-                      />
-                      <span>{t.position_name || t.name} (+{t.points || 1}б)</span>
-                    </label>
-                  );
-                })}
-              </div>
             </div>
           </div>
 
@@ -594,7 +615,7 @@ export default function CrewTab({ work }) {
             <div>
               <span className="ft-tariff-editor__calc-l">Итого:</span>
               <strong>
-                {addFormCalc.totalPoints}б · {addFormCalc.totalRate ? fmtMoney(addFormCalc.totalRate) : '—'}
+                {addFormCalc.totalRate ? fmtMoney(addFormCalc.totalRate) : '—'}
               </strong>
             </div>
           </div>
@@ -621,9 +642,8 @@ export default function CrewTab({ work }) {
                   <th>Сотрудник</th>
                   <th>Роль</th>
                   <th>Тариф</th>
-                  <th>Баллы</th>
                   <th>₽/смена</th>
-                  <th>Совмещ.</th>
+                  <th>Доплата</th>
                   <th>Дней</th>
                   <th>Заработано</th>
                   <th>SMS</th>
@@ -640,18 +660,18 @@ export default function CrewTab({ work }) {
                   const combos = memberComboIds
                     .map((id) => comboTariffs.find((t) => Number(t.id) === Number(id)))
                     .filter(Boolean);
-                  const manualPts = Number(m.manual_extra_points) || 0;
+                  const manualRub = m.manual_extra_rub != null && m.manual_extra_rub !== ''
+                    ? Number(m.manual_extra_rub) || 0
+                    : (Number(m.manual_extra_points) || 0) * (Number(tariff?.point_value) || 500);
                   const role = ROLES.find((r) => r.value === (m.field_role || m.role_in_field)) || { label: m.field_role || '—' };
-                  const points = m.tariff_points != null
-                    ? Number(m.tariff_points)
-                    : (tariff?.points || 0) + combos.reduce((s, c) => s + (Number(c.points) || 0), 0) + manualPts;
-                  const rate = (Number(tariff?.rate_per_shift) || 0)
-                    + combos.reduce((s, c) => s + (Number(c.rate_per_shift) || 0), 0)
-                    + manualPts * (Number(tariff?.point_value) || 500);
-                  const comboLabel = [
-                    ...combos.map((c) => c.position_name || c.name),
-                    manualPts > 0 ? `+${manualPts}б` : null
-                  ].filter(Boolean).join(', ') || '—';
+                  const rate = m.day_rate_rub != null && Number(m.day_rate_rub) > 0
+                    ? Number(m.day_rate_rub)
+                    : (Number(tariff?.rate_per_shift) || 0)
+                      + combos.reduce((s, c) => s + (Number(c.rate_per_shift) || 0), 0)
+                      + manualRub;
+                  const extraLabel = manualRub > 0
+                    ? fmtMoney(manualRub)
+                    : (combos.length ? combos.map((c) => c.position_name || c.name).join(', ') : '—');
                   const isEditing = editingMemberId === m.employee_id;
                   const memberRole = m.field_role || m.role_in_field || 'worker';
                   let roleTariffs = filterTariffsForFieldRole(categoryTariffs, memberRole, category);
@@ -664,7 +684,7 @@ export default function CrewTab({ work }) {
                   if (isEditing) {
                     return (
                       <tr key={`${m.id || m.employee_id}-edit`} className="ft-crew-edit-row">
-                        <td colSpan={12}>
+                        <td colSpan={11}>
                           <TariffEditor
                             member={m}
                             tariffs={roleTariffs}
@@ -696,9 +716,8 @@ export default function CrewTab({ work }) {
                           <span className="ft-crew-edit-ic">✎</span>
                         </button>
                       </td>
-                      <td className="ft-crew-num">{points || '—'}</td>
                       <td className="ft-crew-num c-gold">{rate ? fmtMoney(rate) : '—'}</td>
-                      <td className="ft-crew-num">{comboLabel}</td>
+                      <td className="ft-crew-num">{extraLabel}</td>
                       <td className="ft-crew-num">{m.days_on_site != null ? m.days_on_site : '—'}</td>
                       <td className="ft-crew-num c-gold">{m.earned ? fmtMoney(m.earned) : '—'}</td>
                       <td className="ft-crew-num">

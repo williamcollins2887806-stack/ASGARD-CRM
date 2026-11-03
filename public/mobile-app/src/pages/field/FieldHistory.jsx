@@ -143,10 +143,9 @@ function HistoryDetail({ workId, onBack }) {
   const totalHours = summary.total_hours || days.reduce((s, c) => s + (parseFloat(c.hours_worked) || 0), 0);
   const totalDays = summary.total_days || days.length;
 
-  const tariffPoints = work.tariff_points || 0;
-  const rateFromTariff = tariffPoints * 500;
+  const rateFromWork = parseFloat(work.day_rate || work.day_rate_rub || projWork.day_rate || 0) || 0;
   const avgRate = days.length > 0 ? days.reduce((s, d) => s + (parseFloat(d.day_rate) || 0), 0) / days.length : 0;
-  const dayRate = rateFromTariff || Math.round(avgRate);
+  const dayRate = rateFromWork || Math.round(avgRate);
 
   const dates = days.map(d => d.date).filter(Boolean).sort();
   const periodStart = dates[0];
@@ -362,9 +361,7 @@ function DayRow({ day, idx, onLongPress }) {
   const Icon = SHIFT_ICONS[shift] || (day.entry_kind === 'stage' ? ClipboardList : Sun);
   const label = SHIFT_LABELS[shift] || shift || 'День';
   const color = SHIFT_COLORS[shift] || 'var(--value)';
-  const points = day.tariff_points != null
-    ? Math.round(Number(day.tariff_points) || 0)
-    : (day.day_rate ? Math.round(parseFloat(day.day_rate) / 500) : 0);
+  const dayRateRub = parseFloat(day.day_rate) || 0;
   const earned = parseFloat(day.amount_earned) || 0;
   const isOdd = idx % 2 === 1;
 
@@ -394,8 +391,12 @@ function DayRow({ day, idx, onLongPress }) {
       <div className="flex-1 min-w-0">
         <span className="text-xs font-medium" style={{ color }}>{label}</span>
       </div>
-      <span className="text-xs w-8 text-right flex-shrink-0" style={{ color: points > 0 ? 'var(--text-secondary)' : 'transparent' }}>
-        {points > 0 ? points : ''}
+      <span
+        className="text-xs w-12 text-right flex-shrink-0 tabular-nums"
+        style={{ color: dayRateRub > 0 ? 'var(--text-secondary)' : 'transparent' }}
+        title={dayRateRub > 0 ? fmtMoney(dayRateRub) : undefined}
+      >
+        {dayRateRub > 0 ? fmtMoneyShort(dayRateRub) : ''}
       </span>
       <span className="text-sm font-bold w-16 text-right flex-shrink-0" style={{ color: 'var(--gold)' }}>
         {fmtMoneyShort(earned)}

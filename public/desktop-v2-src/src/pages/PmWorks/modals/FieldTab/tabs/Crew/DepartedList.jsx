@@ -104,7 +104,7 @@ export default function DepartedList({
             const reason = m.departure_reason || m.reason || null;
             const isDeparted = !!m.departure_date;
             const tariffTitle = m.tariff_id
-              ? (`Тариф #${m.tariff_id}${m.tariff_points != null ? ` · ${m.tariff_points}б` : ''}`)
+              ? (`Тариф #${m.tariff_id}${m.day_rate_rub != null ? ` · ${Number(m.day_rate_rub).toLocaleString('ru-RU')} ₽` : ''}`)
               : 'Тариф не задан';
             return (
               <li key={m.id || `${m.employee_id}-${m.work_id}`} className="ft-departed__row">

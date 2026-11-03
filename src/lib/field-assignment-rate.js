@@ -1,13 +1,44 @@
 /**
- * Расчёт ставки назначения в бригаде: база + совмещения + ручная доплата.
+ * Расчёт ставки назначения в бригаде: база + доплата в рублях (с 01.11.2026).
  * Используется POST /crew и вспомогательными хелперами чекина/табеля.
+ *
+ * Канон: amount_earned / day_rate — всегда рубли. Баллы legacy только для чтения.
  */
 
 const DEFAULT_POINT_VALUE = 500;
 
 /**
+ * Округлить до шага 10 ₽ (ставки/доплаты).
+ * @param {number|string|null|undefined} value
+ * @returns {number}
+ */
+function snapRubStep10(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n) || n < 0) return 0;
+  return Math.round(n / 10) * 10;
+}
+
+/**
+ * Валидация: сумма кратна 10 (или 0).
+ * @param {number|string|null|undefined} value
+ * @returns {boolean}
+ */
+function isRubStep10(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n) || n < 0) return false;
+  return Math.abs(n * 10 - Math.round(n * 10)) < 1e-9 && Math.round(n) % 10 === 0;
+}
+
+/**
  * @param {object} db — pg pool / fastify.db
- * @param {{ tariff_id?: number|null, combination_tariff_id?: number|null, combo_tariff_ids?: number[]|null, manual_extra_points?: number|string|null }} opts
+ * @param {{
+ *   tariff_id?: number|null,
+ *   combination_tariff_id?: number|null,
+ *   combo_tariff_ids?: number[]|null,
+ *   manual_extra_points?: number|string|null,
+ *   manual_extra_rub?: number|string|null,
+ *   day_rate_rub?: number|string|null,
+ * }} opts
  */
 async function resolveAssignmentRates(db, opts = {}) {
   const tariffId = opts.tariff_id ? Number(opts.tariff_id) : null;
@@ -18,17 +49,11 @@ async function resolveAssignmentRates(db, opts = {}) {
     const one = Number(opts.combination_tariff_id);
     if (Number.isFinite(one) && one > 0) comboIds = [one];
   }
-  // unique preserve order
   comboIds = [...new Set(comboIds)];
 
-  let manual = Number(opts.manual_extra_points);
-  if (!Number.isFinite(manual) || manual < 0) manual = 0;
-  // до 2 знаков (3.5)
-  manual = Math.round(manual * 100) / 100;
-
+  let pointValue = DEFAULT_POINT_VALUE;
   let baseRate = 0;
   let basePoints = 0;
-  let pointValue = DEFAULT_POINT_VALUE;
   let tariffRow = null;
 
   if (tariffId) {
@@ -37,12 +62,33 @@ async function resolveAssignmentRates(db, opts = {}) {
       [tariffId]
     );
     if (!rows.length) {
-      return { error: 'Тариф не найден', tariffId, comboIds, manual };
+      return { error: 'Тариф не найден', tariffId, comboIds };
     }
     tariffRow = rows[0];
     baseRate = parseFloat(tariffRow.rate_per_shift) || 0;
     basePoints = Number(tariffRow.points) || 0;
-    if (tariffRow.point_value != null) pointValue = parseFloat(tariffRow.point_value) || DEFAULT_POINT_VALUE;
+    if (tariffRow.point_value != null) {
+      pointValue = parseFloat(tariffRow.point_value) || DEFAULT_POINT_VALUE;
+    }
+  }
+
+  // Явная БАЗОВАЯ ставка в ₽ (без доплаты). Доплата — отдельно в manual_extra_rub.
+  // Клиент НЕ должен слать итог (база+доплата) в day_rate_rub — иначе DOUBLE.
+  let explicitDayRate = null;
+  if (opts.day_rate_rub != null && opts.day_rate_rub !== '') {
+    const dr = Number(opts.day_rate_rub);
+    if (Number.isFinite(dr) && dr >= 0) {
+      explicitDayRate = snapRubStep10(dr);
+      baseRate = explicitDayRate;
+      basePoints = pointValue > 0 ? Math.round((explicitDayRate / pointValue) * 100) / 100 : 0;
+    }
+  }
+
+  // Доплата в рублях (новый канон). Legacy: manual_extra_points × point_value + combo rates.
+  let manualExtraRub = null;
+  if (opts.manual_extra_rub != null && opts.manual_extra_rub !== '') {
+    const mr = Number(opts.manual_extra_rub);
+    if (Number.isFinite(mr) && mr >= 0) manualExtraRub = snapRubStep10(mr);
   }
 
   let comboRate = 0;
@@ -64,9 +110,25 @@ async function resolveAssignmentRates(db, opts = {}) {
     }
   }
 
-  const manualRate = manual * pointValue;
-  const totalPoints = basePoints + comboPoints + manual;
-  const totalRate = baseRate + comboRate + manualRate;
+  let manualPoints = 0;
+  let manualRate = 0;
+  if (manualExtraRub != null) {
+    // Новый путь: доплата уже в ₽; combo галочки не добавляем (свёрнуты в доплату)
+    manualRate = manualExtraRub;
+    manualPoints = pointValue > 0 ? Math.round((manualExtraRub / pointValue) * 100) / 100 : 0;
+    comboRate = 0;
+    comboPoints = 0;
+    comboIds = [];
+  } else {
+    let manual = Number(opts.manual_extra_points);
+    if (!Number.isFinite(manual) || manual < 0) manual = 0;
+    manual = Math.round(manual * 100) / 100;
+    manualPoints = manual;
+    manualRate = manual * pointValue;
+  }
+
+  const totalRate = snapRubStep10(baseRate + comboRate + manualRate);
+  const totalPoints = Math.round((basePoints + comboPoints + manualPoints) * 100) / 100;
   const primaryComboId = comboIds[0] || null;
 
   return {
@@ -79,61 +141,85 @@ async function resolveAssignmentRates(db, opts = {}) {
     basePoints,
     comboRate,
     comboPoints,
-    manualPoints: manual,
+    manualPoints,
     manualRate,
+    manualExtraRub: manualExtraRub != null ? manualExtraRub : snapRubStep10(manualRate + comboRate),
+    dayRateRub: totalRate,
     pointValue,
     totalPoints,
-    totalRate
+    totalRate,
+    explicitDayRate
   };
 }
 
 /**
- * SQL-фрагмент для суммы доплаты по массиву combo_tariff_ids + manual.
- * Использовать в SELECT с алиасом ea для employee_assignments.
+ * SQL-фрагмент доплаты в ₽ (prefer manual_extra_rub, fallback legacy points×pv + combo).
  */
-function sqlAssignmentExtraPointsExpr(eaAlias = 'ea') {
+function sqlAssignmentExtraRateExpr(eaAlias = 'ea') {
   return `(
-    COALESCE((
-      SELECT SUM(COALESCE(ctg.points, 0))
-      FROM unnest(COALESCE(${eaAlias}.combo_tariff_ids, ARRAY[]::int[])) AS cid(id)
-      LEFT JOIN field_tariff_grid ctg ON ctg.id = cid.id
-    ), 0)
-    + CASE
-        WHEN COALESCE(cardinality(${eaAlias}.combo_tariff_ids), 0) = 0
-             AND ${eaAlias}.combination_tariff_id IS NOT NULL
-        THEN COALESCE((
-          SELECT points FROM field_tariff_grid WHERE id = ${eaAlias}.combination_tariff_id
+    CASE
+      WHEN COALESCE(${eaAlias}.manual_extra_rub, 0) > 0 THEN COALESCE(${eaAlias}.manual_extra_rub, 0)
+      ELSE (
+        COALESCE((
+          SELECT SUM(COALESCE(ctg.rate_per_shift, 0))
+          FROM unnest(COALESCE(${eaAlias}.combo_tariff_ids, ARRAY[]::int[])) AS cid(id)
+          LEFT JOIN field_tariff_grid ctg ON ctg.id = cid.id
         ), 0)
-        ELSE 0
-      END
-    + COALESCE(${eaAlias}.manual_extra_points, 0)
+        + CASE
+            WHEN COALESCE(cardinality(${eaAlias}.combo_tariff_ids), 0) = 0
+                 AND ${eaAlias}.combination_tariff_id IS NOT NULL
+            THEN COALESCE((
+              SELECT rate_per_shift FROM field_tariff_grid WHERE id = ${eaAlias}.combination_tariff_id
+            ), 0)
+            ELSE 0
+          END
+        + COALESCE(${eaAlias}.manual_extra_points, 0) * COALESCE(
+            (SELECT point_value FROM field_tariff_grid WHERE id = ${eaAlias}.tariff_id),
+            500
+          )
+      )
+    END
   )`;
 }
 
-function sqlAssignmentExtraRateExpr(eaAlias = 'ea') {
+/**
+ * Legacy: «баллы доплаты» для старых отчётов (из рублёвой доплаты / 500).
+ */
+function sqlAssignmentExtraPointsExpr(eaAlias = 'ea') {
   return `(
-    COALESCE((
-      SELECT SUM(COALESCE(ctg.rate_per_shift, 0))
-      FROM unnest(COALESCE(${eaAlias}.combo_tariff_ids, ARRAY[]::int[])) AS cid(id)
-      LEFT JOIN field_tariff_grid ctg ON ctg.id = cid.id
-    ), 0)
-    + CASE
-        WHEN COALESCE(cardinality(${eaAlias}.combo_tariff_ids), 0) = 0
-             AND ${eaAlias}.combination_tariff_id IS NOT NULL
-        THEN COALESCE((
-          SELECT rate_per_shift FROM field_tariff_grid WHERE id = ${eaAlias}.combination_tariff_id
+    CASE
+      WHEN COALESCE(${eaAlias}.manual_extra_rub, 0) > 0 THEN
+        ROUND(
+          COALESCE(${eaAlias}.manual_extra_rub, 0)
+          / COALESCE(
+              (SELECT point_value FROM field_tariff_grid WHERE id = ${eaAlias}.tariff_id),
+              500
+            )
+        , 2)
+      ELSE (
+        COALESCE((
+          SELECT SUM(COALESCE(ctg.points, 0))
+          FROM unnest(COALESCE(${eaAlias}.combo_tariff_ids, ARRAY[]::int[])) AS cid(id)
+          LEFT JOIN field_tariff_grid ctg ON ctg.id = cid.id
         ), 0)
-        ELSE 0
-      END
-    + COALESCE(${eaAlias}.manual_extra_points, 0) * COALESCE(
-        (SELECT point_value FROM field_tariff_grid WHERE id = ${eaAlias}.tariff_id),
-        500
+        + CASE
+            WHEN COALESCE(cardinality(${eaAlias}.combo_tariff_ids), 0) = 0
+                 AND ${eaAlias}.combination_tariff_id IS NOT NULL
+            THEN COALESCE((
+              SELECT points FROM field_tariff_grid WHERE id = ${eaAlias}.combination_tariff_id
+            ), 0)
+            ELSE 0
+          END
+        + COALESCE(${eaAlias}.manual_extra_points, 0)
       )
+    END
   )`;
 }
 
 module.exports = {
   DEFAULT_POINT_VALUE,
+  snapRubStep10,
+  isRubStep10,
   resolveAssignmentRates,
   sqlAssignmentExtraPointsExpr,
   sqlAssignmentExtraRateExpr

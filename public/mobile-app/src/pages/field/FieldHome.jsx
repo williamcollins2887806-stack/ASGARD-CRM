@@ -1116,11 +1116,19 @@ export default function FieldHome() {
           style={{ backgroundColor: 'var(--bg-elevated)', border: '1px solid var(--border-norse)' }}>
           <p className="text-xs font-semibold uppercase tracking-widest mb-2" style={{ color: 'var(--text-tertiary)' }}>Тариф</p>
           <p className="text-sm" style={{ color: 'var(--text-primary)' }}>
-            {project.tariff.position_name} · {project.tariff.points} баллов
+            {project.tariff.position_name}
+            {project.tariff.rate_per_shift != null
+              ? ` · ${Number(project.tariff.rate_per_shift).toLocaleString('ru-RU')} ₽/см`
+              : project.day_rate != null
+                ? ` · ${Number(project.day_rate).toLocaleString('ru-RU')} ₽/см`
+                : ''}
           </p>
           {project.tariff.combination && (
             <p className="text-xs mt-1" style={{ color: 'var(--gold)' }}>
-              + Совмещение: {project.tariff.combination.position_name} (+1 балл)
+              + Совмещение: {project.tariff.combination.position_name}
+              {project.tariff.combination.rate_per_shift != null
+                ? ` (+${Number(project.tariff.combination.rate_per_shift).toLocaleString('ru-RU')} ₽)`
+                : ''}
             </p>
           )}
         </div>

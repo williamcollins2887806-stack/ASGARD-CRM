@@ -1,6 +1,7 @@
 /**
  * BaseRatesModal — окно 1: базовые ставки по ролям после создания работы / активации Field.
  * Хранение: field_project_settings.role_base_rates (JSONB).
+ * С 01.11.2026: UI в ₽ (rate_rub), без баллов.
  */
 import { useEffect, useMemo, useState } from 'react';
 import { MCard, MHead, MBody, MFoot, Btn } from '@/modals/parts';
@@ -15,7 +16,12 @@ import {
 } from '../../constants';
 import { formatMoney as fmtMoney } from '@/lib/money';
 
-const POINT_VALUE = 500;
+function rateOf(t, prev) {
+  if (t && t.rate_per_shift != null) return Number(t.rate_per_shift) || 0;
+  if (prev?.rate_rub != null) return Number(prev.rate_rub) || 0;
+  if (prev?.points != null) return (Number(prev.points) || 0) * 500;
+  return 0;
+}
 
 function buildInitialRows(tariffs, category, saved) {
   const byKey = new Map();
@@ -39,7 +45,7 @@ function buildInitialRows(tariffs, category, saved) {
       label: def.label,
       enabled: prev ? !!prev.enabled : !!def.defaultEnabled,
       tariff_id: tariffId,
-      points: t ? Number(t.points) || 0 : (prev?.points != null ? Number(prev.points) : 0)
+      rate_rub: rateOf(t, prev)
     };
   });
 }
@@ -94,7 +100,7 @@ export default function BaseRatesModal({
       return {
         ...row,
         tariff_id: tariffId || '',
-        points: t ? Number(t.points) || 0 : 0
+        rate_rub: t ? (Number(t.rate_per_shift) || 0) : 0
       };
     }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -112,7 +118,7 @@ export default function BaseRatesModal({
       if (patch.tariff_id != null) {
         const options = filterTariffsForFieldRole(tariffs, key, category);
         const t = options.find((x) => String(x.id) === String(patch.tariff_id));
-        next.points = t ? Number(t.points) || 0 : 0;
+        next.rate_rub = t ? (Number(t.rate_per_shift) || 0) : 0;
       }
       return next;
     }));
@@ -130,7 +136,9 @@ export default function BaseRatesModal({
             label: r.label,
             enabled: !!r.enabled,
             tariff_id: r.tariff_id ? Number(r.tariff_id) : null,
-            points: Number(r.points) || 0
+            rate_rub: Number(r.rate_rub) || 0,
+            // legacy: points ≈ rate/500
+            points: Math.round((Number(r.rate_rub) || 0) / 500)
           }))
         }
       };
@@ -180,7 +188,6 @@ export default function BaseRatesModal({
                   <th style={{ width: 56 }}>Нужен</th>
                   <th>Роль</th>
                   <th>Тариф из сетки</th>
-                  <th style={{ width: 72 }}>Баллы</th>
                   <th style={{ width: 110 }}>₽/смена</th>
                 </tr>
               </thead>
@@ -207,15 +214,14 @@ export default function BaseRatesModal({
                             { value: '', label: '— выбрать —' },
                             ...options.map((t) => ({
                               value: String(t.id),
-                              label: `${t.position_name || t.name} · ${t.points || 0}б`
+                              label: `${t.position_name || t.name} · ${fmtMoney(t.rate_per_shift)}`
                             }))
                           ]}
                         />
                       </td>
-                      <td className="ft-crew-num">{row.enabled ? (row.points || '—') : '—'}</td>
                       <td className="ft-crew-num c-gold">
-                        {row.enabled && row.points
-                          ? fmtMoney(Number(row.points) * POINT_VALUE)
+                        {row.enabled && row.rate_rub
+                          ? fmtMoney(row.rate_rub)
                           : '—'}
                       </td>
                     </tr>

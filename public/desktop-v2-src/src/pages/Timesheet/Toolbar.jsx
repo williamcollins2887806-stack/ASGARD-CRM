@@ -107,11 +107,11 @@ export default function Toolbar({
         <div className="ts-stats">
           <span className="ts-pill info">{fmtNum(kpi.totalWorkers)} раб.</span>
           <span className="ts-pill ok">{fmtNum(kpi.totalDays)} чел-дней</span>
-          {showPoints && kpi.totalPoints > 0 && (
-            <span className="ts-pill">{fmtNum(kpi.totalPoints)} баллов</span>
-          )}
-          {showAmount && (
+          {(showPoints || showAmount) && kpi.totalAmount > 0 && (
             <span className="ts-pill gold">{fmtMoney(kpi.totalAmount)}</span>
+          )}
+          {showPoints && !showAmount && kpi.totalAmount <= 0 && kpi.totalPoints > 0 && (
+            <span className="ts-pill gold">{fmtMoney(kpi.totalPoints * 500)}</span>
           )}
           {showPerDiem && (
             <span className="ts-pill gold">Сутки: {fmtMoney(kpi.totalPerDiem)}</span>

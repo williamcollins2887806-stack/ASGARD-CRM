@@ -814,7 +814,6 @@ window.AsgardWorkReport = (function () {
         </div>
         <div class="wr-crew-stats">
           <span>${c.shifts || 0} см</span>
-          <span>${Math.round(parseFloat(c.earned || 0) / parseFloat(c.point_value || 500))} бал</span>
           <span class="wr-crew-earned">${m(c.earned)} \u20BD</span>
         </div>
       </div>`;

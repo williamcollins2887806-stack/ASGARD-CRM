@@ -146,7 +146,10 @@ async function loadFieldTimesheetRoster(db, workId, dateFrom, dateTo) {
       tar.tariff_id,
       tar.tariff_points,
       tar.manual_extra_points,
-      tar.point_value
+      tar.manual_extra_rub,
+      tar.day_rate_rub,
+      tar.point_value,
+      tar.rate_per_shift
     FROM reasons r
     JOIN employees e ON e.id = r.employee_id
     ${plannedLateral}
@@ -154,7 +157,10 @@ async function loadFieldTimesheetRoster(db, workId, dateFrom, dateTo) {
       SELECT ea.tariff_id,
              ea.tariff_points,
              ea.manual_extra_points,
-             COALESCE(ftg.point_value, 500) AS point_value
+             ea.manual_extra_rub,
+             ea.day_rate_rub,
+             COALESCE(ftg.point_value, 500) AS point_value,
+             ftg.rate_per_shift
         FROM employee_assignments ea
         LEFT JOIN field_tariff_grid ftg ON ftg.id = ea.tariff_id
        WHERE ea.employee_id = e.id AND ea.work_id = $1
@@ -163,7 +169,8 @@ async function loadFieldTimesheetRoster(db, workId, dateFrom, dateTo) {
     ) tar ON true
     GROUP BY e.id, e.fio, e.full_name,
              pe.planned_from, pe.planned_to, pe.note, pe.inbound_transport,
-             tar.tariff_id, tar.tariff_points, tar.manual_extra_points, tar.point_value
+             tar.tariff_id, tar.tariff_points, tar.manual_extra_points,
+             tar.manual_extra_rub, tar.day_rate_rub, tar.point_value, tar.rate_per_shift
     ORDER BY fio
   `, [workId, from, to]);
 
@@ -173,6 +180,15 @@ async function loadFieldTimesheetRoster(db, workId, dateFrom, dateTo) {
     const isPlannedOnly = reasons.length > 0
       && reasons.every((r) => r === 'planned');
     const tariffPoints = row.tariff_points != null ? Number(row.tariff_points) : null;
+    const pv = row.point_value != null ? Number(row.point_value) : 500;
+    let dayRateRub = row.day_rate_rub != null ? Number(row.day_rate_rub) : null;
+    if (dayRateRub == null || !Number.isFinite(dayRateRub) || dayRateRub <= 0) {
+      const base = row.rate_per_shift != null ? Number(row.rate_per_shift) : null;
+      const extra = row.manual_extra_rub != null ? Number(row.manual_extra_rub)
+        : (row.manual_extra_points != null ? Number(row.manual_extra_points) * pv : 0);
+      if (base != null && Number.isFinite(base)) dayRateRub = base + (Number(extra) || 0);
+      else if (Number.isFinite(tariffPoints) && tariffPoints > 0) dayRateRub = tariffPoints * pv;
+    }
     return {
       employee_id: row.employee_id,
       fio: row.fio,
@@ -187,7 +203,9 @@ async function loadFieldTimesheetRoster(db, workId, dateFrom, dateTo) {
       tariff_id: row.tariff_id != null ? Number(row.tariff_id) : null,
       tariff_points: Number.isFinite(tariffPoints) ? tariffPoints : null,
       manual_extra_points: row.manual_extra_points != null ? Number(row.manual_extra_points) : null,
-      point_value: row.point_value != null ? Number(row.point_value) : 500
+      manual_extra_rub: row.manual_extra_rub != null ? Number(row.manual_extra_rub) : null,
+      day_rate_rub: Number.isFinite(dayRateRub) ? dayRateRub : null,
+      point_value: pv
     };
   });
 }

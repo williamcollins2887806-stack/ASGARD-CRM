@@ -22,8 +22,8 @@
  *   [x] PUT    /api/field/manage/tariffs/:id             (правка)
  *   [x] DELETE /api/field/manage/tariffs/:id             (soft-delete)
  *   [x] Группировка по 5 категориям с сортировкой CATEGORY_ORDER
- *   [x] Поля: position_name, points, rate_per_shift, is_combinable, requires_approval, notes
- *   [x] Нота про point_value (500 ₽/балл) выводится из ответа сервера
+ *   [x] Поля: position_name, rate_per_shift, is_combinable, requires_approval, notes
+ *   [x] UI в ₽ (без «1 балл = 500»)
  */
 import { useCallback, useEffect, useState } from 'react';
 import { useAuth } from '@/api/useAuth';
@@ -36,7 +36,6 @@ import {
   SETTINGS_ROLES,
   CATEGORY_LABELS,
   CATEGORY_ORDER,
-  DEFAULT_POINT_VALUE,
   loadTariffs,
   deleteTariff,
   categoryLabel,
@@ -50,7 +49,6 @@ export default function FieldTariffsPage() {
   const modal = useModal();
 
   const [tariffs, setTariffs] = useState([]);
-  const [pointValue, setPointValue] = useState(DEFAULT_POINT_VALUE);
   const [loading, setLoading] = useState(false);
 
   const canView = SETTINGS_ROLES.includes(user?.role);
@@ -62,7 +60,6 @@ export default function FieldTariffsPage() {
       const data = await loadTariffs();
       const all = [...(data.tariffs || []), ...(data.specials || [])];
       setTariffs(all);
-      setPointValue(data.point_value ?? DEFAULT_POINT_VALUE);
     } catch (e) {
       toast.error('Не удалось загрузить тарифы: ' + (e?.message || e));
     } finally {
@@ -127,7 +124,7 @@ export default function FieldTariffsPage() {
       <TopActionsBar
         kicker="Раздел"
         title="Тарифы поля"
-        subtitle={`Тарифная сетка полевого модуля · ${tariffs.length} записей · 1 балл = ${fmtMoney(pointValue)} ₽`}
+        subtitle={`Тарифная сетка полевого модуля · ${tariffs.length} записей · ставки в ₽`}
         actions={
           <>
             <Btn variant="ghost" onClick={reload} disabled={loading}>
@@ -164,9 +161,6 @@ export default function FieldTariffsPage() {
                 />
               );
             })}
-            <div className="fs-12 c-t3 mt-4">
-              Стоимость 1 балла: {fmtMoney(pointValue)} ₽. Ставка = Баллы × {fmtMoney(pointValue)}.
-            </div>
           </div>
         )}
       </div>
@@ -188,7 +182,6 @@ function TariffSection({ category, label, items, onEdit, onDelete }) {
           <thead>
             <tr>
               <th>Должность</th>
-              <th className="center">Баллы</th>
               <th className="right">Ставка ₽/смена</th>
               <th className="center">Комби</th>
               <th className="center">Согл.</th>
@@ -200,7 +193,6 @@ function TariffSection({ category, label, items, onEdit, onDelete }) {
             {items.map((t) => (
               <tr key={t.id} data-cat={category}>
                 <td>{t.position_name}</td>
-                <td className="center">{t.points ?? 0}</td>
                 <td className="right fw-700">{fmtMoney(t.rate_per_shift)} ₽</td>
                 <td className="center">
                   {t.is_combinable ? <span className="ft-flag on">✓</span> : <span className="ft-flag off">—</span>}

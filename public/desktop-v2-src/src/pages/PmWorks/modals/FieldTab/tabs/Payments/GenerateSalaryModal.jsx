@@ -1,16 +1,12 @@
 /**
  * GenerateSalaryModal — генерация ведомости ЗП за период из field_checkins.
  *
- * Источник vanilla: field-tab.js openGenerateSalaryModal (~45 строк, строки 3423-3466).
- *
+ * С 01.11.2026: суммы уже в ₽ в checkins; UI без «₽/балл».
  * Бэк: POST /api/worker-payments/generate-salary/:year/:month
- *   body { point_value, work_id? }
- *   Агрегирует field_checkins (1 смена = 1 балл), создаёт worker_payments(type='salary', status='pending').
- *   409 если ведомость за период уже создана.
  */
 import { useState } from 'react';
 import { MCard, MHead, MBody, MFoot, Btn, Field } from '@/modals/parts';
-import { SelectInput, MoneyInput, NumberInput } from '@/inputs/Inputs';
+import { SelectInput, NumberInput } from '@/inputs/Inputs';
 import { toast } from '@/modals/Notifications';
 import { useModal } from '@/modals';
 import { generateSalary } from '../../api';
@@ -35,7 +31,6 @@ export function GenerateSalaryModal({ work, onSaved }) {
   const now = new Date();
   const [month, setMonth] = useState(String(now.getMonth() + 1));
   const [year, setYear] = useState(String(now.getFullYear()));
-  const [pointValue, setPointValue] = useState('500');
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
 
@@ -43,20 +38,18 @@ export function GenerateSalaryModal({ work, onSaved }) {
     setErr('');
     const m = Number(month);
     const y = Number(year);
-    const pv = Number(pointValue);
     if (!m || m < 1 || m > 12) { setErr('Некорректный месяц'); return; }
     if (!y || y < 2020 || y > 2099) { setErr('Некорректный год'); return; }
-    if (!pv || pv <= 0) { setErr('Стоимость балла должна быть больше 0'); return; }
 
     setBusy(true);
     try {
-      const r = await generateSalary(y, m, { point_value: pv, work_id: Number(work.id) });
-      toast('Ведомость создана', `${r.count || 0} чел. × ${pv} ₽/балл`, 'ok');
+      // point_value — legacy для бэка (вывод total_points); суммы берутся из amount_earned as-is.
+      const r = await generateSalary(y, m, { point_value: 500, work_id: Number(work.id) });
+      toast('Ведомость создана', `${r.count || 0} чел.`, 'ok');
       onSaved?.();
       close();
     } catch (e) {
       const msg = e?.message || String(e);
-      // 409 → уже создана
       setErr(msg.includes('409') || msg.toLowerCase().includes('уже')
         ? 'Ведомость за этот период уже создана. Удалите старые pending-выплаты в таблице ниже.'
         : msg);
@@ -78,9 +71,6 @@ export function GenerateSalaryModal({ work, onSaved }) {
           <Field label="Год" required>
             <NumberInput value={year} onChange={setYear} min={2020} max={2099} />
           </Field>
-          <Field label="₽ за балл" required help="1 смена = 1 балл">
-            <MoneyInput value={pointValue} onChange={setPointValue} />
-          </Field>
         </div>
 
         <div className="ft-pw-preview" style={{ marginTop: 10 }}>
@@ -89,7 +79,7 @@ export function GenerateSalaryModal({ work, onSaved }) {
             Из <code>field_checkins</code> за {MONTHS[Number(month) - 1]?.label || '—'} {year} (только статус «completed»)
             агрегируются смены по сотрудникам. Для каждого создаётся
             <code> worker_payments </code> со статусом <strong>pending</strong> —
-            сумма = баллы × {pointValue} ₽. Дальше можно отметить выплату кнопкой «💰 Выплатить»
+            сумма = заработок за период в ₽. Дальше можно отметить выплату кнопкой «💰 Выплатить»
             в строке таблицы.
           </div>
         </div>

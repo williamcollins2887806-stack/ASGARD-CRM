@@ -204,7 +204,7 @@ export default function FieldCrewStages() {
                     <TypeIcon size={16} strokeWidth={2.4} style={{ color: STAGE_COLORS[type] || 'var(--text-secondary)' }} aria-hidden />
                     {STAGE_LABELS[type]}
                     {type === 'ship' && (
-                      <span className="ml-auto text-xs" style={{ color: 'var(--text-tertiary)' }}>· 12 баллов</span>
+                      <span className="ml-auto text-xs" style={{ color: 'var(--text-tertiary)' }}>· 6 000 ₽</span>
                     )}
                   </button>
                 );

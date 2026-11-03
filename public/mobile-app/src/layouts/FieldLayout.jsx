@@ -3,6 +3,7 @@ import { Outlet, Navigate } from 'react-router-dom';
 import { useFieldAuthStore } from '@/stores/fieldAuthStore';
 import {
   RedesignAnnouncement, UpdateChangelogModal, PwaInstallBanner, PushPermissionBanner,
+  RubPayNoticeBanner,
 } from '@/components/field/AcademyBanners';
 
 function hasPinLocal() {
@@ -29,6 +30,7 @@ export default function FieldLayout() {
 
   return (
     <div className="h-full flex flex-col" style={{ backgroundColor: 'var(--bg-primary)' }}>
+      <RubPayNoticeBanner />
       <div className="flex-1 overflow-auto">
         <Outlet />
       </div>

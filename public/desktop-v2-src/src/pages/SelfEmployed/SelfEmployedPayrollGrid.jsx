@@ -236,7 +236,7 @@ function GridBody({ gridData, pointsMap, editMode, pendingEdits, setPendingEdits
                 <th key={i + 1}>{i + 1}</th>
               ))}
               <th>Дней</th>
-              <th>Баллов</th>
+              <th>Сумма ₽</th>
               <th className="se-grid-th-right">Заработок</th>
               <th className="se-grid-th-right">Суточные</th>
               <th className="se-grid-th-total">ИТОГО</th>
@@ -254,10 +254,11 @@ function GridBody({ gridData, pointsMap, editMode, pendingEdits, setPendingEdits
                   </td>
                   {Array.from({ length: daysInMonth }, (_, i) => {
                     const day = i + 1;
-                    const pts = Number(days[day] || 0);
+                    const rub = Number(days[day] || 0);
+                    const ptsApprox = rub ? Math.round(rub / 500) : 0;
                     const key = (emp.employee_id || emp.id) + '_' + day;
                     if (editMode) {
-                      const val = pendingEdits[key] !== undefined ? pendingEdits[key] : (pts || '');
+                      const val = pendingEdits[key] !== undefined ? pendingEdits[key] : (rub || '');
                       return (
                         <td key={day} className="se-grid-cell-edit" style={{ background: rowBg }}>
                           <input
@@ -265,21 +266,22 @@ function GridBody({ gridData, pointsMap, editMode, pendingEdits, setPendingEdits
                             value={val}
                             onChange={(e) => onCellChange(emp.employee_id || emp.id, day, e.target.value)}
                             min={0}
-                            max={24}
+                            step={10}
                             className="se-grid-cell-input"
                           />
                         </td>
                       );
                     }
-                    const style = gridCellStyle(pts, pointsMap);
-                    if (pts) {
+                    const style = gridCellStyle(ptsApprox, pointsMap);
+                    if (rub) {
                       return (
                         <td
                           key={day}
                           className="se-grid-cell-pts"
+                          title={fmtMoney(rub)}
                           style={{ background: style.bg, color: style.fg }}
                         >
-                          {pts}
+                          {rub >= 1000 ? `${Math.round(rub / 1000)}к` : rub}
                         </td>
                       );
                     }
@@ -290,7 +292,7 @@ function GridBody({ gridData, pointsMap, editMode, pendingEdits, setPendingEdits
                     );
                   })}
                   <td className="se-grid-cell-days" style={{ background: rowBg }}>{emp.days_count || 0}</td>
-                  <td className="se-grid-cell-points" style={{ background: rowBg }}>{Number(emp.total_points || 0)}</td>
+                  <td className="se-grid-cell-points" style={{ background: rowBg }}>{fmtMoney(emp.total_amount)}</td>
                   <td className="se-grid-cell-amt" style={{ background: rowBg }}>{fmtMoney(emp.total_amount)}</td>
                   <td className="se-grid-cell-pd" style={{ background: rowBg }}>{fmtMoney(emp.per_diem_total)}</td>
                   <td className="se-grid-cell-total" style={{ background: rowBg }}>
@@ -307,7 +309,7 @@ function GridBody({ gridData, pointsMap, editMode, pendingEdits, setPendingEdits
                 <td key={i} className="se-grid-foot-cell se-grid-foot-day">{sum || ''}</td>
               ))}
               <td className="se-grid-foot-cell se-grid-foot-center">{totalShifts}</td>
-              <td className="se-grid-foot-cell se-grid-foot-center">{Math.round(grandPts * 100) / 100}</td>
+              <td className="se-grid-foot-cell se-grid-foot-right">{fmtMoney(grandAmt)}</td>
               <td className="se-grid-foot-cell se-grid-foot-right">{fmtMoney(grandAmt)}</td>
               <td className="se-grid-foot-cell se-grid-foot-right">{fmtMoney(grandPd)}</td>
               <td className="se-grid-foot-cell se-grid-foot-total">{fmtMoney(grandAmt + grandPd)}</td>
@@ -322,7 +324,9 @@ function GridBody({ gridData, pointsMap, editMode, pendingEdits, setPendingEdits
         {Object.entries(GRID_CATEGORY_COLORS).map(([type, cfg]) => {
           if (usedTypes.size && !usedTypes.has(type)) return null;
           const ptsRange = Object.entries(pointsMap).filter(([_, t]) => t === type).map(([p]) => p);
-          const ptsLabel = ptsRange.length ? ` (${ptsRange.join('/')} бал.)` : '';
+          const ptsLabel = ptsRange.length
+            ? ` (${ptsRange.map((p) => Math.round(Number(p) * 500)).join('/')} ₽)`
+            : '';
           return (
             <span key={type} className="se-grid-legend-item">
               <span className="se-grid-legend-swatch" style={{ background: cfg.bg }} />

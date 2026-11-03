@@ -299,7 +299,7 @@ console.log('[ASGARD] Global period functions loaded');
     {r:"/cash",l:"Касса",d:"Авансовые отчёты",roles:[...ALL_ROLES,"FIELD_WORKER"],i:"finances",p:"cash",g:"finance"},
     {r:"/cash-admin",l:"Касса (управление)",d:"Согласование и контроль",roles:["ADMIN","BUH",...DIRECTOR_ROLES],i:"finances",p:"cash_admin",g:"finance"},
     {r:"/approval-payment",l:"Очередь оплаты",d:"Оплата согласованных заявок",roles:["ADMIN","BUH",...DIRECTOR_ROLES],i:"finances",p:"approval_payment",g:"finance"},
-    {r:"/my-timesheet",l:"Табель моей дружины",d:"Смены, баллы, суточные · закрытие месяца",roles:["PM","HEAD_PM"],i:"calendar",p:"my_timesheet",g:"personnel"},
+    {r:"/my-timesheet",l:"Табель моей дружины",d:"Смены, ставки ₽, суточные · закрытие месяца",roles:["PM","HEAD_PM"],i:"calendar",p:"my_timesheet",g:"personnel"},
     {r:"/payouts",l:"Выплаты",d:"Ведомость выплат и расчётные листы",roles:["ADMIN","BUH",...DIRECTOR_ROLES],perm:"payouts",i:"finances",p:"payouts",g:"finance"},
     {r:"/self-employed",l:"Самозанятые",d:"Реестр СЗ и договора",roles:["ADMIN","BUH",...DIRECTOR_ROLES],i:"finances",p:"payroll",g:"finance"},
     {r:"/one-time-pay",l:"Разовые оплаты",d:"Такси, топливо, разовые",roles:["ADMIN","PM","HEAD_PM","BUH",...DIRECTOR_ROLES],i:"finances",p:"payroll",g:"finance"},
@@ -365,7 +365,7 @@ console.log('[ASGARD] Global period functions loaded');
 
     // ── СИСТЕМА ──
     {r:"/settings",l:"Настройки",d:"Справочники и цвета",roles:["ADMIN"],i:"settings",p:"settings",g:"system"},
-    {r:"/admin/timesheet-settings",l:"Баллы табеля",d:"Очки за склад/МО/дорогу",roles:["ADMIN","DIRECTOR_GEN","DIRECTOR_COMM","DIRECTOR_DEV","BUH"],i:"settings",p:"admin_timesheet_settings",g:"system"},
+    {r:"/admin/timesheet-settings",l:"Ставки этапов",d:"Склад / МО / дорога в ₽",roles:["ADMIN","DIRECTOR_GEN","DIRECTOR_COMM","DIRECTOR_DEV","BUH"],i:"settings",p:"admin_timesheet_settings",g:"system"},
     {r:"/backup",l:"Резервные копии",d:"Экспорт/импорт базы",roles:["ADMIN"],i:"backup",p:"backup",g:"system"},
     {r:"/sync",l:"PostgreSQL Sync",d:"Синхронизация с сервером",roles:["ADMIN"],i:"backup",p:"sync",g:"system"},
     {r:"/diag",l:"Диагностика",d:"Версия, база, self-test",roles:["ADMIN"],i:"diag",p:"diag",g:"system"},
@@ -2353,7 +2353,7 @@ var _setupPinKeypad = null;
     }, {auth:true, roles:["ADMIN",...DIRECTOR_ROLES]});
     AsgardRouter.add("/field-tariffs", ()=>AsgardFieldTariffsPage.render({layout, title:"Тарифная сетка • Поле"}), {auth:true, roles:["ADMIN"]});
     AsgardRouter.add("/settings", ()=>AsgardSettingsPage.render({layout, title:"Кузница Настроек"}), {auth:true, roles:["ADMIN"]});
-    AsgardRouter.add("/admin/timesheet-settings", ()=>AsgardAdminTimesheetSettingsPage.render({layout, title:"Настройки баллов табеля"}), {auth:true, roles:["ADMIN","DIRECTOR_GEN","DIRECTOR_COMM","DIRECTOR_DEV","BUH"]});
+    AsgardRouter.add("/admin/timesheet-settings", ()=>AsgardAdminTimesheetSettingsPage.render({layout, title:"Ставки этапов, ₽"}), {auth:true, roles:["ADMIN","DIRECTOR_GEN","DIRECTOR_COMM","DIRECTOR_DEV","BUH"]});
     AsgardRouter.add("/telegram", ()=>AsgardTelegram.renderSettings({layout, title:"Telegram"}), {auth:true, roles:["ADMIN"]});
     AsgardRouter.add("/sync", ()=>AsgardSync.renderSettings({layout, title:"PostgreSQL Sync"}), {auth:true, roles:["ADMIN"]});
     AsgardRouter.add("/mango", ()=>AsgardMango.renderSettings({layout, title:"Телефония"}), {auth:true, roles:["ADMIN"]});

@@ -327,8 +327,11 @@ async function routes(fastify, options) {
 
       for (const emp of employees) {
         const { employee_id, tariff_id, combination_tariff_id, shift_type } = emp;
-        const combo_tariff_ids = emp.combo_tariff_ids;
-        const manual_extra_points = emp.manual_extra_points;
+        // С 01.11: доплата в ₽. combo/manual_extra_points — только legacy fallback.
+        const combo_tariff_ids = emp.manual_extra_rub != null ? [] : emp.combo_tariff_ids;
+        const manual_extra_points = emp.manual_extra_rub != null ? 0 : emp.manual_extra_points;
+        const manual_extra_rub = emp.manual_extra_rub;
+        const day_rate_rub = emp.day_rate_rub;
 
         if (!employee_id) continue;
 
@@ -345,7 +348,9 @@ async function routes(fastify, options) {
           tariff_id,
           combination_tariff_id,
           combo_tariff_ids,
-          manual_extra_points
+          manual_extra_points,
+          manual_extra_rub,
+          day_rate_rub
         });
         if (rates.error) {
           results.push({ employee_id, error: rates.error });
@@ -367,6 +372,7 @@ async function routes(fastify, options) {
         const primaryComboId = rates.primaryComboId;
         const comboIds = rates.comboIds;
         const manualPts = rates.manualPoints;
+        const manualRub = rates.manualExtraRub || 0;
         const perDiem = emp.per_diem != null ? emp.per_diem : projectPerDiem;
 
         // Upsert assignment (один employee на работу; дубли гасим)
@@ -388,11 +394,12 @@ async function routes(fastify, options) {
               field_role = $2,
               -- Пустой селект тарифа в бригаде НЕ должен стирать уже заданный тариф:
               -- автосейв каждые 30 сек слал tariff_id=null и закреплял «тариф не задан»
-              -- навсегда, из-за чего новая смена падала в дефолт 13 баллов.
+              -- навсегда, из-за чего новая смена падала в дефолт без ставки.
               tariff_id = COALESCE($3, tariff_id),
               tariff_points = COALESCE($4, tariff_points),
               combination_tariff_id = $5, per_diem = $6, shift_type = $7,
               combo_tariff_ids = $9::int[], manual_extra_points = $10,
+              manual_extra_rub = $11, day_rate_rub = $12,
               is_active = CASE WHEN $8::boolean THEN is_active ELSE true END,
               departure_date = CASE WHEN $8::boolean THEN departure_date ELSE NULL END,
               departure_reason = CASE WHEN $8::boolean THEN departure_reason ELSE NULL END,
@@ -402,7 +409,7 @@ async function routes(fastify, options) {
             WHERE id = $1
           `, [keepId, field_role || 'worker', tariff_id || null,
               totalPoints || null, primaryComboId, perDiem, shift_type || 'day',
-              keepInactive, comboIds, manualPts]);
+              keepInactive, comboIds, manualPts, manualRub, totalRate || null]);
           // Лишние строки того же employee на этой работе — деактивировать
           await db.query(`
             UPDATE employee_assignments
@@ -417,11 +424,11 @@ async function routes(fastify, options) {
           await db.query(`
             INSERT INTO employee_assignments (employee_id, work_id, field_role, tariff_id,
               tariff_points, combination_tariff_id, per_diem, shift_type, is_active,
-              combo_tariff_ids, manual_extra_points)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, true, $9::int[], $10)
+              combo_tariff_ids, manual_extra_points, manual_extra_rub, day_rate_rub)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, true, $9::int[], $10, $11, $12)
           `, [employee_id, workId, field_role || 'worker', tariff_id || null,
               totalPoints || null, primaryComboId, perDiem, shift_type || 'day',
-              comboIds, manualPts]);
+              comboIds, manualPts, manualRub, totalRate || null]);
         }
 
         // Update employees.day_rate for backward compatibility
@@ -433,8 +440,10 @@ async function routes(fastify, options) {
           employee_id,
           field_role: field_role || 'worker',
           day_rate: totalRate,
+          day_rate_rub: totalRate,
           tariff_points: totalPoints,
           manual_extra_points: manualPts,
+          manual_extra_rub: manualRub,
           combo_tariff_ids: comboIds,
           per_diem: perDiem,
           ok: true
@@ -931,9 +940,11 @@ async function routes(fastify, options) {
           roster_reasons: c.roster_reasons || [],
           planned_info: c.planned_info || null,
           is_planned_only: !!c.is_planned_only,
-          // D-258: тариф бригады → дефолт баллов в полевом табеле
+          // D-258 / 01.11: тариф бригады → дефолт ставки ₽ в полевом табеле
           tariff_id: c.tariff_id || null,
           tariff_points: c.tariff_points != null ? Number(c.tariff_points) : null,
+          day_rate_rub: c.day_rate_rub != null ? Number(c.day_rate_rub) : null,
+          manual_extra_rub: c.manual_extra_rub != null ? Number(c.manual_extra_rub) : null,
           point_value: c.point_value != null ? Number(c.point_value) : null,
         };
       }
@@ -1226,8 +1237,8 @@ async function routes(fastify, options) {
 
         const DAY_NAMES = ['Вс', 'Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб'];
         const summaryHdrs = includePerDiem
-          ? ['Дней', 'Баллов', 'Заработок', 'Суточные', 'ИТОГО']
-          : ['Дней', 'Баллов', 'Заработок', 'ИТОГО'];
+          ? ['Дней', 'Сумма ₽', 'Заработок', 'Суточные', 'ИТОГО']
+          : ['Дней', 'Сумма ₽', 'Заработок', 'ИТОГО'];
         const TOTAL_COLS = summaryHdrs.length;
         const totalCols = 2 + dates.length + TOTAL_COLS;
 
@@ -1240,14 +1251,11 @@ async function routes(fastify, options) {
         // Row 1 title
         tsExcelStyle.applyTitleRow(ws, totalCols, `ТАБЕЛЬ — ${workTitle}`);
 
-        // Row 2: period + params (B2 = point_value, D2 = per_diem for formulas)
+        // Row 2: period + params (ячейки дней — уже рубли; D2 не используется как курс балла)
         ws.getCell('A2').value = `Период: ${dateFrom || '—'} — ${dateTo || '—'}`;
         ws.getCell('A2').font = { size: 10, italic: true, color: { argb: C.FONT_MUTED } };
-        ws.getCell('C2').value = '1 балл, ₽';
+        ws.getCell('C2').value = 'Суммы в ячейках — ₽/день';
         ws.getCell('C2').font = { size: 9, color: { argb: C.FONT_MUTED } };
-        ws.getCell('D2').value = pointValue;
-        ws.getCell('D2').font = { bold: true, size: 10 };
-        ws.getCell('D2').numFmt = '0';
         if (includePerDiem) {
           ws.getCell('E2').value = 'Суточные, ₽/смену';
           ws.getCell('E2').font = { size: 9, color: { argb: C.FONT_MUTED } };
@@ -1330,8 +1338,9 @@ async function routes(fastify, options) {
             const day = dayMap[d];
             const cell = ws.getCell(rowNum, 3 + i);
             if (day) {
-              const pts = Math.round(parseFloat(day.day_rate || 0) / pointValue) || 0;
-              tsExcelStyle.applyShiftCell(cell, pts, day.shift);
+              // С 01.11: в ячейке рубли (amount_earned / day_rate), не баллы
+              const rub = Math.round(parseFloat(day.amount_earned || day.day_rate || 0)) || 0;
+              tsExcelStyle.applyShiftCell(cell, rub, day.shift);
             } else if (infoMapX[d]) {
               // D-295: иконка отметки офиса — БЕЗ числа, чтобы не попасть в SUM(дни).
               const inf = infoMapX[d];
@@ -1367,12 +1376,14 @@ async function routes(fastify, options) {
 
           const cPts = ws.getCell(rowNum, ptsCol);
           cPts.value = { formula: `SUM(${dayRange})` };
+          cPts.numFmt = '#,##0';
           cPts.alignment = { horizontal: 'right', vertical: 'middle' };
           cPts.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: rowBg } };
           cPts.font = { size: 10 };
 
+          // Ячейки уже в ₽ — заработок = сумма дней (без × курса балла)
           const cEarn = ws.getCell(rowNum, earnCol);
-          cEarn.value = { formula: `${ptsL}${rowNum}*$D$2` };
+          cEarn.value = { formula: `${ptsL}${rowNum}` };
           cEarn.numFmt = '#,##0 "₽"';
           cEarn.alignment = { horizontal: 'right', vertical: 'middle' };
           cEarn.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: rowBg } };
@@ -1654,14 +1665,21 @@ async function routes(fastify, options) {
         try {
           const { resolveAssignmentRates } = require('../lib/field-assignment-rate');
           const { rows: asgFull } = await db.query(`
-            SELECT tariff_id, combination_tariff_id, combo_tariff_ids, manual_extra_points
+            SELECT tariff_id, combination_tariff_id, combo_tariff_ids,
+                   manual_extra_points, manual_extra_rub, day_rate_rub
               FROM employee_assignments WHERE id=$1
           `, [assignmentId]);
-          if (asgFull.length && asgFull[0].tariff_id) {
-            const rates = await resolveAssignmentRates(db, asgFull[0]);
-            if (!rates.error && rates.totalRate > 0) {
-              pts = rates.totalRate;
-              amt = rates.totalRate;
+          if (asgFull.length) {
+            const row = asgFull[0];
+            if (row.day_rate_rub != null && Number(row.day_rate_rub) > 0) {
+              pts = Number(row.day_rate_rub);
+              amt = Number(row.day_rate_rub);
+            } else if (row.tariff_id) {
+              const rates = await resolveAssignmentRates(db, row);
+              if (!rates.error && rates.totalRate > 0) {
+                pts = rates.totalRate;
+                amt = rates.totalRate;
+              }
             }
           }
         } catch (_) { /* keep client values */ }

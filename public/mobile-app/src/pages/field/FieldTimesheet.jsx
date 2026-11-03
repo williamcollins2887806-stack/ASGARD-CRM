@@ -8,9 +8,17 @@ import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, ArrowRight, ChevronLeft, ChevronRight, Phone, Sun, Moon, Plane, Factory, Stethoscope, GraduationCap, Ship, Helicopter, Hourglass, BedDouble, Building2, CircleDot, Circle } from 'lucide-react';
 import { fieldApi } from '@/api/fieldClient';
 import { useHaptic } from '@/hooks/useHaptic';
-import { formatMoney as fmtMoney, plural } from '@/lib/utils';
+import { formatMoney as fmtMoney } from '@/lib/utils';
 import { BottomSheet } from '@/components/shared/BottomSheet';
 import './field-screens.css';
+
+/** Компактные рубли для ячеек календаря: 3000 → «3к», 19000 → «19к». */
+function fmtCompactRub(n) {
+  const v = Number(n);
+  if (!Number.isFinite(v) || v <= 0) return '';
+  if (v >= 1000) return `${Math.round(v / 1000)}к`;
+  return String(Math.round(v));
+}
 
 const TYPE_META = {
   day:        { Icon: Sun,          label: 'Дневная',   bg: 'var(--ts-day-bg)',        fg: 'var(--ts-day-fg)' },
@@ -115,11 +123,6 @@ function DaySheet({ day, onClose }) {
                 {fmtMoney(e.amount)}
               </span>
             </div>
-            {e.points > 0 && (
-              <p className="text-xs mt-1.5" style={{ color: 'var(--gold)' }}>
-                {e.points} {plural(e.points, 'балл', 'балла', 'баллов')}
-              </p>
-            )}
             <p className="text-xs mt-1 truncate" style={{ color: 'var(--text-tertiary)' }}>
               {e.work_title || (e.work_id ? 'Объект' : 'Вне объекта')}
             </p>
@@ -403,14 +406,24 @@ export default function FieldTimesheet() {
                           </span>
                         );
                       })()}
-                      {pe && pe.points > 0 && (
-                        <span
-                          className="text-[10px] font-bold tabular-nums leading-none mt-0.5"
-                          style={{ color: meta?.fg || 'var(--gold)' }}
-                        >
-                          {pe.points}
-                        </span>
-                      )}
+                      {(() => {
+                        const rub = pe?.amount != null && Number(pe.amount) > 0
+                          ? Number(pe.amount)
+                          : (day?.day_amount != null && Number(day.day_amount) > 0
+                            ? Number(day.day_amount)
+                            : 0);
+                        const compact = fmtCompactRub(rub);
+                        if (!compact) return null;
+                        return (
+                          <span
+                            className="text-[10px] font-bold tabular-nums leading-none mt-0.5"
+                            style={{ color: meta?.fg || 'var(--gold)' }}
+                            title={fmtMoney(rub)}
+                          >
+                            {compact}
+                          </span>
+                        );
+                      })()}
                       {hasPd && (
                         <span
                           style={{
@@ -430,7 +443,7 @@ export default function FieldTimesheet() {
                 })}
               </div>
               <p className="text-[10px] mt-2 px-1" style={{ color: 'var(--text-tertiary)' }}>
-                Точка — суточные за день. Цифра — баллы смены.
+                Точка — суточные за день. Цифра — сумма смены в ₽ (3к = 3 000 ₽).
               </p>
             </div>
 

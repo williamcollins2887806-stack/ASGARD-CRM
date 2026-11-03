@@ -1,7 +1,7 @@
 /**
  * ExportModal — экспорт в Excel:
  *   • Реестр выплат (для трудовых + лист самозанятых) — POST /api/payroll/payments/export
- *   • Excel-сетка ведомости (баллы за смены) — GET /api/worker-payments/reports/payroll-grid/:y/:m/export
+ *   • Excel-сетка ведомости (суммы за смены) — GET /api/worker-payments/reports/payroll-grid/:y/:m/export
  *
  * Источник vanilla:
  *   • payroll.js → btnExport (sheet.id ⇒ payments/export?sheet_id=)
@@ -31,7 +31,7 @@ export default function ExportModal({ sheetId, sheet, defaultMode = 'payments' }
   const monthOpts = MONTHS_RU.map((m, i) => ({ value: String(i + 1), label: m }));
   const modeOpts  = [
     { value: 'payments', label: '💼 Реестр выплат (для банка)' },
-    { value: 'grid',     label: '📋 Ведомость-сетка (баллы за смены)' }
+    { value: 'grid',     label: '📋 Ведомость-сетка (суммы за смены)' }
   ];
 
   const submit = async () => {

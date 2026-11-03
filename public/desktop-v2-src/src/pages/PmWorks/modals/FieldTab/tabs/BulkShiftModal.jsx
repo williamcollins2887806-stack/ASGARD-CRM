@@ -1,19 +1,15 @@
 /**
  * BulkShiftModal — «Заполнить шаблоном» — массовая запись смен.
- *
- * Заполняет диапазон дат указанным шаблоном (типичная неделя Пн-Пт 8-17, или
- * «все дни день», или «выходные пропускать») для выбранных сотрудников.
- *
- * Использует POST /api/field/manage/projects/:work_id/checkin (Upsert через
- * ON CONFLICT employee_id+date+work_id — vanilla field-manage.js:1003).
+ * С 01.11.2026: сумма в ₽ (шаг 10), без баллов и ×pointValue.
  */
 import { useState } from 'react';
 import { useModal } from '@/modals';
 import { MCard, MHead, MBody, MFoot, Btn, Field, Pill } from '@/modals/parts';
 import { SelectInput } from '@/inputs/Inputs';
 import { toast } from '@/modals/Notifications';
-import { SHIFT_TYPES, EDITABLE_SHIFT_TYPES, getShiftMeta, buildDateRange, dayOfWeek, dowShort, dayLabel } from './timesheetUtils';
+import { EDITABLE_SHIFT_TYPES, getShiftMeta, buildDateRange, dayOfWeek, dowShort, dayLabel } from './timesheetUtils';
 import { createCheckin } from '../api';
+import { snapRubStep10 } from '@/lib/moneyCompact';
 
 const TEMPLATES = [
   { value: 'workweek',  label: 'Будни (Пн–Пт)', daysFn: (dow) => dow >= 1 && dow <= 5 },
@@ -26,9 +22,9 @@ export function BulkShiftModal({ workId, from, to, employees = [], onDone }) {
   const { close } = useModal();
   const [template, setTemplate] = useState('workweek');
   const [shift, setShift] = useState('day');
-  const [points, setPoints] = useState(getShiftMeta('day').defaultPts);
-  const [hours, setHours] = useState(getShiftMeta('day').hours);
-  const [pointValue, setPointValue] = useState(500);
+  const dayMeta = getShiftMeta('day');
+  const [amount, setAmount] = useState(snapRubStep10(dayMeta.defaultRub || (dayMeta.defaultPts || 0) * 500));
+  const [hours, setHours] = useState(dayMeta.hours);
   const [overwrite, setOverwrite] = useState(false);
   const [selected, setSelected] = useState(new Set(employees.map((e) => e.employee_id || e.id)));
   const [busy, setBusy] = useState(false);
@@ -47,7 +43,7 @@ export function BulkShiftModal({ workId, from, to, employees = [], onDone }) {
   const onPickShift = (v) => {
     setShift(v);
     const meta = getShiftMeta(v);
-    setPoints(meta.defaultPts);
+    setAmount(snapRubStep10(meta.defaultRub || (meta.defaultPts || 0) * 500));
     setHours(meta.hours);
   };
 
@@ -55,7 +51,7 @@ export function BulkShiftModal({ workId, from, to, employees = [], onDone }) {
   const dates = buildDateRange(from, to);
   const targetDates = dates.filter((d) => tmpl.daysFn(dayOfWeek(d)));
   const totalCalls = targetDates.length * selected.size;
-  const totalAmount = points * pointValue;
+  const rub = snapRubStep10(amount);
 
   async function apply() {
     if (!selected.size) {
@@ -66,15 +62,15 @@ export function BulkShiftModal({ workId, from, to, employees = [], onDone }) {
       toast('Шаблон', 'Нет дней под шаблон в выбранном периоде', 'warn');
       return;
     }
-    if (points <= 0) {
-      toast('Шаблон', 'Баллы должны быть > 0', 'warn');
+    if (rub <= 0) {
+      toast('Шаблон', 'Сумма должна быть > 0', 'warn');
       return;
     }
     setBusy(true);
     setProgress({ done: 0, total: totalCalls, failed: 0 });
     let done = 0;
     let failed = 0;
-    let overwriteAll = null; // null = ещё не спрашивали; true/false после confirm
+    let overwriteAll = null;
     const empIds = [...selected];
     for (const empId of empIds) {
       for (const date of targetDates) {
@@ -84,9 +80,10 @@ export function BulkShiftModal({ workId, from, to, employees = [], onDone }) {
           shift,
           hours_worked: hours,
           hours_paid: hours,
-          day_rate: points * pointValue,
-          amount_earned: points * pointValue,
-          status: 'completed'
+          day_rate: rub,
+          amount_earned: rub,
+          status: 'completed',
+          ...(overwrite ? { confirm_overwrite: true } : {})
         };
         try {
           await createCheckin(workId, payload);
@@ -171,27 +168,18 @@ export function BulkShiftModal({ workId, from, to, employees = [], onDone }) {
                 onChange={(e) => setHours(Math.max(0, Math.min(24, parseFloat(e.target.value) || 0)))}
               />
             </Field>
-            <Field label="Баллы / день">
+            <Field label="Сумма ₽ / день">
               <input
                 type="number"
                 className="m-input"
-                value={points}
-                min={1}
-                max={99}
-                onChange={(e) => setPoints(Math.max(1, Math.min(99, parseInt(e.target.value) || 1)))}
+                value={amount}
+                min={0}
+                step={10}
+                onChange={(e) => setAmount(Math.max(0, parseInt(e.target.value) || 0))}
+                onBlur={() => setAmount(snapRubStep10(amount))}
               />
             </Field>
           </div>
-
-          <Field label="Стоимость балла, ₽">
-            <input
-              type="number"
-              className="m-input"
-              value={pointValue}
-              min={1}
-              onChange={(e) => setPointValue(Math.max(1, parseInt(e.target.value) || 500))}
-            />
-          </Field>
 
           <div className="ft-card-soft">
             <div className="ft-card-eyebrow">Сотрудники ({selected.size} / {employees.length})</div>
@@ -223,7 +211,7 @@ export function BulkShiftModal({ workId, from, to, employees = [], onDone }) {
               <Pill tone="default">{targetDates.length} {pl(targetDates.length, 'день', 'дня', 'дней')}</Pill>
               <Pill tone="default">{selected.size} {pl(selected.size, 'сотрудник', 'сотрудника', 'сотрудников')}</Pill>
               <Pill tone="gold">≈ {totalCalls} записей</Pill>
-              <Pill tone="default">{totalAmount.toLocaleString('ru-RU')} ₽/смена</Pill>
+              <Pill tone="default">{rub.toLocaleString('ru-RU')} ₽/смена</Pill>
             </div>
             <div className="help" style={{ marginTop: 6 }}>
               {targetDates.slice(0, 14).map((d) => (

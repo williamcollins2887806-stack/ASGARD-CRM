@@ -2,7 +2,7 @@
  * SalaryStatementModal — просмотр сгенерированной ведомости ЗП за период.
  *
  * Фильтрует /api/worker-payments?work_id=&type=salary&pay_year=&pay_month= → таблица
- * с сотрудниками, баллами, суммами, статусом. Кнопка «Отметить всех выплачено»
+ * с сотрудниками, суммами, статусом. Кнопка «Отметить всех выплачено»
  * вызывает POST /api/worker-payments/pay-salary/:year/:month (только pending → paid).
  *
  * Источник vanilla: openGenerateSalaryModal (field-tab.js:3423) генерировала, но просмотра
@@ -136,8 +136,6 @@ export function SalaryStatementModal({ work, onSaved }) {
                 <thead>
                   <tr>
                     <th>Сотрудник</th>
-                    <th>Баллы</th>
-                    <th>₽/балл</th>
                     <th>Сумма</th>
                     <th>Статус</th>
                     <th>Способ</th>
@@ -147,8 +145,6 @@ export function SalaryStatementModal({ work, onSaved }) {
                   {items.map((p) => (
                     <tr key={p.id}>
                       <td>{p.employee_name || `#${p.employee_id}`}</td>
-                      <td>{Number(p.total_points || 0)}</td>
-                      <td>{fmtMoney(p.point_value)}</td>
                       <td className="ft-pay-cell-gold">{fmtMoney(p.amount)}</td>
                       <td>{p.status === 'paid' || p.status === 'confirmed' ? '🟢 Выплачено' : '🟡 Ожидает'}</td>
                       <td className="ft-pay-cell-mute">

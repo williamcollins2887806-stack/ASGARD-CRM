@@ -1,11 +1,6 @@
 /**
  * Модалка создания/редактирования тарифа полевого модуля.
- *
- * Поля: category, position_name, points, rate_per_shift, is_combinable,
- *       requires_approval, notes (см. field-manage.js POST/PUT /tariffs).
- *
- * Алиас TariffModal оставлен для совместимости с возможными vanilla-ссылками
- * (по аналогии с MailSettings/AccountEditModal).
+ * С 01.11.2026: ставка в ₽; points пишется как rate/500 для legacy-совместимости.
  */
 import { useState } from 'react';
 import { useModal } from '@/modals';
@@ -19,6 +14,7 @@ import {
   createTariff,
   updateTariff,
 } from './api';
+import { snapRubStep10 } from '@/lib/moneyCompact';
 
 export { TariffEditModal as TariffModal };
 
@@ -29,7 +25,6 @@ export function TariffEditModal({ tariff, onSaved }) {
   const t = tariff || {};
   const [category, setCategory] = useState(t.category || 'ground');
   const [positionName, setPositionName] = useState(t.position_name || '');
-  const [points, setPoints] = useState(t.points ?? 12);
   const [rate, setRate] = useState(t.rate_per_shift ?? 6000);
   const [isCombinable, setIsCombinable] = useState(!!t.is_combinable);
   const [requiresApproval, setRequiresApproval] = useState(!!t.requires_approval);
@@ -42,12 +37,7 @@ export function TariffEditModal({ tariff, onSaved }) {
       toast.warn('Укажите должность');
       return;
     }
-    const ptsNum = Number(points);
-    const rateNum = Number(rate);
-    if (!Number.isFinite(ptsNum) || ptsNum < 0) {
-      toast.warn('Баллы должны быть числом ≥ 0');
-      return;
-    }
+    const rateNum = snapRubStep10(rate);
     if (!Number.isFinite(rateNum) || rateNum < 0) {
       toast.warn('Ставка должна быть числом ≥ 0');
       return;
@@ -57,7 +47,8 @@ export function TariffEditModal({ tariff, onSaved }) {
     const body = {
       category,
       position_name: name,
-      points: ptsNum,
+      // legacy: points ≈ rate/500, чтобы старые отчёты не ломались
+      points: Math.round(rateNum / DEFAULT_POINT_VALUE),
       rate_per_shift: rateNum,
       point_value: DEFAULT_POINT_VALUE,
       is_combinable: isCombinable,
@@ -78,20 +69,12 @@ export function TariffEditModal({ tariff, onSaved }) {
     }
   };
 
-  // «Подставить ставку из баллов» — Ставка = Баллы × 500 (по комментарию vanilla).
-  const onSyncRate = () => {
-    const ptsNum = Number(points);
-    if (Number.isFinite(ptsNum) && ptsNum >= 0) {
-      setRate(ptsNum * DEFAULT_POINT_VALUE);
-    }
-  };
-
   return (
     <MCard>
       <MHead
         icon={isEdit ? '✎' : '＋'}
         title={isEdit ? 'Редактирование тарифа' : 'Новый тариф'}
-        subtitle={isEdit ? tariff.position_name : 'Категория, баллы, ставка, флаги'}
+        subtitle={isEdit ? tariff.position_name : 'Категория, ставка ₽, флаги'}
         onClose={close}
       />
       <MBody>
@@ -116,17 +99,9 @@ export function TariffEditModal({ tariff, onSaved }) {
               />
             </Field>
           </div>
-          <Field label="Баллы" required help="1 балл = 500 ₽">
-            <NumberInput value={points} onChange={setPoints} min={0} max={1000} step={1} />
+          <Field label="Ставка ₽/смена" required help="Шаг 10 ₽">
+            <NumberInput value={rate} onChange={setRate} min={0} max={1000000} step={10} />
           </Field>
-          <Field label="Ставка ₽/смена" required>
-            <NumberInput value={rate} onChange={setRate} min={0} max={1000000} step={100} />
-          </Field>
-          <div>
-            <Btn variant="ghost" size="sm" onClick={onSyncRate}>
-              ↻ Ставка из баллов
-            </Btn>
-          </div>
           <div className="span-2 row gap-16">
             <Switch
               checked={isCombinable}

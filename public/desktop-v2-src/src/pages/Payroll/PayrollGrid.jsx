@@ -1,18 +1,6 @@
 /**
- * PayrollGrid — Excel-сетка ведомости: фио × дни месяца → баллы за смену, итоговые поля справа.
- *
- * Источник vanilla:
- *   • payroll.js → renderPayrollGrid (~280 строк) — самостоятельный экран /payroll-grid
- *   • payroll.js → renderInlineGrid             — вкладка «Ведомость» внутри /payroll
- *
- *  Что покрыто:
- *   - селекторы Месяц/Год + кнопка «Сформировать» (loadPayrollGrid)
- *   - KPI: всего рабочих / смен / ФОТ / суточные
- *   - таблица: sticky ФИО, день-колонки 1..31, итоги (Дней/Баллов/Заработок/Суточные/ИТОГО), tfoot
- *   - цветовое раскрашивание ячеек по тарифной сетке (pointsCellStyle + buildPointsMap)
- *   - режим «✏ Редактировать» — inline-инпуты, накопление в pendingEdits, «💾 Сохранить» → savePayrollGrid
- *   - «📥 Excel» — exportPayrollGrid
- *   - легенда цветов
+ * PayrollGrid — Excel-сетка ведомости: фио × дни месяца → сумма ₽ за смену.
+ * С 01.11.2026: ввод/сохранение amount_rub (шаг 10), без баллов.
  */
 import { useEffect, useMemo, useState } from 'react';
 import { Btn } from '@/modals/parts';
@@ -25,8 +13,28 @@ import {
   fmtMoney, fmtMoneyShort, num,
   buildPointsMap, pointsCellStyle
 } from './api';
+import { fmtCompactRub, snapRubStep10 } from '@/lib/moneyCompact';
 import ExportModal from './modals/ExportModal';
 import './payroll.css';
+
+/** Карта dayNum → amount_rub из emp.days_detailed или legacy days[day]=points×500. */
+function amountByDay(emp, pointValue = 500) {
+  const map = {};
+  if (Array.isArray(emp.days_detailed) && emp.days_detailed.length) {
+    for (const d of emp.days_detailed) {
+      const day = d.day || (d.date ? new Date(d.date).getDate() : null);
+      if (!day) continue;
+      map[day] = Number(d.amount != null ? d.amount : (d.points || 0) * pointValue) || 0;
+    }
+    return map;
+  }
+  const days = emp.days || {};
+  for (const [k, v] of Object.entries(days)) {
+    const pts = Number(v) || 0;
+    map[k] = pts > 50 ? pts : pts * pointValue; // >50 уже похоже на ₽
+  }
+  return map;
+}
 
 const NOW = new Date();
 
@@ -74,7 +82,7 @@ export default function PayrollGrid({ _embedded = false }) {
     try {
       const changes = entries.map(([k, v]) => {
         const [empId, day] = k.split('_');
-        return { employee_id: Number(empId), day: Number(day), points: num(v) };
+        return { employee_id: Number(empId), day: Number(day), amount_rub: snapRubStep10(num(v)) };
       });
       await savePayrollGrid(year, month, changes);
       toast.success('Ведомость обновлена', { title: `Изменено ${changes.length}` });
@@ -148,6 +156,7 @@ function Label({ children }) {
 function GridBody({ gridData, pointsMap, editMode, pendingEdits, setPendingEdits, year, month }) {
   const employees   = gridData.employees;
   const daysInMonth = gridData.month_days || new Date(year, month, 0).getDate();
+  const pointValue  = Number(gridData.point_value) || 500;
 
   /* KPI */
   const totalWorkers  = employees.length;
@@ -155,28 +164,28 @@ function GridBody({ gridData, pointsMap, editMode, pendingEdits, setPendingEdits
   const totalFOT      = employees.reduce((s, e) => s + Number(e.total_amount || 0), 0);
   const totalPerDiem  = employees.reduce((s, e) => s + Number(e.per_diem_total || 0), 0);
 
-  /* Footer totals per day */
+  /* Footer totals per day (₽) */
   const colTotals = new Array(daysInMonth).fill(0);
-  let grandPts = 0, grandAmt = 0, grandPd = 0;
+  let grandAmt = 0, grandPd = 0;
 
   employees.forEach((emp) => {
-    const days = emp.days || {};
+    const amap = amountByDay(emp, pointValue);
     for (let d = 1; d <= daysInMonth; d++) {
-      const pts = Number(days[d] || 0);
-      if (pts) colTotals[d - 1] += pts;
+      const rub = Number(amap[d] || 0);
+      if (rub) colTotals[d - 1] += rub;
     }
-    grandPts += Number(emp.total_points || 0);
     grandAmt += Number(emp.total_amount || 0);
     grandPd  += Number(emp.per_diem_total || 0);
   });
 
-  /* Какие категории реально использованы — для легенды */
+  /* Легенда: тип по legacy-баллам (amount/500) */
   const usedTypes = new Set();
   employees.forEach((emp) => {
-    const days = emp.days || {};
-    for (const d in days) {
-      const pts = Number(days[d] || 0);
-      if (!pts) continue;
+    const amap = amountByDay(emp, pointValue);
+    for (const d in amap) {
+      const rub = Number(amap[d] || 0);
+      if (!rub) continue;
+      const pts = Math.round(rub / pointValue);
       const t = pointsMap[pts] || 'work';
       usedTypes.add(t);
     }
@@ -206,7 +215,6 @@ function GridBody({ gridData, pointsMap, editMode, pendingEdits, setPendingEdits
                 <th key={i + 1} className="pyr-th pyr-th-day">{i + 1}</th>
               ))}
               <th className="pyr-th">Дней</th>
-              <th className="pyr-th">Баллов</th>
               <th className="pyr-th pyr-th-r">Заработок</th>
               <th className="pyr-th pyr-th-r">Суточные</th>
               <th className="pyr-th pyr-th-r c-ok">ИТОГО</th>
@@ -214,7 +222,7 @@ function GridBody({ gridData, pointsMap, editMode, pendingEdits, setPendingEdits
           </thead>
           <tbody>
             {employees.map((emp, idx) => {
-              const days = emp.days || {};
+              const amap = amountByDay(emp, pointValue);
               const rowEven = idx % 2 === 0;
               return (
                 <tr key={emp.employee_id || emp.id} className={rowEven ? 'pyr-row-even' : 'pyr-row-odd'}>
@@ -224,10 +232,10 @@ function GridBody({ gridData, pointsMap, editMode, pendingEdits, setPendingEdits
                   </td>
                   {Array.from({ length: daysInMonth }, (_, i) => {
                     const day = i + 1;
-                    const pts = Number(days[day] || 0);
+                    const rub = Number(amap[day] || 0);
                     const key = (emp.employee_id || emp.id) + '_' + day;
                     if (editMode) {
-                      const val = pendingEdits[key] !== undefined ? pendingEdits[key] : (pts || '');
+                      const val = pendingEdits[key] !== undefined ? pendingEdits[key] : (rub || '');
                       return (
                         <td key={day} className="pyr-td pyr-td-edit">
                           <input
@@ -235,24 +243,30 @@ function GridBody({ gridData, pointsMap, editMode, pendingEdits, setPendingEdits
                             value={val}
                             onChange={(e) => onCellChange(emp.employee_id || emp.id, day, e.target.value)}
                             min={0}
-                            max={24}
+                            step={10}
                             className="pyr-cell-input"
+                            title="Сумма ₽"
                           />
                         </td>
                       );
                     }
-                    const style = pointsCellStyle(pts, pointsMap);
-                    if (pts) {
+                    const ptsApprox = Math.round(rub / pointValue);
+                    const style = pointsCellStyle(ptsApprox, pointsMap);
+                    if (rub) {
                       return (
-                        <td key={day} className="pyr-td pyr-td-pts" style={{ background: style.bg, color: style.fg }}>
-                          {pts}
+                        <td
+                          key={day}
+                          className="pyr-td pyr-td-pts"
+                          style={{ background: style.bg, color: style.fg }}
+                          title={fmtMoney(rub)}
+                        >
+                          {fmtCompactRub(rub) || Math.round(rub)}
                         </td>
                       );
                     }
                     return <td key={day} className="pyr-td pyr-td-zero">·</td>;
                   })}
                   <td className="pyr-td pyr-td-c pyr-td-bold">{emp.days_count || 0}</td>
-                  <td className="pyr-td pyr-td-c pyr-td-pts-tot">{Number(emp.total_points || 0)}</td>
                   <td className="pyr-td pyr-td-r c-ok">{fmtMoney(emp.total_amount)}</td>
                   <td className="pyr-td pyr-td-r pyr-td-pd">{fmtMoney(emp.per_diem_total)}</td>
                   <td className="pyr-td pyr-td-r pyr-td-itog">{fmtMoney(Number(emp.total_amount || 0) + Number(emp.per_diem_total || 0))}</td>
@@ -264,10 +278,11 @@ function GridBody({ gridData, pointsMap, editMode, pendingEdits, setPendingEdits
             <tr className="pyr-tfoot">
               <td className="pyr-td pyr-tfoot-fio">ИТОГО</td>
               {colTotals.map((sum, i) => (
-                <td key={i} className="pyr-td pyr-tfoot-c">{sum || ''}</td>
+                <td key={i} className="pyr-td pyr-tfoot-c" title={sum ? fmtMoney(sum) : ''}>
+                  {sum ? (fmtCompactRub(sum) || Math.round(sum)) : ''}
+                </td>
               ))}
               <td className="pyr-td pyr-tfoot-c">{totalShifts}</td>
-              <td className="pyr-td pyr-tfoot-c">{Math.round(grandPts * 100) / 100}</td>
               <td className="pyr-td pyr-tfoot-r">{fmtMoney(grandAmt)}</td>
               <td className="pyr-td pyr-tfoot-r">{fmtMoney(grandPd)}</td>
               <td className="pyr-td pyr-tfoot-r pyr-tfoot-grand">{fmtMoney(grandAmt + grandPd)}</td>
@@ -281,12 +296,10 @@ function GridBody({ gridData, pointsMap, editMode, pendingEdits, setPendingEdits
         <span className="fw-700 c-t2">Обозначения:</span>
         {Object.entries(CATEGORY_COLORS).map(([type, cfg]) => {
           if (usedTypes.size && !usedTypes.has(type)) return null;
-          const ptsRange = Object.entries(pointsMap).filter(([_, t]) => t === type).map(([p]) => p);
-          const ptsLabel = ptsRange.length ? ` (${ptsRange.join('/')} бал.)` : '';
           return (
             <span key={type} className="pyr-legend-chip">
               <span className="pyr-legend-sw" style={{ background: cfg.bg }} />
-              <span className="c-t2">{cfg.label}{ptsLabel}</span>
+              <span className="c-t2">{cfg.label}</span>
             </span>
           );
         })}

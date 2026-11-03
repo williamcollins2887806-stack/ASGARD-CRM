@@ -19,7 +19,7 @@ import { TYPE_META, fmtDateTime, fmtNum, roleShort, typeRequiresWorkId, loadWork
  *  Чужую отметку из набора можно заменить, если доступен свой тип из того же набора. */
 const CROSS_EDIT_GROUPS = [
   new Set(['travel', 'ship', 'helicopter']), // транспорт
-  new Set(['travel', 'waiting']),            // дорога / ожидание (⏳ = 6 баллов)
+  new Set(['travel', 'waiting']),            // дорога / ожидание
 ];
 
 export function canManageCellType(editableTypes, entryType, mode) {
@@ -199,8 +199,12 @@ export default function CellEditor({
               <div>📞 {currentEntry.entered_by_phone}</div>
             )}
             {currentEntry.entered_at && <div>{fmtDateTime(currentEntry.entered_at)}</div>}
-            {currentEntry.points != null && <div>Баллов: <b style={{ color: 'var(--t-1)' }}>{currentEntry.points}</b></div>}
-            {currentEntry.amount != null && <div>Сумма: <b style={{ color: 'var(--gold)' }}>{fmtNum(currentEntry.amount)} ₽</b></div>}
+            {currentEntry.amount != null && (
+              <div>Сумма: <b style={{ color: 'var(--gold)' }}>{fmtNum(currentEntry.amount)} ₽</b></div>
+            )}
+            {currentEntry.amount == null && currentEntry.points != null && (
+              <div>Сумма: <b style={{ color: 'var(--gold)' }}>{fmtNum(Number(currentEntry.points) * 500)} ₽</b></div>
+            )}
             {currentEntry.direction === 'to_site' && <div>Направление: → Туда</div>}
             {currentEntry.direction === 'from_site' && <div>Направление: ← Обратно</div>}
           </div>

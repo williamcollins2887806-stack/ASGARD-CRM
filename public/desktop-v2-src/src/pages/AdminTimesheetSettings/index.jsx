@@ -1,21 +1,11 @@
 /**
- * Страница /admin/timesheet-settings — настройка баллов табеля.
+ * Страница /admin/timesheet-settings — ставки этапов табеля (₽).
  *
- * Источник: TIMESHEET_V2_CONTRACT.md (раздел position_points).
- *
- * RBAC: ADMIN + DIRECTOR_GEN. RBAC-проверка — на роуте через <Protected roles=…>,
- * здесь повторно мягко проверяем для UX.
+ * С 01.11.2026: UI в ₽ (rate_rub), шаг 10. Title «Ставки этапов».
  *
  * API:
- *   GET  /api/timesheet/v2/settings/position-points  — текущие баллы (массив { type, position, points })
- *   PUT  /api/timesheet/v2/settings/position-points  — обновление одной строки { type, position, points }
- *
- * UI — 3 секции:
- *   1. Склад           — слесарь, мастер
- *   2. Медосмотр       — 1 число
- *   3. Дорога          — 1 число
- *
- * Подтверждение если меняется > 50% — это применится ко всем будущим отметкам.
+ *   GET  /api/timesheet/v2/settings/position-points  — { position_points, position_rates }
+ *   PUT  /api/timesheet/v2/settings/position-points  — { type, position, rate_rub }
  */
 import { useEffect, useMemo, useState } from 'react';
 import { useAuth } from '@/api/useAuth';
@@ -25,17 +15,15 @@ import { Btn, Field, Input } from '@/modals/parts';
 import { TopActionsBar } from '@/blocks/Blocks';
 import AccessDenied from '@/blocks/AccessDenied';
 import { getSettings, updateSettings } from '@/pages/Timesheet/api';
+import { snapRubStep10 } from '@/lib/moneyCompact';
 
 const EDIT_ROLES = ['ADMIN', 'DIRECTOR_GEN'];
 
-/* Конфиг секций — массив { id (для key), title, hint, items: [{ type, position, label }] } */
-// V255 (23.06.2026): medical → «Медосмотр / Обучение» (ТО ставит одной кнопкой 7 баллов),
-// добавлен 'ship' — Корабль (альтернатива «Дороги» за повышенную ставку 12 баллов).
 const SECTIONS = [
   {
     id: 'warehouse',
     title: '📦 Склад',
-    hint: 'Сколько баллов начислять рабочему за день на складе. Зависит от должности.',
+    hint: 'Ставка ₽ за день на складе. Зависит от должности.',
     items: [
       { type: 'warehouse', position: 'слесарь', label: 'Слесарь' },
       { type: 'warehouse', position: 'мастер',  label: 'Мастер' }
@@ -44,7 +32,7 @@ const SECTIONS = [
   {
     id: 'medical',
     title: '🏥 Медосмотр',
-    hint: 'Баллы за день медосмотра. Ставят ТО / Рук. ТО.',
+    hint: 'Ставка ₽ за день медосмотра. Ставят ТО / Рук. ТО.',
     items: [
       { type: 'medical', position: null, label: 'Медосмотр' }
     ]
@@ -52,7 +40,7 @@ const SECTIONS = [
   {
     id: 'training',
     title: '🎓 Обучение',
-    hint: 'Баллы за день обучения. Ставят ТО / Рук. ТО.',
+    hint: 'Ставка ₽ за день обучения. Ставят ТО / Рук. ТО.',
     items: [
       { type: 'training', position: null, label: 'Обучение' }
     ]
@@ -60,7 +48,7 @@ const SECTIONS = [
   {
     id: 'travel',
     title: '✈️ Дорога',
-    hint: 'Баллы за день в дороге (наземный транспорт).',
+    hint: 'Ставка ₽ за день в дороге (наземный транспорт).',
     items: [
       { type: 'travel', position: null, label: 'Дорога' }
     ]
@@ -83,30 +71,46 @@ const SECTIONS = [
   }
 ];
 
-/* Ключ для словаря текущих значений: "warehouse:слесарь" / "medical" */
 function keyOf(type, position) {
   return position ? `${type}:${position}` : type;
 }
 
-/* Парсит ответ /settings/position-points в плоский объект { "warehouse:слесарь": 10, "medical": 6, ... } */
+/** Парсит ответ → плоский объект { key: rate_rub }. */
 function parseResponse(res) {
   const map = {};
-  // Сервер может вернуть либо массив, либо объект — поддержим обе формы.
-  if (Array.isArray(res)) {
-    for (const r of res) map[keyOf(r.type, r.position)] = Number(r.points) || 0;
-  } else if (res && typeof res === 'object') {
-    // Форма { position_points: {...} } или { warehouse: { слесарь: 10 }, medical: 6, ... }
-    const src = res.position_points || res.settings || res;
-    for (const [k, v] of Object.entries(src || {})) {
-      if (typeof v === 'object' && v !== null) {
-        for (const [pos, pts] of Object.entries(v)) map[`${k}:${pos}`] = Number(pts) || 0;
-      } else if (typeof v === 'number' || (typeof v === 'string' && v.trim() !== '')) {
-        map[k] = Number(v) || 0;
+  const rates = res?.position_rates;
+  if (rates && typeof rates === 'object') {
+    for (const [k, v] of Object.entries(rates)) {
+      map[k] = Number(v) || 0;
+    }
+  }
+  // Fallback: legacy points × 500
+  if (!Object.keys(map).length) {
+    const pts = res?.position_points;
+    if (pts && typeof pts === 'object') {
+      for (const [k, v] of Object.entries(pts)) {
+        if (typeof v === 'object' && v !== null) {
+          for (const [pos, p] of Object.entries(v)) {
+            map[`${k}:${pos}`] = (Number(p) || 0) * 500;
+          }
+        } else {
+          map[k] = (Number(v) || 0) * 500;
+        }
       }
     }
   }
   return map;
 }
+
+const DEFAULT_RATES = {
+  'warehouse:слесарь': 5000,
+  'warehouse:мастер': 6000,
+  medical: 3500,
+  training: 3500,
+  travel: 3000,
+  ship: 6000,
+  helicopter: 3000
+};
 
 export default function AdminTimesheetSettingsPage() {
   const { user } = useAuth();
@@ -114,30 +118,24 @@ export default function AdminTimesheetSettingsPage() {
 
   const hasAccess = useMemo(() => !!(user && EDIT_ROLES.includes(user.role)), [user]);
 
-  const [original, setOriginal] = useState({});     // снимок с сервера для расчёта дельты
-  const [values, setValues] = useState({});         // редактируемые значения
+  const [original, setOriginal] = useState({});
+  const [values, setValues] = useState({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
-  /* ─── Загрузка ─── */
   const refresh = () => {
     setLoading(true);
     getSettings()
       .then((r) => {
         const map = parseResponse(r);
-        // Заполняем дефолты по контракту, если сервер вернул не все ключи.
-        // V255: medical 7, ship 12.
-        const defaults = { 'warehouse:слесарь': 10, 'warehouse:мастер': 12, medical: 7, travel: 6, ship: 12 };
-        const merged = { ...defaults, ...map };
+        const merged = { ...DEFAULT_RATES, ...map };
         setOriginal(merged);
         setValues(merged);
       })
       .catch((e) => {
         toast.error('Не удалось загрузить настройки: ' + (e?.message || e));
-        // Дефолты — чтобы форма всё равно отрисовалась
-        const defaults = { 'warehouse:слесарь': 10, 'warehouse:мастер': 12, medical: 7, travel: 6, ship: 12 };
-        setOriginal(defaults);
-        setValues(defaults);
+        setOriginal(DEFAULT_RATES);
+        setValues(DEFAULT_RATES);
       })
       .finally(() => setLoading(false));
   };
@@ -148,14 +146,11 @@ export default function AdminTimesheetSettingsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hasAccess]);
 
-  /* ─── Изменение значения ─── */
   const onChange = (k, v) => {
-    // Только целые неотрицательные
-    const num = Math.max(0, Math.round(Number(v) || 0));
+    const num = snapRubStep10(Math.max(0, Number(v) || 0));
     setValues((prev) => ({ ...prev, [k]: num }));
   };
 
-  /* ─── Сохранение (с подтверждением, если > 50% от любой строки) ─── */
   const dirtyEntries = useMemo(() => {
     const out = [];
     for (const sec of SECTIONS) {
@@ -175,7 +170,7 @@ export default function AdminTimesheetSettingsPage() {
   const hugeChanges = useMemo(() => {
     return dirtyEntries.filter((d) => {
       const base = d.before || 0;
-      if (base === 0) return d.after > 0; // c нуля — фактически большое изменение
+      if (base === 0) return d.after > 0;
       const ratio = Math.abs((d.after - base) / base);
       return ratio > 0.5;
     });
@@ -184,9 +179,12 @@ export default function AdminTimesheetSettingsPage() {
   const persist = async () => {
     setSaving(true);
     try {
-      // PUT по одной строке (контракт)
       for (const d of dirtyEntries) {
-        await updateSettings({ type: d.type, position: d.position, points: d.after });
+        await updateSettings({
+          type: d.type,
+          position: d.position,
+          rate_rub: snapRubStep10(d.after)
+        });
       }
       toast.success('Сохранено');
       setOriginal({ ...values });
@@ -209,7 +207,7 @@ export default function AdminTimesheetSettingsPage() {
               <ul style={{ paddingLeft: 16, lineHeight: 1.7 }}>
                 {hugeChanges.map((d) => (
                   <li key={keyOf(d.type, d.position)}>
-                    <b>{d.label}</b>: {d.before} → <b>{d.after}</b>
+                    <b>{d.label}</b>: {d.before.toLocaleString('ru-RU')} ₽ → <b>{d.after.toLocaleString('ru-RU')} ₽</b>
                   </li>
                 ))}
               </ul>
@@ -229,13 +227,12 @@ export default function AdminTimesheetSettingsPage() {
     }
   };
 
-  /* ─── Render ─── */
   if (!hasAccess) {
     return (
       <AccessDenied
         allowed={EDIT_ROLES}
         userRole={user?.role || '—'}
-        title="Настройки баллов табеля"
+        title="Ставки этапов"
         message={`Эта страница доступна для ролей: ${EDIT_ROLES.join(', ')}.`}
       />
     );
@@ -244,7 +241,7 @@ export default function AdminTimesheetSettingsPage() {
   if (loading) {
     return (
       <div className="col gap-12">
-        <TopActionsBar kicker="Кузница" title="Настройки баллов табеля" />
+        <TopActionsBar kicker="Кузница" title="Ставки этапов" />
         <div className="card card-empty">⏳ Загружаем…</div>
       </div>
     );
@@ -254,8 +251,8 @@ export default function AdminTimesheetSettingsPage() {
     <div className="col gap-12">
       <TopActionsBar
         kicker="Кузница"
-        title="Настройки баллов табеля"
-        subtitle="Баллы за день работы по типу: склад / медосмотр / дорога"
+        title="Ставки этапов"
+        subtitle="Ставки ₽ за день по типу: склад / медосмотр / дорога"
         actions={
           <>
             <Btn variant="ghost" onClick={refresh}>↻ Обновить</Btn>
@@ -283,15 +280,15 @@ export default function AdminTimesheetSettingsPage() {
                   const changed = before !== after;
                   return (
                     <div key={k} style={{ minWidth: 200 }}>
-                      <Field label={it.label} help={changed ? `Было: ${before}` : ' '}>
+                      <Field label={it.label} help={changed ? `Было: ${Number(before).toLocaleString('ru-RU')} ₽` : ' '}>
                         <Input
                           type="number"
                           min="0"
-                          step="1"
+                          step="10"
                           inputMode="numeric"
                           value={after ?? 0}
                           onChange={(e) => onChange(k, e.target.value)}
-                          aria-label={`${it.label} — баллов`}
+                          aria-label={`${it.label} — ₽`}
                           data-test={`ts-settings-input-${it.type}-${it.position || 'all'}`}
                         />
                       </Field>

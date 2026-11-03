@@ -275,7 +275,7 @@ export function EmployeeAnketaForm({
         <>
           <FormSection title="Работа">
             <div className="grid-2-1-1 gap-10">
-              <Field label="Специальность" hint="Слесарь=10б, мастер=12б. РП — не в табеле как рабочий.">
+              <Field label="Специальность" hint="Слесарь=5 000 ₽, мастер=6 000 ₽. РП — не в табеле как рабочий.">
                 <SelectInput
                   value={roleSelectValue}
                   onChange={(v) => {

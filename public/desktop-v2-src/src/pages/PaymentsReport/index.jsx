@@ -167,7 +167,7 @@ function PayrollTab({ payroll }) {
         <tr>
           <th>Сотрудник</th>
           <th>Объект</th>
-          <th className="num">Баллы</th>
+          <th className="num">Сумма ₽</th>
           <th className="num">ЗП</th>
           <th className="num">Суточные</th>
           <th className="num">Авансы</th>
@@ -185,7 +185,7 @@ function PayrollTab({ payroll }) {
             <tr key={r.employee_id + '-' + (r.work_id || 'none') + '-' + i}>
               <td>{r.employee_name}</td>
               <td>{r.work_title || '—'}</td>
-              <td className="num">{r.points || 0}</td>
+              <td className="num">{fmtMoneyR(r.salary)}</td>
               <td className="num">{fmtMoneyR(r.salary)}</td>
               <td className="num">{fmtMoneyR(r.per_diem)}</td>
               <td className="num">{fmtMoneyR(r.advance)}</td>

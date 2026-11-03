@@ -152,7 +152,7 @@ window.AsgardPaymentsReportPage = (function(){
       if(!rows.length) return '<div style="text-align:center;padding:32px;color:var(--muted)">\u041D\u0435\u0442 \u0434\u0430\u043D\u043D\u044B\u0445 \u0437\u0430 \u0443\u043A\u0430\u0437\u0430\u043D\u043D\u044B\u0439 \u043F\u0435\u0440\u0438\u043E\u0434</div>';
       let html = `<table class="wpr-tbl">
         <thead><tr>
-          <th>\u0421\u043E\u0442\u0440\u0443\u0434\u043D\u0438\u043A</th><th>\u041E\u0431\u044A\u0435\u043A\u0442</th><th class="num">\u0411\u0430\u043B\u043B\u044B</th>
+          <th>\u0421\u043E\u0442\u0440\u0443\u0434\u043D\u0438\u043A</th><th>\u041E\u0431\u044A\u0435\u043A\u0442</th><th class="num">\u0421\u0443\u043C\u043C\u0430 \u20BD</th>
           <th class="num">\u0417\u041F</th><th class="num">\u0421\u0443\u0442\u043E\u0447\u043D\u044B\u0435</th>
           <th class="num">\u0410\u0432\u0430\u043D\u0441\u044B</th><th class="num">\u041F\u0440\u0435\u043C\u0438\u0438</th>
           <th class="num">\u0423\u0434\u0435\u0440\u0436.</th><th class="num bold gold">\u0418\u0442\u043E\u0433\u043E</th>
@@ -164,7 +164,7 @@ window.AsgardPaymentsReportPage = (function(){
         html += `<tr>
           <td>${esc(r.employee_name)}</td>
           <td>${esc(r.work_title||'\u2014')}</td>
-          <td class="num">${r.points||0}</td>
+          <td class="num">${money(r.salary)}</td>
           <td class="num">${money(r.salary)}</td>
           <td class="num">${money(r.per_diem)}</td>
           <td class="num">${money(r.advance)}</td>

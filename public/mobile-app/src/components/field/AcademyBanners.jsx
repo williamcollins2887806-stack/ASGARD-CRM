@@ -10,10 +10,41 @@
  * Никаких литеральных цветов и fixed-оверлеев мимо BottomSheet.
  */
 import { useState, useEffect } from 'react';
-import { Sparkles, Smartphone, Bell, Sun, Moon, Palette } from 'lucide-react';
+import { Sparkles, Smartphone, Bell, Sun, Moon, Palette, Banknote } from 'lucide-react';
 import { fieldApi } from '@/api/fieldClient';
 import { useThemeStore } from '@/stores/themeStore';
 import { BottomSheet, KeyButton, IconTile, Banner } from '@/components/field/ui';
+
+/* ── Оплата в рублях с 01.11 (одноразовый) ───────────────────────────────── */
+const RUB_PAY_NOTICE_KEY = 'field_rub_pay_notice_v1';
+
+export function RubPayNoticeBanner() {
+  const [visible, setVisible] = useState(false);
+
+  useEffect(() => {
+    try { if (localStorage.getItem(RUB_PAY_NOTICE_KEY) === '1') return; } catch { /* private mode */ }
+    setVisible(true);
+  }, []);
+
+  function dismiss() {
+    try { localStorage.setItem(RUB_PAY_NOTICE_KEY, '1'); } catch { /* ignore */ }
+    setVisible(false);
+  }
+
+  if (!visible) return null;
+
+  return (
+    <div style={{ padding: '10px 12px 0', flexShrink: 0 }}>
+      <Banner
+        tone="value"
+        icon={Banknote}
+        title="Оплата в рублях"
+        text="С 1 ноября оплата в рублях за день, без баллов. Суммы те же (раньше 1 балл = 500 ₽). Ставка и доплата — в рублях."
+        onDismiss={dismiss}
+      />
+    </div>
+  );
+}
 
 /* ── Анонс редизайна (одноразовый) ───────────────────────────────────────── */
 const REDESIGN_KEY = 'field_redesign_2026_seen';

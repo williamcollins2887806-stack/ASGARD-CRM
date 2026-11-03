@@ -351,7 +351,7 @@ window.AsgardFieldTab = (function () {
     return [{ value: '', label: '— выберите —' }].concat(
       tariffs.map(t => ({
         value: String(t.id),
-        label: `${t.position_name} (${t.points}б · ${money(t.rate_per_shift)})`
+        label: `${t.position_name} · ${money(t.rate_per_shift)}`
           + (warnIds.has(String(t.id)) ? ' ⚠ не из категории объекта' : '')
       }))
     );
@@ -763,8 +763,8 @@ window.AsgardFieldTab = (function () {
       <th style="padding:8px 10px;text-align:left;border-bottom:1px solid var(--brd);color:var(--t2);font-weight:500;font-size:12px">Роль</th>
       <th style="padding:8px 10px;text-align:left;border-bottom:1px solid var(--brd);color:var(--t2);font-weight:500;font-size:12px">Смена</th>
       <th style="padding:8px 10px;text-align:left;border-bottom:1px solid var(--brd);color:var(--t2);font-weight:500;font-size:12px">Тариф</th>
-      <th style="padding:8px 6px;text-align:center;border-bottom:1px solid var(--brd);color:var(--t2);font-weight:500;font-size:12px">Баллы</th>
-      <th style="padding:8px 6px;text-align:right;border-bottom:1px solid var(--brd);color:var(--t2);font-weight:500;font-size:12px">₽/смену</th>
+      <th style="padding:8px 6px;text-align:right;border-bottom:1px solid var(--brd);color:var(--t2);font-weight:500;font-size:12px">Ставка ₽</th>
+      <th style="padding:8px 6px;text-align:right;border-bottom:1px solid var(--brd);color:var(--t2);font-weight:500;font-size:12px">Итого ₽</th>
       <th style="padding:8px 6px;text-align:center;border-bottom:1px solid var(--brd);color:var(--t2);font-weight:500;font-size:12px">Совмещ.</th>
       <th style="padding:8px 6px;text-align:center;border-bottom:1px solid var(--brd);color:var(--t2);font-weight:500;font-size:12px">SMS</th>
       <th style="padding:8px 6px;text-align:center;border-bottom:1px solid var(--brd);color:var(--t2);font-weight:500;font-size:12px">MAX</th>
@@ -952,8 +952,16 @@ window.AsgardFieldTab = (function () {
             if (cVal) comboIds.push(parseInt(cVal, 10));
           } catch (_) {}
         }
-        let manual = parseFloat(String(row.querySelector('.ft-manual-extra')?.value || '').replace(',', '.'));
-        if (!isFinite(manual) || manual < 0) manual = 0;
+        let manualRub = parseFloat(String(row.querySelector('.ft-manual-extra')?.value || '').replace(',', '.'));
+        if (!isFinite(manualRub) || manualRub < 0) manualRub = 0;
+        if (window.AsgardMoneyCompact && AsgardMoneyCompact.snapRubStep10) {
+          manualRub = AsgardMoneyCompact.snapRubStep10(manualRub);
+        } else {
+          manualRub = Math.round(manualRub / 10) * 10;
+        }
+        const rateCell = row.querySelector('[data-field="rate"]');
+        let dayRateRub = parseFloat(String(rateCell?.dataset?.dayRateRub || '').replace(/\s/g, '').replace(',', '.'));
+        if (!isFinite(dayRateRub) || dayRateRub < 0) dayRateRub = null;
         if (empId) {
           employees.push({
             employee_id: empId,
@@ -962,7 +970,8 @@ window.AsgardFieldTab = (function () {
             tariff_id: tariffId ? parseInt(tariffId) : null,
             combination_tariff_id: comboIds[0] || null,
             combo_tariff_ids: comboIds,
-            manual_extra_points: manual
+            manual_extra_rub: manualRub,
+            day_rate_rub: dayRateRub
           });
         }
       });
@@ -1147,7 +1156,7 @@ window.AsgardFieldTab = (function () {
         const tarBtn = document.createElement('button');
         tarBtn.textContent = '💰 Тариф';
         tarBtn.title = a.tariff_id
-          ? ('Тариф #' + a.tariff_id + (a.tariff_points != null ? ' · ' + a.tariff_points + 'б' : ''))
+          ? ('Тариф #' + a.tariff_id + (a.day_rate_rub != null ? ' · ' + money(a.day_rate_rub) : (a.tariff_points != null ? ' · ' + money(a.tariff_points * 500) : '')))
           : 'Тариф не задан';
         tarBtn.style.cssText = 'background:none;border:1px solid var(--brd);color:var(--t2);border-radius:6px;padding:3px 10px;font-size:12px;cursor:pointer;margin-left:8px';
         tarBtn.addEventListener('click', () => {
@@ -1183,12 +1192,12 @@ window.AsgardFieldTab = (function () {
     pool.forEach(t => {
       const sel = Number(t.id) === Number(assignment.tariff_id) ? ' selected' : '';
       const warn = warnIds.has(String(t.id)) ? ' ⚠ не из категории объекта' : '';
-      opts += `<option value="${t.id}"${sel}>${esc(t.position_name)} (${t.points || 0}б · ${money(t.rate_per_shift)})${warn}</option>`;
+      opts += `<option value="${t.id}"${sel}>${esc(t.position_name)} · ${money(t.rate_per_shift)}${warn}</option>`;
     });
     let comboOpts = '<option value="">— нет —</option>';
     comboPool.filter(t => t.is_combinable).forEach(t => {
       const sel = Number(t.id) === Number(assignment.combination_tariff_id) ? ' selected' : '';
-      comboOpts += `<option value="${t.id}"${sel}>${esc(t.position_name)} (+${t.points || 1}б)</option>`;
+      comboOpts += `<option value="${t.id}"${sel}>${esc(t.position_name)} (+${money(t.rate_per_shift || 0)})</option>`;
     });
 
     AsgardUI.showModal({
@@ -1278,15 +1287,14 @@ window.AsgardFieldTab = (function () {
       }
       const opts = '<option value="">—</option>' + list.map(t =>
         '<option value="' + t.id + '"' + (String(t.id) === tid ? ' selected' : '') + '>' +
-        esc(t.position_name + ' · ' + t.points + 'б') + '</option>'
+        esc(t.position_name + ' · ' + money(t.rate_per_shift)) + '</option>'
       ).join('');
-      const pts = (list.find(t => String(t.id) === tid) || {}).points || 0;
+      const rub = Number((list.find(t => String(t.id) === tid) || {}).rate_per_shift) || 0;
       return '<tr data-role="' + def.key + '">' +
         '<td style="text-align:center"><input type="checkbox" class="br-en"' + (enabled ? ' checked' : '') + '></td>' +
         '<td><strong>' + esc(def.label) + '</strong></td>' +
         '<td><select class="inp br-tariff" style="width:100%">' + opts + '</select></td>' +
-        '<td class="br-pts" style="text-align:center">' + (enabled ? pts : '—') + '</td>' +
-        '<td class="br-rub" style="text-align:right;color:var(--gold)">' + (enabled && pts ? money(pts * 500) : '—') + '</td>' +
+        '<td class="br-rub" style="text-align:right;color:var(--gold)">' + (enabled && rub ? money(rub) : '—') + '</td>' +
         '</tr>';
     }).join('');
 
@@ -1297,7 +1305,7 @@ window.AsgardFieldTab = (function () {
       '<label style="font-size:12px;font-weight:600;display:block;margin-bottom:12px">Категория' +
       '<select id="brCat" class="inp" style="width:240px;margin-top:6px;display:block">' + catOpts + '</select></label>' +
       '<div style="overflow:auto;max-height:50vh"><table class="t-list" style="width:100%"><thead><tr>' +
-      '<th>Нужен</th><th>Роль</th><th>Тариф</th><th>Баллы</th><th>₽/смена</th></tr></thead><tbody id="brBody">' +
+      '<th>Нужен</th><th>Роль</th><th>Тариф</th><th>Ставка ₽</th></tr></thead><tbody id="brBody">' +
       rowsHtml + '</tbody></table></div>' +
       '<div style="display:flex;justify-content:space-between;margin-top:16px">' +
       '<button type="button" class="btn ghost" id="brSkip">Пропустить</button>' +
@@ -1314,16 +1322,13 @@ window.AsgardFieldTab = (function () {
 
     const body = document.querySelector('.cr-m-overlay--visible:last-child #modalBody') || document.getElementById('modalBody');
     function refreshPts() {
-      const c = (body.querySelector('#brCat') || {}).value || cat;
       body.querySelectorAll('#brBody tr').forEach(tr => {
         const en = tr.querySelector('.br-en')?.checked;
         const sel = tr.querySelector('.br-tariff');
         const t = tariffs.find(x => String(x.id) === String(sel?.value));
-        const pts = t ? (t.points || 0) : 0;
-        const ptsEl = tr.querySelector('.br-pts');
+        const rub = t ? Number(t.rate_per_shift) || 0 : 0;
         const rubEl = tr.querySelector('.br-rub');
-        if (ptsEl) ptsEl.textContent = en ? pts : '—';
-        if (rubEl) rubEl.textContent = en && pts ? money(pts * 500) : '—';
+        if (rubEl) rubEl.textContent = en && rub ? money(rub) : '—';
         if (sel) sel.disabled = !en;
       });
     }
@@ -1336,7 +1341,7 @@ window.AsgardFieldTab = (function () {
         if (!sel) return;
         const cur = sel.value;
         sel.innerHTML = '<option value="">—</option>' + list.map(t =>
-          '<option value="' + t.id + '">' + esc(t.position_name + ' · ' + t.points + 'б') + '</option>'
+          '<option value="' + t.id + '">' + esc(t.position_name + ' · ' + money(t.rate_per_shift)) + '</option>'
         ).join('');
         if (list.some(t => String(t.id) === cur)) sel.value = cur;
         else sel.value = defaultTariffIdForRole(list, role, c) || (list[0] ? String(list[0].id) : '');
@@ -1355,11 +1360,13 @@ window.AsgardFieldTab = (function () {
         const enabled = !!tr.querySelector('.br-en')?.checked;
         const tariff_id = tr.querySelector('.br-tariff')?.value;
         const t = tariffs.find(x => String(x.id) === String(tariff_id));
+        const rateRub = t ? Number(t.rate_per_shift) || 0 : 0;
         roles.push({
           role_key,
           enabled,
           tariff_id: tariff_id ? parseInt(tariff_id, 10) : null,
-          points: t ? Number(t.points) || 0 : 0
+          rate_rub: rateRub,
+          points: rateRub ? Math.round(rateRub / 500) : 0
         });
       });
       try {
@@ -1411,14 +1418,8 @@ window.AsgardFieldTab = (function () {
     var empOptsHtml = ''; // legacy unused; CRSelect below
     var tariffOptsHtml = '<option value="">— выберите —</option>';
     filteredTariffs.forEach(function(t) {
-      tariffOptsHtml += '<option value="' + t.id + '" data-role-filter="1">' + esc(t.position_name + ' (' + t.points + 'б · ' + money(t.rate_per_shift) + ')') + '</option>';
+      tariffOptsHtml += '<option value="' + t.id + '" data-role-filter="1">' + esc(t.position_name + ' · ' + money(t.rate_per_shift)) + '</option>';
     });
-
-    var comboChecksHtml = comboTariffs.map(function(t) {
-      return '<label style="display:flex;align-items:flex-start;gap:8px;font-size:12.5px;margin:4px 0;cursor:pointer">' +
-        '<input type="checkbox" class="ac-combo" value="' + t.id + '">' +
-        '<span>' + esc(t.position_name + ' (+' + (t.points || 1) + 'б)') + '</span></label>';
-    }).join('');
 
     var html = '' +
       '<div style="padding:6px 4px 4px">' +
@@ -1444,18 +1445,17 @@ window.AsgardFieldTab = (function () {
         '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px">' +
           '<div style="padding:10px;border-radius:8px;border:1px solid var(--brd);background:var(--bg2)">' +
             '<div style="font-weight:700;font-size:13px;margin-bottom:4px">База</div>' +
-            '<div style="font-size:11.5px;color:var(--t3);margin-bottom:8px">Из базовых ставок / сетки</div>' +
+            '<div style="font-size:11.5px;color:var(--t3);margin-bottom:8px">Ставка из тарифной сетки, ₽</div>' +
             '<label style="font-size:12px;font-weight:600;color:var(--t2)">Тариф' +
               '<select id="acTariff" class="inp" style="width:100%;margin-top:6px">' + tariffOptsHtml + '</select>' +
             '</label>' +
           '</div>' +
           '<div style="padding:10px;border-radius:8px;border:1px solid rgba(245,158,11,.4);background:var(--bg2)">' +
             '<div style="font-weight:700;font-size:13px;margin-bottom:4px">Доплата</div>' +
-            '<div style="font-size:11.5px;color:var(--t3);margin-bottom:8px">Только этому человеку · 2 / 3 / 3.5…</div>' +
-            '<label style="font-size:12px;font-weight:600;color:var(--t2)">Ручные баллы' +
-              '<input id="acManual" type="number" min="0" step="0.5" class="inp" placeholder="0" style="width:100%;margin-top:6px">' +
+            '<div style="font-size:11.5px;color:var(--t3);margin-bottom:8px">Только этому человеку, ₽ (шаг 10)</div>' +
+            '<label style="font-size:12px;font-weight:600;color:var(--t2)">Доплата, ₽' +
+              '<input id="acManual" type="number" min="0" step="10" class="inp" placeholder="0" style="width:100%;margin-top:6px">' +
             '</label>' +
-            '            <div style="margin-top:8px;max-height:140px;overflow:auto">' + (comboChecksHtml || '<div style="color:var(--t3);font-size:12px">Нет совмещений</div>') + '</div>' +
           '</div>' +
         '</div>' +
         (freeEmps.length === 0
@@ -1508,7 +1508,7 @@ window.AsgardFieldTab = (function () {
       list.forEach(function(t) {
         var opt = document.createElement('option');
         opt.value = t.id;
-        opt.textContent = t.position_name + ' (' + t.points + 'б · ' + money(t.rate_per_shift) + ')';
+        opt.textContent = t.position_name + ' · ' + money(t.rate_per_shift);
         tariffSel.appendChild(opt);
       });
       if (cur && list.some(function(t) { return String(t.id) === String(cur); })) {
@@ -1520,10 +1520,60 @@ window.AsgardFieldTab = (function () {
       }
     }
 
-    // D-249: searchable CRSelect по ФИО (+ метка «уехал с этого объекта»)
+    // Поиск сотрудника: CREmployeePicker если есть, иначе CRSelect
     var empWrap = body ? body.querySelector('#acEmp_w') : null;
+    var usePicker = !!(empWrap && window.CREmployeePicker);
     try { CRSelect.destroy('acEmp'); } catch (_) {}
-    if (empWrap && window.CRSelect) {
+    if (usePicker) {
+      try {
+        empWrap.appendChild(CREmployeePicker.create({
+          id: 'acEmpPicker',
+          maxSelect: 1,
+          showChips: true,
+          placeholder: 'Начните вводить фамилию…',
+          title: 'Выбор сотрудника',
+          employees: freeEmps.map(function(e) {
+            var baseName = e.fio || e.full_name || ((e.last_name || '') + ' ' + (e.first_name || '')).trim() || ('#' + e.id);
+            var suffix = '';
+            if (departedOnThisWork.has(Number(e.id))) suffix += ' ↩ уехал';
+            if (e.is_busy && e.busy_with && e.busy_with.length) {
+              suffix += ' 🔴 ' + ((e.busy_with[0].work_title || '').slice(0, 30));
+            }
+            return {
+              id: Number(e.id),
+              name: baseName + suffix,
+              position: e.position || e.role_display || '',
+              role: e.role || e.role_tag || '',
+              avatar: e.avatar || e.photo_url || null,
+              city: e.city || '',
+              phone: e.phone || '',
+              rating: e.rating_avg != null ? e.rating_avg : (e.rating != null ? e.rating : null)
+            };
+          }),
+          selected: [],
+          onChange: function(ids) {
+            var id = ids && ids[0];
+            var chosen = freeEmps.find(function(e) { return String(e.id) === String(id); });
+            if (chosen && chosen.is_busy && chosen.busy_with && chosen.busy_with.length) {
+              var w = chosen.busy_with[0];
+              var msg = '⚠️ «' + (chosen.fio || 'Сотрудник') + '» уже на объекте:\n«' + (w.work_title || '?') + '»\n\nНазначить всё равно?';
+              if (!window.confirm(msg)) {
+                try { CREmployeePicker.setSelected('acEmpPicker', []); } catch (_) {}
+                return;
+              }
+            }
+            if (chosen && roleSel) {
+              var mapped = mapRoleTagToFieldRole(chosen.role_tag);
+              roleSel.value = mapped;
+              refillAcTariffs(mapped, true);
+            }
+          }
+        }));
+      } catch (_) {
+        usePicker = false;
+      }
+    }
+    if (!usePicker && empWrap && window.CRSelect) {
       empWrap.appendChild(CRSelect.create({
         id: 'acEmp',
         searchable: true,
@@ -1556,17 +1606,26 @@ window.AsgardFieldTab = (function () {
     var submitBtn = body ? body.querySelector('#acSubmit') : null;
     if (submitBtn) submitBtn.addEventListener('click', async function() {
       var empId = 0;
-      try { empId = parseInt(CRSelect.getValue('acEmp') || '', 10) || 0; } catch (_) { empId = 0; }
+      if (usePicker) {
+        try {
+          var ids = CREmployeePicker.getSelected('acEmpPicker') || [];
+          empId = parseInt(ids[0], 10) || 0;
+        } catch (_) { empId = 0; }
+      } else {
+        try { empId = parseInt(CRSelect.getValue('acEmp') || '', 10) || 0; } catch (_) { empId = 0; }
+      }
       var tariffId = parseInt((body.querySelector('#acTariff') || {}).value || '');
-      var comboIds = [];
-      (body.querySelectorAll('.ac-combo:checked') || []).forEach(function(cb) {
-        var n = parseInt(cb.value, 10);
-        if (n) comboIds.push(n);
-      });
-      var manualExtra = parseFloat(String((body.querySelector('#acManual') || {}).value || '').replace(',', '.'));
-      if (!isFinite(manualExtra) || manualExtra < 0) manualExtra = 0;
+      var manualExtraRub = parseFloat(String((body.querySelector('#acManual') || {}).value || '').replace(',', '.'));
+      if (!isFinite(manualExtraRub) || manualExtraRub < 0) manualExtraRub = 0;
+      if (window.AsgardMoneyCompact && AsgardMoneyCompact.snapRubStep10) {
+        manualExtraRub = AsgardMoneyCompact.snapRubStep10(manualExtraRub);
+      } else {
+        manualExtraRub = Math.round(manualExtraRub / 10) * 10;
+      }
       var role = (body.querySelector('#acRole') || {}).value || 'worker';
       var shift = (body.querySelector('#acShift') || {}).value || 'day';
+      var tariff = filteredTariffs.find(function(t) { return Number(t.id) === Number(tariffId); });
+      var baseRub = tariff ? Number(tariff.rate_per_shift) || 0 : 0;
 
       if (!empId) { acErr('Выберите сотрудника'); return; }
       if (!tariffId) { acErr('Выберите тариф'); return; }
@@ -1575,8 +1634,6 @@ window.AsgardFieldTab = (function () {
       var origText = submitBtn.innerHTML;
       submitBtn.innerHTML = '⏳ Добавление…';
       try {
-        // Если field-проект ещё не активирован — активируем с текущими настройками,
-        // иначе POST /crew упадёт (нет field_project_settings).
         if (!isActive) {
           await fetch('/api/field/manage/projects/' + work.id + '/activate', {
             method: 'POST', headers: hdr(),
@@ -1589,6 +1646,7 @@ window.AsgardFieldTab = (function () {
           });
         }
 
+        // day_rate_rub = только база; доплата отдельно (иначе бэкенд сложит дважды)
         var result = await api('/projects/' + work.id + '/crew', {
           method: 'POST',
           body: JSON.stringify({
@@ -1597,10 +1655,10 @@ window.AsgardFieldTab = (function () {
               field_role: role,
               shift_type: shift,
               tariff_id: tariffId,
-              combination_tariff_id: comboIds[0] || null,
-              combo_tariff_ids: comboIds,
-              manual_extra_points: manualExtra
-              // per_diem не шлём — бэк берёт ставку из настроек проекта
+              combination_tariff_id: null,
+              combo_tariff_ids: [],
+              manual_extra_rub: manualExtraRub,
+              day_rate_rub: baseRub
             }]
           })
         });
@@ -1613,7 +1671,6 @@ window.AsgardFieldTab = (function () {
         AsgardUI.hideModal();
         try { CRSelect.destroy('acEmp'); } catch (_) {}
         toast('Бригада', 'Сотрудник добавлен', 'ok');
-        // Перерисовываем всю вкладку — она перечитает assignments
         renderCrewTab(container, work, user, settingsData, isActive || true);
       } catch (err) {
         acErr(err.message || 'Не удалось отправить запрос');
@@ -1807,14 +1864,18 @@ window.AsgardFieldTab = (function () {
       updatePointsRate();
     }
 
-    // Points (auto)
+    // Базовая ставка тарифа, ₽
     const tdPoints = document.createElement('td');
-    tdPoints.style.cssText = cellStyle + ';text-align:center;font-weight:600';
+    tdPoints.style.cssText = cellStyle + ';text-align:right;font-weight:600';
     tdPoints.dataset.field = 'points';
-    tdPoints.textContent = assignment?.tariff_points || '—';
+    const baseRubInit = assignment?.day_rate_rub != null && Number(assignment.day_rate_rub) > 0
+      ? Number(assignment.day_rate_rub)
+      : (assignment?.tariff_rate != null ? Number(assignment.tariff_rate)
+        : (assignment?.tariff_points != null ? Number(assignment.tariff_points) * 500 : null));
+    tdPoints.textContent = baseRubInit ? money(baseRubInit) : '—';
     tr.appendChild(tdPoints);
 
-    // Rate (auto)
+    // Итоговая ставка ₽ (тариф + доплаты)
     const tdRate = document.createElement('td');
     tdRate.style.cssText = cellStyle + ';text-align:right;font-weight:600;color:var(--gold)';
     tdRate.dataset.field = 'rate';
@@ -1865,7 +1926,7 @@ window.AsgardFieldTab = (function () {
       cb.addEventListener('change', () => { updatePointsRate(); refreshComboBtn(); });
       lab.appendChild(cb);
       const sp = document.createElement('span');
-      sp.textContent = (t.position_name || '') + ' (+' + (t.points || 1) + 'б)';
+      sp.textContent = (t.position_name || '') + ' (+' + money(t.rate_per_shift || 0) + ')';
       lab.appendChild(sp);
       comboList.appendChild(lab);
     });
@@ -1879,13 +1940,16 @@ window.AsgardFieldTab = (function () {
     const manualInp = document.createElement('input');
     manualInp.type = 'number';
     manualInp.min = '0';
-    manualInp.step = '0.5';
+    manualInp.step = '10';
     manualInp.className = 'inp ft-manual-extra';
-    manualInp.placeholder = '+б вручную';
-    manualInp.title = 'Ручная доплата в баллах (можно 3.5)';
-    manualInp.value = assignment?.manual_extra_points != null && Number(assignment.manual_extra_points) !== 0
-      ? String(assignment.manual_extra_points)
-      : '';
+    manualInp.placeholder = '+₽ вручную';
+    manualInp.title = 'Ручная доплата в рублях (шаг 10)';
+    const manualRubInit = assignment?.manual_extra_rub != null && Number(assignment.manual_extra_rub) !== 0
+      ? Number(assignment.manual_extra_rub)
+      : (assignment?.manual_extra_points != null && Number(assignment.manual_extra_points) !== 0
+        ? Math.round(Number(assignment.manual_extra_points) * 500)
+        : '');
+    manualInp.value = manualRubInit !== '' ? String(manualRubInit) : '';
     manualInp.style.cssText = 'width:100%;font-size:12px;padding:4px 8px';
     manualInp.addEventListener('input', () => { updatePointsRate(); refreshComboBtn(); });
 
@@ -1893,24 +1957,24 @@ window.AsgardFieldTab = (function () {
     comboPanel.appendChild(manualInp);
 
     function comboSummary() {
-      let pts = 0;
+      let rub = 0;
       let n = 0;
       const names = [];
       comboPanel.querySelectorAll('.ft-combo-check:checked').forEach((cb) => {
         n += 1;
         const t = comboTariffs.find((x) => String(x.id) === String(cb.value));
-        pts += Number(t?.points) || 0;
+        rub += Number(t?.rate_per_shift) || 0;
         if (t) names.push(t.position_name || ('#' + t.id));
       });
       const manual = parseFloat(manualInp.value);
       if (Number.isFinite(manual) && manual !== 0) {
-        pts += manual;
-        names.push('+' + manual + 'б вручную');
+        rub += manual;
+        names.push('+' + money(manual) + ' вручную');
       }
       if (!n && !(Number.isFinite(manual) && manual !== 0)) {
         return { label: 'нет', title: 'Совмещения не выбраны' };
       }
-      const label = pts ? ('+' + (Number.isInteger(pts) ? pts : pts) + 'б' + (n > 1 ? ' · ' + n : '')) : (n + ' шт');
+      const label = rub ? ('+' + money(rub) + (n > 1 ? ' · ' + n : '')) : (n + ' шт');
       return { label, title: names.join(', ') || label };
     }
     function refreshComboBtn() {
@@ -2151,35 +2215,36 @@ window.AsgardFieldTab = (function () {
     tdActions.appendChild(delBtn);
     tr.appendChild(tdActions);
 
-    // Tariff/combo change → auto update points & rate
+    // Tariff/combo change → auto update rates in ₽
     function updatePointsRate() {
       const tVal = CRSelect.getValue('ft-tariff-' + rid);
       const pool = (allTariffsPool || categoryPool);
       const tariff = pool.find(t => String(t.id) === tVal) || categoryPool.find(t => String(t.id) === tVal);
 
-      const basePoints = tariff ? (tariff.points || 0) : 0;
       const baseRate = tariff ? parseFloat(tariff.rate_per_shift || 0) : 0;
-      const pv = tariff && tariff.point_value != null ? parseFloat(tariff.point_value) : 500;
 
-      let comboPoints = 0;
       let comboRate = 0;
       let needsApproval = false;
       tr.querySelectorAll('.ft-combo-check:checked').forEach(cb => {
         const c = comboTariffs.find(t => String(t.id) === String(cb.value));
         if (!c) return;
-        comboPoints += Number(c.points) || 0;
         comboRate += parseFloat(c.rate_per_shift || 0);
         if (c.requires_approval) needsApproval = true;
       });
 
-      let manual = parseFloat(String(tr.querySelector('.ft-manual-extra')?.value || '').replace(',', '.'));
-      if (!isFinite(manual) || manual < 0) manual = 0;
+      let manualRub = parseFloat(String(tr.querySelector('.ft-manual-extra')?.value || '').replace(',', '.'));
+      if (!isFinite(manualRub) || manualRub < 0) manualRub = 0;
+      if (window.AsgardMoneyCompact && AsgardMoneyCompact.snapRubStep10) {
+        manualRub = AsgardMoneyCompact.snapRubStep10(manualRub);
+      }
 
-      const totalPoints = basePoints + comboPoints + manual;
-      const totalRate = baseRate + comboRate + manual * pv;
+      const totalRate = baseRate + comboRate + manualRub;
 
-      tdPoints.textContent = totalPoints || '—';
+      tdPoints.textContent = baseRate ? money(baseRate) : '—';
       tdRate.textContent = totalRate ? money(totalRate) : '—';
+      // day_rate_rub на бэкенд = база (без доплаты); доплата уходит отдельно
+      tdRate.dataset.dayRateRub = baseRate ? String(baseRate) : '';
+      tdRate.dataset.totalRateRub = totalRate ? String(totalRate) : '';
 
       if (needsApproval) {
         tdCombo.style.background = 'rgba(245,158,11,0.1)';
@@ -2730,7 +2795,7 @@ window.AsgardFieldTab = (function () {
       AsgardUI.showModal({
         title: 'Выгрузка табеля Excel',
         html:
-          '<p class="muted" style="font-size:12px;margin:0 0 10px">В ячейках — только баллы, цвет = тип смены. Легенда под таблицей на том же листе.</p>' +
+          '<p class="muted" style="font-size:12px;margin:0 0 10px">В ячейках — ставка в ₽, цвет = тип смены. Легенда под таблицей на том же листе.</p>' +
           '<label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer">' +
           '<input type="checkbox" id="tsExpPd" checked/> Учитывать суточные</label>' +
           '<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px">' +
@@ -2827,8 +2892,7 @@ window.AsgardFieldTab = (function () {
       headerHtml += `<th data-ymd="${ymd}" style="${extra}"${isToday ? ' title="Сегодня"' : ''}>${label}</th>`;
     });
     headerHtml += '<th style="text-align:center">Дней</th>';
-    headerHtml += '<th style="text-align:right">Баллов</th>';
-    headerHtml += '<th style="text-align:right">Зараб.</th>';
+    headerHtml += '<th style="text-align:right">Сумма ₽</th>';
     headerHtml += '<th style="text-align:right">Суточные</th>';
     headerHtml += '<th style="text-align:right;color:var(--gold)">Итого</th>';
     if (editMode) headerHtml += '<th style="width:40px"></th>';
@@ -2941,16 +3005,14 @@ window.AsgardFieldTab = (function () {
           }
         } else if (day) {
           // Свой чекин — обычный рендер.
-          // Баллы считаем из amount_earned (всегда в рублях), НЕ из day_rate:
-          // в БД day_rate местами загрязнён баллами (13/17) вместо рублей (6500/8500),
-          // из-за чего del-ние на pv давало ☀0. amount_earned консистентен (см. итог).
-          const ptsRub = parseFloat(day.amount ?? day.amount_earned ?? day.day_rate ?? 0);
-          const pts = Math.round(ptsRub / pv) || 0;
+          // Сумма всегда из amount_earned (рубли). day_rate местами загрязнён.
+          const amtRub = parseFloat(day.amount ?? day.amount_earned ?? day.day_rate ?? 0) || 0;
           const si = _shiftIcon(day.shift);
-          td.innerHTML = si.icon + pts;
-          td.style.color = pts >= 18 ? '#D4A843' : pts >= 12 ? '#10b981' : pts >= 6 ? '#3b82f6' : 'var(--t2)';
+          const compact = _fmtCellRub(amtRub);
+          td.innerHTML = si.icon + (compact || '');
+          td.style.color = amtRub >= 9000 ? '#D4A843' : amtRub >= 6000 ? '#10b981' : amtRub >= 3000 ? '#3b82f6' : 'var(--t2)';
           if (si.bg) td.style.background = si.bg;
-          td.title = `${si.label} ${pts} бал. = ${money(pts * pv)}`
+          td.title = `${si.label} ${_fullRub(amtRub)}`
             + (day.kind === 'stage' ? ' (этап / маршрут)' : '')
             + (editMode
               ? (day.kind === 'stage' && !_isOfficeStageShift(day.shift || day.stage_type)
@@ -3037,7 +3099,7 @@ window.AsgardFieldTab = (function () {
           td.style.cursor = editMode ? 'pointer' : 'help';
           const who = info.entered_by_fio ? (' · внёс ' + info.entered_by_fio) : '';
           const where = info.work_title ? (' · объект «' + info.work_title + '»') : ' · вне объекта';
-          td.title = si.label + where + who + '. Отметка офиса: баллы в этом табеле не начисляются.'
+          td.title = si.label + where + who + '. Отметка офиса: ставка в этом табеле не начисляется.'
             + (editMode ? ' · клик — поставить свою смену' : '');
           if (editMode) {
             td.addEventListener('click', () => addCheckinCell(td, emp, d, work, pv));
@@ -3067,21 +3129,19 @@ window.AsgardFieldTab = (function () {
         tr.appendChild(td);
       });
 
-      // Summary cells
+      // Summary cells (с 01.11 — только ₽, без колонки баллов)
       const daysCount = emp.days_count || 0;
       const earned = emp.total_earned || 0;
-      const totalPoints = Math.round(earned / pv) || 0;
       const pd = emp.per_diem_total || 0;
       const total = emp.grand_total || 0;
 
-      grandHours += totalPoints;
+      grandHours += daysCount;
       grandEarned += earned;
       grandPerDiem += pd;
       grandTotal += total;
 
       [
         { v: daysCount, align: 'center' },
-        { v: totalPoints, align: 'right' },
         { v: money(Math.round(earned)), align: 'right' },
         { v: money(Math.round(pd)), align: 'right' },
         { v: money(Math.round(total)), align: 'right', gold: true },
@@ -3122,7 +3182,7 @@ window.AsgardFieldTab = (function () {
       { v: grandHours },
       { v: money(Math.round(grandEarned)) },
       { v: money(Math.round(grandPerDiem)) },
-      { v: money(Math.round(grandTotal)), gold: true },
+      { v: money(Math.round(grandTotal)), gold: true }
     ].forEach(c => {
       const td = document.createElement('td');
       td.style.cssText = `padding:8px 8px;text-align:right;${c.gold ? 'color:var(--gold)' : ''}`;
@@ -3154,7 +3214,7 @@ window.AsgardFieldTab = (function () {
       const legend = document.createElement('div');
       legend.className = 'help';
       legend.style.cssText = 'margin-top:8px;font-size:11px;color:var(--t2);display:flex;gap:16px;flex-wrap:wrap';
-      legend.innerHTML = `<span>6 = дорога (3000₽)</span><span>10 = склад (5000₽)</span><span>12 = обычная (6000₽)</span><span>18 = переработка (9000₽)</span><span style="color:var(--gold)">Баллы × 500₽ = ставка</span>`;
+      legend.innerHTML = `<span>🚗 дорога 3к</span><span>📦 склад 5к</span><span>☀ обычная 6к</span><span>⚡ переработка 9к</span><span style="color:var(--gold)">В ячейках — ставка ₽</span>`;
       wrap.appendChild(legend);
     }
 
@@ -3169,18 +3229,45 @@ window.AsgardFieldTab = (function () {
   // ── Inline edit checkin cell ──
   // ── Shift type helpers ──
   const SHIFT_TYPES = [
-    { value: 'day',        icon: '☀',  label: 'День',       bg: '', hours: 11, defaultPts: 13 },
-    { value: 'night',      icon: '🌙', label: 'Ночь',       bg: 'rgba(59,130,246,0.12)', hours: 11, defaultPts: 13 },
-    { value: 'half',       icon: '½',  label: 'Полдня',     bg: 'rgba(107,114,128,0.1)', hours: 6, defaultPts: 6 },
-    { value: 'road',       icon: '🚗', label: 'Дорога',     bg: 'rgba(96,165,250,0.1)', hours: 0, defaultPts: 6 },
-    { value: 'standby',    icon: '⏳', label: 'Ожидание',   bg: 'rgba(245,158,11,0.1)', hours: 0, defaultPts: 6 },
+    { value: 'day',        icon: '☀',  label: 'День',       bg: '', hours: 11, defaultRub: 6500 },
+    { value: 'night',      icon: '🌙', label: 'Ночь',       bg: 'rgba(59,130,246,0.12)', hours: 11, defaultRub: 6500 },
+    { value: 'half',       icon: '½',  label: 'Полдня',     bg: 'rgba(107,114,128,0.1)', hours: 6, defaultRub: 3000 },
+    { value: 'road',       icon: '🚗', label: 'Дорога',     bg: 'rgba(96,165,250,0.1)', hours: 0, defaultRub: 3000 },
+    { value: 'standby',    icon: '⏳', label: 'Ожидание',   bg: 'rgba(245,158,11,0.1)', hours: 0, defaultRub: 3000 },
     // display-only (этапы из маршрутов)
-    { value: 'ship',       icon: '🚢', label: 'Корабль',    bg: 'rgba(56,189,248,0.12)', hours: 0, defaultPts: 12, displayOnly: true },
-    { value: 'helicopter', icon: '🚁', label: 'Вертолёт',   bg: 'rgba(167,139,250,0.12)', hours: 0, defaultPts: 6, displayOnly: true },
-    { value: 'warehouse',  icon: '📦', label: 'Склад',      bg: 'rgba(148,163,184,0.12)', hours: 0, defaultPts: 10, displayOnly: true },
-    { value: 'medical',    icon: '🏥', label: 'Медосмотр',  bg: 'rgba(244,114,182,0.12)', hours: 0, defaultPts: 7, displayOnly: true },
-    { value: 'training',   icon: '🎓', label: 'Обучение',   bg: 'rgba(251,191,36,0.12)', hours: 0, defaultPts: 7, displayOnly: true },
+    { value: 'ship',       icon: '🚢', label: 'Корабль',    bg: 'rgba(56,189,248,0.12)', hours: 0, defaultRub: 6000, displayOnly: true },
+    { value: 'helicopter', icon: '🚁', label: 'Вертолёт',   bg: 'rgba(167,139,250,0.12)', hours: 0, defaultRub: 3000, displayOnly: true },
+    { value: 'warehouse',  icon: '📦', label: 'Склад',      bg: 'rgba(148,163,184,0.12)', hours: 0, defaultRub: 5000, displayOnly: true },
+    { value: 'medical',    icon: '🏥', label: 'Медосмотр',  bg: 'rgba(244,114,182,0.12)', hours: 0, defaultRub: 3500, displayOnly: true },
+    { value: 'training',   icon: '🎓', label: 'Обучение',   bg: 'rgba(251,191,36,0.12)', hours: 0, defaultRub: 3500, displayOnly: true },
   ];
+
+  function _fmtCellRub(n) {
+    if (window.AsgardMoneyCompact && AsgardMoneyCompact.fmtCompactRub) {
+      return AsgardMoneyCompact.fmtCompactRub(n);
+    }
+    const v = Math.round(Number(n) || 0);
+    if (v <= 0) return '';
+    if (v < 10000) {
+      const k = v / 1000;
+      return (Number.isInteger(k) ? String(k) : k.toFixed(1).replace(/\.0$/, '')) + 'к';
+    }
+    return Math.round(v / 1000) + 'к';
+  }
+  function _snapRub(n) {
+    if (window.AsgardMoneyCompact && AsgardMoneyCompact.snapRubStep10) {
+      return AsgardMoneyCompact.snapRubStep10(n);
+    }
+    const v = Number(n);
+    if (!Number.isFinite(v) || v < 0) return 0;
+    return Math.round(v / 10) * 10;
+  }
+  function _fullRub(n) {
+    if (window.AsgardMoneyCompact && AsgardMoneyCompact.compactRubTitle) {
+      return AsgardMoneyCompact.compactRubTitle(n);
+    }
+    return money(n);
+  }
   function _shiftIcon(shift) {
     // travel (канон stages) → road (иконка полевого табеля)
     const key = shift === 'travel' ? 'road' : shift;
@@ -3196,13 +3283,14 @@ window.AsgardFieldTab = (function () {
     return OFFICE_STAGE_SHIFTS.has(shift === 'travel' ? 'travel' : shift);
   }
 
-  // ── Inline shift+points editor (replaces cell content) ──
+  // ── Inline shift+₽ editor (replaces cell content) ──
   // onDelete (необяз.) — если передан, показывает иконку «удалить смену»
-  function _shiftEditor(td, currentShift, currentPts, pv, onSave, onCancel, onDelete) {
+  // onSave(rub, shift, si) — сумма в ₽, без ×500
+  function _shiftEditor(td, currentShift, currentRub, pv, onSave, onCancel, onDelete) {
     td.innerHTML = '';
     td.style.padding = '2px';
     const wrap = document.createElement('div');
-    wrap.style.cssText = 'display:flex;flex-direction:column;gap:3px;align-items:center;min-width:88px';
+    wrap.style.cssText = 'display:flex;flex-direction:column;gap:3px;align-items:center;min-width:96px';
 
     // Shift type buttons row
     const btnsRow = document.createElement('div');
@@ -3218,30 +3306,27 @@ window.AsgardFieldTab = (function () {
       btn.addEventListener('click', (e) => {
         e.stopPropagation();
         selectedShift = st.value;
-        // Highlight selected
         btnsRow.querySelectorAll('button').forEach(b => { b.style.background = 'var(--bg1)'; });
         btn.style.background = 'var(--gold)';
-        // Auto-fill default points for this shift type
-        if (!input.dataset.userEdited) input.value = st.defaultPts;
+        if (!input.dataset.userEdited) input.value = String(st.defaultRub || 0);
       });
       btnsRow.appendChild(btn);
     });
     wrap.appendChild(btnsRow);
 
-    // Points input — до 99 баллов (не 30: у Портного и др. бывают 31+), без spin-стрелок Windows
-    const MAX_SHIFT_POINTS = 99;
+    const MAX_SHIFT_RUB = 99000;
     const input = document.createElement('input');
     input.type = 'text';
     input.inputMode = 'numeric';
     input.pattern = '[0-9]*';
-    input.value = String(currentPts ?? '');
-    input.setAttribute('aria-label', 'Баллы');
+    input.value = String(currentRub ?? '');
+    input.setAttribute('aria-label', 'Ставка, ₽');
     input.style.cssText = [
-      'width:72px',
-      'min-width:72px',
+      'width:84px',
+      'min-width:84px',
       'height:30px',
       'padding:4px 8px',
-      'font-size:16px',
+      'font-size:15px',
       'font-weight:700',
       'line-height:1.2',
       'letter-spacing:0.02em',
@@ -3260,18 +3345,16 @@ window.AsgardFieldTab = (function () {
       const raw = String(input.value).replace(/\D/g, '');
       if (raw !== input.value) input.value = raw;
       const n = parseInt(raw, 10);
-      if (Number.isFinite(n) && n > MAX_SHIFT_POINTS) input.value = String(MAX_SHIFT_POINTS);
+      if (Number.isFinite(n) && n > MAX_SHIFT_RUB) input.value = String(MAX_SHIFT_RUB);
     });
     wrap.appendChild(input);
 
-    // Кнопка «удалить смену» (только при редактировании существующего чекина)
     if (typeof onDelete === 'function') {
       const delBtn = document.createElement('button');
       delBtn.type = 'button';
       delBtn.textContent = '🗑 Удалить';
       delBtn.title = 'Удалить смену';
       delBtn.style.cssText = 'margin-top:2px;border:1px solid rgba(239,68,68,.4);border-radius:4px;font-size:10px;cursor:pointer;padding:1px 4px;line-height:1.2;background:rgba(239,68,68,.12);color:#ef4444;white-space:nowrap';
-      // mousedown, чтобы сработать до blur-сохранения инпута
       delBtn.addEventListener('mousedown', (e) => {
         e.preventDefault();
         e.stopPropagation();
@@ -3286,10 +3369,10 @@ window.AsgardFieldTab = (function () {
     input.select();
 
     function doSave() {
-      if (input.dataset.deleting === '1') return; // удаление уже идёт — не сохранять
-      const pts = parseInt(input.value) || 0;
+      if (input.dataset.deleting === '1') return;
+      const rub = _snapRub(parseInt(input.value, 10) || 0);
       const st = _shiftIcon(selectedShift);
-      onSave(pts, selectedShift, st);
+      onSave(rub, selectedShift, st);
     }
     input.addEventListener('blur', () => setTimeout(doSave, 150));
     input.addEventListener('keydown', (e) => {
@@ -3300,23 +3383,21 @@ window.AsgardFieldTab = (function () {
 
   function editCheckinCell(td, day, emp, date, work, pv) {
     pv = pv || 500;
-    // origPts из amount_earned (рубли), не из day_rate (местами загрязнён баллами).
-    const origRub = parseFloat(day.amount ?? day.amount_earned ?? day.day_rate ?? 0);
-    const origPts = Math.round(origRub / pv) || 0;
+    const origRub = _snapRub(parseFloat(day.amount ?? day.amount_earned ?? day.day_rate ?? 0) || 0);
     const origShift = day.shift || 'day';
 
     function restore() {
       const si = _shiftIcon(origShift);
-      td.innerHTML = si.icon + origPts;
-      td.style.color = origPts >= 18 ? '#D4A843' : origPts >= 12 ? '#10b981' : '#3b82f6';
+      const compact = _fmtCellRub(origRub);
+      td.innerHTML = si.icon + (compact || '');
+      td.style.color = origRub >= 9000 ? '#D4A843' : origRub >= 6000 ? '#10b981' : '#3b82f6';
       td.style.background = si.bg || '';
+      td.title = `${si.label} ${_fullRub(origRub)}`;
     }
 
-    // Удаление (отмена) чекина — общая логика для «баллы=0» и кнопки «удалить»
     async function deleteCheckin() {
       try {
         await api(`/projects/${work.id}/checkin/${day.id}`, { method: 'DELETE' });
-        // Превращаем ячейку обратно в «+» (добавить смену)
         td.innerHTML = '+';
         td.style.color = 'var(--t3)';
         td.style.opacity = '0.5';
@@ -3325,7 +3406,6 @@ window.AsgardFieldTab = (function () {
         td.style.transition = 'outline 0.5s';
         td.style.outline = '2px solid rgba(239,68,68,0.5)';
         setTimeout(() => { td.style.outline = ''; }, 800);
-        // Перенавешиваем обработчик «добавить смену» на освободившуюся ячейку
         const freshTd = td.cloneNode(true);
         td.parentNode.replaceChild(freshTd, td);
         freshTd.style.cursor = 'pointer';
@@ -3340,27 +3420,24 @@ window.AsgardFieldTab = (function () {
       }
     }
 
-    _shiftEditor(td, origShift, origPts, pv,
-      async (newPts, newShift, si) => {
-        if (newPts === origPts && newShift === origShift) { restore(); return; }
-        // Баллы = 0 → удаляем (отменяем) чекин вместо записи с нулевой суммой
-        if (newPts === 0) { await deleteCheckin(); return; }
-        const newRate = newPts * pv;
+    _shiftEditor(td, origShift, origRub, pv,
+      async (newRub, newShift, si) => {
+        if (newRub === origRub && newShift === origShift) { restore(); return; }
+        if (newRub === 0) { await deleteCheckin(); return; }
         const shiftDef = SHIFT_TYPES.find(s => s.value === newShift) || SHIFT_TYPES[0];
         try {
           await apiCheckinWithConflictConfirm(`/projects/${work.id}/checkin/${day.id}`, {
-            day_rate: newRate, amount_earned: newRate, shift: newShift,
+            day_rate: newRub, amount_earned: newRub, shift: newShift,
             hours_worked: shiftDef.hours, hours_paid: shiftDef.hours
           }, 'PUT');
-          td.innerHTML = si.icon + newPts;
-          td.style.color = newPts >= 18 ? '#D4A843' : newPts >= 12 ? '#10b981' : '#3b82f6';
+          const compact = _fmtCellRub(newRub);
+          td.innerHTML = si.icon + (compact || '');
+          td.style.color = newRub >= 9000 ? '#D4A843' : newRub >= 6000 ? '#10b981' : '#3b82f6';
           td.style.background = si.bg || '';
           td.style.transition = 'outline 0.5s';
           td.style.outline = '2px solid rgba(16,185,129,0.5)';
           setTimeout(() => { td.style.outline = ''; }, 800);
-          toast('Табель', 'Сохранено · ' + newPts + ' бал.', 'ok');
-          // Пересчёт строки и ИТОГО: без этого «Баллов/Зараб./Итого» оставались
-          // старыми, и РП считал, что правка не сохранилась.
+          toast('Табель', 'Сохранено · ' + _fullRub(newRub), 'ok');
           await _reloadTimesheetKeepView();
         } catch (e) {
           if (e && e.cancelled) { restore(); return; }
@@ -3393,16 +3470,19 @@ window.AsgardFieldTab = (function () {
       td.style.padding = prevCss.padding || '';
     }
 
-    // D-258: дефолт баллов = тариф бригады, не хардкод 13
-    const defaultPts = (emp.tariff_points != null && Number(emp.tariff_points) > 0)
-      ? Number(emp.tariff_points)
-      : 13;
-    let userEditedPts = false;
+    // Дефолт ₽ = day_rate_rub / rate тарифа, иначе 6500
+    const defaultRub = (emp.day_rate_rub != null && Number(emp.day_rate_rub) > 0)
+      ? _snapRub(emp.day_rate_rub)
+      : (emp.tariff_rate != null && Number(emp.tariff_rate) > 0)
+        ? _snapRub(emp.tariff_rate)
+        : (emp.tariff_points != null && Number(emp.tariff_points) > 0)
+          ? _snapRub(Number(emp.tariff_points) * (pv || 500))
+          : 6500;
+    let userEditedRub = false;
 
-    _shiftEditor(td, 'day', defaultPts, pv,
-      async (pts, shift, si) => {
-        if (pts === 0) { restore(); return; }
-        const rate = pts * pv;
+    _shiftEditor(td, 'day', defaultRub, pv,
+      async (rub, shift, si) => {
+        if (rub === 0) { restore(); return; }
         const shiftDef = SHIFT_TYPES.find(s => s.value === shift) || SHIFT_TYPES[0];
         try {
           const body = {
@@ -3411,22 +3491,22 @@ window.AsgardFieldTab = (function () {
             shift: shift,
             hours_worked: shiftDef.hours,
             hours_paid: shiftDef.hours,
-            day_rate: rate,
-            amount_earned: rate,
+            day_rate: rub,
+            amount_earned: rub,
           };
-          // Если пользователь не трогал баллы — бэкенд возьмёт ставку из назначения
-          if (!userEditedPts && emp.tariff_points != null) {
+          if (!userEditedRub && (emp.day_rate_rub != null || emp.tariff_points != null)) {
             body.use_assignment_rate = true;
           }
           await apiCheckinWithConflictConfirm(`/projects/${work.id}/checkin`, body, 'POST');
-          td.innerHTML = si.icon + pts;
-          td.style.color = pts >= 18 ? '#D4A843' : pts >= 12 ? '#10b981' : '#3b82f6';
+          const compact = _fmtCellRub(rub);
+          td.innerHTML = si.icon + (compact || '');
+          td.style.color = rub >= 9000 ? '#D4A843' : rub >= 6000 ? '#10b981' : '#3b82f6';
           td.style.background = si.bg || '';
           td.style.opacity = '1';
           td.style.transition = 'outline 0.5s';
           td.style.outline = '2px solid rgba(16,185,129,0.5)';
           setTimeout(() => { td.style.outline = ''; }, 800);
-          toast('Табель', `${si.label} ${date} добавлена`, 'ok');
+          toast('Табель', `${si.label} ${date} · ${_fullRub(rub)}`, 'ok');
           await _reloadTimesheetKeepView();
         } catch (e) {
           if (e && e.cancelled) { restore(); return; }
@@ -3436,14 +3516,13 @@ window.AsgardFieldTab = (function () {
       },
       restore
     );
-    // пометить ручное изменение баллов в редакторе
     try {
-      const inp = td.querySelector('input[type="number"], input.ts-pts');
+      const inp = td.querySelector('input');
       if (inp) {
-        inp.addEventListener('input', () => { userEditedPts = true; }, { once: false });
-        inp.addEventListener('change', () => { userEditedPts = true; });
+        inp.addEventListener('input', () => { userEditedRub = true; }, { once: false });
+        inp.addEventListener('change', () => { userEditedRub = true; });
       }
-        } catch (_) {}
+    } catch (_) {}
   }
 
   // D-258: РП → офис/мастер «здесь должно быть …»
@@ -3462,8 +3541,8 @@ window.AsgardFieldTab = (function () {
         `<option value="travel">Дорога</option><option value="ship">Корабль</option>` +
         `<option value="helicopter">Вертолёт</option><option value="waiting">Ожидание</option>` +
         `</select>` +
-        `<label style="font-size:12px;display:block;margin-bottom:4px">Баллы</label>` +
-        `<input id="ftCorrPts" type="number" min="0" max="99" step="0.5" placeholder="${emp.tariff_points || 13}" style="width:100%;margin-bottom:8px;padding:6px"/>` +
+        `<label style="font-size:12px;display:block;margin-bottom:4px">Ставка, ₽</label>` +
+        `<input id="ftCorrRub" type="number" min="0" step="10" placeholder="${(emp.day_rate_rub || (emp.tariff_points ? emp.tariff_points * 500 : 6500))}" style="width:100%;margin-bottom:8px;padding:6px"/>` +
         `<label style="font-size:12px;display:block;margin-bottom:4px">Комментарий</label>` +
         `<textarea id="ftCorrMsg" rows="3" style="width:100%;padding:6px" placeholder="Здесь должна быть отметка…"></textarea>` +
         `<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px">` +
@@ -3475,8 +3554,9 @@ window.AsgardFieldTab = (function () {
           const msg = (document.getElementById('ftCorrMsg')?.value || '').trim();
           if (msg.length < 3) { toast('Корректировка', 'Напишите, что должно быть', 'warn'); return; }
           const expected_type = document.getElementById('ftCorrType')?.value || null;
-          const ptsRaw = document.getElementById('ftCorrPts')?.value;
-          const expected_points = ptsRaw !== '' && ptsRaw != null ? Number(ptsRaw) : null;
+          const rubRaw = document.getElementById('ftCorrRub')?.value;
+          const rub = rubRaw !== '' && rubRaw != null ? _snapRub(rubRaw) : null;
+          const expected_points = Number.isFinite(rub) && rub > 0 ? Math.round(rub / 500) : null;
           try {
             const r = await fetch('/api/timesheet/v2/corrections', {
               method: 'POST',
@@ -5600,10 +5680,10 @@ window.AsgardFieldTab = (function () {
       <div style="padding:6px 4px 4px">
         <div id="salErr" style="display:none;background:rgba(239,68,68,0.12);border:1px solid #ef4444;color:#ef4444;padding:10px 14px;border-radius:8px;margin-bottom:12px;font-size:13px;font-weight:600"></div>
         <div style="font-size:13px;color:var(--t2);margin-bottom:14px;line-height:1.5">
-          Считаем зарплату по баллам за выбранный месяц: <span style="color:var(--t1);font-weight:600">баллы × ₽/балл</span>.
+          Считаем зарплату по суммам смен за выбранный месяц.
           Уже выплаченные авансы вычтутся при выплате.
         </div>
-        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:14px">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px">
           <label style="font-size:12px;font-weight:600;color:var(--t2);text-transform:uppercase;letter-spacing:.5px">
             Месяц
             <input id="salMonth" type="number" min="1" max="12" class="inp" value="${curMonth}" style="width:100%;margin-top:6px;font-weight:400;text-transform:none;letter-spacing:0;color:var(--t1)">
@@ -5611,10 +5691,6 @@ window.AsgardFieldTab = (function () {
           <label style="font-size:12px;font-weight:600;color:var(--t2);text-transform:uppercase;letter-spacing:.5px">
             Год
             <input id="salYear" type="number" min="2024" max="2099" class="inp" value="${curYear}" style="width:100%;margin-top:6px;font-weight:400;text-transform:none;letter-spacing:0;color:var(--t1)">
-          </label>
-          <label style="font-size:12px;font-weight:600;color:var(--t2);text-transform:uppercase;letter-spacing:.5px">
-            ₽ / балл
-            <input id="salPointVal" type="number" class="inp" value="500" style="width:100%;margin-top:6px;font-weight:400;text-transform:none;letter-spacing:0;color:var(--t1)">
           </label>
         </div>
         <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:18px">
@@ -5626,7 +5702,7 @@ window.AsgardFieldTab = (function () {
 
     AsgardUI.showModal({
       title: '📋 Ведомость ЗП',
-      subtitle: 'Генерация по баллам',
+      subtitle: 'Генерация по суммам смен',
       icon: '📋',
       wide: true,
       fullscreen: true,
@@ -5655,16 +5731,14 @@ window.AsgardFieldTab = (function () {
     if (submitBtn) submitBtn.addEventListener('click', async function() {
       const month = parseInt((body.querySelector('#salMonth') || {}).value);
       const year = parseInt((body.querySelector('#salYear') || {}).value);
-      const pv = parseFloat((body.querySelector('#salPointVal') || {}).value);
       if (!month || month < 1 || month > 12) { salErr('Некорректный месяц'); return; }
       if (!year) { salErr('Некорректный год'); return; }
-      if (!pv || pv <= 0) { salErr('Укажите ₽/балл'); return; }
 
       submitBtn.disabled = true;
       var origText = submitBtn.innerHTML;
       submitBtn.innerHTML = '⏳ Генерация…';
       try {
-        const result = await apiPayments(`/generate-salary/${year}/${month}`, { method: 'POST', body: JSON.stringify({ point_value: pv, work_id: work.id }) });
+        const result = await apiPayments(`/generate-salary/${year}/${month}`, { method: 'POST', body: JSON.stringify({ work_id: work.id }) });
         if (result.error) {
           salErr(result.error);
           submitBtn.disabled = false;
@@ -5672,7 +5746,7 @@ window.AsgardFieldTab = (function () {
           return;
         }
         AsgardUI.hideModal();
-        toast('Ведомость', `${result.count} чел. по ${pv}₽/балл`, 'ok');
+        toast('Ведомость', `${result.count} чел.`, 'ok');
         renderPaymentsTab(parentContainer, work, user);
       } catch (err) {
         salErr(err.message || 'Не удалось отправить запрос');

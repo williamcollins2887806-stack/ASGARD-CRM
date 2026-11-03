@@ -184,7 +184,7 @@ export default function SelfEmployedPage() {
         kicker="Финансы"
         title={isGridTab ? 'Ведомость-сетка табеля' : 'Реестр самозанятых'}
         subtitle={isGridTab
-          ? 'Баллы за смены × дни месяца — расчёт ФОТ и суточных'
+          ? 'Суммы за смены × дни месяца — расчёт ФОТ и суточных'
           : `${visible.length} ${pluralize(visible.length, ['СЗ в выборке', 'СЗ в выборке', 'СЗ в выборке'])} · всего ${items.length}`}
         actions={
           <>

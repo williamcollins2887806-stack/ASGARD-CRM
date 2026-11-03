@@ -1730,20 +1730,19 @@ async function routes(fastify, options) {
         }
       }
 
-      // Attach per-diem, convert days array → object {dayNum: points}, round
+      // Attach per-diem; days object keyed by day number = ₽ (с 01.11), не баллы
       const employees = Object.values(empMap).map(emp => {
         const pd = perDiemMap[emp.employee_id] || { per_diem_total: 0, per_diem_days: 0 };
         emp.total_points = Math.round(emp.total_points * 100) / 100;
         emp.total_amount = Math.round(emp.total_amount * 100) / 100;
         emp.per_diem_total = pd.per_diem_total;
         emp.per_diem_days = pd.per_diem_days;
-        // Convert days array to object keyed by day number for frontend grid
         const daysObj = {};
         const daysDetailed = [];
         for (const d of emp.days) {
           const dateObj = new Date(d.date);
           const dayNum = dateObj.getDate();
-          daysObj[dayNum] = d.points;
+          daysObj[dayNum] = Math.round(d.amount || 0);
           daysDetailed.push({ ...d, day: dayNum });
         }
         emp.days = daysObj;
@@ -1824,25 +1823,32 @@ async function routes(fastify, options) {
         if (!empId || !Array.isArray(row.days)) continue;
 
         for (const day of row.days) {
-          if (!day.date || day.points === undefined || day.points === null) continue;
-          const points = parseFloat(day.points);
-          const amount = points * pointValue;
+          if (!day.date) continue;
           const dayDate = day.date;
 
-          // Get point_value from tariff if available
-          let pv = pointValue;
-          if (day.work_id) {
-            const pvRow = await db.query(`
-              SELECT COALESCE(ftg.point_value, $1) as pv
-              FROM employee_assignments ea
-              LEFT JOIN field_tariff_grid ftg ON ftg.id = ea.tariff_id
-              WHERE ea.employee_id = $2 AND ea.work_id = $3
-              LIMIT 1
-            `, [pointValue, empId, parseInt(day.work_id)]);
-            if (pvRow.rows.length > 0) pv = parseFloat(pvRow.rows[0].pv);
+          // С 01.11: канон — amount_rub / amount в рублях as-is.
+          // Legacy: day.points × point_value (только если amount_rub не передан).
+          let dayAmount;
+          if (day.amount_rub != null || day.amount != null) {
+            dayAmount = parseFloat(day.amount_rub != null ? day.amount_rub : day.amount);
+          } else if (day.points !== undefined && day.points !== null) {
+            let pv = pointValue;
+            if (day.work_id) {
+              const pvRow = await db.query(`
+                SELECT COALESCE(ftg.point_value, $1) as pv
+                FROM employee_assignments ea
+                LEFT JOIN field_tariff_grid ftg ON ftg.id = ea.tariff_id
+                WHERE ea.employee_id = $2 AND ea.work_id = $3
+                LIMIT 1
+              `, [pointValue, empId, parseInt(day.work_id)]);
+              if (pvRow.rows.length > 0) pv = parseFloat(pvRow.rows[0].pv);
+            }
+            dayAmount = parseFloat(day.points) * pv;
+          } else {
+            continue;
           }
-
-          const dayAmount = points * pv;
+          if (!Number.isFinite(dayAmount) || dayAmount < 0) continue;
+          dayAmount = Math.round(dayAmount / 10) * 10;
 
           // Build works filter
           const worksSubquery = isDir

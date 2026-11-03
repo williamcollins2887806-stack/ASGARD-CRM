@@ -4,18 +4,19 @@ export { formatMoney as fmtMoney } from '@/lib/money';
  * Источник: `public/assets/js/field-tab.js:1510-1519` (SHIFT_TYPES + _shiftIcon).
  */
 
+/* defaultRub = бывшие баллы × 500 (те же суммы, UI в ₽). */
 export const SHIFT_TYPES = [
-  { value: 'day',        icon: '☀',  label: 'День',      bg: '',                             hours: 11, defaultPts: 13, editable: true },
-  { value: 'night',      icon: '🌙', label: 'Ночь',      bg: 'rgba(59,130,246,0.12)',        hours: 11, defaultPts: 13, editable: true },
-  { value: 'half',       icon: '½',  label: 'Полдня',    bg: 'rgba(107,114,128,0.10)',       hours: 6,  defaultPts: 6,  editable: true },
-  { value: 'road',       icon: '🚗', label: 'Дорога',    bg: 'rgba(96,165,250,0.10)',        hours: 0,  defaultPts: 6,  editable: true },
-  { value: 'standby',    icon: '⏳', label: 'Ожидание',  bg: 'rgba(245,158,11,0.10)',        hours: 0,  defaultPts: 6,  editable: true },
+  { value: 'day',        icon: '☀',  label: 'День',      bg: '',                             hours: 11, defaultPts: 13, defaultRub: 6500, editable: true },
+  { value: 'night',      icon: '🌙', label: 'Ночь',      bg: 'rgba(59,130,246,0.12)',        hours: 11, defaultPts: 13, defaultRub: 6500, editable: true },
+  { value: 'half',       icon: '½',  label: 'Полдня',    bg: 'rgba(107,114,128,0.10)',       hours: 6,  defaultPts: 6,  defaultRub: 3000, editable: true },
+  { value: 'road',       icon: '🚗', label: 'Дорога',    bg: 'rgba(96,165,250,0.10)',        hours: 0,  defaultPts: 6,  defaultRub: 3000, editable: true },
+  { value: 'standby',    icon: '⏳', label: 'Ожидание',  bg: 'rgba(245,158,11,0.10)',        hours: 0,  defaultPts: 6,  defaultRub: 3000, editable: true },
   // Только отображение этапов из маршрутов (не выбираются в ShiftPopover)
-  { value: 'ship',       icon: '🚢', label: 'Корабль',   bg: 'rgba(56,189,248,0.12)',        hours: 0,  defaultPts: 12, editable: false },
-  { value: 'helicopter', icon: '🚁', label: 'Вертолёт',  bg: 'rgba(167,139,250,0.12)',       hours: 0,  defaultPts: 6,  editable: false },
-  { value: 'warehouse',  icon: '📦', label: 'Склад',     bg: 'rgba(148,163,184,0.12)',       hours: 0,  defaultPts: 10, editable: false },
-  { value: 'medical',    icon: '🏥', label: 'Медосмотр', bg: 'rgba(244,114,182,0.12)',       hours: 0,  defaultPts: 7,  editable: false },
-  { value: 'training',   icon: '🎓', label: 'Обучение',  bg: 'rgba(251,191,36,0.12)',        hours: 0,  defaultPts: 7,  editable: false }
+  { value: 'ship',       icon: '🚢', label: 'Корабль',   bg: 'rgba(56,189,248,0.12)',        hours: 0,  defaultPts: 12, defaultRub: 6000, editable: false },
+  { value: 'helicopter', icon: '🚁', label: 'Вертолёт',  bg: 'rgba(167,139,250,0.12)',       hours: 0,  defaultPts: 6,  defaultRub: 3000, editable: false },
+  { value: 'warehouse',  icon: '📦', label: 'Склад',     bg: 'rgba(148,163,184,0.12)',       hours: 0,  defaultPts: 10, defaultRub: 5000, editable: false },
+  { value: 'medical',    icon: '🏥', label: 'Медосмотр', bg: 'rgba(244,114,182,0.12)',       hours: 0,  defaultPts: 7,  defaultRub: 3500, editable: false },
+  { value: 'training',   icon: '🎓', label: 'Обучение',  bg: 'rgba(251,191,36,0.12)',        hours: 0,  defaultPts: 7,  defaultRub: 3500, editable: false }
 ];
 
 export const EDITABLE_SHIFT_TYPES = SHIFT_TYPES.filter((s) => s.editable !== false);
@@ -31,11 +32,20 @@ export function fmtInt(n) {
   return new Intl.NumberFormat('ru-RU').format(Math.round(v));
 }
 
-/* Шкала цветов баллов (vanilla parity). */
+/* Шкала цветов (legacy по баллам). */
 export function pointsColor(pts) {
   if (pts >= 18) return '#D4A843';
   if (pts >= 12) return '#10b981';
   if (pts >= 6)  return '#3b82f6';
+  return 'var(--t-3)';
+}
+
+/* Шкала цветов по сумме ₽ (те же пороги, что баллы × 500). */
+export function amountColor(rub) {
+  const v = Math.round(Number(rub) || 0);
+  if (v >= 9000) return '#D4A843';
+  if (v >= 6000) return '#10b981';
+  if (v >= 3000) return '#3b82f6';
   return 'var(--t-3)';
 }
 

@@ -1,13 +1,11 @@
 /**
- * AsgardAdminTimesheetSettingsPage — настройка баллов табеля.
+ * AsgardAdminTimesheetSettingsPage — ставки этапов табеля в ₽.
  * ═══════════════════════════════════════════════════════════
  * Роут: #/admin/timesheet-settings  |  Доступ: ADMIN, DIRECTOR_GEN
  *
- * Источник: TIMESHEET_V2_CONTRACT.md (раздел position_points).
- *
  * Endpoints:
  *   GET /api/timesheet/v2/settings/position-points
- *   PUT /api/timesheet/v2/settings/position-points { type, position, points }
+ *   PUT /api/timesheet/v2/settings/position-points { type, position, rate_rub }
  *
  * 3 секции: Склад (слесарь/мастер), Медосмотр, Дорога. Кнопка «Сохранить» —
  * PUT по строкам, у которых изменилось значение. При изменении > 50% —
@@ -27,13 +25,28 @@ window.AsgardAdminTimesheetSettingsPage = (function () {
     return { 'Authorization': 'Bearer ' + (tok || ''), 'Content-Type': 'application/json' };
   }
 
-  // V255 (23.06.2026): medical 6→7 (МО + Обучение, ТО ставит обе через тот же тип),
-  // добавлен 'ship' — Корабль (альтернатива дороги, 12 баллов × 500 ₽).
+  function snap10(n) {
+    if (window.AsgardMoneyCompact && AsgardMoneyCompact.snapRubStep10) {
+      return AsgardMoneyCompact.snapRubStep10(n);
+    }
+    const v = Number(n);
+    if (!Number.isFinite(v) || v < 0) return 0;
+    return Math.round(v / 10) * 10;
+  }
+
+  function fmtRub(n) {
+    if (window.AsgardMoneyCompact && AsgardMoneyCompact.fmtMoneyRub) {
+      return AsgardMoneyCompact.fmtMoneyRub(n);
+    }
+    return Math.round(Number(n) || 0).toLocaleString('ru-RU') + ' ₽';
+  }
+
+  // Дефолты в ₽ (бывшие баллы × 500).
   const SECTIONS = [
     {
       id: 'warehouse',
       title: '📦 Склад',
-      hint: 'Сколько баллов начислять рабочему за день на складе.',
+      hint: 'Ставка рабочему за день на складе, ₽.',
       items: [
         { type: 'warehouse', position: 'слесарь', label: 'Слесарь' },
         { type: 'warehouse', position: 'мастер',  label: 'Мастер'  }
@@ -42,43 +55,43 @@ window.AsgardAdminTimesheetSettingsPage = (function () {
     {
       id: 'medical',
       title: '🏥 Медосмотр',
-      hint: 'Баллы за день медосмотра (ставит ТО / Рук. ТО).',
+      hint: 'Ставка за день медосмотра (ставит ТО / Рук. ТО), ₽.',
       items: [{ type: 'medical', position: null, label: 'Медосмотр' }]
     },
     {
       id: 'training',
       title: '🎓 Обучение',
-      hint: 'Баллы за день обучения. Ставят ТО / Рук. ТО.',
+      hint: 'Ставка за день обучения. Ставят ТО / Рук. ТО, ₽.',
       items: [{ type: 'training', position: null, label: 'Обучение' }]
     },
     {
       id: 'travel',
       title: '✈️ Дорога',
-      hint: 'Баллы за день в дороге (наземный транспорт).',
+      hint: 'Ставка за день в дороге (наземный транспорт), ₽.',
       items: [{ type: 'travel', position: null, label: 'Дорога' }]
     },
     {
       id: 'ship',
       title: '🚢 Корабль',
-      hint: 'Альтернативный вид дороги — пароход / паром. Повышенная ставка.',
+      hint: 'Альтернативный вид дороги — пароход / паром. Повышенная ставка, ₽.',
       items: [{ type: 'ship', position: null, label: 'Корабль' }]
     },
     {
       id: 'helicopter',
       title: '🚁 Вертолёт',
-      hint: 'Иной транспорт — вертолёт. Ставят ТО / Рук. ТО.',
+      hint: 'Иной транспорт — вертолёт. Ставят ТО / Рук. ТО, ₽.',
       items: [{ type: 'helicopter', position: null, label: 'Вертолёт' }]
     }
   ];
 
   const DEFAULTS = {
-    'warehouse:слесарь': 10,
-    'warehouse:мастер':  12,
-    'medical': 7,
-    'training': 7,
-    'travel':  6,
-    'ship':    12,
-    'helicopter': 6
+    'warehouse:слесарь': 5000,
+    'warehouse:мастер':  6000,
+    'medical': 3500,
+    'training': 3500,
+    'travel':  3000,
+    'ship':    6000,
+    'helicopter': 3000
   };
 
   function keyOf(type, position) {
@@ -88,23 +101,34 @@ window.AsgardAdminTimesheetSettingsPage = (function () {
   function parseResponse(res) {
     const map = {};
     if (!res) return map;
+    const rates = res.position_rates || {};
+    for (const k in rates) {
+      if (rates[k] != null) map[k] = Number(rates[k]) || 0;
+    }
     if (Array.isArray(res)) {
-      for (const r of res) map[keyOf(r.type, r.position)] = Number(r.points) || 0;
+      for (const r of res) {
+        const k = keyOf(r.type, r.position);
+        const rub = r.rate_rub != null ? Number(r.rate_rub) : (Number(r.points) || 0) * 500;
+        map[k] = rub;
+      }
       return map;
     }
-    const src = res.position_points || res.settings || res;
+    const src = res.position_points || res.settings || {};
     for (const k in src) {
+      if (map[k] != null) continue;
       const v = src[k];
       if (v && typeof v === 'object') {
-        for (const pos in v) map[k + ':' + pos] = Number(v[pos]) || 0;
-      } else if (v != null) {
-        map[k] = Number(v) || 0;
+        for (const pos in v) {
+          const kk = k + ':' + pos;
+          if (map[kk] == null) map[kk] = (Number(v[pos]) || 0) * 500;
+        }
+      } else if (v != null && map[k] == null) {
+        map[k] = (Number(v) || 0) * 500;
       }
     }
     return map;
   }
 
-  // Состояние одной страницы (живёт пока юзер на /admin/timesheet-settings)
   let _original = {};
   let _values   = {};
 
@@ -155,7 +179,7 @@ window.AsgardAdminTimesheetSettingsPage = (function () {
     });
     if (huge.length > 0) {
       const msg = 'Изменение больше 50% по строкам:\n\n' +
-                  huge.map(function (d) { return '• ' + d.label + ': ' + d.before + ' → ' + d.after; }).join('\n') +
+                  huge.map(function (d) { return '• ' + d.label + ': ' + fmtRub(d.before) + ' → ' + fmtRub(d.after); }).join('\n') +
                   '\n\nЭто применится ко ВСЕМ будущим отметкам в табеле. Точно сохранить?';
       if (!confirm(msg)) return;
     }
@@ -163,7 +187,7 @@ window.AsgardAdminTimesheetSettingsPage = (function () {
     let errMsg = null;
     for (const d of dirty) {
       try {
-        const body = { type: d.type, position: d.position, points: d.after };
+        const body = { type: d.type, position: d.position, rate_rub: d.after };
         const r = await fetch('/api/timesheet/v2/settings/position-points', {
           method: 'PUT', headers: hdr(), body: JSON.stringify(body)
         });
@@ -182,7 +206,6 @@ window.AsgardAdminTimesheetSettingsPage = (function () {
     } else {
       _original = Object.assign({}, _values);
       toast && toast('Настройки', 'Сохранено ' + okCount, 'ok');
-      // Перерисуем подписи «было ...»
       renderForm(document.getElementById('atsForm'));
     }
   }
@@ -214,26 +237,31 @@ window.AsgardAdminTimesheetSettingsPage = (function () {
         wrap.style.cssText = 'min-width:160px;display:flex;flex-direction:column;gap:4px';
 
         const lab = document.createElement('label');
-        lab.textContent = it.label;
+        lab.textContent = it.label + ', ₽';
         lab.style.cssText = 'font-size:12px;color:var(--t-2,#8E8E93);font-weight:600';
         wrap.appendChild(lab);
 
         const inp = document.createElement('input');
         inp.type = 'number';
         inp.min = '0';
-        inp.step = '1';
+        inp.step = '10';
         inp.inputMode = 'numeric';
         inp.value = String(_values[k] != null ? _values[k] : 0);
-        inp.style.cssText = 'padding:8px 10px;background:var(--inp-bg,#0a0a0c);border:1px solid var(--brd-2,#2a2a36);border-radius:6px;color:var(--t-1,#F5F5F7);font-size:14px;width:100px';
+        inp.style.cssText = 'padding:8px 10px;background:var(--inp-bg,#0a0a0c);border:1px solid var(--brd-2,#2a2a36);border-radius:6px;color:var(--t-1,#F5F5F7);font-size:14px;width:120px';
         inp.setAttribute('data-key', k);
         inp.addEventListener('input', function () {
-          const v = Math.max(0, Math.round(Number(inp.value) || 0));
+          const v = snap10(inp.value);
           _values[k] = v;
           const meta = wrap.querySelector('.ats-meta');
           if (meta) {
-            if (_original[k] !== v) meta.textContent = 'Было: ' + (_original[k] != null ? _original[k] : '—');
+            if (_original[k] !== v) meta.textContent = 'Было: ' + (_original[k] != null ? fmtRub(_original[k]) : '—');
             else meta.textContent = '';
           }
+        });
+        inp.addEventListener('blur', function () {
+          const v = snap10(inp.value);
+          inp.value = String(v);
+          _values[k] = v;
         });
         wrap.appendChild(inp);
 
@@ -241,7 +269,7 @@ window.AsgardAdminTimesheetSettingsPage = (function () {
         meta.className = 'ats-meta';
         meta.style.cssText = 'font-size:11px;color:var(--warn,#f59e0b);min-height:14px';
         meta.textContent = (_original[k] !== _values[k])
-          ? ('Было: ' + (_original[k] != null ? _original[k] : '—'))
+          ? ('Было: ' + (_original[k] != null ? fmtRub(_original[k]) : '—'))
           : '';
         wrap.appendChild(meta);
 
@@ -254,7 +282,7 @@ window.AsgardAdminTimesheetSettingsPage = (function () {
   }
 
   async function render({ layout, title }) {
-    await layout('', { title: title || 'Настройки баллов табеля' });
+    await layout('', { title: title || 'Ставки этапов, ₽' });
     const root = document.getElementById('layout');
     if (!root) return;
 
@@ -262,8 +290,8 @@ window.AsgardAdminTimesheetSettingsPage = (function () {
       + '<div id="atsPage" style="padding:16px;max-width:900px;margin:0 auto">'
       +   '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;gap:12px">'
       +     '<div>'
-      +       '<h2 style="margin:0;font-size:20px;font-weight:800;color:var(--t-1,#F5F5F7)">⚙ Баллы табеля</h2>'
-      +       '<div style="font-size:12px;color:var(--t-3,#7c7c87);margin-top:4px">Очки за день: склад / медосмотр / дорога</div>'
+      +       '<h2 style="margin:0;font-size:20px;font-weight:800;color:var(--t-1,#F5F5F7)">⚙ Ставки этапов, ₽</h2>'
+      +       '<div style="font-size:12px;color:var(--t-3,#7c7c87);margin-top:4px">Склад / МО / дорога в рублях (шаг 10 ₽)</div>'
       +     '</div>'
       +     '<button id="atsSave" class="btn gold" style="font-size:13px;padding:8px 18px">Сохранить</button>'
       +   '</div>'

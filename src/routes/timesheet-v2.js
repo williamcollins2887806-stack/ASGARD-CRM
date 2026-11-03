@@ -394,31 +394,38 @@ function cellTypeFromShift(shift) {
 
 // Загрузка position_points + per_diem_default
 async function loadSettings(db) {
-  const out = { position_points: {}, per_diem_default: 1000 };
-  // position_points
+  const out = { position_points: {}, position_rates: {}, per_diem_default: 1000 };
+  // position_points (legacy) + position_rates (₽ с 01.11)
   if (await tableExists(db, 'position_points')) {
     try {
-      const { rows } = await db.query(`SELECT type, position, points FROM position_points`);
+      const { rows } = await db.query(`SELECT type, position, points, rate_rub FROM position_points`);
       for (const r of rows) {
         const key = r.position ? `${r.type}:${r.position}` : r.type;
         out.position_points[key] = Number(r.points);
+        const rub = r.rate_rub != null ? Number(r.rate_rub) : (Number(r.points) || 0) * 500;
+        out.position_rates[key] = rub;
       }
-    } catch (_) { /* schema mismatch */ }
+    } catch (_) {
+      try {
+        const { rows } = await db.query(`SELECT type, position, points FROM position_points`);
+        for (const r of rows) {
+          const key = r.position ? `${r.type}:${r.position}` : r.type;
+          out.position_points[key] = Number(r.points);
+          out.position_rates[key] = (Number(r.points) || 0) * 500;
+        }
+      } catch (__) { /* schema mismatch */ }
+    }
   }
-  // fallback значения. V255: medical 6→7, ship=12 (новый тип, альтернатива travel).
-  // 24.06.2026 fix: waiting=6 (Ожидание). Ранее pointsFor(waiting) возвращал 0 —
-  // в общем табеле все «⏰ Ожидание» рендерились с базой 13, потому что подтягивалась
-  // tariff_points (см. fix в field_checkins-loop ниже). Теперь waiting честно = 6.
-  if (!('warehouse:слесарь' in out.position_points)) out.position_points['warehouse:слесарь'] = 10;
-  if (!('warehouse:мастер' in out.position_points)) out.position_points['warehouse:мастер'] = 12;
-  if (!('medical' in out.position_points)) out.position_points['medical'] = 7;
-  if (!('travel'  in out.position_points)) out.position_points['travel']  = 6;
-  if (!('ship'    in out.position_points)) out.position_points['ship']    = 12;
-  if (!('training' in out.position_points)) out.position_points['training'] = 7;
-  if (!('helicopter' in out.position_points)) out.position_points['helicopter'] = 6;
-  if (!('waiting' in out.position_points)) out.position_points['waiting'] = 6;
-  if (!('office' in out.position_points)) out.position_points['office'] = 16;
-  if (!('remote' in out.position_points)) out.position_points['remote'] = 10;
+  // fallback: баллы (legacy) + рубли (канон)
+  const FALLBACK_PTS = {
+    'warehouse:слесарь': 10, 'warehouse:мастер': 12,
+    medical: 7, travel: 6, ship: 12, training: 7, helicopter: 6,
+    waiting: 6, office: 16, remote: 10
+  };
+  for (const [k, pts] of Object.entries(FALLBACK_PTS)) {
+    if (!(k in out.position_points)) out.position_points[k] = pts;
+    if (!(k in out.position_rates)) out.position_rates[k] = pts * 500;
+  }
 
   // Цена балла (₽) — из тарифной сетки или settings
   out.point_value = 500;
@@ -451,25 +458,38 @@ async function loadSettings(db) {
   return out;
 }
 
-// Точечная оценка баллов для конкретного stage_type/shift
+// Точечная оценка баллов (legacy) для конкретного stage_type/shift
 function pointsFor(settings, type, position) {
   if (type === 'day' || type === 'night') return null; // считаются из day_rate
   if (type === 'warehouse') {
     const k = `warehouse:${position || 'слесарь'}`;
     return Number(settings.position_points[k] ?? settings.position_points['warehouse:слесарь'] ?? 10);
   }
-  // V255: medical дефолт 6→7, добавлен ship=12 (альтернатива дороги за повышенную ставку).
   if (type === 'medical') return Number(settings.position_points['medical'] ?? 7);
   if (type === 'travel')  return Number(settings.position_points['travel']  ?? 6);
   if (type === 'ship')    return Number(settings.position_points['ship']    ?? 12);
   if (type === 'training') return Number(settings.position_points['training'] ?? 7);
   if (type === 'helicopter') return Number(settings.position_points['helicopter'] ?? 6);
-  // 24.06.2026 fix: ранее возвращал 0 — в общем табеле «⏰ Ожидание» получалось 13
-  // (из tariff_points), и юзер жаловался «все ячейки 13 баллов». Правильно: 6.
   if (type === 'waiting') return Number(settings.position_points['waiting'] ?? 6);
   if (type === 'office') return Number(settings.position_points['office'] ?? 16);
   if (type === 'remote') return Number(settings.position_points['remote'] ?? 10);
   return 0;
+}
+
+/** Ставка этапа в рублях (канон с 01.11). */
+function amountFor(settings, type, position) {
+  if (type === 'day' || type === 'night') return null;
+  const rates = settings.position_rates || {};
+  if (type === 'warehouse') {
+    const k = `warehouse:${position || 'слесарь'}`;
+    if (rates[k] != null) return Number(rates[k]);
+    if (rates['warehouse:слесарь'] != null) return Number(rates['warehouse:слесарь']);
+  } else if (rates[type] != null) {
+    return Number(rates[type]);
+  }
+  const pts = pointsFor(settings, type, position);
+  const pv = Number(settings.point_value || 500);
+  return Math.round(Number(pts || 0) * pv);
 }
 
 /**
@@ -2323,10 +2343,8 @@ async function routes(fastify) {
 
       const pts = pointsFor(settings, type, position);
       const pointValue = Number(settings.point_value || 500);
-      // D-266 (15.10.2026): «1 балл = 500 ₽» для ВСЕХ типов, включая waiting.
-      // Ранее ожидание намеренно давало 0 ₽ (баллы есть, денег нет) — заказчик
-      // подтвердил, что ожидание платное, поэтому исключение снято: 6 бал. = 3 000 ₽.
-      const ratePerDay = Math.round(Number(pts || 0) * pointValue);
+      // С 01.11: ставка этапа из rate_rub (те же суммы, без баллов в UI).
+      const ratePerDay = Math.round(Number(amountFor(settings, type, position) || 0));
       const amountEarned = ratePerDay;
 
       // Свободные этапы: work_id уже резолвнут через resolveFreestandingWorkId
@@ -2702,7 +2720,10 @@ async function routes(fastify) {
       const viewer = request.user || {};
       // FIX #6: per_diem_default не должен утекать рядовым ролям (PM, WAREHOUSE,
       // TO, OFFICE_MANAGER). Видят только GLOBAL_ROLES (ADMIN/DIRECTOR_*/BUH/HR/HR_MANAGER).
-      const response = { position_points: settings.position_points };
+      const response = {
+        position_points: settings.position_points,
+        position_rates: settings.position_rates || {}
+      };
       if (GLOBAL_ROLES.includes(viewer.role)) {
         response.per_diem_default = settings.per_diem_default;
       }
@@ -2721,22 +2742,23 @@ async function routes(fastify) {
       const body = request.body || {};
       const type = body.type;
       const position = body.position || null;
-      const points = parseInt(body.points, 10);
-      // V255: добавлен 'ship' — альтернативная дорога с повышенной ставкой (12 баллов).
-      if (!['warehouse','medical','travel','ship','training','helicopter','office','remote'].includes(type)) {
-        return reply.code(400).send({ error: 'bad type' });
+      // С 01.11: предпочитаем rate_rub; points — legacy (rate_rub / 500).
+      let rateRub = body.rate_rub != null ? parseFloat(body.rate_rub) : NaN;
+      let points = body.points != null ? parseInt(body.points, 10) : NaN;
+      if (Number.isFinite(rateRub) && rateRub >= 0) {
+        rateRub = Math.round(rateRub / 10) * 10;
+        points = Math.round(rateRub / 500);
+      } else if (Number.isFinite(points) && points >= 0) {
+        rateRub = points * 500;
+      } else {
+        return reply.code(400).send({ error: 'bad rate_rub / points' });
       }
-      if (!Number.isFinite(points) || points < 0) {
-        return reply.code(400).send({ error: 'bad points' });
+      if (!['warehouse','medical','travel','ship','training','helicopter','office','remote','waiting'].includes(type)) {
+        return reply.code(400).send({ error: 'bad type' });
       }
       if (!(await tableExists(db, 'position_points'))) {
         return reply.code(503).send({ error: 'position_points table not ready' });
       }
-      // FIX #4: V231 завёл UNIQUE INDEX на (type, (COALESCE(position, ''))) — это
-      // expression-индекс. ON CONFLICT по выражению в Postgres работает только
-      // когда INFER-spec ИДЕНТИЧЕН индексу (вкл. скобки/каст). Чтобы не зависеть
-      // от точного синтаксиса — делаем явный upsert в транзакции (SELECT-then-
-      // UPDATE-или-INSERT). Семантика «один setting на (type,position)» сохранена.
       const viewer = request.user || {};
       const result = await db.transaction(async (client) => {
         const sel = await client.query(`
@@ -2748,17 +2770,17 @@ async function routes(fastify) {
         if (sel.rows.length) {
           const upd = await client.query(`
             UPDATE position_points
-               SET points = $2, updated_by = $3, updated_at = NOW()
+               SET points = $2, rate_rub = $3, updated_by = $4, updated_at = NOW()
              WHERE id = $1
-             RETURNING type, position, points
-          `, [sel.rows[0].id, points, viewer.id]);
+             RETURNING type, position, points, rate_rub
+          `, [sel.rows[0].id, points, rateRub, viewer.id]);
           return upd.rows[0];
         }
         const ins = await client.query(`
-          INSERT INTO position_points (type, position, points, updated_by, updated_at)
-          VALUES ($1, $2, $3, $4, NOW())
-          RETURNING type, position, points
-        `, [type, position, points, viewer.id]);
+          INSERT INTO position_points (type, position, points, rate_rub, updated_by, updated_at)
+          VALUES ($1, $2, $3, $4, $5, NOW())
+          RETURNING type, position, points, rate_rub
+        `, [type, position, points, rateRub, viewer.id]);
         return ins.rows[0];
       });
       return { ok: true, row: result };

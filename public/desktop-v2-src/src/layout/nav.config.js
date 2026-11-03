@@ -139,7 +139,7 @@ export const NAV_ITEMS = [
 
   // ── СИСТЕМА ──
   { r: '/settings',     l: 'Настройки',           d: 'Справочники',           i: '⚙️', g: 'system', roles: ['ADMIN'] },
-  { r: '/admin/timesheet-settings', l: 'Баллы табеля', d: 'Очки за склад / МО / дорогу', i: '📊', g: 'system', roles: ['ADMIN','DIRECTOR_GEN','DIRECTOR_COMM','DIRECTOR_DEV','BUH'] },
+  { r: '/admin/timesheet-settings', l: 'Ставки этапов', d: 'Ставки ₽ за склад / МО / дорогу', i: '📊', g: 'system', roles: ['ADMIN','DIRECTOR_GEN','DIRECTOR_COMM','DIRECTOR_DEV','BUH'] },
   { r: '/backup',       l: 'Резервные копии',     d: 'Экспорт/импорт',        i: '💾', g: 'system', roles: ['ADMIN'] },
   { r: '/sync',         l: 'PostgreSQL Sync',     d: 'Синхронизация',         i: '🔄', g: 'system', roles: ['ADMIN'] },
   { r: '/diag',         l: 'Диагностика',         d: 'Self-test',             i: '🔬', g: 'system', roles: ['ADMIN'] },

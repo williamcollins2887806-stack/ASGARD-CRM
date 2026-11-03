@@ -286,7 +286,7 @@ export function EditEmployeeModal({ employee, onSaved }) {
 
           <Section title="Работа">
             <div className="grid-2-1-1 gap-10">
-              <Field label="Должность" hint="Влияет на баллы за склад (слесарь=10б, мастер=12б). РП — руководитель, не попадает в табель как рабочий.">
+              <Field label="Должность" hint="Влияет на ставку за склад (слесарь=5 000 ₽, мастер=6 000 ₽). РП — руководитель, не попадает в табель как рабочий.">
                 <SelectInput
                   value={STANDARD_ROLE_TAGS.includes(form.role_tag) ? form.role_tag : (form.role_tag ? '__other__' : 'слесарь')}
                   onChange={(v) => set('role_tag', v === '__other__' ? form.role_tag : v)}

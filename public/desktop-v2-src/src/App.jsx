@@ -263,7 +263,7 @@ export default function App() {
               <Route path="/timesheet-travel"    element={<Protected title="Табель учёта дороги"          roles={['OFFICE_MANAGER','HEAD_TO','ADMIN','DIRECTOR_GEN','DIRECTOR_COMM','DIRECTOR_DEV']}><Timesheet mode="travel" /></Protected>} />
               <Route path="/timesheet"           element={<Protected title="Общий табель — Табель дружины" roles={['DIRECTOR_GEN','DIRECTOR_COMM','DIRECTOR_DEV','ADMIN','BUH','HR','HR_MANAGER']}><Timesheet mode="global" /></Protected>} />
               <Route path="/site-crew"           element={<Protected title="Кто на объектах" roles={['ADMIN','HEAD_TO','DIRECTOR_GEN','DIRECTOR_COMM','DIRECTOR_DEV']}><SiteCrew /></Protected>} />
-              <Route path="/admin/timesheet-settings" element={<Protected title="Настройки баллов табеля" roles={['ADMIN','DIRECTOR_GEN','DIRECTOR_COMM','DIRECTOR_DEV','BUH']}><AdminTimesheetSettings /></Protected>} />
+              <Route path="/admin/timesheet-settings" element={<Protected title="Ставки этапов табеля" roles={['ADMIN','DIRECTOR_GEN','DIRECTOR_COMM','DIRECTOR_DEV','BUH']}><AdminTimesheetSettings /></Protected>} />
               <Route path="/personnel" element={<Protected title="Дружина"><Personnel /></Protected>} />
               <Route path="/employee" element={<Protected title="Дружина"><Personnel /></Protected>} />
               <Route path="/hr-requests" element={<Protected title="Заявки персонала"><HrRequests /></Protected>} />

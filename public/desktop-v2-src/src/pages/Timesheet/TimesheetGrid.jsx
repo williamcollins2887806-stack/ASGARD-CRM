@@ -15,6 +15,7 @@ import {
   TYPE_META, daysInMonth, toIsoDate, fmtNum, fmtMoney, roleShort, fmtDateTime,
   groupEmployees, inferWorkIdForEmployee, typeRequiresWorkId
 } from './api';
+import { fmtCompactRub, compactRubTitle } from '@/lib/moneyCompact';
 
 const TOOLTIP_DELAY = 300;
 
@@ -209,7 +210,7 @@ export default function TimesheetGrid({
                 </th>
               ))}
               {showDaysCol && <th className="ts-total-cell" scope="col">Дни</th>}
-              {showPoints && <th className="ts-total-cell" scope="col">Баллы</th>}
+              {showPoints && <th className="ts-total-cell" scope="col">Сумма</th>}
               {showAmount && <th className="ts-total-cell money" scope="col">Сумма</th>}
               {showPerDiem && <th className="ts-total-cell money" scope="col">Сутки</th>}
               {/* Phase 1C — 9 финансовых колонок (mode='global'): 1B+ добавлены 🎁/⚠
@@ -405,7 +406,9 @@ function EmployeeRow({ employee, days, cols, showDaysCol, showAmount, showPerDie
       )}
       {showPoints && (
         <td className="ts-total-cell">
-          {employee.total_points != null ? fmtNum(employee.total_points) : '—'}
+          {employee.total_amount != null
+            ? (fmtCompactRub(employee.total_amount) || fmtMoney(employee.total_amount))
+            : (employee.total_points != null ? fmtCompactRub(Number(employee.total_points) * 500) : '—')}
         </td>
       )}
       {showAmount && (
@@ -641,10 +644,13 @@ function Cell({ employee, day, cell, cols, canEdit, isLocked, onClick, onEnter, 
   const meta = TYPE_META[cell.type] || TYPE_META.day;
   const dirArrow = cell.direction === 'to_site' ? '→' : (cell.direction === 'from_site' ? '←' : '');
   let content;
-  if (cols.points === 'always' && cell.points != null) {
-    content = String(cell.points) + dirArrow;
-  } else if (cols.points === 'mine' && cell.is_mine && cell.points != null) {
-    content = String(cell.points) + dirArrow;
+  const rubVal = cell.amount != null
+    ? Number(cell.amount)
+    : (cell.points != null ? Number(cell.points) * 500 : null);
+  if (cols.points === 'always' && rubVal != null) {
+    content = (fmtCompactRub(rubVal) || String(Math.round(rubVal))) + dirArrow;
+  } else if (cols.points === 'mine' && cell.is_mine && rubVal != null) {
+    content = (fmtCompactRub(rubVal) || String(Math.round(rubVal))) + dirArrow;
   } else {
     content = meta.icon + dirArrow;
   }
@@ -669,7 +675,7 @@ function Cell({ employee, day, cell, cols, canEdit, isLocked, onClick, onEnter, 
       onMouseLeave={onLeave}
       role={canEdit ? 'button' : 'img'}
       tabIndex={canEdit ? 0 : undefined}
-      aria-label={`${meta.title} ${cell.points != null ? cell.points + ' баллов' : ''}`}
+      aria-label={`${meta.title} ${rubVal != null ? (compactRubTitle(rubVal) || fmtCompactRub(rubVal)) : ''}`}
       onKeyDown={(e) => {
         if (canEdit && !isLocked && (e.key === 'Enter' || e.key === ' ')) {
           e.preventDefault();
@@ -692,12 +698,13 @@ function Tooltip({ x, y, employee, day, cell, dateIso }) {
     transform: 'translate(-50%, -100%)'
   };
   // FIX 8 — формат с телефоном автора
-  // FIX (24.06.2026) — добавлены «Часы» отдельной строкой. Раньше юзер видел
-  // только «N баллов» и путал это с часами (13 баллов ≠ 13 часов). Часы теперь
-  // явные. Стейджи (warehouse/medical/travel/ship/waiting) часов не имеют —
-  // поэтому показываем только если backend прислал hours_worked/hours_paid.
+  // FIX (24.06.2026) — «Часы» отдельной строкой.
+  // С 01.11: в ячейках/tooltip — ₽, не баллы.
   const dt = dateIso ? dateIso.split('-').reverse().join('.') : '';
   const hasHours = (cell.hours_worked != null || cell.hours_paid != null);
+  const tipRub = cell.amount != null
+    ? Number(cell.amount)
+    : (cell.points != null ? Number(cell.points) * 500 : null);
   return (
     <div className="ts-tooltip" style={style} role="tooltip">
       <div className="ts-tooltip-title">{employee.fio} · {dt}</div>
@@ -705,8 +712,7 @@ function Tooltip({ x, y, employee, day, cell, dateIso }) {
         <span aria-hidden="true">{meta.icon}</span> {meta.title}
         {cell.direction === 'to_site' && ' · → Туда'}
         {cell.direction === 'from_site' && ' · ← Обратно'}
-        {cell.points != null && ` · ${cell.points} баллов`}
-        {cell.amount != null && cell.amount > 0 && ` · ${fmtMoney(cell.amount)}`}
+        {tipRub != null && tipRub > 0 && ` · ${compactRubTitle(tipRub) || fmtMoney(tipRub)}`}
       </div>
       {hasHours && (
         <div className="ts-tooltip-row">

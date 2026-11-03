@@ -15,7 +15,7 @@ import { birthAgeHelp } from '@/lib/birthDate';
 import { createEmployee } from './api';
 import { ROLE_TAGS } from './employeeFormState';
 
-// Должность влияет на баллы в табеле (склад 10б vs 12б).
+// Должность влияет на ставку в табеле (склад 5 000 / 6 000 ₽).
 const SPECIALTIES = ROLE_TAGS;
 
 function emitChanged() {
@@ -109,7 +109,7 @@ export function AddEmployeeModal({ onSaved }) {
           </Field>
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 140px 1fr', gap: 10 }}>
-            <Field label="Должность" hint="Слесарь — базовая ставка (склад 10б). Мастер — повышенная (склад 12б). РП — руководитель.">
+            <Field label="Должность" hint="Слесарь — базовая ставка (склад 5 000 ₽). Мастер — повышенная (склад 6 000 ₽). РП — руководитель.">
               <SelectInput
                 value={form.role_tag || 'слесарь'}
                 onChange={(v) => set('role_tag', v)}

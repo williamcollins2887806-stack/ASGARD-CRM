@@ -41,8 +41,24 @@ const STAGE_POINTS = {
   office: 16,
   remote: 10
 };
+/** Ставки этапов в ₽ (бывшие баллы × 500). */
+const STAGE_RATES = {
+  warehouse: 5000,
+  medical: 3500,
+  travel: 3000,
+  ship: 6000,
+  training: 3500,
+  helicopter: 3000,
+  waiting: 3000,
+  office: 8000,
+  remote: 5000
+};
 function pointsForStage(type) {
   return STAGE_POINTS[type] != null ? STAGE_POINTS[type] : 0;
+}
+function rateForStage(type) {
+  if (STAGE_RATES[type] != null) return STAGE_RATES[type];
+  return pointsForStage(type) * 500;
 }
 
 // D-246: резолв user.id для FK `entered_by_user_id` (request.user.id не всегда user.id).
@@ -570,15 +586,15 @@ async function routes(fastify, options) {
     }
 
     // warehouse/medical/waiting/travel → field_trip_stages (work_id может быть NULL)
-    // tariff_points — честные баллы за этап (⏳ waiting = 6). status='completed':
-    // только это значение читают worker-табель/ФОТ/суточные (активными их не считают).
+    // С 01.11: rate_per_day / amount_earned в ₽ (rateForStage). tariff_points — legacy.
     const stagePoints = pointsForStage(type);
+    const stageRate = (amount != null && Number(amount) > 0) ? Number(amount) : rateForStage(type);
     const { rows: [st] } = await db.query(`
       INSERT INTO field_trip_stages
         (employee_id, work_id, stage_type, date_from, date_to, days_count, tariff_points, rate_per_day, amount_earned, status, created_by, note, entered_by_user_id)
       VALUES ($1, $2, $3, $4, $4, 1, $5, $6, $7, 'completed', $8, $9, $10)
       RETURNING *
-    `, [employee_id, work_id || null, type, date, stagePoints, amount || 0, amount || 0, request.user.id, note || null, await resolveEnteredByUserId(db, request.user)]);
+    `, [employee_id, work_id || null, type, date, stagePoints, stageRate, stageRate, request.user.id, note || null, await resolveEnteredByUserId(db, request.user)]);
     return { ok: true, entry: st, kind: 'stage' };
   });
 }

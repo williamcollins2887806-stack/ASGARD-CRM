@@ -1466,18 +1466,21 @@ async function routes(fastify, options) {
     return shift || 'day';
   }
 
-  function _checkinPoints(row) {
-    const type = _normShiftType(row.shift);
+  function _checkinAmount(row) {
     const amount = Number(row.amount_earned || 0);
-    const pv = Number(row.point_value || 500);
+    if (amount > 0) return Math.round(amount);
     const dayRate = Number(row.day_rate || 0);
-    if (type === 'day' || type === 'night') {
-      if (amount > 0 && pv > 0) return Math.round((amount / pv) * 10) / 10;
-      if (dayRate > 0 && pv > 0) return dayRate <= 50 ? dayRate : Math.round((dayRate / pv) * 10) / 10;
-      return row.tariff_points != null ? Number(row.tariff_points) : 0;
-    }
+    // day_rate уже в ₽; эвристику «≤50 = баллы» убрали с 01.11
+    if (dayRate > 0) return Math.round(dayRate);
+    return 0;
+  }
+
+  /** Legacy: баллы = сумма / 500 (для старых клиентов). */
+  function _checkinPoints(row) {
+    const amount = _checkinAmount(row);
+    const pv = Number(row.point_value || 500);
+    if (amount > 0 && pv > 0) return Math.round((amount / pv) * 100) / 100;
     if (row.tariff_points != null) return Number(row.tariff_points);
-    if (amount > 0 && pv > 0) return Math.round((amount / pv) * 10) / 10;
     return 0;
   }
 

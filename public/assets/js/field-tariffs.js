@@ -86,8 +86,7 @@ window.AsgardFieldTariffsPage = (function () {
       table.style.cssText = 'width:100%;border-collapse:collapse;font-size:13px';
       table.innerHTML = `<thead><tr>
         <th style="text-align:left;padding:8px;border-bottom:1px solid var(--brd);font-weight:500;color:var(--t2)">Должность</th>
-        <th style="text-align:center;padding:8px;border-bottom:1px solid var(--brd);font-weight:500;color:var(--t2);width:80px">Баллы</th>
-        <th style="text-align:right;padding:8px;border-bottom:1px solid var(--brd);font-weight:500;color:var(--t2);width:120px">Ставка ₽/смена</th>
+        <th style="text-align:right;padding:8px;border-bottom:1px solid var(--brd);font-weight:500;color:var(--t2);width:140px">Ставка, ₽/смена</th>
         <th style="text-align:center;padding:8px;border-bottom:1px solid var(--brd);font-weight:500;color:var(--t2);width:60px">Комби</th>
         <th style="text-align:center;padding:8px;border-bottom:1px solid var(--brd);font-weight:500;color:var(--t2);width:60px">Согл.</th>
         <th style="text-align:left;padding:8px;border-bottom:1px solid var(--brd);font-weight:500;color:var(--t2)">Заметки</th>
@@ -102,7 +101,6 @@ window.AsgardFieldTariffsPage = (function () {
 
         tr.innerHTML = `
           <td style="padding:6px 8px" class="ft-name">${esc(t.position_name)}</td>
-          <td style="padding:6px 8px;text-align:center" class="ft-pts">${t.points}</td>
           <td style="padding:6px 8px;text-align:right;font-weight:600" class="ft-rate">${money(t.rate_per_shift)}</td>
           <td style="padding:6px 8px;text-align:center">${t.is_combinable ? '✓' : ''}</td>
           <td style="padding:6px 8px;text-align:center">${t.requires_approval ? '✓' : ''}</td>
@@ -111,15 +109,11 @@ window.AsgardFieldTariffsPage = (function () {
             <button class="ft-del" data-id="${t.id}" style="background:none;border:none;color:#ef4444;cursor:pointer;font-size:14px" title="Удалить">✕</button>
           </td>`;
 
-        // Inline editing on double-click for name, points, rate
+        // Inline editing on double-click for name, rate
         const nameCell = tr.querySelector('.ft-name');
         nameCell.style.cursor = 'pointer';
         nameCell.title = 'Дважды кликните для редактирования';
         nameCell.addEventListener('dblclick', () => inlineEdit(nameCell, t.id, 'position_name', t.position_name));
-
-        const ptsCell = tr.querySelector('.ft-pts');
-        ptsCell.style.cursor = 'pointer';
-        ptsCell.addEventListener('dblclick', () => inlineEdit(ptsCell, t.id, 'points', t.points, 'number'));
 
         const rateCell = tr.querySelector('.ft-rate');
         rateCell.style.cursor = 'pointer';
@@ -145,11 +139,10 @@ window.AsgardFieldTariffsPage = (function () {
       wrap.appendChild(section);
     }
 
-    // Point value note
     const note = document.createElement('div');
     note.className = 'help';
     note.style.cssText = 'margin-top:12px;font-size:12px;color:var(--t2)';
-    note.textContent = 'Стоимость 1 балла: 500 ₽. Ставка = Баллы × 500.';
+    note.textContent = 'Ставка задаётся в рублях за смену (шаг 10 ₽).';
     wrap.appendChild(note);
   }
 
@@ -158,6 +151,10 @@ window.AsgardFieldTariffsPage = (function () {
     const input = document.createElement('input');
     input.type = type || 'text';
     input.value = currentValue;
+    if (field === 'rate_per_shift') {
+      input.step = '10';
+      input.min = '0';
+    }
     input.style.cssText = 'width:100%;padding:4px 6px;font-size:13px;border:1px solid var(--gold);border-radius:4px;background:var(--bg1);color:var(--t1);outline:none';
     cell.innerHTML = '';
     cell.appendChild(input);
@@ -165,15 +162,30 @@ window.AsgardFieldTariffsPage = (function () {
     input.select();
 
     async function save() {
-      const newVal = type === 'number' ? parseFloat(input.value) : input.value.trim();
-      if (newVal === currentValue || (type === 'number' && isNaN(newVal))) {
+      let newVal = type === 'number' ? parseFloat(input.value) : input.value.trim();
+      if (type === 'number' && isNaN(newVal)) {
+        cell.innerHTML = origHtml;
+        return;
+      }
+      if (field === 'rate_per_shift' && type === 'number') {
+        const snap = (window.AsgardMoneyCompact && AsgardMoneyCompact.snapRubStep10)
+          ? AsgardMoneyCompact.snapRubStep10(newVal)
+          : Math.round(Number(newVal) / 10) * 10;
+        newVal = snap;
+      }
+      if (newVal === currentValue) {
         cell.innerHTML = origHtml;
         return;
       }
       try {
+        const body = { [field]: newVal };
+        // Legacy DB: points = rate / 500
+        if (field === 'rate_per_shift') {
+          body.points = Math.round(Number(newVal) / 500);
+        }
         await api('/tariffs/' + tariffId, {
           method: 'PUT',
-          body: JSON.stringify({ [field]: newVal }),
+          body: JSON.stringify(body),
         });
         cell.style.transition = 'background 0.5s';
         cell.style.background = 'rgba(16,185,129,0.15)';
@@ -215,15 +227,9 @@ window.AsgardFieldTariffsPage = (function () {
           <label style="font-size:12px;color:var(--t2)">Должность</label>
           <input id="ftAddName" type="text" placeholder="Слесарь полный функционал" style="width:100%;padding:8px;border:1px solid var(--brd);border-radius:6px;background:var(--bg2);color:var(--t1);font-size:13px;box-sizing:border-box">
         </div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
-          <div>
-            <label style="font-size:12px;color:var(--t2)">Баллы</label>
-            <input id="ftAddPts" type="number" value="12" style="width:100%;padding:8px;border:1px solid var(--brd);border-radius:6px;background:var(--bg2);color:var(--t1);font-size:13px;box-sizing:border-box">
-          </div>
-          <div>
-            <label style="font-size:12px;color:var(--t2)">Ставка (₽/смена)</label>
-            <input id="ftAddRate" type="number" value="6000" style="width:100%;padding:8px;border:1px solid var(--brd);border-radius:6px;background:var(--bg2);color:var(--t1);font-size:13px;box-sizing:border-box">
-          </div>
+        <div>
+          <label style="font-size:12px;color:var(--t2)">Ставка, ₽/смена</label>
+          <input id="ftAddRate" type="number" value="6000" step="10" min="0" style="width:100%;padding:8px;border:1px solid var(--brd);border-radius:6px;background:var(--bg2);color:var(--t1);font-size:13px;box-sizing:border-box">
         </div>
         <div style="display:flex;gap:16px">
           <label style="font-size:13px;display:flex;align-items:center;gap:6px">
@@ -252,8 +258,11 @@ window.AsgardFieldTariffsPage = (function () {
     modal.querySelector('#ftAddSave').addEventListener('click', async () => {
       const cat = modal.querySelector('#ftAddCat').value;
       const name = modal.querySelector('#ftAddName').value.trim();
-      const pts = parseInt(modal.querySelector('#ftAddPts').value) || 0;
-      const rate = parseFloat(modal.querySelector('#ftAddRate').value) || 0;
+      let rate = parseFloat(modal.querySelector('#ftAddRate').value) || 0;
+      rate = (window.AsgardMoneyCompact && AsgardMoneyCompact.snapRubStep10)
+        ? AsgardMoneyCompact.snapRubStep10(rate)
+        : Math.round(rate / 10) * 10;
+      const pts = Math.round(rate / 500);
       const combo = modal.querySelector('#ftAddCombo').checked;
       const appr = modal.querySelector('#ftAddAppr').checked;
       const notes = modal.querySelector('#ftAddNotes').value.trim();

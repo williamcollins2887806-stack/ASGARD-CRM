@@ -361,21 +361,30 @@ export function saveCrew(workId, crew) {
 }
 export function addCrewMember(workId, payload) {
   // Backend ждёт {employees:[{...}]}. Нормализуем поле role → field_role (бэк-имя).
-  const comboIds = Array.isArray(payload.combo_tariff_ids)
-    ? payload.combo_tariff_ids.map(Number).filter((n) => n > 0)
-    : (payload.combination_tariff_id ? [Number(payload.combination_tariff_id)] : []);
+  // С 01.11: доплата/ставка в ₽ (manual_extra_rub / day_rate_rub).
+  const hasRub = payload.manual_extra_rub != null && payload.manual_extra_rub !== '';
+  const comboIds = hasRub
+    ? []
+    : (Array.isArray(payload.combo_tariff_ids)
+      ? payload.combo_tariff_ids.map(Number).filter((n) => n > 0)
+      : (payload.combination_tariff_id ? [Number(payload.combination_tariff_id)] : []));
   const member = {
     employee_id: payload.employee_id,
     field_role: payload.field_role || payload.role_in_field || payload.role || 'worker',
     tariff_id: payload.tariff_id || null,
-    combination_tariff_id: comboIds[0] || payload.combination_tariff_id || null,
+    combination_tariff_id: hasRub ? null : (comboIds[0] || payload.combination_tariff_id || null),
     combo_tariff_ids: comboIds,
-    manual_extra_points: payload.manual_extra_points != null && payload.manual_extra_points !== ''
-      ? Number(payload.manual_extra_points)
-      : 0,
     shift_type: payload.shift_type || payload.shift || 'day',
     per_diem: payload.per_diem != null ? payload.per_diem : null
   };
+  if (hasRub) {
+    member.manual_extra_rub = Number(payload.manual_extra_rub) || 0;
+  } else if (payload.manual_extra_points != null && payload.manual_extra_points !== '') {
+    member.manual_extra_points = Number(payload.manual_extra_points);
+  }
+  if (payload.day_rate_rub != null && payload.day_rate_rub !== '') {
+    member.day_rate_rub = Number(payload.day_rate_rub);
+  }
   return fm(`/projects/${workId}/crew`, { method: 'POST', body: { employees: [member] } });
 }
 /** Soft leave (🚪 отъезд) — is_active=false + departure_date. */
@@ -443,21 +452,32 @@ export function returnCrewMember(workId, employeeId) {
  * (см. field-manage.js:148, ветка `if (existing.length > 0) UPDATE`).
  */
 export function updateCrewMemberTariff(workId, payload) {
-  const comboIds = Array.isArray(payload.combo_tariff_ids)
-    ? payload.combo_tariff_ids.map(Number).filter((n) => n > 0)
-    : (payload.combination_tariff_id ? [Number(payload.combination_tariff_id)] : []);
+  // С 01.11: доплата/ставка в ₽. При manual_extra_rub бэк обнуляет combo.
+  const hasRub = payload.manual_extra_rub != null && payload.manual_extra_rub !== '';
+  const comboIds = hasRub
+    ? []
+    : (Array.isArray(payload.combo_tariff_ids)
+      ? payload.combo_tariff_ids.map(Number).filter((n) => n > 0)
+      : (payload.combination_tariff_id ? [Number(payload.combination_tariff_id)] : []));
   const member = {
     employee_id: Number(payload.employee_id),
     field_role: payload.field_role || 'worker',
     shift_type: payload.shift_type || 'day',
     tariff_id: payload.tariff_id ? Number(payload.tariff_id) : null,
-    combination_tariff_id: comboIds[0] || null,
+    combination_tariff_id: hasRub ? null : (comboIds[0] || null),
     combo_tariff_ids: comboIds,
-    manual_extra_points: payload.manual_extra_points != null && payload.manual_extra_points !== ''
-      ? Number(payload.manual_extra_points)
-      : 0,
     per_diem: payload.per_diem != null && payload.per_diem !== '' ? Number(payload.per_diem) : null
   };
+  if (hasRub) {
+    member.manual_extra_rub = Number(payload.manual_extra_rub) || 0;
+  } else if (payload.manual_extra_points != null && payload.manual_extra_points !== '') {
+    member.manual_extra_points = Number(payload.manual_extra_points);
+  } else {
+    member.manual_extra_points = 0;
+  }
+  if (payload.day_rate_rub != null && payload.day_rate_rub !== '') {
+    member.day_rate_rub = Number(payload.day_rate_rub);
+  }
   // keep_inactive: обновить тариф уехавшему без возврата на объект
   if (payload.keep_inactive) member.keep_inactive = true;
   return fm(`/projects/${workId}/crew`, { method: 'POST', body: { employees: [member] } });

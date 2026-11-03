@@ -225,16 +225,31 @@ export function loadStats({ year, month } = {}) {
 
 /* ═══════════════════ ЭТАЛОННАЯ СЕТКА ─ payroll-grid ═══════════════════ */
 
-/* GET /api/worker-payments/reports/payroll-grid/:year/:month — расчёт сетки баллов */
+/* GET /api/worker-payments/reports/payroll-grid/:year/:month — расчёт сетки */
 export function loadPayrollGrid(year, month) {
   return api(`/api/worker-payments/reports/payroll-grid/${year}/${month}`);
 }
 
-/* PUT /api/worker-payments/reports/payroll-grid/:year/:month/save — сохранение баллов */
+/**
+ * PUT /api/worker-payments/reports/payroll-grid/:year/:month/save
+ * changes: [{ employee_id, day, amount_rub }] — день месяца 1..31, сумма в ₽.
+ */
 export function savePayrollGrid(year, month, changes) {
+  const byEmp = new Map();
+  for (const c of changes || []) {
+    const empId = Number(c.employee_id);
+    if (!empId) continue;
+    if (!byEmp.has(empId)) byEmp.set(empId, []);
+    const day = Number(c.day);
+    const date = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+    const amount = c.amount_rub != null ? Number(c.amount_rub) : (c.amount != null ? Number(c.amount) : null);
+    if (amount == null || !Number.isFinite(amount)) continue;
+    byEmp.get(empId).push({ date, amount_rub: Math.round(amount / 10) * 10 });
+  }
+  const rows = [...byEmp.entries()].map(([employee_id, days]) => ({ employee_id, days }));
   return api(`/api/worker-payments/reports/payroll-grid/${year}/${month}/save`, {
     method: 'PUT',
-    body: { changes }
+    body: { rows }
   });
 }
 

@@ -104,7 +104,7 @@ function MoneyDetail({ workId, onBack }) {
           <div className="flex justify-between text-sm py-1">
             <span style={{ color: 'var(--text-secondary)' }}>{data.tariff.position_name}</span>
             <span className="font-medium" style={{ color: 'var(--text-primary)' }}>
-              {data.tariff.points} бал. × {fmt(data.tariff.point_value || 500)} = {fmt(data.tariff.rate_per_shift)}/см
+              {fmt(data.tariff.rate_per_shift)}/см
             </span>
           </div>
           {data.combination && (
@@ -230,7 +230,6 @@ export default function FieldMoney() {
   const cur = sortedWorks[0] || {};
   const proj = project || {};
   const tariff = proj.tariff || {};
-  const pointValue = tariff.point_value || 500;
 
   const daysWorked = cur.days_worked || 0;
   const totalShifts = cur.total_shifts || 20;
@@ -293,14 +292,16 @@ export default function FieldMoney() {
             <div className="flex justify-between text-sm py-1">
               <span style={{ color: 'var(--text-secondary)' }}>{tariff.position_name}</span>
               <span className="font-medium" style={{ color: 'var(--text-primary)' }}>
-                {tariff.points} бал. × {fmt(pointValue)} = {fmt(tariff.rate_per_shift)}/см
+                {fmt(tariff.rate_per_shift)}/см
               </span>
             </div>
           )}
           {tariff.combination && (
             <div className="flex justify-between text-sm py-1">
               <span style={{ color: 'var(--gold)' }}>+ Совмещение: {tariff.combination.position_name}</span>
-              <span className="font-medium" style={{ color: 'var(--gold)' }}>+1 балл (+{fmt(pointValue)})</span>
+              <span className="font-medium" style={{ color: 'var(--gold)' }}>
+                +{fmt(tariff.combination.rate_per_shift)}
+              </span>
             </div>
           )}
           {proj.per_diem > 0 && (
@@ -317,7 +318,7 @@ export default function FieldMoney() {
             </>
           )}
           <p className="text-xs mt-2 italic" style={{ color: 'var(--text-tertiary)', borderTop: '1px solid var(--border-norse)', paddingTop: '8px' }}>
-            Тарифная сетка утверждена. 1 балл = {fmt(pointValue)}
+            Тарифная сетка утверждена. Ставка и доплата — в рублях за день.
           </p>
         </div>
       )}

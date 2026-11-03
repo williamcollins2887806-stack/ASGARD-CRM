@@ -30,10 +30,11 @@ import {
   createCheckin, updateCheckin, deleteCheckin
 } from '../api';
 import {
-  SHIFT_TYPES, getShiftMeta, fmtMoney, fmtInt, pointsColor,
+  SHIFT_TYPES, getShiftMeta, fmtMoney, fmtInt, amountColor,
   buildDateRange, dayLabel, dowShort, dayOfWeek,
-  extractPointValue, todayYmd
+  todayYmd
 } from './timesheetUtils';
+import { fmtCompactRub, compactRubTitle } from '@/lib/moneyCompact';
 import { ShiftPopover } from './ShiftPopover';
 import { BulkShiftModal } from './BulkShiftModal';
 
@@ -80,7 +81,6 @@ export default function TimesheetTab({ work }) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [editMode, setEditMode] = useState(false);
-  const [pointValue, setPointValue] = useState(500);
   const [exporting, setExporting] = useState(false);
 
   // Якорь и контекст popover'а (один на всю таблицу — экономит на DOM)
@@ -141,16 +141,6 @@ export default function TimesheetTab({ work }) {
       setLoading(false);
     }
   };
-
-  // Загрузка point_value (один раз на работу)
-  useEffect(() => {
-    let cancelled = false;
-    loadDashboard(work.id).then((dash) => {
-      if (cancelled) return;
-      setPointValue(extractPointValue(dash));
-    });
-    return () => { cancelled = true; };
-  }, [work.id]);
 
   // Загрузка табеля при смене дат
   useEffect(() => {
@@ -228,7 +218,7 @@ export default function TimesheetTab({ work }) {
   }, [rows]);
 
   /* D-295: отметки офиса (склад/МО/дорога/корабль), поставленные БЕЗ привязки к этой
-   * работе. Показываем только иконкой — без баллов и сумм: деньги уже учтены
+   * работе. Показываем только иконкой — без сумм: деньги уже учтены
    * в своей области, второй раз их складывать нельзя. */
   const infoMap = useMemo(() => {
     const m = new Map();
@@ -352,17 +342,15 @@ export default function TimesheetTab({ work }) {
   useEffect(() => { anchorRef.current = popState?.anchorEl || null; }, [popState]);
 
   /* ─── Подсчёт ИТОГО по таблице ─── */
-  let grandPoints = 0, grandEarned = 0, grandPerDiem = 0, grandTotal = 0;
+  let grandEarned = 0, grandPerDiem = 0, grandTotal = 0;
   const enrichedRows = rows.map((emp) => {
     const earned = parseFloat(emp.total_earned || 0);
-    const points = Math.round(earned / pointValue) || 0;
     const pd = parseFloat(emp.per_diem_total || 0);
     const total = parseFloat(emp.grand_total || 0);
-    grandPoints += points;
     grandEarned += earned;
     grandPerDiem += pd;
     grandTotal += total;
-    return { ...emp, _points: points, _earned: earned, _perDiem: pd, _total: total };
+    return { ...emp, _earned: earned, _perDiem: pd, _total: total };
   });
 
   return (
@@ -444,7 +432,6 @@ export default function TimesheetTab({ work }) {
                   );
                 })}
                 <th className="ft-ts-th-total">Дней</th>
-                <th className="ft-ts-th-total">Баллов</th>
                 <th className="ft-ts-th-total">Зараб.</th>
                 <th className="ft-ts-th-total">Суточные</th>
                 <th className="ft-ts-th-total ft-ts-th-grand">Итого</th>
@@ -513,7 +500,6 @@ export default function TimesheetTab({ work }) {
                           isPlanArrive={isPlanArrive}
                           isPlanSpan={isPlanSpan}
                           plannedOnly={!!emp.is_planned_only}
-                          pointValue={pointValue}
                           editMode={editMode && !emp.is_planned_only}
                           activeAnchor={popState?.anchorEl}
                           activeKey={popState ? popState.employee.employee_id + '|' + popState.date : null}
@@ -525,7 +511,7 @@ export default function TimesheetTab({ work }) {
                                 `${getShiftMeta(info.shift || info.stage_type).label}`
                                 + (info.work_title ? ` · «${info.work_title}»` : ' · вне объекта')
                                 + (info.entered_by_fio ? ` · внёс ${info.entered_by_fio}` : '')
-                                + '. Баллы в этом табеле не начисляются.',
+                                + '. Сумма в этом табеле не начисляется.',
                                 'info');
                               return;
                             }
@@ -561,7 +547,6 @@ export default function TimesheetTab({ work }) {
                       );
                     })}
                     <td className="ft-ts-total-num">{fmtInt(emp.days_count || 0)}</td>
-                    <td className="ft-ts-total-num">{fmtInt(emp._points)}</td>
                     <td className="ft-ts-total-num">{fmtMoney(emp._earned)}</td>
                     <td className="ft-ts-total-num">{fmtMoney(emp._perDiem)}</td>
                     <td className="ft-ts-total-num ft-ts-total-grand">{fmtMoney(emp._total)}</td>
@@ -572,7 +557,7 @@ export default function TimesheetTab({ work }) {
                 <td className="ft-ts-num" />
                 <td className="ft-ts-fio ft-ts-totals-label">ИТОГО:</td>
                 <td colSpan={dates.length} />
-                <td className="ft-ts-total-num">{fmtInt(grandPoints)}</td>
+                <td className="ft-ts-total-num" />
                 <td className="ft-ts-total-num">{fmtMoney(grandEarned)}</td>
                 <td className="ft-ts-total-num">{fmtMoney(grandPerDiem)}</td>
                 <td className="ft-ts-total-num ft-ts-total-grand">{fmtMoney(grandTotal)}</td>
@@ -585,7 +570,7 @@ export default function TimesheetTab({ work }) {
             {SHIFT_TYPES.map((st) => (
               <span key={st.value} className="ft-ts-legend-item" title={st.label}>
                 <span className="ic" aria-hidden="true">{st.icon}</span>
-                <span>{st.label} ({st.defaultPts} бал. = {fmtMoney(st.defaultPts * pointValue)})</span>
+                <span>{st.label} ({fmtMoney(st.defaultRub || st.defaultPts * 500)})</span>
               </span>
             ))}
             <span className="ft-ts-legend-item">
@@ -613,10 +598,8 @@ export default function TimesheetTab({ work }) {
             hours_worked: popState.day.hours_worked,
             hours_paid: popState.day.hours_paid,
             day_rate: popState.day.day_rate,
-            amount_earned: popState.day.amount,
-            points: Math.round(parseFloat(popState.day.amount ?? popState.day.amount_earned ?? popState.day.day_rate ?? 0) / pointValue) || 0
+            amount_earned: popState.day.amount ?? popState.day.amount_earned ?? popState.day.day_rate
           } : null}
-          pointValue={pointValue}
           isNew={popState.isNew}
           date={popState.date}
           employeeName={popState.employee.fio || `#${popState.employee.employee_id}`}
@@ -637,7 +620,7 @@ export default function TimesheetTab({ work }) {
 /* ─── Ячейка одного дня ─── */
 function ShiftCell({
   day, foreign, info, date, isWeekend, isToday, isPlanArrive, isPlanSpan, plannedOnly,
-  pointValue, editMode, activeAnchor, cellKey, activeKey, onClick
+  editMode, activeAnchor, cellKey, activeKey, onClick
 }) {
   const ref = useRef(null);
   const isActive = activeKey && activeKey === cellKey;
@@ -649,12 +632,13 @@ function ShiftCell({
 
   let content, color, bg, titleTxt;
   if (day) {
-    const pts = Math.round(parseFloat(day.amount ?? day.amount_earned ?? day.day_rate ?? 0) / pointValue) || 0;
+    const rub = Math.round(parseFloat(day.amount ?? day.amount_earned ?? day.day_rate ?? 0) || 0);
     const meta = getShiftMeta(day.shift);
-    content = <><span style={{ marginRight: 1 }}>{meta.icon}</span>{pts}</>;
-    color = pointsColor(pts);
+    const compact = fmtCompactRub(rub);
+    content = <><span style={{ marginRight: 1 }}>{meta.icon}</span>{compact}</>;
+    color = amountColor(rub);
     bg = meta.bg;
-    titleTxt = `${getShiftMeta(day.shift).label} · ${pts} бал. · ${fmtMoney(parseFloat(day.amount || day.amount_earned || 0))}`;
+    titleTxt = `${getShiftMeta(day.shift).label} · ${compactRubTitle(rub) || fmtMoney(rub)}`;
     if (isPlanArrive) titleTxt = `Планируемый заезд · ${titleTxt}`;
   } else if (foreign) {
     content = '🔒';
@@ -662,15 +646,14 @@ function ShiftCell({
     bg = 'rgba(245,158,11,0.10)';
     titleTxt = 'Занят на работе «' + (foreign.work_title || '—') + '» (РП ' + (foreign.pm_fio || '—') + '). Поставить чекин нельзя.';
   } else if (info) {
-    // D-295: отметка офиса — только иконка, без баллов и денег.
-    // Идёт ПОСЛЕ foreign: занятость на чужой работе важнее иконки офиса.
+    // D-295: отметка офиса — только иконка, без сумм.
     const meta = getShiftMeta(info.shift || info.stage_type);
     content = meta.icon;
     color = 'var(--t2)';
     bg = 'color-mix(in srgb, var(--gold) 7%, transparent)';
     titleTxt = `${meta.label}${info.work_title ? ` · объект «${info.work_title}»` : ' · вне объекта'}`
       + (info.entered_by_fio ? ` · внёс ${info.entered_by_fio}` : '')
-      + '. Отметка офиса: баллы в этом табеле не начисляются.';
+      + '. Отметка офиса: сумма в этом табеле не начисляется.';
   } else if (isPlanArrive) {
     content = <span className="ft-ts-plan-pin" aria-hidden="true">◆</span>;
     color = 'var(--gold)';
@@ -734,7 +717,7 @@ function ExportPerDiemModal({ onGo }) {
       <MHead icon="📥" title="Выгрузка табеля Excel" accent="gold" onClose={close} />
       <MBody>
         <p style={{ fontSize: 13, color: 'var(--t2)', margin: '0 0 12px', lineHeight: 1.45 }}>
-          В ячейках — только баллы, цвет = тип смены. Легенда под таблицей на одном листе.
+          В ячейках — сумма ₽ (компактно), цвет = тип смены. Легенда под таблицей на одном листе.
         </p>
         <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 14, cursor: 'pointer' }}>
           <input type="checkbox" checked={pd} onChange={(e) => setPd(e.target.checked)} />

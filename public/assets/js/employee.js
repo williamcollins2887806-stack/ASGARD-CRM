@@ -530,7 +530,7 @@ window.AsgardEmployeePage=(function(){
                 </div>
                 <div>
                   <label>Должность</label>
-                  <select id="role" ${canEdit?"":"disabled"} title="Слесарь — базовая ставка (склад 10б). Мастер — повышенная (склад 12б). РП — руководитель, не попадает в табель как рабочий.">
+                  <select id="role" ${canEdit?"":"disabled"} title="Слесарь — базовая ставка (склад 5 000 ₽). Мастер — повышенная (склад 6 000 ₽). РП — руководитель, не попадает в табель как рабочий.">
                     ${(() => {
                       const cur = (emp.role_tag||"").toLowerCase();
                       const opts = [
