@@ -93,9 +93,26 @@ const DEFAULT_MAX_COST = 150; // ₽ на один прогон (~1 лекция
 const EXIT_NO_CREDIT = 42;
 const ADVISORY_LOCK_KEY = 42042; // namespace: academy image generation
 
+/**
+ * Только явный «нет денег». НЕ матчить голое «billing» —
+ * RouterAI кладёт usage.billing в УСПЕШНЫЙ JSON → ложный NO_CREDIT
+ * выбрасывал уже оплаченные картинки (инцидент 03.11.2026, баланс 1300 ₽).
+ */
 function isNoCreditError(payload) {
-  const s = typeof payload === 'string' ? payload : JSON.stringify(payload || {});
-  return /insufficient[_ ]?(quota|funds|balance|credit)|billing|payment[_ ]required|out of credit|no credit|недостаточно|баланс.*(нулев|пуст|закончил)|402\b|credits?\s*(exhausted|depleted)/i.test(s);
+  let msg = '';
+  if (typeof payload === 'string') {
+    msg = payload;
+  } else if (payload && typeof payload === 'object') {
+    const err = payload.error;
+    msg = [
+      err && (err.message || err.code || err.type),
+      payload.message,
+      payload.code,
+    ].filter(Boolean).join(' ');
+    // Без error/message — не сканируем весь JSON (там бывает usage.billing).
+    if (!msg) return false;
+  }
+  return /insufficient[_ ]?(quota|funds|balance|credit)|payment[_ ]required|out of credit|no credit|недостаточно\s+средств|баланс.*(нулев|пуст|закончил)|credits?\s*(exhausted|depleted)/i.test(msg);
 }
 
 function parseMaxCost(args) {
@@ -211,13 +228,13 @@ async function generateImage(slot) {
       const text = await r.text();
       let j;
       try { j = JSON.parse(text); } catch (_) { j = { error: { message: text.slice(0, 200) } }; }
-      if (r.status === 402 || isNoCreditError(j) || isNoCreditError(text)) {
-        console.log(`[gen] ${slot.slug}: NO_CREDIT (HTTP ${r.status}) — ${JSON.stringify(j).slice(0, 160)}`);
-        return { ok: false, code: 'NO_CREDIT' };
-      }
+      // Сначала картинка: если b64 есть — это успех, даже если в JSON есть usage.billing.
       const b64 = j.data && j.data[0] && j.data[0].b64_json;
       if (!b64) {
-        if (isNoCreditError(j)) return { ok: false, code: 'NO_CREDIT' };
+        if (r.status === 402 || isNoCreditError(j) || isNoCreditError(text)) {
+          console.log(`[gen] ${slot.slug}: NO_CREDIT (HTTP ${r.status}) — ${JSON.stringify(j).slice(0, 160)}`);
+          return { ok: false, code: 'NO_CREDIT' };
+        }
         console.log(`[gen] ${slot.slug}: API вернул без картинки: ${JSON.stringify(j).slice(0, 160)}`);
         await sleep(4000);
         continue;
