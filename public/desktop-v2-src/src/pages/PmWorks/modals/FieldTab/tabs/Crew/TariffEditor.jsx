@@ -8,7 +8,7 @@ import { Field, SelectInput, MoneyInput } from '@/inputs/Inputs';
 import { toast } from '@/modals/Notifications';
 import { updateCrewMemberTariff } from '../../api';
 import { formatMoney as fmtMoney } from '@/lib/money';
-import { snapRubStep10 } from '@/lib/moneyCompact';
+import { snapRubStep10, tariffOptionLabel } from '@/lib/moneyCompact';
 
 export default function TariffEditor({
   member,
@@ -55,7 +55,7 @@ export default function TariffEditor({
       { value: '', label: '— выберите тариф —' },
       ...tariffs.map((t) => ({
         value: String(t.id),
-        label: `${t.position_name || t.label || t.name} · ${fmtMoney(t.rate_per_shift)}/смена`
+        label: `${tariffOptionLabel(t, fmtMoney)}/смена`
       }))
     ];
     if (tariffId && !opts.some((o) => o.value === String(tariffId))) {
@@ -70,7 +70,7 @@ export default function TariffEditor({
       if (orphan) {
         opts.splice(1, 0, {
           value: String(orphan.id),
-          label: `${orphan.position_name || orphan.label || orphan.name} · ${fmtMoney(orphan.rate_per_shift)}/смена`
+          label: `${tariffOptionLabel(orphan, fmtMoney)}/смена`
         });
       }
     }

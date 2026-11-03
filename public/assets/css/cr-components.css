@@ -249,25 +249,37 @@
   flex-direction: column;
   min-width: 180px;
   font-size: 13px;
+  line-height: 1.4;
+  text-transform: none;
+  letter-spacing: normal;
+  font-weight: 400;
 }
 
 .cr-emp-picker--fullwidth {
   width: 100%;
+  display: flex;
 }
 
 .cr-emp-picker__trigger {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 6px 10px;
+  padding: 10px 12px;
   background: var(--bg3);
   border: 1px solid var(--bg4);
   border-radius: 6px;
   color: var(--t1);
   cursor: pointer;
   transition: border-color 0.15s;
-  min-height: 34px;
+  min-height: 42px;
+  box-sizing: border-box;
   flex-wrap: wrap;
+  width: 100%;
+  text-transform: none;
+  letter-spacing: normal;
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 1.4;
 }
 
 .cr-emp-picker__trigger:hover {
@@ -328,6 +340,13 @@
 
 .cr-emp-picker__placeholder {
   color: var(--t3);
+  font-size: 14px;
+  line-height: 1.4;
+  text-transform: none;
+  letter-spacing: normal;
+  font-weight: 400;
+  white-space: nowrap;
+  overflow: visible;
 }
 
 .cr-emp-picker__count {
@@ -362,6 +381,8 @@
 .cr-emp-picker__modal {
   width: 700px;
   max-width: 95vw;
+  /* Явная высота: иначе flex:1 у списка схлопывается в 0 (пустой «Выбор сотрудника»). */
+  height: min(80vh, 560px);
   max-height: 90vh;
   background: var(--bg2);
   border-radius: 12px;
@@ -412,18 +433,31 @@
 .cr-emp-picker__filters {
   padding: 10px 16px;
   display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
   gap: 8px;
   border-bottom: 1px solid var(--bg4);
+  flex-shrink: 0;
 }
 
+/* Перебиваем глобальный app.css `input, select { width:100% }` —
+   иначе поиск схлопывается, а «Все роли» занимает всю строку. */
 .cr-emp-picker__search {
-  flex: 1;
-  padding: 6px 10px;
+  flex: 1 1 auto;
+  min-width: 0;
+  width: auto !important;
+  min-height: 40px;
+  height: 40px;
+  box-sizing: border-box;
+  padding: 8px 12px !important;
   background: var(--bg3);
   border: 1px solid var(--bg4);
   border-radius: 6px;
   color: var(--t1);
-  font-size: 12px;
+  font-size: 14px !important;
+  line-height: 1.35;
+  text-transform: none !important;
+  letter-spacing: normal !important;
   outline: none;
 }
 
@@ -433,21 +467,30 @@
 
 .cr-emp-picker__search::placeholder {
   color: var(--t3);
+  opacity: 1;
 }
 
 .cr-emp-picker__role-filter {
-  padding: 6px 8px;
+  flex: 0 0 auto;
+  width: auto !important;
+  max-width: 160px;
+  min-height: 40px;
+  height: 40px;
+  box-sizing: border-box;
+  padding: 8px 28px 8px 10px !important;
   background: var(--bg3);
   border: 1px solid var(--bg4);
   border-radius: 6px;
   color: var(--t1);
-  font-size: 12px;
-  min-width: 100px;
+  font-size: 13px !important;
+  text-transform: none !important;
+  letter-spacing: normal !important;
 }
 
 /* Employee list */
 .cr-emp-picker__list {
-  flex: 1;
+  flex: 1 1 auto;
+  min-height: 220px;
   overflow-y: auto;
   overflow-x: hidden;
   padding: 0;

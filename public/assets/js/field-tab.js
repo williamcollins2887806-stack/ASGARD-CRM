@@ -346,12 +346,31 @@ window.AsgardFieldTab = (function () {
     }
   }
 
+  /** Имя тарифа без «балл/б» в скобках — в UI только ₽ (сетка уже в рублях). */
+  function tariffDisplayName(t) {
+    var name = String((t && (t.position_name || t.name || t.label)) || '');
+    var pv = Number((t && t.point_value) || 500) || 500;
+    name = name.replace(/\(\+(\d+)\s*балл[а-яё]*\)/gi, function (_, n) {
+      return '(+' + money(Number(n) * pv) + ')';
+    });
+    name = name.replace(/\(\+(\d+)\s*б\)/gi, function (_, n) {
+      return '(+' + money(Number(n) * pv) + ')';
+    });
+    name = name.replace(/\((\d+)\s*б\)/gi, function (_, n) {
+      return '(' + money(Number(n) * pv) + ')';
+    });
+    return name.trim();
+  }
+  function tariffOptionLabel(t) {
+    return tariffDisplayName(t) + ' · ' + money(t && t.rate_per_shift);
+  }
+
   function tariffSelectOptions(tariffs, opts) {
     const warnIds = new Set(((opts && opts.warnIds) || []).map(String));
     return [{ value: '', label: '— выберите —' }].concat(
       tariffs.map(t => ({
         value: String(t.id),
-        label: `${t.position_name} · ${money(t.rate_per_shift)}`
+        label: tariffOptionLabel(t)
           + (warnIds.has(String(t.id)) ? ' ⚠ не из категории объекта' : '')
       }))
     );
@@ -1192,12 +1211,12 @@ window.AsgardFieldTab = (function () {
     pool.forEach(t => {
       const sel = Number(t.id) === Number(assignment.tariff_id) ? ' selected' : '';
       const warn = warnIds.has(String(t.id)) ? ' ⚠ не из категории объекта' : '';
-      opts += `<option value="${t.id}"${sel}>${esc(t.position_name)} · ${money(t.rate_per_shift)}${warn}</option>`;
+      opts += `<option value="${t.id}"${sel}>${esc(tariffOptionLabel(t))}${warn}</option>`;
     });
     let comboOpts = '<option value="">— нет —</option>';
     comboPool.filter(t => t.is_combinable).forEach(t => {
       const sel = Number(t.id) === Number(assignment.combination_tariff_id) ? ' selected' : '';
-      comboOpts += `<option value="${t.id}"${sel}>${esc(t.position_name)} (+${money(t.rate_per_shift || 0)})</option>`;
+      comboOpts += `<option value="${t.id}"${sel}>${esc(tariffDisplayName(t))} (+${money(t.rate_per_shift || 0)})</option>`;
     });
 
     AsgardUI.showModal({
@@ -1287,7 +1306,7 @@ window.AsgardFieldTab = (function () {
       }
       const opts = '<option value="">—</option>' + list.map(t =>
         '<option value="' + t.id + '"' + (String(t.id) === tid ? ' selected' : '') + '>' +
-        esc(t.position_name + ' · ' + money(t.rate_per_shift)) + '</option>'
+        esc(tariffOptionLabel(t)) + '</option>'
       ).join('');
       const rub = Number((list.find(t => String(t.id) === tid) || {}).rate_per_shift) || 0;
       return '<tr data-role="' + def.key + '">' +
@@ -1341,7 +1360,7 @@ window.AsgardFieldTab = (function () {
         if (!sel) return;
         const cur = sel.value;
         sel.innerHTML = '<option value="">—</option>' + list.map(t =>
-          '<option value="' + t.id + '">' + esc(t.position_name + ' · ' + money(t.rate_per_shift)) + '</option>'
+          '<option value="' + t.id + '">' + esc(tariffOptionLabel(t)) + '</option>'
         ).join('');
         if (list.some(t => String(t.id) === cur)) sel.value = cur;
         else sel.value = defaultTariffIdForRole(list, role, c) || (list[0] ? String(list[0].id) : '');
@@ -1418,16 +1437,16 @@ window.AsgardFieldTab = (function () {
     var empOptsHtml = ''; // legacy unused; CRSelect below
     var tariffOptsHtml = '<option value="">— выберите —</option>';
     filteredTariffs.forEach(function(t) {
-      tariffOptsHtml += '<option value="' + t.id + '" data-role-filter="1">' + esc(t.position_name + ' · ' + money(t.rate_per_shift)) + '</option>';
+      tariffOptsHtml += '<option value="' + t.id + '" data-role-filter="1">' + esc(tariffOptionLabel(t)) + '</option>';
     });
 
     var html = '' +
       '<div style="padding:6px 4px 4px">' +
         '<div id="acErr" style="display:none;background:rgba(239,68,68,0.12);border:1px solid #ef4444;color:#ef4444;padding:10px 14px;border-radius:8px;margin-bottom:12px;font-size:13px;font-weight:600"></div>' +
-        '<label style="font-size:12px;font-weight:600;color:var(--t2);text-transform:uppercase;letter-spacing:.5px;display:block;margin-bottom:14px">' +
-          'Сотрудник' +
-          '<div id="acEmp_w" style="width:100%;margin-top:6px;font-weight:400;text-transform:none;letter-spacing:0"></div>' +
-        '</label>' +
+        '<div style="margin-bottom:14px">' +
+          '<div style="font-size:12px;font-weight:600;color:var(--t2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">Сотрудник</div>' +
+          '<div id="acEmp_w" style="width:100%;font-weight:400;text-transform:none;letter-spacing:0;font-size:14px;line-height:1.4"></div>' +
+        '</div>' +
         '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px">' +
           '<label style="font-size:12px;font-weight:600;color:var(--t2);text-transform:uppercase;letter-spacing:.5px">' +
             'Роль' +
@@ -1508,7 +1527,7 @@ window.AsgardFieldTab = (function () {
       list.forEach(function(t) {
         var opt = document.createElement('option');
         opt.value = t.id;
-        opt.textContent = t.position_name + ' · ' + money(t.rate_per_shift);
+        opt.textContent = tariffOptionLabel(t);
         tariffSel.appendChild(opt);
       });
       if (cur && list.some(function(t) { return String(t.id) === String(cur); })) {
@@ -1530,6 +1549,7 @@ window.AsgardFieldTab = (function () {
           id: 'acEmpPicker',
           maxSelect: 1,
           showChips: true,
+          fullWidth: true,
           placeholder: 'Начните вводить фамилию…',
           title: 'Выбор сотрудника',
           employees: freeEmps.map(function(e) {
@@ -1926,7 +1946,7 @@ window.AsgardFieldTab = (function () {
       cb.addEventListener('change', () => { updatePointsRate(); refreshComboBtn(); });
       lab.appendChild(cb);
       const sp = document.createElement('span');
-      sp.textContent = (t.position_name || '') + ' (+' + money(t.rate_per_shift || 0) + ')';
+      sp.textContent = tariffDisplayName(t) + ' (+' + money(t.rate_per_shift || 0) + ')';
       lab.appendChild(sp);
       comboList.appendChild(lab);
     });

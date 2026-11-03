@@ -15,6 +15,7 @@ import {
   pickDefaultTariffForRole
 } from '../../constants';
 import { formatMoney as fmtMoney } from '@/lib/money';
+import { tariffOptionLabel } from '@/lib/moneyCompact';
 
 function rateOf(t, prev) {
   if (t && t.rate_per_shift != null) return Number(t.rate_per_shift) || 0;
@@ -214,7 +215,7 @@ export default function BaseRatesModal({
                             { value: '', label: '— выбрать —' },
                             ...options.map((t) => ({
                               value: String(t.id),
-                              label: `${t.position_name || t.name} · ${fmtMoney(t.rate_per_shift)}`
+                              label: tariffOptionLabel(t, fmtMoney)
                             }))
                           ]}
                         />

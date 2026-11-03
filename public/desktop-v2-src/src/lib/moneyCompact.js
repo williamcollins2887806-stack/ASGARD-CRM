@@ -36,3 +36,18 @@ export function compactRubTitle(n) {
   if (v <= 0) return '';
   return fmtMoneyRub(v);
 }
+
+/** Имя тарифа без «балл/б» в скобках — в UI только ₽. */
+export function tariffDisplayName(t, fmtMoney = fmtMoneyRub) {
+  let name = String((t && (t.position_name || t.name || t.label)) || '');
+  const pv = Number((t && t.point_value) || 500) || 500;
+  name = name.replace(/\(\+(\d+)\s*балл[а-яё]*\)/gi, (_, n) => `(+${fmtMoney(Number(n) * pv)})`);
+  name = name.replace(/\(\+(\d+)\s*б\)/gi, (_, n) => `(+${fmtMoney(Number(n) * pv)})`);
+  name = name.replace(/\((\d+)\s*б\)/gi, (_, n) => `(${fmtMoney(Number(n) * pv)})`);
+  return name.trim();
+}
+
+export function tariffOptionLabel(t, fmtMoney = fmtMoneyRub) {
+  const rate = t && t.rate_per_shift;
+  return `${tariffDisplayName(t, fmtMoney)} · ${fmtMoney(rate)}`;
+}

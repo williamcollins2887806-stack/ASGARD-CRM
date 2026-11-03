@@ -48,7 +48,7 @@ import DepartedList from './Crew/DepartedList';
 import LaunchFieldModal from './Crew/LaunchFieldModal';
 import { openBaseRatesModal } from './Crew/BaseRatesModal';
 import { formatMoney as fmtMoney } from '@/lib/money';
-import { snapRubStep10 } from '@/lib/moneyCompact';
+import { snapRubStep10, tariffOptionLabel } from '@/lib/moneyCompact';
 
 function byFio(a, b) {
   return String(a?.employee_name || '').localeCompare(String(b?.employee_name || ''), 'ru', { sensitivity: 'base' });
@@ -581,7 +581,7 @@ export default function CrewTab({ work }) {
                     { value: '', label: '— по дефолту —' },
                     ...addFormTariffs.map((t) => ({
                       value: String(t.id),
-                      label: `${t.position_name || t.label || t.name} · ${fmtMoney(t.rate_per_shift)}/смена`
+                      label: `${tariffOptionLabel(t, fmtMoney)}/смена`
                     }))
                   ]}
                 />
