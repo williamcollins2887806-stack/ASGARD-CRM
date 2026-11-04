@@ -16,12 +16,21 @@
   --bd-serif: 'Cormorant Garamond', Georgia, 'Times New Roman', serif;
 }
 
-.bd-root { isolation: isolate; }
-
-.bd-dim {
+/* Собственный stacking context поверх дашборда/Huginn (иначе isolation
+   без z-index запирает 9200 внутри слоя 0 — баннер уходит «под» карточки). */
+.bd-root {
   position: fixed;
   inset: 0;
-  z-index: 9200;
+  z-index: 13000;
+  isolation: isolate;
+  pointer-events: none;
+}
+
+.bd-dim {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: auto;
   background:
     radial-gradient(900px 520px at 50% 8%, color-mix(in srgb, var(--bd-gold) 16%, transparent), transparent 58%),
     radial-gradient(700px 480px at 80% 90%, color-mix(in srgb, #5C2233 14%, transparent), transparent 50%),
@@ -34,9 +43,9 @@
 @keyframes bd-dim-in { to { opacity: 1; } }
 
 .bd-stage {
-  position: fixed;
+  position: absolute;
   inset: 0;
-  z-index: 9210;
+  z-index: 2;
   display: flex;
   align-items: center;
   justify-content: center;
