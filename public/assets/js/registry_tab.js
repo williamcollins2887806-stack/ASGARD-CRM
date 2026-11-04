@@ -1180,8 +1180,22 @@ window.AsgardRegistryTab = (function () {
     }, true);
   }
 
-  function rpCell(row) {
-    const rev = row.rp_review;
+  /**
+   * Кнопка «ТКП через ИИ» — появляется, когда просчёт РП закрыт («подаём»),
+   * у пользователя есть право создавать ТКП и по тендеру ещё нет ТКП.
+   * Логика «можно ли» живёт в tkp-ai-modal.js: один источник правды.
+   */
+  function tkpAiButton(row) {
+    if (!window.AsgardTkpAi || typeof AsgardTkpAi.canOffer !== 'function') return '';
+    let ok = false;
+    try { ok = AsgardTkpAi.canOffer(row); } catch (_) { ok = false; }
+    if (!ok) return '';
+    return '<button type="button" class="btn mini reg-tkp-ai" data-id="' + row.id + '"'
+      + ' title="Сформировать ТКП по готовому просчёту: ИИ пишет текст, суммы берём из просчёта"'
+      + ' style="margin-top:6px">🤖 ТКП через ИИ</button>';
+  }
+
+  function rpCell(row) {    const rev = row.rp_review;
     const qIcon = threadQuestionIcon(row);
     let core = '';
     if (rev && rev.director_review_status === 'pending') {
@@ -1189,13 +1203,19 @@ window.AsgardRegistryTab = (function () {
     } else if (rev && rev.director_review_status === 'rejected') {
       core = '<button type="button" class="reg-rp-decision reg-rp-decision-reject reg-rp-view" data-id="' + row.id + '" title="Отклонено директором">✕ Отклонено</button>';
     } else if (rev && rev.director_review_status === 'approved') {
-      core = '<button type="button" class="pill ok reg-rp-view" data-id="' + row.id + '">Цена согласована</button>';
+      // Просчёт прошёл через директора: «Цена согласована» + ИИ-кнопка.
+      // Раньше здесь кнопки не было — при согласовании директором ТКП через ИИ
+      // было недоступно, хотя просчёт закрыт.
+      core = '<button type="button" class="pill ok reg-rp-view" data-id="' + row.id + '">Цена согласована</button>' +
+        '<div class="muted" style="font-size:10px;margin-top:2px">Отчёт готов</div>' +
+        tkpAiButton(row);
     } else if (rev && rev.is_final && rev.decision === 'reject') {
       core = '<button type="button" class="reg-rp-decision reg-rp-decision-reject reg-rp-view" data-id="' + row.id + '" title="РП рекомендует не подавать">✕ Не подаём</button>';
     } else if (rev && rev.is_final && rev.decision === 'submit') {
       // Ниже порога директор не вызывался — цена зафиксирована просчётом РП.
       core = '<button type="button" class="pill ok reg-rp-view" data-id="' + row.id + '">Цена согласована</button>' +
-        '<div class="muted" style="font-size:10px;margin-top:2px">Отчёт готов</div>';
+        '<div class="muted" style="font-size:10px;margin-top:2px">Отчёт готов</div>' +
+        tkpAiButton(row);
     } else if (rev && rev.is_final) {
       core = '<button type="button" class="pill ok reg-rp-view" data-id="' + row.id + '">Отчёт готов</button>';
     } else if (rev && rev.analysis_finalized_at && !rev.is_final) {
@@ -1242,7 +1262,8 @@ window.AsgardRegistryTab = (function () {
         '</select><button type="button" class="btn mini reg-win-go" data-id="' + row.id + '">OK</button>';
     }
     if (action.type === 'decide') {
-      return '<button type="button" class="pill ok mini reg-rp-view" data-id="' + row.id + '">Смотреть отчёт</button>';
+      return '<button type="button" class="pill ok mini reg-rp-view" data-id="' + row.id + '">Смотреть отчёт</button>' +
+        tkpAiButton(row);
     }
     if (action.type === 'rp_reject') {
       return '<button type="button" class="btn mini ghost reg-rp-view" data-id="' + row.id + '">Открыть</button>' +
@@ -1823,6 +1844,16 @@ window.AsgardRegistryTab = (function () {
           } catch (_) { /* ignore */ }
         }
         openRpReviewModal(row, { readOnly, mode, viewAsTo: isView && readOnly });
+      });
+    });
+    mountEl.querySelectorAll('.reg-tkp-ai').forEach((el) => {
+      el.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const row = rows.find((r) => r.id === Number(el.dataset.id));
+        if (!row) return;
+        if (!window.AsgardTkpAi) { toast('Модуль ТКП через ИИ не загружен', 'err'); return; }
+        AsgardTkpAi.open({ tenderId: row.id, row, onDone: () => { refresh(); onRefreshCb && onRefreshCb(); } });
       });
     });
     mountEl.querySelectorAll('.reg-rp-chat').forEach((el) => {

@@ -552,6 +552,25 @@ async function dataRoutes(fastify, options) {
         delete data.sent_for_approval_at;
       }
 
+    // ─── Системные типы документов через generic CRUD запрещены ─────────────
+    // ДЫРА (найдена верификатором 03.11.2026): POST/PUT /api/data/documents
+    // писал type='tkp' напрямую, минуя гейт роутов ТКП. Системный тип —
+    // только латиница ('tkp', 'rp_tkp', …); кириллическая «ТКП» — пользовательская метка.
+    if (table === 'documents' && data && typeof data === 'object') {
+      const SYSTEM_TYPES = new Set(['tkp', 'rp_tkp', 'rp_estimate', 'rp_report', 'ocr-extract', 'rp_thread_file']);
+      const rawType = String(data.type == null ? '' : data.type)
+        .replace(/[\s\u00a0\u2007\u2009\u202f\u200b\ufeff]+/g, ' ')
+        .trim();
+      const isLatinOnly = /^[a-zA-Z0-9_.\-\s]+$/.test(rawType);
+      const candidate = isLatinOnly ? rawType.toLowerCase().replace(/[^a-z0-9_.-]/g, '') : '';
+      if (candidate && SYSTEM_TYPES.has(candidate)) {
+        return reply.code(403).send({
+          error: 'system_doc_type',
+          message: 'Тип документа «' + rawType + '» выставляется системой. Используйте профильный роут модуля.',
+        });
+      }
+    }
+
     // ─── V391: worker_payments — ЗАПИСЬ ЧЕРЕЗ GENERIC CRUD ЗАПРЕЩЕНА ────────
     // Почему целиком, а не стрипом полей: верификаторы четыре раза подряд
     // находили обходы (status, amount, период, сотрудник, тип). Пока таблица
@@ -727,6 +746,38 @@ async function dataRoutes(fastify, options) {
           if (f in data) delete data[f];
         }
       }
+    }
+
+    // ─── Системные типы документов через generic CRUD (PUT) ─────────────────
+    // ДЫРА (найдена верификатором 03.11.2026): PUT /api/data/documents/:id
+    // менял type на 'tkp' и download_url. Запрещаем и установку системного типа,
+    // и правку строк, которые уже системные. Системный тип = только латиница.
+    if (table === 'documents' && data && typeof data === 'object') {
+      const SYSTEM_TYPES = new Set(['tkp', 'rp_tkp', 'rp_estimate', 'rp_report', 'ocr-extract', 'rp_thread_file']);
+      const isSystemType = (raw) => {
+        const s = String(raw == null ? '' : raw)
+          .replace(/[\s\u00a0\u2007\u2009\u202f\u200b\ufeff]+/g, ' ')
+          .trim();
+        if (!s) return false;
+        const isLatinOnly = /^[a-zA-Z0-9_.\-\s]+$/.test(s);
+        if (!isLatinOnly) return false;
+        return SYSTEM_TYPES.has(s.toLowerCase().replace(/[^a-z0-9_.-]/g, ''));
+      };
+      if (data.type != null && isSystemType(data.type)) {
+        return reply.code(403).send({
+          error: 'system_doc_type',
+          message: 'Тип документа «' + data.type + '» выставляется системой. Используйте профильный роут модуля.',
+        });
+      }
+      try {
+        const cur = await db.query('SELECT type FROM documents WHERE id = $1', [id]);
+        if (cur.rows[0] && isSystemType(cur.rows[0].type)) {
+          return reply.code(403).send({
+            error: 'system_doc_locked',
+            message: 'Системный документ (' + cur.rows[0].type + ') меняется только через профильный роут модуля.',
+          });
+        }
+      } catch (_) { /* id невалиден — обычная обработка ниже */ }
     }
 
     // ─── V391: worker_payments через generic CRUD (PUT) ────────────────

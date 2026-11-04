@@ -294,7 +294,11 @@ async function routes(fastify) {
              EXISTS(
                SELECT 1 FROM works w
                WHERE w.tender_id = t.id AND w.deleted_at IS NULL
-             ) OR t.work_assigned_pm_id IS NOT NULL AS has_work
+             ) OR t.work_assigned_pm_id IS NOT NULL AS has_work,
+             EXISTS(
+               SELECT 1 FROM tkp k
+               WHERE k.tender_id = t.id AND COALESCE(k.status,'') <> 'rejected'
+             ) AS tkp_exists
       FROM tenders t
       LEFT JOIN users cb ON cb.id = t.created_by
       LEFT JOIN users calc ON calc.id = t.calculator_user_id

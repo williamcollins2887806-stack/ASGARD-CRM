@@ -100,6 +100,48 @@ async function routes(fastify, options) {
 
     if (!file) return reply.code(400).send({ error: 'Файл не загружен' });
 
+    // SECURITY: клиент не может объявить файл СИСТЕМНЫМ документом.
+    //
+    // История решения (важно не сломать снова):
+    //  1. Blacklist по точному совпадению обходился: 'tkp ', 'tkp\n', 'TKP'.
+    //  2. Allowlist заблокировал 9 живых путей UI (Запрос, Сопроводительное,
+    //     Спецификация, employee_doc и др.), потому что собирался по БД, а не по коду UI.
+    //  3. Blacklist с homoglyph-таблицей заблокировал 'ТКП' — а это ЛЕГИТИМНАЯ
+    //     метка из DOC_TYPES в DocsPackModal (v2), 22 документа в БД с этим типом.
+    //
+    // Правильное различие: системный тип — это ЛАТИНСКИЙ идентификатор
+    // ('tkp', 'rp_tkp', 'ocr-extract'). Кириллическая 'ТКП' системным типом
+    // быть НЕ МОЖЕТ — это человекочитаемая метка. Поэтому:
+    //   - «подозрительным» считаем только значение, состоящее ИЗ ЛАТИНИЦЫ
+    //     (после нормализации пробелов и регистра);
+    //   - из него вычищаем всё, кроме [a-z0-9_.-], и сравниваем с системными;
+    //   - всё, где есть хоть одна кириллическая буква, — пользовательский тип.
+    const normalizedType = String(docType || '')
+      .replace(/[\s\u00a0\u2007\u2009\u202f\u200b\ufeff]+/g, ' ')
+      .trim();
+
+    // Системные типы: их ставят только роуты-владельцы после своего гейта.
+    const SYSTEM_DOC_TYPES = new Set([
+      'tkp', 'rp_tkp', 'rp_estimate', 'rp_report', 'ocr-extract', 'rp_thread_file'
+    ]);
+
+    // Признак «значение выглядит как системный идентификатор»: только латиница,
+    // цифры и разделители. Любая кириллица (или иной алфавит) → пользовательский тип.
+    const isLatinOnly = /^[a-zA-Z0-9_.\-\s]+$/.test(normalizedType);
+    const asciiCandidate = isLatinOnly
+      ? normalizedType.toLowerCase().replace(/[^a-z0-9_.-]/g, '')
+      : '';
+
+    if (asciiCandidate && SYSTEM_DOC_TYPES.has(asciiCandidate)) {
+      return reply.code(403).send({
+        error: 'Тип документа «' + normalizedType + '» выставляется системой. Загрузите файл как обычный документ.',
+        code: 'system_doc_type'
+      });
+    }
+    // В БД пишем нормализованное значение (без хвостовых пробелов), чтобы
+    // 'tkp ' и 'tkp' не расходились. Пустой тип → 'Документ' (как раньше).
+    docType = normalizedType || 'Документ';
+
     // SECURITY: Проверка расширения файла (MED-3)
     const ext = path.extname(file.filename).toLowerCase() || '';
     if (!ALLOWED_EXTENSIONS.includes(ext)) {

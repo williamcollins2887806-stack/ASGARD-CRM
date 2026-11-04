@@ -199,17 +199,115 @@ async function routes(fastify, options) {
       return reply.code(err.statusCode || 500).send({ error: err.message });
     }
 
-    const itemsVal = items
-      ? (typeof items === 'string' ? items : JSON.stringify(items))
-      : (content_json ? JSON.stringify(content_json) : '{}');
+    // attach_pdf_only — режим «ИИ-черновик из реестра»: создаём ТКП и
+    // прикрепляем PDF к карточке тендера, но НЕ трогаем статус тендера,
+    // НЕ шлём уведомления и НЕ генерим Excel в фоне. Отправку КП делает ТО.
+    const attachPdfOnly = b.attach_pdf_only === true || b.attach_pdf_only === 1 || b.attach_pdf_only === '1';
 
-    // Авто-определение link_type: если явно не передан — вычисляем из FK
+    // Авто-определение link_type: если явно не передан — вычисляем из FK.
+    // Объявлено ДО блока антидубля: он тоже обновляет эти поля.
     const resolvedLinkType = link_type ||
       (tender_id     ? 'tender'         :
        work_id       ? 'work'           :
        pre_tender_id ? 'direct_request' : 'standalone');
 
     const resolvedKpVariant = (kp_variant === 'full') ? 'full' : 'classic';
+
+    // Гейт чистоты клиентского документа: ручные правки тоже проверяем.
+    // Блокирующий мусор (себестоимость, плейсхолдеры, markdown) — не сохраняем.
+    {
+      const clientLint = require('../services/client-doc-lint');
+      let itemsObj = {};
+      try {
+        itemsObj = typeof items === 'string' ? JSON.parse(items || '{}') : (items || content_json || {});
+      } catch (_) { itemsObj = {}; }
+
+      const draftProbe = {
+        subject: subj,
+        work_description,
+        services,
+        payment_terms_text: b.payment_terms_text,
+        deadline_text: b.deadline_text,
+        warranty_text: b.warranty_text,
+        scope_boundary: b.scope_boundary,
+        deliverables: b.deliverables,
+        duties: b.customer_duties,
+        cost_notes: b.cost_notes,
+        scope_included: b.scope_included,
+        scope_excluded: b.scope_excluded,
+        risks_paras: b.risks_paras,
+        items: (itemsObj && Array.isArray(itemsObj.items)) ? itemsObj.items : []
+      };
+      const probe = clientLint.lintDraftFields(draftProbe, { skipNumbers: true });
+      if (probe.blocking) {
+        return reply.code(400).send({
+          error: 'В тексте ТКП есть недопустимые фрагменты — уберите их и сохраните снова.',
+          code: 'lint_failed',
+          hits: probe.hits.slice(0, 40)
+        });
+      }
+    }
+
+    // Серверная проверка решения директора — ДО ветки антидубля и до любого
+    // сохранения. Иначе повторное сохранение ИИ-черновика обходило запрет
+    // (найдено верификатором: второй POST при rejected возвращал 200 и
+    // перевыпускал PDF в карточку тендера).
+    {
+      const guard = await _tenderTkpGuard(db, tender_id);
+      if (!guard.ok) {
+        return reply.code(409).send({ error: guard.error, code: guard.code });
+      }
+    }
+
+    // Антидубль для ИИ-черновиков: повторное сохранение по тому же тендеру
+    // не плодит копии, но и НЕ теряет правки из модалки — обновляем черновик
+    // и перевыпускаем PDF (иначе в карточке тендера осталась бы первоначальная
+    // версия, а ТО видел бы «сохранено», не понимая, что файл старый).
+    if (source === 'ai_tender' && tender_id) {
+      const { rows: existing } = await db.query(
+        `SELECT * FROM tkp
+          WHERE tender_id = $1 AND author_id = $2 AND source = 'ai_tender' AND status = 'draft'
+          ORDER BY id DESC LIMIT 1`,
+        [tender_id, request.user.id]
+      );
+
+      if (existing[0]) {
+        const itemsForUpdate = items
+          ? (typeof items === 'string' ? items : JSON.stringify(items))
+          : (content_json ? JSON.stringify(content_json) : '{}');
+
+        const { rows: upd } = await db.query(
+          `UPDATE tkp SET
+             subject = $1, customer_name = $2, customer_inn = $3,
+             work_description = $4, customer_address = $5,
+             contact_person = $6, contact_phone = $7, contact_email = $8,
+             items = $9, services = $10, total_sum = $11, deadline = $12,
+             validity_days = $13, payment_terms = $14, kp_variant = $15,
+             link_type = $16, updated_at = NOW()
+           WHERE id = $17
+           RETURNING *`,
+          [
+            subj.trim(), customer_name || null, customer_inn || null,
+            work_description, customer_address,
+            contact_person || null, contact_phone || null,
+            contact_email || customer_email || null,
+            itemsForUpdate, services || null, total_sum || 0,
+            deadline || null, validity_days || 30, payment_terms,
+            resolvedKpVariant, resolvedLinkType === 'standalone' ? 'tender' : resolvedLinkType,
+            existing[0].id
+          ]
+        );
+
+        const updated = upd[0];
+        // isNew=false: черновик уже существовал, при провале гейта его не удаляем
+        // (в нём может быть нужный ТО текст).
+        return await _finishAttachPdfOnly(fastify, reply, updated, false);
+      }
+    }
+
+    const itemsVal = items
+      ? (typeof items === 'string' ? items : JSON.stringify(items))
+      : (content_json ? JSON.stringify(content_json) : '{}');
 
     const { rows } = await db.query(`
       INSERT INTO tkp (subject, tender_id, work_id, customer_name, customer_inn,
@@ -237,6 +335,10 @@ async function routes(fastify, options) {
     const newTkp = rows[0];
 
     // Авто-генерация PDF и прикрепление к тендерным документам (фоновая задача)
+    if (newTkp.tender_id && attachPdfOnly) {
+      return await _finishAttachPdfOnly(fastify, reply, newTkp, true);
+    }
+
     if (newTkp.tender_id) {
       const tenderId = newTkp.tender_id;
       const tkpId = newTkp.id;
@@ -244,6 +346,17 @@ async function routes(fastify, options) {
 
       setImmediate(async () => {
         try {
+          // Гейт чистоты и сверка с просчётом — и на обычном пути тоже.
+          // Иначе «цена из воздуха» проходит мимо проверки, если слать ТКП
+          // не через attach_pdf_only.
+          const totalsCheck = _itemsTotal(newTkp);
+          const reconcile = await _reconcileWithReview(db, newTkp, totalsCheck.byItems);
+          if (!totalsCheck.consistent || !reconcile.ok) {
+            fastify.log.warn('[TKP auto-pdf] пропуск публикации: суммы не сходятся с просчётом ('
+              + (reconcile.reason || 'items_mismatch') + ')');
+            return;
+          }
+
           // Генерируем PDF
           let pdfBuf = null;
           if (pdfGenerator) {
@@ -548,6 +661,17 @@ async function routes(fastify, options) {
                      'tkp_number', 'payment_terms', 'status', 'kp_variant'];
     // Frontend-aliases при PUT — обрабатываем те же что в POST.
     const b = request.body || {};
+
+    // Правка ТКП по тендеру с отклонённым/ожидающим просчётом запрещена:
+    // иначе запрет на публикацию обходится через PUT + attach (найдено верификатором).
+    {
+      const { rows: own } = await db.query('SELECT tender_id FROM tkp WHERE id = $1', [id]);
+      const guard = await _tenderTkpGuard(db, own[0] ? own[0].tender_id : null);
+      if (!guard.ok) {
+        return reply.code(409).send({ error: guard.error, code: guard.code });
+      }
+    }
+
     if (b.total_amount != null && b.total_sum == null) b.total_sum = b.total_amount;
     if (b.address != null && b.customer_address == null) b.customer_address = b.address;
     if (b.description != null && b.work_description == null) b.work_description = b.description;
@@ -1725,6 +1849,17 @@ module.exports = async function routesWithExtensions(fastify, options) {
       } catch (_) { itemsVal = '{}'; }
     }
 
+    // Единый гейт: решение директора + арифметика + сумма против просчёта.
+    // Загрузка готового ТКП — тоже публикация в карточку тендера, гейт обязателен
+    // (найдено верификатором: при rejected и при цене в 1000 раз ниже просчёта
+    // документ уходил в карточку с HTTP 200).
+    {
+      const guard = await _tenderTkpGuard(db, tenderId);
+      if (!guard.ok) {
+        return reply.code(409).send({ error: guard.error, code: guard.code });
+      }
+    }
+
     // INSERT tkp
     const { rows: [newTkp] } = await db.query(`
       INSERT INTO tkp (
@@ -1779,6 +1914,89 @@ module.exports = async function routesWithExtensions(fastify, options) {
         updated_at = NOW()
       WHERE id = $5
     `, [relPath, fileInfo.mimetype, fileInfo.filename, fileBuf.length, newTkp.id]);
+
+    // Полный гейт для загруженного ТКП — тот же, что у остальных путей публикации:
+    // арифметика позиций, сверка с просчётом И линт САМОГО ФАЙЛА.
+    // Раньше проверялась только сумма из тела запроса, а содержимое PDF не читалось:
+    // произвольный документ с «ИТОГО 999 999 999» и себестоимостью уходил в карточку.
+    if (tenderId) {
+      const totalsCheck = _itemsTotal(newTkp);
+      const rollback = async (body) => {
+        await db.query('DELETE FROM tkp WHERE id = $1', [newTkp.id]).catch(() => {});
+        try { fsLib.unlinkSync(absPath); } catch (_) {}
+        return reply.code(body.status || 422).send(body);
+      };
+
+      // 1) Внутренняя арифметика позиций (если позиции переданы).
+      if (!totalsCheck.consistent) {
+        return rollback({
+          error: 'Таблица позиций загруженного ТКП некорректна: файл не опубликован.',
+          code: 'items_mismatch',
+          items_total: totalsCheck.byItems,
+          claimed_total: totalsCheck.claimed,
+          arithmetic: totalsCheck.arithmetic.slice(0, 10),
+          negatives: totalsCheck.negatives
+        });
+      }
+
+      // 2) Сверка с просчётом РП. Если позиций нет — сверяем заявленную сумму,
+      //    но ТОЛЬКО вместе с проверкой файла ниже (иначе это самоподтверждение).
+      const reconcile = await _reconcileWithReview(db, newTkp,
+        totalsCheck.byItems > 0 ? totalsCheck.byItems : Number(newTkp.total_sum) || 0);
+      if (!reconcile.ok) {
+        return rollback({
+          error: 'Сумма загруженного ТКП не совпадает с просчётом РП: в ТКП '
+            + fmtRu(reconcile.actual) + ' ₽, в просчёте ' + fmtRu(reconcile.reviewPrice)
+            + ' ₽ без НДС. Файл не опубликован.',
+          code: 'sum_mismatch',
+          actual: reconcile.actual,
+          review_price: reconcile.reviewPrice
+        });
+      }
+
+      // 3) Содержимое загруженного файла: только PDF можно проверить линтером.
+      //    Для DOCX/сканов проверка недоступна — такой файл в карточку тендера
+      //    автоматически не публикуем (только вручную через форму ТКП).
+      const isPdf = /pdf/i.test(fileInfo.mimetype || '') || /\.pdf$/i.test(fileInfo.filename || '');
+      if (isPdf) {
+        try {
+          const svc = require('../services/tkp-ai-draft');
+          const interim = Object.assign({}, newTkp, {
+            items: JSON.stringify({
+              items: totalsCheck.byItems > 0
+                ? [{ name: 'Работа', unit: 'усл.', qty: 1, price: totalsCheck.byItems, total: totalsCheck.byItems }]
+                : [],
+              subtotal: Number(newTkp.total_sum) || 0
+            })
+          });
+          const expected = _expectedAmountsFromTkp(interim);
+          const gate = await svc.assertPdfClean(fileBuf, {
+            expectedNumbers: expected,
+            allowedNumbers: expected.concat(reconcile.expected),
+            forbiddenNumbers: _forbiddenAmountsFromTkp(newTkp)
+          });
+          if (!gate.ok) {
+            return rollback({
+              error: 'В загруженном документе найден недопустимый текст или не совпадают суммы — файл не опубликован.',
+              code: 'pdf_lint_failed',
+              hits: gate.hits.slice(0, 40),
+              pages: gate.pages
+            });
+          }
+        } catch (err) {
+          return rollback({
+            error: 'Не удалось проверить загруженный PDF: ' + (err.message || '') + ' — файл не опубликован.',
+            code: 'pdf_check_failed'
+          });
+        }
+      } else {
+        return rollback({
+          error: 'Автоматическая публикация в карточку тендера поддерживается только для PDF. '
+            + 'Загрузите PDF или прикрепите файл вручную в карточке ТКП.',
+          code: 'non_pdf_not_published'
+        });
+      }
+    }
 
     // Вносим в documents (для единообразия с остальными файлами тендера)
     try {
@@ -2170,10 +2388,12 @@ module.exports = async function routesWithExtensions(fastify, options) {
     if (sseMod && typeof sseMod.broadcast === 'function') _sseBroadcast = sseMod.broadcast;
   } catch (_) {}
 
-  // Доступ к ТКП (автор / руководство / директора / ADMIN)
+  // Доступ к ТКП (автор / руководство / директора / ADMIN).
+  // Общий хелпер: ТО/HEAD_TO видят все ТКП — они отправляют КП клиенту.
   function _canAccessTkp(user, tkpRow) {
-    if (!tkpRow) return false;
-    if (['ADMIN','HEAD_PM','DIRECTOR_GEN','DIRECTOR_COMM','DIRECTOR_DEV','HEAD_TO'].includes(user.role)) return true;
+    if (!user || !tkpRow) return false;
+    const SEE_ALL = ['ADMIN','HEAD_PM','DIRECTOR_GEN','DIRECTOR_COMM','DIRECTOR_DEV','HEAD_TO','TO','BUH'];
+    if (SEE_ALL.includes(user.role)) return true;
     return Number(tkpRow.author_id) === Number(user.id);
   }
 
@@ -2917,6 +3137,18 @@ module.exports = async function routesWithExtensions(fastify, options) {
     const pdfBase = pathLib.basename(tkp.pdf_path);
     const downloadUrl = `/uploads/${tkp.pdf_path.replace(/^[\\\/]+/, '')}`;
 
+    // Гейт перед публикацией файла в карточку тендера: решение директора,
+    // арифметика позиций, сумма против просчёта и чистота готового PDF.
+    // Раньше этот путь публиковал PDF вообще без проверок (найдено верификатором:
+    // ТКП на 1 ₽ прикреплялся к тендеру с просчётом 5,9 млн).
+    if (tenderId) {
+      const guardErr = await _assertTkpPublishable(db, tkpId, tenderId);
+      if (guardErr) {
+        request.log.warn({ guard: guardErr.body, tkp_id: tkpId, tender_id: tenderId }, '[TKP attach-to-card] гейт публикации');
+        return reply.code(guardErr.status).send(guardErr.body);
+      }
+    }
+
     // Попытка узнать реальный размер файла на диске (мягко)
     let sizeBytes = 0;
     try {
@@ -3252,18 +3484,702 @@ module.exports = async function routesWithExtensions(fastify, options) {
     };
   });
 
+  // ═══════════════════════════════════════════════════════════════════════════
+  // POST /api/tkp/ai-draft — ТКП/КП через ИИ по ЗАКРЫТОМУ просчёту РП.
+  //
+  // Ничего не пишет в БД. Возвращает черновик для предпросмотра и правки.
+  // Суммы и позиции — детерминированно из просчёта; ИИ только текст.
+  // ═══════════════════════════════════════════════════════════════════════════
+  const tkpAiDraft = require('../services/tkp-ai-draft');
+  const AI_DRAFT_ROLES = ['TO', 'HEAD_TO', 'ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV'];
+
+  fastify.post('/ai-draft', {
+    preHandler: [fastify.requireRoles(AI_DRAFT_ROLES)]
+  }, async (request, reply) => {
+    const b = request.body || {};
+    const tenderId = parseInt(b.tender_id, 10);
+    if (!Number.isFinite(tenderId) || tenderId <= 0) {
+      return reply.code(400).send({ error: 'Не указан тендер', code: 'bad_tender_id' });
+    }
+    if (b.variant && !tkpAiDraft.CONST.VALID_VARIANTS.includes(b.variant)) {
+      return reply.code(400).send({ error: 'Неизвестный вариант КП', code: 'bad_variant' });
+    }
+
+    try {
+      const res = await tkpAiDraft.buildAiDraft({
+        tenderId,
+        variant: b.variant === 'full' ? 'full' : 'classic',
+        user: { id: request.user.id, name: request.user.name }
+      });
+      return {
+        ok: true,
+        draft: res.draft,
+        pricing: res.pricing,
+        meta: res.meta
+      };
+    } catch (err) {
+      const status = err.statusCode || 502;
+      request.log.warn({ code: err.code || 'ai_draft_failed', msg: err.message }, '[TKP ai-draft]');
+      return reply.code(status).send({
+        error: err.message || 'Не удалось сформировать ТКП',
+        code: err.code || 'ai_draft_failed',
+        retryable: status >= 500,
+        hits: err.hits || null
+      });
+    }
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // POST /api/tkp/:id/attach-to-tender — перевыпустить PDF и прикрепить к тендеру.
+  //
+  // Гейт: PDF читается pdf-parse и проверяется линтером ДО прикрепления.
+  // Мусор в документе = файл не прикрепляется, пользователь видит, что нашлось.
+  // ═══════════════════════════════════════════════════════════════════════════
+  fastify.post('/:id/attach-to-tender', {
+    preHandler: [fastify.requireRoles(EDIT_ROLES)]
+  }, async (request, reply) => {
+    const tkpId = parseInt(request.params.id, 10);
+    if (!Number.isFinite(tkpId)) return reply.code(400).send({ error: 'bad_id' });
+
+    const { rows: tkpRows } = await db.query('SELECT * FROM tkp WHERE id = $1', [tkpId]);
+    if (!tkpRows[0]) return reply.code(404).send({ error: 'ТКП не найдено' });
+    if (!_canAccessTkp(request.user, tkpRows[0])) {
+      return reply.code(403).send({ error: 'Доступ запрещён' });
+    }
+    const tkp = tkpRows[0];
+    if (!tkp.tender_id) return reply.code(400).send({ error: 'ТКП не привязано к тендеру' });
+
+    const b = request.body || {};
+
+    // Единый гейт: решение директора + арифметика позиций + сумма против просчёта.
+    const guardErr = await _assertTkpPublishable(db, tkpId, tkp.tender_id);
+    if (guardErr) return reply.code(guardErr.status).send(guardErr.body);
+
+    const totalsCheck = _itemsTotal(tkp);
+    const reconcile = await _reconcileWithReview(db, tkp, totalsCheck.byItems);
+
+    const pdfResp = await _renderTkpPdfBuffer(fastify, tkp, {
+      signature: b.signature === true || b.signature === '1',
+      stamp: b.stamp === true || b.stamp === '1'
+    });
+
+    const expected = _expectedAmountsFromTkp(tkp);
+    const gate = await tkpAiDraft.assertPdfClean(pdfResp.buffer, {
+      expectedNumbers: expected,
+      allowedNumbers: expected.concat(reconcile.expected),
+      forbiddenNumbers: _forbiddenAmountsFromTkp(tkp)
+    });
+
+    if (!gate.ok) {
+      return reply.code(422).send({
+        error: 'В документе найден недопустимый текст — файл не прикреплён. Откройте ТКП и исправьте.',
+        code: 'pdf_lint_failed',
+        hits: gate.hits.slice(0, 40),
+        pages: gate.pages
+      });
+    }
+
+    const saved = await _persistTkpPdfAndAttach(fastify, tkp, pdfResp.buffer, pdfResp.filename);
+    return {
+      ok: true,
+      tkp_id: tkp.id,
+      tender_id: tkp.tender_id,
+      pdf_path: saved.pdf_path,
+      document_id: saved.document_id,
+      bytes: pdfResp.buffer.length,
+      pages: gate.pages,
+      warnings: gate.hits
+    };
+  });
+
 };
+
+// ═══════════════════════════════════════════════════════════════════════════
+// PDF-пайплайн для ИИ-черновиков: генерация, гейт чистоты, прикрепление
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Отрендерить PDF ТКП и вернуть буфер (без записи на диск).
+ * Повторяет логику POST /:tkpId/render-pdf: блоки → Puppeteer → fallback PDFKit.
+ */
+async function _renderTkpPdfBuffer(fastify, tkp, opts) {
+  const db = fastify.db;
+  const options = opts || {};
+  const pathLib = require('path');
+  const UPLOAD_DIR = process.env.UPLOAD_DIR || './uploads';
+
+  const pdfOpts = {
+    signature: options.signature === true || options.signature === '1',
+    stamp: options.stamp === true || options.stamp === '1'
+  };
+
+  let buffer = null;
+  let renderedFrom = 'legacy_items';
+
+  // 1) Блоки конструктора (если есть)
+  const blocksRes = await db.query(
+    `SELECT block_key, block_order, block_title, block_icon, block_data
+       FROM tkp_blocks
+      WHERE tkp_id = $1 AND is_active = TRUE
+      ORDER BY block_order ASC, id ASC`,
+    [tkp.id]
+  ).catch(() => ({ rows: [] }));
+  const blocks = blocksRes.rows || [];
+
+  if (blocks.length > 0) {
+    try {
+      const html = _renderBlocksHtml(tkp, blocks);
+      if (pdfGenerator && pdfGenerator.htmlToPdfBuffer) {
+        buffer = await pdfGenerator.htmlToPdfBuffer(html, { format: 'A4' });
+      } else {
+        buffer = await _htmlToPdfInline(html, fastify);
+      }
+      if (buffer) renderedFrom = 'blocks';
+    } catch (err) {
+      fastify.log.warn(`[TKP pdf] blocks→html→pdf failed: ${err.message}`);
+      buffer = null;
+    }
+
+    if (!buffer) {
+      const smetaBlock = blocks.find((x) => x.block_key === 'smeta');
+      const synth = Object.assign({}, tkp);
+      if (smetaBlock && smetaBlock.block_data) {
+        let sd = smetaBlock.block_data;
+        if (typeof sd === 'string') { try { sd = JSON.parse(sd); } catch (_) { sd = {}; } }
+        synth.items = JSON.stringify({
+          items: Array.isArray(sd.items) ? sd.items : [],
+          vat_pct: sd.vat_pct != null ? sd.vat_pct : 22,
+          subtotal: sd.subtotal || null,
+          total_with_vat: sd.total_with_vat || null
+        });
+      }
+      buffer = await generateTkpPdfKit(synth, db, pdfOpts);
+      renderedFrom = 'blocks_smeta';
+    }
+  } else if (tkp.kp_variant === 'full') {
+    // Полное КП — шаблон «Ника» (DOCX → LibreOffice), fallback HTML→PDF
+    try {
+      const fullKp = require('../services/tkp-full-kp');
+      let company = {};
+      if (pdfGenerator && pdfGenerator.getCompanyProfile) {
+        try { company = await pdfGenerator.getCompanyProfile(); } catch (_) {}
+      }
+      buffer = await fullKp.generateFullKpPdfBuffer(tkp, Object.assign({}, pdfOpts, { company }));
+      renderedFrom = 'full_template';
+    } catch (err) {
+      fastify.log.warn(`[TKP pdf] full template failed: ${err.message}`);
+      buffer = null;
+    }
+  } else {
+    // Классический путь
+    if (pdfGenerator) {
+      try {
+        buffer = await pdfGenerator.generateTkpPdf(tkp.id, pdfOpts);
+        renderedFrom = 'puppeteer';
+      } catch (err) {
+        fastify.log.warn(`[TKP pdf] Puppeteer failed for TKP ${tkp.id}: ${err.message}`);
+        buffer = null;
+      }
+    }
+    if (!buffer) {
+      buffer = await generateTkpPdfKit(tkp, db, pdfOpts);
+      renderedFrom = 'pdfkit';
+    }
+  }
+
+  if (!buffer) {
+    throw Object.assign(new Error('Не удалось отрендерить PDF'), { statusCode: 500, code: 'pdf_render_failed' });
+  }
+
+  const filename = `tkp_${tkp.id}_${Date.now()}.pdf`;
+  void pathLib; void UPLOAD_DIR;
+  return { buffer, filename, renderedFrom };
+}
+
+/**
+ * Ожидаемые суммы ТКП для гейта PDF: цена без НДС, НДС, итог с НДС.
+ * Именно эти числа обязаны найтись в тексте PDF.
+ */
+function _expectedAmountsFromTkp(tkp) {
+  let cj = {};
+  try {
+    cj = typeof tkp.items === 'string' ? JSON.parse(tkp.items || '{}') : (tkp.items || {});
+  } catch (_) { cj = {}; }
+  if (Array.isArray(cj)) cj = { items: cj };
+
+  const items = Array.isArray(cj.items) ? cj.items : [];
+  const vatPct = Number(cj.vat_pct) || 22;
+  const subtotal = Number(cj.subtotal) || items.reduce((s, r) => s + (Number(r.total) || 0), 0);
+  const vatSum = Number(cj.vat_sum) || Math.round(subtotal * vatPct / 100 * 100) / 100;
+  const total = Number(cj.total_with_vat) || Math.round((subtotal + vatSum) * 100) / 100;
+
+  // Суммы берём как есть, БЕЗ округления до рубля: PDF печатает копейки
+  // («7 241 223,99»), и сравнение по целой части уже делает numKey.
+  const out = [subtotal, vatSum, total, Number(tkp.total_sum) || 0].filter((v) => v > 0);
+  return Array.from(new Set(out.map((v) => Math.round(v * 100) / 100)));
+}
+
+/**
+ * Посчитать сумму по СТРОКАМ позиций и проверить арифметику каждой строки.
+ *
+ * КРИТИЧНО (найдено верификатором):
+ *  1. Раньше брали `cj.subtotal` из тела — подменялось. Теперь считаем по строкам.
+ *  2. Старый формат ТКП хранит `sum` вместо `total` — такие ТКП получали
+ *     byItems=0 и не могли прикрепиться (регрессия). Теперь читаем total|sum|qty*price.
+ *  3. Не проверялось `total == qty × price`, поэтому проходили «1 шт × 1000 ₽ = 5,9 млн»
+ *     и отрицательная «Корректировка −94 млн». Теперь каждая строка проверяется.
+ *
+ * @returns {{byItems:number, claimed:number|null, consistent:boolean,
+ *            arithmetic:Array<{index:number,name:string,reason:string,detail:string}>,
+ *            negatives:number[]}}
+ */
+function _itemsTotal(tkp) {
+  let cj = {};
+  try {
+    cj = typeof tkp.items === 'string' ? JSON.parse(tkp.items || '{}') : (tkp.items || {});
+  } catch (_) { cj = {}; }
+  if (Array.isArray(cj)) cj = { items: cj };
+
+  const items = Array.isArray(cj.items) ? cj.items : [];
+  const arithmetic = [];
+  const negatives = [];
+  let byItems = 0;
+
+  items.forEach((r, index) => {
+    if (!r) return;
+    const qty = Number(r.qty != null ? r.qty : r.quantity) || 0;
+    const price = Number(r.price != null ? r.price : r.unit_price) || 0;
+    // Старый формат: total → sum → qty×price. Порядок важен: total первичен.
+    let lineTotal;
+    if (r.total != null && r.total !== '') lineTotal = Number(r.total) || 0;
+    else if (r.sum != null && r.sum !== '') lineTotal = Number(r.sum) || 0;
+    else lineTotal = qty * price;
+
+    lineTotal = Math.round(lineTotal * 100) / 100;
+    byItems += lineTotal;
+
+    if (lineTotal < 0) negatives.push(index);
+
+    // Арифметика строки: total обязан быть равен qty × price (допуск 1 ₽ на
+    // округление цены за единицу — она производная от суммы).
+    const computed = Math.round(qty * price * 100) / 100;
+    if (r.total != null && r.total !== '' && Math.abs(computed - lineTotal) > 1) {
+      arithmetic.push({
+        index,
+        name: String(r.name || 'позиция'),
+        reason: 'total_ne_qty_price',
+        detail: qty + ' × ' + price + ' ≠ ' + lineTotal
+      });
+    }
+  });
+
+  byItems = Math.round(byItems * 100) / 100;
+  const claimed = cj.subtotal != null && cj.subtotal !== ''
+    ? Math.round(Number(cj.subtotal) * 100) / 100
+    : null;
+
+  const consistent = (claimed == null || Math.abs(claimed - byItems) <= 1)
+    && arithmetic.length === 0
+    && negatives.length === 0;
+
+  return { byItems, claimed, consistent, arithmetic, negatives };
+}
+
+/**
+ * Одна проверка «можно ли публиковать файл ТКП по этому тендеру».
+ *
+ * Вызывается из ВСЕХ путей, которые кладут PDF в карточку тендера:
+ *   - POST / (создание/сохранение ИИ-черновика)
+ *   - POST /:id/attach-to-tender
+ *   - POST /:tkpId/attach-to-card/:cardId
+ *   - PUT /:id (правка) — только предупреждение, файл не публикуется
+ *
+ * Раньше проверка директора стояла после ветки антидубля и обходилась повторным
+ * сохранением черновика (найдено верификатором).
+ *
+ * @returns {{ok:boolean, code?:string, error?:string}}
+ */
+async function _tenderTkpGuard(db, tenderId) {  if (!tenderId) return { ok: true };
+
+  try {
+    const { rows } = await db.query(
+      'SELECT director_review_status, is_final, decision FROM tender_rp_reviews WHERE tender_id = $1',
+      [tenderId]
+    );
+    const rev = rows[0];
+    if (!rev) return { ok: true }; // просчёта нет — ручное ТКП не ограничиваем
+
+    if (rev.director_review_status === 'rejected') {
+      return {
+        ok: false,
+        code: 'director_rejected',
+        error: 'Просчёт РП отклонён директором — ТКП по этому тендеру не формируется'
+      };
+    }
+    if (rev.director_review_status === 'pending') {
+      return {
+        ok: false,
+        code: 'director_pending',
+        error: 'Просчёт РП ждёт решения директора — ТКП можно сформировать после решения'
+      };
+    }
+    return { ok: true };
+  } catch (_) {
+    // Таблицы может не быть на старом клоне — не блокируем ручное ТКП.
+    return { ok: true };
+  }
+}
+
+/**
+ * Сумма из блоков конструктора (smeta-блок), если ТКП рендерится из блоков.
+ *
+ * КРИТИЧНО (найдено верификатором): при наличии tkp_blocks PDF рендерится из
+ * блоков, а не из tkp.items. Гейт при этом читал items — то есть проверял не то,
+ * что печатается в документе. Теперь проверяются оба источника.
+ *
+ * @returns {{ok:true, total:number|null} | {ok:false, reason:string}}
+ */
+async function _blocksTotal(db, tkpId) {
+  const res = await db.query(
+    `SELECT block_data FROM tkp_blocks
+      WHERE tkp_id = $1 AND is_active = TRUE AND block_key = 'smeta'
+      ORDER BY block_order ASC LIMIT 1`,
+    [tkpId]
+  ).catch(() => ({ rows: [] }));
+
+  if (!res.rows[0]) return { ok: true, total: null };
+
+  let data = res.rows[0].block_data;
+  if (typeof data === 'string') {
+    try { data = JSON.parse(data); } catch (_) { data = {}; }
+  }
+  const items = Array.isArray(data && data.items) ? data.items : [];
+  if (!items.length) return { ok: true, total: null };
+
+  // ВАЖНО: конструктор блоков (BoardV3 / personal_kanban) хранит только qty и
+  // price, без total. Рендерер печатает qty × price. Раньше гейт читал только
+  // total и получал 0 → ложный blocks_mismatch на корректном ТКП.
+  // Считаем так же, как печатает рендерер, с тем же приоритетом.
+  let total = 0;
+  items.forEach((it) => {
+    const qty = Number(it && (it.qty != null ? it.qty : it.quantity)) || 0;
+    const price = Number(it && (it.price != null ? it.price : it.unit_price)) || 0;
+    let lineTotal;
+    if (it && it.total != null && it.total !== '') lineTotal = Number(it.total) || 0;
+    else if (it && it.sum != null && it.sum !== '') lineTotal = Number(it.sum) || 0;
+    else lineTotal = qty * price;
+    total += Math.round(lineTotal * 100) / 100;
+  });
+
+  return { ok: true, total: Math.round(total * 100) / 100 };
+}
+
+/**
+ * Единый гейт публикации ТКП по тендеру: решение директора + арифметика позиций
+ * + сумма против просчёта + чистота уже отрендеренного PDF.
+ *
+ * Возвращает null, если публиковать можно; иначе {status, body} для ответа.
+ * Используется всеми путями, которые кладут PDF в карточку тендера.
+ */
+async function _assertTkpPublishable(db, tkpId, tenderId) {
+  const guard = await _tenderTkpGuard(db, tenderId);
+  if (!guard.ok) {
+    return { status: 409, body: { error: guard.error, code: guard.code } };
+  }
+
+  const { rows } = await db.query('SELECT * FROM tkp WHERE id = $1', [tkpId]);
+  const tkp = rows[0];
+  if (!tkp) return { status: 404, body: { error: 'ТКП не найдено' } };
+
+  const totalsCheck = _itemsTotal(tkp);
+  if (!totalsCheck.consistent) {
+    return {
+      status: 422,
+      body: {
+        error: 'Таблица позиций ТКП некорректна — файл к тендеру не прикреплён.',
+        code: 'items_mismatch',
+        items_total: totalsCheck.byItems,
+        claimed_total: totalsCheck.claimed,
+        arithmetic: totalsCheck.arithmetic.slice(0, 10),
+        negatives: totalsCheck.negatives
+      }
+    };
+  }
+
+  const reconcile = await _reconcileWithReview(db, tkp, totalsCheck.byItems);
+  if (!reconcile.ok) {
+    return {
+      status: 422,
+      body: {
+        error: reconcile.reason === 'sum_mismatch'
+          ? 'Сумма ТКП не совпадает с просчётом РП: в ТКП ' + fmtRu(reconcile.actual)
+            + ' ₽, в просчёте ' + fmtRu(reconcile.reviewPrice) + ' ₽ без НДС. Файл не прикреплён.'
+          : 'Не удалось сверить сумму с просчётом РП (' + reconcile.reason + '). Файл не прикреплён.',
+        code: 'sum_mismatch',
+        actual: reconcile.actual,
+        review_price: reconcile.reviewPrice,
+        diff: reconcile.diff
+      }
+    };
+  }
+
+  // PDF может рендериться из блоков конструктора, а не из tkp.items.
+  // Проверяем и второй источник, иначе гейт смотрит не то, что печатается.
+  const blocks = await _blocksTotal(db, tkpId);
+  if (blocks.ok && blocks.total != null) {
+    const diff = Math.round((blocks.total - reconcile.reviewPrice) * 100) / 100;
+    if (Math.abs(diff) > 1) {
+      return {
+        status: 422,
+        body: {
+          error: 'Смета в конструкторе блоков не совпадает с просчётом РП: в блоках '
+            + fmtRu(blocks.total) + ' ₽, в просчёте ' + fmtRu(reconcile.reviewPrice)
+            + ' ₽ без НДС. Файл не прикреплён.',
+          code: 'blocks_mismatch',
+          blocks_total: blocks.total,
+          review_price: reconcile.reviewPrice,
+          diff
+        }
+      };
+    }
+  }
+
+  return null;
+}
+
+/** Формат суммы для сообщений об ошибке (русские разделители). */
+function fmtRu(v) {
+  return Number(v || 0).toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+/**
+ * Сверить суммы ТКП с просчётом РП — единственным источником истины по цене.
+ *
+ * КРИТИЧНО (найдено верификатором): раньше ожидаемые суммы брались из самого
+ * ТКП, то есть гейт проверял «сумма в PDF есть в PDF». ТКП с ценой вдвое ниже
+ * просчёта проходило. Теперь эталон — work_price просчёта (канон D-173: без НДС).
+ *
+ * @returns {{ok:boolean, expected:number[], actual:number, reviewPrice:number|null, diff:number|null, reason?:string}}
+ */
+async function _reconcileWithReview(db, tkp, tkpSubtotal) {
+  const { rows } = await db.query(
+    'SELECT work_price, work_price_ex_vat, decision, is_final FROM tender_rp_reviews WHERE tender_id = $1',
+    [tkp.tender_id]
+  );
+  const rev = rows[0];
+  if (!rev) {
+    return { ok: false, expected: [], actual: tkpSubtotal, reviewPrice: null, diff: null, reason: 'no_review' };
+  }
+
+  // work_price_ex_vat приоритетнее work_price: канон D-173 — цена без НДС.
+  const reviewPrice = Math.round(Number(
+    rev.work_price_ex_vat != null ? rev.work_price_ex_vat : rev.work_price
+  ) * 100) / 100;
+
+  if (!(reviewPrice > 0)) {
+    return { ok: false, expected: [], actual: tkpSubtotal, reviewPrice: null, diff: null, reason: 'review_has_no_price' };
+  }
+
+  const diff = Math.round((Number(tkpSubtotal) - reviewPrice) * 100) / 100;
+  // Допуск 1 ₽: округление копеек при разбивке на позиции — норма.
+  return {
+    ok: Math.abs(diff) <= 1,
+    expected: [reviewPrice],
+    actual: Number(tkpSubtotal),
+    reviewPrice,
+    diff,
+    reason: Math.abs(diff) <= 1 ? null : 'sum_mismatch'
+  };
+}
+
+/**
+ * Внутренние цифры, которых в клиентском PDF быть не должно:
+ * себестоимость, маржа, чистая прибыль. Берём из meta позиций
+ * (tkp-ai-draft кладёт их при генерации) — то есть знаем точные числа
+ * и не гадаем по тексту.
+ */
+function _forbiddenAmountsFromTkp(tkp) {
+  let cj = {};
+  try {
+    cj = typeof tkp.items === 'string' ? JSON.parse(tkp.items || '{}') : (tkp.items || {});
+  } catch (_) { return []; }
+  if (Array.isArray(cj)) return [];
+
+  const src = [];
+  const add = (v) => {
+    const n = Math.round(Number(v) || 0);
+    if (n > 0) src.push(n);
+  };
+
+  // meta.internal_amounts — пишет tkp-ai-draft (себестоимость/маржа/прибыль просчёта).
+  if (cj.meta && Array.isArray(cj.meta.internal_amounts)) {
+    cj.meta.internal_amounts.forEach(add);
+  }
+  return src;
+}
+
+/**
+ * Записать PDF на диск, обновить tkp.pdf_path и прикрепить файл к тендеру
+ * (documents.type='tkp'). Статус тендера НЕ меняется, уведомления НЕ шлются —
+ * отправку КП делает ТО штатно.
+ */
+async function _persistTkpPdfAndAttach(fastify, tkp, buffer, filename) {
+  const db = fastify.db;
+  const pathLib = require('path');
+  const fsLib = require('fs');
+  const UPLOAD_DIR = process.env.UPLOAD_DIR || './uploads';
+
+  const pdfDir = pathLib.join(UPLOAD_DIR, 'tkp');
+  fsLib.mkdirSync(pdfDir, { recursive: true });
+  fsLib.writeFileSync(pathLib.join(pdfDir, filename), buffer);
+
+  const relPath = `tkp/${filename}`;
+  await db.query('UPDATE tkp SET pdf_path = $1, updated_at = NOW() WHERE id = $2', [relPath, tkp.id]);
+
+  // Перевыпуск: старую строку этого же ТКП в документах тендера заменяем,
+  // иначе в карточке копятся дубли «ТКП_N.pdf».
+  const displayName = `ТКП_${tkp.id}.pdf`;
+  const del = await db.query(
+    `DELETE FROM documents
+      WHERE tender_id = $1 AND type = 'tkp' AND original_name = $2
+      RETURNING id`,
+    [tkp.tender_id, displayName]
+  ).catch(() => ({ rows: [] }));
+
+  const ins = await db.query(
+    `INSERT INTO documents (filename, original_name, mime_type, size, type, tender_id, uploaded_by, download_url, created_at)
+     VALUES ($1, $2, 'application/pdf', $3, 'tkp', $4, $5, $6, NOW())
+     RETURNING id`,
+    [filename, displayName, buffer.length, tkp.tender_id, tkp.author_id, `/uploads/tkp/${filename}`]
+  );
+
+  return {
+    pdf_path: relPath,
+    document_id: ins.rows[0] ? ins.rows[0].id : null,
+    replaced: (del.rows || []).map((r) => r.id)
+  };
+}
+
+/**
+ * Завершить сохранение в режиме attach_pdf_only: отрендерить PDF, прогнать
+ * через гейт чистоты и прикрепить к карточке тендера.
+ *
+ * Общий путь и для создания, и для повторного сохранения: в обоих случаях
+ * в карточке должен оказаться файл, соответствующий последним правкам.
+ *
+ * @param {object} tkp — запись из tkp
+ * @param {boolean} isNew — при провале гейта новый черновик удаляем,
+ *        а существующий оставляем (в нём может быть нужный ТО текст)
+ */
+async function _finishAttachPdfOnly(fastify, reply, tkp, isNew) {
+  const db = fastify.db;
+  const svc = require('../services/tkp-ai-draft');
+  try {
+    // СНАЧАЛА сверяем сумму ТКП с просчётом РП. Это то единственное, что
+    // защищает заказчика от «цены из воздуха»: PDF-гейт ниже сверяет документ
+    // сам с собой, а эталон цены живёт в tender_rp_reviews.
+    // Сверяем сумму ПО СТРОКАМ и заявленный итог — оба обязаны совпасть с просчётом.
+    // `cj.subtotal` из тела запроса — не доказательство: его подставляет клиент.
+    const totalsCheck = _itemsTotal(tkp);
+    const tkpSubtotal = totalsCheck.byItems;
+
+    const reconcile = await _reconcileWithReview(db, tkp, tkpSubtotal);
+
+    // Внутренняя арифметика ТКП: сумма строк обязана совпасть с заявленным итогом.
+    if (!totalsCheck.consistent) {
+      if (isNew) {
+        await db.query('DELETE FROM tkp WHERE id = $1 AND status = $2', [tkp.id, 'draft']).catch(() => {});
+      }
+      const reasons = [];
+      if (totalsCheck.arithmetic.length) {
+        reasons.push('строка без арифметики: ' + totalsCheck.arithmetic
+          .slice(0, 3).map((a) => '«' + a.name + '» (' + a.detail + ')').join('; '));
+      }
+      if (totalsCheck.negatives.length) {
+        reasons.push('отрицательные позиции: ' + totalsCheck.negatives.length);
+      }
+      if (totalsCheck.claimed != null && Math.abs(totalsCheck.claimed - totalsCheck.byItems) > 1) {
+        reasons.push('строки на ' + fmtRu(totalsCheck.byItems) + ' ₽, заявлено ' + fmtRu(totalsCheck.claimed) + ' ₽');
+      }
+      return reply.code(422).send({
+        error: 'Таблица позиций ТКП некорректна: ' + reasons.join('; ')
+          + '. Файл к тендеру не прикреплён.',
+        code: 'items_mismatch',
+        items_total: totalsCheck.byItems,
+        claimed_total: totalsCheck.claimed,
+        arithmetic: totalsCheck.arithmetic.slice(0, 10),
+        negatives: totalsCheck.negatives,
+        item: isNew ? null : tkp
+      });
+    }
+
+    if (!reconcile.ok) {
+      if (isNew) {
+        await db.query('DELETE FROM tkp WHERE id = $1 AND status = $2', [tkp.id, 'draft']).catch(() => {});
+      }
+      const msg = reconcile.reason === 'sum_mismatch'
+        ? 'Сумма ТКП не совпадает с просчётом РП: в ТКП ' + fmtRu(reconcile.actual)
+          + ' ₽, в просчёте ' + fmtRu(reconcile.reviewPrice) + ' ₽ без НДС. Файл к тендеру не прикреплён.'
+        : 'Не удалось сверить сумму с просчётом РП (' + reconcile.reason + '). Файл к тендеру не прикреплён.';
+      return reply.code(422).send({
+        error: msg,
+        code: 'sum_mismatch',
+        actual: reconcile.actual,
+        review_price: reconcile.reviewPrice,
+        diff: reconcile.diff,
+        item: isNew ? null : tkp
+      });
+    }
+
+    const pdfResp = await _renderTkpPdfBuffer(fastify, tkp, {});
+    const expected = _expectedAmountsFromTkp(tkp);
+    const gate = await svc.assertPdfClean(pdfResp.buffer, {
+      expectedNumbers: expected,
+      allowedNumbers: expected.concat(reconcile.expected),
+      forbiddenNumbers: _forbiddenAmountsFromTkp(tkp)
+    });
+
+    if (!gate.ok) {
+      if (isNew) {
+        // Новый черновик с мусором не нужен: ТО поправит текст и сохранит снова.
+        await db.query('DELETE FROM tkp WHERE id = $1 AND status = $2', [tkp.id, 'draft']).catch(() => {});
+      }
+      return reply.code(422).send({
+        error: 'В сформированном документе найден недопустимый текст — файл к тендеру не прикреплён. Исправьте формулировки и сохраните снова.',
+        code: 'pdf_lint_failed',
+        hits: gate.hits.slice(0, 40),
+        pages: gate.pages,
+        item: isNew ? null : tkp
+      });
+    }
+
+    const saved = await _persistTkpPdfAndAttach(fastify, tkp, pdfResp.buffer, pdfResp.filename);
+    return {
+      item: Object.assign({}, tkp, { pdf_path: saved.pdf_path }),
+      reused: !isNew,
+      pdf_attached: true,
+      pdf_pages: gate.pages,
+      document_id: saved.document_id,
+      replaced_documents: saved.replaced
+    };
+  } catch (err) {
+    fastify.log.error({ msg: err.message }, '[TKP attach_pdf_only]');
+    return reply.code(500).send({
+      error: 'ТКП сохранено, но PDF не удалось прикрепить: ' + (err.message || ''),
+      code: 'pdf_attach_failed',
+      item: tkp
+    });
+  }
+}
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Хелперы блочного рендера (вне routes — чтобы не плодить closure)
 // ═══════════════════════════════════════════════════════════════════════════
-
 function _escapeHtml(s) {
   return String(s == null ? '' : s)
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
-}
-function _fmtMoneyHtml(n) {
+}function _fmtMoneyHtml(n) {
   const v = Number(n || 0);
   return v.toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }

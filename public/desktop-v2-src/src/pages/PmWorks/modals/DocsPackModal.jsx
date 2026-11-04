@@ -220,13 +220,15 @@ export function DocsPackModal({ work }) {
         type = 'Сопроводительное';
         nm = `Сопроводительное_${tender?.id || work.id}.html`;
       }
-      // Заливаем как multipart, чтобы файл попал в /uploads и получил download_url.
-      const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+      // HTML в uploads запрещён (D-220: stored XSS при text/html).
+      // Кладём как .txt + text/plain — содержимое то же, браузер не исполняет.
+      const safeName = String(nm || type).replace(/\.html?$/i, '') + '.txt';
+      const blob = new Blob([html], { type: 'text/plain;charset=utf-8' });
       const fd = new FormData();
-      fd.append('file', blob, nm);
+      fd.append('file', blob, safeName);
       fd.append('work_id', String(work.id));
       fd.append('type', type);
-      fd.append('name', nm);
+      fd.append('name', safeName);
       await postMultipart('/api/files/upload', fd);
       toast('Комплект', `«${type}» добавлен`, 'ok');
       await load();
@@ -378,7 +380,7 @@ export function DocsPackModal({ work }) {
                 <input
                   ref={inputRef}
                   type="file"
-                  accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png,.zip,.rar,.7z,.txt,.csv,.html"
+                  accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png,.zip,.rar,.7z,.txt,.csv"
                   style={{ fontSize: 13 }}
                 />
               </div>
@@ -387,7 +389,8 @@ export function DocsPackModal({ work }) {
               </Btn>
             </div>
             <div className="help" style={{ marginTop: 6, fontSize: 11, opacity: 0.7 }}>
-              Лимит файла — 25 МБ. Допустимые форматы: pdf, doc, docx, xls, xlsx, jpg, png, zip, rar, 7z, txt, csv, html.
+              Лимит файла — 25 МБ. Допустимые форматы: pdf, doc, docx, xls, xlsx, jpg, png, zip, rar, 7z, txt, csv.
+              HTML не принимаем (D-220): шаблоны «Запрос/ТКП/Сопроводительное» сохраняются как .txt.
             </div>
           </div>
 

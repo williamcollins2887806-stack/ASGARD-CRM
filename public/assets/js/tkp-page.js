@@ -428,10 +428,14 @@ window.AsgardTkpPage = (function() {
       (items.length ? items.map(function(i) {
         const st = STATUS_MAP[i.status] || STATUS_MAP.draft;
         const ltLabel = LINK_TYPE_MAP[i.link_type] || '';
+        // ИИ-черновик: бейдж, чтобы ТО отличало сгенерированное от ручного.
+        const aiBadge = i.source === 'ai_tender'
+          ? ' <span title="Сформировано через ИИ по просчёту РП" style="display:inline-block;padding:1px 6px;border-radius:99px;background:rgba(212,168,67,.18);color:#8a6415;font-size:10px;font-weight:700;vertical-align:middle">ИИ</span>'
+          : '';
         return '<tr>' +
           '<td>' + i.id + '</td>' +
           '<td>' + esc(i.tkp_number || '—') + '</td>' +
-          '<td>' + esc(i.subject || i.title || '') + '</td>' +
+          '<td>' + esc(i.subject || i.title || '') + aiBadge + '</td>' +
           '<td>' + esc(i.customer_name || i.tender_customer || '—') + '</td>' +
           '<td style="font-size:11px;color:var(--t3)">' + esc(ltLabel || '—') + '</td>' +
           '<td>' + _cdBadge(i.client_decision) + '</td>' +
