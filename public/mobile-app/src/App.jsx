@@ -12,6 +12,7 @@ import PresenceGateMobile from '@/components/PresenceGateMobile';
 import MobileDiagnostics from '@/components/MobileDiagnostics';
 import { AppSplash } from '@/components/AppSplash';
 import PayoutStatementBanner from '@/components/PayoutStatementBanner';
+import BirthdayGreetOverlay from '@/components/BirthdayGreetOverlay';
 import FieldLayout from '@/layouts/FieldLayout';
 import DirectorHome from '@/components/layout/DirectorHome';
 
@@ -641,6 +642,7 @@ export default function App() {
       <BrowserRouter basename="/m">
         <AppLayout />
       </BrowserRouter>
+      {bootDone && token ? <BirthdayGreetOverlay /> : null}
     </>
   );
 }

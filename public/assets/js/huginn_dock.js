@@ -2094,9 +2094,12 @@
     }, 0);
     const bdayHtml = (state.birthdays || []).map((b) => {
       const when = b.is_today ? 'сегодня' : ('через ' + b.days_until + ' дн.');
+      const congrats = b.is_today
+        ? `<button type="button" class="hg-bday-congrats" data-bday-gift="${b.id}" data-bday-name="${esc(b.name)}" data-bday-age="${b.age != null ? b.age : ''}">Поздравить</button>`
+        : '';
       return `<div class="hg-bday-card hg-glass" data-role="card" data-bday="${b.id}">
         <div class="hg-bday-av" style="background:${avatarGradient(b.name)}">${esc(initials(b.name))}</div>
-        <div class="hg-bday-meta"><strong>${esc(b.name)}</strong><span>ДР ${esc(when)}</span></div>
+        <div class="hg-bday-meta"><strong>${esc(b.name)}</strong><span>ДР ${esc(when)}</span>${congrats}</div>
         <button type="button" class="hg-bday-x" data-bday-dismiss="${b.id}" aria-label="Скрыть">✕</button>
       </div>`;
     }).join('');
@@ -2247,6 +2250,20 @@
           (b) => Number(b.id) !== Number(btn.getAttribute('data-bday-dismiss'))
         );
         renderPanel();
+      };
+    });
+    panel.querySelectorAll('[data-bday-gift]').forEach((btn) => {
+      btn.onclick = (e) => {
+        e.stopPropagation();
+        const id = Number(btn.getAttribute('data-bday-gift'));
+        const name = btn.getAttribute('data-bday-name') || '';
+        const ageRaw = btn.getAttribute('data-bday-age');
+        const age = ageRaw === '' || ageRaw == null ? null : Number(ageRaw);
+        if (global.AsgardBirthdayGreet && AsgardBirthdayGreet.openSendFor) {
+          AsgardBirthdayGreet.openSendFor(id, name, age);
+        } else {
+          location.hash = '#/birthdays';
+        }
       };
     });
     panel.querySelectorAll('[data-story]').forEach((btn) => {

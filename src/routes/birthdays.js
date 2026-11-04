@@ -44,7 +44,10 @@ async function routes(fastify) {
       SELECT
         id, name, role, birth_date,
         (next_birthday - (SELECT d FROM today))::int AS days_until,
-        (next_birthday = (SELECT d FROM today)) AS is_today
+        (next_birthday = (SELECT d FROM today)) AS is_today,
+        /* полный возраст на ближайший ДР */
+        (EXTRACT(YEAR FROM next_birthday)
+          - EXTRACT(YEAR FROM birth_date))::int AS age
       FROM birthdays
       WHERE (next_birthday - (SELECT d FROM today))::int <= $1
       ORDER BY days_until ASC, name ASC

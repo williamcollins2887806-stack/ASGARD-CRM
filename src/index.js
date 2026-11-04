@@ -945,6 +945,7 @@ fastify.register(require('./routes/estimates'), { prefix: '/api/estimates' });
 fastify.register(require('./routes/works'), { prefix: '/api/works' });
 fastify.register(require('./routes/work-readiness'), { prefix: '/api/work-readiness' });
 fastify.register(require('./routes/birthdays'), { prefix: '/api/birthdays' });  // C-14: виджет ДР на главной
+fastify.register(require('./routes/birthday-gifts'), { prefix: '/api/birthday-gifts' });
 fastify.register(require('./routes/customers'), { prefix: '/api/customers' });
 fastify.register(require('./routes/expenses'), { prefix: '/api/expenses' });
 fastify.register(require('./routes/kpi-money'), { prefix: '/api/kpi-money' }); // KPI v2: серверный агрегат /expenses-by-category для donut

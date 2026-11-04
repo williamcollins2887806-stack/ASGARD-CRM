@@ -770,6 +770,60 @@ window.AsgardCustomDashboard = (function(){
   }
 
   async function renderBirthdays(el, user) {
+    let todayPeers = [];
+    try {
+      const auth = await AsgardAuth.getAuth();
+      const token = auth && auth.token;
+      if (token) {
+        const r = await fetch('/api/birthday-gifts/today', {
+          headers: { Authorization: 'Bearer ' + token }
+        });
+        const j = await r.json();
+        todayPeers = (j.items || []).filter((it) => !it.is_me);
+      }
+    } catch (_) { todayPeers = []; }
+
+    if (todayPeers.length) {
+      el.innerHTML = todayPeers.map((p) =>
+        '<div style="padding:10px 0;display:flex;gap:10px;align-items:center;justify-content:space-between">' +
+          '<div><div style="font-weight:600;font-size:13px">' + esc(p.name) + '</div>' +
+          '<div class="help">' + (p.age != null ? ('Сегодня ' + p.age + ' лет') : 'Сегодня!') + '</div></div>' +
+          '<button type="button" class="btn mini" data-bd-home-gift="' + p.id + '" data-bd-name="' + esc(p.name) + '" data-bd-age="' + (p.age != null ? p.age : '') + '" ' + (p.already_sent ? 'disabled' : '') + '>' +
+          (p.already_sent ? 'Готово' : 'Поздравить') + '</button></div>'
+      ).join('') +
+      '<div style="margin-top:8px"><a href="#/birthdays" class="btn mini ghost">Все дни рождения</a></div>';
+      el.querySelectorAll('[data-bd-home-gift]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const id = Number(btn.getAttribute('data-bd-home-gift'));
+          const name = btn.getAttribute('data-bd-name') || '';
+          const ageRaw = btn.getAttribute('data-bd-age');
+          const age = ageRaw === '' || ageRaw == null ? null : Number(ageRaw);
+          if (window.AsgardBirthdayGreet) AsgardBirthdayGreet.openSendFor(id, name, age);
+          else location.hash = '#/birthdays';
+        });
+      });
+      return;
+    }
+
+    try {
+      const auth = await AsgardAuth.getAuth();
+      const token = auth && auth.token;
+      if (token) {
+        const r = await fetch('/api/birthdays?days=30', {
+          headers: { Authorization: 'Bearer ' + token }
+        });
+        const j = await r.json();
+        const up = (j.items || []).slice(0, 5);
+        if (!up.length) { el.innerHTML = '<div class="help" style="text-align:center">Нет ДР</div>'; return; }
+        el.innerHTML = up.map((e) =>
+          '<div style="padding:10px 0;display:flex;gap:10px"><div style="width:28px;height:28px;border-radius:50%;background:color-mix(in srgb, var(--gold) 30%, transparent);display:grid;place-items:center;font-size:12px;color:var(--gold)">✦</div><div><div style="font-weight:600;font-size:13px">' +
+          esc(e.name) + '</div><div class="help">' + (e.is_today || e.days_until === 0 ? 'Сегодня!' : ('Через ' + e.days_until + ' дн.')) +
+          '</div></div></div>'
+        ).join('') + '<div style="margin-top:8px"><a href="#/birthdays" class="btn mini ghost">Открыть</a></div>';
+        return;
+      }
+    } catch (_) { /* fallback below */ }
+
     const emps = await AsgardDB.getAll('employees')||[];
     const today = new Date();
     const up = emps.filter(e=>e.birth_date).map(e=>{
@@ -779,7 +833,7 @@ window.AsgardCustomDashboard = (function(){
       return {...e, days:Math.ceil((ty-today)/(1000*60*60*24))};
     }).filter(e=>e.days<=30).sort((a,b)=>a.days-b.days).slice(0,5);
     if (!up.length) { el.innerHTML = '<div class="help" style="text-align:center">Нет ДР</div>'; return; }
-    el.innerHTML = up.map(e=>'<div style="padding:10px 0;display:flex;gap:10px"><div style="font-size:24px">🎂</div><div><div style="font-weight:600;font-size:13px">'+esc(e.fio||e.full_name)+'</div><div class="help">'+(e.days===0?'Сегодня!':'Через '+e.days+' дн.')+'</div></div></div>').join('');
+    el.innerHTML = up.map(e=>'<div style="padding:10px 0;display:flex;gap:10px"><div style="font-size:24px">✦</div><div><div style="font-weight:600;font-size:13px">'+esc(e.fio||e.full_name)+'</div><div class="help">'+(e.days===0?'Сегодня!':'Через '+e.days+' дн.')+'</div></div></div>').join('');
   }
 
   async function renderApprovals(el, user) {

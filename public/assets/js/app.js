@@ -1658,6 +1658,13 @@ var _setupPinKeypad = null;
     try { if (window.AsgardPush) AsgardPush.init(); } catch(e) {}
     try { if (window.AsgardWebAuthn) AsgardWebAuthn.showRegistrationPrompt(); } catch(e) {}
     try { if (window.AsgardSessionGuard) AsgardSessionGuard.init(); } catch(e) { console.warn("[SessionGuard] init error:", e); }
+    try {
+      if (window.AsgardBirthdayGreet) {
+        setTimeout(function () {
+          try { AsgardBirthdayGreet.maybeShow(); } catch (e) {}
+        }, 1600);
+      }
+    } catch (e) {}
   }
 
   // ─── ГЕЙТ присутствия: недельная отметка (премиальный экран) ───────────────
@@ -2861,6 +2868,11 @@ AsgardRouter.add("/assembly", () => {
             setTimeout(function () {
               try { AsgardAcademyLagReminder.maybeShow(); } catch (e) {}
             }, 2200);
+          }
+          if (_ga && _ga.user && window.AsgardBirthdayGreet) {
+            setTimeout(function () {
+              try { AsgardBirthdayGreet.maybeShow(); } catch (e) {}
+            }, 2600);
           }
         } catch(e) {}
         AsgardRouter.start();

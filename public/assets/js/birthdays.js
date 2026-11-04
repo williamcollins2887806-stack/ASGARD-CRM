@@ -185,9 +185,51 @@ window.AsgardBirthdaysPage=(function(){
     const data = await buildBirthdayData(users, 'birth_date', getName, getRole);
     const monthsHtml = renderMonths(data.byMonth);
 
+    let todayHtml = '';
+    try {
+      const token = auth.token || (AsgardAuth.getToken && AsgardAuth.getToken()) || '';
+      const r = await fetch('/api/birthday-gifts/today', {
+        headers: token ? { Authorization: 'Bearer ' + token } : {}
+      });
+      const j = await r.json();
+      const peers = (j.items || []).filter((it) => !it.is_me);
+      if (peers.length) {
+        todayHtml = `
+          <div class="card" style="margin-bottom:14px;border-color:color-mix(in srgb, var(--gold) 40%, var(--brd));background:color-mix(in srgb, var(--gold) 8%, var(--bg2));">
+            <h3 style="margin:0 0 10px">Сегодня в зале</h3>
+            <div style="display:flex;flex-wrap:wrap;gap:10px">
+              ${peers.map((p) => `
+                <div style="display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:12px;border:1px solid color-mix(in srgb, var(--gold) 25%, transparent);">
+                  <div>
+                    <div style="font-weight:650">${esc(p.name)}</div>
+                    <div class="help">${p.age != null ? ('сегодня ' + p.age + ' лет') : 'день рождения'}${p.sent_count ? ' · даров: ' + p.sent_count : ''}</div>
+                  </div>
+                  <button class="btn" data-bd-gift="${p.id}" data-bd-name="${esc(p.name)}" data-bd-age="${p.age != null ? p.age : ''}" ${p.already_sent ? 'disabled' : ''}>
+                    ${p.already_sent ? 'Уже поздравил' : 'Поздравить'}
+                  </button>
+                </div>
+              `).join('')}
+            </div>
+          </div>
+        `;
+      }
+      const me = (j.items || []).find((it) => it.is_me);
+      if (me && window.AsgardBirthdayGreet) {
+        todayHtml += `
+          <div class="card" style="margin-bottom:14px">
+            <div class="row" style="justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
+              <div><strong>Сегодня твой день</strong><div class="help">Открой дары от коллег</div></div>
+              <button class="btn" id="btnBdReveal">Открыть дары</button>
+            </div>
+          </div>
+        `;
+      }
+    } catch (_) { todayHtml = ''; }
+
     const body = `
       <div class="panel">
         <div style="margin-bottom:12px">${topTabs({activeTab, canWorkers})}</div>
+        ${todayHtml}
         <div style="display:flex; gap:10px; flex-wrap:wrap; margin-bottom:16px">
           <button class="btn ghost" id="btnOpenAlerts">Открыть уведомления</button>
           <button class="btn ghost" id="btnOpenSettings">Настройки уведомлений</button>
@@ -203,6 +245,19 @@ window.AsgardBirthdaysPage=(function(){
     if(a) a.onclick = ()=>location.hash='#/alerts';
     const s=document.getElementById('btnOpenSettings');
     if(s) s.onclick = ()=>location.hash='#/settings?tab=sla';
+    document.querySelectorAll('[data-bd-gift]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const id = Number(btn.getAttribute('data-bd-gift'));
+        const name = btn.getAttribute('data-bd-name') || '';
+        const ageRaw = btn.getAttribute('data-bd-age');
+        const age = ageRaw === '' || ageRaw == null ? null : Number(ageRaw);
+        if (window.AsgardBirthdayGreet) AsgardBirthdayGreet.openSendFor(id, name, age);
+      });
+    });
+    const rev = document.getElementById('btnBdReveal');
+    if (rev && window.AsgardBirthdayGreet) {
+      rev.onclick = () => AsgardBirthdayGreet.openReveal(true);
+    }
   }
 
   async function renderWorkers({layout, title, canWorkers, activeTab}){
