@@ -349,7 +349,9 @@ window.AsgardOfficeSchedulePage=(function(){
     /* Дашборд: месяц и неделя. Показываем то, что просил заказчик:
        «за месяц отработано в офисе столько-то, за неделю столько-то». */
     function buildDashHtml(md){
-      if(!md) return '';
+      if(!md || !md.raw) {
+        return `<div class="sched-dash__empty">Нет данных учёта часов за этот месяц. Загрузите отчёт СКУД или откройте октябрь (там уже есть проходы).</div>`;
+      }
       const c = md.raw.company || {};
       const w = md.raw.week || {};
       const since = md.raw.settings && md.raw.settings.crm_activity_since;
@@ -363,11 +365,20 @@ window.AsgardOfficeSchedulePage=(function(){
       const mon = c.office_hours||0, monCrm = c.crm_hours||0, monNorm = c.norm_hours||0, monDelta = c.delta_hours||0;
       const wek = w.office_hours||0, wekCrm = w.crm_hours||0, wekNorm = w.norm_hours||0, wekDelta = w.delta_hours||0;
       const deltaSign = (v)=> (v>=0? '+':'') + v.toFixed(1);
+      const noSkudHint = mon <= 0
+        ? `нет отчёта СКУД за ${MONTHS_RU[viewMonth].toLowerCase()}`
+        : `по СКУД за ${MONTHS_RU[viewMonth].toLowerCase()}`;
+      const crmHint = since
+        ? `учёт с ${fmtDM(since)}`
+        : (monCrm <= 0 ? 'учёт СРМ только с выкатки (историю не восстановить)' : 'удалёнка и объекты');
+      const normHint = monNorm <= 0
+        ? 'норма 0: дни «оф» без СКУД и «уд» без СРМ пока не входят в зачёт'
+        : `${deltaSign(monDelta)} ч к норме`;
       return `
-        ${card('В офисе · месяц', `${mon.toFixed(1)}<small>ч</small>`, `по СКУД за ${MONTHS_RU[viewMonth].toLowerCase()}`)}
-        ${card('В СРМ · месяц', `${monCrm.toFixed(1)}<small>ч</small>`, since ? `учёт с ${fmtDM(since)}` : 'удалёнка и объекты')}
+        ${card('В офисе · месяц', `${mon.toFixed(1)}<small>ч</small>`, noSkudHint)}
+        ${card('В СРМ · месяц', `${monCrm.toFixed(1)}<small>ч</small>`, crmHint)}
         ${card('Зачёт · месяц', `${(c.credited_hours||0).toFixed(1)}<small>из ${monNorm.toFixed(0)} ч</small>`,
-          `${deltaSign(monDelta)} ч к норме`, deltaCls(monDelta))}
+          normHint, monNorm>0 ? deltaCls(monDelta) : 'warn')}
         ${card('В офисе · неделя', `${wek.toFixed(1)}<small>ч</small>`,
           w.from ? `${fmtDM(w.from)}–${fmtDM(w.to)}` : '')}
         ${card('СРМ · неделя', `${wekCrm.toFixed(1)}<small>ч</small>`, '')}
@@ -456,14 +467,34 @@ window.AsgardOfficeSchedulePage=(function(){
           const ttl = (info && info.title) ? `${iso} · ${info.title}` : iso;
 
           // Часы и предупреждения из office_hours_daily (V453).
-          // Правило: «оф» показывает часы СКУД, «уд» и прочие рабочие статусы —
-          // часы СРМ. Пустое значение означает «данных нет», а не «ноль».
+          // Показываем ФАКТ (СКУД/СРМ), даже если день не зачтён в норму
+          // (нет отчёта СКУД за ноябрь, учёт СРМ только с выкатки и т.п.).
+          // Раньше условие `credited_minutes` прятало все цифры — на ноябре
+          // ячейки выглядели пустыми при живых минутах.
           const dd = personMonth ? personMonth.days.find(x=>x.date===iso) : null;
-          const hrs = dd ? (dd.source==='crm' ? dd.crm_minutes : (dd.office_minutes||dd.credited_minutes)) : 0;
-          const hoursTxt = dd && dd.credited_minutes ? hm(hrs) : '';
-          const warnMark = dd && dd.warn === 'no_punches' ? '!' : (dd && dd.warn === 'skud_missing' ? '?' : '');
+          // Факт в ячейке — максимум из офиса/СРМ/зачёта. Источник «какой
+          // именно» для стиля: СРМ, если статус удалённый/объектный.
+          const factMin = dd
+            ? Math.max(
+                Number(dd.office_minutes || 0),
+                Number(dd.crm_minutes || 0),
+                Number(dd.credited_minutes || 0)
+              )
+            : 0;
+          const credited = dd ? Number(dd.credited_minutes || 0) : 0;
+          const hoursTxt = factMin > 0 ? hm(factMin) : '';
+          const hoursMuted = hoursTxt && credited <= 0;
+          const isCrmStyle = dd && (
+            dd.source === 'crm' || dd.source === 'crm_no_status'
+            || ['уд','об','км','пг','уч','ск'].includes(String(dd.status||''))
+          );
+          const warnMark = dd && dd.warn === 'no_punches' ? '!'
+            : (dd && (dd.warn === 'skud_missing' || dd.source === 'skud_missing') ? '?'
+              : (dd && (dd.warn === 'no_crm_data' || dd.source === 'no_crm_data') ? '·' : ''));
           if(dd && dd.source==='unconfirmed') cellCls.push('is-dispute');
-          if(dd && (dd.source==='no_crm_data' || (dd.warn==='skud_missing' && dd.counts_in_norm))) cellCls.push('is-nodata');
+          if(dd && (dd.source==='no_crm_data' || dd.source==='skud_missing' || dd.source==='no_data' || dd.warn==='skud_missing')) {
+            cellCls.push('is-nodata');
+          }
 
           cells.push(`<button class="${cellCls.join(' ')}"
             style="${bgStyle}"
@@ -473,7 +504,7 @@ window.AsgardOfficeSchedulePage=(function(){
             ${editable ? '' : "data-locked='1'"}
             title="${esc(ttl)}"
             type="button">${
-              hoursTxt ? `<span class="sched-hours${dd && dd.source==='crm' ? ' is-crm' : ''}">${esc(hoursTxt)}</span>` : ''
+              hoursTxt ? `<span class="sched-hours${isCrmStyle ? ' is-crm' : ''}${hoursMuted ? ' is-muted' : ''}">${esc(hoursTxt)}</span>` : ''
             }${
               warnMark ? `<span class="sched-warn${warnMark==='!' ? ' is-bad' : ''}">${warnMark}</span>` : ''
             }</button>`);

@@ -1587,6 +1587,19 @@ td .status.gold { background: var(--gold-bg); color: var(--gold); }
   letter-spacing: -0.02em;
 }
 
+.sched-hours.is-muted {
+  opacity: 0.55;
+  text-decoration: line-through;
+  text-decoration-thickness: 1px;
+}
+
+.sched-dash__empty {
+  padding: 10px 12px;
+  color: var(--t2);
+  font-size: 13px;
+  line-height: 1.35;
+}
+
 .sched-hours.is-crm {
   background: color-mix(in srgb, var(--cyan) 34%, var(--bg1));
   color: var(--t1);
