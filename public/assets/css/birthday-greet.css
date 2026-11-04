@@ -509,3 +509,177 @@
   }
   .bd-reveal__line { width: 72%; }
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Soldag light — пергамент · чернила · кованое золото
+   (html[data-theme="light"] — канон desktop CRM)
+   ═══════════════════════════════════════════════════════════════════════════ */
+html[data-theme="light"] .bd-root {
+  --bd-noir: #1A1510;
+  --bd-noir-2: #F4EFE6;
+  --bd-noir-3: #FDFAF5;
+  --bd-gold: var(--gold, #B8891E);
+  --bd-gold-l: #C9A227;
+  --bd-gold-d: #8B6914;
+  --bd-cream: #1A1510;
+  --bd-mute: #6B5E45;
+  --bd-line: color-mix(in srgb, var(--bd-gold) 48%, transparent);
+  --bd-glow: color-mix(in srgb, var(--bd-gold) 20%, transparent);
+  --bd-paper: #FDFAF5;
+  --bd-paper-2: #F4EFE6;
+  --bd-paper-3: #E8DFCF;
+  --bd-ink-soft: #3D3428;
+}
+
+html[data-theme="light"] .bd-dim {
+  background:
+    radial-gradient(900px 520px at 50% 8%, color-mix(in srgb, var(--bd-gold) 22%, transparent), transparent 58%),
+    radial-gradient(700px 480px at 82% 92%, color-mix(in srgb, #9B3D55 8%, transparent), transparent 52%),
+    color-mix(in srgb, #EDE6D8 82%, transparent);
+  backdrop-filter: blur(12px) saturate(1.08);
+  -webkit-backdrop-filter: blur(12px) saturate(1.08);
+}
+
+html[data-theme="light"] .bd-frame {
+  color: var(--bd-cream);
+  border-color: var(--bd-line);
+  background:
+    radial-gradient(720px 340px at 50% -8%, var(--bd-glow), transparent 62%),
+    linear-gradient(165deg, #FFFEFB 0%, var(--bd-paper) 38%, var(--bd-paper-2) 100%);
+  box-shadow:
+    0 28px 80px rgba(26, 21, 16, .18),
+    0 0 0 1px color-mix(in srgb, var(--bd-gold) 22%, transparent),
+    inset 0 1px 0 rgba(255, 255, 255, .85);
+}
+html[data-theme="light"] .bd-frame::before {
+  border-color: color-mix(in srgb, var(--bd-gold) 28%, transparent);
+  opacity: .85;
+}
+html[data-theme="light"] .bd-frame::after {
+  background: linear-gradient(90deg, transparent, var(--bd-gold-d), transparent);
+  opacity: .7;
+}
+
+html[data-theme="light"] .bd-invite__eyebrow,
+html[data-theme="light"] .bd-reveal__eyebrow,
+html[data-theme="light"] .bd-atelier__eyebrow {
+  color: var(--bd-gold-d);
+}
+
+html[data-theme="light"] .bd-invite__title,
+html[data-theme="light"] .bd-atelier__title,
+html[data-theme="light"] .bd-reveal__title {
+  color: var(--bd-cream);
+  text-shadow: none;
+}
+
+html[data-theme="light"] .bd-atelier__sub,
+html[data-theme="light"] .bd-reveal__sub,
+html[data-theme="light"] .bd-invite__sub,
+html[data-theme="light"] .bd-person__meta,
+html[data-theme="light"] .bd-gift__hint,
+html[data-theme="light"] .bd-hall-count {
+  color: var(--bd-mute);
+}
+
+html[data-theme="light"] .bd-person {
+  background: color-mix(in srgb, var(--bd-gold) 7%, var(--bd-paper));
+  color: var(--bd-cream);
+}
+html[data-theme="light"] .bd-person:hover {
+  background: color-mix(in srgb, var(--bd-gold) 12%, var(--bd-paper));
+}
+html[data-theme="light"] .bd-person.is-on {
+  border-color: color-mix(in srgb, var(--bd-gold) 55%, transparent);
+  background: color-mix(in srgb, var(--bd-gold) 14%, var(--bd-paper));
+  box-shadow: 0 10px 24px color-mix(in srgb, var(--bd-gold) 18%, transparent);
+}
+
+html[data-theme="light"] .bd-person__name,
+html[data-theme="light"] .bd-gift__name {
+  color: var(--bd-cream);
+}
+
+html[data-theme="light"] .bd-person__sent,
+html[data-theme="light"] .bd-letter__from,
+html[data-theme="light"] .bd-fly__txt,
+html[data-theme="light"] .bd-pending {
+  color: var(--bd-gold-d);
+}
+
+html[data-theme="light"] .bd-av {
+  color: #1A1510;
+  box-shadow:
+    0 0 0 3px color-mix(in srgb, var(--bd-gold) 45%, transparent),
+    0 0 0 7px color-mix(in srgb, var(--bd-gold) 14%, transparent),
+    0 8px 22px color-mix(in srgb, var(--bd-gold) 22%, transparent);
+}
+
+html[data-theme="light"] .bd-btn--gold {
+  color: #1A1510;
+  box-shadow:
+    0 10px 28px color-mix(in srgb, var(--bd-gold) 28%, transparent),
+    inset 0 1px 0 rgba(255, 255, 255, .45);
+}
+html[data-theme="light"] .bd-btn--ghost {
+  color: var(--bd-mute);
+  border-color: color-mix(in srgb, var(--bd-gold) 38%, transparent);
+  background: color-mix(in srgb, var(--bd-paper) 70%, transparent);
+}
+html[data-theme="light"] .bd-btn--ghost:hover {
+  color: var(--bd-cream);
+  border-color: color-mix(in srgb, var(--bd-gold) 62%, transparent);
+  background: color-mix(in srgb, var(--bd-gold) 8%, var(--bd-paper));
+}
+
+html[data-theme="light"] .bd-gift {
+  border-color: color-mix(in srgb, var(--bd-gold) 28%, transparent);
+  background:
+    radial-gradient(120px 80px at 50% 18%, color-mix(in srgb, var(--bd-gold) 16%, transparent), transparent 70%),
+    linear-gradient(180deg, #FFFEFB, var(--bd-paper-2));
+  color: var(--bd-cream);
+  box-shadow: 0 6px 18px rgba(26, 21, 16, .06);
+}
+html[data-theme="light"] .bd-gift:hover {
+  box-shadow: 0 12px 28px rgba(26, 21, 16, .1);
+}
+html[data-theme="light"] .bd-gift.is-on {
+  border-color: var(--bd-gold-d);
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--bd-gold) 40%, transparent),
+    0 14px 32px color-mix(in srgb, var(--bd-gold) 20%, transparent);
+}
+html[data-theme="light"] .bd-art {
+  filter: drop-shadow(0 6px 14px rgba(26, 21, 16, .14));
+}
+
+html[data-theme="light"] .bd-tone {
+  color: var(--bd-ink-soft);
+  border-color: color-mix(in srgb, var(--bd-gold) 36%, transparent);
+  background: color-mix(in srgb, var(--bd-paper) 80%, transparent);
+}
+html[data-theme="light"] .bd-tone.is-on {
+  background: color-mix(in srgb, var(--bd-gold) 16%, var(--bd-paper));
+  border-color: var(--bd-gold-d);
+  color: var(--bd-gold-d);
+}
+
+html[data-theme="light"] .bd-scene {
+  border-color: color-mix(in srgb, var(--bd-gold) 32%, transparent);
+  background:
+    radial-gradient(280px 160px at 50% 35%, color-mix(in srgb, var(--bd-gold) 18%, transparent), transparent 70%),
+    linear-gradient(180deg, #FFFEFB, var(--bd-paper-3));
+}
+
+html[data-theme="light"] .bd-letter {
+  color: var(--bd-cream);
+}
+html[data-theme="light"] .bd-reveal__line {
+  background: linear-gradient(90deg, transparent, var(--bd-gold-d), transparent);
+}
+
+html[data-theme="light"] .bd-fly__orb {
+  box-shadow:
+    0 0 40px color-mix(in srgb, var(--bd-gold) 35%, transparent),
+    0 0 80px color-mix(in srgb, var(--bd-gold) 18%, transparent);
+}

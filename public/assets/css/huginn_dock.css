@@ -1003,6 +1003,15 @@ html[data-hg-fx="off"] #huginnDock .hg-list-me-btn {
 .hg-bday-congrats:hover {
   background: color-mix(in srgb, var(--gold, #D4A843) 24%, transparent);
 }
+html[data-theme="light"] .hg-bday-congrats {
+  border-color: color-mix(in srgb, var(--gold, #B8891E) 50%, transparent);
+  background: color-mix(in srgb, var(--gold, #B8891E) 12%, #FDFAF5);
+  color: #8B6914;
+}
+html[data-theme="light"] .hg-bday-congrats:hover {
+  background: color-mix(in srgb, var(--gold, #B8891E) 20%, #FDFAF5);
+  color: #6B5010;
+}
 .hg-pinned-block {
   margin: 0 0 4px;
   padding: 6px 0 2px;

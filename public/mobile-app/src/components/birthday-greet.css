@@ -318,3 +318,78 @@
     animation: none !important;
   }
 }
+
+/* Soldag light (html.light — канон mobile) */
+html.light .mbd-root {
+  --mbd-gold: #B8891E;
+  --mbd-gold-l: #C9A227;
+  --mbd-cream: #1A1510;
+  --mbd-mute: #6B5E45;
+  --mbd-noir: #1A1510;
+}
+html.light .mbd-dim {
+  background:
+    radial-gradient(900px 520px at 50% 8%, color-mix(in srgb, var(--mbd-gold) 22%, transparent), transparent 58%),
+    color-mix(in srgb, #EDE6D8 82%, transparent);
+}
+html.light .mbd-card {
+  border-color: color-mix(in srgb, var(--mbd-gold) 48%, transparent);
+  background:
+    radial-gradient(640px 280px at 50% 0%, color-mix(in srgb, var(--mbd-gold) 18%, transparent), transparent 62%),
+    linear-gradient(165deg, #FFFEFB, #F4EFE6 45%, #E8DFCF);
+  color: var(--mbd-cream);
+  box-shadow: 0 24px 64px rgba(26, 21, 16, .16);
+}
+html.light .mbd-card::before {
+  border-color: color-mix(in srgb, var(--mbd-gold) 26%, transparent);
+}
+html.light .mbd-eyebrow { color: #8B6914; }
+html.light .mbd-title {
+  color: var(--mbd-cream);
+  text-shadow: none;
+}
+html.light .mbd-sub,
+html.light .mbd-meta,
+html.light .mbd-gift-hint { color: var(--mbd-mute); }
+html.light .mbd-person {
+  background: color-mix(in srgb, var(--mbd-gold) 8%, #FDFAF5);
+  color: var(--mbd-cream);
+}
+html.light .mbd-person.is-on {
+  border-color: color-mix(in srgb, var(--mbd-gold) 55%, transparent);
+  background: color-mix(in srgb, var(--mbd-gold) 14%, #FDFAF5);
+}
+html.light .mbd-sent,
+html.light .mbd-letter-from,
+html.light .mbd-fly,
+html.light .mbd-pending { color: #8B6914; }
+html.light .mbd-btn-ghost {
+  color: var(--mbd-mute);
+  border-color: color-mix(in srgb, var(--mbd-gold) 38%, transparent);
+  background: #FDFAF5;
+}
+html.light .mbd-gift {
+  border-color: color-mix(in srgb, var(--mbd-gold) 28%, transparent);
+  background: linear-gradient(180deg, #FFFEFB, #F4EFE6);
+  color: var(--mbd-cream);
+}
+html.light .mbd-gift.is-on {
+  border-color: #8B6914;
+}
+html.light .mbd-tone {
+  color: #3D3428;
+  border-color: color-mix(in srgb, var(--mbd-gold) 36%, transparent);
+  background: #FDFAF5;
+}
+html.light .mbd-tone.is-on {
+  background: color-mix(in srgb, var(--mbd-gold) 16%, #FDFAF5);
+  border-color: #8B6914;
+  color: #8B6914;
+}
+html.light .mbd-scene {
+  border-color: color-mix(in srgb, var(--mbd-gold) 32%, transparent);
+  background:
+    radial-gradient(220px 130px at 50% 40%, color-mix(in srgb, var(--mbd-gold) 18%, transparent), transparent 70%),
+    linear-gradient(180deg, #FFFEFB, #E8DFCF);
+}
+html.light .mbd-letter { color: var(--mbd-cream); }
