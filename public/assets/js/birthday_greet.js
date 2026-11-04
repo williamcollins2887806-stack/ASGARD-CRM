@@ -1,4 +1,4 @@
-/* Asgard Birthday Greet — premium ritual (invite / atelier / reveal) */
+/* Birthday Greet — premium ritual (invite / atelier / reveal) */
 (function () {
   'use strict';
 
