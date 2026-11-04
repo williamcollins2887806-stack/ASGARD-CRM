@@ -9,7 +9,7 @@ import {
   // Продажи
   Trophy, FilePen, Building2, Filter, Calculator,
   // Финансы
-  BarChart2, BarChart3, Receipt, FileCheck2, Banknote, Users2,
+  BarChart2, BarChart3, Activity, Receipt, FileCheck2, Banknote, Users2,
   Building, Landmark, CreditCard, Briefcase, Wallet,
   // Персонал
   Users, UserPlus, Plane, ShieldCheck, Stamp, CalendarDays, Table2,
@@ -58,6 +58,7 @@ const GROUPS = [
       { path: '/director-tender-approvals', icon: FileCheck2, label: 'Согласование тендеров', section: 'tenders', roles: ['DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV', 'ADMIN'] },
       // D-343: дашборд заявок по РП — директор видит работу подчинённых и проваливается в каждого.
       { path: '/director-applications', icon: Users2, label: 'Заявки по РП', section: 'tenders', roles: ['DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV', 'ADMIN'] },
+      { path: '/director-analytics', icon: Activity, label: 'Пульс директора', section: 'dashboard', roles: ['DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV', 'ADMIN'] },
       { path: '/tenders/platform', icon: Filter,     label: 'С площадок',   section: 'tenders', roles: ['ADMIN', 'TO', 'HEAD_TO', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV'] },
       { path: '/to-calcs',    icon: Calculator,       label: 'Расчёты ТО',   section: 'tenders', roles: ['TO', 'HEAD_TO', 'ADMIN'] },
       { path: '/head-to-approvals', icon: FileCheck2, label: 'Согласования ТО', section: 'tenders', roles: ['HEAD_TO', 'ADMIN'] },

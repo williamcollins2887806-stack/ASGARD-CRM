@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="ru" data-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Дашборд руководителя · ASGARD CRM</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&family=Inter:wght@400;500;600;700&display=swap"
+    rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css?v=5" />
+</head>
+<body data-vp="desktop">
+
+  <!-- ── Прототип-обвязка (не часть продукта) ────────────────────────────── -->
+  <header class="proto-bar">
+    <div class="proto-id">
+      <span class="proto-logo">A</span>
+      <div class="proto-id-text">
+        <strong>ASGARD CRM · прототип v3</strong>
+        <small>Дашборд руководителя · <span class="mono">#/dashboard</span></small>
+      </div>
+    </div>
+    <div class="proto-controls">
+      <div class="proto-group">
+        <span class="proto-label">Тема</span>
+        <div class="seg-switch" id="themeSwitch" role="group" aria-label="Тема оформления">
+          <button type="button" data-theme-set="dark" class="is-on" aria-pressed="true">Тёмная</button>
+          <button type="button" data-theme-set="light" aria-pressed="false">Светлая</button>
+        </div>
+      </div>
+      <div class="proto-group">
+        <span class="proto-label">Макет</span>
+        <div class="seg-switch" id="vpSwitch" role="group" aria-label="Размер макета">
+          <button type="button" data-vp="desktop" class="is-on" aria-pressed="true">Desktop 1440</button>
+          <button type="button" data-vp="mobile" aria-pressed="false">Mobile</button>
+        </div>
+      </div>
+      <div class="proto-group" id="deviceGroup" hidden>
+        <span class="proto-label">Устройство</span>
+        <div class="seg-switch" id="deviceSwitch" role="group" aria-label="Мобильное устройство">
+          <button type="button" data-device-set="iphone" class="is-on" aria-pressed="true">iPhone 15 Pro</button>
+          <button type="button" data-device-set="fold" aria-pressed="false">Z Fold 5</button>
+          <button type="button" data-device-set="fold-open" aria-pressed="false">Z Fold раскрыт</button>
+          <button type="button" data-device-set="ipad" aria-pressed="false">iPad Air</button>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <div class="stage-wrap">
+    <div class="stage" id="stage" data-viewport="desktop">
+      <div class="frame" id="frame">
+        <div class="device-spec" id="deviceSpec">
+          <span class="ds-name">iPhone 15 Pro</span>
+          <span class="ds-size">393 × 852 · safe area 59 / 34</span>
+        </div>
+        <div class="crm" id="crm" data-vp="desktop">
+
+          <!-- ── Левое меню (desktop) ─────────────────────────────────────── -->
+          <aside class="rail" aria-label="Меню ASGARD">
+            <div class="rail-top">
+              <span class="rail-logo" title="ASGARD CRM">A</span>
+            </div>
+
+            <nav class="rail-nav">
+              <span class="rail-caption">Главная</span>
+
+              <button type="button" class="rail-item is-active" aria-current="page">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 13h6V4H4v9Zm0 7h6v-5H4v5Zm10 0h6v-9h-6v9Zm0-16v5h6V4h-6Z"/></svg>
+                <span class="rail-tip">Дашборд руководителя</span>
+              </button>
+
+              <button type="button" class="rail-item">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v3H4V5Zm0 5.5h16v3H4v-3ZM4 16h10v3H4v-3Z"/></svg>
+                <span class="rail-tip">Тендеры</span>
+              </button>
+
+              <button type="button" class="rail-item">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h7v7H4V4Zm9 0h7v4h-7V4ZM4 13h7v7H4v-7Zm9 1h7v6h-7v-6Z"/></svg>
+                <span class="rail-tip">Заявки</span>
+              </button>
+
+              <button type="button" class="rail-item">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 20V9l7-5 7 5v11h-5v-6h-4v6H5Z"/></svg>
+                <span class="rail-tip">Работы</span>
+              </button>
+
+              <span class="rail-caption">Ресурсы</span>
+
+              <button type="button" class="rail-item">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7h18v4H3V7Zm0 6h18v4H3v-4Zm0 6h12v2H3v-2Z"/></svg>
+                <span class="rail-tip">Склад</span>
+              </button>
+
+              <button type="button" class="rail-item">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v16M7 9h7a2.5 2.5 0 0 1 0 5H8a2.5 2.5 0 0 0 0 5h7" stroke-width="1.8" fill="none"/></svg>
+                <span class="rail-tip">Финансы</span>
+              </button>
+
+              <button type="button" class="rail-item">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3.2" stroke-width="1.8" fill="none"/><path d="M12 3.5v2.2M12 18.3v2.2M3.5 12h2.2M18.3 12h2.2M6 6l1.6 1.6M16.4 16.4 18 18M18 6l-1.6 1.6M7.6 16.4 6 18" stroke-width="1.8" fill="none"/></svg>
+                <span class="rail-tip">Настройки</span>
+              </button>
+            </nav>
+
+            <div class="rail-foot">
+              <span class="rail-avatar">НВ</span>
+            </div>
+          </aside>
+
+          <!-- ── Рабочая область ──────────────────────────────────────────── -->
+          <div class="crm-body">
+            <div class="crm-top">
+              <div class="crm-top-left">
+                <span class="hash-chip mono">#/dashboard</span>
+                <span class="crm-top-sep"></span>
+                <span class="crm-top-title">Дашборд руководителя</span>
+              </div>
+              <div class="crm-top-right">
+                <button type="button" class="crm-icon-btn" aria-label="Поиск">
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5" stroke-width="1.8" fill="none"/><path d="m16 16 4 4" stroke-width="1.8" fill="none"/></svg>
+                </button>
+                <button type="button" class="crm-icon-btn" aria-label="Уведомления">
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4a5 5 0 0 0-5 5v4l-1.5 2.5h13L17 13V9a5 5 0 0 0-5-5Z" stroke-width="1.8" fill="none"/><path d="M10 19h4" stroke-width="1.8" fill="none"/></svg>
+                  <span class="crm-badge">3</span>
+                </button>
+                <span class="crm-top-sep"></span>
+                <span class="crm-user">
+                  <span class="crm-user-avatar">НВ</span>
+                  <span class="crm-user-text">
+                    <strong>Никитин В.Р.</strong>
+                    <small>Директор</small>
+                  </span>
+                </span>
+              </div>
+            </div>
+
+            <main class="page" id="page">
+              <div id="pageHead"></div>
+              <div class="sections" id="sections"></div>
+
+              <footer class="page-foot">
+                <span>ASGARD CRM · Дашборд руководителя</span>
+                <span class="page-foot-dot"></span>
+                <span>Демо-данные, офлайн-прототип</span>
+                <span class="page-foot-right mono">#/dashboard</span>
+              </footer>
+            </main>
+
+            <!-- ── Мобильная нижняя навигация ──────────────────────────────── -->
+            <nav class="m-tabbar" aria-label="Мобильная навигация">
+              <button type="button" class="m-tab is-active" data-jump="top">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 11.5 12 5l8 6.5V20h-5.5v-5h-5v5H4v-8.5Z"/></svg>
+                <span>Главная</span>
+              </button>
+              <button type="button" class="m-tab" data-jump="tenders">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v3H4V5Zm0 5.5h16v3H4v-3ZM4 16h10v3H4v-3Z"/></svg>
+                <span>Тендеры</span>
+              </button>
+              <button type="button" class="m-tab" data-jump="applications">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h7v7H4V4Zm9 0h7v4h-7V4ZM4 13h7v7H4v-7Zm9 1h7v6h-7v-6Z"/></svg>
+                <span>Заявки</span>
+              </button>
+              <button type="button" class="m-tab" data-jump="works">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 20V9l7-5 7 5v11h-5v-6h-4v6H5Z"/></svg>
+                <span>Работы</span>
+              </button>
+              <button type="button" class="m-tab" data-jump="more">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 6h14v2H5V6Zm0 5h14v2H5v-2Zm0 5h14v2H5v-2Z"/></svg>
+                <span>Ещё</span>
+              </button>
+            </nav>
+          </div>
+
+          <!-- ── Модальное окно карточки (внутри рамки приложения) ──────── -->
+          <div class="modal-root" id="modalRoot" hidden>
+            <div class="modal-scrim" data-close-modal></div>
+            <div class="modal" id="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle"></div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="mock-data.js?v=5"></script>
+  <script src="app.js?v=5"></script>
+</body>
+</html>

@@ -15,11 +15,15 @@ window.AsgardOfficeSchedulePage=(function(){
     {code:"ск", label:"Склад",              color:"var(--t2)"},
     {code:"вх", label:"Выходной",           color:"var(--t3)"},
     {code:"отп",label:"Отпуск",             color:"var(--gold)"},
+    {code:"нп", label:"Не подтверждён",     color:"var(--err-t)"},
   ];
 
   const VAC_CODE = "отп";
+  /* «нп» — машинный статус «не подтверждён»: ставит система, когда снят ложный
+     «оф» (не было прохода СКУД). В ручном выборе его нет — как «отп». */
+  const DISPUTE_CODE = "нп";
   /* В селекторе статуса отпуска НЕТ — он приходит только из графика отпусков. */
-  const PICKER_STATUS = STATUS.filter(s=>s.code!==VAC_CODE);
+  const PICKER_STATUS = STATUS.filter(s=>s.code!==VAC_CODE && s.code!==DISPUTE_CODE);
 
   const MONTHS_RU = ['Январь','Февраль','Март','Апрель','Май','Июнь','Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь'];
 
@@ -97,6 +101,32 @@ window.AsgardOfficeSchedulePage=(function(){
       return null;
     }
   }
+
+  /* Авторизованный запрос с телом (PUT/POST/DELETE) — импорт, привязка ФИО, правка часов. */
+  async function apiSend(path, method, body){
+    const t=localStorage.getItem('asgard_token')||'';
+    const opt={ method, headers:{'Authorization':'Bearer '+t} };
+    if(body instanceof FormData){ opt.body=body; }
+    else if(body!==undefined){ opt.headers['Content-Type']='application/json'; opt.body=JSON.stringify(body); }
+    const r=await fetch(path, opt);
+    let j=null;
+    try{ j=await r.json(); }catch(_){}
+    if(!r.ok){
+      const err=new Error((j&&(j.message||j.error))||('HTTP '+r.status));
+      err.code=(j&&j.error)||'http_'+r.status;
+      err.payload=j;
+      throw err;
+    }
+    return j;
+  }
+
+  /* Часы: 475 → «7:55». */
+  function hm(min){
+    const m=Math.max(0, Math.round(Number(min)||0));
+    return `${Math.floor(m/60)}:${String(m%60).padStart(2,'0')}`;
+  }
+  /* Часы с десятыми: 475 → 7.9 */
+  function hh(min){ return Math.round((Number(min)||0)/6)/10; }
 
   /* Производственный календарь: iso → {is_working, kind, title}. */
   let calMap = new Map();
@@ -262,26 +292,21 @@ window.AsgardOfficeSchedulePage=(function(){
   async function upsertPlan(staffId, dateIso, code){
     /* Отпуск в графике офиса поставить нельзя — он приходит из графика отпусков. */
     if(code === VAC_CODE) return;
-    try {
-      const all = await AsgardDB.all("staff_plan");
-      // Нормализуем дату: API возвращает "2026-02-11T00:00:00.000Z", а dateIso = "2026-02-11"
-      const existing = (all||[]).find(p=>p.staff_id===staffId && ymd(p.date)===dateIso);
-      if(existing){
-        if(code){
-          // Обновляем существующую запись
-          await AsgardDB.put("staff_plan", Object.assign({}, existing, {status_code:code, updated_at:new Date().toISOString()}));
-          return;
-        } else {
-          await AsgardDB.del("staff_plan", existing.id);
-          return;
-        }
-      }
+    const all = await AsgardDB.all("staff_plan");
+    // Нормализуем дату: API возвращает "2026-02-11T00:00:00.000Z", а dateIso = "2026-02-11"
+    const existing = (all||[]).find(p=>p.staff_id===staffId && ymd(p.date)===dateIso);
+    // Ошибки НЕ глотаем: «оф» без прохода СКУД приходит как 409, и вызывающий
+    // код должен показать понятное сообщение, а не «Сохранено».
+    if(existing){
       if(code){
-        await AsgardDB.add("staff_plan", {staff_id:staffId, date:dateIso, status_code:code, updated_at:new Date().toISOString()});
+        await AsgardDB.put("staff_plan", Object.assign({}, existing, {status_code:code, updated_at:new Date().toISOString()}));
+        return;
       }
-    } catch(e) {
-      console.error("[office_schedule] upsertPlan error:", e);
-      AsgardUI.toast("Ошибка","Не удалось сохранить: " + (e.message||""), "err");
+      await AsgardDB.del("staff_plan", existing.id);
+      return;
+    }
+    if(code){
+      await AsgardDB.add("staff_plan", {staff_id:staffId, date:dateIso, status_code:code, updated_at:new Date().toISOString()});
     }
   }
 
@@ -309,8 +334,53 @@ window.AsgardOfficeSchedulePage=(function(){
     const staffIds = staffSorted.map(s=>s.id);
     const colors = await getColors();
 
+    /* Данные часов за месяц (дашборд + часы в ячейках + метки вопросов). */
+    let monthData = null;
+    async function loadMonthData(){
+      const j = await apiGet(`/api/office-attendance/month?year=${viewYear}&month=${viewMonth+1}`);
+      if(!j || !j.ok){ monthData = null; return; }
+      const byStaff = new Map();
+      (j.people||[]).forEach(p=>byStaff.set(p.staff_id, p));
+      const flagMap = new Map();
+      (j.people||[]).forEach(p=>{ if(p.flags && p.flags.open) flagMap.set(p.staff_id, p.flags.open); });
+      monthData = { raw: j, byStaff, flagMap };
+    }
+
+    /* Дашборд: месяц и неделя. Показываем то, что просил заказчик:
+       «за месяц отработано в офисе столько-то, за неделю столько-то». */
+    function buildDashHtml(md){
+      if(!md) return '';
+      const c = md.raw.company || {};
+      const w = md.raw.week || {};
+      const since = md.raw.settings && md.raw.settings.crm_activity_since;
+      const deltaCls = (d)=> (d>=0 ? 'ok' : 'bad');
+      const card = (cap, val, sub, cls, act)=>`
+        <div class="sched-dash__card ${cls||''} ${act?'is-click':''}" ${act?`data-dash-act="${act}"`:''}>
+          <div class="sched-dash__cap">${esc(cap)}</div>
+          <div class="sched-dash__val">${val}</div>
+          ${sub?`<div class="sched-dash__sub">${esc(sub)}</div>`:''}
+        </div>`;
+      const mon = c.office_hours||0, monCrm = c.crm_hours||0, monNorm = c.norm_hours||0, monDelta = c.delta_hours||0;
+      const wek = w.office_hours||0, wekCrm = w.crm_hours||0, wekNorm = w.norm_hours||0, wekDelta = w.delta_hours||0;
+      const deltaSign = (v)=> (v>=0? '+':'') + v.toFixed(1);
+      return `
+        ${card('В офисе · месяц', `${mon.toFixed(1)}<small>ч</small>`, `по СКУД за ${MONTHS_RU[viewMonth].toLowerCase()}`)}
+        ${card('В СРМ · месяц', `${monCrm.toFixed(1)}<small>ч</small>`, since ? `учёт с ${fmtDM(since)}` : 'удалёнка и объекты')}
+        ${card('Зачёт · месяц', `${(c.credited_hours||0).toFixed(1)}<small>из ${monNorm.toFixed(0)} ч</small>`,
+          `${deltaSign(monDelta)} ч к норме`, deltaCls(monDelta))}
+        ${card('В офисе · неделя', `${wek.toFixed(1)}<small>ч</small>`,
+          w.from ? `${fmtDM(w.from)}–${fmtDM(w.to)}` : '')}
+        ${card('СРМ · неделя', `${wekCrm.toFixed(1)}<small>ч</small>`, '')}
+        ${card('Зачёт · неделя', `${(w.credited_hours||0).toFixed(1)}<small>из ${wekNorm.toFixed(0)} ч</small>`,
+          `${deltaSign(wekDelta)} ч к норме`, deltaCls(wekDelta))}
+        ${card('Снято «оф»', `${c.flags_total||0}`, (c.flags_open? `${c.flags_open} без ответа` : 'все ответили'),
+          (c.flags_open? 'warn':''), 'flags')}
+      `;
+    }
+
     async function renderGrid(){
       await loadYearData(viewYear);
+      await loadMonthData();
       const numDays = daysInMonth(viewYear, viewMonth);
       const startDate = new Date(viewYear, viewMonth, 1);
       const endDate = new Date(viewYear, viewMonth, numDays);
@@ -343,6 +413,7 @@ window.AsgardOfficeSchedulePage=(function(){
       const bodyRows = staffSorted.map(s=>{
         const editable = (s.user_id===user.id) || user.role==="OFFICE_MANAGER" || (!officeStrictOwn && (user.role==="ADMIN" || isDirRole(user.role)));
         const cells=[];
+        const personMonth = monthData ? (monthData.byStaff.get(s.id) || null) : null;
         for(let d=1; d<=numDays; d++){
           const dt = new Date(viewYear, viewMonth, d);
           const iso = ymd(dt);
@@ -384,6 +455,16 @@ window.AsgardOfficeSchedulePage=(function(){
           if(code) cellCls.push('has-status');
           const ttl = (info && info.title) ? `${iso} · ${info.title}` : iso;
 
+          // Часы и предупреждения из office_hours_daily (V453).
+          // Правило: «оф» показывает часы СКУД, «уд» и прочие рабочие статусы —
+          // часы СРМ. Пустое значение означает «данных нет», а не «ноль».
+          const dd = personMonth ? personMonth.days.find(x=>x.date===iso) : null;
+          const hrs = dd ? (dd.source==='crm' ? dd.crm_minutes : (dd.office_minutes||dd.credited_minutes)) : 0;
+          const hoursTxt = dd && dd.credited_minutes ? hm(hrs) : '';
+          const warnMark = dd && dd.warn === 'no_punches' ? '!' : (dd && dd.warn === 'skud_missing' ? '?' : '');
+          if(dd && dd.source==='unconfirmed') cellCls.push('is-dispute');
+          if(dd && (dd.source==='no_crm_data' || (dd.warn==='skud_missing' && dd.counts_in_norm))) cellCls.push('is-nodata');
+
           cells.push(`<button class="${cellCls.join(' ')}"
             style="${bgStyle}"
             data-date="${esc(iso)}"
@@ -391,16 +472,26 @@ window.AsgardOfficeSchedulePage=(function(){
             data-code="${esc(code||"")}"
             ${editable ? '' : "data-locked='1'"}
             title="${esc(ttl)}"
-            type="button"></button>`);
+            type="button">${
+              hoursTxt ? `<span class="sched-hours${dd && dd.source==='crm' ? ' is-crm' : ''}">${esc(hoursTxt)}</span>` : ''
+            }${
+              warnMark ? `<span class="sched-warn${warnMark==='!' ? ' is-bad' : ''}">${warnMark}</span>` : ''
+            }</button>`);
         }
         const badge = (s.user_id===user.id) ? ` <span class="badge blue sched-you">вы</span>` : "";
+        const flags = monthData ? (monthData.flagMap.get(s.id) || 0) : 0;
+        const flagMark = flags ? `<span class="sched-flagmark" title="Есть неотвеченные вопросы «где ты был»: ${flags}">${flags}</span>` : "";
+        // Клик по имени сотрудника открывает его отчёт за месяц: директору
+        // нужен обзор по человеку, а тыкать в мелкие ячейки неудобно.
         return `<div class="sched-row">
-          <div class="sched-name"><span class="sched-name__txt" title="${esc(s.name||"")}">${esc(s.name||"")}</span>${badge}</div>
+          <div class="sched-name" data-person="${s.id}" title="Открыть отчёт: ${esc(s.name||"")}">
+            <span class="sched-name__txt">${esc(s.name||"")}</span>${badge}${flagMark}
+          </div>
           <div class="sched-cells">${cells.join("")}</div>
         </div>`;
       }).join("");
 
-      return { days, bodyRows, planMap };
+      return { days, bodyRows, planMap, dash: buildDashHtml(monthData) };
     }
 
     const initialGrid = await renderGrid();
@@ -426,6 +517,10 @@ window.AsgardOfficeSchedulePage=(function(){
 
       <div class="card sched-legend-card">
         ${legendHtml(colors)}
+      </div>
+
+      <div class="card sched-hero" style="margin-bottom:10px;display:block">
+        <div class="sched-dash" id="schedDash">${initialGrid.dash || ''}</div>
       </div>
 
       <div class="card sched-wrap" id="schedWrap">
@@ -466,20 +561,29 @@ window.AsgardOfficeSchedulePage=(function(){
         const grid = await renderGrid();
         $("#schedDays").innerHTML = grid.days.join("");
         $("#schedBody").innerHTML = grid.bodyRows;
+        const dashEl = $("#schedDash");
+        if(dashEl) dashEl.innerHTML = grid.dash || '';
         planMap = grid.planMap;
         bindCellClicks();
+        bindPersonClicks();
+        bindDashClicks();
       } catch(e) { console.error('[office_schedule] updateGrid error:', e); }
+    }
+
+    /* Клик по карточке дашборда «Снято оф» → список флагов за месяц. */
+    function bindDashClicks(){
+      $$("[data-dash-act]").forEach(el=>{
+        el.addEventListener("click", async ()=>{
+          if(el.dataset.dashAct === 'flags') await openFlagsModal();
+        });
+      });
     }
 
     function bindCellClicks(){
       $$(".sched-cell").forEach(btn=>{
-        btn.addEventListener("click", async ()=>{
+        btn.addEventListener("click", async (ev)=>{
           if(btn.dataset.vac==="1"){
             toast("Отпуск","День в отпуске — ставится только в «Графике отпусков»","warn");
-            return;
-          }
-          if(btn.dataset.locked==="1"){
-            toast("Доступ","Можно редактировать только свою строку","warn");
             return;
           }
           const staffId = Number(btn.dataset.staff||0);
@@ -487,10 +591,32 @@ window.AsgardOfficeSchedulePage=(function(){
           const staffObj = staffSorted.find(s=>s.id===staffId);
           const currentCode = btn.dataset.code||"";
 
+          // Смена статуса — только там, где это разрешено. Карточка дня
+          // (часы, проходы, сессии СРМ) доступна всем: сотрудник должен видеть
+          // свой день целиком.
+          // Shift+клик или клик по чужой строке → карточка дня без смены статуса.
+          // window.event НЕ используем: в современных браузерах он undefined,
+          // и Shift-клик молча не срабатывал (поймано Playwright-прогоном).
+          const shift = !!(ev && ev.shiftKey);
+          if(btn.dataset.locked==="1" || shift){
+            await openDayModal(staffId, dateIso, staffObj?.name||"");
+            return;
+          }
+
           const code = await openPicker({staffId, staffName: staffObj?.name||"", dateIso, currentCode, colors});
           if(code===null) return;
 
-          await upsertPlan(staffId, dateIso, code);
+          try{
+            await upsertPlan(staffId, dateIso, code);
+          }catch(e){
+            if(e && e.code === 'office_not_confirmed'){
+              toast("Не подтверждено",
+                "В этот день СКУД не зафиксировал вход — «в офисе» поставить нельзя. Выберите другой статус.",
+                "err");
+              return;
+            }
+            throw e;
+          }
 
           const nonWorking = btn.classList.contains("weekend");
           const finalCode = code || (nonWorking ? "вх" : "");
@@ -508,11 +634,171 @@ window.AsgardOfficeSchedulePage=(function(){
             btn.classList.remove('has-status');
           }
           toast("Сохранено", `${dateIso}: ${(STATUS.find(s=>s.code===finalCode)||{}).label || "—"}`, "ok");
+          // Пересчитываем ячейку и дашборд: часы зависят от статуса.
+          await updateGrid();
+        });
+        btn.addEventListener('contextmenu', async (e)=>{
+          e.preventDefault();
+          const staffId = Number(btn.dataset.staff||0);
+          const staffObj = staffSorted.find(s=>s.id===staffId);
+          await openDayModal(staffId, btn.dataset.date, staffObj?.name||"");
         });
       });
     }
 
+    /* Клик по имени сотрудника → отчёт по человеку за месяц. */
+    function bindPersonClicks(){
+      $$("[data-person]").forEach(el=>{
+        el.addEventListener("click", async ()=>{
+          const staffId = Number(el.dataset.person||0);
+          if(!staffId) return;
+          const staffObj = staffSorted.find(s=>s.id===staffId);
+          await openPersonModal(staffId, staffObj?.name||"");
+        });
+      });
+    }
+
+    /**
+     * Отчёт по сотруднику за просматриваемый месяц: по дням часы офиса,
+     * часы СРМ, норма и зачёт; итоги месяца. Источник — GET /me?staff_id.
+     */
+    async function openPersonModal(staffId, staffName){
+      const fromIso = ymd(new Date(viewYear, viewMonth, 1));
+      const toIso = ymd(new Date(viewYear, viewMonth, daysInMonth(viewYear, viewMonth)));
+      showModal({title:`Отчёт: ${staffName}`, html:`<div class="muted">Загружаем…</div>`, wide:true, onMount: async (ctx)=>{
+        const host = (ctx && ctx.body) || null;
+        if(!host) return;
+        const j = await apiGet(`/api/office-attendance/me?from=${fromIso}&to=${toIso}&staff_id=${staffId}`);
+        if(!j || !j.ok){ host.innerHTML = '<div class="muted">Не удалось загрузить отчёт</div>'; return; }
+
+        const mon = j.month || j.summary || {};
+        const dH = Math.floor(Math.abs(mon.delta_minutes||0)/60);
+        const dM = Math.abs(mon.delta_minutes||0)%60;
+        const deltaTxt = (mon.delta_minutes||0) >= 0
+          ? 'норма выполнена'
+          : `недоработка ${dH} ч${dM? ' ' + dM + ' мин':''}`;
+
+        const rows = (j.days||[]).map(d=>{
+          const mark = d.source === 'unconfirmed' ? '⚠ ' :
+                       d.source === 'no_data' ? '· ' : '';
+          const label = STATUS.find(s=>s.code===d.status)?.label || (d.status || '—');
+          return `<div class="sched-seg" style="display:grid;grid-template-columns:58px 1fr 62px 62px 58px;gap:6px">
+            <span class="sched-seg__m">${fmtDM(d.date)}</span>
+            <span>${mark}${esc(label)}</span>
+            <span title="в офисе по СКУД">${esc(d.office_text)}</span>
+            <span title="в СРМ">${esc(d.crm_text)}</span>
+            <span class="sched-seg__m" title="зачёт из нормы">${esc(d.credited_text)}</span>
+          </div>`;
+        }).join('') || '<div class="muted">Нет дней</div>';
+
+        host.innerHTML = `
+          <div id="asgDayModalBody">
+            <div class="sched-dash" style="margin-bottom:10px">
+              <div class="sched-dash__card"><div class="sched-dash__cap">В офисе</div><div class="sched-dash__val">${mon.office_hours||0}<small>ч</small></div></div>
+              <div class="sched-dash__card"><div class="sched-dash__cap">В СРМ</div><div class="sched-dash__val">${mon.crm_hours||0}<small>ч</small></div></div>
+              <div class="sched-dash__card ${(mon.delta_minutes||0)>=0?'ok':'bad'}">
+                <div class="sched-dash__cap">Зачёт</div>
+                <div class="sched-dash__val">${mon.credited_hours||0}<small>из ${mon.norm_hours||0} ч</small></div>
+              </div>
+            </div>
+            <div class="muted" style="margin-bottom:8px">${esc(deltaTxt)}</div>
+            <div class="muted" style="font-size:11px;margin-bottom:6px">
+              Колонки: дата · статус · в офисе · в СРМ · зачёт
+            </div>
+            <div class="sched-seg-list" style="max-height:52vh">${rows}</div>
+          </div>`;
+      }});
+    }
+
+    async function openDayModal(staffId, dateIso, staffName){
+      showModal({title:`День ${fmtDM(dateIso)}`, html:`<div class="muted">Загружаем…</div>`, wide:true, onMount: async (ctx)=>{
+        // onMount отдаёт {back, modal, body} — ищем свои элементы ТОЛЬКО внутри
+        // этой модалки. Поиск по document цепляет уходящую модалку (D-226).
+        const host = (ctx && ctx.body) || null;
+        if(!host) return;
+        const j = await apiGet(`/api/office-attendance/day?staff_id=${staffId}&date=${dateIso}`);
+        if(!j || !j.ok){
+          host.innerHTML = `<div class="muted">Не удалось загрузить день</div>`;
+          return;
+        }
+        const segs = (j.segments||[]).map(sg=>{
+          const f = new Date(sg.from), t = new Date(sg.to);
+          const fmt = (d)=>`${String(d.getUTCHours()).padStart(2,'0')}:${String(d.getUTCMinutes()).padStart(2,'0')}`;
+          return `<div class="sched-seg"><span>${fmt(f)}–${fmt(t)}</span><span class="sched-seg__m">${hm(sg.minutes)}</span></div>`;
+        }).join('') || '<div class="muted">Проходов СКУД нет</div>';
+
+        const punches = (j.punches||[]).map(p=>`<div class="sched-punch"><span>${esc(p.time)}</span><span class="sched-punch__dir ${p.direction==='вход'?'in':'out'}">${esc(p.direction)}</span><span>${esc(p.device||'')}</span></div>`).join('')
+          || '<div class="muted">Нет событий</div>';
+
+        const sessions = (j.crm && j.crm.sessions || []).map(s=>`<div class="sched-seg"><span>${esc(s.from)}–${esc(s.to)}</span><span class="sched-seg__m">${hm(s.minutes)}</span></div>`).join('')
+          || '<div class="muted">Активности в СРМ нет</div>';
+
+        const flag = (j.flags||[])[0];
+        const flagHtml = flag
+          ? `<div class="sched-dispute">
+               <div class="sched-dispute__title">Отметка «в офисе» снята</div>
+               <div class="sched-dispute__txt">СКУД не зафиксировал вход в этот день. ${flag.resolved_at ? `Сотрудник ответил: ${esc(flag.resolved_status||'—')}` : 'Сотрудник ещё не ответил.'}</div>
+             </div>`
+          : '';
+
+        const creditLabel = {
+          skud: 'часы СКУД', crm: 'часы СРМ', excluded: 'не входит в норму',
+          dayoff: 'нерабочий день', unconfirmed: 'ждёт ответа', no_crm_data: 'нет данных СРМ',
+          skud_no_status: 'часы СКУД (статуса нет)', none: '—', unknown_status: 'неизвестный статус',
+          no_status: 'статуса нет', no_data: 'нет данных за день', skud_missing: 'нет отчёта СКУД'
+        }[j.credit.source] || j.credit.source;
+
+        host.innerHTML = `
+          <div id="asgDayModalBody">
+            ${flagHtml}
+            <div class="muted" style="margin-bottom:6px">${esc(j.staff.name)} · ${esc(j.status||'без статуса')}</div>
+            <dl class="sched-day-meta">
+              <dt>Норма дня</dt><dd>${esc(j.norm_text)}</dd>
+              <dt>В офисе (СКУД)</dt><dd>${esc(j.office_text)}${j.open_ended?' · вход без выхода':''}</dd>
+              <dt>В СРМ</dt><dd>${esc(j.crm.text)}</dd>
+              <dt>Зачёт</dt><dd>${esc(hm(j.credit.credited_minutes))} · ${esc(creditLabel)}</dd>
+            </dl>
+            <div class="muted" style="margin:10px 0 4px">Интервалы в офисе</div>
+            <div class="sched-seg-list">${segs}</div>
+            <div class="muted" style="margin:10px 0 4px">Проходы СКУД</div>
+            <div class="sched-seg-list">${punches}</div>
+            <div class="muted" style="margin:10px 0 4px">Сессии в СРМ</div>
+            <div class="sched-seg-list">${sessions}</div>
+          </div>`;
+      }});
+    }
+
+    /* ── Список снятых «оф» за месяц ── */
+    async function openFlagsModal(){
+      showModal({title:`Снятые отметки «в офисе» · ${MONTHS_RU[viewMonth]} ${viewYear}`, html:`<div class="muted">Загружаем…</div>`, wide:true, onMount: async (ctx)=>{
+        const host = (ctx && ctx.body) || null;
+        if(!host) return;
+        const j = await apiGet(`/api/office-attendance/flags?year=${viewYear}&month=${viewMonth+1}`);
+        if(!j || !j.ok){ host.innerHTML = '<div class="muted">Не удалось загрузить</div>'; return; }
+        if(!j.count){ host.innerHTML = '<div class="muted">В этом месяце ложных отметок нет.</div>'; return; }
+        const rows = j.flags.map(f=>`
+          <div class="sched-seg" style="align-items:flex-start;flex-direction:column;gap:2px">
+            <div style="display:flex;justify-content:space-between;width:100%">
+              <b>${esc(f.name||('#'+f.staff_id))}</b>
+              <span class="sched-seg__m">${fmtDM(f.date)}</span>
+            </div>
+            <div class="muted" style="font-size:11px">
+              ${f.resolved_at
+                ? `Ответ: ${esc(f.resolved_status||'—')} · ${esc(String(f.resolved_at).slice(0,16).replace('T',' '))}`
+                : 'Ответа нет — сотруднику задаётся вопрос при входе'}
+            </div>
+          </div>`).join('');
+        host.innerHTML = `
+          <div id="asgDayModalBody">
+            <div class="muted" style="margin-bottom:8px">Всего ${j.count}, без ответа ${j.open_count}</div>
+            <div class="sched-seg-list">${rows}</div>
+          </div>`;
+      }});
+    }
+
     bindCellClicks();
+    bindPersonClicks();
+    bindDashClicks();
   }
 
   return { render };

@@ -318,6 +318,11 @@ const tingIndexPath = path.join(__dirname, '../public/ting/index.html');
 let tingHtml = '';
 try { tingHtml = fs.readFileSync(tingIndexPath, 'utf8'); } catch (_) {}
 
+// Тинг Android TV / Переговорка SPA
+const tingTvIndexPath = path.join(__dirname, '../public/ting-tv/index.html');
+let tingTvHtml = '';
+try { tingTvHtml = fs.readFileSync(tingTvIndexPath, 'utf8'); } catch (_) {}
+
 // Huginn standalone messenger SPA (/h)
 const huginnIndexPath = path.join(__dirname, '../public/h/index.html');
 let huginnHtml = '';
@@ -344,6 +349,22 @@ fastify.addHook('onRequest', (request, reply, done) => {
       reply.type('text/html')
         .header('Cache-Control', 'no-cache, no-store, must-revalidate, max-age=0')
         .send(tingHtml);
+      return;
+    }
+  }
+
+  // Тинг TV Переговорка: /ting-tv (Android TV APK / fullscreen)
+  if (url === '/ting-tv') {
+    reply.redirect(301, '/ting-tv/');
+    return;
+  }
+  if (url === '/ting-tv/' || (url.startsWith('/ting-tv/') && !url.match(/\.(js|css|png|jpg|jpeg|gif|svg|ico|woff2?|ttf|eot|webp|json|map)$/i))) {
+    let html = tingTvHtml;
+    try { html = fs.readFileSync(tingTvIndexPath, 'utf8'); tingTvHtml = html; } catch (_) {}
+    if (html) {
+      reply.type('text/html')
+        .header('Cache-Control', 'no-cache, no-store, must-revalidate, max-age=0')
+        .send(html);
       return;
     }
   }
@@ -860,6 +881,20 @@ fastify.addHook('onResponse', (request, reply, done) => {
     if (fastify.db) recordApiMutation(fastify.db, request, reply);
   } catch (_) { /* never break response */ }
 
+  // Учёт времени в СРМ: отметка минуты активности на каждый API-запрос.
+  // Делается здесь, а не в onRequest, потому что request.user появляется
+  // только после preHandler[authenticate] — в onRequest его ещё нет.
+  // Стоимость — инкремент в Map; в БД улетает раз в 30 сек пачкой
+  // (src/services/crm-activity.js).
+  try {
+    const pathOnly = String(request.raw?.url || request.url || '').split('?')[0];
+    const userId = request.user && request.user.id;
+    if (userId && pathOnly.startsWith('/api/')) {
+      const crmActivity = require('./services/crm-activity');
+      crmActivity.tick(userId, pathOnly);
+    }
+  } catch (_) { /* never break response */ }
+
   done();
 });
 
@@ -980,7 +1015,10 @@ fastify.register(require('./routes/integrations'), { prefix: '/api/integrations'
 fastify.register(require('./routes/sites'), { prefix: '/api/sites' });
 fastify.register(require('./routes/command-map'), { prefix: '/api/command-map' });
 fastify.register(require('./routes/director-summary'), { prefix: '/api/director-summary' });
+fastify.register(require('./routes/director-analytics'), { prefix: '/api/director-analytics' });
 fastify.register(require('./routes/daily-presence'), { prefix: '/api/daily-presence' });
+// Учёт часов офиса по СКУД (часы, нормы, зачёт, привязка ФИО)
+fastify.register(require('./routes/office-attendance'), { prefix: '/api/office-attendance' });
 fastify.register(require('./routes/vacations'),      { prefix: '/api/vacations' });
 fastify.register(require('./routes/vacation-decision'), { prefix: '/vacation-decision' });
 fastify.register(require('./routes/tkp'),       { prefix: '/api/tkp' });
@@ -995,6 +1033,7 @@ fastify.register(require('./routes/warehouse-locations'), { prefix: '/api/wareho
 fastify.register(require('./routes/stock'), { prefix: '/api/stock' }); // WMS: количественный учёт расходников + движения + quick-каталог
 fastify.register(require('./routes/catalog-import'), { prefix: '/api/catalog-import' }); // импорт УПД/счёт/Excel → каталог/оборудование
 fastify.register(require('./routes/warehouse-cart'), { prefix: '/api/warehouse-cart' }); // маркетплейс-корзина склада → авто-разбивка резерв+закупка
+fastify.register(require('./routes/warehouse-market'), { prefix: '/api/warehouse/market' }); // единый поиск витрины (товар+единица)
 fastify.register(require('./routes/warehouse-map'), { prefix: '/api/warehouse-map' }); // WMS 3D карта / объекты / sync locations
 fastify.register(require('./routes/warehouse-ops'), { prefix: '/api/warehouse-ops' }); // WMS сессии putaway/pick/unpick/inventory
 fastify.register(require('./routes/tmc_requests'), { prefix: '/api/tmc-requests' });
@@ -1222,6 +1261,24 @@ if (process.env.ACADEMY_CRON_DISABLED === '1') {
   }
 }
 
+// ── Market AI cards cron (photos / descriptions / category_retry) ──
+if (process.env.MARKET_AI_CRON_DISABLED === '1') {
+  fastify.log.warn('[MarketAiCron] Skipped — MARKET_AI_CRON_DISABLED=1');
+} else {
+  try {
+    const marketAiCron = require('./services/market-ai-cron');
+    fastify.addHook('onReady', async () => {
+      marketAiCron.init();
+      fastify.log.info('[MarketAiCron] Market card AI cron started (~7 min)');
+    });
+    fastify.addHook('onClose', async () => {
+      marketAiCron.stop();
+    });
+  } catch (cronErr) {
+    fastify.log.warn('[MarketAiCron] Init skipped: ' + cronErr.message);
+  }
+}
+
 // ── Per-Diem Cron: daily check unpaid per-diem ──
 try {
   const perDiemCron = require('./services/per-diem-cron');
@@ -1444,6 +1501,33 @@ try {
   });
 } catch (cronErr) {
   fastify.log.warn('[TournamentCron] Init skipped: ' + cronErr.message);
+}
+
+// ── Учёт времени СРМ: сброс минут активности в БД (раз в 30 сек) ──
+try {
+  const crmActivity = require('./services/crm-activity');
+  fastify.addHook('onReady', async () => {
+    crmActivity.start(fastify.db);
+    fastify.log.info('[CrmActivity] Минутный учёт активности СРМ запущен');
+  });
+  fastify.addHook('onClose', async () => {
+    await crmActivity.stop();
+  });
+} catch (cronErr) {
+  fastify.log.warn('[CrmActivity] Init skipped: ' + cronErr.message);
+}
+
+// ── Страховочный разбор писем СКУД (если хук imap.js пропустил письмо) ──
+try {
+  const skudMailCron = require('./services/skud-mail-cron');
+  fastify.addHook('onReady', async () => {
+    skudMailCron.start(fastify.db, fastify.log);
+  });
+  fastify.addHook('onClose', async () => {
+    skudMailCron.stop();
+  });
+} catch (cronErr) {
+  fastify.log.warn('[SkudMailCron] Init skipped: ' + cronErr.message);
 }
 
 // ── Log Monitor Cron: каждые 3 часа проверяем ошибки и уведомляем ADMIN ──
@@ -1703,7 +1787,7 @@ fastify.setNotFoundHandler((request, reply) => {
   // с Content-Type text/html → MIME error «Unexpected token <» при попытке исполнить как JS.
   // Касается /v2/assets/*, /assets/*, /m/assets/* и любых *.js/*.css/*.png/*.map/etc.
   const cleanUrl = request.url.split('?')[0];
-  if (/\.(js|mjs|css|map|png|jpg|jpeg|gif|svg|webp|ico|woff2?|ttf|otf|eot|json|txt|wasm|mp3|mp4|webm|ogg|wav)$/i.test(cleanUrl)) {
+  if (/\.(js|mjs|css|map|png|jpg|jpeg|gif|svg|webp|ico|woff2?|ttf|otf|eot|json|txt|wasm|mp3|mp4|webm|ogg|wav|apk)$/i.test(cleanUrl)) {
     reply.code(404).send({ error: 'Not Found', message: 'Asset не найден' });
     return;
   }

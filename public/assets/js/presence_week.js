@@ -276,7 +276,43 @@
         ];
         var works = week.works || [];
         var days = week.days || [];
+        var disputes = week.disputes || [];
         var serverDate = week.server_date || new Date().toISOString().slice(0, 10);
+
+        // «оф» в недельном гейте доступно только по дням, где СКУД видел человека.
+        // Иначе студент выберет «в офисе», а сервер вернёт 409 и весь экран
+        // сохранения упадёт — лучше не давать выбор заранее.
+        var officeBlocked = {};
+        days.forEach(function (d) {
+          if (d.office_blocked) officeBlocked[d.date] = true;
+        });
+
+        // Блок вопроса «где ты был»: дни со снятой отметкой «в офисе».
+        var disputesHtml = '';
+        if (disputes.length) {
+          disputesHtml = disputes.map(function (d) {
+            var opts = [
+              { code: 'уд', label: 'Удалёнка' }, { code: 'об', label: 'На объекте' },
+              { code: 'км', label: 'Командировка' }, { code: 'пг', label: 'Встреча' },
+              { code: 'уч', label: 'Учёба' }, { code: 'ск', label: 'Склад' },
+              { code: 'бн', label: 'Больничный' }, { code: 'сс', label: 'За свой счёт' },
+              { code: 'вх', label: 'Выходной' }
+            ];
+            return '<div class="sched-dispute" data-dispute="' + esc(d.date) + '">' +
+              '<div class="sched-dispute__title">СКУД не видел тебя ' + esc(fmtShort(d.date)) + '</div>' +
+              '<div class="sched-dispute__txt">Отметка «в офисе» снята — прохода не было. ' +
+                'Где ты был в этот день?' +
+                (d.office_attempts > 1 ? ' <b>Это уже ' + d.office_attempts + '-й раз.</b>' : '') +
+              '</div>' +
+              '<div class="skud-map-item__opts">' +
+              opts.map(function (o) {
+                return '<button class="skud-opt" type="button" data-dispute-pick="' + esc(o.code) + '" data-dispute-date="' + esc(d.date) + '">' + esc(o.label) + '</button>';
+              }).join('') +
+              '</div>' +
+              '<div class="sched-dispute__note">«В офисе» выбрать нельзя — пропуска не было.</div>' +
+            '</div>';
+          }).join('');
+        }
 
         var userName = (auth.user && auth.user.name) ? auth.user.name : '';
         var firstName = userName ? userName.trim().split(/\s+/).slice(-1)[0] : '';
@@ -321,6 +357,7 @@
                 '<div class="pg-work-lbl">' + IC.hammer + '<span>Работа для «На объекте»</span></div>' +
                 '<div id="pgWorkSlot"></div>' +
               '</div>' +
+              (disputesHtml ? '<div id="pgDisputes" style="margin-top:10px">' + disputesHtml + '</div>' : '') +
             '</div>' +
 
             '<div class="pg-err" id="pgErr"></div>' +
@@ -340,14 +377,35 @@
           if (d.on_vacation) return;
           var slot = scene.querySelector('[data-slot="' + d.date + '"]');
           if (!slot) return;
+          // Дни, где СКУД не видел человека, не должны предлагать «в офисе»:
+          // сервер всё равно вернёт 409, и сохранение недели сорвётся.
+          var blockedOffice = !!officeBlocked[d.date];
+          var dayStatuses = blockedOffice
+            ? statuses.filter(function (s) { return s.code !== 'оф'; })
+            : statuses.filter(function (s) { return s.code !== 'нп'; });
           var sel = createSelect({
-            options: statuses.map(function (s) { return { code: s.code, label: s.label }; }),
-            value: d.status_code || '',
-            placeholder: '— не отмечено —',
+            options: dayStatuses.map(function (s) { return { code: s.code, label: s.label }; }),
+            value: d.status_code === 'нп' ? '' : (d.status_code || ''),
+            placeholder: blockedOffice ? '— СКУД не видел, выбери —' : '— не отмечено —',
             onChange: function () { syncWork(); syncProgress(); err(''); },
           });
           slot.appendChild(sel);
           selects[d.date] = sel;
+        });
+
+        // ── Ответ на «где ты был» по снятым отметкам ──────────────────────
+        var disputeAnswers = {};
+        Array.prototype.forEach.call(scene.querySelectorAll('[data-dispute-pick]'), function (btn) {
+          btn.addEventListener('click', function () {
+            var date = btn.getAttribute('data-dispute-date');
+            var code = btn.getAttribute('data-dispute-pick');
+            disputeAnswers[date] = code;
+            var box = scene.querySelector('[data-dispute="' + date + '"]');
+            Array.prototype.forEach.call(box.querySelectorAll('.skud-opt'), function (b) {
+              b.classList.toggle('is-active', b === btn);
+            });
+            err('');
+          });
         });
 
         // ── Выбор работы ───────────────────────────────────────────────────
@@ -412,7 +470,16 @@
 
         // ── Сохранение ─────────────────────────────────────────────────────
         var btn = scene.querySelector('#pgSave');
-        btn.addEventListener('click', function () {
+        btn.addEventListener('click', async function () {
+          // Сначала отвечаем на вопросы «где ты был» — иначе сервер всё равно
+          // будет требовать их при следующем входе.
+          var answered = Object.keys(disputeAnswers);
+          if (answered.length < disputes.length) {
+            err('Ответь на вопрос по дню ' + fmtShort(disputes.map(function (d) { return d.date; })
+              .filter(function (d) { return !disputeAnswers[d]; })[0]) + ' — пропуск не сработал?');
+            return;
+          }
+
           var payload = [];
           Object.keys(selects).forEach(function (date) {
             var code = selects[date]._getValue();
@@ -452,6 +519,29 @@
           err('');
           btn.disabled = true;
           btn.innerHTML = '<span>Сохраняю…</span>';
+
+          // Сначала ответы на снятые отметки: по одному запросу на день.
+          try {
+            for (var i = 0; i < answered.length; i++) {
+              var dIso = answered[i];
+              var res = await fetch('/api/daily-presence/dispute-response', {
+                method: 'POST',
+                headers: { 'Authorization': 'Bearer ' + auth.token, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ date: dIso, status_code: disputeAnswers[dIso] })
+              });
+              if (!res.ok) {
+                var jj = await res.json().catch(function () { return {}; });
+                throw new Error(jj.message || 'Не удалось ответить по дню ' + dIso);
+              }
+              // Отвеченный день уже закрыт — в недельном наборе его не отправляем.
+              payload = payload.filter(function (p) { return p.date !== dIso; });
+            }
+          } catch (e) {
+            err(e.message || 'Не удалось ответить');
+            btn.disabled = false;
+            btn.innerHTML = '<span>В строй</span>' + IC.arrow;
+            return;
+          }
 
           fetch('/api/daily-presence/week', {
             method: 'POST',

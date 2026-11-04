@@ -41,6 +41,7 @@ window.AsgardCustomDashboard = (function(){
     equipment_alerts: 'works', payroll_pending: 'money', todo: 'action',
     pre_tenders: 'works', bank_summary: 'money', platform_alerts: 'info',
     my_mail: 'info', academy: 'info',
+    director_pulse: 'action',
     pm_analysis_rating: 'works', pm_analysis_leaderboard: 'works'
   };
 
@@ -80,6 +81,10 @@ window.AsgardCustomDashboard = (function(){
     kpi_summary: {
       name: 'KPI сводка', icon: '🎯', size: 'wide',
       roles: ['ADMIN','DIRECTOR_*'], render: renderKpiSummary
+    },
+    director_pulse: {
+      name: 'Пульс директора', icon: '📊', size: 'wide',
+      roles: ['ADMIN','DIRECTOR_*'], render: renderDirectorPulse
     },
     gantt_mini: {
       name: 'Ближайшие дедлайны', icon: '⏰', size: 'normal',
@@ -138,7 +143,7 @@ window.AsgardCustomDashboard = (function(){
   };
 
   const DEFAULT_LAYOUTS = {
-    ADMIN: ['kpi_strip','welcome','kpi_summary','pm_analysis_leaderboard','pre_tenders','quick_actions','overdue_works','tenders_funnel','my_mail','notifications'],
+    ADMIN: ['kpi_strip','director_pulse','welcome','kpi_summary','pm_analysis_leaderboard','pre_tenders','quick_actions','overdue_works','tenders_funnel','my_mail','notifications'],
     PM: ['kpi_strip','welcome','pm_analysis_rating','my_readiness','quick_actions','my_mail','todo','notifications'],
     TO: ['kpi_strip','welcome','quick_actions','pm_analysis_leaderboard','tenders_funnel','tender_dynamics','my_mail','notifications'],
     HEAD_TO: ['kpi_strip','welcome','my_cash_balance','pm_analysis_leaderboard','pre_tenders','platform_alerts','tender_dynamics','tenders_funnel','my_mail','notifications'],
@@ -1170,6 +1175,83 @@ window.AsgardCustomDashboard = (function(){
       '<div style="text-align:center;padding:14px 18px;background:var(--bg3);border-radius:var(--r-md);border:1px solid var(--brd)"><div style="font-size:10px;color:var(--t3);text-transform:uppercase;font-weight:800;letter-spacing:0.05em">Выручка</div><div style="font-size:18px;font-weight:900;color:var(--gold)">' + formatMoney(revenue) + '</div></div>' +
       '<div style="text-align:center;padding:14px 18px;background:var(--bg3);border-radius:var(--r-md);border:1px solid var(--brd)"><div style="font-size:10px;color:var(--t3);text-transform:uppercase;font-weight:800;letter-spacing:0.05em">Сдано работ</div><div style="font-size:24px;font-weight:900;color:var(--ok-t)">' + done + '/' + yWorks.length + '</div></div>' +
     '</div>';
+  }
+
+  /* ── Пульс директора: сводка с переходом на дашборд ─────────────────────
+     03.11.2026: виджет для Главной. Данные — те же эндпоинты, что у дашборда
+     (/api/director-analytics/*), а не IndexedDB: часы СКУД и активность СРМ
+     в локальном кэше не лежат. */
+  async function renderDirectorPulse(el, user) {
+    const tok = localStorage.getItem('asgard_token') || '';
+    const hdr = { Authorization: 'Bearer ' + tok };
+    async function jget(url) {
+      try {
+        const r = await fetch(url, { headers: hdr, cache: 'no-store' });
+        if (!r.ok) return null;
+        return await r.json();
+      } catch (_) { return null; }
+    }
+
+    const [ov, th] = await Promise.all([
+      jget('/api/director-analytics/overview?period=month'),
+      jget('/api/director-analytics/team-hours?period=week')
+    ]);
+
+    if (!ov) {
+      el.innerHTML = _dwEmpty('Не удалось загрузить сводку');
+      return;
+    }
+
+    const t = ov.tenders || {};
+    const a = ov.applications || {};
+    const w = ov.works || {};
+    const norm = (th && th.norm) || {};
+    const avg = (th && th.avg) || {};
+    const dq = (th && th.data_quality) || {};
+
+    const underPct = norm.under_pct;
+    const underColor = underPct == null ? 'var(--t3)' : underPct >= 50 ? 'var(--err-t)' : underPct >= 25 ? 'var(--warn-t)' : 'var(--ok-t)';
+
+    function cell(cap, val, sub, color) {
+      return '<div style="text-align:center;padding:13px 10px;background:var(--bg3);border-radius:var(--r-md);border:1px solid var(--brd)">' +
+        '<div style="font-size:10px;color:var(--t3);text-transform:uppercase;font-weight:800;letter-spacing:0.05em">' + esc(cap) + '</div>' +
+        '<div style="font-size:23px;font-weight:900;letter-spacing:-0.02em;color:' + (color || 'var(--t1)') + '">' + esc(String(val)) + '</div>' +
+        '<div style="font-size:10.5px;color:var(--t3);margin-top:1px">' + esc(sub) + '</div></div>';
+    }
+
+    const hoursLine = dq.last_import
+      ? 'Офис ' + _pulseH(avg.office_minutes_per_day) + '/день · СРМ ' + _pulseH(avg.crm_minutes_per_day) + '/день'
+      : 'Отчёт СКУД не загружен — часы офиса не считаются';
+
+    el.innerHTML =
+      '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px">' +
+        cell('Тендеры', t.total != null ? t.total : '—', 'выиграли ' + (t.won || 0), 'var(--red)') +
+        cell('Заявки', a.total != null ? a.total : '—', 'в контуре', 'var(--gold)') +
+        cell('Работы', w.active != null ? w.active : '—', (w.pause || 0) + ' на паузе', 'var(--ok-t)') +
+        cell('Норма', underPct == null ? '—' : underPct + '%', (norm.people_under || 0) + ' из ' + (norm.people_total || 0), underColor) +
+      '</div>' +
+      '<div style="margin-top:10px;padding:9px 12px;border-radius:var(--r-sm);background:var(--bg3);border:1px solid var(--brd);display:flex;align-items:center;gap:8px;font-size:11.5px;color:var(--t2)">' +
+        '<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(hoursLine) + '</span>' +
+        '<span style="color:var(--gold);font-weight:700;white-space:nowrap">Открыть дашборд →</span>' +
+      '</div>' +
+      '<div style="margin-top:8px">' + _dwLink('#/dashboard', 'Дашборд руководителя \u2192') + '</div>';
+
+    // Вся карточка кликабельна — директор не должен целиться в мелкую ссылку.
+    const host = el.closest('.dw-card') || el;
+    if (host && !host._pulseBound) {
+      host._pulseBound = true;
+      host.style.cursor = 'pointer';
+      host.addEventListener('click', (e) => {
+        if (e.target.closest('a')) return;
+        location.hash = '#/dashboard';
+      });
+    }
+  }
+
+  function _pulseH(minutes) {
+    if (minutes == null) return '—';
+    const m = Math.abs(Math.round(Number(minutes)));
+    return Math.floor(m / 60) + ':' + String(m % 60).padStart(2, '0');
   }
 
   async function renderGanttMini(el, user) {

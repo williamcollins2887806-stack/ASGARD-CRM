@@ -164,6 +164,7 @@ const DirectorApprovals = lazyPage(() => import('@/pages/director/Approvals'));
 const DirectorTenderApprovals = lazyPage(() => import('@/pages/director/TenderApprovals'));
 // D-343: дашборд заявок по РП для директора.
 const DirectorApplications = lazyPage(() => import('@/pages/director/Applications'));
+const DirectorAnalytics = lazyPage(() => import('@/pages/director/DirectorAnalytics'));
 const MarketplaceMobile = lazyPage(() => import('@/pages/MarketplaceMobile'));
 import { Toaster } from '@/components/ui/sonner';
 import { usePushSubscription } from '@/hooks/usePushSubscription';
@@ -486,6 +487,7 @@ function AppLayout() {
           <Route path="/director-tender-approvals" element={<ProtectedRoute section="tenders"><PinGuard><DirectorTenderApprovals /></PinGuard></ProtectedRoute>} />
           {/* D-343: дашборд заявок по РП — директор видит, как работают подчинённые */}
           <Route path="/director-applications" element={<ProtectedRoute section="tenders"><PinGuard><DirectorApplications /></PinGuard></ProtectedRoute>} />
+          <Route path="/director-analytics" element={<ProtectedRoute section="dashboard"><PinGuard><DirectorAnalytics /></PinGuard></ProtectedRoute>} />
           <Route path="/marketplace" element={<ProtectedRoute section="marketplace"><PinGuard><MarketplaceMobile /></PinGuard></ProtectedRoute>} />
           <Route path="/more" element={<ProtectedRoute><PinGuard><More /></PinGuard></ProtectedRoute>} />
 

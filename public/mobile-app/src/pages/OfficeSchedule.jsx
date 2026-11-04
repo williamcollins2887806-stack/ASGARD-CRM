@@ -42,8 +42,38 @@ const STATUS = [
   { code: 'ск', label: 'Склад',               short: 'С', color: '#8E8E93', icon: '📦' },
   { code: 'отп', label: 'Отпуск',            short: 'От', color: '#D4A843', icon: '🌴' },
   { code: 'вх', label: 'Выходной',           short: 'В', color: '#475569', icon: '🌙' },
+  // Машинный статус: снят ложный «оф» (статус «в офисе» без прохода СКУД).
+  // В ручном выборе его нет — как «отп».
+  { code: 'нп', label: 'Не подтверждён',     short: 'НП', color: '#EF4444', icon: '❔', machine: true },
 ];
 const STATUS_BY_CODE = Object.fromEntries(STATUS.map((s) => [s.code, s]));
+
+/* Статусы для ответа «где ты был»: всё, кроме «оф» и машинного «нп». */
+const DISPUTE_STATUSES = ['уд', 'об', 'км', 'пг', 'уч', 'ск', 'бн', 'сс', 'вх'];
+
+/* Минуты → «7:55». */
+function hoursText(minutes) {
+  const m = Math.max(0, Math.round(Number(minutes) || 0));
+  return `${Math.floor(m / 60)}:${String(m % 60).padStart(2, '0')}`;
+}
+
+/* Плашка «В офисе 24:30» в личном своде. */
+function HoursChip({ label, value, tone }) {
+  return (
+    <span
+      style={{
+        display: 'inline-flex', alignItems: 'center', gap: 5,
+        padding: '4px 9px', borderRadius: 999, fontSize: 11.5,
+        background: `color-mix(in srgb, ${tone} 16%, transparent)`,
+        color: 'var(--text-secondary)',
+        border: `0.5px solid color-mix(in srgb, ${tone} 34%, transparent)`,
+      }}
+    >
+      <span style={{ color: tone, fontWeight: 700 }}>{value}</span>
+      <span style={{ opacity: 0.8 }}>{label}</span>
+    </span>
+  );
+}
 const MONTHS_RU = ['января', 'февраля', 'марта', 'апреля', 'мая', 'июня', 'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря'];
 const MONTHS_NOM = ['Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь', 'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь'];
 const WEEKDAYS = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
@@ -100,6 +130,9 @@ export default function OfficeSchedule() {
   const [loading, setLoading]     = useState(true);
   const [picked, setPicked]       = useState(null); // { staffId, name, iso, code }
   const [saving, setSaving]       = useState(false);
+  // Часы: личный свод (неделя + месяц) и вопросы «где ты был» (V453).
+  const [myHours, setMyHours]     = useState(null);
+  const [disputes, setDisputes]   = useState([]);
 
   const role = user?.role || '';
   const isOfficeManager = role === 'OFFICE_MANAGER';
@@ -163,7 +196,21 @@ export default function OfficeSchedule() {
     }
   }, [weekStart]);
 
+  // Личный свод часов (норма / офис / СРМ / зачёт) и вопросы «где ты был».
+  // Отдельным запросом: основной /api/data/staff_plan не знает про часы.
+  const fetchHours = useCallback(async () => {
+    const from = ymd(weekStart);
+    const to = ymd(addDays(weekStart, 6));
+    const [me, week] = await Promise.all([
+      api.get(`/office-attendance/me?from=${from}&to=${to}`).catch(() => null),
+      api.get('/daily-presence/week').catch(() => null),
+    ]);
+    setMyHours(me && me.ok ? me : null);
+    setDisputes((week && week.disputes) || []);
+  }, [weekStart]);
+
   useEffect(() => { fetchData(); }, [fetchData]);
+  useEffect(() => { fetchHours(); }, [fetchHours]);
 
   const shiftWeek = (dir) => {
     haptic.light();
@@ -200,6 +247,22 @@ export default function OfficeSchedule() {
     return { counts, unmarked };
   }, [staff, planMap]);
 
+  /** Ответ на «где ты был»: статус, отличный от «оф», плюс закрытие флага. */
+  const answerDispute = useCallback(async (date, code) => {
+    haptic.light();
+    try {
+      await api.post('/daily-presence/dispute-response', { date, status_code: code });
+      haptic.success();
+      setDisputes((list) => list.filter((d) => d.date !== date));
+      // День поменял статус — обновим сетку и свод.
+      fetchData();
+      fetchHours();
+    } catch (e) {
+      haptic.error();
+      window.alert(e.message || 'Не удалось ответить');
+    }
+  }, [haptic, fetchData, fetchHours]);
+
   const saveStatus = useCallback(async (code) => {
     if (!picked) return;
     setSaving(true);
@@ -222,7 +285,13 @@ export default function OfficeSchedule() {
       setPicked(null);
     } catch (e) {
       haptic.error();
-      window.alert(e.message || 'Не удалось сохранить статус');
+      // 409 office_not_confirmed: «в офисе» без прохода СКУД — объясняем словами,
+      // а не показываем «HTTP 409».
+      if (e && (e.code === 'office_not_confirmed' || /office_not_confirmed/.test(String(e.message || '')))) {
+        window.alert('В этот день СКУД не зафиксировал вход — «В офисе» поставить нельзя. Выберите другой статус.');
+      } else {
+        window.alert(e.message || 'Не удалось сохранить статус');
+      }
     } finally {
       setSaving(false);
     }
@@ -264,6 +333,127 @@ export default function OfficeSchedule() {
       }
     >
       <PullToRefresh onRefresh={fetchData}>
+
+        {/* ═══ МОИ ЧАСЫ (V453) ═══
+            Заказчик просил: сотрудник видит, что не дорабатывает 8-часовой
+            день и 40-часовую неделю. Показываем зачёт к норме за неделю и
+            месяц, отдельно часы офиса (СКУД) и часы СРМ. */}
+        {myHours ? (
+          <div
+            className="rounded-2xl mb-3"
+            style={{
+              background: 'linear-gradient(135deg, color-mix(in srgb, var(--gold) 9%, var(--bg-surface)), color-mix(in srgb, var(--blue) 6%, var(--bg-surface)))',
+              border: '0.5px solid color-mix(in srgb, var(--gold) 30%, var(--border-norse))',
+              padding: '13px 15px',
+            }}
+          >
+            <div className="flex items-center justify-between mb-2.5">
+              <span style={{ fontSize: 12, fontWeight: 700, letterSpacing: 0.4, textTransform: 'uppercase', color: 'var(--text-tertiary)' }}>
+                Мои часы
+              </span>
+              <span style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>
+                норма {myHours.settings?.norm_hours_per_week || 40} ч/нед
+              </span>
+            </div>
+
+            {(() => {
+              const wk = myHours.summary || {};
+              const norm = wk.norm_minutes || 0;
+              const credited = wk.credited_minutes || 0;
+              const pct = norm ? Math.min(100, Math.round((credited / norm) * 100)) : 0;
+              const delta = wk.delta_minutes || 0;
+              const bad = delta < 0;
+              const barColor = bad ? 'var(--error)' : 'var(--success)';
+              const dH = Math.floor(Math.abs(delta) / 60);
+              const dM = Math.abs(delta) % 60;
+              return (
+                <>
+                  <div className="flex items-baseline gap-2 mb-1.5">
+                    <span style={{ fontSize: 26, fontWeight: 800, color: bad ? 'var(--error)' : 'var(--success)' }}>
+                      {hoursText(credited)}
+                    </span>
+                    <span style={{ fontSize: 13, color: 'var(--text-tertiary)' }}>
+                      из {hoursText(norm)} ч
+                    </span>
+                    {norm > 0 && (
+                      <span style={{ marginLeft: 'auto', fontSize: 12, fontWeight: 700, color: barColor }}>
+                        {bad ? `−${dH}${dM ? ':' + String(dM).padStart(2, '0') : ''} ч` : 'норма выполнена'}
+                      </span>
+                    )}
+                  </div>
+                  {norm > 0 && (
+                    <div style={{ height: 7, borderRadius: 4, background: 'var(--soft-value)', overflow: 'hidden', marginBottom: 10 }}>
+                      <div style={{ height: '100%', width: `${pct}%`, background: barColor, borderRadius: 4, transition: 'width .3s' }} />
+                    </div>
+                  )}
+                  <div className="flex flex-wrap gap-1.5">
+                    <HoursChip label="В офисе" value={hoursText(wk.office_minutes)} tone="var(--blue)" />
+                    <HoursChip label="В СРМ" value={hoursText(wk.crm_minutes)} tone="var(--cyan)" />
+                    {myHours.month && (
+                      <HoursChip
+                        label="Месяц"
+                        value={`${hoursText(myHours.month.credited_minutes)} / ${hoursText(myHours.month.norm_minutes)} ч`}
+                        tone="var(--gold)"
+                      />
+                    )}
+                  </div>
+                  {myHours.summary_text ? (
+                    <p style={{ fontSize: 11.5, color: bad ? 'var(--error)' : 'var(--text-tertiary)', marginTop: 8, lineHeight: 1.45 }}>
+                      {myHours.summary_text}
+                    </p>
+                  ) : null}
+                </>
+              );
+            })()}
+          </div>
+        ) : null}
+
+        {/* ═══ «ГДЕ ТЫ БЫЛ?» — снятые отметки «в офисе» ═══
+            Блокирующий по смыслу: пока не ответишь, статус дня не закрыт и
+            норма не зачитывается. Здесь же запрещён «в офисе». */}
+        {disputes.length ? (
+          <div
+            className="rounded-2xl mb-3"
+            style={{
+              background: 'color-mix(in srgb, var(--error) 9%, var(--bg-surface))',
+              border: '0.5px solid color-mix(in srgb, var(--error) 45%, transparent)',
+              padding: '13px 15px',
+            }}
+          >
+            <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--error)', marginBottom: 6 }}>
+              СКУД не видел тебя в офисе
+            </div>
+            {disputes.map((d) => (
+              <div key={d.date} style={{ marginBottom: 10 }}>
+                <p style={{ fontSize: 12.5, color: 'var(--text-secondary)', lineHeight: 1.45, marginBottom: 7 }}>
+                  {d.date.split('-').reverse().slice(0, 2).join('.')}: отметка «в офисе» снята — прохода не было.
+                  Где ты был?
+                  {d.office_attempts > 1 ? ` Это уже ${d.office_attempts}-й раз.` : ''}
+                </p>
+                <div className="flex flex-wrap gap-1.5">
+                  {DISPUTE_STATUSES.map((code) => (
+                    <button
+                      key={code}
+                      type="button"
+                      className="spring-tap"
+                      onClick={() => answerDispute(d.date, code)}
+                      style={{
+                        padding: '6px 11px', borderRadius: 999, fontSize: 12, fontWeight: 600,
+                        background: 'var(--soft-value)', color: 'var(--on-soft-value)',
+                        border: '0.5px solid var(--border-norse)',
+                      }}
+                    >
+                      {STATUS_BY_CODE[code]?.label || code}
+                    </button>
+                  ))}
+                </div>
+                <p style={{ fontSize: 10.5, color: 'var(--text-tertiary)', marginTop: 5 }}>
+                  «В офисе» выбрать нельзя — пропуска не было.
+                </p>
+              </div>
+            ))}
+          </div>
+        ) : null}
 
         {/* ═══ СВОДКА НА СЕГОДНЯ ═══ */}
         <div
@@ -437,7 +627,11 @@ export default function OfficeSchedule() {
                           onClick={() => {
                             if (!editable) { haptic.light(); return; }
                             haptic.light();
-                            setPicked({ staffId: s.id, name: s.name, iso, code });
+                            // День с проходами? Если СКУД не видел — «оф» блокируем
+                            // сразу в шторке, чтобы не ловить 409.
+                            const dayRow = (myHours?.days || []).find((d) => d.date === iso);
+                            const officeBlocked = !!dayRow && dayRow.warn === 'no_punches';
+                            setPicked({ staffId: s.id, name: s.name, iso, code, officeBlocked });
                           }}
                           aria-label={`${s.name}, ${iso}: ${st ? st.label : 'нет статуса'}`}
                           style={{
@@ -496,26 +690,32 @@ export default function OfficeSchedule() {
             <p style={{ fontSize: 12.5, color: 'var(--text-secondary)', marginBottom: 2 }}>
               Сотрудник: <b style={{ color: 'var(--text-primary)' }}>{picked.name}</b>
             </p>
-            {STATUS.map((s) => {
+            {STATUS.filter((s) => !s.machine).map((s) => {
               const on = picked.code === s.code;
+              // «оф» недоступен, если по СКУД в этот день прохода не было:
+              // сервер всё равно вернёт 409, лучше не давать кнопку.
+              const blocked = s.code === 'оф' && picked.officeBlocked;
               return (
                 <button
                   key={s.code}
                   type="button"
                   onClick={() => saveStatus(s.code)}
-                  disabled={saving}
+                  disabled={saving || blocked}
                   className="spring-tap w-full text-left"
                   style={{
                     display: 'flex', alignItems: 'center', gap: 10,
                     minHeight: 50, padding: '10px 14px', borderRadius: 14,
                     background: on ? `color-mix(in srgb, ${s.color} 22%, var(--bg-surface))` : 'color-mix(in srgb, var(--bg-surface) 92%, transparent)',
                     border: on ? `0.5px solid ${s.color}` : '0.5px solid var(--border-norse)',
-                    opacity: saving ? 0.6 : 1,
+                    opacity: (saving || blocked) ? 0.45 : 1,
                   }}
                 >
                   <span style={{ width: 14, height: 14, borderRadius: 4, background: s.color, flexShrink: 0 }} />
                   <span style={{ fontSize: 14 }}>{s.icon}</span>
-                  <span className="flex-1" style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--text-primary)' }}>{s.label}</span>
+                  <span className="flex-1" style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--text-primary)' }}>
+                    {s.label}
+                    {blocked ? <span style={{ display: 'block', fontSize: 10.5, fontWeight: 400, color: 'var(--text-tertiary)' }}>СКУД не видел в этот день</span> : null}
+                  </span>
                   {on && <Check size={16} style={{ color: s.color }} />}
                 </button>
               );

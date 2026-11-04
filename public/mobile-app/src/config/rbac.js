@@ -67,6 +67,7 @@ export const ROUTE_SECTIONS = {
   '/personal-kanban':        'personal_kanban',
   '/personal-kanban-config': 'personal_kanban',
   '/director-inbox':         'inbox',
+  '/director-analytics':     'dashboard',
   '/marketplace':            'marketplace',
   // D-369 (23.10.2026): «Мои заявки». Секция `works`, а НЕ `finances`: под
   // `finances` лежат /invoices и /acts (реестры счетов и актов заказчиков), и

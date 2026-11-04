@@ -187,7 +187,8 @@ console.log('[ASGARD] Global period functions loaded');
     "/tasks":"Дело назначено — доведи до конца.",
     "/tasks-admin":"Ярл видит все задачи. Порядок в дружине.",
     "/personal-kanban":"Свои подэтапы — путь к ясности.",
-    "/director-inbox":"Все врата заявок здесь."
+    "/director-inbox":"Все врата заявок здесь.",
+    "/director-analytics":"Тендеры · заявки · работы — один контур."
   };
 
   const DIRECTOR_ROLES = ["DIRECTOR_COMM","DIRECTOR_GEN","DIRECTOR_DEV"]; // legacy DIRECTOR removed in Stage 25
@@ -246,7 +247,7 @@ console.log('[ASGARD] Global period functions loaded');
   const NAV=[
     // ── ГЛАВНАЯ ──
     {r:"/home",l:"Зал Ярла",d:"Порталы и сводка",roles:ALL_ROLES,i:"home",p:"home",g:"home"},
-    {r:"/dashboard",l:"Дашборд руководителя",d:"Сводная аналитика",roles:["ADMIN",...DIRECTOR_ROLES],i:"dashboard",p:"dashboard",g:"home"},
+    {r:"/dashboard",l:"Дашборд руководителя",d:"Тендеры · заявки · работы · команда",roles:["ADMIN",...DIRECTOR_ROLES],i:"dashboard",p:"dashboard",g:"home"},
     {r:"/my-dashboard",l:"Мой дашборд",d:"Настраиваемые виджеты",roles:["ADMIN","PM","TO","HR","OFFICE_MANAGER","BUH",...DIRECTOR_ROLES,...HEAD_ROLES],i:"dashboard",p:"my_dashboard",g:"home"},
     {r:"/big-screen",l:"Большой Экран",d:"Авто-ротация KPI для монитора",roles:["ADMIN",...DIRECTOR_ROLES,...HEAD_ROLES],i:"dashboard",p:"big_screen",g:"home"},
     {r:"/command-map",l:"Командный экран",d:"Живой офис: люди, объекты, вахта, рейсы",roles:["ADMIN",...DIRECTOR_ROLES,...HEAD_ROLES],i:"dashboard",p:"command_map",g:"home"},
@@ -394,7 +395,7 @@ console.log('[ASGARD] Global period functions loaded');
   // Mobile tab group detection
   function getMobileTabGroup(route) {
     const r = route || '';
-    if (['/home','/dashboard','/my-dashboard','/big-screen','/calendar','/birthdays','/welcome','/alerts'].some(p => r.startsWith(p))) return 'home';
+    if (['/home','/dashboard','/director-analytics','/my-dashboard','/big-screen','/calendar','/birthdays','/welcome','/alerts'].some(p => r.startsWith(p))) return 'home';
     if (['/tasks','/kanban','/reminders','/approvals','/bonus-approval'].some(p => r.startsWith(p))) return 'tasks';
     if (['/mail','/my-mail','/mailbox','/mail-settings'].some(p => r.startsWith(p))) return 'mail';
     if (['/chat'].some(p => r.startsWith(p))) return 'chat';
@@ -1628,6 +1629,16 @@ var _setupPinKeypad = null;
     await new Promise(function(resolve){ setTimeout(resolve, 600); }); /* perf fix: was 2500ms */
     var ov = document.getElementById('asgard-loading-overlay');
     if (ov) ov.remove();
+    // Баннер привязки ФИО из СКУД — ДО гейта присутствия.
+    // showPresenceGate() ждёт, пока сотрудник ответит, и блокирует выполнение:
+    // всё, что стоит после него, до ответа не запускается. Баннер должен
+    // появиться сразу после входа, поэтому монтируем раньше.
+    try {
+      if (window.AsgardSkudBanner) {
+        var _bs = AsgardAuth.getAuth();
+        if (_bs && _bs.user) AsgardSkudBanner.mount({ auth: _bs });
+      }
+    } catch(e) {}
     // ГЕЙТ присутствия: офисный сотрудник должен отметить «где я сегодня», иначе СРМ заблокирован
     try { await showPresenceGate(); } catch(e) { console.warn("[PresenceGate] error:", e); }
     // Deep link: вернуть на сохранённый URL после логина
@@ -2285,7 +2296,8 @@ var _setupPinKeypad = null;
     AsgardRouter.add("/login", pageLogin, {auth:false});
     AsgardRouter.add("/register", pageRegister, {auth:false});
     AsgardRouter.add("/home", pageHome, {auth:true, roles:ALL_ROLES});
-    AsgardRouter.add("/dashboard", ()=>AsgardDashboardPage.render({layout, title:"Дашборд руководителя"}), {auth:true, roles:["ADMIN",...DIRECTOR_ROLES,...HEAD_ROLES]});
+    AsgardRouter.add("/dashboard", ()=>AsgardDirectorAnalyticsPage.render({layout, title:"Дашборд руководителя"}), {auth:true, roles:["ADMIN",...DIRECTOR_ROLES]});
+    AsgardRouter.add("/director-analytics", ()=>{ location.hash = "#/dashboard"; }, {auth:true, roles:["ADMIN",...DIRECTOR_ROLES]});
     AsgardRouter.add("/pm-prizes", ()=>AsgardPmPrizesPage.render({layout, title:"Призы рабочих"}), {auth:true, roles:["ADMIN","PM","HEAD_PM",...DIRECTOR_ROLES]});
     AsgardRouter.add("/gamification-dashboard", ()=>AsgardGamificationDashboard.render({layout, title:"Геймификация — Дашборд"}), {auth:true, roles:["ADMIN",...DIRECTOR_ROLES,...HEAD_ROLES,"HR","HR_MANAGER"]});
     AsgardRouter.add("/gamification-leaderboard", ()=>AsgardGamificationLeaderboard.render({layout, title:"Рейтинг рабочих"}), {auth:true, roles:["ADMIN","PM","HEAD_PM",...DIRECTOR_ROLES,"HR","HR_MANAGER"]});
@@ -2875,6 +2887,15 @@ AsgardRouter.add("/assembly", () => {
           if (window.AsgardSessionGuard) {
             var _a = AsgardAuth.getAuth();
             if (_a && _a.user) AsgardSessionGuard.init();
+          }
+        } catch(e) {}
+        /* Баннер привязки ФИО из СКУД: офис-менеджер и директора видят
+           «есть ФИО без сотрудника» и привязывают в один клик.
+           Неблокирующий: молча выходит, если данных нет. */
+        try {
+          if (window.AsgardSkudBanner) {
+            var _b = AsgardAuth.getAuth();
+            if (_b && _b.user) AsgardSkudBanner.mount({ auth: _b });
           }
         } catch(e) {}
         /* Wave 4: hide splash after session guard init (guard overlay will show on top if locked) */

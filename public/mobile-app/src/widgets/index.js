@@ -34,6 +34,8 @@ import DirectorApprovalsWidget from './DirectorApprovalsWidget';
 import DirectorTenderApprovalsWidget from './DirectorTenderApprovalsWidget';
 import DirectorQueuesWidget from './DirectorQueuesWidget';
 import ToExecuteWidget from './ToExecuteWidget';
+// 03.11.2026: «Пульс директора» — сводка тендеров/заявок/работ и нормы часов.
+import DirectorPulseWidget from './DirectorPulseWidget';
 
 /** Реестр: id → { component, name, icon, size, roles, hero? } */
 export const WIDGET_REGISTRY = {
@@ -77,6 +79,9 @@ export const WIDGET_REGISTRY = {
   director_queues:  { component: DirectorQueuesWidget,   name: 'Согласования',          icon: '✍️', size: 'wide',   roles: ['DIRECTOR_COMM','DIRECTOR_GEN','DIRECTOR_DEV','ADMIN'], hero: true },
   // 17.10.2026: «К исполнению» — что решено, но ещё не выплачено/не выдано/не оплачено.
   to_execute:       { component: ToExecuteWidget,        name: 'К исполнению',          icon: '⏳', size: 'wide',   roles: ['DIRECTOR_COMM','DIRECTOR_GEN','DIRECTOR_DEV','ADMIN'], hero: true },
+  // 03.11.2026: «Пульс директора» — тендеры/заявки/работы + норма часов.
+  // Первый на главной: одна цифра видна сразу, тап ведёт на полный экран.
+  director_pulse:   { component: DirectorPulseWidget,    name: 'Пульс директора',       icon: '📊', size: 'wide',   roles: ['DIRECTOR_COMM','DIRECTOR_GEN','DIRECTOR_DEV','ADMIN'], hero: true },
 };
 
 /** Дефолтный набор виджетов по роли */
@@ -88,7 +93,7 @@ export const DEFAULT_LAYOUTS = {
   // («погорячился, когда сказал что директору закрываем все вкладки»).
   // Первыми идут ЕДИНЫЙ виджет согласований и «К исполнению» — это главные
   // экраны директора; остальное (финансы/почта/уведомления) — как раньше.
-  ADMIN:          ['director_queues','director_tender_approvals','to_execute','welcome','academy','cash_balance','money_summary','my_mail','notifications'],
+  ADMIN:          ['director_pulse','director_queues','director_tender_approvals','to_execute','welcome','academy','cash_balance','money_summary','my_mail','notifications'],
   CHIEF_ENGINEER: ['welcome','academy','equipment_value','equipment_alerts','my_mail','notifications'],
   HR:             ['welcome','academy','permits_expiry','birthdays','my_mail','notifications','calendar'],
   BUH:            ['welcome','telephony_status','academy','cash_balance','bank_summary','money_summary','my_mail','notifications'],
