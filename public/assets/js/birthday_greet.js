@@ -30,6 +30,26 @@
       .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   }
 
+  /** 41 → «41 год», 22 → «22 года», 35 → «35 лет» */
+  function yearsWordRu(n) {
+    const a = Math.abs(Number(n) || 0) % 100;
+    const b = a % 10;
+    if (a > 10 && a < 20) return 'лет';
+    if (b === 1) return 'год';
+    if (b >= 2 && b <= 4) return 'года';
+    return 'лет';
+  }
+  function formatYearsRu(n) {
+    if (n == null || n === '') return null;
+    const v = Number(n);
+    if (!Number.isFinite(v)) return null;
+    return v + ' ' + yearsWordRu(v);
+  }
+  function ageTodayLabel(age) {
+    const f = formatYearsRu(age);
+    return f ? ('сегодня ' + f) : 'сегодня день рождения';
+  }
+
   function mskDayKey() {
     try {
       return new Intl.DateTimeFormat('en-CA', {
@@ -257,7 +277,7 @@
           p.avatar_url ? `<img src="${esc(p.avatar_url)}" alt="">` : esc(initials(p.name))
         }</div>
         <div class="bd-person__name">${esc(p.name)}</div>
-        <div class="bd-person__meta">${p.age != null ? `сегодня ${p.age} лет` : 'сегодня день рождения'}</div>
+        <div class="bd-person__meta">${ageTodayLabel(p.age)}</div>
         ${p.already_sent
           ? '<div class="bd-person__sent">дар уже отправлен</div>'
           : (p.sent_count ? `<div class="bd-person__sent">даров в зале: ${p.sent_count}</div>` : '')}
@@ -579,6 +599,8 @@
     openAtelier,
     openReveal,
     openSendFor,
+    formatYearsRu,
+    ageTodayLabel,
     clear: clearLayer,
   };
 

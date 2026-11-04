@@ -787,7 +787,11 @@ window.AsgardCustomDashboard = (function(){
       el.innerHTML = todayPeers.map((p) =>
         '<div style="padding:10px 0;display:flex;gap:10px;align-items:center;justify-content:space-between">' +
           '<div><div style="font-weight:600;font-size:13px">' + esc(p.name) + '</div>' +
-          '<div class="help">' + (p.age != null ? ('Сегодня ' + p.age + ' лет') : 'Сегодня!') + '</div></div>' +
+          '<div class="help">' + (p.age != null
+            ? ('Сегодня ' + (window.AsgardBirthdayGreet && AsgardBirthdayGreet.formatYearsRu
+              ? AsgardBirthdayGreet.formatYearsRu(p.age)
+              : (p.age + ' лет')))
+            : 'Сегодня!') + '</div></div>' +
           '<button type="button" class="btn mini" data-bd-home-gift="' + p.id + '" data-bd-name="' + esc(p.name) + '" data-bd-age="' + (p.age != null ? p.age : '') + '" ' + (p.already_sent ? 'disabled' : '') + '>' +
           (p.already_sent ? 'Готово' : 'Поздравить') + '</button></div>'
       ).join('') +

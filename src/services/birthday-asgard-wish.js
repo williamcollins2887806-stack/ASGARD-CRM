@@ -5,7 +5,7 @@
  * persona → AI/fallback → Max→SMS + premium email + запись в birthday_asgard_wishes.
  */
 
-const { collectPersonaFacts } = require('./birthday-persona');
+const { collectPersonaFacts, formatYearsRu } = require('./birthday-persona');
 const { deliver } = require('./huginn-notify');
 const { sendCrmEmail } = require('./crm-mailer');
 
@@ -19,7 +19,7 @@ function escHtml(s) {
 
 function fallbackAsgardTexts(facts) {
   const name = facts.firstName || facts.name || 'друг';
-  const agePart = facts.age != null ? ` Тебе сегодня ${facts.age}.` : '';
+  const agePart = facts.age != null ? ` Тебе сегодня ${formatYearsRu(facts.age)}.` : '';
   const highlights = (facts.highlights || []).slice(0, 3);
   const factLine = highlights.length
     ? ` ${highlights.map((h) => h.charAt(0).toUpperCase() + h.slice(1)).join('. ')}.`
@@ -94,7 +94,7 @@ function buildPremiumEmailHtml({ name, age, tenureLabel, highlights, bodyText })
 
   const bodyHtml = escHtml(bodyText).replace(/\n/g, '<br>');
   const meta = [
-    age != null ? `${age} лет` : null,
+    age != null ? formatYearsRu(age) : null,
     tenureLabel ? `с нами ${tenureLabel}` : null,
   ].filter(Boolean).join(' · ');
 

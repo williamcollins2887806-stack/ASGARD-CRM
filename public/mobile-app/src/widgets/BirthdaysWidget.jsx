@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { api } from '@/api/client';
 import { WidgetShell } from '@/widgets/WidgetShell';
 import { openBirthdayAtelier } from '@/components/BirthdayGreetOverlay';
+import { ageTodayLabel } from '@/lib/ageRu';
 
 /**
  * BirthdaysWidget — сегодняшние ДР + ближайшие + CTA в ателье даров
@@ -86,7 +87,7 @@ export default function BirthdaysWidget() {
               <div className="flex-1 min-w-0">
                 <div style={{ fontSize: 13, fontWeight: 650 }}>{getFirstName(person.name) || person.name}</div>
                 <div style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>
-                  {person.age != null ? `сегодня ${person.age} лет` : 'сегодня'}
+                  {ageTodayLabel(person.age)}
                 </div>
               </div>
               <button

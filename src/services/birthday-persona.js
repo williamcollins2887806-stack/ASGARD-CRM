@@ -37,6 +37,32 @@ function calcAge(birthDate, onDate = new Date()) {
   return age >= 0 && age < 120 ? age : null;
 }
 
+/** Склонение «год/года/лет» (и месяцев) по правилам русского. */
+function yearsWordRu(n) {
+  const a = Math.abs(Number(n) || 0) % 100;
+  const b = a % 10;
+  if (a > 10 && a < 20) return 'лет';
+  if (b === 1) return 'год';
+  if (b >= 2 && b <= 4) return 'года';
+  return 'лет';
+}
+
+function monthsWordRu(n) {
+  const a = Math.abs(Number(n) || 0) % 100;
+  const b = a % 10;
+  if (a > 10 && a < 20) return 'месяцев';
+  if (b === 1) return 'месяц';
+  if (b >= 2 && b <= 4) return 'месяца';
+  return 'месяцев';
+}
+
+function formatYearsRu(n) {
+  if (n == null || n === '') return null;
+  const v = Number(n);
+  if (!Number.isFinite(v)) return null;
+  return `${v} ${yearsWordRu(v)}`;
+}
+
 function calcTenure(employmentDate, onDate = new Date()) {
   if (!employmentDate) return null;
   const start = employmentDate instanceof Date ? employmentDate : new Date(employmentDate);
@@ -49,13 +75,9 @@ function calcTenure(employmentDate, onDate = new Date()) {
   const rem = months % 12;
   let label;
   if (years <= 0 && rem <= 0) label = 'меньше месяца';
-  else if (years <= 0) label = rem === 1 ? '1 месяц' : (rem < 5 ? `${rem} месяца` : `${rem} месяцев`);
-  else if (rem === 0) label = years === 1 ? '1 год' : (years < 5 ? `${years} года` : `${years} лет`);
-  else {
-    const y = years === 1 ? '1 год' : (years < 5 ? `${years} года` : `${years} лет`);
-    const mo = rem === 1 ? '1 месяц' : (rem < 5 ? `${rem} месяца` : `${rem} месяцев`);
-    label = `${y} ${mo}`;
-  }
+  else if (years <= 0) label = `${rem} ${monthsWordRu(rem)}`;
+  else if (rem === 0) label = formatYearsRu(years);
+  else label = `${formatYearsRu(years)} ${rem} ${monthsWordRu(rem)}`;
   return { years, months: rem, totalMonths: months, label };
 }
 
@@ -187,4 +209,7 @@ module.exports = {
   calcAge,
   calcTenure,
   roleTitle,
+  yearsWordRu,
+  monthsWordRu,
+  formatYearsRu,
 };

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { api } from '@/api/client';
 import { useAuthStore } from '@/stores/authStore';
 import { GiftArt, GIFT_META } from '@/lib/birthdayArt';
+import { ageTodayLabel } from '@/lib/ageRu';
 import './birthday-greet.css';
 
 const TONE_META = { warm: 'Тёплый', saga: 'Сага', light: 'Лёгкий' };
@@ -208,7 +209,7 @@ export default function BirthdayGreetOverlay() {
                 >
                   <div className="mbd-av">{initials(p.name)}</div>
                   <div className="mbd-name">{p.name}</div>
-                  <div className="mbd-meta">{p.age != null ? `сегодня ${p.age} лет` : 'сегодня'}</div>
+                  <div className="mbd-meta">{ageTodayLabel(p.age)}</div>
                   {p.already_sent ? <div className="mbd-sent">дар уже отправлен</div> : null}
                 </button>
               ))}

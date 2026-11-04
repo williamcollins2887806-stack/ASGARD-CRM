@@ -202,7 +202,11 @@ window.AsgardBirthdaysPage=(function(){
                 <div style="display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:12px;border:1px solid color-mix(in srgb, var(--gold) 25%, transparent);">
                   <div>
                     <div style="font-weight:650">${esc(p.name)}</div>
-                    <div class="help">${p.age != null ? ('сегодня ' + p.age + ' лет') : 'день рождения'}${p.sent_count ? ' · даров: ' + p.sent_count : ''}</div>
+                    <div class="help">${p.age != null
+                      ? ('сегодня ' + (window.AsgardBirthdayGreet && AsgardBirthdayGreet.formatYearsRu
+                        ? AsgardBirthdayGreet.formatYearsRu(p.age)
+                        : (p.age + ' лет')))
+                      : 'день рождения'}${p.sent_count ? ' · даров: ' + p.sent_count : ''}</div>
                   </div>
                   <button class="btn" data-bd-gift="${p.id}" data-bd-name="${esc(p.name)}" data-bd-age="${p.age != null ? p.age : ''}" ${p.already_sent ? 'disabled' : ''}>
                     ${p.already_sent ? 'Уже поздравил' : 'Поздравить'}
