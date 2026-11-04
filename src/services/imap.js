@@ -477,6 +477,28 @@ async function saveEmail(account, msg, parsed) {
   // AI analysis is now decoupled — runs asynchronously after sync completes
   // (see processUnanalyzedEmails below)
 
+  // ── Отчёт СКУД из почты ──────────────────────────────────────────────────
+  // ВАЖНО: проверяем ДО ветки счетов. Отчёт СКУД — это .xls с проходами,
+  // и doc-email-intake попытался бы прогнать его через OCR как счёт.
+  // Ошибки импорта не должны ломать синхронизацию почты.
+  try {
+    const skudIntake = require('./skud-mail-intake');
+    const { rows: em } = await db.query(
+      `SELECT id, subject, from_email FROM emails WHERE id = $1`, [emailId]
+    );
+    if (em[0]) {
+      const res = await skudIntake.intakeEmail(db, em[0]);
+      if (res.touched) {
+        console.log('[IMAP] отчёт СКУД обработан:', JSON.stringify(res.imports.map((x) => ({
+          importId: x.importId, period: `${x.periodFrom}..${x.periodTo}`, skipped: x.skipped || null
+        }))));
+        return { isNew: true, attachmentCount, skud: true };
+      }
+    }
+  } catch (e) {
+    console.error('[IMAP] skud-intake failed:', e.message);
+  }
+
   // Часть II (V398): если это КОПИЯ на ящик CRM — сразу запускаем intake-контур
   // согласования: письмо+счёт → заявка awaiting_dir + строка реестра. Не ждём
   // общего AI-процессора (он классифицирует, но не создаёт заявок).
@@ -510,8 +532,77 @@ async function saveEmail(account, msg, parsed) {
 }
 
 /**
+ * Текст из .xls/.xlsx для intake счетов.
+ * Legacy BIFF (.xls) — только через пакет `xlsx`; OOXML (.xlsx) — exceljs, с фолбэком на xlsx.
+ */
+async function extractSpreadsheetText(fullPath, att = {}) {
+  if (!fullPath || !fs.existsSync(fullPath)) return '';
+  const fn = String(att.filename || att.file_path || fullPath);
+  const isLegacyXls = /\.xls$/i.test(fn) && !/\.xlsx$/i.test(fn);
+  const buf = fs.readFileSync(fullPath);
+  const lines = [];
+  if (isLegacyXls) {
+    let XLSX;
+    try { XLSX = require('xlsx'); } catch (e) {
+      console.warn('[IMAP] intake: пакет xlsx не установлен — .xls не читается:', e.message);
+      return '';
+    }
+    const wb = XLSX.read(buf, { type: 'buffer', cellDates: true });
+    for (const name of (wb.SheetNames || []).slice(0, 3)) {
+      const rows = XLSX.utils.sheet_to_json(wb.Sheets[name], { header: 1, raw: false, defval: '' });
+      lines.push(`[${name}]`);
+      for (const r of rows.slice(0, 200)) {
+        const vals = (r || []).map((v) => String(v == null ? '' : v).trim()).filter(Boolean);
+        if (vals.length) lines.push(vals.join(' | '));
+      }
+    }
+    return lines.join('\n');
+  }
+  try {
+    const ExcelJS = require('exceljs');
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.load(buf);
+    workbook.eachSheet((sheet, sheetId) => {
+      if (sheetId > 3) return;
+      lines.push(`[${sheet.name}]`);
+      let cnt = 0;
+      sheet.eachRow((row) => {
+        if (cnt++ > 200) return;
+        const vals = [];
+        row.eachCell({ includeEmpty: false }, (cell) => {
+          const v = cell.value;
+          if (v == null) return;
+          if (typeof v === 'object' && v.text) vals.push(String(v.text).trim());
+          else if (typeof v === 'object' && v.result != null) vals.push(String(v.result).trim());
+          else vals.push(String(v).trim());
+        });
+        if (vals.filter(Boolean).length) lines.push(vals.filter(Boolean).join(' | '));
+      });
+    });
+    if (lines.length) return lines.join('\n');
+  } catch (e) {
+    console.warn('[IMAP] intake exceljs:', e.message);
+  }
+  try {
+    const XLSX = require('xlsx');
+    const wb = XLSX.read(buf, { type: 'buffer', cellDates: true });
+    for (const name of (wb.SheetNames || []).slice(0, 3)) {
+      const rows = XLSX.utils.sheet_to_json(wb.Sheets[name], { header: 1, raw: false, defval: '' });
+      lines.push(`[${name}]`);
+      for (const r of rows.slice(0, 200)) {
+        const vals = (r || []).map((v) => String(v == null ? '' : v).trim()).filter(Boolean);
+        if (vals.length) lines.push(vals.join(' | '));
+      }
+    }
+  } catch (e) {
+    console.warn('[IMAP] intake xlsx fallback:', e.message);
+  }
+  return lines.join('\n');
+}
+
+/**
  * V398: intake-контур для письма-копии CRM.
- * Собирает PDF/PNG/JPEG-вложения, прогоняет OCR (если нужно) и extractInvoice,
+ * Собирает PDF/PNG/JPEG/Excel-вложения, прогоняет OCR (если нужно) и extractInvoice,
  * затем doc-email-intake создаёт заявки/записи. Тело письма тоже проверяем
  * (счёт может быть в тексте). Всё идемпотентно (антидубль по email+attachment).
  * Экспортируется для тестов/ручного вызова.
@@ -540,11 +631,20 @@ async function runDocIntakeForEmail(db, emailId) {
 
   const atts = (await db.query(
     `SELECT id, filename, mime_type, file_path, is_inline FROM email_attachments WHERE email_id=$1`, [emailId])).rows;
-  const invoiceAtts = atts.filter((a) => /pdf|image\//i.test(a.mime_type || '') && !a.is_inline);
+  // PDF/сканы + Excel (Офисмаг и др. шлют счета .xls/.xlsx — D-ofismag 03.11.2026)
+  const isSpreadsheet = (a) => {
+    const mt = String(a.mime_type || '');
+    const fn = String(a.filename || a.file_path || '');
+    return /spreadsheet|ms-excel|officedocument\.spreadsheet/i.test(mt)
+      || /\.xlsx?$/i.test(fn);
+  };
+  const invoiceAtts = atts.filter((a) => !a.is_inline && (
+    /pdf|image\//i.test(a.mime_type || '') || isSpreadsheet(a)
+  ));
 
   // Проверяем: похоже ли хоть одно вложение/тело на счёт (дешёвый пре-фильтр,
   // чтобы не гонять OCR на каждом письме).
-  const looksLikeInvoice = (txt) => /сч[её]т|инн|бИК|р\/с|к\/с|к оплате/i.test(String(txt || ''));
+  const looksLikeInvoice = (txt) => /сч[её]т|инн|бИК|р\/с|к\/с|к оплате|итого|ндс/i.test(String(txt || ''));
   const invoices = [];
   for (const a of invoiceAtts) {
     let text = '';
@@ -566,12 +666,17 @@ async function runDocIntakeForEmail(db, emailId) {
         // вовсе — OCR вызывался только для PDF, а картинка молча пропускалась.
         // Часть «ВСЕ счета должны обрабатываться» не выполнялась.
         const ocr = require('./pdf-ocr');
-        const fs = require('fs');
         if (full && fs.existsSync(full)) {
           const buf = fs.readFileSync(full);
           const res = await ocr.ocrImageBuffer(buf, a.mime_type || 'image/jpeg', a.filename);
           text = res && res.text ? res.text : '';
         }
+      } else if (isSpreadsheet(a)) {
+        // 03.11.2026: письмо Тумаевой «Офис: Счет ООО Офисмаг» — вложение .xls.
+        // Intake раньше брал только pdf/image → парсил тело → needs_manual без заявки.
+        // На проде также не был установлен npm-пакет xlsx (есть в package.json).
+        text = await extractSpreadsheetText(full, a);
+        if (!text) console.warn(`[IMAP] intake: нет текста из Excel «${a.filename}»`);
       }
       if (!text) console.warn(`[IMAP] intake: нет текста из вложения ${a.filename} (путь ${full})`);
     } catch (e) { console.warn('[IMAP] intake OCR: ' + e.message); }
@@ -581,7 +686,7 @@ async function runDocIntakeForEmail(db, emailId) {
     // Молча выбрасывать вложение нельзя — деньги теряются. Такой файл отдаём
     // в intake с пустым текстом: строка создастся с пометкой «требует ручной
     // проверки», и человек увидит её в реестре.
-    if (!text && a.mime_type && /pdf|image\//i.test(a.mime_type)) {
+    if (!text && a.mime_type && (/pdf|image\//i.test(a.mime_type) || isSpreadsheet(a))) {
       console.warn(`[IMAP] intake: вложение «${a.filename}» не распознано — ставлю на ручной разбор`);
       invoices.push({ attachment: a, text: '[НЕ РАСПОЗНАНО АВТОМАТИЧЕСКИ — проверьте вложение вручную]' });
       continue;
@@ -1675,71 +1780,79 @@ async function analyzeOneEmail(email) {
         // Don't fail the whole email — AI analysis was saved successfully
       }
 
-      // 30.06.2026: Авто-создание pre_tender для прямых заявок и площадочных
-      // тендеров → заявка СРАЗУ попадает в маркетплейс РП (assigned_to=NULL,
-      // status='new'), любой РП может её забрать. Раньше (Wave B) требовался
-      // ручной шаг директора «Завести просчёт», из-за чего заявки с почты
-      // не появлялись в маркетплейсе РП и зависали в inbox_applications.
-      //
-      // createPreTenderFromEmail сам резолвит настоящего клиента из
-      // original_sender для corporate_forward (через JOIN inbox_applications),
-      // поэтому старый bug «customer_name = переслатель» здесь не повторяется.
-      // commercial_offer остаётся ручным — это предложение поставщика, не запрос работ.
-      if (analysis.classification === 'direct_request' || analysis.classification === 'platform_tender') {
-        try {
-          const { resolvePmFromEmailText } = require('./pm-routing-from-email');
-          const pmRoute = await resolvePmFromEmailText(
-            email.subject,
-            email.body_text || email.body_html,
-            analysis.suggested_pm_name
-          );
-          const preTenderService = require('./pre-tender-service');
-          const r = await preTenderService.createPreTenderFromEmail(emailId, {
-            assignedTo: pmRoute?.pm_user_id || null,
-            assignedBy: forwardedByUserId || null,
-            assignNote: pmRoute
-              ? `🎯 Автоназначение из письма: ${pmRoute.matched_name}`
-              : null
-          });
-          if (r && r.id) {
-            const dest = pmRoute ? `→ kanban PM ${pmRoute.matched_name}` : '→ marketplace';
-            console.log(`[IMAP-AI] Auto-created pre_tender #${r.id} from email #${emailId} (${analysis.classification})${r.exists ? ' [already existed]' : ' ' + dest}`);
-            if (pmRoute && !r.exists) {
-              try {
-                const { createNotification } = require('./notify');
-                const { broadcast } = require('../routes/sse');
-                await Promise.resolve(createNotification(db, {
-                  user_id: pmRoute.pm_user_id,
-                  title: `Заявка №${r.id} назначена вам автоматически`,
+      // 02.11.2026: ЕДИНЫЙ КОНТУР — любая заявка из почты сразу становится
+      // pre_tender и попадает в маркетплейс РП (или автоназначается).
+      // Раньше commercial_offer оставался только в inbox_applications с кнопкой
+      // «Назначить РП», и РП его не видел. Inbox оставляем как теневой след
+      // (AI/forward/auto-reply), но рабочий объект — только pre_tender.
+      try {
+        const { resolvePmFromEmailText } = require('./pm-routing-from-email');
+        const pmRoute = await resolvePmFromEmailText(
+          email.subject,
+          email.body_text || email.body_html,
+          analysis.suggested_pm_name
+        );
+        const preTenderService = require('./pre-tender-service');
+        const r = await preTenderService.createPreTenderFromEmail(emailId, {
+          assignedTo: pmRoute?.pm_user_id || null,
+          assignedBy: forwardedByUserId || null,
+          assignNote: pmRoute
+            ? `🎯 Автоназначение из письма: ${pmRoute.matched_name}`
+            : null
+        });
+        if (r && r.id) {
+          const dest = pmRoute ? `→ kanban PM ${pmRoute.matched_name}` : '→ marketplace';
+          console.log(`[IMAP-AI] Auto-created pre_tender #${r.id} from email #${emailId} (${analysis.classification})${r.exists ? ' [already existed]' : ' ' + dest}`);
+          // Inbox больше не «ждёт назначения» — карточка живёт в маркетплейсе.
+          try {
+            await db.query(
+              `UPDATE inbox_applications
+                  SET status = 'accepted',
+                      decision_notes = COALESCE(decision_notes,'') || ' [auto→marketplace pre_tender #' || $2 || ']',
+                      updated_at = NOW()
+                WHERE email_id = $1
+                  AND status = ANY(ARRAY['new','ai_processed','under_review'])
+                  AND assigned_pm_id IS NULL`,
+              [emailId, String(r.id)]
+            );
+          } catch (syncErr) {
+            console.warn(`[IMAP-AI] inbox→accepted sync failed for email #${emailId}:`, syncErr.message);
+          }
+          if (pmRoute && !r.exists) {
+            try {
+              const { createNotification } = require('./notify');
+              const { broadcast } = require('../routes/sse');
+              await Promise.resolve(createNotification(db, {
+                user_id: pmRoute.pm_user_id,
+                title: `Заявка №${r.id} назначена вам автоматически`,
+                message: (email.subject || '').slice(0, 120),
+                type: 'pre_tender_auto_assigned',
+                link: `#/personal-kanban`
+              })).catch(() => {});
+              const dirs = await db.query(
+                `SELECT id FROM users WHERE role = ANY($1::text[]) AND is_active = TRUE`,
+                [['ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV', 'HEAD_PM']]);
+              for (const dir of dirs.rows) {
+                Promise.resolve(createNotification(db, {
+                  user_id: dir.id,
+                  title: `Автоназначение: ${pmRoute.matched_name} ← заявка #${r.id}`,
                   message: (email.subject || '').slice(0, 120),
                   type: 'pre_tender_auto_assigned',
-                  link: `#/personal-kanban`
+                  link: `#/director-inbox?kind=pre_tender&id=${r.id}`
                 })).catch(() => {});
-                const dirs = await db.query(
-                  `SELECT id FROM users WHERE role = ANY($1::text[]) AND is_active = TRUE`,
-                  [['ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV', 'HEAD_PM']]);
-                for (const dir of dirs.rows) {
-                  Promise.resolve(createNotification(db, {
-                    user_id: dir.id,
-                    title: `Автоназначение: ${pmRoute.matched_name} ← заявка #${r.id}`,
-                    message: (email.subject || '').slice(0, 120),
-                    type: 'pre_tender_auto_assigned',
-                    link: `#/director-inbox?kind=pre_tender&id=${r.id}`
-                  })).catch(() => {});
-                }
-                broadcast('pre_tender:assigned', { id: r.id, assigned_to: pmRoute.pm_user_id, auto: true });
-              } catch (notifyErr) {
-                console.warn('[IMAP-AI] auto-assign notify failed:', notifyErr.message);
               }
+              broadcast('pre_tender:assigned', { id: r.id, assigned_to: pmRoute.pm_user_id, auto: true });
+            } catch (notifyErr) {
+              console.warn('[IMAP-AI] auto-assign notify failed:', notifyErr.message);
             }
           }
-        } catch (ptErr) {
-          // D-204 (дефект C): не глотаем молча. Сбой создания заявки — это ровно тот класс,
-          // при котором письмо оставалось «обработанным», но заявки нет. Пробрасываем наверх,
-          // чтобы сработала catch-ветка analyzeOneEmail: ai_processed_at НЕ выставится,
-          // попытка учтётся, после лимита руководство получит уведомление.
-          throw new Error('pre_tender creation failed: ' + (ptErr.message || ptErr));
         }
+      } catch (ptErr) {
+        // D-204 (дефект C): не глотаем молча. Сбой создания заявки — это ровно тот класс,
+        // при котором письмо оставалось «обработанным», но заявки нет. Пробрасываем наверх,
+        // чтобы сработала catch-ветка analyzeOneEmail: ai_processed_at НЕ выставится,
+        // попытка учтётся, после лимита руководство получит уведомление.
+        throw new Error('pre_tender creation failed: ' + (ptErr.message || ptErr));
       }
 
       // Parse platform tenders

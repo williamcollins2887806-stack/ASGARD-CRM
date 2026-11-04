@@ -75,12 +75,29 @@ const TABLES = [
   // Note: 'permits' table excluded — has server-side SQL syntax issue in data API
   {
     table: 'staff_plan',
-    createBody: () => ({
-      employee_id: TEST_USERS.PM.id,
-      date: '2025-12-01',
-      status: 'Запланирован'
-    }),
-    updateBody: { status: 'Подтверждён' }
+    // V453: график офиса привязан к staff.id (НЕ users.id) и требует дату
+    // и статус. Тест раньше слал employee_id/status — реальный контракт другой,
+    // и после введения проверок он падал 4 раза (верификатор 03.11.2026).
+    //
+    // ВАЖНО (верификатор 03.11.2026, D-2): TEST_USERS.PM.id — это users.id,
+    // а staff_plan.staff_id ссылается на staff.id. Тест был зелёным, но
+    // создавал сиротскую строку и проверял не тот контракт.
+    // Поэтому id берём из таблицы staff (через /api/data/staff), а users.id
+    // оставляем только как крайний фолбэк.
+    createBody: async () => {
+      let staffId = null;
+      try {
+        const res = await api('GET', '/api/data/staff?limit=1', { role: 'ADMIN' });
+        const rows = (res && res.data && (res.data.staff || res.data.items || res.data.rows)) || [];
+        if (rows.length && rows[0].id) staffId = rows[0].id;
+      } catch (_) { /* ниже фолбэк */ }
+      return {
+        staff_id: staffId || (TEST_USERS.PM && TEST_USERS.PM.id) || 1,
+        date: '2025-12-01',
+        status_code: 'уд'
+      };
+    },
+    updateBody: { status_code: 'об' }
   },
   // correspondence — has dedicated /api/correspondence endpoint, blocked via /api/data by design
   {
@@ -124,10 +141,16 @@ const TABLES = [
   },
   {
     table: 'reminders',
+    // Таблица использует due_date (а не date) — старый тест слал несуществующую
+    // колонку, запись шла без даты, id не возвращался, и все 4 кейса падали.
+    //
+    // user_id берём из TEST_USERS, но с фолбэком: в этом наборе тестов
+    // initRealUsers() не вызывается, и TEST_USERS пустой — тогда обращение
+    // к .id падало с TypeError ещё до запроса.
     createBody: () => ({
       title: 'CRUD_REMINDER_' + Date.now(),
-      date: '2025-08-01',
-      user_id: TEST_USERS.ADMIN.id
+      due_date: '2025-08-01',
+      user_id: (TEST_USERS.ADMIN && TEST_USERS.ADMIN.id) || null
     }),
     updateBody: { title: 'Updated Reminder' }
   }

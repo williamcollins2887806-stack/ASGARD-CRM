@@ -10,6 +10,316 @@ const {
 const { recalcAnalysisDeadlinePatch } = require('../lib/analysis-deadline');
 const { syncContractContactsToSupplier } = require('../services/contract-contact-sync');
 
+/**
+ * Нормализовать дату из тела запроса в 'YYYY-MM-DD'.
+ * Понимает ISO ('2026-10-29'), ISO с временем, DD.MM.YYYY и Date.
+ *
+ * Зачем отдельная функция (верификатор 03.11.2026, P1-2): проверка запрета
+ * «оф без прохода» сравнивала `String(date).slice(0,10)` с ISO-шаблоном, а
+ * generic CRUD нормализовал DD.MM.YYYY ПОЗЖЕ. В итоге дата «29.10.2026»
+ * проходила мимо проверки и записывалась в БД как 2026-10-29 — запрет
+ * обходился форматом даты.
+ */
+/** Допустимый диапазон годов для дат в CRUD. Одна граница на весь файл. */
+const MIN_YEAR = 1900;
+const MAX_YEAR = 2100;
+/**
+ * Проверить числовые значения на переполнение типа колонки ДО запроса.
+ *
+ * ЗАЧЕМ (верификатор 03.11.2026, D-1): проверка была только для `staff_plan.staff_id`.
+ * Любой другой integer-ключ (`work_id`, `employee_id`, `works.pm_id`,
+ * `tasks.assignee_id`) с `2147483648` или `1e20` доезжал до драйвера и давал
+ * SQLSTATE 22003 → HTTP 500 вместо понятного 400.
+ *
+ * @param {Array<{name:string, type?:string}>} columns — реальные типы из information_schema
+ * @returns {{ok:boolean, field?:string, message?:string}}
+ */
+function validateIntegerColumns(data, columnTypes) {
+  if (!data || typeof data !== 'object') return { ok: true };
+  for (const key of Object.keys(data)) {
+    const t = columnTypes && columnTypes[key];
+    if (!t) continue;
+    if (t !== 'integer' && t !== 'bigint' && t !== 'smallint') continue;
+    const v = data[key];
+    if (v === null || v === undefined || v === '') continue;
+    let num;
+    if (typeof v === 'number') {
+      num = v;
+    } else if (typeof v === 'string' && /^-?\d+$/.test(v.trim())) {
+      num = Number(v.trim());
+    } else {
+      // boolean/object/float-string раньше доезжали до драйвера:
+      // true → 500 (не 1), "12.5" → 500. Верификатор 04.11.2026, P1.
+      return {
+        ok: false,
+        field: key,
+        message: `Поле ${key} должно быть целым числом`
+      };
+    }
+    if (!Number.isFinite(num) || !Number.isInteger(num)) {
+      return { ok: false, field: key, message: `Поле ${key} должно быть целым числом` };
+    }
+    const limit = t === 'smallint' ? 32767 : (t === 'bigint' ? Number.MAX_SAFE_INTEGER : MAX_INT4);
+    const min = t === 'smallint' ? -32768 : (t === 'bigint' ? -Number.MAX_SAFE_INTEGER : -MAX_INT4 - 1);
+    if (num > limit || num < min) {
+      return {
+        ok: false,
+        field: key,
+        message: `Значение поля ${key} вне допустимого диапазона (${t})`
+      };
+    }
+  }
+  return { ok: true };
+}
+
+/** Предел колонок типа integer (int4) — чтобы не получать 22003 из драйвера. */
+const MAX_INT4 = 2147483647;
+
+/**
+ * Локальная метка времени 'YYYY-MM-DD HH:mm:ss' для колонок
+ * `timestamp without time zone`.
+ *
+ * ЗАЧЕМ (верификатор 03.11.2026, D-5): generic CRUD писал `updated_at` через
+ * `toISOString()` — это UTC. Все остальные пути (daily-presence, office-hours,
+ * office-attendance) пишут `NOW()`, то есть локальное время. В окне 00:00–03:00
+ * МСК outметка, поставленная через «График офиса», получала `updated_at::date`
+ * на день раньше, `touched_today` в `/today` давал false, и гейт «где ты»
+ * спрашивал заново при уже стоящей отметке.
+ */
+function localStamp(d) {
+  const x = d instanceof Date ? d : new Date();
+  if (Number.isNaN(x.getTime())) return null;
+  const p = (n) => String(n).padStart(2, '0');
+  return `${x.getFullYear()}-${p(x.getMonth() + 1)}-${p(x.getDate())} `
+    + `${p(x.getHours())}:${p(x.getMinutes())}:${p(x.getSeconds())}`;
+}
+
+/**
+ * Метка времени ИЗ БД: 'YYYY-MM-DD HH:mm:ss' по часовому поясу сессии PostgreSQL.
+ *
+ * ЗАЧЕМ (верификатор 03.11.2026, D-5): `localStamp()` собирает компоненты
+ * `new Date()` процесса Node. Если TZ Node и TZ сессии PG расходятся (на клоне
+ * PG был Europe/Kiev, Node — Europe/Moscow), `updated_at` уезжал на час, а
+ * `touched_today` в `/today` считал отметку «не сегодняшней» и гейт «где ты»
+ * спрашивал повторно. Брать время надо у того, кто его потом читает — у БД.
+ */
+async function dbStamp(db) {
+  try {
+    const { rows } = await db.query(`SELECT to_char(NOW(), 'YYYY-MM-DD HH24:MI:SS') AS ts`);
+    if (rows[0] && rows[0].ts) return rows[0].ts;
+  } catch (_) { /* ниже фолбэк */ }
+  return localStamp();
+}
+
+/**
+ * Существует ли такая календарная дата.
+ * Общая проверка для валидации staff_plan и для санитайзера ниже, чтобы они
+ * не жили по разным границам (верификатор 03.11.2026, P0: normalizeDateOnly
+ * разрешал до 2999, а санитайзер рубил после 2100 и молча ставил date=NULL
+ * с кодом 200 — ровно тот дефект, который объявили закрытым).
+ */
+function isValidCalendarDate(y, mo, d) {
+  if (!Number.isFinite(y) || !Number.isFinite(mo) || !Number.isFinite(d)) return false;
+  if (y < MIN_YEAR || y > MAX_YEAR) return false;
+  if (mo < 1 || mo > 12 || d < 1 || d > 31) return false;
+  const probe = new Date(Date.UTC(y, mo - 1, d));
+  return probe.getUTCFullYear() === y
+    && probe.getUTCMonth() === mo - 1
+    && probe.getUTCDate() === d;
+}
+
+function normalizeDateOnly(value) {
+  if (value == null || value === '') return null;
+  let y; let mo; let d;
+  if (value instanceof Date) {
+    if (Number.isNaN(value.getTime())) return null;
+    y = value.getUTCFullYear();
+    mo = value.getUTCMonth() + 1;
+    d = value.getUTCDate();
+  } else {
+    const s = String(value).trim();
+    // `$` обязателен: без него "2026-10-31junk" молча обрезался до даты.
+    let m = /^(\d{4})-(\d{2})-(\d{2})(?:[T ].*)?$/.exec(s);
+    if (m) {
+      y = +m[1]; mo = +m[2]; d = +m[3];
+    } else {
+      m = /^(\d{1,2})\.(\d{1,2})\.(\d{4})$/.exec(s);
+      if (!m) return null;
+      y = +m[3]; mo = +m[2]; d = +m[1];
+    }
+  }
+  // ВАЛИДАЦИЯ КАЛЕНДАРЯ, а не только шаблона (верификатор 03.11.2026):
+  // `"2026-13-45"` проходила regex, а общий санитайзер молча ставил date=NULL,
+  // и запись сохранялась с 200.
+  if (!isValidCalendarDate(y, mo, d)) return null;
+  return `${y}-${String(mo).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+}
+
+/** Известные коды графика офиса — для нормализации регистра и пробелов. */
+const OFFICE_STATUS_CODES = new Set([
+  'оф', 'уд', 'об', 'км', 'пг', 'уч', 'ск', 'бн', 'сс', 'вх', 'отп', 'нп'
+]);
+
+/**
+ * Привести код статуса к канону: убрать невидимые символы, обрезать пробелы,
+ * опустить регистр.
+ *
+ * ЗАЧЕМ (верификатор 03.11.2026): `"оф\u200B"` (zero-width space) проходил
+ * запрет — `String.trim()` не убирает U+200B, код не совпадал с 「оф」,
+ * `isOfficeCode` возвращал false, а детектор (`lower(btrim())='оф'`) такую
+ * строку не видел. В итоге «оф» без прохода СКУД записывался, день оставался
+ * в норме с нулевым зачётом — ложная недоработка.
+ */
+function normalizeStatusCode(value) {
+  if (value == null) return value;
+  // Все невидимые: ZWSP, ZWNJ, ZWJ, BOM, word-joiner, мягкий перенос,
+  // zero-width no-break, Mongolian vowel separator.
+  const cleaned = String(value).replace(/[\u200B-\u200D\u2060\uFEFF\u00AD\u180E]/g, '');
+  const trimmed = cleaned.trim();
+  if (!trimmed) return trimmed;
+  const lowered = trimmed.toLowerCase();
+  return OFFICE_STATUS_CODES.has(lowered) ? lowered : trimmed;
+}
+
+/** Это код «в офисе» (с учётом регистра и пробелов)? */
+function isOfficeCode(value) {
+  return normalizeStatusCode(value) === 'оф';
+}
+
+/**
+ * Итоговое состояние строки staff_plan после записи: сотрудник, дата, статус.
+ * Нужно, чтобы проверять запрет «оф» при ЛЮБОМ изменении, а не только когда
+ * в теле пришёл status_code='оф' (верификатор 03.11.2026, P1-3: обход был
+ * двухшаговым — POST без даты, затем PUT только с датой).
+ */
+function resolvePlanState(data, current) {
+  const src = data || {};
+  const cur = current || {};
+  // `staff_id: null` и мусор вроде "abc" не должны ни обнулять сотрудника,
+  // ни доезжать до драйвера (верификатор 03.11.2026: PUT {staff_id:null} → 200
+  // и строка теряла владельца; PUT {staff_id:"abc"} → 500).
+  //
+  // ВАЖНО: принимаем ТОЛЬКО целое число или числовую строку без хвоста.
+  // `parseInt("123abc")` вернул бы 123 и молча подменил сотрудника, а в UPDATE
+  // уехала бы исходная строка → 500 (верификатор 03.11.2026, P1).
+  let staffId = cur.staff_id;
+  let staffInvalid = false;
+  if (Object.prototype.hasOwnProperty.call(src, 'staff_id')) {
+    const raw = src.staff_id;
+    if (raw === null || raw === '') {
+      staffId = null;
+    } else if (typeof raw === 'number') {
+      staffId = Number.isInteger(raw) ? raw : NaN;
+    } else if (typeof raw === 'string') {
+      const trimmed = raw.trim();
+      staffId = /^\d+$/.test(trimmed) ? parseInt(trimmed, 10) : NaN;
+    } else {
+      staffId = NaN;
+    }
+    // Колонка staff_id — integer (int4). Значение вне диапазона драйвер
+    // отвергает с SQLSTATE 22003, и это выходило как 500 (верификатор
+    // 03.11.2026, D-1): `2147483648`, `1e20`, длинная строка.
+    // Валидируем диапазон здесь, чтобы получить понятный 400.
+    if (Number.isFinite(staffId) && (staffId <= 0 || staffId > MAX_INT4)) {
+      staffId = NaN;
+    }
+    staffInvalid = !Number.isFinite(staffId) || staffId <= 0;
+  }
+  // Канон — status_code. Legacy-колонка `status` тоже жива в схеме
+  // (верификатор 04.11.2026, P2): POST/PUT {status:'оф'} и даже
+  // {status:'оф', status_code:null} обходили гейт, пока смотрели только
+  // status_code. Правило:
+  //   • для ЗАПИСИ — непустой status_code, иначе непустой status, иначе null
+  //     при явной очистке, иначе текущее;
+  //   • для ГЕЙТА — officeAttempt, если ЛЮБОЕ непустое поле в теле = «оф»
+  //     или итоговое значение = «оф».
+  const hasCode = Object.prototype.hasOwnProperty.call(src, 'status_code');
+  const hasLegacy = Object.prototype.hasOwnProperty.call(src, 'status');
+  const normNonEmpty = (v) => {
+    if (v == null) return null;
+    const n = normalizeStatusCode(v);
+    return (n == null || n === '') ? null : n;
+  };
+  const codeN = hasCode ? normNonEmpty(src.status_code) : undefined;
+  const legN = hasLegacy ? normNonEmpty(src.status) : undefined;
+
+  let status;
+  if (hasCode && codeN != null) {
+    status = codeN;
+  } else if (hasLegacy && legN != null) {
+    status = legN;
+  } else if (hasCode || hasLegacy) {
+    status = null; // явная очистка одного/обоих полей без непустого значения
+  } else if (cur.status_code != null && String(cur.status_code).trim() !== '') {
+    status = normalizeStatusCode(cur.status_code);
+  } else {
+    status = normNonEmpty(cur.status);
+  }
+
+  const officeAttempt = isOfficeCode(status)
+    || (codeN != null && isOfficeCode(codeN))
+    || (legN != null && isOfficeCode(legN));
+
+  const rawDate = Object.prototype.hasOwnProperty.call(src, 'date') ? src.date : cur.date;
+  // Различаем «дата не передана» и «передана невалидная»: в первом случае
+  // берём текущую, во втором возвращаем invalid, чтобы отдать 400.
+  const dateGiven = Object.prototype.hasOwnProperty.call(src, 'date');
+  const date = normalizeDateOnly(rawDate);
+  return {
+    status,
+    officeAttempt,
+    staffId,
+    staffInvalid,
+    date,
+    dateGiven,
+    dateInvalid: dateGiven && rawDate != null && rawDate !== '' && date === null
+  };
+}
+
+/**
+ * Можно ли поставить «оф» этому сотруднику на эту дату.
+ * Правило заказчика: если отчёт СКУД покрывает день и проходов нет — нельзя.
+ * Если дня нет в импортах — данных ещё нет, не мешаем.
+ *
+ * @returns {{ok:boolean, reason?:string, skipped?:string}}
+ */
+async function assertOfficeConfirmed(db, staffIdRaw, dateRaw) {
+  const staffId = parseInt(staffIdRaw, 10);
+  const iso = normalizeDateOnly(dateRaw);
+  if (!Number.isFinite(staffId) || !iso) {
+    // Без даты или сотрудника судить не по чему — не блокируем, но и не
+    // притворяемся, что проверили: вернём причину для логов.
+    return { ok: true, skipped: 'no_staff_or_date' };
+  }
+  try {
+    const { rows: hr } = await db.query(
+      `SELECT office_minutes, manual_minutes
+         FROM office_hours_daily WHERE staff_id = $1 AND date = $2::date`,
+      [staffId, iso]
+    );
+    if (hr.length) {
+      // Ручную правку офис-менеджера уважаем: он подтвердил часы вручную
+      // (верификатор 03.11.2026, P2-1).
+      const minutes = hr[0].manual_minutes != null
+        ? Number(hr[0].manual_minutes)
+        : Number(hr[0].office_minutes);
+      if (minutes > 0) return { ok: true };
+      return { ok: false, reason: 'office_not_confirmed' };
+    }
+    const { rows: cov } = await db.query(
+      `SELECT 1 FROM skud_imports
+        WHERE deleted_at IS NULL AND period_from <= $1::date AND period_to >= $1::date LIMIT 1`,
+      [iso]
+    );
+    if (cov.length) return { ok: false, reason: 'office_not_confirmed' };
+    return { ok: true, skipped: 'no_import_for_day' };
+  } catch (e) {
+    // Таблиц V453 может не быть до миграции — не ломаем график.
+    if (e && e.code === '42P01') return { ok: true, skipped: 'no_table' };
+    throw e;
+  }
+}
+
 async function dataRoutes(fastify, options) {
   const db = fastify.db;
 
@@ -554,15 +864,24 @@ async function dataRoutes(fastify, options) {
 
     // ─── Системные типы документов через generic CRUD запрещены ─────────────
     // ДЫРА (найдена верификатором 03.11.2026): POST/PUT /api/data/documents
-    // писал type='tkp' напрямую, минуя гейт роутов ТКП. Системный тип —
-    // только латиница ('tkp', 'rp_tkp', …); кириллическая «ТКП» — пользовательская метка.
+    // писал type='tkp' напрямую (HTTP 200, в БД ровно 'tkp'), минуя гейт
+    // роутов ТКП (решение директора, арифметика позиций, сверка с просчётом,
+    // линт готового PDF). Подделка попадала в карточку тендера как системный
+    // ТКП и позволяла подменить download_url настоящего файла.
+    //
+    // Почему не блокируем таблицу целиком: фронт реально создаёт через
+    // generic CRUD документы-ссылки (type='Ссылка' — InlineDocsBar.jsx:8,
+    // Tenders/api.js:397) и файлы комплекта (docs_pack.js, tenders.js:4118).
+    // Поэтому запрещаем только СИСТЕМНЫЕ типы — их ставят профильные роуты
+    // после своего гейта.
     if (table === 'documents' && data && typeof data === 'object') {
       const SYSTEM_TYPES = new Set(['tkp', 'rp_tkp', 'rp_estimate', 'rp_report', 'ocr-extract', 'rp_thread_file']);
       const rawType = String(data.type == null ? '' : data.type)
         .replace(/[\s\u00a0\u2007\u2009\u202f\u200b\ufeff]+/g, ' ')
         .trim();
+      const lower = rawType.toLowerCase();
       const isLatinOnly = /^[a-zA-Z0-9_.\-\s]+$/.test(rawType);
-      const candidate = isLatinOnly ? rawType.toLowerCase().replace(/[^a-z0-9_.-]/g, '') : '';
+      const candidate = isLatinOnly ? lower.replace(/[^a-z0-9_.-]/g, '') : '';
       if (candidate && SYSTEM_TYPES.has(candidate)) {
         return reply.code(403).send({
           error: 'system_doc_type',
@@ -585,6 +904,69 @@ async function dataRoutes(fastify, options) {
       });
     }
 
+    // ─── V453: staff_plan — «в офисе» только с подтверждением СКУД ──────────
+    // Почему здесь. График офиса пишет статусы через generic CRUD /api/data,
+    // минуя daily-presence. Без этой проверки запрет «оф без прохода» обходится
+    // первым же POST в /api/data/staff_plan.
+    //
+    // История правок (верификаторы 03.11.2026):
+    //  • P1-2 — дата в формате DD.MM.YYYY проходила мимо проверки на ISO;
+    //  • P1-3 — двухшаговый обход: POST без даты, затем PUT только с датой;
+    //  • новое — «ОФ»/« оф» проходили из-за строгого сравнения.
+    // Поэтому проверяем ИТОГОВОЕ состояние записи (сотрудник + дата + статус),
+    // нормализуя и дату, и код статуса.
+    if (table === 'staff_plan') {
+      const state = resolvePlanState(data, null);
+      if (state.dateInvalid) {
+        return reply.code(400).send({
+          error: 'bad_date',
+          message: 'Дата отметки не распознана или не существует в календаре.'
+        });
+      }
+      // Отметка без сотрудника или без даты бессмысленна: она не привязана
+      // к дню/человеку, ломает выборки и служит сырьём для двухшагового
+      // обхода (верификатор 03.11.2026).
+      if (state.staffInvalid || !Number.isFinite(state.staffId) || state.staffId <= 0) {
+        return reply.code(400).send({
+          error: 'staff_id_required',
+          message: 'Для отметки в графике офиса нужен сотрудник.'
+        });
+      }
+      if (!state.date) {
+        return reply.code(400).send({
+          error: 'date_required',
+          message: 'Для отметки в графике офиса нужна дата.'
+        });
+      }
+      if (state.officeAttempt) {
+        const guard = await assertOfficeConfirmed(db, state.staffId, state.date);
+        if (!guard.ok) {
+          return reply.code(409).send({
+            error: 'office_not_confirmed',
+            message: 'В этот день СКУД не зафиксировал вход — статус «В офисе» поставить нельзя.'
+          });
+        }
+      }
+      // Пишем канонические значения: «ОФ»/« оф »/ZWSP не должны попадать в БД.
+      // Legacy `status` зеркалим в status_code и пишем оба одинаково — иначе
+      // клиент с {status:'оф'} оставлял status_code=null (верификатор 04.11.2026).
+      if (state.status !== undefined) {
+        data.status_code = state.status;
+        data.status = state.status;
+      }
+      data.date = state.date;
+      data.staff_id = state.staffId;
+    }
+
+    // Переполнение integer-колонок -> 400, а не 500 от драйвера (D-1).
+    {
+      const colTypes = _columnTypeCache[dbTable] || {};
+      const intChk = validateIntegerColumns(data, colTypes);
+      if (!intChk.ok) {
+        return reply.code(400).send({ error: 'bad_integer', field: intChk.field, message: intChk.message });
+      }
+    }
+
       const TEXT_FIELDS = ['description', 'comment', 'notes', 'details', 'message', 'text', 'body', 'content', 'data'];
       for (const key of Object.keys(data)) {
         if (typeof data[key] === 'string' && data[key].length > 1000 && !TEXT_FIELDS.includes(key)) {
@@ -593,10 +975,12 @@ async function dataRoutes(fastify, options) {
       }
 
       if (tableCols.has('created_at')) {
-        data.created_at = data.created_at || new Date().toISOString();
+        // Всегда серверное время. Клиентский ISO (UTC) обходил dbStamp через
+        // `||` и давал Δ≈TZ-offset (верификатор 04.11.2026, P2, Δ=7200с).
+        data.created_at = await dbStamp(db);
       }
       if (tableCols.has('updated_at')) {
-        data.updated_at = new Date().toISOString();
+        data.updated_at = await dbStamp(db);
       }
       if (tableCols.has('created_by') && !data.created_by && request.user.id) {
         data.created_by = request.user.id;
@@ -636,7 +1020,7 @@ async function dataRoutes(fastify, options) {
             data[key] = null;
           } else {
             const y = parseInt(parts[1], 10), mo = parseInt(parts[2], 10), dd = parseInt(parts[3], 10);
-            if (y < 1900 || y > 2100 || mo < 1 || mo > 12 || dd < 1 || dd > 31) {
+            if (!isValidCalendarDate(y, mo, dd)) {
               console.warn(`[DATA] Invalid date nullified: table=${dbTable}, key=${key}, value=${JSON.stringify(data[key])}`);
               data[key] = null;
             }
@@ -750,10 +1134,11 @@ async function dataRoutes(fastify, options) {
 
     // ─── Системные типы документов через generic CRUD (PUT) ─────────────────
     // ДЫРА (найдена верификатором 03.11.2026): PUT /api/data/documents/:id
-    // менял type на 'tkp' и download_url. Запрещаем и установку системного типа,
-    // и правку строк, которые уже системные. Системный тип = только латиница.
+    // менял type на 'tkp' и download_url, подменяя настоящий файл ТКП в карточке.
+    // Запрещаем и установку системного типа, и правку строк, которые уже системные.
     if (table === 'documents' && data && typeof data === 'object') {
       const SYSTEM_TYPES = new Set(['tkp', 'rp_tkp', 'rp_estimate', 'rp_report', 'ocr-extract', 'rp_thread_file']);
+
       const isSystemType = (raw) => {
         const s = String(raw == null ? '' : raw)
           .replace(/[\s\u00a0\u2007\u2009\u202f\u200b\ufeff]+/g, ' ')
@@ -763,12 +1148,15 @@ async function dataRoutes(fastify, options) {
         if (!isLatinOnly) return false;
         return SYSTEM_TYPES.has(s.toLowerCase().replace(/[^a-z0-9_.-]/g, ''));
       };
+
       if (data.type != null && isSystemType(data.type)) {
         return reply.code(403).send({
           error: 'system_doc_type',
           message: 'Тип документа «' + data.type + '» выставляется системой. Используйте профильный роут модуля.',
         });
       }
+
+      // Существующая запись уже системная → менять её через generic CRUD нельзя
       try {
         const cur = await db.query('SELECT type FROM documents WHERE id = $1', [id]);
         if (cur.rows[0] && isSystemType(cur.rows[0].type)) {
@@ -777,7 +1165,7 @@ async function dataRoutes(fastify, options) {
             message: 'Системный документ (' + cur.rows[0].type + ') меняется только через профильный роут модуля.',
           });
         }
-      } catch (_) { /* id невалиден — обычная обработка ниже */ }
+      } catch (_) { /* если id не число — обычная обработка ниже */ }
     }
 
     // ─── V391: worker_payments через generic CRUD (PUT) ────────────────
@@ -797,6 +1185,66 @@ async function dataRoutes(fastify, options) {
         requires_approval: true,
       });
     }
+
+    // ─── V453: staff_plan (PUT) — «в офисе» только с подтверждением СКУД ────
+    // ДЫРА, которую закрываем: PUT /api/data/staff_plan/:id с
+    // {"status_code":"оф"} ставил «в офисе» в обход проверки POST-ручки.
+    //
+    // История правок (верификаторы 03.11.2026):
+    //  • P1-3 — проверялась дата ТЕКУЩЕЙ строки, хотя в теле можно прислать
+    //    другую дату: проверка шла по дню с проходами, запись — по дню без них;
+    //  • новое — двухшаговый обход: POST без даты создаёт строку date=NULL,
+    //    затем PUT только с датой переносит её. Теперь проверяется ИТОГОВОЕ
+    //    состояние (сотрудник + дата + статус), а не то, что пришло в теле.
+    if (table === 'staff_plan') {
+      const { rows: cur } = await db.query(
+        `SELECT staff_id, date::text AS date, status_code, status FROM staff_plan WHERE id = $1`, [id]
+      );
+      if (!cur.length) {
+        return reply.code(404).send({ error: 'Отметка не найдена' });
+      }
+      const state = resolvePlanState(data, cur[0]);
+
+      // Невалидная дата в теле — 400, а не молчаливое обнуление
+      // (верификатор 03.11.2026: PUT {date:"2026-14-99"} давал 200 и date=NULL).
+      if (state.dateInvalid) {
+        return reply.code(400).send({
+          error: 'bad_date',
+          message: 'Дата отметки не распознана или не существует в календаре.'
+        });
+      }
+      // Сотрудник обязателен: `staff_id: null` раньше обнулял владельца с 200,
+      // а `"abc"` доезжал до драйвера и давал 500.
+      if (state.staffInvalid || !Number.isFinite(state.staffId) || state.staffId <= 0) {
+        return reply.code(400).send({
+          error: 'staff_id_required',
+          message: 'У отметки в графике офиса должен быть сотрудник.'
+        });
+      }
+      if (!state.date) {
+        return reply.code(400).send({
+          error: 'date_required',
+          message: 'У отметки в графике офиса должна быть дата.'
+        });
+      }
+      if (state.officeAttempt) {
+        const guard = await assertOfficeConfirmed(db, state.staffId, state.date);
+        if (!guard.ok) {
+          return reply.code(409).send({
+            error: 'office_not_confirmed',
+            message: 'В этот день СКУД не зафиксировал вход — статус «В офисе» поставить нельзя.'
+          });
+        }
+      }
+      // Канон + зеркало legacy status (верификатор 04.11.2026).
+      if (data.status_code !== undefined || data.status !== undefined) {
+        data.status_code = state.status;
+        data.status = state.status;
+      }
+      if (data.date !== undefined) data.date = state.date;
+      if (data.staff_id !== undefined) data.staff_id = state.staffId;
+    }
+
 
     const dbTable = resolveTable(table);
     const pk = getPrimaryKey(table);
@@ -819,7 +1267,7 @@ async function dataRoutes(fastify, options) {
       }
 
       if (tableCols.has('updated_at')) {
-        data.updated_at = new Date().toISOString();
+        data.updated_at = await dbStamp(db);
       }
       delete data[pk];
       delete data.id;
@@ -842,6 +1290,15 @@ async function dataRoutes(fastify, options) {
       // Санитизация: пустые строки → null для date/numeric/integer/boolean полей
       // + конвертация DD.MM.YYYY → YYYY-MM-DD для date полей
       const colTypes = _columnTypeCache[dbTable] || {};
+
+      // Переполнение integer-колонок -> 400, а не 500 от драйвера (D-1).
+      {
+        const intChk = validateIntegerColumns(data, colTypes);
+        if (!intChk.ok) {
+          return reply.code(400).send({ error: 'bad_integer', field: intChk.field, message: intChk.message });
+        }
+      }
+
       for (const key of Object.keys(data)) {
         const dt = colTypes[key];
         if (!dt) continue;
@@ -869,7 +1326,7 @@ async function dataRoutes(fastify, options) {
             data[key] = null;
           } else {
             const y = parseInt(parts[1], 10), mo = parseInt(parts[2], 10), dd = parseInt(parts[3], 10);
-            if (y < 1900 || y > 2100 || mo < 1 || mo > 12 || dd < 1 || dd > 31) {
+            if (!isValidCalendarDate(y, mo, dd)) {
               console.warn(`[DATA] Invalid date nullified: table=${dbTable}, key=${key}, value=${JSON.stringify(data[key])}`);
               data[key] = null;
             }

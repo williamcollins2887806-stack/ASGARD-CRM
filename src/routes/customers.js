@@ -299,24 +299,34 @@ async function routes(fastify, options) {
       return reply.code(400).send({ error: 'ИНН должен содержать 10 или 12 цифр' });
     }
 
-    const data = filterData({ inn, name, ...rest, created_at: new Date().toISOString(), updated_at: new Date().toISOString() });
+    // Метки времени — через NOW() в SQL, а не new Date().toISOString().
+    // Верификатор 03.11.2026, D-5: колонки timestamp без зоны, и в одну
+    // таблицу писались два формата (UTC из этого места и локальное время
+    // из generic CRUD) — разрыв 3 часа внутри customers.
+    const data = filterData({ inn, name, ...rest });
     const keys = Object.keys(data);
     const values = Object.values(data);
 
+    // NOW() по часовому поясу сессии PG — тот же, что читают остальные пути.
+    const STAMP_COLS = ['created_at', 'updated_at'];
+    const insertCols = keys.concat(STAMP_COLS).join(', ');
+    const insertVals = keys.map((_, i) => `$${i + 1}`).concat(STAMP_COLS.map(() => 'NOW()')).join(', ');
+
     // Use upsert to handle re-adding deleted customers (only if inn is non-empty)
-    const updateParts = keys.filter(k => k !== 'inn' && k !== 'created_at').map((k, i) => `${k} = EXCLUDED.${k}`);
+    const updateParts = keys.filter(k => k !== 'inn' && k !== 'created_at').map((k) => `${k} = EXCLUDED.${k}`);
+    updateParts.push('updated_at = NOW()');
     let sql;
     if (data.inn && data.inn.trim()) {
       sql = `
-        INSERT INTO customers (${keys.join(', ')})
-        VALUES (${keys.map((_, i) => `$${i + 1}`).join(', ')})
+        INSERT INTO customers (${insertCols})
+        VALUES (${insertVals})
         ON CONFLICT (inn) WHERE inn IS NOT NULL AND inn::text <> ''::text DO UPDATE SET ${updateParts.join(', ')}
         RETURNING *
       `;
     } else {
       sql = `
-        INSERT INTO customers (${keys.join(', ')})
-        VALUES (${keys.map((_, i) => `$${i + 1}`).join(', ')})
+        INSERT INTO customers (${insertCols})
+        VALUES (${insertVals})
         RETURNING *
       `;
     }

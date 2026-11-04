@@ -1034,7 +1034,13 @@ fastify.register(require('./routes/warehouse-locations'), { prefix: '/api/wareho
 fastify.register(require('./routes/stock'), { prefix: '/api/stock' }); // WMS: количественный учёт расходников + движения + quick-каталог
 fastify.register(require('./routes/catalog-import'), { prefix: '/api/catalog-import' }); // импорт УПД/счёт/Excel → каталог/оборудование
 fastify.register(require('./routes/warehouse-cart'), { prefix: '/api/warehouse-cart' }); // маркетплейс-корзина склада → авто-разбивка резерв+закупка
-fastify.register(require('./routes/warehouse-market'), { prefix: '/api/warehouse/market' }); // единый поиск витрины (товар+единица)
+// Warehouse market — файл может ещё не быть в деплое (грязь worktree / отдельный коммит).
+// Жёсткий require валит весь процесс; как personal-kanban — мягкий skip.
+try {
+  fastify.register(require('./routes/warehouse-market'), { prefix: '/api/warehouse/market' });
+} catch (e) {
+  fastify.log.warn('[WarehouseMarket] Init skipped: ' + e.message);
+}
 fastify.register(require('./routes/warehouse-map'), { prefix: '/api/warehouse-map' }); // WMS 3D карта / объекты / sync locations
 fastify.register(require('./routes/warehouse-ops'), { prefix: '/api/warehouse-ops' }); // WMS сессии putaway/pick/unpick/inventory
 fastify.register(require('./routes/tmc_requests'), { prefix: '/api/tmc-requests' });
