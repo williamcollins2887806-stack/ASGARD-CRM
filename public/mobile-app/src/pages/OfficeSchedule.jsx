@@ -133,6 +133,8 @@ export default function OfficeSchedule() {
   // Часы: личный свод (неделя + месяц) и вопросы «где ты был» (V453).
   const [myHours, setMyHours]     = useState(null);
   const [disputes, setDisputes]   = useState([]);
+  // Производственный календарь РФ: iso → { kind, title, is_working }
+  const [calMap, setCalMap]       = useState({});
 
   const role = user?.role || '';
   const isOfficeManager = role === 'OFFICE_MANAGER';
@@ -158,9 +160,11 @@ export default function OfficeSchedule() {
       // ⚠️ Именно /api/data/staff — это ОФИСНЫЙ штат (таблица staff: кто сидит
       // в офисе, у кого отметки в staff_plan). /api/staff отдаёт ДРУГОЕ —
       // список работников (employees), у него нет нужных отметок.
-      const [staffRes, usersRes] = await Promise.all([
+      const year = weekStart.getFullYear();
+      const [staffRes, usersRes, calRes] = await Promise.all([
         api.get('/data/staff?limit=1000').catch(() => null),
         api.get('/data/users?limit=1000').catch(() => null),
+        api.get(`/vacations/calendar?year=${year}`).catch(() => null),
       ]);
       let rows = api.extractRows(staffRes) || [];
       const users = api.extractRows(usersRes) || [];
@@ -174,6 +178,20 @@ export default function OfficeSchedule() {
       });
       rows.sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), 'ru'));
       setStaff(rows);
+
+      const nextCal = {};
+      const calDays = (calRes && (calRes.days || calRes.items || calRes.calendar)) || [];
+      if (Array.isArray(calDays)) {
+        calDays.forEach((d) => {
+          if (!d || !d.date) return;
+          nextCal[String(d.date).slice(0, 10)] = {
+            kind: d.kind || null,
+            title: d.title || d.note || '',
+            is_working: d.is_working !== false && d.is_working !== 0,
+          };
+        });
+      }
+      setCalMap(nextCal);
 
       // План за видимую неделю (фильтруем на клиенте — generic CRUD без гарантий фильтров).
       const from = ymd(weekStart);
@@ -226,13 +244,25 @@ export default function OfficeSchedule() {
     return s.user_id === user?.id;
   }, [isOfficeManager, isAdminish, user?.id]);
 
-  /** Статус ячейки: из плана, иначе выходной по умолчанию. */
+  /** Статус ячейки: из плана; сб/вс → «вх»; праздник РФ без отметки → пусто (шапка покажет название). */
   const cellCode = (staffId, dt) => {
     const iso = ymd(dt);
     let code = planMap[`${staffId}|${iso}`] || '';
+    if (code) return code;
+    const info = calMap[iso];
+    if (info && info.kind === 'holiday') return '';
+    if (info && info.is_working === false) return 'вх';
     const dow = dt.getDay();
-    if (!code && (dow === 0 || dow === 6)) code = 'вх';
-    return code;
+    if (dow === 0 || dow === 6) return 'вх';
+    return '';
+  };
+
+  const dayCal = (dt) => calMap[ymd(dt)] || null;
+  const shortHolTitle = (title) => {
+    const t = String(title || '').trim();
+    if (!t) return 'ПР';
+    if (t === 'День народного единства') return 'Нар. ед.';
+    return t.length > 14 ? `${t.slice(0, 12)}…` : t;
   };
 
   // ── Сводка на СЕГОДНЯ (сколько людей в каждом статусе) ──
@@ -547,22 +577,33 @@ export default function OfficeSchedule() {
             <div />
             {weekDays.map((dt, i) => {
               const isToday = ymd(dt) === todayIso;
-              const weekend = i >= 5;
+              const info = dayCal(dt);
+              const isHoliday = info && info.kind === 'holiday';
+              const weekend = i >= 5 || (info && info.is_working === false && !isHoliday);
               return (
-                <div key={i} style={{ textAlign: 'center' }}>
+                <div key={i} style={{ textAlign: 'center' }} title={isHoliday ? (info.title || 'Праздник РФ') : undefined}>
                   <div style={{
                     fontSize: 10, fontWeight: 700, letterSpacing: 0.2,
-                    color: isToday ? 'var(--gold)' : (weekend ? 'var(--text-tertiary)' : 'var(--text-secondary)'),
+                    color: isToday ? 'var(--gold)' : (isHoliday ? 'var(--danger, #EF4444)' : (weekend ? 'var(--text-tertiary)' : 'var(--text-secondary)')),
                   }}>
                     {WEEKDAYS[i]}
                   </div>
                   <div style={{
                     fontSize: 13, fontWeight: isToday ? 800 : 600,
-                    color: isToday ? 'var(--gold)' : 'var(--text-primary)',
+                    color: isToday ? 'var(--gold)' : (isHoliday ? 'var(--danger, #EF4444)' : 'var(--text-primary)'),
                     lineHeight: 1.15,
                   }}>
                     {dt.getDate()}
                   </div>
+                  {isHoliday ? (
+                    <div style={{
+                      fontSize: 8.5, fontWeight: 700, lineHeight: 1.1, marginTop: 1,
+                      color: 'var(--danger, #EF4444)',
+                      overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                    }}>
+                      {shortHolTitle(info.title)}
+                    </div>
+                  ) : null}
                 </div>
               );
             })}

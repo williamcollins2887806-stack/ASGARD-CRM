@@ -171,21 +171,24 @@ function balance(daysRow, periods) {
   const available = Number(daysRow && daysRow.available_days) || 0;
   const carry = Number(daysRow && daysRow.carry_over_days) || 0;
   const total = available;
-  let approved = 0, pending = 0, rejected = 0;
+  let approved = 0, pending = 0, draft = 0, rejected = 0;
   (periods || []).forEach((r) => {
     const d = Number(r.days) || 0;
     if (r.status === 'approved') approved += d;
     else if (r.status === 'pending') pending += d;
+    else if (r.status === 'draft') draft += d;
     else if (r.status === 'rejected') rejected += d;
   });
+  // draft тоже резервирует дни — иначе можно набрать черновиков сверх баланса.
   return {
     available_days: available,
     carry_over_days: carry,
     approved,
     pending,
+    draft,
     rejected,
-    planned: approved + pending,
-    left: total - approved - pending,          // сколько ещё можно взять
+    planned: approved + pending + draft,
+    left: total - approved - pending - draft,  // сколько ещё можно взять
     total,
   };
 }

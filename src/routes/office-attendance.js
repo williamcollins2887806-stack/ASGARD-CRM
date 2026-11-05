@@ -26,6 +26,11 @@ const READ_ROLES = [
 const WRITE_ROLES = ['ADMIN', ...DIRECTOR_ROLES, 'OFFICE_MANAGER'];
 const REPORTS_ROLES = ['ADMIN', ...DIRECTOR_ROLES, 'OFFICE_MANAGER', 'HR', 'HR_MANAGER', 'BUH'];
 
+/** Полный обзор чужих часов (дашборд компании). Остальные роли — только себя. */
+function canReadAllHours(role) {
+  return READ_ROLES.includes(role);
+}
+
 function pad2(n) { return String(n).padStart(2, '0'); }
 
 /** Минуты → часы с одним знаком: 475 → 7.9. */
@@ -144,9 +149,10 @@ module.exports = async function (fastify, options) {
 
   // ───────────────────────────────────────────────────────────────────
   // GET /day?staff_id&date — раскрытие дня: проходы, интервалы, часы СРМ
+  // РП/обычный сотрудник — только свой день; полный доступ — READ_ROLES.
   // ───────────────────────────────────────────────────────────────────
   fastify.get('/day', {
-    preHandler: [fastify.requireRoles(READ_ROLES)]
+    preHandler: [fastify.authenticate]
   }, async (request, reply) => {
     const staffId = parseInt(request.query.staff_id, 10);
     const date = String(request.query.date || '').slice(0, 10);
@@ -164,6 +170,12 @@ module.exports = async function (fastify, options) {
     );
     if (!st.length) return reply.code(404).send({ error: 'staff_not_found' });
     const staff = st[0];
+    if (!canReadAllHours(request.user.role) && Number(staff.user_id) !== Number(request.user.id)) {
+      return reply.code(403).send({
+        error: 'forbidden',
+        message: 'Смотреть чужие дни может только руководитель или офис-менеджер'
+      });
+    }
 
     const { rows: hoursRows } = await db.query(
       `SELECT office_minutes, open_ended, skud_missing, first_in, last_out, segments,
@@ -206,12 +218,20 @@ module.exports = async function (fastify, options) {
     const officeMinutes = day && day.manual_minutes != null
       ? Number(day.manual_minutes)
       : Number(day ? day.office_minutes : 0);
+    let officeSegments = [];
+    if (day && day.segments) {
+      try {
+        officeSegments = typeof day.segments === 'string' ? JSON.parse(day.segments) : day.segments;
+      } catch (_) { officeSegments = []; }
+    }
 
     const credit = officeHours.creditDay({
       date,
       statusCode: plan ? plan.status_code : null,
       officeMinutes,
       crmMinutes: crm.minutes,
+      crmSessions: crm.sessions || [],
+      officeSegments,
       crmHasData: crm.hasData,
       skudMissing: !day,
       normMinutes: norm
@@ -247,9 +267,12 @@ module.exports = async function (fastify, options) {
 
   // ───────────────────────────────────────────────────────────────────
   // GET /month?year&month — дашборд графика офиса
+  // Админ/директор/ОМ/HR… — вся компания.
+  // РП и остальные — только СВОЯ строка + личный дашборд (scope=self).
+  // Иначе РП получал 403 и в графике не было ни цифр, ни дашборда.
   // ───────────────────────────────────────────────────────────────────
   fastify.get('/month', {
-    preHandler: [fastify.requireRoles(READ_ROLES)]
+    preHandler: [fastify.authenticate]
   }, async (request, reply) => {
     // Месяц по умолчанию — из МОСКОВСКОЙ даты, а не из локальной зоны процесса.
     // Иначе в первые часы после смены месяца «неделя» уходила в чужой месяц
@@ -261,12 +284,13 @@ module.exports = async function (fastify, options) {
       return reply.code(400).send({ error: 'bad_year_month' });
     }
 
+    const fullAccess = canReadAllHours(request.user && request.user.role);
     const range = officeHours.monthRange(year, month);
     const settings = await officeHours.loadSettings(db);
     const calendar = await officeHours.loadCalendar(db, range.from, range.to);
 
     // Кто в графике офиса
-    const { rows: staffRows } = await db.query(`
+    const { rows: staffAll } = await db.query(`
       SELECT s.id AS staff_id, s.user_id,
              COALESCE(NULLIF(btrim(u.name), ''), s.name) AS name,
              u.role
@@ -281,6 +305,41 @@ module.exports = async function (fastify, options) {
                AND LOWER(COALESCE(u.name, '')) NOT LIKE 'тест %'
          ))
        ORDER BY COALESCE(NULLIF(btrim(u.name), ''), s.name)`);
+    let staffRows = staffAll;
+    if (!fullAccess) {
+      const uid = Number(request.user.id);
+      staffRows = staffAll.filter((s) => Number(s.user_id) === uid);
+      if (!staffRows.length) {
+        // Аккаунт без строки staff — пустой ответ, не 403: график всё равно рисуется.
+        const emptySum = {
+          norm_minutes: 0, credited_minutes: 0, office_minutes: 0, crm_minutes: 0, delta_minutes: 0,
+          norm_hours: 0, credited_hours: 0, delta_hours: 0, office_hours: 0, crm_hours: 0
+        };
+        return {
+          ok: true,
+          scope: 'self',
+          year,
+          month,
+          period: range,
+          settings: {
+            norm_hours_per_day: settings.norm_hours_per_day,
+            norm_hours_per_week: settings.norm_hours_per_week,
+            crm_activity_since: settings.crm_activity_since,
+            merge_gap_min: settings.merge_gap_min,
+            crm_session_gap_min: settings.crm_session_gap_min
+          },
+          me: {
+            staff_id: null, name: null,
+            month: { ...emptySum },
+            week: { from: null, to: null, ...emptySum },
+            flags: { total: 0, open: 0 }
+          },
+          week: { from: null, to: null, ...emptySum },
+          company: { ...emptySum, flags_total: 0, flags_open: 0 },
+          people: []
+        };
+      }
+    }
 
     const { rows: planRows } = await db.query(
       `SELECT DISTINCT ON (staff_id, date) staff_id, date::text AS date, status_code
@@ -295,7 +354,7 @@ module.exports = async function (fastify, options) {
 
     const { rows: hoursRows } = await db.query(
       `SELECT staff_id, date::text AS date, office_minutes, open_ended, skud_missing,
-              manual_minutes
+              manual_minutes, segments
          FROM office_hours_daily
         WHERE date >= $1::date AND date <= $2::date`,
       [range.from, range.to]
@@ -325,14 +384,19 @@ module.exports = async function (fastify, options) {
         const key = `${s.staff_id}|${iso}`;
         const plan = planMap.get(key) || null;
         const hr = hoursMap.get(key) || null;
-        const crmDay = s.user_id ? (crmMap.get(`${s.user_id}|${iso}`) || { minutes: 0, hasData: false }) : { minutes: 0, hasData: false };
+        const crmDay = s.user_id
+          ? (crmMap.get(`${s.user_id}|${iso}`) || { minutes: 0, hasData: false, sessions: [] })
+          : { minutes: 0, hasData: false, sessions: [] };
         const officeMinutes = hr && hr.manual_minutes != null ? Number(hr.manual_minutes) : Number(hr ? hr.office_minutes : 0);
+        const officeSegments = parseSegments(hr && hr.segments);
         const norm = officeHours.dayNormMinutes(iso, calendar, settings, s.staff_id);
         const credit = officeHours.creditDay({
           date: iso,
           statusCode: plan,
           officeMinutes,
           crmMinutes: crmDay.minutes,
+          crmSessions: crmDay.sessions || [],
+          officeSegments,
           crmHasData: crmDay.hasData,
           skudMissing: !hr,
           normMinutes: norm
@@ -393,8 +457,91 @@ module.exports = async function (fastify, options) {
       return acc;
     }, { norm_minutes: 0, credited_minutes: 0, office_minutes: 0, crm_minutes: 0, delta_minutes: 0 });
 
+    // Личный блок — всегда, даже у админа/директора с полным обзором.
+    // Иначе непонятно: цифры сверху — «по всем» или «по мне».
+    const myUid = Number(request.user && request.user.id);
+    let mePerson = people.find((p) => Number(p.user_id) === myUid) || null;
+    if (!mePerson && fullAccess && Number.isFinite(myUid)) {
+      // Админ часто исключён из staff-выборки (роль ADMIN) — ищем отдельно.
+      const { rows: myStaff } = await db.query(
+        `SELECT s.id AS staff_id, s.user_id,
+                COALESCE(NULLIF(btrim(u.name), ''), s.name) AS name, u.role
+           FROM staff s LEFT JOIN users u ON u.id = s.user_id
+          WHERE s.user_id = $1
+          ORDER BY s.id LIMIT 1`,
+        [myUid]
+      );
+      if (myStaff.length) {
+        const s = myStaff[0];
+        const myCrm = s.user_id
+          ? await loadCrmMonth(db, [s.user_id], range.from, range.to, settings)
+          : new Map();
+        const days = [];
+        let iso = range.from;
+        while (iso <= range.to) {
+          const key = `${s.staff_id}|${iso}`;
+          const plan = planMap.get(key) || null;
+          const hr = hoursMap.get(key) || null;
+          const crmDay = s.user_id
+            ? (myCrm.get(`${s.user_id}|${iso}`) || { minutes: 0, hasData: false, sessions: [] })
+            : { minutes: 0, hasData: false, sessions: [] };
+          const officeMinutes = hr && hr.manual_minutes != null
+            ? Number(hr.manual_minutes)
+            : Number(hr ? hr.office_minutes : 0);
+          const norm = officeHours.dayNormMinutes(iso, calendar, settings, s.staff_id);
+          const credit = officeHours.creditDay({
+            date: iso,
+            statusCode: plan,
+            officeMinutes,
+            crmMinutes: crmDay.minutes,
+            crmSessions: crmDay.sessions || [],
+            officeSegments: parseSegments(hr && hr.segments),
+            crmHasData: crmDay.hasData,
+            skudMissing: !hr,
+            normMinutes: norm
+          });
+          days.push({
+            ...credit,
+            open_ended: !!(hr && hr.open_ended),
+            skud_missing: !hr,
+            has_crm_data: crmDay.hasData
+          });
+          iso = officeHours.addDays(iso, 1);
+        }
+        mePerson = {
+          staff_id: s.staff_id,
+          user_id: s.user_id,
+          name: s.name,
+          role: s.role || '',
+          days,
+          month: officeHours.summarizeDays(days),
+          flags: flagMap.get(s.staff_id) || { total: 0, open: 0 }
+        };
+      }
+    }
+    const meMonth = mePerson ? mePerson.month : {
+      norm_minutes: 0, credited_minutes: 0, office_minutes: 0, crm_minutes: 0, delta_minutes: 0
+    };
+    const meWeekDays = mePerson
+      ? mePerson.days.filter((d) => weekDays.includes(d.date))
+      : [];
+    const meWeek = meWeekDays.length
+      ? officeHours.summarizeDays(meWeekDays)
+      : { norm_minutes: 0, credited_minutes: 0, office_minutes: 0, crm_minutes: 0, delta_minutes: 0 };
+
+    const packHours = (obj) => ({
+      ...obj,
+      norm_hours: h(obj.norm_minutes),
+      credited_hours: h(obj.credited_minutes),
+      delta_hours: h(obj.delta_minutes),
+      office_hours: h(obj.office_minutes),
+      crm_hours: h(obj.crm_minutes)
+    });
+
     return {
       ok: true,
+      // company = все, кого видит роль; self = только я (РП и др.)
+      scope: fullAccess ? 'company' : 'self',
       year, month,
       period: range,
       settings: {
@@ -404,23 +551,26 @@ module.exports = async function (fastify, options) {
         merge_gap_min: settings.merge_gap_min,
         crm_session_gap_min: settings.crm_session_gap_min
       },
+      // Всегда личные цифры текущего пользователя
+      me: {
+        staff_id: mePerson ? mePerson.staff_id : null,
+        name: mePerson ? mePerson.name : null,
+        month: packHours(meMonth),
+        week: {
+          from: weekDays[0] || null,
+          to: weekDays[weekDays.length - 1] || null,
+          ...packHours(meWeek)
+        },
+        flags: mePerson ? mePerson.flags : { total: 0, open: 0 }
+      },
       week: {
         from: weekDays[0] || null,
         to: weekDays[weekDays.length - 1] || null,
-        ...week,
-        norm_hours: h(week.norm_minutes),
-        credited_hours: h(week.credited_minutes),
-        delta_hours: h(week.delta_minutes),
-        office_hours: h(week.office_minutes),
-        crm_hours: h(week.crm_minutes)
+        ...packHours(week)
       },
       company: {
         ...company,
-        norm_hours: h(company.norm_minutes),
-        credited_hours: h(company.credited_minutes),
-        delta_hours: h(company.delta_minutes),
-        office_hours: h(company.office_minutes),
-        crm_hours: h(company.crm_minutes)
+        ...packHours(company)
       },
       people
     };
@@ -485,7 +635,7 @@ module.exports = async function (fastify, options) {
     const planMap = new Map(planRows.map((r) => [String(r.date).slice(0, 10), r.status_code]));
 
     const { rows: hoursRows } = await db.query(
-      `SELECT date::text AS date, office_minutes, open_ended, manual_minutes
+      `SELECT date::text AS date, office_minutes, open_ended, manual_minutes, segments
          FROM office_hours_daily
         WHERE staff_id = $1 AND date >= $2::date AND date <= $3::date`,
       [staffId, from, to]
@@ -515,6 +665,8 @@ module.exports = async function (fastify, options) {
         statusCode: plan,
         officeMinutes,
         crmMinutes: crmDay.totalMinutes || 0,
+        crmSessions: crmDay.sessions || [],
+        officeSegments: parseSegments(hr && hr.segments),
         crmHasData: (crmDay.sessions || []).length > 0,
         skudMissing: !hr,
         normMinutes: norm
@@ -524,6 +676,7 @@ module.exports = async function (fastify, options) {
         status_text: statusLabel(plan),
         office_text: hm(officeMinutes),
         crm_text: hm(crmDay.totalMinutes || 0),
+        crm_remote_text: hm(credit.crm_remote_minutes || 0),
         norm_text: hm(norm),
         credited_text: hm(credit.credited_minutes),
         open_ended: !!(hr && hr.open_ended),
@@ -730,41 +883,70 @@ module.exports = async function (fastify, options) {
   });
 
   // ───────────────────────────────────────────────────────────────────
-  // GET /flags?year&month — снятые ложные «оф» (для директора)
+  // GET /flags?year&month — снятые ложные «оф»
+  // Полный доступ — все; остальные роли — только свои флаги (иначе 403
+  // и модалка «Снятые отметки» у РП писала «Не удалось загрузить»).
   // ───────────────────────────────────────────────────────────────────
   fastify.get('/flags', {
-    preHandler: [fastify.requireRoles(READ_ROLES)]
-  }, async (request) => {
+    preHandler: [fastify.authenticate]
+  }, async (request, reply) => {
+    // Никогда не 403 для аутентифицированного пользователя: self-scope вместо запрета.
+    // Иначе РП видит Failed to load resource 403 в консоли и пустую модалку.
     const todayIsoMsk = officeHours.isoOf(new Date());
     const year = parseInt(request.query.year || todayIsoMsk.slice(0, 4), 10);
     const month = parseInt(request.query.month || todayIsoMsk.slice(5, 7), 10);
     const range = officeHours.monthRange(year, month);
     const onlyOpen = String(request.query.open || '') === '1';
+    const fullAccess = canReadAllHours(request.user && request.user.role);
 
-    const { rows } = await db.query(
-      `SELECT f.id, f.staff_id, f.date::text AS date, f.reason,
-              f.prev_status, f.new_status, f.resolved_at, f.resolved_status,
-              f.resolved_comment, f.created_at,
-              COALESCE(NULLIF(btrim(u.name), ''), s.name) AS name,
-              u.role,
-              (SELECT COUNT(*)::int FROM office_presence_flags f2
-                WHERE f2.staff_id = f.staff_id AND f2.resolved_at IS NULL) AS open_for_person
-         FROM office_presence_flags f
-         LEFT JOIN staff s ON s.id = f.staff_id
-         LEFT JOIN users u ON u.id = s.user_id
-        WHERE f.date >= $1::date AND f.date <= $2::date
-          ${onlyOpen ? 'AND f.resolved_at IS NULL' : ''}
-        ORDER BY f.date DESC, name`,
-      [range.from, range.to]
-    );
+    const params = [range.from, range.to];
+    let selfFilter = '';
+    if (!fullAccess) {
+      params.push(Number(request.user.id));
+      selfFilter = `AND s.user_id = $${params.length}`;
+    }
 
-    return {
-      ok: true,
-      year, month,
-      count: rows.length,
-      open_count: rows.filter((r) => !r.resolved_at).length,
-      flags: rows
-    };
+    try {
+      const { rows } = await db.query(
+        `SELECT f.id, f.staff_id, f.date::text AS date, f.reason,
+                f.prev_status, f.new_status, f.resolved_at, f.resolved_status,
+                f.resolved_comment, f.created_at,
+                COALESCE(NULLIF(btrim(u.name), ''), s.name) AS name,
+                u.role,
+                (SELECT COUNT(*)::int FROM office_presence_flags f2
+                  WHERE f2.staff_id = f.staff_id AND f2.resolved_at IS NULL) AS open_for_person
+           FROM office_presence_flags f
+           LEFT JOIN staff s ON s.id = f.staff_id
+           LEFT JOIN users u ON u.id = s.user_id
+          WHERE f.date >= $1::date AND f.date <= $2::date
+            ${onlyOpen ? 'AND f.resolved_at IS NULL' : ''}
+            ${selfFilter}
+          ORDER BY f.date DESC, name`,
+        params
+      );
+
+      return {
+        ok: true,
+        scope: fullAccess ? 'company' : 'self',
+        year, month,
+        count: rows.length,
+        open_count: rows.filter((r) => !r.resolved_at).length,
+        flags: rows
+      };
+    } catch (err) {
+      request.log.error({ err }, '[office-attendance] GET /flags');
+      // Таблица ещё не накатили / schema-drift — пустой ответ, не 403/500 в UI.
+      return reply.code(200).send({
+        ok: true,
+        scope: fullAccess ? 'company' : 'self',
+        year, month,
+        count: 0,
+        open_count: 0,
+        flags: [],
+        degraded: true,
+        message: 'Список отметок временно недоступен'
+      });
+    }
   });
 
   // ───────────────────────────────────────────────────────────────────
@@ -909,6 +1091,19 @@ function statusLabel(code) {
   return code ? (STATUS_LABELS[code] || code) : '—';
 }
 
+/** jsonb segments из office_hours_daily → массив окон. */
+function parseSegments(raw) {
+  if (!raw) return [];
+  if (Array.isArray(raw)) return raw;
+  if (typeof raw === 'string') {
+    try {
+      const j = JSON.parse(raw);
+      return Array.isArray(j) ? j : [];
+    } catch (_) { return []; }
+  }
+  return [];
+}
+
 /** Текст недоработки для личного отчёта. */
 function shortfallText(summary) {
   const delta = summary.delta_minutes;
@@ -952,7 +1147,11 @@ async function loadCrmMonth(db, userIds, fromIso, toIso, settings) {
   }
   for (const [key, minutes] of grouped) {
     const res = crmActivity.buildSessions(minutes, { gapMin: gap, maxDayMinutes: cap });
-    out.set(key, { minutes: res.totalMinutes, hasData: res.sessions.length > 0 });
+    out.set(key, {
+      minutes: res.totalMinutes,
+      hasData: res.sessions.length > 0,
+      sessions: res.sessions || []
+    });
   }
   return out;
 }
@@ -1097,7 +1296,7 @@ async function summarizeStaffPeriod(db, staffId, userId, fromIso, toIso, setting
   const planMap = new Map(planRows.map((r) => [String(r.date).slice(0, 10), r.status_code]));
 
   const { rows: hoursRows } = await db.query(
-    `SELECT date::text AS date, office_minutes, manual_minutes FROM office_hours_daily
+    `SELECT date::text AS date, office_minutes, manual_minutes, segments FROM office_hours_daily
       WHERE staff_id = $1 AND date >= $2::date AND date <= $3::date`,
     [staffId, fromIso, toIso]
   );
@@ -1117,6 +1316,8 @@ async function summarizeStaffPeriod(db, staffId, userId, fromIso, toIso, setting
       statusCode: plan,
       officeMinutes,
       crmMinutes: crmDay.totalMinutes || 0,
+      crmSessions: crmDay.sessions || [],
+      officeSegments: parseSegments(hr && hr.segments),
       crmHasData: (crmDay.sessions || []).length > 0,
       skudMissing: !hr,
       normMinutes: officeHours.dayNormMinutes(iso, calendar, settings, staffId)

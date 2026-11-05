@@ -136,9 +136,10 @@ const bal = R.balance({ available_days: 42, carry_over_days: 10 }, [
   { days: 14, status: 'approved' },
   { days: 7, status: 'pending' },
   { days: 5, status: 'rejected' },
+  { days: 3, status: 'draft' },
 ]);
-check('баланс: отгуляно 14, на согласовании 7, остаток 21',
-  bal.approved === 14 && bal.pending === 7 && bal.left === 21 && bal.rejected === 5, JSON.stringify(bal));
+check('баланс: отгуляно 14, на согласовании 7, черновик 3, остаток 18',
+  bal.approved === 14 && bal.pending === 7 && bal.draft === 3 && bal.left === 18 && bal.rejected === 5, JSON.stringify(bal));
 
 /* ── 13. Окно внесения 01.11–01.12 ──────────────────────────────────────── */
 check('окно открыто 18.11.2026', R.windowOpen(2027, '2026-11-18') === true);

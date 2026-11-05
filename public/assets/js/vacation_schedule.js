@@ -257,17 +257,18 @@ window.AsgardVacationSchedulePage = (function () {
   function balanceOf(empId) {
     var known = null;
     (S.balances || []).forEach(function (s) { if (Number(s.employee_id) === Number(empId)) known = s; });
-    var approved = 0, pending = 0;
+    var approved = 0, pending = 0, draft = 0;
     periodsOf(empId).forEach(function (r) {
       if (r.status === 'approved') approved += Number(r.days) || 0;
       else if (r.status === 'pending') pending += Number(r.days) || 0;
+      else if (r.status === 'draft') draft += Number(r.days) || 0;
     });
     var avail = known ? Number(known.available_days) || 0 : null;
     var carry = known ? Number(known.carry_over_days) || 0 : 0;
     return {
-      available: avail, carry: carry, approved: approved, pending: pending,
-      planned: approved + pending,
-      left: avail === null ? null : avail - approved - pending
+      available: avail, carry: carry, approved: approved, pending: pending, draft: draft,
+      planned: approved + pending + draft,
+      left: avail === null ? null : avail - approved - pending - draft
     };
   }
   var rosterCache = [];
@@ -284,7 +285,7 @@ window.AsgardVacationSchedulePage = (function () {
       var ds = rangeDays(String(r.date_from), String(r.date_to)).filter(function (d) { return +d.slice(5, 7) === m1; });
       days += ds.length;
       labels.push(fmtShort(ds[0]) + '—' + fmtShort(ds[ds.length - 1]));
-      if (r.status === 'pending') hasPend = true;
+      if (r.status === 'pending' || r.status === 'draft') hasPend = true;
       if (r.status === 'rejected' || r.status === 'cancelled') hasRej = true; else hasLive = true;
     });
     return {
@@ -649,14 +650,31 @@ window.AsgardVacationSchedulePage = (function () {
         '<div class="vs-body">' + (rows || empty) + '</div>' +
       '</div>' +
       selBar() +
-      '<div class="vs-foot"><div class="vs-foot__tx">' + footHint() + '</div>' +
-        (S.tab === 'me' && !S.closed
-          ? '<button class="btn gold" data-vs-submit>' + ic('check') + 'Готово и согласовать</button>' : '') +
-        (S.tab === 'me'
-          ? '<span class="badge ' + (S.closed ? 'muted' : 'success') + '">' + (S.closed ? 'график закрыт' : 'первый месяц раскрывается кликом по названию') + '</span>' : '') +
-        (S.isDirector ? '<button class="btn ok" data-vs-approve-all>' + ic('check') + 'Согласовать всё</button>' : '') +
-      '</div>' +
+      submitFoot() +
     '</div></div>';
+  }
+
+  function submitFoot() {
+    var drafts = (S.tab === 'me' && !S.closed) ? myDrafts() : [];
+    var pendN = (S.tab === 'me') ? myPending().length : 0;
+    var btn = '';
+    if (S.tab === 'me' && !S.closed) {
+      if (drafts.length) {
+        btn = '<button class="btn gold" data-vs-submit>' + ic('check') + 'Готово и согласовать (' + drafts.length + ')</button>' +
+          '<div class="vs-foot__banner">Черновиков: <b>' + drafts.length + '</b> — отправьте директорам, иначе в очереди их не будет.</div>';
+      } else if (pendN) {
+        btn = '<button class="btn gold" data-vs-submit disabled title="Черновиков нет">' + ic('check') + 'Уже в очереди у директоров</button>' +
+          '<div class="vs-foot__banner is-ok">На согласовании: <b>' + pendN + '</b>. Новые дни — отметьте и сохраните, затем снова отправьте.</div>';
+      } else {
+        btn = '<button class="btn gold" data-vs-submit>' + ic('check') + 'Готово и согласовать</button>' +
+          '<div class="vs-foot__banner">Сначала сохраните период (дни в календаре), потом отправьте директорам.</div>';
+      }
+    }
+    return '<div class="vs-foot"><div class="vs-foot__tx">' + footHint() + '</div>' + btn +
+      (S.tab === 'me'
+        ? '<span class="badge ' + (S.closed ? 'muted' : 'success') + '">' + (S.closed ? 'график закрыт' : 'первый месяц раскрывается кликом по названию') + '</span>' : '') +
+      (S.isDirector ? '<button class="btn ok" data-vs-approve-all>' + ic('check') + 'Согласовать всё</button>' : '') +
+      '</div>';
   }
 
   function footHint() {
@@ -1003,17 +1021,17 @@ window.AsgardVacationSchedulePage = (function () {
       var res;
       if (S.editingId) {
         res = await api('PUT', '/api/vacations/' + S.editingId, { date_from: v.start, date_to: v.end });
-        toast('Правка сохранена', fmtRange(v.start, v.end) + ' · снова на согласование', 'ok');
+        toast('Правка сохранена', fmtRange(v.start, v.end) + (S.closed ? '' : ' · при необходимости снова «Готово и согласовать»'), 'ok');
       } else {
         res = await api('POST', '/api/vacations', { year: S.year, date_from: v.start, date_to: v.end });
-        toast('Отпуск поставлен', fmtRange(v.start, v.end) + ' · ' + daysWord(res.days || v.days) + ' · на согласование', 'ok');
+        toast('Черновик сохранён', fmtRange(v.start, v.end) + ' · ' + daysWord(res.days || v.days) + ' · нажмите «Готово и согласовать»', 'ok');
       }
       if (res && res.clashes && res.clashes.length) {
-        setNote('ok', 'Поставлено. Пересечения: ' + res.clashes.slice(0, 3).map(function (c) {
+        setNote('ok', 'Сохранено. Пересечения: ' + res.clashes.slice(0, 3).map(function (c) {
           return String(c.fio || '').split(' ')[0] + ' (' + (c.overlap_days || c.overlapDays) + ' дн.)';
-        }).join(', ') + ' — можно оставить, но проверьте.');
+        }).join(', ') + ' — можно оставить, но проверьте. Затем «Готово и согласовать».');
       } else {
-        setNote('ok', S.closed ? 'Период сохранён.' : 'Период отправлен директорам на согласование.');
+        setNote('ok', S.closed ? 'Период сохранён.' : 'Черновик сохранён. Когда все дни выбраны — нажмите «Готово и согласовать».');
       }
     // После сохранения открываем месяц нового периода, чтобы он сразу был виден.
     S.sel = {}; S.editingId = null;
@@ -1026,14 +1044,27 @@ window.AsgardVacationSchedulePage = (function () {
     }
   }
 
+  function myDrafts() {
+    return periodsOf(S.meEmployeeId || (D && D.meId))
+      .filter(function (r) { return r.status === 'draft'; });
+  }
+  function myPending() {
+    return periodsOf(S.meEmployeeId || (D && D.meId))
+      .filter(function (r) { return r.status === 'pending'; });
+  }
+
   /** «Готово и согласовать»: отправить все свои черновые периоды директорам. */
   async function submitAllMine() {
-    var mine = periodsOf(S.meEmployeeId || (D && D.meId))
-      .filter(function (r) { return r.status === 'draft'; });
+    var mine = myDrafts();
     if (!mine.length) {
-      // Если черновиков нет — считаем, что всё уже отправлено (периоды создаются сразу pending).
-      toast('Готово', 'Все ваши периоды уже отправлены директорам на согласование', 'ok');
-      setNote('ok', 'График отправлен. Директора увидят ваши периоды в очереди; за 15 дней до отпуска придёт письмо с кнопками «Да/Нет».');
+      var pend = myPending().length;
+      if (pend) {
+        toast('Уже в очереди', 'Черновиков нет — у директоров на согласовании: ' + pend, 'ok');
+        setNote('ok', 'Все ваши периоды уже у директоров. За 15 дней до отпуска придёт письмо с кнопками «Да/Нет».');
+      } else {
+        toast('Нечего отправлять', 'Сначала отметьте дни отпуска в календаре и сохраните период', 'warn');
+        setNote('ok', 'Выберите месяц, отметьте дни, сохраните период — затем «Готово и согласовать».');
+      }
       paint();
       return;
     }
@@ -1041,7 +1072,7 @@ window.AsgardVacationSchedulePage = (function () {
       for (var i = 0; i < mine.length; i++) {
         await api('POST', '/api/vacations/' + mine[i].id + '/submit', {});
       }
-      toast('Готово и согласовать', 'Отправлено директорам: ' + mine.length, 'ok');
+      toast('Отправлено директорам', 'Периодов: ' + mine.length, 'ok');
       setNote('ok', 'График отправлен на согласование. Директора проверят дни; при отказе вы получите комментарий и сможете переставить.');
       await reload();
     } catch (e) { setNote('err', e.message); toast('Не удалось отправить', e.message, 'err'); paint(); }

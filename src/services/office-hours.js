@@ -3,14 +3,13 @@
 /**
  * office-hours — нормы труда и зачёт часов в графике офиса.
  *
- * ЛОГИКА ЗАЧЁТА (решение заказчика 03.11.2026) — по статусу дня:
- *   оф          → только часы СКУД (человек физически был в офисе);
- *   уд          → только часы СРМ;
- *   об/км/пг/уч/ск → тоже часы СРМ (работал удалённо «на объекте/в поездке»);
- *   бн/сс/вх/отп → 0, и день ВЫПАДАЕТ из нормы (человек законно не работал).
- *
- * Почему не max(офис, СРМ): в день, когда человек сидит в офисе, он ещё и
- * в СРМ (с телефона/ноутбука), и max дал бы двойной счёт.
+ * ЛОГИКА ЗАЧЁТА (обновление 04.11.2026):
+ *   Рабочий день (оф / уд / об / …) → СКУД + СРМ вне окон офиса.
+ *   Пример: 2 ч в офисе, потом дома 5 ч в СРМ → зачёт 7 ч.
+ *   Минуты СРМ, пока человек по СКУД в офисе, НЕ считаем (иначе двойной учёт:
+ *   ноут в офисе тоже пишет crm_activity_token).
+ *   бн/сс/вх/отп → 0, день выпадает из нормы.
+ *   нп → ждём ответа, в норму не идёт.
  *
  * НОРМА. 8 ч в рабочий день, из производственного календаря work_calendar
  * (праздники и переносы РФ). Сокращённый день (31.12 и т.п.) — 7 ч, если в
@@ -139,24 +138,95 @@ function dayNormMinutes(iso, calendar, settings, staffId) {
   return Math.round(hours * 60);
 }
 
+function hhmmToMinOfDay(hhmm) {
+  const m = /^(\d{1,2}):(\d{2})/.exec(String(hhmm || ''));
+  if (!m) return null;
+  const h = Number(m[1]);
+  const min = Number(m[2]);
+  if (!Number.isFinite(h) || !Number.isFinite(min)) return null;
+  return h * 60 + min;
+}
+
+/**
+ * Окно присутствия СКУД → [fromMin, toMin) в минутах суток.
+ * segments пишутся ISO с UTC-компонентами = настенные часы МСК (см. isoFromWallClock).
+ */
+function officeSegmentRange(seg) {
+  if (!seg) return null;
+  const parseIso = (v) => {
+    if (v == null) return null;
+    if (typeof v === 'string' && !/[zZ]|[+-]\d{2}:?\d{2}$/.test(v.trim())) {
+      // наивная 'YYYY-MM-DD HH:mm:ss' — берём HH:mm из строки
+      return hhmmToMinOfDay(v);
+    }
+    const d = new Date(v);
+    if (Number.isNaN(d.getTime())) return hhmmToMinOfDay(v);
+    return d.getUTCHours() * 60 + d.getUTCMinutes();
+  };
+  const from = parseIso(seg.from);
+  if (from == null) return null;
+  if (seg.minutes != null && Number.isFinite(Number(seg.minutes))) {
+    return { from, to: from + Math.max(0, Math.round(Number(seg.minutes))) };
+  }
+  const to = parseIso(seg.to);
+  if (to == null || to <= from) return null;
+  return { from, to };
+}
+
+/**
+ * Минуты СРМ вне окон офиса. Пересечение с СКУД вычитаем.
+ * @param {Array<{from:string,to:string,minutes?:number}>} sessions
+ * @param {Array<{from:string,to:string,minutes?:number}>} segments
+ */
+function crmMinutesOutsideOffice(sessions, segments) {
+  const list = Array.isArray(sessions) ? sessions : [];
+  if (!list.length) return 0;
+  const office = (Array.isArray(segments) ? segments : [])
+    .map(officeSegmentRange)
+    .filter(Boolean);
+  let total = 0;
+  for (const s of list) {
+    const a0 = hhmmToMinOfDay(s.from);
+    const a1 = hhmmToMinOfDay(s.to);
+    if (a0 == null || a1 == null || a1 < a0) continue;
+    // сессия СРМ — включительно [from, to], длина last-first+1
+    let len = Number.isFinite(Number(s.minutes))
+      ? Math.max(0, Math.round(Number(s.minutes)))
+      : (a1 - a0 + 1);
+    if (!office.length) {
+      total += len;
+      continue;
+    }
+    // half-open для пересечения: CRM [a0, a1+1)
+    const crmEnd = a0 + len;
+    for (const o of office) {
+      const from = Math.max(a0, o.from);
+      const to = Math.min(crmEnd, o.to);
+      if (to > from) len -= (to - from);
+    }
+    total += Math.max(0, len);
+  }
+  return total;
+}
+
 /**
  * Зачёт дня. Возвращает готовую к показу структуру.
  *
  * @param {object} p
  * @param {string} p.date
  * @param {string|null} p.statusCode
- * @param {number} p.officeMinutes     — из СКУД
- * @param {number} p.crmMinutes        — из crm_activity_token
- * @param {boolean} p.crmHasData       — есть ли вообще серверный учёт за этот день
- * @param {boolean} p.skudMissing      — нет импорта СКУД, покрывающего день
+ * @param {number} p.officeMinutes
+ * @param {number} p.crmMinutes              — всего минут СРМ за день
+ * @param {Array}  [p.crmSessions]           — сессии СРМ {from,to,minutes}
+ * @param {Array}  [p.officeSegments]        — окна СКУД
+ * @param {number} [p.crmRemoteMinutes]      — уже посчитанные минуты СРМ вне офиса
+ * @param {boolean} p.crmHasData
+ * @param {boolean} p.skudMissing
  * @param {number} p.normMinutes
- * @param {boolean} p.resolvedByDispute — день закрыт ответом на гейт
  */
 function creditDay(p) {
   // Нормализуем код: невидимые символы, регистр и пробелы не должны менять
   // поведение — «ОФ», « оф », «оф\u200B» обязаны вести себя как «оф».
-  // Иначе такой день попадал в норму с нулевым зачётом — ложная недоработка
-  // (верификатор 03.11.2026).
   const rawStatus = p.statusCode || null;
   const status = rawStatus == null
     ? null
@@ -168,12 +238,26 @@ function creditDay(p) {
   const crm = Math.max(0, Math.round(Number(p.crmMinutes) || 0));
   const norm = Math.max(0, Math.round(Number(p.normMinutes) || 0));
 
+  let remoteCrm;
+  if (p.crmRemoteMinutes != null) {
+    remoteCrm = Math.max(0, Math.round(Number(p.crmRemoteMinutes) || 0));
+  } else if (Array.isArray(p.crmSessions) && p.crmSessions.length) {
+    remoteCrm = crmMinutesOutsideOffice(p.crmSessions, p.officeSegments);
+  } else if (office > 0) {
+    // Есть офис, но нет сессий СРМ с временем — пересечение не посчитать.
+    // Не прибавляем «голый» crm: иначе двойной учёт за работу в офисе.
+    remoteCrm = 0;
+  } else {
+    remoteCrm = crm;
+  }
+
   const out = {
     date: p.date,
     status,
     norm_minutes: norm,
     office_minutes: office,
     crm_minutes: crm,
+    crm_remote_minutes: remoteCrm,
     credited_minutes: 0,
     source: 'none',
     counts_in_norm: norm > 0,
@@ -186,7 +270,6 @@ function creditDay(p) {
   }
 
   if (status === UNCONFIRMED_STATUS) {
-    // Отметка снята, ответа ещё нет: в норму не идёт, недоработку не начисляем.
     out.source = 'unconfirmed';
     out.counts_in_norm = false;
     out.warn = 'not_confirmed';
@@ -199,55 +282,50 @@ function creditDay(p) {
     return out;
   }
 
+  const applyHybrid = (sourceWhenOnlyOffice, sourceWhenOnlyCrm, sourceHybrid) => {
+    out.credited_minutes = office + remoteCrm;
+    if (office > 0 && remoteCrm > 0) out.source = sourceHybrid;
+    else if (office > 0) out.source = sourceWhenOnlyOffice;
+    else if (remoteCrm > 0) out.source = sourceWhenOnlyCrm;
+    else out.source = sourceWhenOnlyOffice;
+  };
+
   if (status === OFFICE_STATUS) {
-    out.source = 'skud';
-    out.credited_minutes = office;
     if (!office) {
       out.warn = p.skudMissing ? 'skud_missing' : 'no_punches';
-      // Нет импорта за этот день — это не вина человека: норму не начисляем,
-      // но и ложной отметкой день не считаем (снимать «оф» не за что).
       if (p.skudMissing) {
         out.source = 'skud_missing';
         out.counts_in_norm = false;
+        return out;
       }
+      // «оф» без прохода: СРМ вне офиса не зачитываем — иначе ложный «оф»
+      // (детектор как раз ищет такие дни) получит часы и спрячется.
+      out.source = 'skud';
+      out.credited_minutes = 0;
+      return out;
     }
+    applyHybrid('skud', 'crm', 'hybrid');
     return out;
   }
 
   if (CRM_STATUSES.has(status)) {
-    // До выкатки серверного учёта данных нет — день не виноват человека.
-    if (!p.crmHasData && !crm) {
+    if (!p.crmHasData && !crm && !office) {
       out.source = 'no_crm_data';
       out.counts_in_norm = false;
       out.warn = 'no_crm_data';
       return out;
     }
-    out.source = 'crm';
-    out.credited_minutes = crm;
+    // Удалёнка/объект: если человек ещё и зашёл в офис — офис + СРМ вне него.
+    applyHybrid('skud', 'crm', 'hybrid');
     return out;
   }
 
-  // Статуса нет вовсе. Если человек был в офисе — часы СКУД всё равно факт.
   if (!status) {
-    if (office > 0) {
-      out.source = 'skud_no_status';
-      out.credited_minutes = office;
+    if (office > 0 || remoteCrm > 0) {
+      applyHybrid('skud_no_status', 'crm_no_status', 'hybrid_no_status');
       out.warn = 'no_status';
       return out;
     }
-    // Статуса нет, но в СРМ человек фактически работал (серверный счётчик
-    // пишет минуты по API-запросам). Это не «ноль»: засчитываем СРМ, иначе
-    // забытая отметка в графике превращается в недоработку за реальный труд.
-    if (crm > 0) {
-      out.source = 'crm_no_status';
-      out.credited_minutes = crm;
-      out.warn = 'no_status';
-      return out;
-    }
-    // Данных за день нет совсем (ни импорта СКУД, ни активности в СРМ).
-    // Судить не по чему: норму за такой день НЕ начисляем, иначе у всех
-    // людей сразу «недоработка» на весь месяц до начала учёта.
-    // Это же правило закрывает дни до выкатки серверного учёта СРМ.
     if (p.skudMissing && !p.crmHasData) {
       out.source = 'no_data';
       out.counts_in_norm = false;
@@ -259,7 +337,6 @@ function creditDay(p) {
     return out;
   }
 
-  // Неизвестный код — не угадываем.
   out.source = 'unknown_status';
   out.warn = 'unknown_status';
   return out;
@@ -482,6 +559,8 @@ module.exports = {
   detectFalseOffice,
   autoFillOfficeStatus,
   crmMinutesForDay,
+  crmMinutesOutsideOffice,
+  officeSegmentRange,
   monthRange,
   mondayOf,
   isoOf,

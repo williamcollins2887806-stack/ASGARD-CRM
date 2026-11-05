@@ -45,17 +45,35 @@ describe('office-hours: календарь и норма дня', () => {
   });
 });
 
-describe('office-hours: зачёт по статусу дня (решение заказчика)', () => {
+describe('office-hours: зачёт офис + СРМ вне офиса', () => {
   const base = { normMinutes: 480, crmHasData: true, skudMissing: false };
 
-  test('«оф» зачитывает ТОЛЬКО часы СКУД, часы СРМ игнорируются', () => {
+  test('«оф» без сессий СРМ: только СКУД (СРМ без времени не прибавляем — иначе двойной учёт)', () => {
     const r = oh.creditDay({ ...base, date: '2026-10-26', statusCode: 'оф', officeMinutes: 475, crmMinutes: 300 });
     expect(r.source).toBe('skud');
     expect(r.credited_minutes).toBe(475);
     expect(r.counts_in_norm).toBe(true);
   });
 
-  test('«уд» зачитывает ТОЛЬКО часы СРМ', () => {
+  test('2 ч офис + 5 ч СРМ дома = 7 ч (СРМ в окне СКУД вычтена)', () => {
+    const r = oh.creditDay({
+      ...base,
+      date: '2026-10-26',
+      statusCode: 'оф',
+      officeMinutes: 120,
+      crmMinutes: 360,
+      officeSegments: [{ from: '2026-10-26T09:00:00.000Z', to: '2026-10-26T11:00:00.000Z', minutes: 120 }],
+      crmSessions: [
+        { from: '09:30', to: '10:29', minutes: 60 },   // в офисе — не считаем
+        { from: '18:00', to: '22:59', minutes: 300 }  // дома — считаем
+      ]
+    });
+    expect(r.source).toBe('hybrid');
+    expect(r.crm_remote_minutes).toBe(300);
+    expect(r.credited_minutes).toBe(420); // 120 + 300
+  });
+
+  test('«уд» зачитывает часы СРМ', () => {
     const r = oh.creditDay({ ...base, date: '2026-10-26', statusCode: 'уд', officeMinutes: 0, crmMinutes: 420 });
     expect(r.source).toBe('crm');
     expect(r.credited_minutes).toBe(420);
@@ -67,6 +85,14 @@ describe('office-hours: зачёт по статусу дня (решение з
       expect(r.source).toBe('crm');
       expect(r.credited_minutes).toBe(240);
     }
+  });
+
+  test('crmMinutesOutsideOffice: вся СРМ внутри офиса → 0', () => {
+    const remote = oh.crmMinutesOutsideOffice(
+      [{ from: '10:00', to: '10:59', minutes: 60 }],
+      [{ from: '2026-10-26T09:00:00.000Z', to: '2026-10-26T12:00:00.000Z', minutes: 180 }]
+    );
+    expect(remote).toBe(0);
   });
 
   test('«бн/сс/вх/отп» — день выпадает из нормы, недоработка не начисляется', () => {

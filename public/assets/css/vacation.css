@@ -548,6 +548,24 @@ button.vs-chip:hover { transform: translateY(-1px); box-shadow: var(--shadow-sm)
 /* ── Подвал ────────────────────────────────────────────────────────────── */
 .vs-foot { display: flex; align-items: center; gap: var(--sp-3); flex-wrap: wrap; padding: var(--sp-4) var(--sp-5); flex-shrink: 0; }
 .vs-foot__tx { flex: 1; font-size: 11.5px; color: var(--t3); min-width: 220px; }
+.vs-foot__banner {
+  flex: 1 1 100%;
+  order: 3;
+  margin-top: 2px;
+  padding: 8px 12px;
+  border-radius: var(--r-md);
+  border: 1px solid var(--brd-gold);
+  background: var(--gold-bg, color-mix(in srgb, var(--gold) 12%, transparent));
+  color: var(--t2);
+  font-size: 12px;
+  line-height: 1.35;
+}
+.vs-foot__banner.is-ok {
+  border-color: var(--brd);
+  background: var(--bg3);
+}
+.vs-foot__banner b { color: var(--t1); font-weight: var(--fw-extra, 700); }
+.vs-foot .btn[disabled] { opacity: 0.65; cursor: default; }
 
 /* ── Панель директора + очередь ────────────────────────────────────────── */
 .vs-dirbar {

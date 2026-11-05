@@ -48,11 +48,14 @@ function check(n, c, e) { if (c) { pass++; console.log('PASS ' + n); } else { fa
   r = await api('PUT', '/api/vacations/balances', { role: 'PM', body: { year: YEAR, items: [{ employee_id: empId, available_days: 42 }] } });
   check('PM не может править балансы (403)', r.status === 403, 'status=' + r.status);
 
-  // ── 2. Постановка корректного периода ─────────────────────────────────
+  // ── 2. Постановка корректного периода (канон: create = draft) ─────────
   r = await api('POST', '/api/vacations', { role: 'PM', body: { year: YEAR, date_from: '2027-07-05', date_to: '2027-07-09' } });
   check('постановка периода 5 дней', r.status === 200 && P(r).days === 5, 'status=' + r.status + ' ' + JSON.stringify(P(r)).slice(0, 200));
   const vacId = P(r).vacation && P(r).vacation.id;
-  check('период в статусе pending', P(r).vacation && P(r).vacation.status === 'pending');
+  check('период в статусе draft', P(r).vacation && P(r).vacation.status === 'draft');
+
+  r = await api('POST', `/api/vacations/${vacId}/submit`, { role: 'PM', body: {} });
+  check('Готово и согласовать → pending', r.status === 200 && P(r).ok, 'status=' + r.status + ' ' + JSON.stringify(P(r)).slice(0, 160));
 
   // ── 3. Витрина для графика офиса ──────────────────────────────────────
   r = await api('GET', `/api/vacations/office?year=${YEAR}`, { role: 'PM' });
@@ -78,6 +81,11 @@ function check(n, c, e) { if (c) { pass++; console.log('PASS ' + n); } else { fa
   r = await api('POST', '/api/vacations', { role: 'PM', body: { year: YEAR, date_from: '2027-01-11', date_to: '2027-01-24' } });
   check('основной отпуск 14 дней поставлен', r.status === 200 && P(r).days === 14, JSON.stringify(P(r)).slice(0, 200));
   check('в январе 11–24 праздников нет (0)', P(r).holidays === 0);
+  const vacMainId = P(r).vacation && P(r).vacation.id;
+  if (vacMainId) {
+    r = await api('POST', `/api/vacations/${vacMainId}/submit`, { role: 'PM', body: {} });
+    check('основной отпуск отправлен на согласование', r.status === 200 && P(r).ok, 'status=' + r.status);
+  }
 
   // ── 5. Очередь директора ──────────────────────────────────────────────
   r = await api('GET', `/api/vacations/pending?year=${YEAR}`, { role: 'DIRECTOR_GEN' });

@@ -8,17 +8,18 @@
  *   • страховочный cron (skud-mail-cron.js) — если письмо пропустили;
  *   • ручная загрузка файла в графике офиса — аварийный путь.
  *
- * Порядок шагов важен и зафиксирован:
- *   1) sha256 → отказ от повторного импорта того же файла;
- *   2) проверка периода → отказ, если этот период уже импортирован;
+ * Порядок шагов:
+ *   1) sha256 → тот же файл уже есть — skip (duplicate);
+ *   2) пересечение периода → НЕ отказ: по дням нового отчёта убираем старые
+ *      punches/часы/открытые флаги, хвосты старых импортов сжимаем или soft-delete
+ *      (Вика может прислать октябрь+ноябрь поверх уже лежащей недели);
  *   3) запись шапки + сырых прохождений;
  *   4) привязка ФИО → часы в office_hours_daily;
- *   5) автопостановка «оф» там, где СКУД видел человека;
+ *   5) автопостановка «оф»;
  *   6) снятие ложных «оф» → «нп» + флаги;
- *   7) уведомление офис-менеджеру, если есть непривязанные ФИО.
+ *   7) уведомление офис-менеджеру про непривязанные ФИО.
  *
- * Всё в одной транзакции: либо импорт целиком, либо ничего. Иначе при сбое
- * на шаге 6 получались бы часы без снятых ложных отметок.
+ * Всё в одной транзакции: либо импорт целиком, либо ничего.
  */
 
 const skudXls = require('./skud-xls');
@@ -35,6 +36,119 @@ class ImportError extends Error {
 }
 
 /**
+ * Дни нового отчёта вытесняют уже лежащие данные СКУД.
+ * Дни вне нового периода у старых импортов сохраняются (сжатие period_*).
+ *
+ * @returns {{ overlapped:number, softDeleted:number, shrunk:number, hoursCleared:number, punchesCleared:number }}
+ */
+async function clearDaysCoveredByNewReport(client, periodFrom, periodTo) {
+  const { rows: overlaps } = await client.query(
+    `SELECT id, file_name,
+            period_from::text AS period_from, period_to::text AS period_to
+       FROM skud_imports
+      WHERE deleted_at IS NULL
+        AND period_from <= $2::date
+        AND period_to   >= $1::date
+      ORDER BY id`,
+    [periodFrom, periodTo]
+  );
+
+  if (!overlaps.length) {
+    return {
+      overlapped: 0, softDeleted: 0, shrunk: 0,
+      hoursCleared: 0, punchesCleared: 0,
+      imports: []
+    };
+  }
+
+  const hours = await client.query(
+    `DELETE FROM office_hours_daily
+      WHERE date >= $1::date AND date <= $2::date
+        AND import_id IS NOT NULL`,
+    [periodFrom, periodTo]
+  );
+
+  const punches = await client.query(
+    `DELETE FROM skud_punches sp
+       USING skud_imports si
+      WHERE sp.import_id = si.id
+        AND si.deleted_at IS NULL
+        AND sp.date >= $1::date AND sp.date <= $2::date`,
+    [periodFrom, periodTo]
+  );
+
+  // Открытые вопросы «где ты был» по вытесняемым дням — иначе человек
+  // отвечает по данным, которые только что перезаписали.
+  await client.query(
+    `DELETE FROM office_presence_flags
+      WHERE date >= $1::date AND date <= $2::date
+        AND resolved_at IS NULL
+        AND import_id IS NOT NULL`,
+    [periodFrom, periodTo]
+  );
+
+  let softDeleted = 0;
+  let shrunk = 0;
+  const touched = [];
+  for (const imp of overlaps) {
+    const { rows: left } = await client.query(
+      `SELECT COUNT(*)::int AS n,
+              MIN(date)::text AS dmin,
+              MAX(date)::text AS dmax
+         FROM skud_punches
+        WHERE import_id = $1`,
+      [imp.id]
+    );
+    const n = left[0] ? Number(left[0].n) : 0;
+    if (n <= 0) {
+      await client.query(
+        `UPDATE skud_imports SET deleted_at = NOW() WHERE id = $1 AND deleted_at IS NULL`,
+        [imp.id]
+      );
+      softDeleted += 1;
+      touched.push({
+        id: imp.id, action: 'soft_deleted',
+        was: { from: imp.period_from, to: imp.period_to },
+        file_name: imp.file_name || null
+      });
+    } else {
+      const dmin = left[0].dmin;
+      const dmax = left[0].dmax;
+      if (dmin !== imp.period_from || dmax !== imp.period_to) {
+        await client.query(
+          `UPDATE skud_imports
+              SET period_from = $2::date, period_to = $3::date
+            WHERE id = $1`,
+          [imp.id, dmin, dmax]
+        );
+        shrunk += 1;
+        touched.push({
+          id: imp.id, action: 'shrunk',
+          was: { from: imp.period_from, to: imp.period_to },
+          now: { from: dmin, to: dmax },
+          file_name: imp.file_name || null
+        });
+      } else {
+        touched.push({
+          id: imp.id, action: 'unchanged',
+          was: { from: imp.period_from, to: imp.period_to },
+          file_name: imp.file_name || null
+        });
+      }
+    }
+  }
+
+  return {
+    overlapped: overlaps.length,
+    softDeleted,
+    shrunk,
+    hoursCleared: hours.rowCount || 0,
+    punchesCleared: punches.rowCount || 0,
+    imports: touched
+  };
+}
+
+/**
  * Основной вход.
  *
  * @param {object} db — fastify.db (pool-совместимый)
@@ -44,7 +158,7 @@ class ImportError extends Error {
  * @param {'manual'|'mail'|'cron'} [p.source]
  * @param {number|null} [p.importedBy]     — users.id (для ручной загрузки)
  * @param {number|null} [p.emailId]
- * @param {boolean} [p.allowPeriodOverlap] — разрешить перекрытие периода (ручная перезаливка)
+ * @param {boolean} [p.allowPeriodOverlap] — устарело: перекрытие всегда заменяется по дням
  */
 async function importSkudReport(db, p) {
   const settings = await officeHours.loadSettings(db);
@@ -83,28 +197,7 @@ async function importSkudReport(db, p) {
     };
   }
 
-  // ── 2. Период уже импортирован другим файлом?
-  if (!p.allowPeriodOverlap) {
-    const { rows: dupPeriod } = await db.query(
-      `SELECT id, file_name, period_from::text AS period_from, period_to::text AS period_to
-         FROM skud_imports
-        WHERE deleted_at IS NULL
-          AND period_from <= $2::date AND period_to >= $1::date
-        ORDER BY id DESC LIMIT 1`,
-      [parsed.periodFrom, parsed.periodTo]
-    );
-    if (dupPeriod.length) {
-      return {
-        skipped: 'period_already_imported',
-        importId: dupPeriod[0].id,
-        conflictPeriod: { from: dupPeriod[0].period_from, to: dupPeriod[0].period_to },
-        message: `Период ${dupPeriod[0].period_from}–${dupPeriod[0].period_to} уже импортирован` +
-          (dupPeriod[0].file_name ? ` (файл ${dupPeriod[0].file_name})` : '')
-      };
-    }
-  }
-
-  // ── 3. Привязка ФИО (до записи — чтобы people_mapped был честным)
+  // ── 2. Привязка ФИО (до записи — чтобы people_mapped был честным)
   // Сначала гарантируем строки в staff для активных офисных аккаунтов: без
   // этого часы человека, который ни разу не открывал график офиса, уходили
   // в никуда (поймано прогоном на локальной базе 03.11.2026).
@@ -125,6 +218,9 @@ async function importSkudReport(db, p) {
   let result;
   try {
     await client.query('BEGIN');
+
+    // Перекрытие: дни нового отчёта вытесняют старые данные (не 409).
+    const replaced = await clearDaysCoveredByNewReport(client, parsed.periodFrom, parsed.periodTo);
 
     // Шапка
     const { rows: ins } = await client.query(
@@ -185,6 +281,7 @@ async function importSkudReport(db, p) {
       daysWritten: applied.written,
       autoFilled: autoFilled.created,
       flagged: flagged.cleared,
+      replaced,
       unmatched,
       autoBound,
       warnings: parsed.warnings
@@ -285,6 +382,7 @@ module.exports = {
   importSkudReport,
   importSkudFile,
   revertImport,
+  clearDaysCoveredByNewReport,
   notifyUnmatched,
   ImportError
 };

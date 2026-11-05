@@ -355,18 +355,20 @@ module.exports = async function vacationsRoutes(fastify) {
       if (!v.ok) { reply.code(400); return { error: v.code, message: v.msg, days: v.days, holidays: v.holidays }; }
 
       await client.query('BEGIN');
+      // Канон: create = draft; на согласование уходит только «Готово и согласовать» (POST /:id/submit).
+      // Иначе кнопка ищет draft, а периоды уже pending — кажется, что «ничего не происходит».
       const ins = await client.query(
         `INSERT INTO office_vacations
            (employee_id, user_id, date_from, date_to, days, cal_days, holidays_count, kind, year,
             status, submitted_at, created_at, updated_at)
-         VALUES ($1,$2,$3::date,$4::date,$5,$6,$7,$8,$9,'pending',NOW(),NOW(),NOW())
+         VALUES ($1,$2,$3::date,$4::date,$5,$6,$7,$8,$9,'draft',NULL,NOW(),NOW())
          RETURNING *`,
         [employeeId, request.user.id, b.date_from, b.date_to, v.days, v.calDays, v.holidays,
           v.isMain ? 'main' : 'extra', year]);
       const row = ins.rows[0];
       await client.query('COMMIT');
 
-      await sync.applyToStaffPlan(db, row, 'pending');
+      // draft не трогает staff_plan — «отп» появится после submit → pending.
       await audit(row.id, employeeId, request.user.id, 'create', { days: v.days, from: b.date_from, to: b.date_to });
 
       const clashes = rules.clashesWith([], await periodsYear(year), b.date_from, b.date_to, employeeId);
@@ -409,18 +411,21 @@ module.exports = async function vacationsRoutes(fastify) {
       if (!v.ok) { reply.code(400); return { error: v.code, message: v.msg }; }
 
       const from = b.date_from || cur.date_from, to = b.date_to || cur.date_to;
+      // Черновик правим как draft; уже отправленный — снова pending (голоса сбрасываем).
+      const nextStatus = (cur.status === 'draft') ? 'draft' : 'pending';
+      const submittedSql = nextStatus === 'pending' ? 'NOW()' : 'NULL';
       await db.query(
         `UPDATE office_vacations
             SET date_from=$2::date, date_to=$3::date, days=$4, cal_days=$5, holidays_count=$6,
-                kind=$7, status='pending', submitted_at=NOW(), updated_at=NOW()
+                kind=$7, status=$8, submitted_at=${submittedSql}, updated_at=NOW()
           WHERE id=$1`,
-        [cur.id, from, to, v.days, v.calDays, v.holidays, v.isMain ? 'main' : 'extra']);
+        [cur.id, from, to, v.days, v.calDays, v.holidays, v.isMain ? 'main' : 'extra', nextStatus]);
       await db.query('DELETE FROM office_vacation_approvals WHERE vacation_id = $1', [cur.id]);
 
-      const upd = { ...cur, date_from: from, date_to: to, status: 'pending' };
+      const upd = { ...cur, date_from: from, date_to: to, status: nextStatus };
       await sync.removeFromStaffPlan(db, cur);
-      await sync.applyToStaffPlan(db, upd, 'pending');
-      await audit(cur.id, cur.employee_id, request.user.id, 'update', { from, to, days: v.days });
+      if (nextStatus === 'pending') await sync.applyToStaffPlan(db, upd, 'pending');
+      await audit(cur.id, cur.employee_id, request.user.id, 'update', { from, to, days: v.days, status: nextStatus });
 
       return { ok: true, days: v.days, holidays: v.holidays, extend_to: v.extendTo };
     } catch (err) {

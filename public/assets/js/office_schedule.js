@@ -89,6 +89,37 @@ window.AsgardOfficeSchedulePage=(function(){
   function fmtDM(iso){ const p=String(iso||'').slice(0,10).split('-'); return p.length===3?`${p[2]}.${p[1]}`:String(iso||''); }
   function fmtRange(a,b){ return `${fmtDM(a)}–${fmtDM(b)}`; }
 
+  /* Короткие подписи праздников для шапки колонки (полный title — в tooltip). */
+  const HOL_SHORT = {
+    'День народного единства': 'Нар. ед.',
+    'Новый год': 'Нов. год',
+    'Рождество Христово': 'Рожд.',
+    'День защитника Отечества': '23 фев',
+    'Международный женский день': '8 марта',
+    'Праздник Весны и Труда': '1 мая',
+    'День Победы': '9 мая',
+    'День России': 'День РФ',
+  };
+  function shortHol(title){
+    const t = String(title || '').trim();
+    if(!t) return 'ПР';
+    if(HOL_SHORT[t]) return HOL_SHORT[t];
+    if(t.length <= 12) return t;
+    return t.slice(0, 10).trim() + '…';
+  }
+  function startOfWeekMon(d){
+    const x = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+    const dow = x.getDay(); // 0=вс
+    const back = dow === 0 ? 6 : dow - 1;
+    x.setDate(x.getDate() - back);
+    return x;
+  }
+  function addDaysDate(d, n){
+    const x = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+    x.setDate(x.getDate() + n);
+    return x;
+  }
+
   /* ── Авторизованный GET (график отпусков / производственный календарь) ── */
   async function apiGet(path){
     try{
@@ -328,6 +359,10 @@ window.AsgardOfficeSchedulePage=(function(){
     const now = new Date();
     let viewYear = now.getFullYear();
     let viewMonth = now.getMonth();
+    // month | week — на узком окне по умолчанию неделя (без «простыни» 30 колонок).
+    let viewMode = (typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(max-width:767px)').matches)
+      ? 'week' : 'month';
+    let weekStart = startOfWeekMon(now);
 
     const staff = await loadDisplayStaff();
     const staffSorted = (staff||[]).sort((a,b)=>String(a.name||"").localeCompare(String(b.name||""), 'ru'));
@@ -346,90 +381,181 @@ window.AsgardOfficeSchedulePage=(function(){
       monthData = { raw: j, byStaff, flagMap };
     }
 
-    /* Дашборд: месяц и неделя. Показываем то, что просил заказчик:
-       «за месяц отработано в офисе столько-то, за неделю столько-то». */
+    /* Дашборд: сначала ВСЕГДА «Мои часы», у админа/директора ещё блок «Вся компания».
+       Раньше был один безымянный ряд цифр — непонятно, чьи это часы. */
     function buildDashHtml(md){
       if(!md || !md.raw) {
         return `<div class="sched-dash__empty">Нет данных учёта часов за этот месяц. Загрузите отчёт СКУД или откройте октябрь (там уже есть проходы).</div>`;
       }
+      const scope = md.raw.scope || 'company';
+      const me = md.raw.me || null;
       const c = md.raw.company || {};
       const w = md.raw.week || {};
       const since = md.raw.settings && md.raw.settings.crm_activity_since;
       const deltaCls = (d)=> (d>=0 ? 'ok' : 'bad');
+      const deltaSign = (v)=> (v>=0? '+':'') + Number(v||0).toFixed(1);
       const card = (cap, val, sub, cls, act)=>`
         <div class="sched-dash__card ${cls||''} ${act?'is-click':''}" ${act?`data-dash-act="${act}"`:''}>
           <div class="sched-dash__cap">${esc(cap)}</div>
           <div class="sched-dash__val">${val}</div>
           ${sub?`<div class="sched-dash__sub">${esc(sub)}</div>`:''}
         </div>`;
-      const mon = c.office_hours||0, monCrm = c.crm_hours||0, monNorm = c.norm_hours||0, monDelta = c.delta_hours||0;
-      const wek = w.office_hours||0, wekCrm = w.crm_hours||0, wekNorm = w.norm_hours||0, wekDelta = w.delta_hours||0;
-      const deltaSign = (v)=> (v>=0? '+':'') + v.toFixed(1);
-      const noSkudHint = mon <= 0
-        ? `нет отчёта СКУД за ${MONTHS_RU[viewMonth].toLowerCase()}`
-        : `по СКУД за ${MONTHS_RU[viewMonth].toLowerCase()}`;
-      const crmHint = since
-        ? `учёт с ${fmtDM(since)}`
-        : (monCrm <= 0 ? 'учёт СРМ только с выкатки (историю не восстановить)' : 'удалёнка и объекты');
-      const normHint = monNorm <= 0
-        ? 'норма 0: дни «оф» без СКУД и «уд» без СРМ пока не входят в зачёт'
-        : `${deltaSign(monDelta)} ч к норме`;
-      return `
-        ${card('В офисе · месяц', `${mon.toFixed(1)}<small>ч</small>`, noSkudHint)}
-        ${card('В СРМ · месяц', `${monCrm.toFixed(1)}<small>ч</small>`, crmHint)}
-        ${card('Зачёт · месяц', `${(c.credited_hours||0).toFixed(1)}<small>из ${monNorm.toFixed(0)} ч</small>`,
-          normHint, monNorm>0 ? deltaCls(monDelta) : 'warn')}
-        ${card('В офисе · неделя', `${wek.toFixed(1)}<small>ч</small>`,
-          w.from ? `${fmtDM(w.from)}–${fmtDM(w.to)}` : '')}
-        ${card('СРМ · неделя', `${wekCrm.toFixed(1)}<small>ч</small>`, '')}
-        ${card('Зачёт · неделя', `${(w.credited_hours||0).toFixed(1)}<small>из ${wekNorm.toFixed(0)} ч</small>`,
-          `${deltaSign(wekDelta)} ч к норме`, deltaCls(wekDelta))}
-        ${card('Снято «оф»', `${c.flags_total||0}`, (c.flags_open? `${c.flags_open} без ответа` : 'все ответили'),
-          (c.flags_open? 'warn':''), 'flags')}
-      `;
+      const section = (title, hint, cardsHtml)=>`
+        <div class="sched-dash__section">
+          <div class="sched-dash__head">
+            <div class="sched-dash__title">${esc(title)}</div>
+            ${hint?`<div class="sched-dash__hint">${esc(hint)}</div>`:''}
+          </div>
+          <div class="sched-dash">${cardsHtml}</div>
+        </div>`;
+      const pack = (sum, weekSum, opts)=>{
+        const mon = Number(sum.office_hours||0);
+        const monCrm = Number(sum.crm_hours||0);
+        const monNorm = Number(sum.norm_hours||0);
+        const monDelta = Number(sum.delta_hours||0);
+        const wek = Number(weekSum.office_hours||0);
+        const wekCrm = Number(weekSum.crm_hours||0);
+        const wekNorm = Number(weekSum.norm_hours||0);
+        const wekDelta = Number(weekSum.delta_hours||0);
+        const noSkudHint = mon <= 0
+          ? `нет отчёта СКУД за ${MONTHS_RU[viewMonth].toLowerCase()}`
+          : `по СКУД за ${MONTHS_RU[viewMonth].toLowerCase()}`;
+        const crmHint = since
+          ? `учёт с ${fmtDM(since)}`
+          : (monCrm <= 0 ? 'учёт СРМ только с выкатки (историю не восстановить)' : 'удалёнка и объекты');
+        const normHint = monNorm <= 0
+          ? 'норма 0: дни «оф» без СКУД и «уд» без СРМ пока не входят в зачёт'
+          : `${deltaSign(monDelta)} ч к норме`;
+        let html = `
+          ${card('В офисе · месяц', `${mon.toFixed(1)}<small>ч</small>`, noSkudHint)}
+          ${card('В СРМ · месяц', `${monCrm.toFixed(1)}<small>ч</small>`, crmHint)}
+          ${card('Зачёт · месяц', `${Number(sum.credited_hours||0).toFixed(1)}<small>из ${monNorm.toFixed(0)} ч</small>`,
+            normHint, monNorm>0 ? deltaCls(monDelta) : 'warn')}
+          ${card('В офисе · неделя', `${wek.toFixed(1)}<small>ч</small>`,
+            weekSum.from ? `${fmtDM(weekSum.from)}–${fmtDM(weekSum.to)}` : '')}
+          ${card('СРМ · неделя', `${wekCrm.toFixed(1)}<small>ч</small>`, '')}
+          ${card('Зачёт · неделя', `${Number(weekSum.credited_hours||0).toFixed(1)}<small>из ${wekNorm.toFixed(0)} ч</small>`,
+            `${deltaSign(wekDelta)} ч к норме`, deltaCls(wekDelta))}`;
+        if(opts && opts.flags){
+          html += card('Снято «оф»', `${opts.flags.total||0}`,
+            (opts.flags.open? `${opts.flags.open} без ответа` : 'все ответили'),
+            (opts.flags.open? 'warn':''), 'flags');
+        }
+        return html;
+      };
+
+      // Личный блок — у каждой роли, включая админа.
+      const meMonth = (me && me.month) || {};
+      const meWeek = (me && me.week) || {};
+      const meName = (me && me.name) ? me.name : (user && user.name) || 'я';
+      const meHint = me && me.staff_id
+        ? `только вы · ${meName}`
+        : 'в графике нет вашей строки staff — личные часы недоступны';
+      let out = section('Мои часы', meHint, pack(meMonth, meWeek, {
+        flags: me && me.flags ? me.flags : null
+      }));
+
+      // Компания — только у ролей с полным доступом (админ, директор, ОМ, HR…).
+      if(scope === 'company'){
+        out += section(
+          'Вся компания',
+          'сумма по всем сотрудникам в графике (не ваши личные часы)',
+          pack(c, w, { flags: { total: c.flags_total||0, open: c.flags_open||0 } })
+        );
+      }
+      return out;
+    }
+
+    function visibleDayDates(){
+      if(viewMode === 'week'){
+        return Array.from({ length: 7 }, (_, i) => addDaysDate(weekStart, i));
+      }
+      const numDays = daysInMonth(viewYear, viewMonth);
+      return Array.from({ length: numDays }, (_, i) => new Date(viewYear, viewMonth, i + 1));
+    }
+
+    function holidaysRibbonHtml(){
+      const chips = [];
+      const numDays = daysInMonth(viewYear, viewMonth);
+      for(let d = 1; d <= numDays; d++){
+        const iso = ymd(new Date(viewYear, viewMonth, d));
+        const info = dayInfo(iso);
+        if(info && info.kind === 'holiday'){
+          chips.push(`<span class="sched-holidays__chip" title="${esc(info.title || 'Праздник РФ')}">
+            <b>${d} ${MONTHS_RU[viewMonth].slice(0, 3).toLowerCase()}</b>
+            ${esc(info.title || 'Праздник РФ')}
+          </span>`);
+        }
+      }
+      return chips.join('');
+    }
+
+    function periodLabel(){
+      if(viewMode === 'week'){
+        const a = weekStart;
+        const b = addDaysDate(weekStart, 6);
+        return `${fmtDM(ymd(a))}–${fmtDM(ymd(b))}`;
+      }
+      return `${MONTHS_RU[viewMonth]} ${viewYear}`;
     }
 
     async function renderGrid(){
+      // Для week-режима подгружаем год/месяц якоря недели (часы — месяц якоря).
+      if(viewMode === 'week'){
+        viewYear = weekStart.getFullYear();
+        viewMonth = weekStart.getMonth();
+      }
       await loadYearData(viewYear);
       await loadMonthData();
-      const numDays = daysInMonth(viewYear, viewMonth);
-      const startDate = new Date(viewYear, viewMonth, 1);
-      const endDate = new Date(viewYear, viewMonth, numDays);
-      const planMap = await loadPlanForMonth(staffIds, startDate, endDate);
+      const dayDates = visibleDayDates();
+      const startDate = dayDates[0];
+      const endDate = dayDates[dayDates.length - 1];
+      // planMap на весь месяц якоря + соседние дни недели, если неделя пересекает границу.
+      const planFrom = new Date(Math.min(
+        new Date(viewYear, viewMonth, 1).getTime(),
+        startDate.getTime()
+      ));
+      const planTo = new Date(Math.max(
+        new Date(viewYear, viewMonth, daysInMonth(viewYear, viewMonth)).getTime(),
+        endDate.getTime()
+      ));
+      const planMap = await loadPlanForMonth(staffIds, planFrom, planTo);
       const todayIso = ymd(now);
+      const DOW = ['вс','пн','вт','ср','чт','пт','сб'];
 
-      // Шапка дней (праздники и переносы — из производственного календаря)
-      const days=[];
-      for(let d=1; d<=numDays; d++){
-        const dt = new Date(viewYear, viewMonth, d);
+      // Шапка дней: число + короткая метка праздника (полный title в tooltip)
+      const days = dayDates.map((dt) => {
         const iso = ymd(dt);
         const info = dayInfo(iso);
         const nonWorking = isNonWorking(dt, iso);
         const isToday = iso === todayIso;
+        const isHoliday = !!(info && info.kind === 'holiday');
         const cls = ['sched-day'];
-        if(info && info.kind === 'holiday') cls.push('holiday');
+        if(isHoliday) cls.push('holiday');
         else if(info && info.kind === 'shift') cls.push('shift');
         else if(nonWorking) cls.push('weekend');
         if(isToday) cls.push('today');
-        // Тултип: отдельно праздник РФ, отдельно перенос и обычный выходной.
-        let ttl = `${d} ${MONTHS_RU[viewMonth]} · ${['вс','пн','вт','ср','чт','пт','сб'][dt.getDay()]}`;
-        if(info && info.kind === 'holiday') ttl += ` · Праздник РФ: ${info.title || 'нерабочий день'}`;
+        let ttl = `${dt.getDate()} ${MONTHS_RU[dt.getMonth()]} · ${DOW[dt.getDay()]}`;
+        if(isHoliday) ttl += ` · Праздник РФ: ${info.title || 'нерабочий день'}`;
         else if(info && info.kind === 'shift') ttl += ` · Перенос выходного: ${info.title || 'нерабочий день'}`;
         else if(nonWorking) ttl += ' · выходной';
         if(isToday) ttl += ' · сегодня';
-        days.push(`<div class="${cls.join(' ')}" title="${esc(ttl)}">${d}</div>`);
-      }
+        const holLabel = isHoliday
+          ? `<span class="sched-day__hol">${esc(shortHol(info.title))}</span>`
+          : (viewMode === 'week' ? `<span class="sched-day__hol">${DOW[dt.getDay()]}</span>` : '');
+        return `<div class="${cls.join(' ')}" title="${esc(ttl)}"><span class="sched-day__n">${dt.getDate()}</span>${holLabel}</div>`;
+      });
 
       // Строки сотрудников
       const bodyRows = staffSorted.map(s=>{
         const editable = (s.user_id===user.id) || user.role==="OFFICE_MANAGER" || (!officeStrictOwn && (user.role==="ADMIN" || isDirRole(user.role)));
         const cells=[];
         const personMonth = monthData ? (monthData.byStaff.get(s.id) || null) : null;
-        for(let d=1; d<=numDays; d++){
-          const dt = new Date(viewYear, viewMonth, d);
+        dayDates.forEach((dt) => {
           const iso = ymd(dt);
           const nonWorking = isNonWorking(dt, iso);
           const info = dayInfo(iso);
+          const isHoliday = !!(info && info.kind === 'holiday');
           const isToday = iso === todayIso;
           const key = `${s.id}|${iso}`;
           const rec = planMap.get(key) || null;
@@ -450,43 +576,39 @@ window.AsgardOfficeSchedulePage=(function(){
               data-staff="${s.id}"
               title="${esc(ttl)}"
               aria-label="${esc(ttl)}"><span class="sched-vtag">ОТП</span></button>`);
-            continue;
+            return;
           }
 
           let code = (rec && rec.code) || "";
-          // По умолчанию нерабочие дни = "вх"
-          if(!code && nonWorking) code = "вх";
+          // Праздник РФ без личной отметки — НЕ маскируем под «вх»; обычные сб/вс = «вх».
+          let holidayEmpty = false;
+          if(!code && isHoliday){
+            holidayEmpty = true;
+          } else if(!code && nonWorking){
+            code = "вх";
+          }
 
           const color = code ? (colors[code] || "var(--t2)") : "";
           const base = code ? safeBaseColor(color) : "";
           const bgStyle = code ? `background:${toRGBA(base, 0.5)};` : "";
           const cellCls = ['sched-cell'];
-          if(nonWorking) cellCls.push('weekend');
+          if(holidayEmpty) cellCls.push('holiday-empty');
+          else if(nonWorking && !isHoliday) cellCls.push('weekend');
           if(isToday) cellCls.push('today');
           if(code) cellCls.push('has-status');
-          const ttl = (info && info.title) ? `${iso} · ${info.title}` : iso;
 
-          // Часы и предупреждения из office_hours_daily (V453).
-          // Показываем ФАКТ (СКУД/СРМ), даже если день не зачтён в норму
-          // (нет отчёта СКУД за ноябрь, учёт СРМ только с выкатки и т.п.).
-          // Раньше условие `credited_minutes` прятало все цифры — на ноябре
-          // ячейки выглядели пустыми при живых минутах.
+          // В ячейке — ЗАЧЁТ (офис + СРМ вне офиса). Подсказка — разбивка.
           const dd = personMonth ? personMonth.days.find(x=>x.date===iso) : null;
-          // Факт в ячейке — максимум из офиса/СРМ/зачёта. Источник «какой
-          // именно» для стиля: СРМ, если статус удалённый/объектный.
-          const factMin = dd
-            ? Math.max(
-                Number(dd.office_minutes || 0),
-                Number(dd.crm_minutes || 0),
-                Number(dd.credited_minutes || 0)
-              )
-            : 0;
+          const officeMin = dd ? Number(dd.office_minutes || 0) : 0;
+          const crmRemote = dd ? Number(dd.crm_remote_minutes != null ? dd.crm_remote_minutes : dd.crm_minutes || 0) : 0;
           const credited = dd ? Number(dd.credited_minutes || 0) : 0;
-          const hoursTxt = factMin > 0 ? hm(factMin) : '';
-          const hoursMuted = hoursTxt && credited <= 0;
-          const isCrmStyle = dd && (
+          const showMin = credited > 0 ? credited : Math.max(officeMin, crmRemote);
+          const hoursTxt = showMin > 0 ? hm(showMin) : '';
+          const noCredit = !!(hoursTxt && credited <= 0);
+          const isHybrid = dd && String(dd.source || '').startsWith('hybrid');
+          const isCrmStyle = !isHybrid && dd && (
             dd.source === 'crm' || dd.source === 'crm_no_status'
-            || ['уд','об','км','пг','уч','ск'].includes(String(dd.status||''))
+            || ['уд','об','км','пг','уч','ск'].includes(String(dd.status||code||''))
           );
           const warnMark = dd && dd.warn === 'no_punches' ? '!'
             : (dd && (dd.warn === 'skud_missing' || dd.source === 'skud_missing') ? '?'
@@ -495,6 +617,30 @@ window.AsgardOfficeSchedulePage=(function(){
           if(dd && (dd.source==='no_crm_data' || dd.source==='skud_missing' || dd.source==='no_data' || dd.warn==='skud_missing')) {
             cellCls.push('is-nodata');
           }
+          if(hoursTxt) cellCls.push('has-hours');
+
+          const statusLabel = holidayEmpty
+            ? (`Праздник РФ` + (info && info.title ? `: ${info.title}` : ''))
+            : ((STATUS.find(x=>x.code===code)||{}).label || (code || 'без статуса'));
+          const tip = [fmtDM(iso), statusLabel];
+          if(info && info.title && !holidayEmpty) tip.push(info.title);
+          if(officeMin > 0) tip.push(`офис ${hm(officeMin)}`);
+          if(crmRemote > 0) tip.push(`СРМ вне офиса ${hm(crmRemote)}`);
+          if(hoursTxt) tip.push(noCredit ? 'не в зачёте' : `зачёт ${hm(credited)}`);
+          if(warnMark === '?') tip.push('нет прохода СКУД');
+          if(warnMark === '!') tip.push('не закрыт выход');
+          if(warnMark === '·') tip.push('нет данных СРМ');
+
+          const hoursCls = [
+            'sched-hours',
+            isHybrid ? 'is-hybrid' : '',
+            isCrmStyle ? 'is-crm' : '',
+            noCredit ? 'is-nocredit' : ''
+          ].filter(Boolean).join(' ');
+
+          const codeMark = holidayEmpty
+            ? `<span class="sched-htag">ПР</span>`
+            : (code ? `<span class="sched-cell__code">${esc(code)}</span>` : '');
 
           cells.push(`<button class="${cellCls.join(' ')}"
             style="${bgStyle}"
@@ -502,18 +648,16 @@ window.AsgardOfficeSchedulePage=(function(){
             data-staff="${s.id}"
             data-code="${esc(code||"")}"
             ${editable ? '' : "data-locked='1'"}
-            title="${esc(ttl)}"
-            type="button">${
-              hoursTxt ? `<span class="sched-hours${isCrmStyle ? ' is-crm' : ''}${hoursMuted ? ' is-muted' : ''}">${esc(hoursTxt)}</span>` : ''
+            title="${esc(tip.join(' · '))}"
+            type="button">${codeMark}${
+              hoursTxt ? `<span class="${hoursCls}">${esc(hoursTxt)}</span>` : ''
             }${
               warnMark ? `<span class="sched-warn${warnMark==='!' ? ' is-bad' : ''}">${warnMark}</span>` : ''
             }</button>`);
-        }
+        });
         const badge = (s.user_id===user.id) ? ` <span class="badge blue sched-you">вы</span>` : "";
         const flags = monthData ? (monthData.flagMap.get(s.id) || 0) : 0;
         const flagMark = flags ? `<span class="sched-flagmark" title="Есть неотвеченные вопросы «где ты был»: ${flags}">${flags}</span>` : "";
-        // Клик по имени сотрудника открывает его отчёт за месяц: директору
-        // нужен обзор по человеку, а тыкать в мелкие ячейки неудобно.
         return `<div class="sched-row">
           <div class="sched-name" data-person="${s.id}" title="Открыть отчёт: ${esc(s.name||"")}">
             <span class="sched-name__txt">${esc(s.name||"")}</span>${badge}${flagMark}
@@ -522,7 +666,14 @@ window.AsgardOfficeSchedulePage=(function(){
         </div>`;
       }).join("");
 
-      return { days, bodyRows, planMap, dash: buildDashHtml(monthData) };
+      return {
+        days,
+        bodyRows,
+        planMap,
+        dash: buildDashHtml(monthData),
+        holidays: holidaysRibbonHtml(),
+        period: periodLabel()
+      };
     }
 
     const initialGrid = await renderGrid();
@@ -536,25 +687,31 @@ window.AsgardOfficeSchedulePage=(function(){
       <div class="card sched-hero">
         <div class="sched-hero__ic">${IC_CAL}</div>
         <div class="sched-hero__tx">
-          <div class="sched-period" id="schedPeriod">${MONTHS_RU[viewMonth]} ${viewYear}</div>
-          <div class="sched-hero__s">Отпуска приходят из «Графика отпусков» (ячейка «ОТП»), праздники и переносы — из производственного календаря РФ.</div>
+          <div class="sched-period" id="schedPeriod">${esc(initialGrid.period || (MONTHS_RU[viewMonth]+' '+viewYear))}</div>
+          <div class="sched-hero__s">Отпуска — из «Графика отпусков» (ОТП). Праздники РФ — в шапке и ленте ниже, не путать с личным «вх».</div>
         </div>
         <div class="sched-hero__nav">
+          <div class="sched-mode" role="group" aria-label="Режим">
+            <button class="btn ghost ${viewMode==='month'?'is-on':''}" id="btnModeMonth" type="button">Месяц</button>
+            <button class="btn ghost ${viewMode==='week'?'is-on':''}" id="btnModeWeek" type="button">Неделя</button>
+          </div>
           <button class="btn ghost" id="btnPrevMonth" type="button">← Назад</button>
           <button class="btn ghost" id="btnNextMonth" type="button">Вперёд →</button>
           <button class="btn gold" id="btnVacSchedule" type="button">${IC_CAL}<span>График отпусков</span></button>
         </div>
       </div>
 
+      <div class="sched-holidays" id="schedHolidays">${initialGrid.holidays || ''}</div>
+
       <div class="card sched-legend-card">
         ${legendHtml(colors)}
       </div>
 
       <div class="card sched-hero" style="margin-bottom:10px;display:block">
-        <div class="sched-dash" id="schedDash">${initialGrid.dash || ''}</div>
+        <div class="sched-dash-root" id="schedDash">${initialGrid.dash || ''}</div>
       </div>
 
-      <div class="card sched-wrap" id="schedWrap">
+      <div class="card sched-wrap ${viewMode==='week'?'is-week':''}" id="schedWrap">
         <div class="sched-grid">
           <div class="sched-head">
             <div class="sched-name head">Сотрудник</div>
@@ -569,16 +726,48 @@ window.AsgardOfficeSchedulePage=(function(){
 
     let planMap = initialGrid.planMap;
 
-    // Навигация по месяцам
+    function syncModeButtons(){
+      const m = $("#btnModeMonth"), w = $("#btnModeWeek"), wrap = $("#schedWrap");
+      if(m) m.classList.toggle('is-on', viewMode === 'month');
+      if(w) w.classList.toggle('is-on', viewMode === 'week');
+      if(wrap) wrap.classList.toggle('is-week', viewMode === 'week');
+    }
+
     $("#btnPrevMonth").addEventListener("click", async ()=>{
-      viewMonth--;
-      if(viewMonth < 0){ viewMonth = 11; viewYear--; }
+      if(viewMode === 'week'){
+        weekStart = addDaysDate(weekStart, -7);
+      } else {
+        viewMonth--;
+        if(viewMonth < 0){ viewMonth = 11; viewYear--; }
+        weekStart = startOfWeekMon(new Date(viewYear, viewMonth, 1));
+      }
       await updateGrid();
     });
 
     $("#btnNextMonth").addEventListener("click", async ()=>{
-      viewMonth++;
-      if(viewMonth > 11){ viewMonth = 0; viewYear++; }
+      if(viewMode === 'week'){
+        weekStart = addDaysDate(weekStart, 7);
+      } else {
+        viewMonth++;
+        if(viewMonth > 11){ viewMonth = 0; viewYear++; }
+        weekStart = startOfWeekMon(new Date(viewYear, viewMonth, 1));
+      }
+      await updateGrid();
+    });
+
+    const btnModeMonth = $("#btnModeMonth");
+    const btnModeWeek = $("#btnModeWeek");
+    if(btnModeMonth) btnModeMonth.addEventListener("click", async ()=>{
+      viewMode = 'month';
+      viewYear = weekStart.getFullYear();
+      viewMonth = weekStart.getMonth();
+      syncModeButtons();
+      await updateGrid();
+    });
+    if(btnModeWeek) btnModeWeek.addEventListener("click", async ()=>{
+      viewMode = 'week';
+      weekStart = startOfWeekMon(new Date(viewYear, viewMonth, Math.min(now.getDate(), daysInMonth(viewYear, viewMonth))));
+      syncModeButtons();
       await updateGrid();
     });
 
@@ -588,13 +777,17 @@ window.AsgardOfficeSchedulePage=(function(){
 
     async function updateGrid(){
       try {
-        $("#schedPeriod").textContent = `${MONTHS_RU[viewMonth]} ${viewYear}`;
         const grid = await renderGrid();
+        const per = $("#schedPeriod");
+        if(per) per.textContent = grid.period || `${MONTHS_RU[viewMonth]} ${viewYear}`;
         $("#schedDays").innerHTML = grid.days.join("");
         $("#schedBody").innerHTML = grid.bodyRows;
+        const hol = $("#schedHolidays");
+        if(hol) hol.innerHTML = grid.holidays || '';
         const dashEl = $("#schedDash");
         if(dashEl) dashEl.innerHTML = grid.dash || '';
         planMap = grid.planMap;
+        syncModeButtons();
         bindCellClicks();
         bindPersonClicks();
         bindDashClicks();
@@ -805,8 +998,13 @@ window.AsgardOfficeSchedulePage=(function(){
         const host = (ctx && ctx.body) || null;
         if(!host) return;
         const j = await apiGet(`/api/office-attendance/flags?year=${viewYear}&month=${viewMonth+1}`);
-        if(!j || !j.ok){ host.innerHTML = '<div class="muted">Не удалось загрузить</div>'; return; }
-        if(!j.count){ host.innerHTML = '<div class="muted">В этом месяце ложных отметок нет.</div>'; return; }
+        if(!j || !j.ok){ host.innerHTML = '<div class="muted">Не удалось загрузить список отметок. Обновите страницу (Ctrl+F5).</div>'; return; }
+        if(!j.count){
+          host.innerHTML = j.scope === 'self'
+            ? '<div class="muted">У вас в этом месяце нет снятых отметок «в офисе».</div>'
+            : '<div class="muted">В этом месяце ложных отметок нет.</div>';
+          return;
+        }
         const rows = j.flags.map(f=>`
           <div class="sched-seg" style="align-items:flex-start;flex-direction:column;gap:2px">
             <div style="display:flex;justify-content:space-between;width:100%">

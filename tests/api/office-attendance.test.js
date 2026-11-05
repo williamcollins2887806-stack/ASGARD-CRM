@@ -125,7 +125,8 @@ module.exports = {
           `импорт: ${res.status} ${JSON.stringify(res.body).slice(0, 200)}`);
 
         if (res.status === 409) {
-          assert(['duplicate', 'period_already_imported'].includes(res.body.error),
+          // Повтор того же файла (sha256) — единственный ожидаемый 409.
+          assert(res.body.error === 'duplicate',
             `неожиданная причина отказа: ${res.body.error}`);
           return;
         }
@@ -143,13 +144,13 @@ module.exports = {
       async run() {
         const first = await uploadReport('ADMIN', fixturePath(), '?allow_overlap=1');
         if (first.status === 409) {
-          assert(['duplicate', 'period_already_imported'].includes(first.body.error), 'не та причина');
+          assert(first.body.error === 'duplicate', 'не та причина');
           return;
         }
         const second = await uploadReport('ADMIN', fixturePath(), '?allow_overlap=1');
-        assert(second.status === 409, `повтор должен давать 409, пришёл ${second.status}`);
-        assert(['duplicate', 'period_already_imported'].includes(second.body.error),
-          `ожидался duplicate/period_already_imported, пришёл ${second.body.error}`);
+        assert(second.status === 409, `повтор того же файла должен давать 409, пришёл ${second.status}`);
+        assert(second.body.error === 'duplicate',
+          `ожидался duplicate, пришёл ${second.body.error}`);
       }
     },
 
