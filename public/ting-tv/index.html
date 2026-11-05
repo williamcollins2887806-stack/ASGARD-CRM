@@ -43,7 +43,7 @@
           <label class="ttv-field-label" for="roomCode">Код комнаты</label>
           <input class="ttv-field" id="roomCode" autocomplete="off" spellcheck="false" inputmode="numeric" placeholder="6 цифр или slug, напр. 482917" />
           <label class="ttv-field-label" for="roomPin">PIN (если нужен)</label>
-          <input class="ttv-field" id="roomPin" inputmode="numeric" maxlength="8" placeholder="••••" />
+          <input class="ttv-field" id="roomPin" inputmode="numeric" maxlength="8" placeholder="необязательно" autocomplete="off" />
           <!-- Имя зала фиксировано: с пульта не вводим. Скрытое поле для совместимости. -->
           <input type="hidden" id="roomName" maxlength="80" />
           <div class="ttv-actions">
@@ -277,17 +277,24 @@
     var hint = qs('qrHint');
     var ph = qs('qrPh');
     if (!code) {
-      if (img) { img.hidden = true; img.removeAttribute('src'); }
-      if (ph) ph.hidden = false;
+      if (img) {
+        img.classList.add('hidden');
+        img.hidden = true;
+        img.removeAttribute('src');
+      }
+      if (ph) { ph.classList.remove('hidden'); ph.hidden = false; }
       if (hint) hint.textContent = 'Введите код — появится QR для гостей с телефона';
       return;
     }
     var url = location.origin + '/ting/' + encodeURIComponent(code);
     if (img) {
+      img.classList.remove('hidden');
       img.hidden = false;
-      img.src = '/api/thing/qr?size=220&data=' + encodeURIComponent(url);
+      img.src = '/api/thing/qr?size=200&data=' + encodeURIComponent(url);
     }
-    if (ph) ph.hidden = true;
+    /* class hidden с !important — иначе display:grid у .ttv-qr-ph
+       перебивает атрибут [hidden] и плейсхолдер + QR оба видны → обрезка */
+    if (ph) { ph.classList.add('hidden'); ph.hidden = true; }
     if (hint) hint.textContent = url;
   }
   function paintDeviceLabels() {
@@ -749,7 +756,11 @@
         return r.json().then(function (j) { return { ok: r.ok, status: r.status, j: j }; });
       });
       if (!meta.ok) {
-        msg.textContent = (meta.j && meta.j.error) || ('Комната недоступна (' + meta.status + ')');
+        var errText = (meta.j && (meta.j.message || meta.j.error)) || ('Комната недоступна (' + meta.status + ')');
+        if (meta.status === 410 || /заверш/i.test(errText)) {
+          errText = 'Тинг завершён. Откройте новый в CRM — старый код уже не действует.';
+        }
+        msg.textContent = errText;
         return;
       }
       /* Канонический slug после dial_code — дальше все запросы по нему */

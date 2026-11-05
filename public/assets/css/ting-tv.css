@@ -167,35 +167,46 @@ html, body.ting-tv {
 
 .ttv-qr-wrap {
   text-align: center;
-  padding: clamp(14px, 1.6vh, 20px);
+  padding: clamp(12px, 1.4vh, 18px);
   border-radius: 18px;
   border: 1px solid var(--ttv-line);
   background: rgba(255, 255, 255, 0.03);
+  /* не даём колонке QR раздувать карточку и обрезаться снизу */
+  align-self: start;
+  max-width: 280px;
+  justify-self: center;
+  overflow: hidden;
 }
 .ttv-qr-wrap img {
-  width: min(240px, 22vw);
+  display: block;
+  width: min(200px, 18vw);
+  max-width: 100%;
   height: auto;
   aspect-ratio: 1;
+  margin: 0 auto;
   border-radius: 12px;
   background: #fff;
+  object-fit: contain;
 }
 .ttv-qr-wrap p {
-  margin: 12px 0 0;
-  font-size: clamp(15px, 1.15vw, 18px);
+  margin: 10px 0 0;
+  font-size: clamp(13px, 1.05vw, 16px);
   color: var(--ttv-t2);
   word-break: break-all;
-  line-height: 1.35;
+  line-height: 1.3;
+  max-height: 2.6em;
+  overflow: hidden;
 }
 
 .ttv-preview {
   position: relative;
   aspect-ratio: 16 / 9;
-  max-height: min(220px, 22vh);
+  max-height: min(160px, 18vh);
   border-radius: 16px;
   overflow: hidden;
   border: 1px solid var(--ttv-line);
   background: #000;
-  margin-bottom: 12px;
+  margin-bottom: 10px;
 }
 .ttv-preview video {
   width: 100%; height: 100%; object-fit: cover;
@@ -272,11 +283,16 @@ html, body.ting-tv {
   font: 700 15px/1 "Manrope", system-ui, sans-serif;
 }
 .ttv-qr-wrap img:not([src]),
-.ttv-qr-wrap img[src=""] {
-  display: none;
+.ttv-qr-wrap img[src=""],
+.ttv-qr-wrap img.hidden,
+.ttv-qr-ph.hidden,
+.ttv-qr-ph[hidden] {
+  display: none !important;
 }
 .ttv-qr-ph {
-  width: 220px; height: 220px; margin: 0 auto;
+  width: min(200px, 18vw);
+  height: min(200px, 18vw);
+  margin: 0 auto;
   border-radius: 16px;
   border: 1px dashed var(--ttv-line);
   display: grid; place-items: center;

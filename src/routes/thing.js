@@ -225,7 +225,8 @@ module.exports = async function thingRoutes(fastify) {
 
   /**
    * Публичный вход: slug ИЛИ dial_code (6 цифр с карточки / ТВ / телефона).
-   * Раньше TV слал 333141 как slug → «Тинг не найден», хотя dial_code живой.
+   * Ищем комнату без фильтра статуса — иначе ended даёт ложное «не найден».
+   * Активную (open/scheduled/live) предпочитаем, если dial_code переиспользовали.
    */
   async function loadPublicRoomByCode(code) {
     const key = String(code || '').trim().toLowerCase();
@@ -233,8 +234,14 @@ module.exports = async function thingRoutes(fastify) {
     if (isDialCode(key)) {
       const { rows } = await db.query(
         `SELECT * FROM thing_rooms
-          WHERE dial_code = $1 AND status IN ('open', 'scheduled', 'live')
-          ORDER BY id DESC LIMIT 1`,
+          WHERE dial_code = $1
+          ORDER BY CASE status
+            WHEN 'live' THEN 0
+            WHEN 'open' THEN 1
+            WHEN 'scheduled' THEN 2
+            ELSE 3
+          END, id DESC
+          LIMIT 1`,
         [key]
       );
       return rows[0] || null;
@@ -242,6 +249,21 @@ module.exports = async function thingRoutes(fastify) {
     if (!isSlug(key)) return null;
     const { rows } = await db.query(`SELECT * FROM thing_rooms WHERE slug = $1`, [key]);
     return rows[0] || null;
+  }
+
+  function publicRoomUnavailable(room, reply) {
+    if (!room) return reply.code(404).send({ error: 'Тинг не найден' });
+    if (room.status === 'ended' || room.status === 'cancelled') {
+      return reply.code(410).send({
+        error: 'Тинг завершён',
+        message: 'Тинг с этим кодом уже закрыт. Откройте новый в CRM.',
+        status: room.status,
+        slug: room.slug || null,
+        dial_code: room.dial_code || null
+      });
+    }
+    if (!room.allow_guests) return reply.code(403).send({ error: 'Гости не допущены' });
+    return null;
   }
 
   async function canAccessRoom(room, user) {
@@ -1042,8 +1064,8 @@ module.exports = async function thingRoutes(fastify) {
       return reply.code(400).send({ error: 'Некорректный код' });
     }
     const room = await loadPublicRoomByCode(code);
-    if (!room) return reply.code(404).send({ error: 'Тинг не найден' });
-    if (!room.allow_guests) return reply.code(403).send({ error: 'Гости не допущены' });
+    const blocked = publicRoomUnavailable(room, reply);
+    if (blocked) return blocked;
 
     /* D7: врать в обе стороны нельзя — сообщаем ФАКТ записи. */
     let recordingActive = false;
@@ -1079,12 +1101,9 @@ module.exports = async function thingRoutes(fastify) {
     }
 
     const room = await loadPublicRoomByCode(code);
-    if (!room) return reply.code(404).send({ error: 'Тинг не найден' });
-    if (room.status === 'ended' || room.status === 'cancelled') {
-      return reply.code(410).send({ error: 'Тинг завершён' });
-    }
+    const blocked = publicRoomUnavailable(room, reply);
+    if (blocked) return blocked;
     if (room.locked) return reply.code(403).send({ error: 'Вход в комнату закрыт организатором', code: 'ROOM_LOCKED' });
-    if (!room.allow_guests) return reply.code(403).send({ error: 'Гости не допущены' });
 
     const rateKey = pinRateKey(request, room.id);
     if (room.pin_code) {
