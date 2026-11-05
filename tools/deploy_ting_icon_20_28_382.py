@@ -32,6 +32,7 @@ FILES = [
     "public/assets/img/ting-logo.svg",
     "public/assets/img/ting-launcher-512.png",
     "public/assets/img/ting-launcher-round-512.png",
+    "public/assets/js/ting_icons.js",
     "public/ting-tv/index.html",
 ]
 
