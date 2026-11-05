@@ -601,6 +601,101 @@ async function routes(fastify) {
     };
   });
 
+  // ── POST /parse-text-list — текст (100+ строк) → rows как у Excel ─────────
+  fastify.post('/parse-text-list', { preHandler: [fastify.requireRoles(CART_ROLES)] }, async (req, reply) => {
+    const text = String((req.body && req.body.text) || '');
+    const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+    if (!lines.length) return bad(reply, 'Пустой список');
+    const MAX = 300;
+    const truncated = lines.length > MAX;
+    const slice = truncated ? lines.slice(0, MAX) : lines;
+    const rows = slice.map((line) => {
+      // name ; qty ; unit   или name \t qty \t unit   или "name 12 шт"
+      let name = line; let quantity = 1; let unit = 'шт';
+      const parts = line.split(/[;\t|]/).map((x) => x.trim()).filter(Boolean);
+      if (parts.length >= 2) {
+        name = parts[0];
+        const qn = parseFloat(String(parts[1]).replace(',', '.'));
+        if (Number.isFinite(qn) && qn > 0) quantity = qn;
+        if (parts[2]) unit = parts[2];
+      } else {
+        const m = line.match(/^(.*?)[\s,]+(\d+[.,]?\d*)\s*(шт|кг|м|л|упак|пар)?\s*$/i);
+        if (m) {
+          name = m[1].trim();
+          quantity = parseFloat(m[2].replace(',', '.')) || 1;
+          if (m[3]) unit = m[3];
+        }
+      }
+      return { name, quantity, unit, article: null };
+    }).filter((r) => r.name);
+    return { rows, truncated, max_rows: MAX, input_rows: lines.length };
+  });
+
+  // ── POST /assist — чат: сообщение → proposals (без записи в корзину) ──────
+  fastify.post('/assist', { preHandler: [fastify.requireRoles(CART_ROLES)] }, async (req, reply) => {
+    const message = String((req.body && req.body.message) || '').trim();
+    if (message.length < 2) return bad(reply, 'Напишите, что нужно');
+    // эвристика: режем по запятым / «и» / переводам строк на отдельные позиции
+    const chunks = message
+      .split(/\n|;|,(?=\s*[^0-9])|\s+и\s+/i)
+      .map((s) => s.trim())
+      .filter((s) => s.length >= 2)
+      .slice(0, 80);
+    const rows = (chunks.length ? chunks : [message]).map((line) => {
+      let name = line; let quantity = 1; let unit = 'шт';
+      const m = line.match(/^(.*?)[\s,]+(\d+[.,]?\d*)\s*(шт|кг|м|л|упак|пар)?\s*$/i);
+      if (m) {
+        name = m[1].trim();
+        quantity = parseFloat(m[2].replace(',', '.')) || 1;
+        if (m[3]) unit = m[3];
+      }
+      return { name, quantity, unit };
+    });
+    // переиспользуем логику suggest-ai через внутренний вызов
+    const cart = await getCart(db, req.user.id);
+    const wh = (cart && cart.warehouse_id) || await mainWarehouseId(db);
+    const sqlSuggestions = [];
+    for (const it of rows) {
+      const nm = String(it.name || '').trim();
+      if (!nm) continue;
+      const need = parseFloat(it.quantity || 1) || 1;
+      const matches = await fuzzyCatalogMatches(db, {
+        name: nm, article: '', warehouseId: wh, limit: 8
+      });
+      const alts = matches.map((m) => mapAlt(m, need));
+      const best = alts[0] || null;
+      const weak = !best || (best.sim || 0) < 0.25;
+      sqlSuggestions.push({
+        input_name: nm,
+        need_qty: need,
+        unit: it.unit || 'шт',
+        matched: !weak,
+        match_kind: weak ? null : (best.kind || null),
+        product_id: (!weak && best && best.kind === 'product') ? best.product_id : null,
+        equipment_id: (!weak && best && best.kind === 'equipment') ? best.equipment_id : null,
+        available_qty: best && !weak ? best.available_qty : 0,
+        recommended_action: weak ? 'procure_new' : best.action,
+        confidence: best && !weak ? (best.sim || 0) : 0,
+        alternatives: alts,
+        is_new_position: weak,
+        selected: true
+      });
+    }
+    const enriched = await maybeEnrichWithLlm(sqlSuggestions);
+    const proposals = enriched.suggestions || sqlSuggestions;
+    const replyText = proposals.length
+      ? `Нашёл ${proposals.length} позиций. Отметьте нужные и нажмите «Добавить в корзину».`
+      : 'Ничего не разобрал — уточните список.';
+    return {
+      reply: replyText,
+      warehouse_id: wh,
+      ai_used: !!enriched.ai_used,
+      ai_error: enriched.ai_error || null,
+      proposals,
+      confirm_required: true
+    };
+  });
+
   // Внутренний расчёт разбивки корзины (используется preview и submit).
   // forUpdate: предварительно лочим stock-строки расходников отдельным SELECT FOR UPDATE
   // (нельзя FOR UPDATE на nullable-side LEFT JOIN), затем читаем агрегированную картину.

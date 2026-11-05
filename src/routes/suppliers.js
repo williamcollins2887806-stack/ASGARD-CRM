@@ -175,9 +175,27 @@ async function routes(fastify) {
 
   fastify.get('/product-categories', { preHandler: [fastify.authenticate] }, async () => {
     const { rows } = await db.query(`SELECT c.*,
-      (SELECT COUNT(*) FROM products p WHERE p.category_id=c.id AND p.is_active=true) as products_count
+      (SELECT COUNT(*) FROM products p WHERE p.category_id=c.id AND p.is_active=true AND p.deleted_at IS NULL) as products_count
       FROM product_categories c WHERE c.is_active=true ORDER BY c.parent_id NULLS FIRST, c.sort_order, c.name`);
-    return { items: rows };
+    // Сводка по search_group для chips в каталоге
+    let groups = [];
+    try {
+      const g = await db.query(`
+        SELECT COALESCE(c.search_group,'other') AS code,
+               COUNT(p.id)::int AS products_count
+        FROM products p
+        LEFT JOIN product_categories c ON c.id = p.category_id
+        WHERE p.deleted_at IS NULL AND p.is_active = true AND p.is_draft IS NOT TRUE
+        GROUP BY 1`);
+      const { GROUP_LABELS, SEARCH_GROUPS } = require('../services/product-category-classify');
+      const by = new Map(g.rows.map((r) => [r.code, r.products_count]));
+      groups = SEARCH_GROUPS.map((code) => ({
+        code,
+        label: GROUP_LABELS[code] || code,
+        products_count: by.get(code) || 0
+      }));
+    } catch (_) { groups = []; }
+    return { items: rows, groups };
   });
 
   fastify.post('/product-categories', { preHandler: [fastify.requireRoles(['ADMIN'])] }, async (req, reply) => {
@@ -220,24 +238,30 @@ async function routes(fastify) {
   // ═══════════════════════════════════════════════════════════════════════
 
   fastify.get('/products', { preHandler: [fastify.authenticate] }, async (req) => {
-    const { category_id, search, is_active, limit = 100, offset = 0 } = req.query;
+    const { category_id, search, is_active, limit = 100, offset = 0, search_group } = req.query;
     const { include_drafts } = req.query;
     // WMS-совместимость: каталог не показывает удалённые позиции и черновики рабочих (is_draft),
     // если явно не запрошено include_drafts (для модерации).
     let where = `p.deleted_at IS NULL`;
     const params = []; let i = 1;
     if (category_id) { where += ` AND p.category_id=$${i++}`; params.push(category_id); }
+    if (search_group) {
+      // Группа поиска: housing|equipment|consumable|… (V448)
+      where += ` AND COALESCE(c.search_group,'other')=$${i++}`;
+      params.push(String(search_group));
+    }
     if (is_active !== undefined) { where += ` AND p.is_active=$${i++}`; params.push(is_active === 'true' || is_active === true); }
     else { where += ` AND p.is_active=true`; }
     if (include_drafts !== 'true') { where += ` AND p.is_draft IS NOT TRUE`; }
     if (search) { where += ` AND (p.name ILIKE $${i} OR p.article ILIKE $${i})`; params.push(`%${search}%`); i++; }
-    const countSql = `SELECT COUNT(*)::int AS n FROM products p WHERE ${where}`;
+    const fromJoin = `FROM products p LEFT JOIN product_categories c ON p.category_id=c.id`;
+    const countSql = `SELECT COUNT(*)::int AS n ${fromJoin} WHERE ${where}`;
     const { rows: countRows } = await db.query(countSql, params);
     const total = countRows[0]?.n || 0;
     const lim = Math.min(parseInt(limit, 10) || 100, 500);
     const off = parseInt(offset, 10) || 0;
-    const sql = `SELECT p.*, c.name as category_name FROM products p
-      LEFT JOIN product_categories c ON p.category_id=c.id WHERE ${where}
+    const sql = `SELECT p.*, c.name as category_name, c.search_group
+      ${fromJoin} WHERE ${where}
       ORDER BY p.name LIMIT $${i++} OFFSET $${i++}`;
     const { rows } = await db.query(sql, [...params, lim, off]);
     return { items: enrichIcons(rows), total, limit: lim, offset: off };
@@ -413,6 +437,22 @@ async function routes(fastify) {
        supplier_id || null, supName, parseFloat(unit_price), currency || 'RUB', region || null,
        src, source_url || null, valid_until || null, notes || null, req.user.id]);
     return { item: rows[0] };
+  });
+
+  /**
+   * Умный поиск по базе цен: «перчатки» → позиции + предложения всех поставщиков.
+   * GET /api/price-records/search?q=&search_group=&days=&limit=
+   * Для человека (UI склада) и для ИИ (summary + items[].offers).
+   */
+  // Поиск цен — всем авторизованным (удобно РП/директору/кладовщику/ИИ).
+  fastify.get('/price-records/search', { preHandler: [fastify.authenticate] }, async (req) => {
+    const { searchPrices } = require('../services/price-search');
+    return searchPrices(db, {
+      q: req.query.q || req.query.search || '',
+      search_group: req.query.search_group || null,
+      days: req.query.days,
+      limit: req.query.limit
+    });
   });
 
   /**

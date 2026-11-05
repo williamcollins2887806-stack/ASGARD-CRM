@@ -9,7 +9,13 @@ window.AsgardWarehouseV2 = (function () {
   const esc = UI.esc || (s => String(s == null ? '' : s).replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m])));
   const toast = UI.toast || ((t, m, tp) => console.log(`[${tp}] ${t}: ${m}`));
 
-  let _user = null, _root = null, _tab = 'equipment';
+  let _user = null, _root = null, _tab = 'catalog';
+  let _marketAvail = 'all'; // all|in_stock|order
+  let _marketKind = 'all'; // all|product|equipment
+  let _marketGroup = '';
+  let _cartSheetTab = 'cart'; // cart|ai
+  let _aiProposals = [];
+  let _aiAbort = null;
   // ── D2 (21.09): live-обновление без F5 ──────────────────────────────────
   // В складе раньше НЕ было ни setInterval, ни SSE/WS — данные менялись только по F5.
   // Поллим только «живые» вкладки (очереди и списки, где важна свежесть), останавливаемся
@@ -510,6 +516,54 @@ window.AsgardWarehouseV2 = (function () {
     .wh2-fchip:hover{border-color:var(--gold,#D4A843);color:var(--t1,#e6e9ef)}
     .wh2-fchip--active{background:var(--gold,#D4A843);color:#1a1408;border-color:var(--gold,#D4A843)}
 
+    /* Поиск цен — сравнение предложений */
+    .wh2-ps-hero{padding:20px 22px 16px;border-radius:18px;border:1px solid rgba(212,168,67,.22);background:
+      radial-gradient(900px 180px at 0% -20%,rgba(212,168,67,.16),transparent 55%),
+      linear-gradient(160deg,#171b24,#12151c 55%,#10131a);margin-bottom:14px;box-shadow:0 10px 28px rgba(0,0,0,.22)}
+    .wh2-ps-hero h2{margin:0 0 4px;font-size:22px;font-weight:800;letter-spacing:-.03em;color:var(--t1,#e6e9ef)}
+    .wh2-ps-hero p{margin:0 0 14px;color:var(--t2,#8b93a3);font-size:13.5px;line-height:1.45;max-width:720px}
+    .wh2-ps-bar{display:flex;gap:10px;flex-wrap:wrap;align-items:stretch}
+    .wh2-ps-bar input{flex:1;min-width:240px;padding:13px 16px;border-radius:12px;border:1px solid rgba(255,255,255,.10);background:rgba(0,0,0,.28);color:var(--t1);font-size:15.5px}
+    .wh2-ps-bar input:focus{outline:none;border-color:var(--gold,#D4A843);box-shadow:0 0 0 3px rgba(212,168,67,.2)}
+    .wh2-ps-examples{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+    .wh2-ps-ex{padding:6px 12px;border-radius:999px;border:1px solid rgba(255,255,255,.08);background:rgba(255,255,255,.03);color:var(--t2);font-size:12.5px;cursor:pointer}
+    .wh2-ps-ex:hover,.wh2-ps-ex.is-on{border-color:rgba(212,168,67,.45);color:var(--gold,#D4A843);background:rgba(212,168,67,.08)}
+    .wh2-ps-relax{margin:0 0 12px;padding:10px 14px;border-radius:12px;border:1px solid rgba(212,168,67,.35);background:rgba(212,168,67,.1);color:var(--gold,#D4A843);font-size:13px;font-weight:650;line-height:1.4}
+    .wh2-ps-sum{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 12px;align-items:center}
+    .wh2-ps-pill{display:inline-flex;align-items:baseline;gap:6px;padding:7px 11px;border-radius:10px;border:1px solid rgba(255,255,255,.08);background:rgba(255,255,255,.03);font-size:12px;color:var(--t2)}
+    .wh2-ps-pill b{font-size:15px;font-weight:800;color:var(--t1);letter-spacing:-.02em}
+    .wh2-ps-pill--gold{border-color:rgba(212,168,67,.35);background:rgba(212,168,67,.08)}
+    .wh2-ps-pill--gold b{color:var(--gold,#D4A843)}
+    .wh2-ps-wrap{border:1px solid var(--border,#262c38);border-radius:16px;overflow:hidden;background:var(--bg-card,#161a22)}
+    .wh2-ps-table{width:100%;border-collapse:collapse;font-size:13px}
+    .wh2-ps-table th{text-align:left;padding:11px 12px;background:rgba(255,255,255,.02);color:var(--t2);font-size:11px;text-transform:uppercase;letter-spacing:.04em;font-weight:700;border-bottom:1px solid var(--border,#262c38);white-space:nowrap}
+    .wh2-ps-table td{padding:12px;border-bottom:1px solid rgba(255,255,255,.04);vertical-align:middle}
+    .wh2-ps-table tr:last-child td{border-bottom:none}
+    .wh2-ps-table tr:hover td{background:rgba(255,255,255,.025)}
+    .wh2-ps-table tr.is-best td{background:rgba(48,209,88,.07)}
+    .wh2-ps-table tr.is-best:hover td{background:rgba(48,209,88,.1)}
+    .wh2-ps-name{font-weight:700;color:var(--t1);line-height:1.25;max-width:340px}
+    .wh2-ps-sub{margin-top:3px;font-size:11.5px;color:var(--t2);font-weight:500}
+    .wh2-ps-sup{font-weight:650;color:var(--t1)}
+    .wh2-ps-price{font-weight:800;font-size:15px;white-space:nowrap;letter-spacing:-.02em;color:var(--t1);line-height:1.15}
+    .wh2-ps-price.is-best{color:#3ddc84}
+    .wh2-ps-price-unit{display:block;margin-top:3px;font-size:11px;font-weight:650;color:var(--t2);letter-spacing:0}
+    .wh2-ps-price-note{display:block;margin-top:2px;font-size:11px;font-weight:700;color:var(--gold,#D4A843)}
+    .wh2-ps-meta{font-size:12px;color:var(--t2);line-height:1.35}
+    .wh2-ps-badge{display:inline-flex;align-items:center;gap:4px;padding:3px 8px;border-radius:999px;font-size:11px;font-weight:700;white-space:nowrap}
+    .wh2-ps-badge--fresh{background:rgba(48,209,88,.15);color:#3ddc84}
+    .wh2-ps-badge--ok{background:rgba(90,160,224,.15);color:#7eb0ff}
+    .wh2-ps-badge--stale{background:rgba(255,176,32,.15);color:#ffb020}
+    .wh2-ps-badge--old{background:rgba(255,92,92,.15);color:#ff6b6b}
+    .wh2-ps-badge--unknown{background:rgba(255,255,255,.06);color:var(--t2)}
+    .wh2-ps-badge--src{background:rgba(255,255,255,.05);color:var(--t2);font-weight:600}
+    .wh2-ps-rank{width:28px;height:28px;border-radius:8px;display:inline-flex;align-items:center;justify-content:center;font-weight:800;font-size:12px;background:rgba(255,255,255,.05);color:var(--t2)}
+    .wh2-ps-rank.is-best{background:rgba(48,209,88,.18);color:#3ddc84}
+    @media(max-width:900px){
+      .wh2-ps-hide-m{display:none}
+      .wh2-ps-name{max-width:180px}
+    }
+
     /* Поиск + автоподсказки */
     .wh2-search input{padding-right:34px}
     .wh2-search__clear{position:absolute;right:10px;top:50%;transform:translateY(-50%);width:20px;height:20px;border-radius:50%;border:none;background:var(--border,#262c38);color:var(--t1);cursor:pointer;font-size:12px;display:none;align-items:center;justify-content:center}
@@ -668,25 +722,30 @@ window.AsgardWarehouseV2 = (function () {
           <button class="wh2-cart-x" data-dr-rm="${it.id}" title="Убрать">✕</button>
         </div>`;
       }).join('');
+    const cartPane = `
+      <div class="wh2-page-tip">Соберите позиции → <b>AI</b> или Excel → <b>Отправить заявку</b>. Наличие → резерв, остальное → закупка.</div>
+      ${body}
+      <div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap;${items.length ? '' : 'justify-content:center'}">
+        <button class="wh2-btn" id="wh2-cart-manual">＋ Вручную</button>
+        <button class="wh2-btn" id="wh2-cart-excel">📎 Excel</button>
+        <button class="wh2-btn" id="wh2-cart-ai">✨ AI-помощник</button>
+      </div>
+      <div id="wh2-cart-sub" style="margin-top:12px"></div>`;
+    const aiPane = _renderAiPaneHtml();
     dr.innerHTML = `
       <div class="wh2-cart-dr__hd">
-        <h3>🛒 Корзина закупки</h3>
+        <h3>🛒 Корзина</h3>
         <button class="wh2-iconbtn" id="wh2-dr-refresh" title="Обновить остатки">↻</button>
         <button class="wh2-iconbtn wh2-iconbtn--x" id="wh2-dr-close" title="Закрыть">✕</button>
       </div>
-      <div class="wh2-cart-dr__body">
-        <div class="wh2-page-tip">Соберите позиции → при необходимости <b>Excel</b> → <b>Отправить заявку</b>. Что есть на складе уйдёт в резерв, остальное — в закупку.</div>
-        ${body}
-        ${items.length ? `<div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap">
-          <button class="wh2-btn" id="wh2-cart-manual">＋ Добавить вручную</button>
-          <button class="wh2-btn" id="wh2-cart-excel">📎 Загрузить Excel</button>
-        </div>` : `<div style="display:flex;gap:8px;margin-top:14px;justify-content:center">
-          <button class="wh2-btn" id="wh2-cart-manual">＋ Добавить вручную</button>
-          <button class="wh2-btn" id="wh2-cart-excel">📎 Excel</button>
-        </div>`}
-        <div id="wh2-cart-sub" style="margin-top:12px"></div>
+      <div class="wh2-sheet-tabs">
+        <button type="button" class="wh2-sheet-tab${_cartSheetTab==='cart'?' is-on':''}" data-sheet="cart">Корзина</button>
+        <button type="button" class="wh2-sheet-tab${_cartSheetTab==='ai'?' is-on':''}" data-sheet="ai">AI</button>
       </div>
-      ${items.length ? `<div class="wh2-cart-dr__ft">
+      <div class="wh2-cart-dr__body" id="wh2-sheet-body">
+        ${_cartSheetTab === 'ai' ? aiPane : cartPane}
+      </div>
+      ${_cartSheetTab === 'cart' && items.length ? `<div class="wh2-cart-dr__ft">
         <div class="wh2-cart-tot">
           <div class="wh2-cart-tot__c"><div class="wh2-cart-tot__v">${items.length}</div><div class="wh2-cart-tot__l">позиций</div></div>
           <div class="wh2-cart-tot__c"><div class="wh2-cart-tot__v" style="color:var(--ok-t,#30d158)">${fmt(res)}</div><div class="wh2-cart-tot__l">в резерв</div></div>
@@ -696,13 +755,216 @@ window.AsgardWarehouseV2 = (function () {
           <button class="wh2-btn" id="wh2-cart-preview" style="flex:1">👁 Предпросмотр</button>
           <button class="wh2-btn wh2-btn--primary" id="wh2-cart-submit" style="flex:2">Отправить заявку →</button>
         </div>
-      </div>` : ''}`;
+      </div>` : (_cartSheetTab === 'ai' ? `<div class="wh2-ai-footer">
+        <span style="font-size:12px;color:var(--t2)">Выбрано: <b id="wh2-ai-sel-n">${_aiProposals.filter(p=>p.selected!==false).length}</b></span>
+        <button class="wh2-btn" id="wh2-ai-clear" style="margin-left:auto">Сбросить</button>
+        <button class="wh2-btn wh2-btn--primary" id="wh2-ai-add">Добавить в корзину</button>
+      </div>` : '')}`;
     _bindDrawer();
+    _bindAiPane();
+  }
+
+  function _renderAiPaneHtml() {
+    const props = (_aiProposals || []).map((p, i) => {
+      const on = p.selected !== false;
+      const badge = p.is_new_position || p.recommended_action === 'procure_new'
+        ? '<span class="wh2-chip" style="background:rgba(224,168,0,.2);color:#e0a800">Под заказ</span>'
+        : (p.available_qty > 0
+          ? '<span class="wh2-chip wh2-chip--ok">В наличии</span>'
+          : '<span class="wh2-chip">Каталог</span>');
+      const alts = (p.alternatives || []).slice(0, 5);
+      return `<div class="wh2-ai-prop" data-ai-i="${i}">
+        <input type="checkbox" data-ai-sel="${i}" ${on ? 'checked' : ''}>
+        <div>
+          <div class="wh2-ai-prop__nm">${esc(p.matched_name || p.input_name || p.name || '—')} ${badge}</div>
+          <div class="wh2-ai-prop__meta">${esc(p.input_name && p.matched_name && p.input_name !== p.matched_name ? ('запрос: ' + p.input_name + ' · ') : '')}qty
+            <input type="number" min="1" value="${p.need_qty || 1}" data-ai-qty="${i}" style="width:64px;margin:0 4px;padding:2px 6px;border-radius:6px;border:1px solid var(--border);background:var(--bg2);color:inherit">
+            ${p.available_qty != null ? ' · склад ' + fmt(p.available_qty) : ''}
+            ${alts.length ? ` · <button type="button" class="wh2-btn" data-ai-alt="${i}" style="padding:2px 8px;font-size:11px">Заменить</button>` : ''}
+            ${!p.is_new_position ? ` · <button type="button" class="wh2-btn" data-ai-new="${i}" style="padding:2px 8px;font-size:11px">Как новая</button>` : ''}
+          </div>
+        </div>
+      </div>`;
+    }).join('');
+    return `
+      <div class="wh2-ai-chatlog" id="wh2-ai-log"></div>
+      <div style="display:flex;gap:6px;padding:0 0 8px;flex-wrap:wrap">
+        <button type="button" class="wh2-fchip wh2-fchip--active" data-ai-mode="chat">Чат</button>
+        <button type="button" class="wh2-fchip" data-ai-mode="excel">Excel</button>
+        <button type="button" class="wh2-fchip" data-ai-mode="text">Текст</button>
+      </div>
+      <div id="wh2-ai-mode-chat">
+        <textarea id="wh2-ai-msg" rows="2" placeholder="Напишите, что нужно: перчатки нитрил 100, каски 12…" style="width:100%;padding:8px;border-radius:8px;border:1px solid var(--border);background:var(--bg2);color:inherit;resize:vertical"></textarea>
+        <button class="wh2-btn wh2-btn--primary" id="wh2-ai-send" style="margin-top:8px;width:100%">Разобрать</button>
+      </div>
+      <div id="wh2-ai-mode-excel" style="display:none">
+        <input type="file" id="wh2-ai-file" accept=".xlsx,.xls,.csv">
+        <div style="font-size:12px;color:var(--t2);margin-top:6px"><a href="/templates/wms-cart-excel-template.xlsx" download>⬇ Шаблон Excel</a></div>
+      </div>
+      <div id="wh2-ai-mode-text" style="display:none">
+        <textarea id="wh2-ai-text" rows="6" placeholder="По одной позиции в строке:&#10;перчатки нитрил; 100; шт&#10;каска; 12" style="width:100%;padding:8px;border-radius:8px;border:1px solid var(--border);background:var(--bg2);color:inherit"></textarea>
+        <button class="wh2-btn wh2-btn--primary" id="wh2-ai-text-go" style="margin-top:8px;width:100%">Разобрать список</button>
+      </div>
+      <div id="wh2-ai-props" style="margin-top:10px">${props || '<div style="color:var(--t2);font-size:13px">Пока пусто — напишите запрос, вставьте список или Excel.</div>'}</div>`;
+  }
+
+  function _bindAiPane() {
+    document.querySelectorAll('[data-sheet]').forEach((b) => {
+      b.onclick = () => { _cartSheetTab = b.getAttribute('data-sheet') || 'cart'; _renderDrawer(); };
+    });
+    const aiBtn = document.getElementById('wh2-cart-ai');
+    if (aiBtn) aiBtn.onclick = () => { _cartSheetTab = 'ai'; _renderDrawer(); };
+    if (_cartSheetTab !== 'ai') return;
+    let mode = 'chat';
+    const setMode = (m) => {
+      mode = m;
+      document.querySelectorAll('[data-ai-mode]').forEach((x) =>
+        x.classList.toggle('wh2-fchip--active', x.getAttribute('data-ai-mode') === m));
+      ['chat','excel','text'].forEach((k) => {
+        const el = document.getElementById('wh2-ai-mode-' + k);
+        if (el) el.style.display = k === m ? '' : 'none';
+      });
+    };
+    document.querySelectorAll('[data-ai-mode]').forEach((b) => {
+      b.onclick = () => setMode(b.getAttribute('data-ai-mode'));
+    });
+    const log = (who, text) => {
+      const el = document.getElementById('wh2-ai-log'); if (!el) return;
+      el.innerHTML += `<div class="${who}">${esc(text)}</div>`;
+      el.scrollTop = el.scrollHeight;
+    };
+    const applySuggestions = (suggestions) => {
+      _aiProposals = (suggestions || []).map((s) => ({
+        ...s,
+        selected: true,
+        matched_name: s.matched_name || (s.alternatives && s.alternatives[0] && s.alternatives[0].name) || null,
+        need_qty: s.need_qty || 1
+      }));
+      try { sessionStorage.setItem('wh2_ai_proposals', JSON.stringify(_aiProposals)); } catch (_) {}
+      _renderDrawer();
+    };
+    const sendChat = async () => {
+      const msg = (document.getElementById('wh2-ai-msg')?.value || '').trim();
+      if (msg.length < 2) return toast('AI', 'Напишите запрос', 'warn');
+      log('me', msg);
+      if (_aiAbort) try { _aiAbort.abort(); } catch (_) {}
+      _aiAbort = new AbortController();
+      try {
+        const data = await api('/api/warehouse-cart/assist', {
+          method: 'POST', body: JSON.stringify({ message: msg }), signal: _aiAbort.signal
+        });
+        log('bot', data.reply || 'Готово');
+        if (data.ai_error) log('bot', 'AI недоступен, подобран по каталогу');
+        applySuggestions(data.proposals || []);
+      } catch (e) {
+        if (e.name === 'AbortError') return;
+        toast('AI', e.message || 'Ошибка', 'err');
+      }
+    };
+    const sendEl = document.getElementById('wh2-ai-send');
+    if (sendEl) sendEl.onclick = sendChat;
+    const msgEl = document.getElementById('wh2-ai-msg');
+    if (msgEl) msgEl.onkeydown = (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChat(); } };
+
+    const fileEl = document.getElementById('wh2-ai-file');
+    if (fileEl) fileEl.onchange = async () => {
+      const f = fileEl.files && fileEl.files[0]; if (!f) return;
+      const fd = new FormData(); fd.append('file', f);
+      try {
+        const t = localStorage.getItem('asgard_token') || localStorage.getItem('auth_token');
+        const r = await fetch('/api/warehouse-cart/parse-excel', { method: 'POST', headers: { Authorization: 'Bearer ' + t }, body: fd });
+        const parsed = await r.json();
+        if (!r.ok) throw new Error(parsed.error || 'parse');
+        const sug = await api('/api/warehouse-cart/suggest-ai', { method: 'POST', body: JSON.stringify({ rows: parsed.rows || [] }) });
+        if (sug.ai_error) log('bot', 'AI недоступен, подобран по каталогу');
+        applySuggestions((sug.suggestions || []).map((s, i) => {
+          const row = (parsed.rows || [])[i] || {};
+          return { ...s, input_name: s.input_name || row.name, need_qty: s.need_qty || row.quantity || 1 };
+        }));
+        log('bot', 'Excel разобран: ' + (_aiProposals.length) + ' позиций');
+      } catch (e) { toast('Excel', e.message || 'Ошибка', 'err'); }
+    };
+
+    const textGo = document.getElementById('wh2-ai-text-go');
+    if (textGo) textGo.onclick = async () => {
+      const text = document.getElementById('wh2-ai-text')?.value || '';
+      try {
+        const parsed = await api('/api/warehouse-cart/parse-text-list', { method: 'POST', body: JSON.stringify({ text }) });
+        const sug = await api('/api/warehouse-cart/suggest-ai', { method: 'POST', body: JSON.stringify({ rows: parsed.rows || [] }) });
+        applySuggestions(sug.suggestions || []);
+        log('bot', 'Список: ' + (_aiProposals.length) + (parsed.truncated ? ' (обрезан)' : ''));
+      } catch (e) { toast('Список', e.message || 'Ошибка', 'err'); }
+    };
+
+    document.querySelectorAll('[data-ai-sel]').forEach((cb) => {
+      cb.onchange = () => { const i = +cb.getAttribute('data-ai-sel'); if (_aiProposals[i]) _aiProposals[i].selected = cb.checked; };
+    });
+    document.querySelectorAll('[data-ai-qty]').forEach((inp) => {
+      inp.onchange = () => { const i = +inp.getAttribute('data-ai-qty'); if (_aiProposals[i]) _aiProposals[i].need_qty = Math.max(1, parseFloat(inp.value) || 1); };
+    });
+    document.querySelectorAll('[data-ai-new]').forEach((b) => {
+      b.onclick = () => {
+        const i = +b.getAttribute('data-ai-new');
+        const p = _aiProposals[i]; if (!p) return;
+        p.is_new_position = true; p.product_id = null; p.equipment_id = null; p.matched = false;
+        p.recommended_action = 'procure_new'; _renderDrawer();
+      };
+    });
+    document.querySelectorAll('[data-ai-alt]').forEach((b) => {
+      b.onclick = () => {
+        const i = +b.getAttribute('data-ai-alt');
+        const p = _aiProposals[i]; if (!p || !(p.alternatives || []).length) return;
+        const names = p.alternatives.map((a, idx) => `${idx + 1}) ${a.name || a.product_name || a.input_name}`).join('\n');
+        const pick = prompt('Вариант (номер):\n' + names, '1');
+        const n = parseInt(pick, 10); if (!n || !p.alternatives[n - 1]) return;
+        const a = p.alternatives[n - 1];
+        p.product_id = a.product_id || null;
+        p.equipment_id = a.equipment_id || null;
+        p.matched_name = a.name || a.product_name;
+        p.match_kind = a.kind || (a.equipment_id ? 'equipment' : 'product');
+        p.is_new_position = false;
+        p.available_qty = a.available_qty;
+        _renderDrawer();
+      };
+    });
+    const clearB = document.getElementById('wh2-ai-clear');
+    if (clearB) clearB.onclick = () => { _aiProposals = []; try { sessionStorage.removeItem('wh2_ai_proposals'); } catch (_) {} _renderDrawer(); };
+    const addB = document.getElementById('wh2-ai-add');
+    if (addB) addB.onclick = async () => {
+      const selected = _aiProposals.filter((p) => p.selected !== false);
+      if (!selected.length) return toast('AI', 'Ничего не выбрано', 'warn');
+      const items = selected.map((p) => {
+        if (p.equipment_id) return { item_type: 'equipment', equipment_id: p.equipment_id, need_qty: 1, source: 'excel' };
+        if (p.product_id && !p.is_new_position) return { item_type: 'consumable', product_id: p.product_id, need_qty: p.need_qty || 1, source: 'excel' };
+        return { item_type: 'new_position', custom_name: p.input_name || p.matched_name || 'Позиция', need_qty: p.need_qty || 1, source: 'excel' };
+      });
+      try {
+        const ok = await addToCart({ warehouse_id: _cart.warehouse_id || 1, items });
+        if (ok) {
+          toast('Корзина', 'Добавлено: ' + items.length, 'ok');
+          _aiProposals = [];
+          try { sessionStorage.removeItem('wh2_ai_proposals'); } catch (_) {}
+          _cartSheetTab = 'cart';
+          await _cartSync();
+          _renderDrawer();
+        }
+      } catch (e) { toast('Корзина', e.message || 'Ошибка', 'err'); }
+    };
+  }
+
+  async function openAssist() {
+    _cartSheetTab = 'ai';
+    try {
+      const raw = sessionStorage.getItem('wh2_ai_proposals');
+      if (raw && !_aiProposals.length) _aiProposals = JSON.parse(raw) || [];
+    } catch (_) {}
+    await openCartDrawer();
   }
   function _bindDrawer() {
     const $ = id => document.getElementById(id);
-    $('wh2-dr-close').onclick = () => closeCartDrawer();
-    $('wh2-dr-refresh').onclick = async () => { const b = $('wh2-dr-refresh'); b.style.transition = 'transform .5s'; b.style.transform = 'rotate(360deg)'; await _cartSync(); _renderDrawer(); toast('Обновлено', 'Актуальные остатки', 'ok'); };
+    const closeBtn = $('wh2-dr-close'); if (closeBtn) closeBtn.onclick = () => closeCartDrawer();
+    const refBtn = $('wh2-dr-refresh');
+    if (refBtn) refBtn.onclick = async () => { refBtn.style.transition = 'transform .5s'; refBtn.style.transform = 'rotate(360deg)'; await _cartSync(); _renderDrawer(); toast('Обновлено', 'Актуальные остатки', 'ok'); };
     document.querySelectorAll('[data-dr-dec]').forEach(b => b.onclick = async () => { const id = +b.dataset.drDec; const it = _cart.items.find(i => i.id === id); if (!it) return; const cur = parseFloat(it.need_qty) || 1; if (cur <= 1) await removeFromCart(id); else await updateQty(id, cur - 1); _renderDrawer(); });
     document.querySelectorAll('[data-dr-inc]').forEach(b => b.onclick = async () => { const id = +b.dataset.drInc; const it = _cart.items.find(i => i.id === id); if (!it) return; await updateQty(id, (parseFloat(it.need_qty) || 1) + 1); _renderDrawer(); });
     document.querySelectorAll('[data-dr-need]').forEach(inp => { let t; inp.oninput = () => { clearTimeout(t); t = setTimeout(async () => { await updateQty(+inp.dataset.drNeed, Math.max(1, Math.floor(parseFloat(inp.value) || 1))); _renderDrawer(); }, 450); }; });
@@ -1122,8 +1384,209 @@ window.AsgardWarehouseV2 = (function () {
     refresh();
   }
 
+  // Группа поиска номенклатуры (V448): жильё / оборудование / расходники …
+  let _catalogGroup = localStorage.getItem('wh2_catalog_group') || '';
+  let _priceGroup = localStorage.getItem('wh2_price_group') || '';
+  let _priceQ = localStorage.getItem('wh2_price_q') || '';
+
+  function _fmtDateShort(v) {
+    if (!v) return '—';
+    const d = new Date(v);
+    if (isNaN(d.getTime())) return '—';
+    return d.toLocaleDateString('ru-RU');
+  }
+
+  // ════════════════════ ВКЛАДКА: ЦЕНЫ (сравнение предложений) ════════════════════
+  let _priceRunSeq = 0;
+  async function renderPriceSearch(container, seedQ) {
+    if (seedQ && !_priceQ) _priceQ = seedQ;
+    const examples = ['перчатки', 'каска', 'саморез', 'диск отрезной', 'проживание', 'электрод'];
+    container.innerHTML = `
+      <div class="wh2-ps-hero">
+        <h2>Сравнение цен</h2>
+        <p>Одна таблица: позиция, поставщик, цена, дата актуальности и откуда взята цена (счёт или мониторинг). Лучшие сверху.</p>
+        <div class="wh2-ps-bar">
+          <input id="wh2-ps-q" type="search" placeholder="Что ищем? перчатки, каска, саморез…" value="${esc(_priceQ)}" autocomplete="off" autofocus>
+          <button type="button" class="wh2-btn wh2-btn--primary" id="wh2-ps-go">Найти</button>
+        </div>
+        <div class="wh2-ps-examples">${examples.map((e) =>
+          `<button type="button" class="wh2-ps-ex${_priceQ === e ? ' is-on' : ''}" data-ex="${esc(e)}">${esc(e)}</button>`
+        ).join('')}</div>
+        <div class="wh2-chips" id="wh2-ps-groups" style="margin-top:14px">
+          <button type="button" class="wh2-fchip${!_priceGroup ? ' wh2-fchip--active' : ''}" data-sg="">Все</button>
+          ${[['ppe','СИЗ'],['consumable','Расходники'],['equipment','Оборудование'],['materials','Материалы'],['tools','Инструмент'],['housing','Жильё'],['food','Питание'],['services','Услуги']]
+            .map(([c,l]) => `<button type="button" class="wh2-fchip${_priceGroup===c?' wh2-fchip--active':''}" data-sg="${c}">${l}</button>`).join('')}
+        </div>
+      </div>
+      <div id="wh2-ps-body"></div>`;
+
+    const qEl = container.querySelector('#wh2-ps-q');
+    const body = container.querySelector('#wh2-ps-body');
+
+    const badge = (code, label) =>
+      `<span class="wh2-ps-badge wh2-ps-badge--${esc(code || 'unknown')}">${esc(label || '—')}</span>`;
+
+    const syncGroupChips = () => {
+      container.querySelectorAll('#wh2-ps-groups .wh2-fchip').forEach((x) =>
+        x.classList.toggle('wh2-fchip--active', (x.getAttribute('data-sg') || '') === _priceGroup));
+    };
+
+    const run = async () => {
+      const q = (qEl.value || '').trim();
+      _priceQ = q;
+      try { localStorage.setItem('wh2_price_q', q); } catch (_) {}
+      container.querySelectorAll('.wh2-ps-ex').forEach((b) => b.classList.toggle('is-on', b.dataset.ex === q));
+      if (q.length < 2) {
+        body.innerHTML = _emptyState('🔎', 'Что сравнить?', 'Напишите название — покажем цены у разных поставщиков с датой и источником.', null, null);
+        return;
+      }
+      const seq = ++_priceRunSeq;
+      body.innerHTML = `<div class="wh2-ps-sum"><div class="wh2-ps-pill">Ищем «${esc(q)}»…</div></div>` + _skelRows(6);
+      let data;
+      try {
+        const qs = ['q=' + encodeURIComponent(q), 'limit=80'];
+        if (_priceGroup) qs.push('search_group=' + encodeURIComponent(_priceGroup));
+        data = await api('/api/price-records/search?' + qs.join('&'));
+      } catch (e) {
+        if (seq !== _priceRunSeq) return;
+        body.innerHTML = `<div class="wh2-empty"><div class="wh2-empty__i">⚠️</div><div style="font-weight:700">Не удалось загрузить</div><div style="margin-top:6px;color:var(--t2)">${esc(e.message || 'Ошибка сети')}</div></div>`;
+        return;
+      }
+      if (seq !== _priceRunSeq) return;
+
+      // Умный поиск: бэкенд снял пустой фильтр (каска в СИЗ, а не в Материалах)
+      if (data.relaxed) {
+        _priceGroup = '';
+        try { localStorage.setItem('wh2_price_group', ''); } catch (_) {}
+        syncGroupChips();
+      }
+
+      const flat = data.flat_offers || [];
+      if (!flat.length) {
+        const hintGroups = (data.other_groups || []).slice(0, 3)
+          .map((g) => g.label + ' · ' + g.count).join(', ');
+        body.innerHTML = _emptyState(
+          '📭',
+          'По «' + q + '» цен нет',
+          hintGroups
+            ? 'В базе нет предложений с таким названием. Близкие группы: ' + hintGroups + '.'
+            : 'В базе нет предложений с таким названием. Загрузите счёт — позиции попадут в сравнение.',
+          '📄 Загрузить накладную/счёт',
+          'wh2-ps-import'
+        );
+        const ib = document.getElementById('wh2-ps-import'); if (ib) ib.onclick = () => openCatalogImport();
+        return;
+      }
+
+      const relaxBanner = data.relaxed && data.relax_hint
+        ? `<div class="wh2-ps-relax">${esc(data.relax_hint)}</div>`
+        : '';
+      const sum = relaxBanner + `<div class="wh2-ps-sum">
+        <div class="wh2-ps-pill"><b>${data.total_products || 0}</b> позиций</div>
+        <div class="wh2-ps-pill"><b>${flat.length}</b> предложений</div>
+        ${data.min_price != null ? `<div class="wh2-ps-pill wh2-ps-pill--gold"><b>${_money(data.min_price)}</b> … ${_money(data.max_price)}</div>` : ''}
+        <div class="wh2-ps-pill" style="margin-left:auto">сначала по смыслу, потом дешевле</div>
+      </div>`;
+
+      const rows = flat.map((o, i) => {
+        const asOf = _fmtDateShort(o.as_of || o.invoice_date || o.recorded_at);
+        const ageTxt = o.age_days != null ? (o.age_days === 0 ? 'сегодня' : o.age_days + ' дн. назад') : 'дата неизвестна';
+        const origin = o.origin_label || (o.invoice_number ? ('Счёт ' + o.invoice_number) : (o.source_label || 'База цен'));
+        const unitHint = o.unit_hint || (o.unit ? ('за ' + o.unit) : '');
+        const priceNote = o.price_note || '';
+        return `<tr class="${i === 0 ? 'is-best' : ''}">
+          <td><span class="wh2-ps-rank${i === 0 ? ' is-best' : ''}">${i + 1}</span></td>
+          <td>
+            <div class="wh2-ps-name">${esc(o.product_name || o.item_name || '—')}</div>
+            <div class="wh2-ps-sub">${esc(o.category_name || 'Без категории')}${o.unit ? ' · ' + esc(o.unit) : ''}${o.pack_qty ? ' · ' + o.pack_qty + ' шт в уп.' : ''}${o.article ? ' · арт. ' + esc(o.article) : ''}</div>
+          </td>
+          <td class="wh2-ps-sup">${esc(o.supplier_name || '—')}</td>
+          <td class="wh2-ps-price${i === 0 ? ' is-best' : ''}">${_money(o.unit_price)}${unitHint ? `<span class="wh2-ps-price-unit">${esc(unitHint)}</span>` : ''}${priceNote ? `<span class="wh2-ps-price-note">${esc(priceNote)}</span>` : ''}</td>
+          <td>
+            <div class="wh2-ps-meta"><b style="color:var(--t1);font-weight:700">${asOf}</b></div>
+            <div class="wh2-ps-meta" style="margin-top:4px">${badge(o.freshness, o.freshness_label || '—')} <span style="margin-left:4px">${esc(ageTxt)}</span></div>
+          </td>
+          <td class="wh2-ps-hide-m">
+            <div class="wh2-ps-meta">${esc(origin)}</div>
+            <div style="margin-top:4px">${badge('src', o.source_label || 'источник')}</div>
+          </td>
+          <td style="text-align:right;white-space:nowrap">
+            ${o.product_id
+              ? `<button type="button" class="wh2-btn" data-add-pid="${o.product_id}" data-sup="${esc(o.supplier_name || '')}" style="padding:6px 10px;font-size:12px">+ В корзину</button>`
+              : ''}
+          </td>
+        </tr>`;
+      }).join('');
+
+      body.innerHTML = sum + `<div class="wh2-ps-wrap"><table class="wh2-ps-table">
+        <thead><tr>
+          <th>#</th><th>Позиция</th><th>Поставщик</th><th>Цена</th><th>Актуальность</th><th class="wh2-ps-hide-m">Откуда цена</th><th></th>
+        </tr></thead>
+        <tbody>${rows}</tbody>
+      </table></div>`;
+
+      body.querySelectorAll('[data-add-pid]').forEach((b) => {
+        b.onclick = async () => {
+          const pid = +b.dataset.addPid;
+          try {
+            const ok = await addToCart({
+              warehouse_id: _cart.warehouse_id,
+              items: [{ item_type: 'consumable', product_id: pid, need_qty: 1, source: 'catalog' }]
+            });
+            if (ok) toast('Корзина', 'Добавлено · ' + (b.dataset.sup || ''), 'ok');
+          } catch (e) { toast('Корзина', e.message || 'Не добавлено', 'err'); }
+        };
+      });
+    };
+
+    container.querySelector('#wh2-ps-go').onclick = run;
+    let debPs;
+    qEl.oninput = () => {
+      clearTimeout(debPs);
+      debPs = setTimeout(() => {
+        if ((qEl.value || '').trim().length >= 2) run();
+      }, 320);
+    };
+    qEl.onkeydown = (e) => { if (e.key === 'Enter') { e.preventDefault(); clearTimeout(debPs); run(); } };
+    container.querySelectorAll('[data-ex]').forEach((b) => {
+      b.onclick = () => {
+        // Пример = новый запрос: сбрасываем категорию, как на маркетплейсе
+        qEl.value = b.dataset.ex;
+        _priceGroup = '';
+        try { localStorage.setItem('wh2_price_group', ''); } catch (_) {}
+        syncGroupChips();
+        clearTimeout(debPs);
+        run();
+      };
+    });
+    container.querySelectorAll('#wh2-ps-groups [data-sg]').forEach((b) => {
+      b.onclick = () => {
+        _priceGroup = b.getAttribute('data-sg') || '';
+        try { localStorage.setItem('wh2_price_group', _priceGroup); } catch (_) {}
+        syncGroupChips();
+        if ((qEl.value || '').trim().length >= 2) run();
+      };
+    });
+    if ((_priceQ || '').trim().length >= 2) run();
+    else body.innerHTML = _emptyState('🔎', 'Что сравнить?', 'Напишите название — покажем цены у разных поставщиков с датой и источником.', null, null);
+  }
+
   // ════════════════════ ВКЛАДКА: РАСХОДНИКИ (каталог + наличие в одном) ════════════════════
   async function renderConsumables(container, search) {
+    let groupChips = `<button type="button" class="wh2-fchip${!_catalogGroup ? ' wh2-fchip--active' : ''}" data-sg="">Все</button>`;
+    try {
+      const cg = await api('/api/product-categories');
+      const groups = (cg && cg.groups) || [];
+      groupChips += groups
+        .filter((g) => g.products_count > 0 || ['housing', 'equipment', 'consumable'].includes(g.code))
+        .map((g) => `<button type="button" class="wh2-fchip${_catalogGroup === g.code ? ' wh2-fchip--active' : ''}" data-sg="${esc(g.code)}">${esc(g.label)}${g.products_count ? ' · ' + g.products_count : ''}</button>`)
+        .join('');
+    } catch (_) {
+      groupChips += [
+        ['housing', 'Жильё'], ['equipment', 'Оборудование'], ['consumable', 'Расходники'],
+        ['materials', 'Материалы'], ['ppe', 'СИЗ'], ['tools', 'Инструмент'], ['services', 'Услуги']
+      ].map(([c, l]) => `<button type="button" class="wh2-fchip${_catalogGroup === c ? ' wh2-fchip--active' : ''}" data-sg="${c}">${l}</button>`).join('');
+    }
     container.innerHTML = `
       <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap">
         <button class="wh2-btn" id="wh2-cons-import">📄 Загрузить накладную/счёт</button>
@@ -1134,6 +1597,7 @@ window.AsgardWarehouseV2 = (function () {
         <span style="flex:1"></span>
         <button class="wh2-btn" id="wh2-cview-table">☰ Таблицей</button>
       </div>
+      <div class="wh2-chips" id="wh2-cat-groups" style="margin:-4px 0 12px">${groupChips}</div>
       <div style="font-size:12px;color:var(--t2);margin:-8px 0 12px">Жмите «+ В корзину» на позициях → корзина 🛒 в углу справа-снизу → отправьте одной заявкой (наличие зарезервируется, дефицит уйдёт в закупку).</div>
       <div id="wh2-cons-body"></div>`;
     container.querySelectorAll('[data-cop]').forEach(b => b.onclick = () => openStockOp(b.dataset.cop));
@@ -1143,6 +1607,14 @@ window.AsgardWarehouseV2 = (function () {
     let tableMode = false;
     const draw = () => tableMode ? renderStock(container.querySelector('#wh2-cons-body'), search) : renderCatalog(container.querySelector('#wh2-cons-body'), search);
     if (tableBtn) tableBtn.onclick = () => { tableMode = !tableMode; tableBtn.textContent = tableMode ? '▦ Карточки' : '☰ Таблицей'; draw(); };
+    container.querySelectorAll('#wh2-cat-groups [data-sg]').forEach((b) => {
+      b.onclick = () => {
+        _catalogGroup = b.getAttribute('data-sg') || '';
+        try { localStorage.setItem('wh2_catalog_group', _catalogGroup); } catch (_) {}
+        container.querySelectorAll('#wh2-cat-groups .wh2-fchip').forEach((x) => x.classList.toggle('wh2-fchip--active', (x.getAttribute('data-sg') || '') === _catalogGroup));
+        draw();
+      };
+    });
     draw();
   }
 
@@ -1150,7 +1622,13 @@ window.AsgardWarehouseV2 = (function () {
   async function renderCatalog(container, search) {
     container.innerHTML = _skelCards(8);
     let prods = [];
-    try { const d = await api('/api/products?limit=200' + (search ? '&search=' + encodeURIComponent(search) : '')); prods = d.items || []; }
+    try {
+      const qs = ['limit=200'];
+      if (search) qs.push('search=' + encodeURIComponent(search));
+      if (_catalogGroup) qs.push('search_group=' + encodeURIComponent(_catalogGroup));
+      const d = await api('/api/products?' + qs.join('&'));
+      prods = d.items || [];
+    }
     catch (e) { container.innerHTML = `<div class="wh2-empty"><div class="wh2-empty__i">⚠️</div>${esc(e.message)}</div>`; return; }
     if (!prods.length) {
       container.innerHTML = search
@@ -1173,6 +1651,8 @@ window.AsgardWarehouseV2 = (function () {
       if (s.includes('инструм') || s.includes('диск') || s.includes('отрез')) return '💿';
       if (s.includes('строит') || s.includes('цемент')) return '🧱';
       if (s.includes('аренд')) return '🚜';
+      if (s.includes('жил') || s.includes('прожив') || s.includes('гостиниц') || s.includes('отел')) return '🏨';
+      if (s.includes('питан') || s.includes('обед') || s.includes('завтрак')) return '🍲';
       return '📦';
     };
     container.innerHTML = `<div class="wh2-cards">${prods.map((p, idx) => {
@@ -1224,11 +1704,23 @@ window.AsgardWarehouseV2 = (function () {
     });
   }
 
+  function _productDescription(card, p) {
+    const top = card && card.description_ai != null ? String(card.description_ai).trim() : '';
+    if (top) return top;
+    let a = p && p.attrs;
+    if (typeof a === 'string') {
+      try { a = JSON.parse(a); } catch (_) { a = null; }
+    }
+    if (a && typeof a === 'object' && a.description_ai) return String(a.description_ai).trim();
+    return '';
+  }
+
   async function openProduct(pid) {
     let card;
     try { card = await api('/api/stock/product/' + pid + '/card'); }
     catch (e) { toast('Ошибка', e.message, 'err'); return; }
     const p = card.item, slots = card.slots || [], moves = card.movements || [], lp = card.last_price;
+    const descAi = _productDescription(card, p);
     const CAT_ICON = (c, name) => {
       const s = ((c || '') + ' ' + (name || '')).toLowerCase();
       if (s.includes('сиз') || s.includes('защит') || s.includes('перчат') || s.includes('каск')) return '🧤';
@@ -1241,6 +1733,8 @@ window.AsgardWarehouseV2 = (function () {
       if (s.includes('шланг') || s.includes('рукав')) return '🪢';
       if (s.includes('инструм') || s.includes('диск') || s.includes('отрез')) return '💿';
       if (s.includes('строит') || s.includes('цемент')) return '🧱';
+      if (s.includes('жил') || s.includes('прожив') || s.includes('гостиниц') || s.includes('отел')) return '🏨';
+      if (s.includes('питан') || s.includes('обед') || s.includes('завтрак')) return '🍲';
       return '📦';
     };
     const photoInner = p.photo_url
@@ -1265,15 +1759,35 @@ window.AsgardWarehouseV2 = (function () {
             <div class="wh2-card__sub">${esc(p.category_name || 'Без категории')} • ${esc(p.unit)}${p.article ? ' • арт. ' + esc(p.article) : ''}${p.ean ? ' • EAN ' + esc(p.ean) : ''}</div>
             <div><b style="font-size:28px;color:${card.total ? 'var(--ok-t,#30d158)' : 'var(--t2,#8b93a3)'}">${fmt(card.total)}</b> <span class="wh2-card__sub">${esc(p.unit)} в наличии</span></div>
             ${lp ? `<div class="wh2-card__sub">💰 посл. цена: <b>${fmt(lp.unit_price)} ₽</b>${lp.supplier_name ? ' · ' + esc(lp.supplier_name) : ''}</div>` : ''}
+            ${card.pack_qty ? `<div class="wh2-card__sub">Упаковка: ${fmt(card.pack_qty)} шт${card.unit_price_base != null ? ' · ≈ ' + _money(card.unit_price_base) + ' за 1 шт' : ''}</div>` : ''}
           </div>
         </div>
+        ${descAi ? `<div style="padding:12px 14px;border-radius:12px;background:rgba(255,255,255,.04);border:1px solid var(--border,rgba(255,255,255,.08))">
+          <div class="wh2-card__sub" style="margin-bottom:6px;font-weight:700;letter-spacing:.02em;text-transform:uppercase;font-size:11px">Описание</div>
+          <div style="font-size:14px;line-height:1.5;color:var(--t1,#e8eaed);white-space:pre-wrap">${esc(descAi)}</div>
+        </div>` : ''}
         ${slots.length ? `<div><div class="wh2-card__sub" style="margin-bottom:6px;font-weight:600">Где лежит</div>
           <table class="wh2-table"><tbody>${slots.map(s => `<tr><td>${esc(s.warehouse_name || '—')}</td><td><b style="color:var(--gold,#D4A843)">${esc(s.location_label || 'без ячейки')}</b></td><td style="text-align:right">${fmt(s.quantity)} ${esc(s.unit)}</td></tr>`).join('')}</tbody></table></div>` : ''}
+        ${(card.offers || []).length ? `<div><div class="wh2-card__sub" style="margin-bottom:6px;font-weight:600">Где заказать / цены</div>
+          <table class="wh2-table"><thead><tr><th>Поставщик</th><th>Цена</th><th>Откуда</th></tr></thead>
+          <tbody>${card.offers.slice(0, 8).map(o => `<tr><td>${esc(o.supplier_name || '—')}</td><td><b>${_money(o.unit_price)}</b> <span class="wh2-card__sub">/ ${esc(o.unit || p.unit || 'шт')}</span></td><td class="wh2-card__sub">${esc(o.origin_label || '')}${o.as_of ? ' · ' + new Date(o.as_of).toLocaleDateString('ru-RU') : ''}</td></tr>`).join('')}</tbody></table></div>` : ''}
         ${moves.length ? `<div><div class="wh2-card__sub" style="margin-bottom:6px;font-weight:600">Последние движения</div>
           ${moves.slice(0, 6).map(m => { const meta = MOVE_META[m.movement_type] || { i: '•', l: m.movement_type }; return `<div class="wh2-mv" style="padding:7px 0"><div class="wh2-mv__ic" style="background:${meta.c || 'rgba(139,147,163,.15)'};width:28px;height:28px;font-size:14px">${meta.i}</div><div style="flex:1"><span style="font-size:13px">${meta.l} ${fmt(m.qty)} ${esc(m.unit)}</span>${m.reason ? ` <span class="wh2-card__sub">· ${esc(m.reason)}</span>` : ''}</div><span class="wh2-card__sub">${new Date(m.created_at).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' })}</span></div>`; }).join('')}</div>` : ''}
+        <div style="display:flex;gap:8px;align-items:center">
+          <input id="wh2-pdp-qty" type="number" min="1" value="1" style="width:72px;padding:8px;border-radius:8px;border:1px solid var(--border);background:var(--bg2);color:inherit">
+          <button class="wh2-btn wh2-btn--primary" id="wh2-pdp-cart" style="flex:1">+ В корзину</button>
+        </div>
         ${p.is_draft ? `<button class="wh2-btn wh2-btn--primary" id="wh2-confirm-draft">✅ Подтвердить позицию (снять черновик)</button>` : ''}
       </div>`
     });
+    const pdpCart = document.getElementById('wh2-pdp-cart');
+    if (pdpCart) pdpCart.onclick = async () => {
+      const qty = Math.max(1, parseFloat(document.getElementById('wh2-pdp-qty')?.value) || 1);
+      try {
+        const ok = await addToCart({ warehouse_id: _cart.warehouse_id, items: [{ item_type: 'consumable', product_id: pid, need_qty: qty, source: 'catalog' }] });
+        if (ok) toast('Корзина', 'Добавлено ×' + qty, 'ok');
+      } catch (e) { toast('Корзина', e.message || 'Ошибка', 'err'); }
+    };
     if (window.AsgardGoodsIcon) {
       const modalRoot = document.querySelector('.cr-m-overlay--visible #modalBody, .cr-m-overlay--visible .cr-m-body, .cr-m-overlay--visible') || document.body;
       window.AsgardGoodsIcon.hydrate(modalRoot);
@@ -1497,7 +2011,171 @@ window.AsgardWarehouseV2 = (function () {
 
   // ── Перерисовка активной вкладки ──────────────────────────────────────────
   let _searchVal = '';
-    async function refresh() {
+  let _refreshSeq = 0;
+  let _kpiTimer = null;
+
+  async function renderMarketplace(container, search) {
+    if (!container.querySelector('#wh2-m-q')) {
+      container.innerHTML = `
+        <div class="wh2-m-hero">
+          <h2>Каталог</h2>
+          <p>Единая витрина: товары и единицы. В наличии / под заказ, цены и корзина.</p>
+          <div class="wh2-m-bar">
+            <input id="wh2-m-q" type="search" placeholder="Поиск: перчатки, каска, насос…" value="${esc(search || _searchVal || '')}" autocomplete="off">
+            <button type="button" class="wh2-btn wh2-btn--primary" id="wh2-m-go">Найти</button>
+            <button type="button" class="wh2-btn" id="wh2-m-assist">AI-список</button>
+          </div>
+          <div class="wh2-m-chips" id="wh2-m-avail">
+            ${[['all','Всё'],['in_stock','В наличии'],['order','Под заказ']].map(([c,l]) =>
+              `<button type="button" class="wh2-fchip${_marketAvail===c?' wh2-fchip--active':''}" data-av="${c}">${l}</button>`).join('')}
+          </div>
+          <div class="wh2-m-chips" id="wh2-m-kind">
+            ${[['all','Все типы'],['product','Товар'],['equipment','Единица']].map(([c,l]) =>
+              `<button type="button" class="wh2-fchip${_marketKind===c?' wh2-fchip--active':''}" data-kind="${c}">${l}</button>`).join('')}
+          </div>
+          <div class="wh2-m-chips" id="wh2-m-groups">
+            <button type="button" class="wh2-fchip${!_marketGroup?' wh2-fchip--active':''}" data-sg="">Все группы</button>
+            ${[['ppe','СИЗ'],['consumable','Расходники'],['equipment','Оборудование'],['materials','Материалы'],['tools','Инструмент']]
+              .map(([c,l]) => `<button type="button" class="wh2-fchip${_marketGroup===c?' wh2-fchip--active':''}" data-sg="${c}">${l}</button>`).join('')}
+          </div>
+        </div>
+        <div id="wh2-m-grid" class="wh2-m-grid"></div>`;
+      const qEl = container.querySelector('#wh2-m-q');
+      const run = () => { _searchVal = (qEl.value || '').trim(); loadMarketGrid(container); };
+      container.querySelector('#wh2-m-go').onclick = run;
+      container.querySelector('#wh2-m-assist').onclick = () => openAssist();
+      let deb;
+      qEl.oninput = () => { clearTimeout(deb); deb = setTimeout(run, 300); };
+      qEl.onkeydown = (e) => { if (e.key === 'Enter') { e.preventDefault(); run(); } };
+      container.querySelectorAll('#wh2-m-avail [data-av]').forEach((b) => {
+        b.onclick = () => {
+          _marketAvail = b.getAttribute('data-av') || 'all';
+          container.querySelectorAll('#wh2-m-avail .wh2-fchip').forEach((x) =>
+            x.classList.toggle('wh2-fchip--active', x.getAttribute('data-av') === _marketAvail));
+          loadMarketGrid(container);
+        };
+      });
+      container.querySelectorAll('#wh2-m-kind [data-kind]').forEach((b) => {
+        b.onclick = () => {
+          _marketKind = b.getAttribute('data-kind') || 'all';
+          container.querySelectorAll('#wh2-m-kind .wh2-fchip').forEach((x) =>
+            x.classList.toggle('wh2-fchip--active', x.getAttribute('data-kind') === _marketKind));
+          loadMarketGrid(container);
+        };
+      });
+      container.querySelectorAll('#wh2-m-groups [data-sg]').forEach((b) => {
+        b.onclick = () => {
+          _marketGroup = b.getAttribute('data-sg') || '';
+          container.querySelectorAll('#wh2-m-groups .wh2-fchip').forEach((x) =>
+            x.classList.toggle('wh2-fchip--active', (x.getAttribute('data-sg') || '') === _marketGroup));
+          loadMarketGrid(container);
+        };
+      });
+    } else if (search != null) {
+      const qEl = container.querySelector('#wh2-m-q');
+      if (qEl && search !== qEl.value) qEl.value = search;
+    }
+    return loadMarketGrid(container);
+  }
+
+  async function loadMarketGrid(container) {
+    const grid = container.querySelector('#wh2-m-grid');
+    if (!grid) return;
+    const q = (container.querySelector('#wh2-m-q')?.value || _searchVal || '').trim();
+    grid.innerHTML = _skelCards(8);
+    const qs = ['limit=60'];
+    if (q.length >= 2) qs.push('q=' + encodeURIComponent(q));
+    if (_marketAvail && _marketAvail !== 'all') qs.push('availability=' + encodeURIComponent(_marketAvail));
+    if (_marketKind && _marketKind !== 'all') qs.push('kind=' + encodeURIComponent(_marketKind));
+    if (_marketGroup) qs.push('search_group=' + encodeURIComponent(_marketGroup));
+    if (_cart.warehouse_id) qs.push('warehouse_id=' + _cart.warehouse_id);
+    let data;
+    try { data = await api('/api/warehouse/market/search?' + qs.join('&')); }
+    catch (e) {
+      grid.innerHTML = `<div class="wh2-empty"><div class="wh2-empty__i">⚠️</div>${esc(e.message || 'Ошибка')}</div>`;
+      return;
+    }
+    const items = data.items || [];
+    if (!items.length) {
+      grid.innerHTML = _emptyState('🔎', 'Ничего не найдено', q ? ('По запросу «' + q + '» пусто. Снимите фильтр или загрузите счёт.') : 'Введите запрос или снимите фильтры.', '📄 Загрузить счёт', 'wh2-m-import');
+      const ib = document.getElementById('wh2-m-import'); if (ib) ib.onclick = () => openCatalogImport();
+      return;
+    }
+    grid.innerHTML = items.map((it) => {
+      const isEq = it.kind === 'equipment';
+      const price = it.best_price != null ? _money(it.best_price) : (isEq ? '—' : 'цена —');
+      const badgeCls = it.badge === 'in_stock' || it.badge === 'on_warehouse' ? 'wh2-m-badge--ok'
+        : (it.badge === 'order' ? 'wh2-m-badge--order' : 'wh2-m-badge--type');
+      const media = it.photo_url
+        ? `<img src="${esc(it.photo_url)}" alt="">`
+        : (isEq ? '🛠️' : '📦');
+      const avail = Array.isArray(it.available_ids) ? it.available_ids : (isEq && it.id ? [it.id] : []);
+      const stockLine = it.stock_qty != null ? (' · ' + fmt(it.stock_qty) + ' на складе') : '';
+      return `<article class="wh2-m-card" data-kind="${esc(it.kind)}" data-id="${it.id}"
+        data-available-ids="${esc(JSON.stringify(avail))}">
+        <div class="wh2-m-card__media">
+          <div class="wh2-m-card__badges">
+            <span class="wh2-m-badge ${badgeCls}">${esc(it.badge_label || '')}</span>
+            <span class="wh2-m-badge wh2-m-badge--type">${isEq ? 'Оборудование' : 'Товар'}</span>
+          </div>
+          ${media}
+        </div>
+        <div class="wh2-m-card__body">
+          <div class="wh2-m-card__price">${price}</div>
+          ${it.unit_hint ? `<div class="wh2-m-card__unit">${esc(it.unit_hint)}</div>` : ''}
+          ${it.price_note ? `<div class="wh2-m-card__note">${esc(it.price_note)}</div>` : ''}
+          <div class="wh2-m-card__title">${esc(it.title)}</div>
+          ${it.description ? `<div class="wh2-m-card__desc">${esc(String(it.description).slice(0, 180))}${String(it.description).length > 180 ? '…' : ''}</div>` : ''}
+          <div class="wh2-m-card__sub">${esc(it.category_name || '')}${stockLine}${it.best_supplier ? ' · ' + esc(it.best_supplier) : ''}</div>
+          <div class="wh2-m-card__cta">
+            <button type="button" class="wh2-btn wh2-btn--primary" data-m-add="${it.kind}:${it.id}"
+              ${isEq && !(it.stock_qty > 0) ? 'disabled' : ''}>+ В корзину</button>
+          </div>
+        </div>
+      </article>`;
+    }).join('');
+    grid.querySelectorAll('.wh2-m-card').forEach((card) => {
+      card.onclick = (ev) => {
+        if (ev.target.closest('[data-m-add]')) return;
+        const kind = card.getAttribute('data-kind');
+        const id = +card.getAttribute('data-id');
+        if (kind === 'product') openProduct(id);
+        else if (window.WH2Equipment && WH2Equipment.openDetail) WH2Equipment.openDetail(id);
+        else toast('Оборудование', '#' + id, 'ok');
+      };
+    });
+    grid.querySelectorAll('[data-m-add]').forEach((b) => {
+      b.onclick = async (ev) => {
+        ev.preventDefault(); ev.stopPropagation();
+        const [kind, idStr] = String(b.getAttribute('data-m-add') || '').split(':');
+        const id = +idStr;
+        const card = b.closest('.wh2-m-card');
+        try {
+          let items;
+          if (kind === 'equipment') {
+            let ids = [];
+            try { ids = JSON.parse(card?.getAttribute('data-available-ids') || '[]'); } catch (_) { ids = []; }
+            if (!Array.isArray(ids) || !ids.length) ids = id ? [id] : [];
+            // следующая свободная единица, которой ещё нет в корзине
+            const free = ids.find((eid) => !isInCart(null, eid)) || ids[0];
+            if (!free) { toast('Корзина', 'Нет свободных единиц', 'warn'); return; }
+            if (isInCart(null, free) && ids.every((eid) => isInCart(null, eid))) {
+              toast('Корзина', 'Все единицы этого типа уже в корзине', 'warn'); return;
+            }
+            const pick = ids.find((eid) => !isInCart(null, eid)) || free;
+            items = [{ item_type: 'equipment', equipment_id: pick, need_qty: 1, source: 'catalog' }];
+          } else {
+            items = [{ item_type: 'consumable', product_id: id, need_qty: 1, source: 'catalog' }];
+          }
+          const ok = await addToCart({ warehouse_id: _cart.warehouse_id, items });
+          if (ok) toast('Корзина', 'Добавлено', 'ok');
+        } catch (e) { toast('Корзина', e.message || 'Не добавлено', 'err'); }
+      };
+    });
+  }
+
+    async function refresh(opts) {
+    const force = !!(opts && opts.force);
     // Тик live может прийти после смены страницы — тогда _root отсоединён; подхватываем живой.
     if (!_root || !document.body.contains(_root)) {
       const live = document.querySelector('.wh2');
@@ -1507,17 +2185,39 @@ window.AsgardWarehouseV2 = (function () {
     const body = _root.querySelector('#wh2-body');    const toolbar = _root.querySelector('#wh2-toolbar');
     // toolbar зависит от вкладки. На «Оборудование» поиск и кнопки рисует сам модуль.
     const addBtn = toolbar.querySelector('#wh2-add');
-    addBtn.style.display = (_tab === 'consumables' || _tab === 'locations') ? '' : 'none';
-    if (_tab === 'consumables') addBtn.textContent = '+ Позиция';
+    addBtn.style.display = (_tab === 'catalog' || _tab === 'consumables' || _tab === 'locations') ? '' : 'none';
+    if (_tab === 'catalog' || _tab === 'consumables') addBtn.textContent = '+ Позиция';
     else if (_tab === 'locations') addBtn.textContent = 'Сетка ячеек';
-    toolbar.style.display = (['equipment', 'incoming', 'movements', 'map', 'ops', 'unpick', 'inventory', 'director', 'writeoffs', 'assemblies', 'sheet', 'monitor'].includes(_tab)) ? 'none' : '';
+    toolbar.style.display = (['catalog', 'equipment', 'incoming', 'movements', 'map', 'ops', 'unpick', 'inventory', 'director', 'writeoffs', 'assemblies', 'sheet', 'monitor', 'prices'].includes(_tab)) ? 'none' : '';
     const searchWrap = toolbar.querySelector('.wh2-search');
-    if (searchWrap) searchWrap.style.display = (_tab === 'locations') ? 'none' : '';
+    if (searchWrap) searchWrap.style.display = (_tab === 'locations' || _tab === 'prices' || _tab === 'catalog') ? 'none' : '';
     const kpis = _root.querySelector('#wh2-kpis');
-    if (kpis) kpis.style.display = (_tab === 'map' || _tab === 'incoming' || _tab === 'ops' || _tab === 'assemblies' || _tab === 'sheet' || _tab === 'monitor') ? 'none' : '';
+    if (kpis) kpis.style.display = (_tab === 'map' || _tab === 'incoming' || _tab === 'ops' || _tab === 'assemblies' || _tab === 'sheet' || _tab === 'monitor' || _tab === 'prices' || _tab === 'catalog') ? 'none' : '';
     const tabs = _root.querySelector('#wh2-tabs');
     if (tabs) tabs.style.marginBottom = (_tab === 'map') ? '10px' : '';
-    renderKPIs(_root.querySelector('#wh2-kpis'));
+    // KPI debounce — не дёргать на каждый search tick
+    clearTimeout(_kpiTimer);
+    _kpiTimer = setTimeout(() => {
+      if (_root && _root.querySelector('#wh2-kpis') && _tab !== 'catalog') {
+        renderKPIs(_root.querySelector('#wh2-kpis'));
+      }
+    }, 400);
+
+    // алиасы старых вкладок → каталог
+    if (_tab === 'equipment' || _tab === 'consumables' || _tab === 'prices') _tab = 'catalog';
+
+    if (_tab === 'catalog') {
+      if (!force && body.querySelector('#wh2-m-q')) {
+        return loadMarketGrid(body);
+      }
+      return renderMarketplace(body, _searchVal);
+    }
+    if (_tab === 'prices') {
+      // Не сносить уже открытый поиск при чужих refresh() (корзина/live) —
+      // иначе мигает «ничего не нашлось» и теряется ввод.
+      if (body.querySelector('#wh2-ps-q')) return;
+      return renderPriceSearch(body, _searchVal);
+    }
     if (_tab === 'consumables') return renderConsumables(body, _searchVal);
     if (_tab === 'equipment') {
       // Полноценный блок оборудования вынесен в warehouse-v2-equipment.js (window.WH2Equipment).
@@ -2717,20 +3417,29 @@ window.AsgardWarehouseV2 = (function () {
     _root = document.createElement('div'); _root.className = 'wh2';
     _root.innerHTML = `
       <div class="wh2-kpis" id="wh2-kpis"></div>
-      <div class="wh2-tabs" id="wh2-tabs">
-        <button class="wh2-tab wh2-tab--active" data-tab="equipment">Оборудование</button>
-        <button class="wh2-tab" data-tab="consumables">Расходники</button>
-        <button class="wh2-tab" data-tab="assemblies">Сборки</button>
-        <button class="wh2-tab" data-tab="monitor">Готовность</button>
-        <button class="wh2-tab" data-tab="map">Карта</button>
-        <button class="wh2-tab" data-tab="incoming">Приёмка</button>
-        <button class="wh2-tab" data-tab="ops">Операции</button>
-        <button class="wh2-tab" data-tab="unpick">Убрать</button>
-        <button class="wh2-tab" data-tab="inventory">Инвентаризация</button>
-        <button class="wh2-tab" data-tab="writeoffs">Списания</button>
-        <button class="wh2-tab" data-tab="locations">Ячейки</button>
-        <button class="wh2-tab" data-tab="movements">Движения</button>
-        <button class="wh2-tab" data-tab="director">Директор</button>
+      <div class="wh2-nav" id="wh2-tabs">
+        <button type="button" class="wh2-nav-btn is-active" data-tab="catalog">Каталог</button>
+        <div class="wh2-nav-item" id="wh2-nav-ops">
+          <button type="button" class="wh2-nav-btn" data-menu="ops">Операции ▾</button>
+          <div class="wh2-nav-dd">
+            <button type="button" data-tab="incoming">Приёмка</button>
+            <button type="button" data-tab="ops">Операции</button>
+            <button type="button" data-tab="unpick">Убрать</button>
+            <button type="button" data-tab="inventory">Инвентаризация</button>
+            <button type="button" data-tab="writeoffs">Списания</button>
+            <button type="button" data-tab="locations">Ячейки</button>
+            <button type="button" data-tab="movements">Движения</button>
+          </div>
+        </div>
+        <div class="wh2-nav-item" id="wh2-nav-asm">
+          <button type="button" class="wh2-nav-btn" data-menu="asm">Сборки ▾</button>
+          <div class="wh2-nav-dd">
+            <button type="button" data-tab="assemblies">Сборки</button>
+            <button type="button" data-tab="monitor">Готовность</button>
+          </div>
+        </div>
+        <button type="button" class="wh2-nav-btn" data-tab="map">Карта</button>
+        <button type="button" class="wh2-nav-btn" data-tab="director">Директор</button>
       </div>
       <div class="wh2-toolbar" id="wh2-toolbar">
         <div class="wh2-search"><input id="wh2-q" placeholder="Поиск по наименованию или артикулу…" autocomplete="off"><button class="wh2-search__clear" id="wh2-q-clear" title="Очистить">✕</button><div class="wh2-ac" id="wh2-ac" style="display:none"></div></div>
@@ -2739,30 +3448,61 @@ window.AsgardWarehouseV2 = (function () {
       <div id="wh2-body"></div>`;
     host.appendChild(_root);
 
-    // deep-link ?tab=&id=
+    // deep-link ?tab=&id=&assist=
     const hq = _parseWhHash();
-    if (hq.tab && ['equipment','consumables','assemblies','sheet','monitor','map','incoming','ops','unpick','inventory','writeoffs','locations','movements','director'].includes(hq.tab)) {
+    const TAB_OK = ['catalog','equipment','consumables','prices','assemblies','sheet','monitor','map','incoming','ops','unpick','inventory','writeoffs','locations','movements','director'];
+    if (hq.tab && TAB_OK.includes(hq.tab)) {
       _tab = hq.tab === 'sheet' ? 'sheet' : hq.tab;
+      if (['equipment','consumables','prices'].includes(_tab)) _tab = 'catalog';
     }
-    // роли: Готовность видна PM/DIR; Сборки — WH и PM
     const role = (_user && _user.role) || '';
     const showMonitor = ['PM','HEAD_PM','ADMIN','DIRECTOR_GEN','DIRECTOR_COMM','DIRECTOR_DEV'].includes(role);
     const showAsm = ['WAREHOUSE','ADMIN','PM','HEAD_PM','DIRECTOR_GEN','DIRECTOR_COMM','DIRECTOR_DEV'].includes(role);
-    _root.querySelectorAll('.wh2-tab').forEach((t) => {
-      if (t.dataset.tab === 'monitor' && !showMonitor) t.style.display = 'none';
-      if (t.dataset.tab === 'assemblies' && !showAsm) t.style.display = 'none';
-    });
-    _root.querySelectorAll('.wh2-tab').forEach((t) => {
-      t.classList.toggle('wh2-tab--active', t.dataset.tab === _tab || (_tab === 'sheet' && t.dataset.tab === 'assemblies'));
-    });
+    if (!showAsm) { const n = _root.querySelector('#wh2-nav-asm'); if (n) n.style.display = 'none'; }
+    if (!showMonitor) {
+      const m = _root.querySelector('#wh2-nav-asm [data-tab="monitor"]'); if (m) m.style.display = 'none';
+    }
 
-    _root.querySelectorAll('.wh2-tab').forEach(t => t.onclick = () => {
-      _root.querySelectorAll('.wh2-tab').forEach(x => x.classList.remove('wh2-tab--active'));
-      t.classList.add('wh2-tab--active'); _tab = t.dataset.tab; _searchVal = '';
+    function _syncNavActive() {
+      _root.querySelectorAll('.wh2-nav-btn[data-tab]').forEach((t) => {
+        t.classList.toggle('is-active', t.dataset.tab === _tab);
+      });
+      const opsTabs = ['incoming','ops','unpick','inventory','writeoffs','locations','movements'];
+      const opsBtn = _root.querySelector('#wh2-nav-ops > .wh2-nav-btn');
+      if (opsBtn) opsBtn.classList.toggle('is-active', opsTabs.includes(_tab));
+      const asmBtn = _root.querySelector('#wh2-nav-asm > .wh2-nav-btn');
+      if (asmBtn) asmBtn.classList.toggle('is-active', _tab === 'assemblies' || _tab === 'monitor' || _tab === 'sheet');
+    }
+    _syncNavActive();
+
+    const goTab = (tab) => {
+      _tab = tab; _searchVal = '';
       if (window.WH2Asm) { try { WH2Asm.setMonitorId(null); } catch (_) {} }
       try { location.hash = '#/warehouse-v2?tab=' + _tab; } catch (_) {}
-      const q = _root.querySelector('#wh2-q'); q.value = ''; _hideAc(); _root.querySelector('#wh2-q-clear').style.display = 'none'; refresh();
+      _root.querySelectorAll('.wh2-nav-item').forEach((x) => x.classList.remove('is-open'));
+      _syncNavActive();
+      const q = _root.querySelector('#wh2-q'); if (q) { q.value = ''; _hideAc(); }
+      const cl = _root.querySelector('#wh2-q-clear'); if (cl) cl.style.display = 'none';
+      refresh({ force: true });
+    };
+    _root.querySelectorAll('.wh2-nav-btn[data-tab]').forEach((t) => {
+      t.onclick = () => goTab(t.dataset.tab);
     });
+    _root.querySelectorAll('.wh2-nav-dd [data-tab]').forEach((t) => {
+      t.onclick = (e) => { e.stopPropagation(); goTab(t.dataset.tab); };
+    });
+    _root.querySelectorAll('.wh2-nav-btn[data-menu]').forEach((t) => {
+      t.onclick = (e) => {
+        e.stopPropagation();
+        const item = t.closest('.wh2-nav-item');
+        const open = item.classList.contains('is-open');
+        _root.querySelectorAll('.wh2-nav-item').forEach((x) => x.classList.remove('is-open'));
+        if (!open) item.classList.add('is-open');
+      };
+    });
+    document.addEventListener('click', () => {
+      _root && _root.querySelectorAll('.wh2-nav-item').forEach((x) => x.classList.remove('is-open'));
+    }, { once: false });
     let deb;
     const qEl = _root.querySelector('#wh2-q'); const clEl = _root.querySelector('#wh2-q-clear');
     qEl.oninput = e => {
@@ -2775,8 +3515,12 @@ window.AsgardWarehouseV2 = (function () {
 
     _mountFab();        // FAB корзины в углу + скрыть Мимира на складе
     _updateCartBadge();
-    refresh();
+    refresh({ force: true });
     _startLive();
+    try {
+      const sp = new URLSearchParams(String(location.hash || '').split('?')[1] || '');
+      if (sp.get('assist') === '1') setTimeout(() => openAssist(), 400);
+    } catch (_) {}
   }
 
   // ── Поиск с автоподсказками ──
@@ -2817,11 +3561,13 @@ window.AsgardWarehouseV2 = (function () {
     _updateFab();
     window.AsgardWarehouseCart = {
       open: () => openCartDrawer(),
+      openAssist: () => openAssist(),
       openExcel: async () => {
+        _cartSheetTab = 'ai';
         await openCartDrawer();
-        await new Promise(r => setTimeout(r, 300));
-        const b = document.getElementById('wh2-cart-excel');
-        if (b) b.click();
+        await new Promise(r => setTimeout(r, 200));
+        const excelTab = document.querySelector('[data-ai-mode="excel"]');
+        if (excelTab) excelTab.click();
       }
     };
     // восстановить Мимира и убрать FAB при уходе со страницы склада
@@ -2837,5 +3583,5 @@ window.AsgardWarehouseV2 = (function () {
     window.addEventListener('hashchange', _fabHashHandler);
   }
 
-  return { render, openProduct, openSubmitPreview, showSubmitPreview: openSubmitPreview, humanCatalogName };
+  return { render, openProduct, openSubmitPreview, showSubmitPreview: openSubmitPreview, humanCatalogName, openAssist };
 })();

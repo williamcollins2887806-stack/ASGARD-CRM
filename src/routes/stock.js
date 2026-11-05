@@ -418,8 +418,46 @@ async function routes(fastify) {
       FROM stock_movements m LEFT JOIN users u ON m.created_by=u.id WHERE m.product_id=$1 ORDER BY m.created_at DESC LIMIT 15`, [pid]);
     let lastPrice = null;
     try { const lp = await db.query('SELECT unit_price, supplier_name, recorded_at FROM v_last_price_by_product WHERE product_id=$1', [pid]); lastPrice = lp.rows[0] || null; } catch (_) {}
+    let offers = [];
+    try {
+      const of = await db.query(
+        `SELECT pr.id, pr.unit_price, pr.unit, pr.quantity, pr.invoice_date, pr.invoice_number,
+                pr.recorded_at, pr.source, COALESCE(s.name, pr.supplier_name) AS supplier_name
+         FROM price_records pr
+         LEFT JOIN suppliers s ON s.id = pr.supplier_id
+         WHERE pr.product_id=$1 AND pr.unit_price > 0
+         ORDER BY pr.unit_price ASC, pr.recorded_at DESC NULLS LAST
+         LIMIT 12`,
+        [pid]
+      );
+      offers = of.rows.map((o) => ({
+        ...o,
+        unit_price: parseFloat(o.unit_price),
+        as_of: o.invoice_date || o.recorded_at || null,
+        origin_label: o.invoice_number ? (`Счёт ${o.invoice_number}`) : (o.source || 'База цен')
+      }));
+    } catch (_) {}
     const total = slots.rows.reduce((a, r) => a + parseFloat(r.quantity), 0);
-    return { item: prod.rows[0], total, slots: slots.rows, movements: moves.rows, last_price: lastPrice };
+    const item = prod.rows[0];
+    let attrs = item.attrs;
+    if (typeof attrs === 'string') {
+      try { attrs = JSON.parse(attrs); } catch (_) { attrs = {}; }
+    }
+    attrs = attrs && typeof attrs === 'object' ? attrs : {};
+    const descriptionAi = attrs.description_ai ? String(attrs.description_ai).trim() : null;
+    return {
+      item,
+      total,
+      slots: slots.rows,
+      movements: moves.rows,
+      last_price: lastPrice,
+      offers,
+      unit_hint: item.base_unit ? (`за ${item.base_unit}`) : null,
+      pack_qty: item.pack_qty != null ? parseFloat(item.pack_qty) : null,
+      unit_price_base: item.unit_price_base != null ? parseFloat(item.unit_price_base) : null,
+      keywords: item.search_keywords || [],
+      description_ai: descriptionAi || null
+    };
   });
 
   // Загрузка фото товара (multipart) или по URL.
@@ -438,11 +476,21 @@ async function routes(fastify) {
       const fn = `prod_${pid}_${randomUUID()}${ext}`;
       await fsp.writeFile(path.join(dir, fn), await data.toBuffer());
       const photo_url = '/uploads/products/' + fn;
-      await db.query('UPDATE products SET photo_url=$1, updated_at=NOW() WHERE id=$2', [photo_url, pid]);
-      return { success: true, photo_url };
+      // V450: живое фото не должна перетирать AI-раздача архетипа
+      await db.query(
+        `UPDATE products SET photo_url=$1, photo_source='real', updated_at=NOW() WHERE id=$2`,
+        [photo_url, pid]
+      );
+      return { success: true, photo_url, photo_source: 'real' };
     }
     const { photo_url } = req.body || {};
-    if (photo_url) { await db.query('UPDATE products SET photo_url=$1, updated_at=NOW() WHERE id=$2', [photo_url, pid]); return { success: true, photo_url }; }
+    if (photo_url) {
+      await db.query(
+        `UPDATE products SET photo_url=$1, photo_source='real', updated_at=NOW() WHERE id=$2`,
+        [photo_url, pid]
+      );
+      return { success: true, photo_url, photo_source: 'real' };
+    }
     return bad(reply, 'Нет файла или photo_url');
   });
 }
