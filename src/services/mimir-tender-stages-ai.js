@@ -25,10 +25,15 @@ function catalogForPrompt(catalog) {
   return cats.map((c) => {
     const ms = Array.isArray(c.methods_json) ? c.methods_json : [];
     const lines = ms.map((m) => {
-      const rate = rates.find((r) => r.code === m.primary_rate_code);
-      const unit = (rate && rate.unit) || m.volume_unit || '—';
-      const kind = rate ? rate.calc_kind : (m.derived_metric || '—');
-      return `  - ${m.code} (${m.label || m.code}): единица «${unit}», считать как ${kind}`;
+      // Показываем ВСЕ нормы метода, а не только primary: у химии по контуру
+      // есть hours_per_cycle, и без него модель решает, что нужны трубки.
+      const methodRates = rates.filter((r) => r.category_code === c.code && r.method_code === m.code);
+      const primary = methodRates.find((r) => r.code === m.primary_rate_code) || methodRates[0] || null;
+      const others = methodRates.filter((r) => r !== primary).slice(0, 3);
+      const list = [primary, ...others].filter(Boolean)
+        .map((r) => `${r.code}: «${r.unit}», считать как ${r.calc_kind}`)
+        .join(' | ');
+      return `  - ${m.code} (${m.label || m.code}): ${list || 'единица ' + (m.volume_unit || '—')}`;
     });
     return `${c.code} — ${c.title || c.code}\n${lines.join('\n')}`;
   }).join('\n\n');
@@ -90,11 +95,16 @@ async function generateDv(p) {
 
   let res;
   try {
+    // response_format json_object + отключённый reasoning: иначе DeepSeek
+    // уходит в 8000 токенов рассуждений и возвращает пустой content
+    // (finish_reason=length). Проверено на проде 06.11.2026.
     res = await o.aiProvider.complete({
       system,
       messages: [{ role: 'user', content: user }],
-      maxTokens: 8000,
-      temperature: 0.15
+      maxTokens: 12000,
+      temperature: 0.15,
+      responseFormat: { type: 'json_object' },
+      reasoning: { enabled: false }
     });
   } catch (e) {
     return { ok: false, error: 'Модель недоступна: ' + e.message };
@@ -158,8 +168,10 @@ async function generateCalcPlan(p) {
     res = await o.aiProvider.complete({
       system,
       messages: [{ role: 'user', content: user }],
-      maxTokens: 8000,
-      temperature: 0.15
+      maxTokens: 12000,
+      temperature: 0.15,
+      responseFormat: { type: 'json_object' },
+      reasoning: { enabled: false }
     });
   } catch (e) {
     return { ok: false, error: 'Модель недоступна: ' + e.message };

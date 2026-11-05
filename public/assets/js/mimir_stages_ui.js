@@ -280,7 +280,7 @@
       // остаётся читаемой, пока её не начали править.
       return `<tr class="${cls}" data-pos="${esc(p.id)}">
         <td class="mst-table__name">
-          <input class="mst-inline-text" data-pos-field="name" value="${esc(p.name)}" aria-label="Название позиции">
+          <input class="mst-inline-text" data-pos-field="name" value="${esc(p.name || '')}" aria-label="Название позиции">
         </td>
         <td class="mst-table__src">${esc((p.objects || []).map((o) => o.tag).filter(Boolean).join(', ') || '—')}</td>
         <td class="mst-table__num"><input class="mst-inline-num" data-pos-field="volume"
@@ -350,13 +350,28 @@
   /** Список методов: только существующие в справочнике, без выдуманных кодов. */
   function methodOptions(categoryCode, current) {
     const cat = (_state.categories || []).find((c) => c.code === categoryCode) || null;
-    const methods = cat && Array.isArray(cat.methods_json) ? cat.methods_json : [];
-    if (!methods.length) {
-      return `<option value="">— выбрать метод —</option>`;
+    // methods_json может прийти строкой (jsonb сериализован) — разбираем.
+    let methods = [];
+    if (cat) {
+      if (Array.isArray(cat.methods_json)) methods = cat.methods_json;
+      else if (typeof cat.methods_json === 'string') {
+        try { methods = JSON.parse(cat.methods_json) || []; } catch (_) { methods = []; }
+      }
     }
-    return `<option value="">— выбрать метод —</option>` + methods.map((m) =>
+    // Собираем список из категорий, но если метод уже сохранён — обязательно
+    // добавляем его, иначе select «теряет» значение, которого нет в options.
+    const codes = new Set(methods.map((m) => m.code));
+    if (current && !codes.has(current)) {
+      methods = methods.concat([{ code: current, label: current }]);
+    }
+    if (!methods.length) {
+      return `<option value="">— нет методов —</option>`;
+    }
+    const opts = methods.map((m) =>
       `<option value="${esc(m.code)}" ${m.code === current ? 'selected' : ''}>${esc(m.label || m.code)}</option>`
     ).join('');
+    const empty = current ? '' : `<option value="" selected>— выбрать метод —</option>`;
+    return empty + opts;
   }
 
   function viewTech() {
