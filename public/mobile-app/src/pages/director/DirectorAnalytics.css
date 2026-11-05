@@ -513,112 +513,211 @@
   color: var(--text-secondary);
 }
 
-.jp-now-grid {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 7px;
-  padding: 12px 13px;
+/* ── График офиса: фильтр + список выработки ───────────────────────────── */
+
+.jp-og-filter {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 0 13px 10px;
 }
-.jp-now-cell {
-  padding: 9px 10px;
-  border-radius: 11px;
+.jp-og-scopes {
+  display: inline-flex;
+  padding: 3px;
+  border-radius: 999px;
   border: 1px solid var(--border-norse);
   background: color-mix(in srgb, var(--bg-elevated, var(--bg-surface)) 80%, transparent);
 }
-.jp-now-cell .k {
-  display: block;
-  font-size: 9.5px;
-  letter-spacing: 0.03em;
+.jp-og-scope {
+  padding: 6px 13px;
+  border: 0;
+  border-radius: 999px;
+  background: none;
+  font-size: 11.5px;
+  font-weight: 600;
   color: var(--text-tertiary);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
-.jp-now-cell .v {
-  display: block;
-  margin-top: 2px;
-  font-size: 18px;
-  font-weight: 800;
-  letter-spacing: -0.02em;
+.jp-og-scope.is-on {
+  background: color-mix(in srgb, var(--gold) 18%, transparent);
+  color: var(--gold, #d5a64a);
+}
+.jp-og-nav {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.jp-og-nav-btn {
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9px;
+  border: 1px solid var(--border-norse);
+  background: color-mix(in srgb, var(--bg-elevated, var(--bg-surface)) 80%, transparent);
+  color: var(--text-secondary);
+}
+.jp-og-nav-btn:disabled { opacity: 0.4; }
+.jp-og-range {
+  min-width: 104px;
+  text-align: center;
+  font-size: 11.5px;
+  font-weight: 700;
   font-variant-numeric: tabular-nums;
   color: var(--text-primary);
 }
-.jp-now-cell .v.is-bad { color: var(--danger-ink, #e8553f); }
-
-.jp-hours-head {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 10px;
-  margin: 0;
-  padding: 0 13px 8px;
+.jp-og-today {
+  padding: 5px 11px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--gold) 32%, transparent);
+  background: color-mix(in srgb, var(--gold) 12%, transparent);
+  color: var(--gold, #d5a64a);
   font-size: 11px;
+  font-weight: 600;
+}
+
+.jp-og-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 0 13px 8px;
+  font-size: 11.5px;
   color: var(--text-tertiary);
 }
-.jp-hours-head .l { font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; }
+.jp-og-summary b { color: var(--text-primary); }
 
-.jp-hours-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
-  padding: 0 13px 12px;
+.jp-og-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 0 13px 10px;
+  font-size: 10.5px;
+  color: var(--text-tertiary);
 }
-.jp-hours-cell {
-  padding: 11px 12px;
+.jp-og-legend > span { display: inline-flex; align-items: center; gap: 5px; }
+.jp-og-legend i {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--border-norse);
+}
+.jp-og-legend .is-green i { background: var(--ok-t, #4caf7d); }
+.jp-og-legend .is-yellow i { background: var(--warn-t, #d5a64a); }
+.jp-og-legend .is-red i { background: var(--danger-ink, #e8553f); }
+
+.jp-og-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 0 13px;
+}
+.jp-og-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 10px 12px 10px 14px;
   border-radius: 12px;
   border: 1px solid var(--border-norse);
   background: color-mix(in srgb, var(--bg-elevated, var(--bg-surface)) 80%, transparent);
+  text-align: left;
 }
-.jp-hours-cell .k {
-  display: block;
-  font-size: 10px;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: var(--text-tertiary);
+.jp-og-row.is-crown {
+  border-color: color-mix(in srgb, var(--gold) 42%, transparent);
+  background: color-mix(in srgb, var(--gold) 8%, transparent);
 }
-.jp-hours-cell .v {
-  display: block;
-  margin-top: 3px;
-  font-size: 22px;
-  font-weight: 800;
-  letter-spacing: -0.03em;
-  font-variant-numeric: tabular-nums;
-  color: var(--text-primary);
+.jp-og-bar {
+  position: absolute;
+  left: 0;
+  top: 10px;
+  bottom: 10px;
+  width: 3px;
+  border-radius: 3px;
+  background: var(--border-norse);
 }
-.jp-hours-cell .v.is-bad { color: var(--danger-ink, #e8553f); }
-.jp-hours-cell .sub { display: block; font-size: 10.5px; color: var(--text-tertiary); }
+.jp-og-row.is-green .jp-og-bar { background: var(--ok-t, #4caf7d); }
+.jp-og-row.is-yellow .jp-og-bar { background: var(--warn-t, #d5a64a); }
+.jp-og-row.is-red .jp-og-bar { background: var(--danger-ink, #e8553f); }
 
-.jp-hours-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 10px 12px;
-  border-radius: 11px;
-  border: 1px solid var(--border-norse);
-  background: color-mix(in srgb, var(--bg-elevated, var(--bg-surface)) 80%, transparent);
-  margin: 0 13px 6px;
-}
-.jp-hours-row .nm {
-  flex: 1;
+.jp-og-name {
+  flex: 1 1 auto;
   min-width: 0;
   display: flex;
   flex-direction: column;
+  gap: 1px;
+}
+.jp-og-name-txt {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
   font-size: 12.5px;
   font-weight: 600;
   color: var(--text-primary);
 }
-.jp-hours-row .nm .sub { font-size: 10.5px; font-weight: 400; color: var(--text-tertiary); }
-.jp-hours-row .vals {
+.jp-og-name-txt > :first-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.jp-og-crown {
+  width: 14px;
+  height: 14px;
+  flex: 0 0 auto;
+  color: var(--gold, #d5a64a);
+  filter: drop-shadow(0 0 5px color-mix(in srgb, var(--gold) 55%, transparent));
+}
+.jp-og-role { font-size: 10.5px; color: var(--text-tertiary); }
+
+.jp-og-pct {
+  flex: 0 0 auto;
   display: flex;
   flex-direction: column;
   align-items: flex-end;
   gap: 1px;
-  font-size: 10.5px;
-  font-variant-numeric: tabular-nums;
-  color: var(--text-tertiary);
-  white-space: nowrap;
 }
-.jp-hours-row .vals .bad { color: var(--danger-ink, #e8553f); font-weight: 700; }
+.jp-og-pct .v {
+  font-size: 13px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary);
+}
+.jp-og-pct .l { font-size: 9.5px; color: var(--text-tertiary); }
+.jp-og-row.is-green .jp-og-pct .v { color: var(--ok-t, #4caf7d); }
+.jp-og-row.is-yellow .jp-og-pct .v { color: var(--warn-t, #d5a64a); }
+.jp-og-row.is-red .jp-og-pct .v { color: var(--danger-ink, #e8553f); }
+
+.jp-og-cells {
+  flex: 0 0 100%;
+  display: flex;
+  gap: 12px;
+  margin-top: 2px;
+  padding-top: 7px;
+  border-top: 1px solid color-mix(in srgb, var(--border-norse) 60%, transparent);
+}
+.jp-og-cells .c {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  font-size: 11.5px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-secondary);
+}
+.jp-og-cells .c i {
+  font-style: normal;
+  font-size: 9px;
+  font-weight: 400;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+}
+.jp-og-cells .c.sum { color: var(--text-primary); font-weight: 800; }
+.jp-og-row.is-green .jp-og-cells .c.sum { color: var(--ok-t, #4caf7d); }
+.jp-og-row.is-yellow .jp-og-cells .c.sum { color: var(--warn-t, #d5a64a); }
+.jp-og-row.is-red .jp-og-cells .c.sum { color: var(--danger-ink, #e8553f); }
 
 .jp-dq {
   margin: 14px 13px 14px;
@@ -1504,7 +1603,6 @@
   .jp-hero-num.lg { font-size: 24px; }
   .jp-hero-num.money { font-size: 15px; }
   .jp-sec-note { display: none; }
-  .jp-now-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .jp-item { padding: 10px 11px; }
   .jp-item-title { font-size: 12.5px; }
   .jp-kv-row { grid-template-columns: 92px minmax(0, 1fr); }
@@ -1672,12 +1770,12 @@
   text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap;
 }
 
-button.jp-hours-row {
+button.jp-og-row {
   width: 100%;
   text-align: left;
   appearance: none;
-  border: 0;
-  background: transparent;
+  border: 1px solid var(--border-norse);
+  background: color-mix(in srgb, var(--bg-elevated, var(--bg-surface)) 80%, transparent);
   font: inherit;
   color: inherit;
   cursor: pointer;

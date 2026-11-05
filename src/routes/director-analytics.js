@@ -10,6 +10,57 @@ const workStatus = require('../helpers/work-status');
 const officeHours = require('../services/office-hours');
 const crmActivity = require('../services/crm-activity');
 const { resolveWorkPrice } = require('../services/work-price');
+const { hhmmWallClock } = require('../lib/msk');
+
+/** Подписи периодов «Графика офиса» (локальный фильтр раздела). */
+const MONTHS_NOM = [
+  'Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь',
+  'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь'
+];
+
+function dmy(iso) {
+  const [y, m, d] = String(iso).slice(0, 10).split('-');
+  return `${d}.${m}.${y}`;
+}
+
+function dmyShort(iso) {
+  const [, m, d] = String(iso).slice(0, 10).split('-');
+  return `${d}.${m}`;
+}
+
+function isoYear(iso) { return Number(String(iso).slice(0, 4)); }
+function isoMonth(iso) { return Number(String(iso).slice(5, 7)); }
+
+/** Подпись периода + якоря для стрелок (фронт не считает месяцы сам). */
+function periodMeta(scope, range) {
+  const from = range.from;
+  const to = range.to;
+  let label;
+  let prevAnchor;
+  let nextAnchor;
+  if (scope === 'week') {
+    label = dmyShort(from) + '–' + dmy(to);
+    prevAnchor = officeHours.addDays(from, -7);
+    nextAnchor = officeHours.addDays(from, 7);
+  } else if (scope === 'year') {
+    const y = isoYear(from);
+    label = y + ' год';
+    prevAnchor = `${y - 1}-01-01`;
+    nextAnchor = `${y + 1}-01-01`;
+  } else {
+    const y = isoYear(from);
+    const m = isoMonth(from);
+    label = MONTHS_NOM[m - 1] + ' ' + y;
+    prevAnchor = officeHours.addDays(from, -1);
+    nextAnchor = officeHours.addDays(to, 1);
+  }
+  return {
+    label,
+    prev_anchor: prevAnchor,
+    next_anchor: nextAnchor,
+    current_anchor: officeHours.isoOf(new Date())
+  };
+}
 
 const ROLES = ['ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV'];
 
@@ -1509,9 +1560,9 @@ module.exports = async function directorAnalyticsRoutes(fastify) {
     }
   });
 
-  // ─── GET /team-hours?period=week|month&date=YYYY-MM-DD ───────────────
-  // Секция «Команда и часы»: сколько людей в офисе / в СРМ / не вырабатывают
-  // норму 8 ч в день и 40 ч в неделю.
+  // ─── GET /team-hours?period=week|month|year&date=YYYY-MM-DD ──────────
+  // Секция «График офиса»: список сотрудников — офис / удалённо / сумма /
+  // норма и цвет дисциплины (green / yellow / red).
   //
   // ВАЖНО (правила из плана, не «оптимизировать»):
   //  · средние считаются только по дням, где данные ЕСТЬ; нет данных → null,
@@ -1524,21 +1575,55 @@ module.exports = async function directorAnalyticsRoutes(fastify) {
     preHandler: [fastify.requireRoles(ROLES)]
   }, async (request, reply) => {
     try {
-      const scope = String(request.query.period || 'week') === 'month' ? 'month' : 'week';
+      const periodQ = String(request.query.period || 'week');
+      const scope = periodQ === 'month' ? 'month' : (periodQ === 'year' ? 'year' : 'week');
       const todayIso = officeHours.isoOf(new Date());
       const anchor = /^\d{4}-\d{2}-\d{2}$/.test(String(request.query.date || ''))
         ? String(request.query.date).slice(0, 10)
         : todayIso;
 
-      const range = scope === 'week'
-        ? { from: officeHours.mondayOf(anchor), to: officeHours.addDays(officeHours.mondayOf(anchor), 6) }
-        : officeHours.monthRange(
-          Number(anchor.slice(0, 4)),
-          Number(anchor.slice(5, 7))
-        );
+      // Норма начисляется только по прошедшим дням: если смотреть текущий
+      // месяц/год, будущие дни не должны превращать всех в «красных».
+      // Будущее в подписи периода остаётся (месяц — целиком), но в норму идёт
+      // не дальше сегодня.
+      const rangeFull = scope === 'week'
+        ? {
+          from: officeHours.mondayOf(anchor),
+          to: officeHours.addDays(officeHours.mondayOf(anchor), 6)
+        }
+        : scope === 'year'
+          ? officeHours.yearRange(isoYear(anchor))
+          : officeHours.monthRange(isoYear(anchor), isoMonth(anchor));
+      const range = (rangeFull.from <= todayIso && todayIso < rangeFull.to)
+        ? { ...rangeFull, to: todayIso }
+        : rangeFull;
+      const meta = periodMeta(scope, rangeFull);
 
       const settings = await officeHours.loadSettings(db);
       const calendar = await officeHours.loadCalendar(db, range.from, range.to);
+
+      // ── Покрытие СКУД по периодам импортов ──
+      // Считается ДО разбора дней: норма начисляется только за дни, за которые
+      // отчёт реально был. Иначе неимпортированный ноябрь даёт «все прогуляли».
+      const { rows: importRows } = await db.query(
+        `SELECT id, period_from::text AS period_from, period_to::text AS period_to,
+                imported_at, source, file_name
+           FROM skud_imports
+          WHERE deleted_at IS NULL
+          ORDER BY imported_at DESC
+          LIMIT 60`).catch(() => ({ rows: [] }));
+      const lastImport = importRows[0] || null;
+      const coveredDays = new Set();
+      for (const imp of importRows) {
+        let iso = String(imp.period_from).slice(0, 10);
+        const end = String(imp.period_to).slice(0, 10);
+        let guard = 0;
+        while (iso <= end && guard < 400) {
+          coveredDays.add(iso);
+          iso = officeHours.addDays(iso, 1);
+          guard += 1;
+        }
+      }
 
       // Кто вообще есть в графике офиса.
       //
@@ -1585,7 +1670,7 @@ module.exports = async function directorAnalyticsRoutes(fastify) {
       });
 
       const { rows: hoursRows } = await db.query(
-        `SELECT staff_id, date::text AS date, office_minutes, open_ended, manual_minutes
+        `SELECT staff_id, date::text AS date, office_minutes, open_ended, manual_minutes, segments
            FROM office_hours_daily
           WHERE date >= $1::date AND date <= $2::date`,
         [range.from, range.to]);
@@ -1610,15 +1695,20 @@ module.exports = async function directorAnalyticsRoutes(fastify) {
         for (const r of crmRows) {
           const key = `${r.user_id}|${String(r.date).slice(0, 10)}`;
           if (!grouped.has(key)) grouped.set(key, []);
-          const d = new Date(r.minute_ts);
+          // Наивный timestamp хранит московские настенные часы — берём их как
+          // есть (getUTC* давал сдвиг на 3 часа при разборе сессий).
           grouped.get(key).push({
-            minute: `${String(d.getUTCHours()).padStart(2, '0')}:${String(d.getUTCMinutes()).padStart(2, '0')}`,
+            minute: hhmmWallClock(r.minute_ts),
             hits: Number(r.hits || 0)
           });
         }
         for (const [key, minutes] of grouped) {
           const res = crmActivity.buildSessions(minutes, { gapMin: gap, maxDayMinutes: cap });
-          crmMap.set(key, { minutes: res.totalMinutes, hasData: res.sessions.length > 0 });
+          crmMap.set(key, {
+            minutes: res.totalMinutes,
+            hasData: res.sessions.length > 0,
+            sessions: res.sessions || []
+          });
         }
       }
 
@@ -1696,7 +1786,8 @@ module.exports = async function directorAnalyticsRoutes(fastify) {
         const perDay = days.map((iso) => {
           const plan = pickStatus(grp, iso);
           const hr = pickHours(grp, iso);
-          const crmDay = crmMap.get(`${grp.user_id}|${iso}`) || { minutes: 0, hasData: false };
+          const crmDay = crmMap.get(`${grp.user_id}|${iso}`)
+            || { minutes: 0, hasData: false, sessions: [] };
           const officeMinutes = hr && hr.manual_minutes != null
             ? Number(hr.manual_minutes)
             : Number(hr ? hr.office_minutes : 0);
@@ -1706,6 +1797,10 @@ module.exports = async function directorAnalyticsRoutes(fastify) {
             statusCode: plan,
             officeMinutes,
             crmMinutes: crmDay.minutes,
+            // Сессии и окна СКУД — чтобы «удалённо» считалось как СРМ ВНЕ
+            // офиса, а не как весь СРМ (иначе двойной учёт ноутбука в офисе).
+            crmSessions: crmDay.sessions || [],
+            officeSegments: officeHours.parseSegments(hr && hr.segments),
             crmHasData: crmDay.hasData,
             skudMissing: !hr,
             normMinutes: norm
@@ -1716,10 +1811,13 @@ module.exports = async function directorAnalyticsRoutes(fastify) {
           const isLegacy = !!sinceIso && iso < sinceIso
             && (credit.source === 'crm' || credit.source === 'no_crm_data'
                 || credit.source === 'crm_no_status' || credit.source === 'no_status');
-          if (isLegacy) {
+          // День без отчёта СКУД: норма не начисляется — иначе «нет импорта»
+          // выглядит как прогул (правило D-«все прогуляли», повтор 05.11).
+          const noSkudCoverage = !coveredDays.has(iso);
+          if (isLegacy || noSkudCoverage) {
             credit.counts_in_norm = false;
-            credit.source = 'legacy';
-            credit.warn = 'legacy_crm';
+            credit.source = isLegacy ? 'legacy' : 'skud_not_covered';
+            credit.warn = isLegacy ? 'legacy_crm' : 'skud_not_covered';
             credit.credited_minutes = 0;
           }
 
@@ -1736,6 +1834,10 @@ module.exports = async function directorAnalyticsRoutes(fastify) {
         const officeDays = perDay.filter((d) => d.status_code === officeHours.OFFICE_STATUS || d.source === 'skud' || d.source === 'skud_no_status');
         const crmDays = perDay.filter((d) => d.source === 'crm');
         const underDays = perDay.filter((d) => d.counts_in_norm && d.credited_minutes < d.norm_minutes);
+        const workload = officeHours.workloadState({
+          workedMinutes: summary.worked_minutes,
+          normMinutes: summary.norm_minutes
+        });
         return {
           staff_id: grp.staffIds[0],
           staff_ids: grp.staffIds,
@@ -1744,9 +1846,15 @@ module.exports = async function directorAnalyticsRoutes(fastify) {
           role: grp.role || '',
           norm_minutes: summary.norm_minutes,
           credited_minutes: summary.credited_minutes,
+          worked_minutes: summary.worked_minutes,
+          remote_minutes: summary.remote_minutes,
           office_minutes: summary.office_minutes,
           crm_minutes: summary.crm_minutes,
           delta_minutes: summary.delta_minutes,
+          ratio_pct: workload.ratio_pct,
+          delta_pct: workload.delta_pct,
+          state: workload.state,
+          crown: false,
           days_counted: summary.days_counted,
           days_under: underDays.length,
           office_days: officeDays.length,
@@ -1859,29 +1967,8 @@ module.exports = async function directorAnalyticsRoutes(fastify) {
       }
 
       // ── Качество данных ──
-      // Покрытие СКУД считаем по ПЕРИОДАМ импортов, а не по строкам
-      // office_hours_daily: строки появляются только там, где были проходы,
-      // поэтому «нет строки» ≠ «нет отчёта».
-      const { rows: importRows } = await db.query(
-        `SELECT id, period_from::text AS period_from, period_to::text AS period_to,
-                imported_at, source, file_name
-           FROM skud_imports
-          WHERE deleted_at IS NULL
-          ORDER BY imported_at DESC
-          LIMIT 60`).catch(() => ({ rows: [] }));
-
-      const lastImport = importRows[0] || null;
-      const coveredDays = new Set();
-      for (const imp of importRows) {
-        let iso = String(imp.period_from).slice(0, 10);
-        const end = String(imp.period_to).slice(0, 10);
-        let guard = 0;
-        while (iso <= end && guard < 400) {
-          coveredDays.add(iso);
-          iso = officeHours.addDays(iso, 1);
-          guard += 1;
-        }
-      }
+      // coveredDays/lastImport посчитаны выше — до разбора дней, чтобы «нет
+      // отчёта» не превращалось в недоработку.
       const skudDaysMissing = workingDays.filter((iso) => !coveredDays.has(iso));
 
       const { rows: [flagRow] } = await db.query(
@@ -1895,13 +1982,42 @@ module.exports = async function directorAnalyticsRoutes(fastify) {
         ? workingDays.filter((iso) => iso < sinceIso).length
         : 0;
 
+      // ── Дисциплина и корона ──
+      // Нет ни одного импорта СКУД за контур — судить о выработке нельзя:
+      // это «нет данных», а не «все прогуляли». Цвета и корону не ставим.
+      if (!lastImport) {
+        for (const p of people) {
+          p.state = 'none';
+          p.crown = false;
+        }
+      } else {
+        let leader = null;
+        let best = -1;
+        for (const p of people) {
+          if (p.state !== 'green' || p.norm_minutes <= 0) continue;
+          if (p.worked_minutes > best) { best = p.worked_minutes; leader = p; }
+        }
+        if (leader && best > 0) {
+          for (const p of people) {
+            p.crown = p.state === 'green'
+              && p.norm_minutes > 0
+              && p.worked_minutes === best;
+          }
+        }
+      }
+
       return {
         ok: true,
         period: {
           scope,
-          from: range.from,
-          to: range.to,
-          label: scope === 'week' ? 'Текущая неделя' : 'Текущий месяц',
+          from: rangeFull.from,
+          to: rangeFull.to,
+          // Фактически посчитано по: норма не начисляется за будущие дни.
+          counted_to: range.to,
+          label: meta.label,
+          prev_anchor: meta.prev_anchor,
+          next_anchor: meta.next_anchor,
+          current_anchor: meta.current_anchor,
           working_days: workingDays.length
         },
         now,
@@ -1952,10 +2068,17 @@ module.exports = async function directorAnalyticsRoutes(fastify) {
           role: p.role,
           norm_minutes: p.norm_minutes,
           credited_minutes: p.credited_minutes,
+          worked_minutes: p.worked_minutes,
+          remote_minutes: p.remote_minutes,
           office_minutes: p.office_minutes,
           crm_minutes: p.crm_minutes,
           delta_minutes: p.delta_minutes,
+          ratio_pct: p.ratio_pct,
+          delta_pct: p.delta_pct,
+          state: p.state,
+          crown: p.crown,
           days_under: p.days_under,
+          days_counted: p.days_counted,
           office_days: p.office_days,
           crm_days: p.crm_days,
           is_under: p.is_under,

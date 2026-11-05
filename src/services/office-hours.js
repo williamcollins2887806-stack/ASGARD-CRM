@@ -346,14 +346,32 @@ function creditDay(p) {
 function summarizeDays(days) {
   let norm = 0;
   let credited = 0;
+  let worked = 0;
   let office = 0;
   let crm = 0;
+  let remote = 0;
   let counted = 0;
   for (const d of days) {
-    office += d.office_minutes;
-    crm += d.crm_minutes;
-    if (d.counts_in_norm) {
-      norm += d.norm_minutes;
+    // Часы СКУД — факт присутствия, показываем всегда (совпадает с отчётом).
+    const officeDay = Number(d.office_minutes) || 0;
+    office += officeDay;
+    crm += Number(d.crm_minutes) || 0;
+    // Удалёнка = СРМ вне окон СКУД и только по дням, которые идут в норму.
+    // «нп» (ждёт ответа), отпуск/больничный и выходные норма не судят: там
+    // СРМ-активность ещё не подтверждённый факт, иначе человек с двумя
+    // снятыми отметками выглядел бы «сверхнормативным» (215 %).
+    const judged = !!d.counts_in_norm;
+    const remoteDay = judged
+      ? (d.crm_remote_minutes != null
+        ? Number(d.crm_remote_minutes) || 0
+        : Math.max(0, (Number(d.credited_minutes) || 0) - officeDay))
+      : 0;
+    remote += remoteDay;
+    // «Выработка» для дисциплины — факт (офис + удалёнка) без потолка нормы:
+    // переработка в один день не должна съедаться потолком другого.
+    worked += officeDay + remoteDay;
+    if (judged) {
+      norm += Number(d.norm_minutes) || 0;
       credited += Math.min(d.credited_minutes, d.norm_minutes);
       counted += 1;
     }
@@ -361,16 +379,67 @@ function summarizeDays(days) {
   return {
     norm_minutes: norm,
     credited_minutes: credited,
+    worked_minutes: worked,
+    remote_minutes: remote,
     office_minutes: office,
     crm_minutes: crm,
     delta_minutes: credited - norm,    // отрицательное = недоработка
     days_counted: counted,
     norm_hours: Math.round(norm / 6) / 10,
     credited_hours: Math.round(credited / 6) / 10,
+    worked_hours: Math.round(worked / 6) / 10,
     delta_hours: Math.round((credited - norm) / 6) / 10,
     office_hours: Math.round(office / 6) / 10,
     crm_hours: Math.round(crm / 6) / 10
   };
+}
+
+/**
+ * Дисциплина выработки за период (решение заказчика 05.11.2026).
+ *
+ * Считаем от ФАКТА (офис + удалёнка) к норме календаря:
+ *   < −50 %  → red      (меньше половины нормы)
+ *   −50…−15 % → yellow  (недоработка от 15 %)
+ *   > −15 %  → green
+ *   norm = 0  → none    (отпуск/больничный целиком — судить не по чему)
+ * Границы: ровно −15 % — жёлтый, ровно −50 % — жёлтый.
+ */
+function workloadState(p) {
+  const worked = Math.max(0, Math.round(Number(p && p.workedMinutes) || 0));
+  const norm = Math.max(0, Math.round(Number(p && p.normMinutes) || 0));
+  if (!norm) {
+    return { ratio_pct: null, delta_pct: null, state: 'none' };
+  }
+  const ratio = (worked / norm) * 100;
+  const delta = ratio - 100;
+  let state = 'green';
+  if (delta < -50) state = 'red';
+  else if (delta <= -15) state = 'yellow';
+  return {
+    ratio_pct: Math.round(ratio * 10) / 10,
+    delta_pct: Math.round(delta * 10) / 10,
+    state
+  };
+}
+
+/** jsonb segments из office_hours_daily → массив окон. */
+function parseSegments(raw) {
+  if (!raw) return [];
+  if (Array.isArray(raw)) return raw;
+  if (typeof raw === 'string') {
+    try {
+      const j = JSON.parse(raw);
+      return Array.isArray(j) ? j : [];
+    } catch (_) { return []; }
+  }
+  return [];
+}
+
+/** Границы года. */
+function yearRange(year) {
+  const y = Number(year);
+  const leap = (y % 4 === 0 && y % 100 !== 0) || y % 400 === 0;
+  return { from: `${y}-01-01`, to: `${y}-12-31`, daysInYear: leap ? 366 : 365 };
 }
 
 /**
@@ -555,6 +624,8 @@ module.exports = {
   dayNormMinutes,
   creditDay,
   summarizeDays,
+  workloadState,
+  parseSegments,
   applyImportHours,
   detectFalseOffice,
   autoFillOfficeStatus,
@@ -562,6 +633,7 @@ module.exports = {
   crmMinutesOutsideOffice,
   officeSegmentRange,
   monthRange,
+  yearRange,
   mondayOf,
   isoOf,
   addDays,

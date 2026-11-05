@@ -30,6 +30,13 @@ const PERIODS = [
   { id: 'all', label: 'Всё' },
 ];
 
+/** Локальный фильтр «Графика офиса» — не связан с чипами периода выше. */
+const TEAM_SCOPES = [
+  { id: 'week', label: 'Неделя' },
+  { id: 'month', label: 'Месяц' },
+  { id: 'year', label: 'Год' },
+];
+
 const TENDER_STATUSES = [
   { id: 'рассмотрение', label: 'Рассмотрение', tone: 'info' },
   { id: 'готовим', label: 'Готовим', tone: 'blue' },
@@ -273,6 +280,8 @@ export default function DirectorAnalytics() {
   const [worksItems, setWorksItems] = useState([]);
   const [worksCounts, setWorksCounts] = useState({ active: 0, pause: 0, archive: 0 });
   const [teamHours, setTeamHours] = useState(null);
+  const [teamScope, setTeamScope] = useState('month');
+  const [teamAnchor, setTeamAnchor] = useState(null);
 
   const [loading, setLoading] = useState(true);
   const [listLoading, setListLoading] = useState(false);
@@ -284,7 +293,6 @@ export default function DirectorAnalytics() {
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailTab, setDetailTab] = useState('summary');
   const [teamPerson, setTeamPerson] = useState(null);
-
   const periodHostRef = useRef(null);
 
   const morphPeriod = useCallback(() => {
@@ -306,20 +314,9 @@ export default function DirectorAnalytics() {
     return () => window.removeEventListener('resize', onResize);
   }, [allowed, period, morphPeriod, view]);
 
-  const loadTeam = useCallback(async (p) => {
-    let scope = 'week';
-    let anchor = null;
-    if (p === 'month') scope = 'month';
-    else if (p === 'half_year') {
-      const d = new Date();
-      d.setMonth(d.getMonth() - 6);
-      anchor = d.toISOString().slice(0, 10);
-    } else if (p === 'year') {
-      const d = new Date();
-      d.setFullYear(d.getFullYear() - 1);
-      anchor = d.toISOString().slice(0, 10);
-    }
-    const url = `/director-analytics/team-hours?period=${scope}`
+  const loadTeam = useCallback(async (scope, anchor) => {
+    const s = TEAM_SCOPES.some((x) => x.id === scope) ? scope : 'month';
+    const url = `/director-analytics/team-hours?period=${s}`
       + (anchor ? `&date=${anchor}` : '');
     const res = await api.get(url);
     setTeamHours(res);
@@ -338,9 +335,25 @@ export default function DirectorAnalytics() {
     setAppsItems(apps?.items || []);
     setWorksItems(works?.items || []);
     if (works?.counts) setWorksCounts(works.counts);
-    await loadTeam(p);
     return ov;
-  }, [loadTeam]);
+  }, []);
+
+  // «График офиса» — отдельный контур: свой scope + якорь, независим от чипов выше.
+  useEffect(() => {
+    if (!allowed) return undefined;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await loadTeam(teamScope, teamAnchor);
+        if (cancelled) return;
+        setTeamHours(res);
+      } catch {
+        if (!cancelled) setTeamHours(null);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [allowed, teamScope, teamAnchor, loadTeam]);
+
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -563,6 +576,10 @@ export default function DirectorAnalytics() {
                     teamHours={teamHours}
                     period={period}
                     onOpenPerson={(p) => setTeamPerson(p)}
+                    scope={teamScope}
+                    onScope={(s) => { setTeamScope(s); setTeamAnchor(null); }}
+                    onStep={(anchor) => anchor && setTeamAnchor(anchor)}
+                    onCurrent={() => setTeamAnchor(null)}
                   />
                 </div>
               )}
@@ -880,133 +897,206 @@ function AttentionRow({ section, item, onOpen }) {
 
 /* ── Team ─────────────────────────────────────────────────────────────── */
 
-function TeamSection({ teamHours, period, onOpenPerson }) {
+function TeamSection({ teamHours, period, onOpenPerson, scope, onScope, onStep, onCurrent }) {
   const haptic = useHaptic();
+  const dq = teamHours?.data_quality || {};
+  const noSkud = !dq.last_import;
+  const activeScope = teamHours?.period?.scope || scope || 'month';
+
+  const sorted = useMemo(() => {
+    const stateRank = { red: 0, yellow: 1, none: 2, green: 3 };
+    return (teamHours?.people || []).slice().sort((a, b) => {
+      if (!!b.crown !== !!a.crown) return b.crown ? 1 : -1;
+      const ra = stateRank[a.state] == null ? 2 : stateRank[a.state];
+      const rb = stateRank[b.state] == null ? 2 : stateRank[b.state];
+      if (ra !== rb) return ra - rb;
+      const pa = a.ratio_pct == null ? Number.POSITIVE_INFINITY : a.ratio_pct;
+      const pb = b.ratio_pct == null ? Number.POSITIVE_INFINITY : b.ratio_pct;
+      if (pa !== pb) return pa - pb;
+      return String(a.name || '').localeCompare(String(b.name || ''), 'ru');
+    });
+  }, [teamHours?.people]);
+
+  const atCurrent = !teamHours?.period || !teamHours.period.current_anchor
+    ? true
+    : (teamHours.period.current_anchor >= teamHours.period.from
+      && teamHours.period.current_anchor <= teamHours.period.to);
+
+  const lastImportTo = dq.last_import ? String(dq.last_import.period_to).slice(0, 10) : null;
+  const hasNorm = (teamHours?.people || []).some((p) => Number(p.norm_minutes) > 0);
+  const notCovered = !!lastImportTo && (teamHours?.people || []).length > 0 && !hasNorm;
+
+  const stateLabel = {
+    green: 'в норме', yellow: 'недоработка', red: 'ниже половины', none: 'нет нормы',
+  };
+
   return (
     <section className="jp-sec-block jp-team-block">
       <div className="jp-sec-head">
         <div className="jp-sec-head-left">
           <span className="jp-sec-mark" />
-          <h2 className="jp-sec-title">Команда и часы</h2>
-          <span className="jp-sec-note">норма 8 ч/день · 40 ч/нед</span>
+          <h2 className="jp-sec-title">График офиса</h2>
+          <span className="jp-sec-note">офис + удалённо · норма 8 ч/день</span>
         </div>
         <div className="jp-sec-head-right">
-          <span className="jp-sec-total">{periodLabel(period)}</span>
+          <span className="jp-sec-total">{teamHours?.period?.label || periodLabel(period)}</span>
         </div>
       </div>
 
-      {!teamHours?.data_quality?.last_import ? (
+      <div className="jp-og-filter">
+        <div className="jp-og-scopes" role="tablist" aria-label="Период графика офиса">
+          {TEAM_SCOPES.map((s) => (
+            <button
+              key={s.id}
+              type="button"
+              role="tab"
+              aria-selected={activeScope === s.id}
+              className={`jp-og-scope spring-tap${activeScope === s.id ? ' is-on' : ''}`}
+              onClick={() => { haptic.light(); onScope?.(s.id); }}
+            >
+              {s.label}
+            </button>
+          ))}
+        </div>
+        <div className="jp-og-nav">
+          <button
+            type="button"
+            className="jp-og-nav-btn spring-tap"
+            aria-label="Предыдущий период"
+            disabled={!teamHours?.period?.prev_anchor}
+            onClick={() => { haptic.light(); onStep?.(teamHours?.period?.prev_anchor); }}
+          >
+            <ChevronLeft size={16} />
+          </button>
+          <span className="jp-og-range">{teamHours?.period?.label || '—'}</span>
+          <button
+            type="button"
+            className="jp-og-nav-btn spring-tap"
+            aria-label="Следующий период"
+            disabled={!teamHours?.period?.next_anchor}
+            onClick={() => { haptic.light(); onStep?.(teamHours?.period?.next_anchor); }}
+          >
+            <ChevronRight size={16} />
+          </button>
+        </div>
+        {atCurrent ? null : (
+          <button type="button" className="jp-og-today spring-tap" onClick={() => { haptic.light(); onCurrent?.(); }}>
+            Текущий период
+          </button>
+        )}
+      </div>
+
+      {noSkud ? (
         <div className="jp-warn-banner">
           Отчёт СКУД ещё не загружен — часы офиса и норма не считаются.
         </div>
-      ) : null}
-
-      <div className="jp-now-grid">
-        {[
-          ['В офисе', teamHours?.now?.office],
-          ['Удалённо', teamHours?.now?.remote],
-          ['На объектах', teamHours?.now?.site],
-          ['Поездка', teamHours?.now?.trip],
-          ['Учёба', teamHours?.now?.study],
-          ['Отсутствие', teamHours?.now?.absent],
-          ['Не подтв.', teamHours?.now?.unconfirmed],
-        ].map(([k, v]) => (
-          <div className="jp-now-cell" key={k}>
-            <span className="k">{k}</span>
-            <span className={`v${k === 'Не подтв.' && v ? ' is-bad' : ''}`}>{v || 0}</span>
-          </div>
-        ))}
-      </div>
-
-      <div className="jp-hours-head">
-        <span className="l">Норма 8 ч/день · 40 ч/нед</span>
-        <span className="r">{teamHours?.period?.label || ''}</span>
-      </div>
-
-      <div className="jp-hours-grid">
-        {[
-          ['В офисе', teamHours?.avg?.office_minutes_per_day, 'среднее за день'],
-          ['В СРМ', teamHours?.avg?.crm_minutes_per_day, 'среднее за день'],
-          ['Не в норме', teamHours?.norm?.under_pct == null ? null : `${teamHours.norm.under_pct}%`,
-            teamHours?.norm?.people_total
-              ? `${teamHours.norm.people_under} из ${teamHours.norm.people_total}`
-              : 'нет данных'],
-          ['Отклонение', teamHours?.norm?.avg_delta_minutes == null ? null
-            : hoursHuman(teamHours.norm.avg_delta_minutes), 'на человека'],
-        ].map(([k, v, sub]) => (
-          <div className="jp-hours-cell" key={k}>
-            <span className="k">{k}</span>
-            <span className={`v ${typeof v === 'string' && v.startsWith('−') ? 'is-bad' : ''}`}>
-              {v == null ? '—' : (typeof v === 'number' ? hoursFmt(v) : v)}
-            </span>
-            <span className="sub">{sub}</span>
-          </div>
-        ))}
-      </div>
-
-      <div className="jp-level-head" style={{ marginTop: 14 }}>
-        <h2>Кто не выработал норму</h2>
-        <span className="meta">
-          {(teamHours?.norm?.worst || []).length ? 'нажмите строку для расшифровки по дням' : 'нет'}
-        </span>
-      </div>
-      {(teamHours?.norm?.worst || []).length === 0 ? (
-        <EmptyState
-          icon={Activity}
-          title="Никто не ниже нормы"
-          description={
-            teamHours?.norm?.people_total
-              ? 'Норма выполнена за выбранный период'
-              : 'Данных для расчёта нормы нет'
-          }
-        />
       ) : (
-        (teamHours.norm.worst || []).map((w) => (
-          <button
-            type="button"
-            className="jp-hours-row spring-tap"
-            key={w.staff_id}
-            onClick={() => {
-              haptic.light();
-              const full = (teamHours.people || []).find(
-                (p) => String(p.staff_id) === String(w.staff_id)
-                  || (p.user_id != null && w.user_id != null && p.user_id === w.user_id)
-              );
-              onOpenPerson?.(full || w);
-            }}
-          >
-            <span className="nm">
-              {w.name}
-              <span className="sub">{w.role}{w.days_under ? ` · ${w.days_under} дн.` : ''}</span>
-            </span>
-            <span className="vals">
-              <span>офис {hoursFmt(w.office_minutes)}</span>
-              <span>СРМ {hoursFmt(w.crm_minutes)}</span>
-              <span className="bad">({hoursHuman(w.delta_minutes)})</span>
-            </span>
-          </button>
-        ))
+        <>
+          {notCovered ? (
+            <div className="jp-warn-banner">
+              Период ещё не покрыт отчётом СКУД (последний — по {formatDate(lastImportTo)}
+              ). За дни без отчёта норма не начисляется.
+              <button
+                type="button"
+                className="jp-og-today spring-tap"
+                style={{ marginLeft: 8 }}
+                onClick={() => { haptic.light(); onStep?.(lastImportTo); }}
+              >
+                {formatDate(lastImportTo)}
+              </button>
+            </div>
+          ) : null}
+          <div className="jp-og-summary">
+            {teamHours?.norm?.people_total
+              ? <span>В норме: <b>{teamHours.norm.people_total - teamHours.norm.people_under}</b> из {teamHours.norm.people_total}</span>
+              : <span>Нет данных для расчёта нормы</span>}
+            {teamHours?.period?.working_days
+              ? <span>рабочих дней: <b>{teamHours.period.working_days}</b></span>
+              : null}
+          </div>
+
+          <div className="jp-og-legend">
+            <span className="is-green"><i />в норме</span>
+            <span className="is-yellow"><i />до 50 %</span>
+            <span className="is-red"><i />ниже половины</span>
+            <span className="is-none"><i />нет нормы</span>
+          </div>
+
+          {!sorted.length ? (
+            <EmptyState
+              icon={Activity}
+              title="Нет сотрудников"
+              description="Список пуст — нет людей с аккаунтом CRM"
+            />
+          ) : (
+            <div className="jp-og-list">
+              {sorted.map((p) => {
+                const st = p.state || 'none';
+                return (
+                  <button
+                    type="button"
+                    key={p.staff_id}
+                    className={`jp-og-row is-${st}${p.crown ? ' is-crown' : ''} spring-tap`}
+                    onClick={() => {
+                      haptic.light();
+                      onOpenPerson?.(p);
+                    }}
+                  >
+                    <span className="jp-og-bar" />
+                    <span className="jp-og-name">
+                      <span className="jp-og-name-txt">
+                        {p.name}
+                        {p.crown ? <CrownIcon /> : null}
+                      </span>
+                      <span className="jp-og-role">
+                        {p.role || ''}
+                        {p.norm_minutes > 0
+                          ? `${p.role ? ' · ' : ''}${p.days_counted} дн. в норме`
+                          : ''}
+                      </span>
+                    </span>
+                    <span className="jp-og-pct">
+                      <span className="v">{p.ratio_pct == null ? '—' : `${Math.round(p.ratio_pct)} %`}</span>
+                      <span className="l">{stateLabel[st] || '—'}</span>
+                    </span>
+                    <span className="jp-og-cells">
+                      <span className="c"><i>офис</i>{hoursFmt(p.office_minutes)}</span>
+                      <span className="c"><i>удалённо</i>{hoursFmt(p.remote_minutes)}</span>
+                      <span className="c sum"><i>сумма</i>{hoursFmt(p.worked_minutes)}</span>
+                      <span className="c"><i>норма</i>{p.norm_minutes ? hoursFmt(p.norm_minutes) : '—'}</span>
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </>
       )}
 
       <div className="jp-dq">
         <div className="h">Качество данных</div>
-        {teamHours?.data_quality?.last_import ? (
+        {dq.last_import ? (
           <p>
-            Последний отчёт СКУД:
-            {' '}
-            {formatDate(teamHours.data_quality.last_import.period_from)}
-            –
-            {formatDate(teamHours.data_quality.last_import.period_to)}
+            Отчёт СКУД: {formatDate(dq.last_import.period_from)}–{formatDate(dq.last_import.period_to)}
           </p>
         ) : <p>Отчёт СКУД ещё не импортирован</p>}
-        {teamHours?.data_quality?.skud_days_missing_count ? (
-          <p>Дней без отчёта СКУД: {teamHours.data_quality.skud_days_missing_count}</p>
+        {dq.skud_days_missing_count ? (
+          <p>Дней без отчёта СКУД: {dq.skud_days_missing_count}</p>
         ) : null}
-        {teamHours?.data_quality?.crm_activity_since ? (
-          <p>Учёт времени СРМ с {formatDate(teamHours.data_quality.crm_activity_since)}</p>
-        ) : <p>Серверный учёт времени СРМ ещё не собирал минут</p>}
+        {dq.crm_activity_since
+          ? <p>Учёт времени СРМ с {formatDate(dq.crm_activity_since)}</p>
+          : <p>Серверный учёт времени СРМ ещё не собирал минут</p>}
       </div>
     </section>
+  );
+}
+
+/** Корона лидера периода — тот же силуэт, что на desktop. */
+function CrownIcon() {
+  return (
+    <svg className="jp-og-crown" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      <path d="M3 8.5l4.2 3.2L12 5l4.8 6.7L21 8.5l-1.8 10.2H4.8L3 8.5z" fill="currentColor" />
+    </svg>
   );
 }
 
@@ -2258,7 +2348,9 @@ function TeamPersonSheet({ person, onClose }) {
         </div>
         <div className="jp-modal-body">
           <div className="jp-person-sum">
-            <div><span className="k">Зачёт</span><span className="v">{hoursFmt(person.credited_minutes)}</span></div>
+            <div><span className="k">Офис</span><span className="v">{hoursFmt(person.office_minutes)}</span></div>
+            <div><span className="k">Удалённо</span><span className="v">{hoursFmt(person.remote_minutes)}</span></div>
+            <div><span className="k">Сумма</span><span className="v">{hoursFmt(person.worked_minutes)}</span></div>
             <div><span className="k">Норма</span><span className="v">{hoursFmt(person.norm_minutes)}</span></div>
             <div>
               <span className="k">Отклонение</span>
@@ -2272,15 +2364,17 @@ function TeamPersonSheet({ person, onClose }) {
           ) : (
             <div className="jp-day-list">
               {days.map((d) => {
-                const delta = d.counts_in_norm
-                  ? Number(d.credited_minutes || 0) - Number(d.norm_minutes || 0)
-                  : null;
+                const remote = d.crm_remote_minutes != null
+                  ? Number(d.crm_remote_minutes)
+                  : Math.max(0, Number(d.credited_minutes || 0) - Number(d.office_minutes || 0));
+                const worked = Number(d.office_minutes || 0) + remote;
+                const delta = d.counts_in_norm ? worked - Number(d.norm_minutes || 0) : null;
                 return (
                   <div className="jp-day-row" key={d.date}>
                     <span className="dt mono">{formatDate(d.date)}</span>
                     <span className="st">{TEAM_STATUS_LABELS[d.status_code] || d.status_code || '—'}</span>
                     <span className="num">оф {hoursFmt(d.office_minutes)}</span>
-                    <span className="num">СРМ {hoursFmt(d.crm_minutes)}</span>
+                    <span className="num">уд {hoursFmt(remote)}</span>
                     <span className={`num ${delta != null && delta < 0 ? 'bad' : ''}`}>
                       {delta == null ? '—' : hoursHuman(delta)}
                     </span>

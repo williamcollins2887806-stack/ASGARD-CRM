@@ -17,6 +17,13 @@ window.AsgardDirectorAnalyticsPage = (function () {
     { id: 'all', label: 'Всё время' }
   ];
 
+  /* Локальный фильтр «Графика офиса» — не связан с чипами периода выше. */
+  const TEAM_SCOPES = [
+    { id: 'week', label: 'Неделя' },
+    { id: 'month', label: 'Месяц' },
+    { id: 'year', label: 'Год' }
+  ];
+
   const TENDER_STATUSES = [
     { id: 'рассмотрение', label: 'Рассмотрение', tone: 'info' },
     { id: 'готовим', label: 'Готовим', tone: 'blue' },
@@ -113,6 +120,8 @@ window.AsgardDirectorAnalyticsPage = (function () {
     listItems: [],
     team: null,
     teamAnchor: null,
+    teamScope: 'month',
+    teamLoading: false,
     detail: null,
     loading: false,
     sheetLoading: false
@@ -1836,182 +1845,175 @@ window.AsgardDirectorAnalyticsPage = (function () {
     return fmtDate(t.period.from) + '–' + fmtDate(t.period.to);
   }
 
+  /** Состояния дисциплины «Графика офиса» — подписи для строки и легенды. */
+  const OG_STATES = {
+    green: { label: 'в норме' },
+    yellow: { label: 'недоработка' },
+    red: { label: 'ниже половины' },
+    none: { label: 'нет нормы' }
+  };
+
   function renderTeamHours() {
     const t = state.team;
     if (!t) return '<div class="jp-loading">Загрузка часов…</div>';
 
-    const avg = t.avg || {};
-    const norm = t.norm || {};
-    const now = t.now || {};
     const dq = t.data_quality || {};
+    const period = t.period || {};
     const noSkud = !dq.last_import;
+    const people = t.people || [];
 
-    const nowRows = [
-      { k: 'В офисе', v: now.office, tone: 'ok' },
-      { k: 'Удалённо', v: now.remote, tone: 'info' },
-      { k: 'На объектах', v: now.site, tone: 'blue' },
-      { k: 'Поездка / встреча', v: now.trip, tone: 'warn' },
-      { k: 'Учёба / склад', v: now.study, tone: 'info' },
-      { k: 'Больничный / отпуск', v: now.absent, tone: 'muted' },
-      { k: 'Не подтверждён', v: now.unconfirmed, tone: 'err' }
-    ];
-    const nowHtml = nowRows.map((r) =>
-      '<div class="th-now ' + toneCls(r.tone) + '">' +
-      '<span class="th-now-k">' + esc(r.k) + '</span>' +
-      '<span class="th-now-v">' + (r.v || 0) + '</span></div>'
+    const scope = TEAM_SCOPES.some((s) => s.id === period.scope) ? period.scope : state.teamScope;
+    const scopeChips = TEAM_SCOPES.map((s) =>
+      '<button type="button" class="og-scope' + (s.id === scope ? ' is-on' : '') + '" ' +
+      'data-team-scope="' + esc(s.id) + '" role="tab" aria-selected="' + (s.id === scope ? 'true' : 'false') + '">' +
+      esc(s.label) + '</button>'
     ).join('');
 
-    const avgOffice = avg.office_minutes_per_day;
-    const avgCrm = avg.crm_minutes_per_day;
-    const underPct = norm.under_pct;
-    const heroCells = [
-      {
-        cap: 'В офисе · среднее за день',
-        val: avgOffice == null ? '—' : hoursFmt(avgOffice),
-        meta: avgOffice == null ? 'нет отчёта СКУД за период'
-          : 'по СКУД · ' + (avg.office_people_per_day != null ? avg.office_people_per_day : '—') + ' чел. в день',
-        tone: avgOffice == null ? 'muted' : ''
-      },
-      {
-        cap: 'В СРМ · среднее за день',
-        val: avgCrm == null ? '—' : hoursFmt(avgCrm),
-        meta: avgCrm == null ? 'серверный учёт ещё не начал собирать данные'
-          : 'по API-активности · ' + (avg.crm_people_per_day != null ? avg.crm_people_per_day : '—') + ' чел. в день',
-        tone: avgCrm == null ? 'muted' : ''
-      },
-      {
-        cap: 'Не вырабатывают норму',
-        val: norm.people_total ? (norm.people_under + ' из ' + norm.people_total) : '—',
-        meta: underPct == null ? 'нет данных за период'
-          : (underPct + ' % сотрудников · норма 8 ч/день, 40 ч/нед'),
-        tone: underPct == null ? 'muted' : (underPct >= 50 ? 'err' : underPct >= 25 ? 'warn' : 'ok')
-      },
-      {
-        cap: 'Среднее отклонение',
-        val: norm.avg_delta_minutes == null ? '—' : hoursHuman(norm.avg_delta_minutes),
-        meta: norm.avg_delta_minutes == null ? 'считать не по чему'
-          : (norm.avg_delta_minutes < 0 ? 'недоработка на человека' : 'норма выполнена'),
-        tone: norm.avg_delta_minutes == null ? 'muted'
-          : (norm.avg_delta_minutes < 0 ? 'err' : 'ok')
-      }
-    ];
-    const heroHtml = heroCells.map((c) =>
-      '<div class="hero-cell ' + (c.tone ? toneCls(c.tone) : '') + '">' +
-      '<div class="hero-cap">' + esc(c.cap) + '</div>' +
-      '<div class="hero-num money">' + esc(c.val) + '</div>' +
-      '<div class="hero-meta">' + esc(c.meta) + '</div></div>'
-    ).join('');
+    const atCurrent = !state.teamAnchor
+      || (period.current_anchor && period.from && period.current_anchor >= period.from
+          && period.current_anchor <= period.to);
+    const filterHtml =
+      '<div class="og-filter">' +
+        '<div class="og-scopes" role="tablist" aria-label="Период графика офиса">' + scopeChips + '</div>' +
+        '<div class="og-nav">' +
+          '<button type="button" class="og-nav-btn" data-team-step="prev" aria-label="Предыдущий период" ' +
+          (period.prev_anchor ? 'data-team-anchor="' + esc(period.prev_anchor) + '"' : 'disabled') + '>‹</button>' +
+          '<span class="og-range">' + esc(period.label || teamRangeLabel(t)) + '</span>' +
+          '<button type="button" class="og-nav-btn" data-team-step="next" aria-label="Следующий период" ' +
+          (period.next_anchor ? 'data-team-anchor="' + esc(period.next_anchor) + '"' : 'disabled') + '>›</button>' +
+        '</div>' +
+        (atCurrent ? '' : '<button type="button" class="og-today" data-team-current="1">Текущий период</button>') +
+      '</div>';
 
-    const statusDefs = [
-      { id: 'оф', label: 'В офисе', tone: 'ok' },
-      { id: 'уд', label: 'Удалёнка', tone: 'info' },
-      { id: 'об', label: 'На объекте', tone: 'blue' },
-      { id: 'км', label: 'Командировка', tone: 'warn' },
-      { id: 'пг', label: 'Встреча', tone: 'warn' },
-      { id: 'уч', label: 'Учёба', tone: 'info' },
-      { id: 'ск', label: 'Склад', tone: 'blue' },
-      { id: 'бн', label: 'Больничный', tone: 'muted' },
-      { id: 'сс', label: 'За свой счёт', tone: 'muted' },
-      { id: 'вх', label: 'Выходной', tone: 'muted' },
-      { id: 'нп', label: 'Не подтверждён', tone: 'err' }
-    ];
-    const statusCount = {};
-    (t.people || []).forEach((p) => {
-      (p.days || []).forEach((d) => {
-        if (!d.status_code) return;
-        statusCount[d.status_code] = (statusCount[d.status_code] || 0) + 1;
-      });
-    });
-    const rangeShort = (t.period && t.period.from && t.period.to)
-      ? t.period.from.split('-').reverse().slice(0, 2).join('.') + '–' +
-        t.period.to.split('-').reverse().slice(0, 2).join('.')
+    if (noSkud) {
+      return '<section class="sec" id="sec-team">' +
+        '<div class="sec-head"><div class="sec-head-left">' +
+          '<span class="sec-mark"></span><h2 class="sec-title">График офиса</h2>' +
+          '<span class="sec-note">норма 8 ч/день · 40 ч/нед</span>' +
+        '</div></div>' + filterHtml +
+        '<div class="dl-banner"><span class="dl-banner-ico" aria-hidden="true">!</span>' +
+          '<span class="dl-banner-body"><span class="dl-banner-head">Нет отчёта СКУД</span>' +
+          '<span class="dl-banner-hint">Часы в офисе и норма не считаются, пока офис-менеджер не загрузит отчёт. ' +
+          'Это не «0 часов» — это отсутствие данных.</span></span></div>' +
+        '</section>';
+    }
+
+    // Отчёт есть, но за выбранный период нормы не начислено (например, ноябрь
+    // при последнем импорте по 01.11). Это «нет данных», а не прогул: показываем
+    // подсказку и кнопку на последний покрытый период.
+    const importTo = dq.last_import ? String(dq.last_import.period_to).slice(0, 10) : null;
+    const hasNorm = people.some((p) => Number(p.norm_minutes) > 0);
+    const notCovered = !!importTo && people.length > 0 && !hasNorm;
+    const coverageHtml = notCovered
+      ? '<div class="dl-banner"><span class="dl-banner-ico" aria-hidden="true">!</span>' +
+          '<span class="dl-banner-body"><span class="dl-banner-head">Период ещё не покрыт отчётом СКУД</span>' +
+          '<span class="dl-banner-hint">Последний отчёт загружен по ' + esc(fmtDate(importTo)) +
+          '. За дни без отчёта норма не начисляется — цвет и корона не ставятся.</span>' +
+          '<button type="button" class="th-empty-btn" data-team-anchor="' + esc(importTo) + '">' +
+          'Показать ' + esc(fmtDate(importTo)) + '</button></span></div>'
       : '';
-    const statusCardsHtml = statusDefs.map((s) => {
-      const n = statusCount[s.id] || 0;
-      return '<button type="button" class="status-card ' + toneCls(s.tone) + '" data-team-status="' + esc(s.id) + '">' +
-        '<span class="sc-bar"></span>' +
-        '<span class="sc-top"><span class="sc-name"><span class="sc-dot"></span>' + esc(s.label) + '</span>' +
-        '<span class="sc-count' + (n ? '' : ' zero') + '">' + n + '</span></span>' +
-        '<span class="sc-money">' + esc(n ? n + ' чел.-дн.' : '—') + '</span>' +
-        '<span class="sc-meta">' + esc(n ? 'за ' + rangeShort : 'нет отметок') + '</span>' +
+
+
+    // Коронованный сверху, дальше — от худшего выполнения к лучшему.
+    const stateRank = { red: 0, yellow: 1, none: 2, green: 3 };
+    const sorted = people.slice().sort((a, b) => {
+      if (!!b.crown !== !!a.crown) return b.crown ? 1 : -1;
+      const ra = stateRank[a.state] == null ? 2 : stateRank[a.state];
+      const rb = stateRank[b.state] == null ? 2 : stateRank[b.state];
+      if (ra !== rb) return ra - rb;
+      const pa = a.ratio_pct == null ? Number.POSITIVE_INFINITY : a.ratio_pct;
+      const pb = b.ratio_pct == null ? Number.POSITIVE_INFINITY : b.ratio_pct;
+      if (pa !== pb) return pa - pb;
+      return String(a.name || '').localeCompare(String(b.name || ''), 'ru');
+    });
+
+    const CROWN_SVG =
+      '<svg class="og-crown" viewBox="0 0 24 24" aria-hidden="true" focusable="false">' +
+      '<path d="M3 8.5l4.2 3.2L12 5l4.8 6.7L21 8.5l-1.8 10.2H4.8L3 8.5z" ' +
+      'fill="currentColor" stroke="none"/></svg>';
+
+    const rowsHtml = sorted.map((p) => {
+      const st = p.state || 'none';
+      const pct = p.ratio_pct == null ? '—' : (Math.round(p.ratio_pct) + ' %');
+      const deltaTxt = p.state === 'none' || p.delta_pct == null ? ''
+        : (p.delta_pct < 0 ? '−' + Math.abs(Math.round(p.delta_pct)) + ' % к норме'
+          : '+' + Math.round(p.delta_pct) + ' % к норме');
+      const label = (OG_STATES[st] || OG_STATES.none).label;
+      return '<button type="button" class="og-row is-' + esc(st) + (p.crown ? ' is-crown' : '') + '" ' +
+        'data-team-person="' + esc(p.staff_id) + '" ' +
+        'title="' + esc((p.name || '') + ' · ' + label + (deltaTxt ? ' · ' + deltaTxt : '')) + '">' +
+        '<span class="og-bar" aria-hidden="true"></span>' +
+        '<span class="og-name">' +
+          '<span class="og-name-txt">' + esc(p.name || '—') + (p.crown ? CROWN_SVG : '') + '</span>' +
+          '<span class="og-role">' + esc(p.role || '') +
+            (p.norm_minutes > 0 ? (p.role ? ' · ' : '') + p.days_counted + ' дн. в норме' : '') + '</span>' +
+        '</span>' +
+        '<span class="og-cell num">' + esc(hoursFmt(p.office_minutes)) + '</span>' +
+        '<span class="og-cell num">' + esc(hoursFmt(p.remote_minutes)) + '</span>' +
+        '<span class="og-cell og-sum num">' + esc(hoursFmt(p.worked_minutes)) + '</span>' +
+        '<span class="og-cell num">' + esc(p.norm_minutes ? hoursFmt(p.norm_minutes) : '—') + '</span>' +
+        '<span class="og-pct"><span class="og-pct-v">' + esc(pct) + '</span>' +
+          '<span class="og-pct-l">' + esc(label) + '</span></span>' +
       '</button>';
     }).join('');
 
-    const worst = norm.worst || [];
-    const worstHtml = worst.length
-      ? '<div class="th-table">' +
-        '<div class="th-thead"><span>Сотрудник</span><span class="ta-r">Офис</span><span class="ta-r">СРМ</span>' +
-        '<span class="ta-r">Зачёт</span><span class="ta-r">Норма</span><span class="ta-r">Отклонение</span></div>' +
-        worst.map((w) =>
-          '<button type="button" class="th-row" data-team-person="' + esc(w.staff_id) + '">' +
-          '<span class="th-name">' + esc(w.name || '—') +
-          '<span class="th-role">' + esc(w.role || '') + (w.days_under ? ' · ' + w.days_under + ' дн. под нормой' : '') + '</span></span>' +
-          '<span class="ta-r num">' + esc(hoursFmt(w.office_minutes)) + '</span>' +
-          '<span class="ta-r num">' + esc(hoursFmt(w.crm_minutes)) + '</span>' +
-          '<span class="ta-r num">' + esc(hoursFmt(w.credited_minutes)) + '</span>' +
-          '<span class="ta-r num">' + esc(hoursFmt(w.norm_minutes)) + '</span>' +
-          '<span class="ta-r num ' + (w.delta_minutes < 0 ? 'is-neg' : 'is-pos') + '">' +
-          esc(hoursHuman(w.delta_minutes)) + '</span></button>'
-        ).join('') + '</div>'
-      : '<div class="jp-empty">Никто не ниже нормы за выбранный период' +
-        (norm.people_total ? '' : ' — данных для расчёта нет') + '</div>';
+    const listHtml = people.length
+      ? '<div class="og-table">' +
+          '<div class="og-thead">' +
+            '<span class="og-name">Сотрудник</span>' +
+            '<span class="og-cell">Офис</span>' +
+            '<span class="og-cell">Удалённо</span>' +
+            '<span class="og-cell og-sum">Сумма</span>' +
+            '<span class="og-cell">Норма</span>' +
+            '<span class="og-pct">Выработка</span>' +
+          '</div>' + rowsHtml +
+        '</div>'
+      : '<div class="jp-empty">Нет сотрудников с аккаунтом CRM</div>';
+
+    const legendHtml =
+      '<div class="og-legend">' +
+        '<span class="og-legend-item is-green"><i></i>норма и выше</span>' +
+        '<span class="og-legend-item is-yellow"><i></i>недоработка до 50 %</span>' +
+        '<span class="og-legend-item is-red"><i></i>ниже половины нормы</span>' +
+        '<span class="og-legend-item is-none"><i></i>нет нормы (отпуск/больничный)</span>' +
+      '</div>';
 
     const dqBits = [];
     if (dq.last_import) {
-      dqBits.push('Последний отчёт СКУД: ' + fmtDate(dq.last_import.period_from) + '–' +
-        fmtDate(dq.last_import.period_to) + ' (' + fmtDateTime(dq.last_import.imported_at) + ')');
-    } else {
-      dqBits.push('Отчёт СКУД ещё не импортирован — часы офиса не считаются');
+      dqBits.push('Отчёт СКУД: ' + fmtDate(dq.last_import.period_from) + '–' +
+        fmtDate(dq.last_import.period_to) + ' · загружен ' + fmtDateTime(dq.last_import.imported_at));
     }
     if (dq.skud_days_missing_count) {
-      dqBits.push('Дней без отчёта СКУД: ' + dq.skud_days_missing_count +
-        ' — за эти дни норма не начисляется');
+      dqBits.push('дней без отчёта: ' + dq.skud_days_missing_count);
     }
-    if (dq.flags_open) dqBits.push('Снято «оф» без прохода, ждут ответа: ' + dq.flags_open);
-    if (dq.crm_activity_since) {
-      dqBits.push('Серверный учёт времени СРМ с ' + fmtDate(dq.crm_activity_since) +
-        (dq.legacy_days ? ' · ' + dq.legacy_days + ' дн. до старта не в норме' : ''));
-    } else {
-      dqBits.push('Серверный учёт времени СРМ ещё не собирал минут');
-    }
-
-    const noNormData = !norm.people_total;
-    const lastImportTo = dq.last_import ? String(dq.last_import.period_to).slice(0, 10) : null;
-    const emptyHint = noNormData
-      ? '<div class="th-empty-hint">' +
-        '<p>За выбранный период нет данных, чтобы посчитать норму — ' +
-        'это не «все не работали», а отсутствие отчёта СКУД за эти дни.</p>' +
-        (lastImportTo
-          ? '<button type="button" class="th-empty-btn" data-team-last-period="' + esc(lastImportTo) + '">' +
-            'Показать ' + esc(fmtDate(lastImportTo)) + '</button>'
-          : '') +
-        '</div>'
-      : '';
+    if (dq.flags_open) dqBits.push('ждут ответа «где был»: ' + dq.flags_open);
+    if (dq.crm_activity_since) dqBits.push('учёт СРМ с ' + fmtDate(dq.crm_activity_since));
 
     return '<section class="sec" id="sec-team">' +
       '<div class="sec-head">' +
         '<div class="sec-head-left">' +
           '<span class="sec-mark"></span>' +
-          '<h2 class="sec-title">Команда и часы</h2>' +
-          '<span class="sec-note">' + esc(teamRangeLabel(t)) + ' · норма 8 ч / 40 ч</span>' +
+          '<h2 class="sec-title">График офиса</h2>' +
+          '<span class="sec-note">офис + удалённо · норма 8 ч/день</span>' +
         '</div>' +
       '</div>' +
-      (noSkud
-        ? '<div class="dl-banner"><span class="dl-banner-ico" aria-hidden="true">!</span>' +
-          '<span class="dl-banner-body"><span class="dl-banner-head">Нет отчёта СКУД</span>' +
-          '<span class="dl-banner-hint">Часы в офисе и норма не считаются, пока офис-менеджер не загрузит отчёт. ' +
-          'Это не «0 часов» — это отсутствие данных.</span></span></div>'
+      filterHtml +
+      coverageHtml +
+      '<div class="og-summary">' +
+        (t.norm && t.norm.people_total
+          ? '<span class="og-sum-item">В норме: <b>' + (t.norm.people_total - t.norm.people_under) +
+            '</b> из ' + t.norm.people_total + '</span>'
+          : '<span class="og-sum-item">Нет данных для расчёта нормы</span>') +
+        (t.period && t.period.working_days
+          ? '<span class="og-sum-item">рабочих дней: <b>' + t.period.working_days + '</b></span>'
+          : '') +
+      '</div>' +
+      legendHtml +
+      listHtml +
+      (dqBits.length
+        ? '<div class="og-dq">' + dqBits.map((b) => '<span>' + esc(b) + '</span>').join('<span class="og-dq-sep">·</span>') + '</div>'
         : '') +
-      '<div class="th-now-grid">' + nowHtml + '</div>' +
-      emptyHint +
-      '<div class="sec-hero">' + heroHtml + '</div>' +
-      '<div class="status-grid">' + statusCardsHtml + '</div>' +
-      '<div class="th-block"><div class="th-block-h"><h3>Кто не выработал норму</h3>' +
-      '<span class="meta">' + (worst.length ? 'нажмите строку для расшифровки по дням' : '') + '</span></div>' +
-      worstHtml + '</div>' +
-      '<div class="th-dq"><h3>Качество данных</h3>' +
-      dqBits.map((b) => '<p>' + esc(b) + '</p>').join('') +
-      '</div></section>';
+      '</section>';
   }
 
   const TEAM_STATUS_LABELS = {
@@ -2023,19 +2025,23 @@ window.AsgardDirectorAnalyticsPage = (function () {
     skud: 'часы СКУД', crm: 'часы СРМ', skud_no_status: 'СКУД (статуса нет)',
     crm_no_status: 'СРМ (статуса нет)', no_crm_data: 'нет данных СРМ', no_data: 'нет данных',
     excluded: 'не входит в норму', unconfirmed: 'ждёт ответа', dayoff: 'выходной',
-    legacy: 'до старта учёта СРМ', none: '—'
+    legacy: 'до старта учёта СРМ', none: '—', skud_not_covered: 'нет отчёта СКУД'
   };
 
   function teamDayRow(d) {
+    const remote = d.crm_remote_minutes != null
+      ? Number(d.crm_remote_minutes)
+      : Math.max(0, (Number(d.credited_minutes) || 0) - (Number(d.office_minutes) || 0));
+    const worked = (Number(d.office_minutes) || 0) + remote;
     const tone = d.counts_in_norm
-      ? (d.credited_minutes >= d.norm_minutes ? 'ok' : 'err') : 'muted';
-    const delta = d.counts_in_norm ? d.credited_minutes - d.norm_minutes : null;
+      ? (worked >= Number(d.norm_minutes || 0) ? 'ok' : 'err') : 'muted';
+    const delta = d.counts_in_norm ? worked - Number(d.norm_minutes || 0) : null;
     return '<div class="th-row th-row--day">' +
       '<span class="mono">' + esc(fmtDate(d.date)) + '</span>' +
       '<span>' + esc(TEAM_STATUS_LABELS[d.status_code] || d.status_code || '—') + '</span>' +
       '<span class="ta-r num">' + esc(hoursFmt(d.office_minutes)) + '</span>' +
-      '<span class="ta-r num">' + esc(hoursFmt(d.crm_minutes)) + '</span>' +
-      '<span class="ta-r num">' + esc(hoursFmt(d.credited_minutes)) + '</span>' +
+      '<span class="ta-r num">' + esc(hoursFmt(remote)) + '</span>' +
+      '<span class="ta-r num">' + esc(hoursFmt(worked)) + '</span>' +
       '<span class="ta-r num">' + esc(hoursFmt(d.norm_minutes)) + '</span>' +
       '<span class="ta-r num ' + (tone === 'err' ? 'is-neg' : tone === 'ok' ? 'is-pos' : '') + '">' +
         esc(delta == null ? '—' : hoursHuman(delta)) + '</span>' +
@@ -2059,14 +2065,16 @@ window.AsgardDirectorAnalyticsPage = (function () {
         '<div><div class="th-person-name">' + esc(p.name) + '</div>' +
         '<div class="th-person-role">' + esc(roleLine) + '</div></div>' +
         '<div class="th-person-sum">' +
-          '<span class="k">Зачёт</span><span class="v">' + esc(hoursFmt(p.credited_minutes)) + '</span>' +
+          '<span class="k">Офис</span><span class="v">' + esc(hoursFmt(p.office_minutes)) + '</span>' +
+          '<span class="k">Удалённо</span><span class="v">' + esc(hoursFmt(p.remote_minutes)) + '</span>' +
+          '<span class="k">Сумма</span><span class="v">' + esc(hoursFmt(p.worked_minutes)) + '</span>' +
           '<span class="k">Норма</span><span class="v">' + esc(hoursFmt(p.norm_minutes)) + '</span>' +
           '<span class="k">Отклонение</span><span class="v ' + (p.delta_minutes < 0 ? 'is-neg' : 'is-pos') + '">' +
             esc(hoursHuman(p.delta_minutes)) + '</span></div></div>' +
       (rows.length
         ? '<div class="th-table th-table--modal">' +
           '<div class="th-thead th-thead--days"><span>Дата</span><span>Статус</span>' +
-          '<span class="ta-r">Офис</span><span class="ta-r">СРМ</span><span class="ta-r">Зачёт</span>' +
+          '<span class="ta-r">Офис</span><span class="ta-r">Удалённо</span><span class="ta-r">Сумма</span>' +
           '<span class="ta-r">Норма</span><span class="ta-r">Откл.</span><span>Источник</span></div>' +
           rows.map(teamDayRow).join('') + '</div>'
         : '<div class="jp-empty">За период нет дней с данными</div>');
@@ -2077,50 +2085,6 @@ window.AsgardDirectorAnalyticsPage = (function () {
       '<div class="jp-sheet-head"><div>' +
         '<span class="jp-badge tone-info" style="margin-bottom:8px">Часы</span>' +
         '<h3 id="jpModalTitle">' + esc(p.name) + '</h3></div>' +
-        '<button type="button" class="jp-sheet-close" data-close-sheet aria-label="Закрыть">✕</button>' +
-      '</div><div class="jp-sheet-section">' + body + '</div>';
-    if (rootEl) {
-      if (rootEl.parentElement !== document.body) document.body.appendChild(rootEl);
-      rootEl.hidden = false;
-      requestAnimationFrame(() => rootEl.classList.add('is-on'));
-    }
-    document.body.classList.add('jp-modal-open');
-  }
-
-  function openTeamStatus(code) {
-    const t = state.team;
-    if (!t) return;
-    closeSheetSilent();
-    const label = TEAM_STATUS_LABELS[code] || code;
-    const hits = [];
-    (t.people || []).forEach((p) => {
-      (p.days || []).forEach((d) => {
-        if (d.status_code !== code) return;
-        hits.push({ person: p, day: d });
-      });
-    });
-    hits.sort((a, b) => String(a.person.name).localeCompare(String(b.person.name)));
-    const body = hits.length
-      ? '<div class="th-table th-table--modal">' +
-        '<div class="th-thead th-thead--status"><span>Сотрудник</span><span>Дата</span>' +
-        '<span class="ta-r">Офис</span><span class="ta-r">СРМ</span><span class="ta-r">Зачёт</span></div>' +
-        hits.map((h) =>
-          '<button type="button" class="th-row th-row--status" data-team-person="' + esc(h.person.staff_id) + '">' +
-          '<span class="th-name">' + esc(h.person.name) +
-          '<span class="th-role">' + esc(h.person.role || '') + '</span></span>' +
-          '<span class="mono">' + esc(fmtDate(h.day.date)) + '</span>' +
-          '<span class="ta-r num">' + esc(hoursFmt(h.day.office_minutes)) + '</span>' +
-          '<span class="ta-r num">' + esc(hoursFmt(h.day.crm_minutes)) + '</span>' +
-          '<span class="ta-r num">' + esc(hoursFmt(h.day.credited_minutes)) + '</span></button>'
-        ).join('') + '</div>'
-      : '<div class="jp-empty">В статусе «' + esc(label) + '» за период никого</div>';
-    const inner = elSheetInner();
-    const rootEl = document.getElementById('jpModalRoot');
-    if (!inner) return;
-    inner.innerHTML =
-      '<div class="jp-sheet-head"><div>' +
-        '<span class="jp-badge tone-info" style="margin-bottom:8px">Статус дня</span>' +
-        '<h3 id="jpModalTitle">' + esc(label) + ' · ' + hits.length + ' чел.-дн.</h3></div>' +
         '<button type="button" class="jp-sheet-close" data-close-sheet aria-label="Закрыть">✕</button>' +
       '</div><div class="jp-sheet-section">' + body + '</div>';
     if (rootEl) {
@@ -2176,20 +2140,28 @@ window.AsgardDirectorAnalyticsPage = (function () {
   }
 
   async function loadTeamHours() {
-    let scope = 'week';
-    let anchor = null;
-    if (state.period === 'month') scope = 'month';
-    else if (state.period === 'half_year') {
-      const d = new Date();
-      d.setMonth(d.getMonth() - 6);
-      anchor = d.toISOString().slice(0, 10);
-    } else if (state.period === 'year') {
-      const d = new Date();
-      d.setFullYear(d.getFullYear() - 1);
-      anchor = d.toISOString().slice(0, 10);
-    }
-    const url = '/team-hours?period=' + scope + (anchor ? '&date=' + anchor : '');
+    // Раздел живёт на СВОЁМ состоянии (локальный фильтр «График офиса»):
+    // глобальные чипы тендеров/заявок/работ не должны ломать его период.
+    const scope = TEAM_SCOPES.some((s) => s.id === state.teamScope) ? state.teamScope : 'month';
+    const url = '/team-hours?period=' + scope
+      + (state.teamAnchor ? '&date=' + encodeURIComponent(state.teamAnchor) : '');
     return api(url);
+  }
+
+  async function loadTeamOnly() {
+    state.teamLoading = true;
+    renderMain();
+    try {
+      const data = await loadTeamHours();
+      state.team = data;
+      state.teamAnchor = (data && data.period && data.period.from) || state.teamAnchor;
+      state.teamLoading = false;
+      renderMain();
+    } catch (e) {
+      state.teamLoading = false;
+      toast('Ошибка', e.message || String(e), 'err');
+      renderMain();
+    }
   }
 
   async function loadOverview() {
@@ -2296,6 +2268,8 @@ window.AsgardDirectorAnalyticsPage = (function () {
     state.period = period;
     state.view = 'overview';
     state.listSection = null;
+    // Глобальный период сменился — «График офиса» возвращаем на текущий.
+    state.teamAnchor = null;
     closeSheetSilent();
     await loadOverview();
   }
@@ -2321,7 +2295,7 @@ window.AsgardDirectorAnalyticsPage = (function () {
       '<button type="button" class="jp-sec-btn" data-jump="works">' +
       '<span class="jp-sec-label">Работы</span><span class="jp-sec-count" id="secCountWorks">—</span></button>' +
       '<button type="button" class="jp-sec-btn" data-jump="team">' +
-      '<span class="jp-sec-label">Команда и часы</span><span class="jp-sec-count" id="secCountTeam">—</span></button>' +
+      '<span class="jp-sec-label">График офиса</span><span class="jp-sec-count" id="secCountTeam">—</span></button>' +
       '</nav>' +
       '<div class="jp-period-row">' +
       '<div class="jp-period-chips" id="periodChips" role="tablist" aria-label="Период">' +
@@ -2432,7 +2406,7 @@ window.AsgardDirectorAnalyticsPage = (function () {
           return;
         }
         const stBtn = e.target.closest('[data-status]');
-        if (stBtn && !stBtn.hasAttribute('data-team-status')) {
+        if (stBtn) {
           openList(stBtn.getAttribute('data-section'), stBtn.getAttribute('data-status'));
           return;
         }
@@ -2441,34 +2415,35 @@ window.AsgardDirectorAnalyticsPage = (function () {
           openSheet(itemBtn.getAttribute('data-section'), itemBtn.getAttribute('data-item'));
           return;
         }
-        const lastPeriodBtn = e.target.closest('[data-team-last-period]');
-        if (lastPeriodBtn) {
-          const iso = lastPeriodBtn.getAttribute('data-team-last-period');
-          state.teamAnchor = iso;
-          state.loading = true;
-          renderMain();
-          const scope = state.period === 'all' ? 'month' : 'week';
-          api('/team-hours?period=' + scope + '&date=' + encodeURIComponent(iso))
-            .then((data) => {
-              state.team = data;
-              state.loading = false;
-              renderMain();
-            })
-            .catch((err) => {
-              state.loading = false;
-              toast('Ошибка', err.message || String(err), 'err');
-              renderMain();
-            });
+        const teamScopeBtn = e.target.closest('[data-team-scope]');
+        if (teamScopeBtn) {
+          const next = teamScopeBtn.getAttribute('data-team-scope');
+          if (next && next !== state.teamScope) {
+            state.teamScope = next;
+            // Якорь сбрасываем: новый scope должен открыться на текущем периоде.
+            state.teamAnchor = null;
+            loadTeamOnly();
+          }
+          return;
+        }
+        const teamNavBtn = e.target.closest('[data-team-anchor]');
+        if (teamNavBtn) {
+          const anchor = teamNavBtn.getAttribute('data-team-anchor');
+          if (anchor) {
+            state.teamAnchor = anchor;
+            loadTeamOnly();
+          }
+          return;
+        }
+        const teamCurrentBtn = e.target.closest('[data-team-current]');
+        if (teamCurrentBtn) {
+          state.teamAnchor = null;
+          loadTeamOnly();
           return;
         }
         const teamPersonBtn = e.target.closest('[data-team-person]');
         if (teamPersonBtn) {
           openTeamPerson(teamPersonBtn.getAttribute('data-team-person'));
-          return;
-        }
-        const teamStatusBtn = e.target.closest('[data-team-status]');
-        if (teamStatusBtn) {
-          openTeamStatus(teamStatusBtn.getAttribute('data-team-status'));
           return;
         }
       }
@@ -2547,6 +2522,8 @@ window.AsgardDirectorAnalyticsPage = (function () {
     state.period = 'month';
     state.view = 'overview';
     state.listSection = null;
+    state.teamScope = 'month';
+    state.teamAnchor = null;
     closeSheetSilent();
     await loadOverview();
     requestAnimationFrame(() => {

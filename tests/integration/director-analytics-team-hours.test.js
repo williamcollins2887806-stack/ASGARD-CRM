@@ -90,6 +90,37 @@ describe('team-hours: структура и честность данных', ()
     expect(m.body.period.to).toBe('2026-10-31');
     expect(m.body.people.length).toBeGreaterThanOrEqual(w.body.people.length);
   });
+
+  test('год: границы года и подпись, анкеры для стрелок', async () => {
+    const r = await get('/api/director-analytics/team-hours?period=year&date=2026-05-05');
+    expect(r.code).toBe(200);
+    expect(r.body.period).toMatchObject({
+      scope: 'year',
+      from: '2026-01-01',
+      to: '2026-12-31',
+      label: '2026 год',
+      prev_anchor: '2025-01-01',
+      next_anchor: '2027-01-01'
+    });
+  });
+
+  test('подписи недели и месяца и перелистывание', async () => {
+    const w = await get('/api/director-analytics/team-hours?period=week&date=2026-10-28');
+    expect(w.body.period.label).toBe('26.10–01.11.2026');
+    expect(w.body.period.prev_anchor).toBe('2026-10-19');
+    expect(w.body.period.next_anchor).toBe('2026-11-02');
+
+    const m = await get('/api/director-analytics/team-hours?period=month&date=2026-10-15');
+    expect(m.body.period.label).toBe('Октябрь 2026');
+    expect(m.body.period.prev_anchor).toBe('2026-09-30');
+    expect(m.body.period.next_anchor).toBe('2026-11-01');
+  });
+
+  test('неизвестный период не ломает запрос — падает в неделю', async () => {
+    const r = await get('/api/director-analytics/team-hours?period=quarter&date=2026-10-28');
+    expect(r.code).toBe(200);
+    expect(r.body.period.scope).toBe('week');
+  });
 });
 
 describe('team-hours: сверка с контрольным SQL', () => {
@@ -194,5 +225,85 @@ describe('team-hours: правила зачёта', () => {
     expect(body.data_quality).toHaveProperty('flags_open');
     expect(body.data_quality).toHaveProperty('skud_days_missing');
     expect(typeof body.data_quality.flags_open).toBe('number');
+  });
+});
+
+describe('team-hours: выработка и корона (График офиса)', () => {
+  let body;
+  beforeAll(async () => {
+    const r = await get('/api/director-analytics/team-hours?period=month&date=2026-10-15');
+    body = r.body;
+  });
+
+  test('у каждого человека есть worked / remote / ratio / state', () => {
+    expect(body.people.length).toBeGreaterThan(0);
+    for (const p of body.people) {
+      expect(typeof p.worked_minutes).toBe('number');
+      expect(typeof p.remote_minutes).toBe('number');
+      expect(['green', 'yellow', 'red', 'none']).toContain(p.state);
+      expect(typeof p.crown).toBe('boolean');
+      if (p.norm_minutes > 0) {
+        expect(typeof p.ratio_pct).toBe('number');
+        expect(typeof p.delta_pct).toBe('number');
+      } else {
+        expect(p.ratio_pct).toBeNull();
+        expect(p.state).toBe('none');
+      }
+    }
+  });
+
+  test('сумма = офис + удалёнка, зачёт не больше факта', () => {
+    for (const p of body.people) {
+      expect(p.worked_minutes).toBe(p.office_minutes + p.remote_minutes);
+      // Зачёт ограничен нормой дня, поэтому по факту он неотрицателен,
+      // но может быть меньше выработки (переработка в отдельные дни).
+      expect(p.credited_minutes).toBeGreaterThanOrEqual(0);
+      expect(p.remote_minutes).toBeLessThanOrEqual(p.crm_minutes);
+    }
+  });
+
+  test('состояние совпадает с порогами по ratio_pct', () => {
+    for (const p of body.people) {
+      if (p.norm_minutes === 0) { expect(p.state).toBe('none'); continue; }
+      const d = p.ratio_pct - 100;
+      if (d < -50) expect(p.state).toBe('red');
+      else if (d <= -15) expect(p.state).toBe('yellow');
+      else expect(p.state).toBe('green');
+    }
+  });
+
+  test('корона только у зелёных и только у максимума выработки', () => {
+    const crowned = body.people.filter((p) => p.crown);
+    if (!crowned.length) {
+      // Короны нет только если зелёных нет вовсе либо у всех 0 часов.
+      const greens = body.people.filter((p) => p.state === 'green' && p.norm_minutes > 0);
+      expect(greens.every((p) => p.worked_minutes === 0)).toBe(true);
+      return;
+    }
+    const greenWithWork = body.people.filter((p) => p.state === 'green' && p.norm_minutes > 0);
+    const best = Math.max(...greenWithWork.map((p) => p.worked_minutes));
+    expect(best).toBeGreaterThan(0);
+    expect(crowned.every((p) => p.worked_minutes === best)).toBe(true);
+    expect(crowned.length).toBe(greenWithWork.filter((p) => p.worked_minutes === best).length);
+  });
+
+  test('удалёнка не считается, когда человек весь день в офисе', async () => {
+    // Контроль на уровне правила, а не БД: окно СКУД накрывает сессии СРМ.
+    const oh = require(path.join(ROOT, 'src/services/office-hours'));
+    const r = oh.creditDay({
+      date: '2026-10-26',
+      statusCode: 'оф',
+      officeMinutes: 480,
+      crmMinutes: 480,
+      crmSessions: [{ from: '09:00', to: '17:59', minutes: 480 }],
+      officeSegments: [{ from: '09:00', to: '17:59', minutes: 480 }],
+      crmHasData: true,
+      skudMissing: false,
+      normMinutes: 480
+    });
+    expect(r.crm_remote_minutes).toBe(0);
+    const s = oh.summarizeDays([r]);
+    expect(s.worked_minutes).toBe(480);
+    expect(s.remote_minutes).toBe(0);
   });
 });

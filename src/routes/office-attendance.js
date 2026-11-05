@@ -1091,18 +1091,8 @@ function statusLabel(code) {
   return code ? (STATUS_LABELS[code] || code) : '—';
 }
 
-/** jsonb segments из office_hours_daily → массив окон. */
-function parseSegments(raw) {
-  if (!raw) return [];
-  if (Array.isArray(raw)) return raw;
-  if (typeof raw === 'string') {
-    try {
-      const j = JSON.parse(raw);
-      return Array.isArray(j) ? j : [];
-    } catch (_) { return []; }
-  }
-  return [];
-}
+/** jsonb segments из office_hours_daily → массив окон (одна реализация на модуль). */
+const parseSegments = officeHours.parseSegments;
 
 /** Текст недоработки для личного отчёта. */
 function shortfallText(summary) {

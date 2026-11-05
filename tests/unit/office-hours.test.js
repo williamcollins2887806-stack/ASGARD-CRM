@@ -214,9 +214,99 @@ describe('office-hours: границы периодов', () => {
     expect(oh.monthRange(2024, 2)).toEqual({ from: '2024-02-01', to: '2024-02-29', daysInMonth: 29 });
   });
 
+  test('диапазон года и високосность', () => {
+    expect(oh.yearRange(2026)).toEqual({ from: '2026-01-01', to: '2026-12-31', daysInYear: 365 });
+    expect(oh.yearRange(2024)).toEqual({ from: '2024-01-01', to: '2024-12-31', daysInYear: 366 });
+  });
+
   test('addDays через границу месяца', () => {
     expect(oh.addDays('2026-10-31', 1)).toBe('2026-11-01');
     expect(oh.addDays('2026-11-01', -1)).toBe('2026-10-31');
+  });
+});
+
+describe('office-hours: дисциплина выработки (График офиса)', () => {
+  test('пороги: −50 % жёлтый, −15 % жёлтый, ниже/выше — красный/зелёный', () => {
+    const w = (worked, norm) => oh.workloadState({ workedMinutes: worked, normMinutes: norm });
+    // 100 ч норма, часы в минутах.
+    expect(w(49 * 60, 100 * 60)).toMatchObject({ state: 'red', delta_pct: -51 });
+    expect(w(50 * 60, 100 * 60)).toMatchObject({ state: 'yellow', delta_pct: -50 });
+    expect(w(84 * 60, 100 * 60)).toMatchObject({ state: 'yellow', delta_pct: -16 });
+    expect(w(85 * 60, 100 * 60)).toMatchObject({ state: 'yellow', delta_pct: -15 });
+    expect(w(86 * 60, 100 * 60)).toMatchObject({ state: 'green', delta_pct: -14 });
+    expect(w(100 * 60, 100 * 60)).toMatchObject({ state: 'green', ratio_pct: 100 });
+    expect(w(120 * 60, 100 * 60)).toMatchObject({ state: 'green', delta_pct: 20 });
+  });
+
+  test('норма 0 (отпуск/больничный целиком) — none, без процентов', () => {
+    expect(oh.workloadState({ workedMinutes: 0, normMinutes: 0 }))
+      .toEqual({ ratio_pct: null, delta_pct: null, state: 'none' });
+    expect(oh.workloadState({ workedMinutes: 600, normMinutes: 0 }))
+      .toEqual({ ratio_pct: null, delta_pct: null, state: 'none' });
+  });
+
+  test('сумма = офис + удалёнка, а не только зачёт с потолком нормы', () => {
+    const days = [
+      // 10 ч в офисе при норме 8 ч: зачёт 480, факт 600.
+      oh.creditDay({ date: '2026-10-26', statusCode: 'оф', officeMinutes: 600, crmMinutes: 0, crmHasData: true, skudMissing: false, normMinutes: 480 }),
+      // 4 ч офиса + 5 ч СРМ вне офиса: факт 540.
+      oh.creditDay({
+        date: '2026-10-27', statusCode: 'оф', officeMinutes: 240, crmMinutes: 300,
+        crmSessions: [{ from: '18:00', to: '22:59', minutes: 300 }],
+        officeSegments: [{ from: '09:00', to: '11:59', minutes: 180 }],
+        crmHasData: true, skudMissing: false, normMinutes: 480
+      })
+    ];
+    const s = oh.summarizeDays(days);
+    expect(s.credited_minutes).toBe(480 + 480);         // потолок нормы по дням
+    expect(s.worked_minutes).toBe(600 + 540);           // факт: офис + удалёнка
+    expect(s.remote_minutes).toBe(0 + 300);
+    expect(s.office_minutes).toBe(600 + 240);
+  });
+  test('дни вне нормы (отпуск) дают факт, но не норму', () => {
+    const days = [
+      oh.creditDay({ date: '2026-10-26', statusCode: 'отп', officeMinutes: 0, crmMinutes: 0, crmHasData: true, skudMissing: false, normMinutes: 480 }),
+      oh.creditDay({ date: '2026-10-27', statusCode: 'оф', officeMinutes: 240, crmMinutes: 0, crmHasData: true, skudMissing: false, normMinutes: 480 })
+    ];
+    const s = oh.summarizeDays(days);
+    expect(s.norm_minutes).toBe(480);      // только рабочий день
+    expect(s.worked_minutes).toBe(240);    // факт по всем дням
+    expect(s.days_counted).toBe(1);
+  });
+
+  test('parseSegments терпит строку, массив и мусор', () => {
+    expect(oh.parseSegments([{ from: '09:00' }])).toEqual([{ from: '09:00' }]);
+    expect(oh.parseSegments('[{"from":"09:00"}]')).toEqual([{ from: '09:00' }]);
+    expect(oh.parseSegments('{"a":1}')).toEqual([]);
+    expect(oh.parseSegments(null)).toEqual([]);
+    expect(oh.parseSegments('не json')).toEqual([]);
+  });
+
+  test('«нп» и отпуск не надувают офис/удалёнку/сумму', () => {
+    // Верификатор 05.11.2026: два дня «нп» с 12 ч СРМ давали +720 мин
+    // удалёнки и 215 % выработки — человек выглядел супергероем, хотя
+    // отметку «оф» снял СКУД и ответа ещё нет.
+    const days = [
+      oh.creditDay({
+        date: '2026-10-26', statusCode: 'оф', officeMinutes: 480, crmMinutes: 0,
+        crmHasData: true, skudMissing: false, normMinutes: 480
+      }),
+      oh.creditDay({
+        date: '2026-10-27', statusCode: 'нп', officeMinutes: 0, crmMinutes: 720,
+        crmSessions: [{ from: '09:00', to: '20:59', minutes: 720 }],
+        crmHasData: true, skudMissing: true, normMinutes: 480
+      }),
+      oh.creditDay({
+        date: '2026-10-28', statusCode: 'отп', officeMinutes: 0, crmMinutes: 300,
+        crmHasData: true, skudMissing: true, normMinutes: 0
+      })
+    ];
+    const s = oh.summarizeDays(days);
+    expect(s.worked_minutes).toBe(480);
+    expect(s.remote_minutes).toBe(0);
+    expect(s.office_minutes).toBe(480);
+    expect(s.norm_minutes).toBe(480);
+    expect(s.days_counted).toBe(1);
   });
 });
 
