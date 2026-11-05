@@ -889,105 +889,134 @@ window.AsgardOfficeSchedulePage=(function(){
     async function openPersonModal(staffId, staffName){
       const fromIso = ymd(new Date(viewYear, viewMonth, 1));
       const toIso = ymd(new Date(viewYear, viewMonth, daysInMonth(viewYear, viewMonth)));
-      showModal({title:`Отчёт: ${staffName}`, html:`<div class="muted">Загружаем…</div>`, wide:true, onMount: async (ctx)=>{
+      showModal({title:`Отчёт · ${staffName}`, html:`<div class="muted">Загружаем…</div>`, wide:true, onMount: async (ctx)=>{
         const host = (ctx && ctx.body) || null;
         if(!host) return;
         const j = await apiGet(`/api/office-attendance/me?from=${fromIso}&to=${toIso}&staff_id=${staffId}`);
-        if(!j || !j.ok){ host.innerHTML = '<div class="muted">Не удалось загрузить отчёт</div>'; return; }
+        if(!j || !j.ok){ host.innerHTML = '<div class="oh-empty">Не удалось загрузить отчёт</div>'; return; }
 
         const mon = j.month || j.summary || {};
         const dH = Math.floor(Math.abs(mon.delta_minutes||0)/60);
         const dM = Math.abs(mon.delta_minutes||0)%60;
-        const deltaTxt = (mon.delta_minutes||0) >= 0
-          ? 'норма выполнена'
-          : `недоработка ${dH} ч${dM? ' ' + dM + ' мин':''}`;
+        const deltaOk = (mon.delta_minutes||0) >= 0;
+        const deltaTxt = deltaOk
+          ? 'Норма выполнена'
+          : `Недоработка ${dH} ч${dM? ' ' + dM + ' мин':''}`;
 
         const rows = (j.days||[]).map(d=>{
-          const mark = d.source === 'unconfirmed' ? '⚠ ' :
-                       d.source === 'no_data' ? '· ' : '';
           const label = STATUS.find(s=>s.code===d.status)?.label || (d.status || '—');
-          return `<div class="sched-seg" style="display:grid;grid-template-columns:58px 1fr 62px 62px 58px;gap:6px">
-            <span class="sched-seg__m">${fmtDM(d.date)}</span>
-            <span>${mark}${esc(label)}</span>
-            <span title="в офисе по СКУД">${esc(d.office_text)}</span>
-            <span title="в СРМ">${esc(d.crm_text)}</span>
-            <span class="sched-seg__m" title="зачёт из нормы">${esc(d.credited_text)}</span>
+          const tone = d.source === 'unconfirmed' ? 'warn'
+            : (d.source === 'no_data' || d.source === 'skud_missing' ? 'mute' : '');
+          return `<div class="oh-row ${tone}">
+            <span class="oh-row__date">${fmtDM(d.date)}</span>
+            <span class="oh-row__st">${esc(label)}</span>
+            <span class="oh-row__n" title="СКУД">${esc(d.office_text)}</span>
+            <span class="oh-row__n" title="СРМ">${esc(d.crm_text)}</span>
+            <span class="oh-row__n oh-row__n--em" title="Зачёт">${esc(d.credited_text)}</span>
           </div>`;
-        }).join('') || '<div class="muted">Нет дней</div>';
+        }).join('') || '<div class="oh-empty">Нет дней</div>';
 
         host.innerHTML = `
-          <div id="asgDayModalBody">
-            <div class="sched-dash" style="margin-bottom:10px">
-              <div class="sched-dash__card"><div class="sched-dash__cap">В офисе</div><div class="sched-dash__val">${mon.office_hours||0}<small>ч</small></div></div>
-              <div class="sched-dash__card"><div class="sched-dash__cap">В СРМ</div><div class="sched-dash__val">${mon.crm_hours||0}<small>ч</small></div></div>
-              <div class="sched-dash__card ${(mon.delta_minutes||0)>=0?'ok':'bad'}">
-                <div class="sched-dash__cap">Зачёт</div>
-                <div class="sched-dash__val">${mon.credited_hours||0}<small>из ${mon.norm_hours||0} ч</small></div>
+          <div class="oh-modal">
+            <div class="oh-kpis">
+              <div class="oh-kpi"><div class="oh-kpi__l">В офисе</div><div class="oh-kpi__v">${Number(mon.office_hours||0).toFixed(1)}<small>ч</small></div></div>
+              <div class="oh-kpi"><div class="oh-kpi__l">В СРМ</div><div class="oh-kpi__v">${Number(mon.crm_hours||0).toFixed(1)}<small>ч</small></div></div>
+              <div class="oh-kpi ${deltaOk?'is-ok':'is-bad'}">
+                <div class="oh-kpi__l">Зачёт / норма</div>
+                <div class="oh-kpi__v">${Number(mon.credited_hours||0).toFixed(1)}<small>из ${Number(mon.norm_hours||0).toFixed(0)}</small></div>
               </div>
             </div>
-            <div class="muted" style="margin-bottom:8px">${esc(deltaTxt)}</div>
-            <div class="muted" style="font-size:11px;margin-bottom:6px">
-              Колонки: дата · статус · в офисе · в СРМ · зачёт
+            <div class="oh-banner ${deltaOk?'is-ok':'is-bad'}">${esc(deltaTxt)}</div>
+            <div class="oh-table">
+              <div class="oh-row oh-row--head">
+                <span>Дата</span><span>Статус</span><span>Офис</span><span>СРМ</span><span>Зачёт</span>
+              </div>
+              <div class="oh-table__body">${rows}</div>
             </div>
-            <div class="sched-seg-list" style="max-height:52vh">${rows}</div>
           </div>`;
       }});
     }
 
     async function openDayModal(staffId, dateIso, staffName){
       showModal({title:`День ${fmtDM(dateIso)}`, html:`<div class="muted">Загружаем…</div>`, wide:true, onMount: async (ctx)=>{
-        // onMount отдаёт {back, modal, body} — ищем свои элементы ТОЛЬКО внутри
-        // этой модалки. Поиск по document цепляет уходящую модалку (D-226).
         const host = (ctx && ctx.body) || null;
         if(!host) return;
         const j = await apiGet(`/api/office-attendance/day?staff_id=${staffId}&date=${dateIso}`);
         if(!j || !j.ok){
-          host.innerHTML = `<div class="muted">Не удалось загрузить день</div>`;
+          host.innerHTML = `<div class="oh-empty">Не удалось загрузить день</div>`;
           return;
         }
         const segs = (j.segments||[]).map(sg=>{
           const f = new Date(sg.from), t = new Date(sg.to);
           const fmt = (d)=>`${String(d.getUTCHours()).padStart(2,'0')}:${String(d.getUTCMinutes()).padStart(2,'0')}`;
-          return `<div class="sched-seg"><span>${fmt(f)}–${fmt(t)}</span><span class="sched-seg__m">${hm(sg.minutes)}</span></div>`;
-        }).join('') || '<div class="muted">Проходов СКУД нет</div>';
+          return `<div class="oh-line"><span class="oh-line__t">${fmt(f)}–${fmt(t)}</span><span class="oh-line__m">${hm(sg.minutes)}</span></div>`;
+        }).join('') || '<div class="oh-empty">Проходов СКУД нет — отчёт за день ещё не загружен или человек не отмечался</div>';
 
-        const punches = (j.punches||[]).map(p=>`<div class="sched-punch"><span>${esc(p.time)}</span><span class="sched-punch__dir ${p.direction==='вход'?'in':'out'}">${esc(p.direction)}</span><span>${esc(p.device||'')}</span></div>`).join('')
-          || '<div class="muted">Нет событий</div>';
+        const punches = (j.punches||[]).map(p=>{
+          const dir = p.direction==='вход' ? 'in' : 'out';
+          return `<div class="oh-punch">
+            <span class="oh-punch__time">${esc(p.time)}</span>
+            <span class="oh-punch__dir is-${dir}">${esc(p.direction)}</span>
+            <span class="oh-punch__dev">${esc(p.device||'')}</span>
+          </div>`;
+        }).join('') || '<div class="oh-empty">Сырых событий СКУД нет</div>';
 
-        const sessions = (j.crm && j.crm.sessions || []).map(s=>`<div class="sched-seg"><span>${esc(s.from)}–${esc(s.to)}</span><span class="sched-seg__m">${hm(s.minutes)}</span></div>`).join('')
-          || '<div class="muted">Активности в СРМ нет</div>';
+        const sessions = (j.crm && j.crm.sessions || []).map(s=>
+          `<div class="oh-line"><span class="oh-line__t">${esc(s.from)}–${esc(s.to)}</span><span class="oh-line__m">${hm(s.minutes)}</span></div>`
+        ).join('') || '<div class="oh-empty">Активности в СРМ нет</div>';
 
         const flag = (j.flags||[])[0];
         const flagHtml = flag
-          ? `<div class="sched-dispute">
-               <div class="sched-dispute__title">Отметка «в офисе» снята</div>
-               <div class="sched-dispute__txt">СКУД не зафиксировал вход в этот день. ${flag.resolved_at ? `Сотрудник ответил: ${esc(flag.resolved_status||'—')}` : 'Сотрудник ещё не ответил.'}</div>
+          ? `<div class="oh-alert">
+               <div class="oh-alert__t">Отметка «в офисе» снята</div>
+               <div class="oh-alert__b">СКУД не зафиксировал присутствие. ${flag.resolved_at
+                 ? `Ответ: ${esc(flag.resolved_status||'—')}`
+                 : 'Сотрудник ещё не ответил.'}</div>
              </div>`
           : '';
 
+        const statusLabel = (STATUS.find(x=>x.code===j.status)||{}).label || (j.status || 'без статуса');
         const creditLabel = {
-          skud: 'часы СКУД', crm: 'часы СРМ', excluded: 'не входит в норму',
-          dayoff: 'нерабочий день', unconfirmed: 'ждёт ответа', no_crm_data: 'нет данных СРМ',
-          skud_no_status: 'часы СКУД (статуса нет)', none: '—', unknown_status: 'неизвестный статус',
-          no_status: 'статуса нет', no_data: 'нет данных за день', skud_missing: 'нет отчёта СКУД'
-        }[j.credit.source] || j.credit.source;
+          skud: 'по СКУД', crm: 'по СРМ', hybrid: 'офис + СРМ вне офиса',
+          crm_skud_pending: 'СРМ (ждём отчёт СКУД)',
+          excluded: 'не в норме', dayoff: 'нерабочий', unconfirmed: 'ждёт ответа',
+          no_crm_data: 'нет данных СРМ', skud_no_status: 'СКУД без статуса',
+          hybrid_no_status: 'офис + СРМ', none: '—', unknown_status: 'неизвестный статус',
+          no_status: 'нет статуса', no_data: 'нет данных', skud_missing: 'нет отчёта СКУД'
+        }[j.credit && j.credit.source] || (j.credit && j.credit.source) || '—';
+        const credited = hm((j.credit && j.credit.credited_minutes) || 0);
+        const skudHint = j.skud_missing
+          ? 'Отчёта СКУД за этот день ещё нет — в зачёт идёт СРМ, пока не приедет выгрузка'
+          : '';
 
         host.innerHTML = `
-          <div id="asgDayModalBody">
+          <div class="oh-modal">
             ${flagHtml}
-            <div class="muted" style="margin-bottom:6px">${esc(j.staff.name)} · ${esc(j.status||'без статуса')}</div>
-            <dl class="sched-day-meta">
-              <dt>Норма дня</dt><dd>${esc(j.norm_text)}</dd>
-              <dt>В офисе (СКУД)</dt><dd>${esc(j.office_text)}${j.open_ended?' · вход без выхода':''}</dd>
-              <dt>В СРМ</dt><dd>${esc(j.crm.text)}</dd>
-              <dt>Зачёт</dt><dd>${esc(hm(j.credit.credited_minutes))} · ${esc(creditLabel)}</dd>
-            </dl>
-            <div class="muted" style="margin:10px 0 4px">Интервалы в офисе</div>
-            <div class="sched-seg-list">${segs}</div>
-            <div class="muted" style="margin:10px 0 4px">Проходы СКУД</div>
-            <div class="sched-seg-list">${punches}</div>
-            <div class="muted" style="margin:10px 0 4px">Сессии в СРМ</div>
-            <div class="sched-seg-list">${sessions}</div>
+            <div class="oh-head">
+              <div class="oh-head__name">${esc(j.staff.name)}</div>
+              <div class="oh-head__meta"><span class="oh-pill">${esc(statusLabel)}</span></div>
+            </div>
+            <div class="oh-kpis">
+              <div class="oh-kpi"><div class="oh-kpi__l">Норма</div><div class="oh-kpi__v">${esc(j.norm_text)}</div></div>
+              <div class="oh-kpi"><div class="oh-kpi__l">Офис · СКУД</div><div class="oh-kpi__v">${esc(j.office_text)}${j.open_ended?'<small>открыт</small>':''}</div></div>
+              <div class="oh-kpi"><div class="oh-kpi__l">СРМ</div><div class="oh-kpi__v">${esc(j.crm.text)}</div></div>
+              <div class="oh-kpi is-em"><div class="oh-kpi__l">Зачёт</div><div class="oh-kpi__v">${esc(credited)}<small>${esc(creditLabel)}</small></div></div>
+            </div>
+            ${skudHint?`<div class="oh-banner is-warn">${esc(skudHint)}</div>`:''}
+            <div class="oh-grid">
+              <section class="oh-card">
+                <div class="oh-card__t">Интервалы в офисе</div>
+                <div class="oh-card__b">${segs}</div>
+              </section>
+              <section class="oh-card">
+                <div class="oh-card__t">Сессии в СРМ</div>
+                <div class="oh-card__b">${sessions}</div>
+              </section>
+            </div>
+            <section class="oh-card oh-card--wide">
+              <div class="oh-card__t">Проходы СКУД <span class="oh-card__hint">как в файле · лишние «вход/выход» с двух считывателей в часы не входят</span></div>
+              <div class="oh-card__b oh-punches">${punches}</div>
+            </section>
           </div>`;
       }});
     }
