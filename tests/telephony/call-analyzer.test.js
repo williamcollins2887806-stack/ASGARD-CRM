@@ -22,10 +22,13 @@ function createMockDb() {
     queries,
     query: async (sql, params) => {
       queries.push({ sql, params });
+      if (sql.includes('INSERT INTO pre_tender_requests')) {
+        return { rows: [{ id: 999 }] };
+      }
       if (sql.includes('INSERT INTO tenders')) {
         return { rows: [{ id: 999 }] };
       }
-      if (sql.includes('UPDATE call_history')) {
+      if (sql.includes('UPDATE call_history') || sql.includes('UPDATE pre_tender_requests')) {
         return { rows: [], rowCount: 1 };
       }
       return { rows: [], rowCount: 0 };
@@ -137,20 +140,22 @@ test('_parseResponse() возвращает fallback для плохого JSON'
 
 // ── Создание заявки ──
 
-test('createDraftLead() создаёт запись в БД', async () => {
+test('createDraftLead() создаёт запись в pre_tender_requests', async () => {
   const mockDb = createMockDb();
   const CallAnalyzer = require('../../src/services/call-analyzer');
   const analyzer = new CallAnalyzer({}, mockDb);
 
   const analysis = helpers.generateAiAnalysis();
-  const leadId = await analyzer.createDraftLead(analysis, 1, 5);
+  const ptId = await analyzer.createDraftLead(analysis, 1, 5);
 
-  if (!leadId) throw new Error('Should return lead ID');
-  const insertQuery = mockDb.queries.find(q => q.sql.includes('INSERT INTO tenders'));
-  if (!insertQuery) throw new Error('Should INSERT into tenders');
+  if (!ptId) throw new Error('Should return pre_tender ID');
+  const insertQuery = mockDb.queries.find(q => q.sql.includes('INSERT INTO pre_tender_requests'));
+  if (!insertQuery) throw new Error('Should INSERT into pre_tender_requests');
+  const badTender = mockDb.queries.find(q => q.sql.includes('INSERT INTO tenders'));
+  if (badTender) throw new Error('Must NOT INSERT into tenders');
 });
 
-test('createDraftLead() привязывает к call_history', async () => {
+test('createDraftLead() привязывает к call_history.pre_tender_id', async () => {
   const mockDb = createMockDb();
   const CallAnalyzer = require('../../src/services/call-analyzer');
   const analyzer = new CallAnalyzer({}, mockDb);
@@ -159,9 +164,9 @@ test('createDraftLead() привязывает к call_history', async () => {
   await analyzer.createDraftLead(analysis, 42, 5);
 
   const updateQuery = mockDb.queries.find(q =>
-    q.sql.includes('UPDATE call_history') && q.sql.includes('lead_id')
+    q.sql.includes('UPDATE call_history') && q.sql.includes('pre_tender_id')
   );
-  if (!updateQuery) throw new Error('Should UPDATE call_history with lead_id');
+  if (!updateQuery) throw new Error('Should UPDATE call_history with pre_tender_id');
 });
 
 module.exports = { name: 'Call Analyzer', tests };

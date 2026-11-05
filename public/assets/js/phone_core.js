@@ -802,10 +802,30 @@
         call_id: meta.call_id || callMeta.call_id || null,
         history_id: meta.history_id || callMeta.history_id || null,
         lookup: meta.lookup || callMeta.lookup || {},
+        via: mode === 'mobile' ? 'mobile' : (callMeta.via || null),
       });
       setState(STATES.ringing, { number: callMeta.number, callMeta: callMeta });
       emit('incoming', { number: callMeta.number, callMeta: callMeta });
       return callMeta;
+    },
+
+    /**
+     * Оператор ответил на мобильном: UI → in_call без WebRTC-сессии.
+     * Нужно, чтобы открыть «Перевести» (кнопка живёт в incall).
+     */
+    markMobileAnswered: function () {
+      if (mode !== 'mobile') return { ok: false, reason: 'not_mobile' };
+      if (state !== STATES.ringing && state !== STATES.in_call) {
+        return { ok: false, reason: 'not_ringing' };
+      }
+      callMeta = Object.assign({}, callMeta, { via: 'mobile', answered_mobile: true });
+      setState(STATES.in_call, { number: callMeta.number, callMeta: callMeta });
+      emit('connected', { number: callMeta.number, callMeta: callMeta, via: 'mobile' });
+      return { ok: true };
+    },
+
+    isMobileReceive: function () {
+      return mode === 'mobile';
     },
 
     checkMic: function () {

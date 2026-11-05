@@ -2128,8 +2128,10 @@ window.AsgardTelephonyPage = (function () {
 
       '<div class="call-detail-section call-detail-actions">' +
         '<button class="btn primary" id="callbackBtn" data-tooltip="Исходящий звонок">Перезвонить</button>' +
-        (call.ai_is_target && !call.lead_id ? '<button class="btn secondary" id="createLeadBtn" data-tooltip="Создать заявку из данных звонка">Создать заявку</button>' : '') +
-        (call.lead_id ? '<span class="ai-summary-tag--target">Заявка #' + call.lead_id + ' создана</span>' : '') +
+        (call.ai_is_target && !call.pre_tender_id && !call.lead_id ? '<button class="btn secondary" id="createLeadBtn" data-tooltip="Создать заявку в маркетплейс из данных звонка">Создать заявку</button>' : '') +
+        (call.pre_tender_id
+          ? '<a class="ai-summary-tag--target" href="#/director-inbox?id=' + call.pre_tender_id + '">Заявка #' + call.pre_tender_id + ' в маркетплейсе</a>'
+          : (call.lead_id ? '<span class="ai-summary-tag--target">Заявка #' + call.lead_id + ' создана</span>' : '')) +
         (hasRecord ? '<button class="btn secondary" id="retranscribeBtn" data-tooltip="Принудительно заново расшифровать запись">Повторить расшифровку</button>' : '') +
         ((transcriptText || tStatus === 'done' || call.transcript) ? '<button class="btn secondary" id="reanalyzeBtn" data-tooltip="Принудительно заново сделать ИИ-резюме и рейтинг">Повторить анализ</button>' : '') +
       '</div>';

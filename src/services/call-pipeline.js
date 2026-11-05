@@ -337,18 +337,18 @@ class CallPipeline {
 
       console.log(`[CallPipeline] AI analysis done: target=${analysis.is_target}, sentiment=${analysis.sentiment}, quality=${qualityScore}`);
 
-      // Создаём черновик заявки если целевой
-      if (analysis.is_target && !call.lead_id) {
+      // Черновик в маркетплейс (pre_tender), не в сагу tenders.
+      if (analysis.is_target && !call.pre_tender_id && !call.lead_id) {
         const settings = await this._getSettings();
         if (settings.ai_enabled && settings.auto_analyze) {
-          const leadId = await this.analyzer.createDraftLead(analysis, call.id, call.user_id);
-          if (leadId && this.notify && call.user_id) {
+          const ptId = await this.analyzer.createDraftLead(analysis, call.id, call.user_id);
+          if (ptId && this.notify && call.user_id) {
             await this.notify(this.db, {
               user_id: call.user_id,
               title: 'Звонок обработан',
-              message: `Создан черновик заявки #${leadId} из звонка. Проверьте данные.`,
+              message: `Заявка #${ptId} из звонка в маркетплейсе. Проверьте данные.`,
               type: 'telephony',
-              link: `/tenders?id=${leadId}`
+              link: `#/director-inbox?id=${ptId}`
             });
           }
         }

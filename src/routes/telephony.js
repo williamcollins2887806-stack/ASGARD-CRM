@@ -915,11 +915,15 @@ module.exports = async function telephonyRoutes(fastify, opts) {
     const res = await db.query(
       `SELECT ch.*, c.name as client_name, c.contact_person as client_contact,
         c.phone as client_phone, c.email as client_email,
-        u.name as manager_name, t.tender_title as lead_title, t.status as lead_status
+        u.name as manager_name,
+        COALESCE(pt.work_title, t.tender_title) as lead_title,
+        COALESCE(pt.status, t.status) as lead_status,
+        pt.id AS pre_tender_id_joined
        FROM call_history ch
        LEFT JOIN customers c ON c.inn = ch.client_inn
        LEFT JOIN users u ON u.id = ch.user_id
        LEFT JOIN tenders t ON t.id = ch.lead_id
+       LEFT JOIN pre_tender_requests pt ON pt.id = ch.pre_tender_id
        WHERE ch.id = $1`,
       [id]
     );
@@ -1115,6 +1119,9 @@ module.exports = async function telephonyRoutes(fastify, opts) {
     if (!access) return;
     const call = (await db.query('SELECT * FROM call_history WHERE id = $1', [id])).rows[0];
     if (!call) return reply.code(404).send({ error: 'Call not found' });
+    if (call.pre_tender_id) {
+      return reply.code(400).send({ error: 'Lead already exists', pre_tender_id: call.pre_tender_id, lead_id: call.pre_tender_id });
+    }
     if (call.lead_id) return reply.code(400).send({ error: 'Lead already exists', lead_id: call.lead_id });
 
     const analysis = call.ai_lead_data ? (typeof call.ai_lead_data === 'string' ? JSON.parse(call.ai_lead_data) : call.ai_lead_data) : {};
@@ -1126,9 +1133,9 @@ module.exports = async function telephonyRoutes(fastify, opts) {
 
     const p = getPipeline();
     if (p) {
-      const leadId = await p.analyzer.createDraftLead(merged, parseInt(id), request.user.id);
-      if (leadId) {
-        return reply.send({ lead_id: leadId });
+      const ptId = await p.analyzer.createDraftLead(merged, parseInt(id), request.user.id);
+      if (ptId) {
+        return reply.send({ pre_tender_id: ptId, lead_id: ptId });
       }
     }
     reply.code(500).send({ error: 'Failed to create lead' });

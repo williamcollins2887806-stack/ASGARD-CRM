@@ -528,12 +528,25 @@
     };
   }
 
+  function isMobileReceiveMode() {
+    var P = window.AsgardPhone;
+    if (P && P.isMobileReceive && P.isMobileReceive()) return true;
+    if (P && P.getMode && P.getMode() === 'mobile') return true;
+    var meta = (P && P.getCallMeta && P.getCallMeta()) || {};
+    return meta.via === 'mobile' || !!meta.answered_mobile;
+  }
+
   function renderIncoming(detail) {
     ensureShell();
     lastIncoming = detail || {};
     uiMode = 'incoming';
     setBtnState('ring');
-    startRingtone();
+    // Мобильный режим: GSM уже звонит — в браузере музыку не играем.
+    if (isMobileReceiveMode()) {
+      stopRingtone();
+    } else {
+      startRingtone();
+    }
     var D = dock();
     if (D) {
       if (!D.isPanelOpen('phone')) {
@@ -553,21 +566,29 @@
     var title = v.title;
     var sub = v.sub;
     var ini = v.ini;
-    dom.incoming.className = 'ph-card ph-card--incoming';
+    var mobile = isMobileReceiveMode();
+    dom.incoming.className = 'ph-card ph-card--incoming' + (mobile ? ' ph-card--mobile' : '');
+    var actions = mobile
+      ? (
+          '<button type="button" class="ph-act ph-act--answer" id="phMobileAnswered" data-tooltip="Ответил на телефоне">Я ответил</button>' +
+          '<button type="button" class="ph-act ph-act--transfer" id="phIncomingTransfer" data-tooltip="Перевести">Перевести</button>' +
+          '<button type="button" class="ph-act ph-act--hangup" id="phDecline" data-tooltip="Сбросить (Esc)">Сбросить</button>'
+        )
+      : (
+          '<button type="button" class="ph-act ph-act--answer" id="phAnswer" data-tooltip="Ответить (Space)">Ответить</button>' +
+          '<button type="button" class="ph-act ph-act--hangup" id="phDecline" data-tooltip="Сбросить (Esc)">Сбросить</button>'
+        );
     dom.incoming.innerHTML =
       '<div class="ph-card-inner">' +
         '<div class="ph-card-top">' +
           '<div class="ph-avatar" aria-hidden="true">' + (ini ? esc(ini) : '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M18 15.5v2.6a1.8 1.8 0 0 1-2 1.8 17.8 17.8 0 0 1-7.7-2.7 17.5 17.5 0 0 1-5.4-5.4A17.8 17.8 0 0 1 .2 4a1.8 1.8 0 0 1 1.8-2h2.6a1.8 1.8 0 0 1 1.8 1.6c.1.9.3 1.7.6 2.5a1.8 1.8 0 0 1-.4 1.9L5.5 9.1a14.4 14.4 0 0 0 5.4 5.4l1.1-1.1a1.8 1.8 0 0 1 1.9-.4c.8.3 1.6.5 2.5.6A1.8 1.8 0 0 1 18 15.5z"/></svg>') + '</div>' +
           '<div class="ph-card-meta">' +
-            '<div class="ph-card-title">Входящий звонок</div>' +
+            '<div class="ph-card-title">' + (mobile ? 'Звонок на мобильный' : 'Входящий звонок') + '</div>' +
             '<div class="ph-card-name">' + esc(title) + '</div>' +
-            '<div class="ph-card-sub">' + esc(sub) + '</div>' +
+            '<div class="ph-card-sub">' + esc(sub) + (mobile ? ' · ответьте с телефона' : '') + '</div>' +
           '</div>' +
         '</div>' +
-        '<div class="ph-card-actions">' +
-          '<button type="button" class="ph-act ph-act--answer" id="phAnswer" data-tooltip="Ответить (Space)">Ответить</button>' +
-          '<button type="button" class="ph-act ph-act--hangup" id="phDecline" data-tooltip="Сбросить (Esc)">Сбросить</button>' +
-        '</div>' +
+        '<div class="ph-card-actions">' + actions + '</div>' +
       '</div>';
     dom.incoming.style.display = 'block';
     clearTimeout(incomingPulseTimer);
@@ -576,9 +597,21 @@
         dom.incoming.classList.add('ph-card--incoming-pulse');
       }
     }, 8000);
-    dom.incoming.querySelector('#phAnswer').onclick = function () {
-      AsgardPhone.answer().catch(function (e) { toast('Телефон', e.message, 'err'); });
-    };
+    var ans = dom.incoming.querySelector('#phAnswer');
+    if (ans) {
+      ans.onclick = function () {
+        AsgardPhone.answer().catch(function (e) { toast('Телефон', e.message, 'err'); });
+      };
+    }
+    var mobAns = dom.incoming.querySelector('#phMobileAnswered');
+    if (mobAns) {
+      mobAns.onclick = function () {
+        var r = AsgardPhone.markMobileAnswered && AsgardPhone.markMobileAnswered();
+        if (!r || !r.ok) toast('Телефон', (r && r.reason) || 'Не удалось', 'err');
+      };
+    }
+    var tr = dom.incoming.querySelector('#phIncomingTransfer');
+    if (tr) tr.onclick = openTransferModal;
     dom.incoming.querySelector('#phDecline').onclick = function () {
       AsgardPhone.hangup();
     };
@@ -627,20 +660,26 @@
     var meta = (window.AsgardPhone && AsgardPhone.getCallMeta()) || {};
     var num = detail.number || meta.number || '';
     var note = localStorage.getItem(noteKey + ':' + num) || '';
+    var mobile = isMobileReceiveMode();
     var isMuted = window.AsgardPhone && AsgardPhone.isMuted && AsgardPhone.isMuted();
     var isHeld = window.AsgardPhone && AsgardPhone.getState() === 'held';
     var noteOpen = !!String(note || '').trim() && !mini;
     var miniLabel = hybrid ? 'Открыть в панели' : (dockMini ? 'Развернуть' : 'Свернуть');
-    dom.incall.className = 'ph-bar' + (isHeld ? ' ph-bar--hold' : '') + (noteOpen ? ' is-note-open' : '') + (mini ? ' ph-bar--mini' : '');
+    dom.incall.className = 'ph-bar' + (isHeld ? ' ph-bar--hold' : '') + (noteOpen ? ' is-note-open' : '') + (mini ? ' ph-bar--mini' : '') + (mobile ? ' ph-bar--mobile' : '');
+    var mediaBtns = mobile
+      ? ''
+      : (
+          dockBtn('phMute', isMuted ? ICON.micOff : ICON.mic, isMuted ? 'Вкл. мик' : 'Микрофон', isMuted ? 'ph-iconbtn--active' : '') +
+          dockBtn('phHold', ICON.hold, isHeld ? 'Снять' : 'Удерж.', isHeld ? 'ph-iconbtn--active' : '') +
+          dockBtn('phKeypad', ICON.keypad, 'Клавиши', '')
+        );
     dom.incall.innerHTML =
       '<div class="ph-bar-actions">' +
         '<div class="ph-bar-meta">' +
           '<span class="ph-bar-timer ph-js-timer" id="phIncallTimer">00:00</span>' +
-          '<span class="ph-bar-num">' + esc(fmtPhone(num)) + '</span>' +
+          '<span class="ph-bar-num">' + esc(fmtPhone(num)) + (mobile ? ' · моб.' : '') + '</span>' +
         '</div>' +
-        dockBtn('phMute', isMuted ? ICON.micOff : ICON.mic, isMuted ? 'Вкл. мик' : 'Микрофон', isMuted ? 'ph-iconbtn--active' : '') +
-        dockBtn('phHold', ICON.hold, isHeld ? 'Снять' : 'Удерж.', isHeld ? 'ph-iconbtn--active' : '') +
-        dockBtn('phKeypad', ICON.keypad, 'Клавиши', '') +
+        mediaBtns +
         dockBtn('phTransfer', ICON.transfer, 'Перевод', '') +
         dockBtn('phNoteToggle', ICON.note, 'Заметка', noteOpen ? 'ph-iconbtn--active' : '') +
         '<div class="ph-dock-item ph-dock-item--keep ph-dock-item--mini-toggle">' +
@@ -674,30 +713,37 @@
     }
 
     dom.incall.querySelector('#phHangup').onclick = function () { playTone('end'); AsgardPhone.hangup(); };
-    dom.incall.querySelector('#phHold').onclick = function () {
-      var held = AsgardPhone.getState() === 'held';
-      var holdBtn = dom.incall.querySelector('#phHold');
-      AsgardPhone.hold(!held).then(function () {
-        if (holdBtn) holdBtn.classList.toggle('ph-iconbtn--active', !held);
-        dom.incall.classList.toggle('ph-bar--hold', !held);
-        var lab = holdBtn && holdBtn.parentElement && holdBtn.parentElement.querySelector('span');
-        if (lab) lab.textContent = !held ? 'Снять' : 'Удерж.';
-      }).catch(function (e) { toast('Телефон', e.message, 'err'); });
-    };
-    dom.incall.querySelector('#phKeypad').onclick = function () { openDialPad(num); };
+    var holdEl = dom.incall.querySelector('#phHold');
+    if (holdEl) {
+      holdEl.onclick = function () {
+        var held = AsgardPhone.getState() === 'held';
+        var holdBtn = dom.incall.querySelector('#phHold');
+        AsgardPhone.hold(!held).then(function () {
+          if (holdBtn) holdBtn.classList.toggle('ph-iconbtn--active', !held);
+          dom.incall.classList.toggle('ph-bar--hold', !held);
+          var lab = holdBtn && holdBtn.parentElement && holdBtn.parentElement.querySelector('span');
+          if (lab) lab.textContent = !held ? 'Снять' : 'Удерж.';
+        }).catch(function (e) { toast('Телефон', e.message, 'err'); });
+      };
+    }
+    var keypadEl = dom.incall.querySelector('#phKeypad');
+    if (keypadEl) keypadEl.onclick = function () { openDialPad(num); };
     dom.incall.querySelector('#phTransfer').onclick = openTransferModal;
-    dom.incall.querySelector('#phMute').onclick = function () {
-      var next = !(AsgardPhone.isMuted && AsgardPhone.isMuted());
-      var muteBtn = dom.incall.querySelector('#phMute');
-      AsgardPhone.setMuted(next).then(function () {
-        if (muteBtn) {
-          muteBtn.classList.toggle('ph-iconbtn--active', next);
-          muteBtn.innerHTML = next ? ICON.micOff : ICON.mic;
-          var lab = muteBtn.parentElement && muteBtn.parentElement.querySelector('span');
-          if (lab) lab.textContent = next ? 'Вкл. мик' : 'Микрофон';
-        }
-      }).catch(function (e) { toast('Телефон', e.message, 'err'); });
-    };
+    var muteEl = dom.incall.querySelector('#phMute');
+    if (muteEl) {
+      muteEl.onclick = function () {
+        var next = !(AsgardPhone.isMuted && AsgardPhone.isMuted());
+        var muteBtn = dom.incall.querySelector('#phMute');
+        AsgardPhone.setMuted(next).then(function () {
+          if (muteBtn) {
+            muteBtn.classList.toggle('ph-iconbtn--active', next);
+            muteBtn.innerHTML = next ? ICON.micOff : ICON.mic;
+            var lab = muteBtn.parentElement && muteBtn.parentElement.querySelector('span');
+            if (lab) lab.textContent = next ? 'Вкл. мик' : 'Микрофон';
+          }
+        }).catch(function (e) { toast('Телефон', e.message, 'err'); });
+      };
+    }
     var noteEl = dom.incall.querySelector('#phNote');
     var noteToggle = dom.incall.querySelector('#phNoteToggle');
     if (noteToggle) {
@@ -1057,30 +1103,38 @@
 
   function incomingPanelHtml() {
     var v = incomingView(lastIncoming || {});
-    return panelHead('Входящий звонок') +
+    var mobile = isMobileReceiveMode();
+    var acts = mobile
+      ? (
+          '<button type="button" class="ph-act ph-act--answer" data-ph-dp="mobile-answered" title="Ответил на телефоне">Я ответил</button>' +
+          '<button type="button" class="ph-act ph-act--transfer" data-ph-dp="transfer" title="Перевести">Перевести</button>' +
+          '<button type="button" class="ph-act ph-act--hangup" data-ph-dp="hangup" title="Сбросить (Esc)">Сбросить</button>'
+        )
+      : (
+          '<button type="button" class="ph-act ph-act--answer" data-ph-dp="answer" title="Ответить (Space)">Ответить</button>' +
+          '<button type="button" class="ph-act ph-act--hangup" data-ph-dp="hangup" title="Сбросить (Esc)">Сбросить</button>'
+        );
+    return panelHead(mobile ? 'Звонок на мобильный' : 'Входящий звонок') +
       '<div class="ph-dp ph-dp--call">' +
         '<div class="ph-dp-who">' +
           '<div class="ph-dp-avatar is-ring" aria-hidden="true">' + esc(v.ini) + '</div>' +
           '<div class="ph-dp-who-name">' + esc(v.title) + '</div>' +
           '<div class="ph-dp-who-sub">' + esc(v.sub) + '</div>' +
         '</div>' +
-        '<div class="ph-dp-callacts">' +
-          '<button type="button" class="ph-act ph-act--answer" data-ph-dp="answer" title="Ответить (Space)">Ответить</button>' +
-          '<button type="button" class="ph-act ph-act--hangup" data-ph-dp="hangup" title="Сбросить (Esc)">Сбросить</button>' +
-        '</div>' +
+        '<div class="ph-dp-callacts">' + acts + '</div>' +
         (function () {
           var P2 = window.AsgardPhone;
           var m = P2 && P2.getMode ? P2.getMode() : '';
           var reg = P2 && P2.getSipRegistered ? P2.getSipRegistered() : false;
-          if (m === 'mobile') {
-            return '<div class="ph-dp-banner ph-dp-banner--warn">Звонок на мобильный: ответить/сбросить нужно с телефона.</div>';
+          if (m === 'mobile' || mobile) {
+            return '<div class="ph-dp-banner ph-dp-banner--warn">Ответьте с телефона. Здесь — перевод или «Я ответил».</div>';
           }
           if (!reg) {
             return '<div class="ph-dp-banner ph-dp-banner--warn">SIP не зарегистрирован — отвечать нечем. Перезайдите на линию.</div>';
           }
           return '';
         })() +
-        '<div class="ph-dp-hint">Space — ответить, Esc — сбросить</div>' +
+        '<div class="ph-dp-hint">' + (mobile ? 'Esc — сбросить' : 'Space — ответить, Esc — сбросить') + '</div>' +
       '</div>';
   }
 
@@ -1112,6 +1166,7 @@
     var title = lookup.name || lookup.client_name || fmtPhone(num);
     var sub = fmtPhone(num);
     if (lookup.company) sub += ' · ' + lookup.company;
+    var mobile = isMobileReceiveMode();
     var isMuted = !!(P && P.isMuted && P.isMuted());
     var isHeld = !!(P && P.getState() === 'held');
     var note = localStorage.getItem(noteKey + ':' + num) || '';
@@ -1119,32 +1174,37 @@
       return '<button type="button" class="ph-dp-ctl' + (active ? ' is-active' : '') + (danger ? ' is-danger' : '') + '" data-ph-dp="' + act + '">' +
         icon + '<span>' + esc(label) + '</span></button>';
     }
-    return panelHead('Разговор', isHeld ? 'на удержании' : '') +
+    var ctls = mobile
+      ? ctl('transfer', ICON.transfer, 'Перевод', false)
+      : (
+          ctl('mute', isMuted ? ICON.micOff : ICON.mic, isMuted ? 'Вкл. мик' : 'Микрофон', isMuted) +
+          ctl('hold', ICON.hold, isHeld ? 'Снять' : 'Удержание', isHeld) +
+          ctl('keypad', ICON.keypad, 'Клавиши', false) +
+          ctl('transfer', ICON.transfer, 'Перевод', false)
+        );
+    var volBlock = mobile ? '' : (
+      '<div class="ph-dp-vol">' +
+        '<span class="ph-dp-vol-ico" aria-hidden="true">' + (ICON.volume || ICON.speaker || '🔊') + '</span>' +
+        '<input type="range" class="ph-dp-vol-range" id="phVolRange" min="0" max="3" step="0.1" value="' +
+          (window.AsgardPhone && AsgardPhone.getVolume ? AsgardPhone.getVolume() : 1.6) + '" aria-label="Громкость собеседника">' +
+        '<span class="ph-dp-vol-val ph-js-volval">' + Math.round((window.AsgardPhone && AsgardPhone.getVolume ? AsgardPhone.getVolume() : 1.6) * 100) + '%</span>' +
+      '</div>'
+    );
+    return panelHead(mobile ? 'Разговор (мобильный)' : 'Разговор', isHeld ? 'на удержании' : '') +
       '<div class="ph-dp ph-dp--call">' +
         '<div class="ph-dp-who">' +
           '<div class="ph-dp-avatar' + (isHeld ? ' is-held' : ' is-live') + '" aria-hidden="true">' + avatarInner(lookup.name || lookup.client_name, num) + '</div>' +
           '<div class="ph-dp-who-name">' + esc(title) + '</div>' +
-          '<div class="ph-dp-who-sub">' + esc(sub) + '</div>' +
+          '<div class="ph-dp-who-sub">' + esc(sub) + (mobile ? ' · на телефоне' : '') + '</div>' +
           '<div class="ph-dp-timer ph-js-timer">' + fmtTimer(Date.now() - (timerStart || Date.now())) + '</div>' +
         '</div>' +
-        '<div class="ph-dp-ctls">' +
-          ctl('mute', isMuted ? ICON.micOff : ICON.mic, isMuted ? 'Вкл. мик' : 'Микрофон', isMuted) +
-          ctl('hold', ICON.hold, isHeld ? 'Снять' : 'Удержание', isHeld) +
-          ctl('keypad', ICON.keypad, 'Клавиши', false) +
-          ctl('transfer', ICON.transfer, 'Перевод', false) +
-        '</div>' +
-        // Громкость входящего звука (WebRTC на 8 кГц звучит тихо; гейн до 3x).
-        '<div class="ph-dp-vol">' +
-          '<span class="ph-dp-vol-ico" aria-hidden="true">' + (ICON.volume || ICON.speaker || '🔊') + '</span>' +
-          '<input type="range" class="ph-dp-vol-range" id="phVolRange" min="0" max="3" step="0.1" value="' +
-            (window.AsgardPhone && AsgardPhone.getVolume ? AsgardPhone.getVolume() : 1.6) + '" aria-label="Громкость собеседника">' +
-          '<span class="ph-dp-vol-val ph-js-volval">' + Math.round((window.AsgardPhone && AsgardPhone.getVolume ? AsgardPhone.getVolume() : 1.6) * 100) + '%</span>' +
-        '</div>' +
+        '<div class="ph-dp-ctls">' + ctls + '</div>' +
+        volBlock +
         '<button type="button" class="ph-act ph-act--hangup ph-dp-hangup" data-ph-dp="hangup" title="Завершить (Esc)">Завершить</button>' +
         '<label class="ph-dp-notelbl">Заметка к звонку' +
           '<textarea class="ph-dp-note" id="phDpNote" data-num="' + esc(num) + '" rows="4" placeholder="Что обсудили…">' + esc(note) + '</textarea>' +
         '</label>' +
-        '<div class="ph-dp-hint">M — микрофон, H — удержание, Esc — завершить</div>' +
+        '<div class="ph-dp-hint">' + (mobile ? 'Esc — завершить' : 'M — микрофон, H — удержание, Esc — завершить') + '</div>' +
       '</div>';
   }
 
@@ -1263,6 +1323,9 @@
       if (window.HuginnDock && HuginnDock.collapse) HuginnDock.collapse();
     } else if (a === 'answer') {
       P.answer().catch(function (err) { toast('Телефон', err.message, 'err'); });
+    } else if (a === 'mobile-answered') {
+      var r = P.markMobileAnswered && P.markMobileAnswered();
+      if (!r || !r.ok) toast('Телефон', (r && r.reason) || 'Не удалось', 'err');
     } else if (a === 'hangup') {
       playTone('end');
       P.hangup();
@@ -1779,10 +1842,16 @@
       }
       if (e.code === 'Space' && incomingOpen) {
         e.preventDefault();
-        AsgardPhone.answer().catch(function (err) { toast('Телефон', err.message, 'err'); });
+        if (isMobileReceiveMode()) {
+          var mr = AsgardPhone.markMobileAnswered && AsgardPhone.markMobileAnswered();
+          if (!mr || !mr.ok) toast('Телефон', (mr && mr.reason) || 'Не удалось', 'err');
+        } else {
+          AsgardPhone.answer().catch(function (err) { toast('Телефон', err.message, 'err'); });
+        }
         return;
       }
       if (!incallOpen) return;
+      if (isMobileReceiveMode()) return; // mute/hold только для WebRTC
       if (e.key === 'm' || e.key === 'M') {
         e.preventDefault();
         var next = !(AsgardPhone.isMuted && AsgardPhone.isMuted());

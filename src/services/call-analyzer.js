@@ -104,24 +104,58 @@ class CallAnalyzer {
     const loc = ar.location || (ar.object && ar.object.address) || ar.dadata_region || null;
     const wtl = ar.work ? (ar.work.type_label || this._workTypeLabel(ar.work.type)) : this._workTypeLabel(ar.work_type);
     const tt = wtl || 'Прочее';
-    const title = [cn, tt, od].filter(Boolean).join(' — ') || 'Заявка из звонка';
-    const dp = [
+    const workTitle = ([tt, od].filter(Boolean).join(' — ') || 'Заявка из звонка').slice(0, 200);
+    const workDescription = [
       ar.estimated_volume || (ar.work && ar.work.description),
       od ? 'Объект: ' + od : null,
       loc ? 'Адрес: ' + loc : null,
       ar.desired_timeline ? 'Сроки: ' + ar.desired_timeline : null,
       ar.access_conditions ? 'Условия доступа: ' + ar.access_conditions : null,
       ar.key_requirements && ar.key_requirements.length > 0 ? 'Требования: ' + ar.key_requirements.join('; ') : null
-    ].filter(Boolean);
+    ].filter(Boolean).join('. ') || null;
     try {
-      const sql = 'INSERT INTO tenders (customer_name,inn,tender_title,tender_type,tender_description,tender_region,tender_contact,tender_phone,tender_email,status,source,comment_to,responsible_pm_id,created_by,created_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,NOW()) RETURNING id';
-      const r = await db.query(sql, [cn || 'Из звонка', null, title, tt, dp.join('. ') || null, loc, ctn, ctp, cte, 'draft_from_call', 'phone_call', ar.summary || null, managerId || null, managerId || null]);
-      const tid = r.rows[0].id;
-      await db.query('UPDATE call_history SET lead_id = $1, updated_at = NOW() WHERE id = $2', [tid, callId]);
-      console.log('[CallAnalyzer] Draft lead #' + tid + ' from call #' + callId);
-      return tid;
+      // Маркетплейс (director-inbox), не сага tenders.
+      const r = await db.query(
+        `INSERT INTO pre_tender_requests (
+           source_type, customer_name, customer_email, customer_inn,
+           contact_person, contact_phone, work_description, work_location,
+           work_title, ai_work_type, ai_summary, ai_color,
+           status, created_by, assigned_to, has_documents, created_at, updated_at
+         ) VALUES (
+           'phone', $1, $2, NULL,
+           $3, $4, $5, $6,
+           $7, $8, $9, 'yellow',
+           'new', $10, $10, false, NOW(), NOW()
+         ) RETURNING id`,
+        [
+          cn || 'Из звонка',
+          cte,
+          ctn,
+          ctp,
+          workDescription,
+          loc,
+          workTitle,
+          tt.slice(0, 200),
+          ar.summary || null,
+          managerId || null
+        ]
+      );
+      const ptId = r.rows[0].id;
+      try {
+        const { ensureDocumentFolders } = require('./pre-tender-doc-folders');
+        await db.query(
+          'UPDATE pre_tender_requests SET document_folders = $1 WHERE id = $2',
+          [JSON.stringify(ensureDocumentFolders(null)), ptId]
+        );
+      } catch (_) { /* folders optional */ }
+      await db.query(
+        'UPDATE call_history SET pre_tender_id = $1, updated_at = NOW() WHERE id = $2',
+        [ptId, callId]
+      );
+      console.log('[CallAnalyzer] Pre-tender #' + ptId + ' from call #' + callId);
+      return ptId;
     } catch (err) {
-      console.error('[CallAnalyzer] Failed to create draft lead:', err.message);
+      console.error('[CallAnalyzer] Failed to create pre-tender from call:', err.message);
       return null;
     }
   }
