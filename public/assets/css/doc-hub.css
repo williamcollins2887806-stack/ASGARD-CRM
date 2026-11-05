@@ -531,13 +531,13 @@ a:hover { text-decoration: underline; }
 }
 .dh-table tbody tr.is-traffic-red:hover { background: color-mix(in srgb, var(--err) 34%, var(--bg1)); }
 .dh-table tbody tr.is-traffic-blue {
-  background: color-mix(in srgb, var(--info) 26%, var(--bg1));
-  box-shadow: inset 6px 0 0 var(--blue-l), inset 0 -1px 0 color-mix(in srgb, var(--info) 45%, transparent);
+  background: color-mix(in srgb, var(--info, var(--blue)) 26%, var(--bg1));
+  box-shadow: inset 6px 0 0 var(--blue-l), inset 0 -1px 0 color-mix(in srgb, var(--info, var(--blue)) 45%, transparent);
 }
-.dh-table tbody tr.is-traffic-blue:hover { background: color-mix(in srgb, var(--info) 34%, var(--bg1)); }
+.dh-table tbody tr.is-traffic-blue:hover { background: color-mix(in srgb, var(--info, var(--blue)) 34%, var(--bg1)); }
 .dh-table tbody tr.is-traffic-yellow {
   background: color-mix(in srgb, var(--warn) 30%, var(--bg1));
-  box-shadow: inset 6px 0 0 var(--amber), inset 0 -1px 0 color-mix(in srgb, var(--warn) 45%, transparent);
+  box-shadow: inset 6px 0 0 var(--amber, var(--gold-l)), inset 0 -1px 0 color-mix(in srgb, var(--warn) 45%, transparent);
 }
 .dh-table tbody tr.is-traffic-yellow:hover { background: color-mix(in srgb, var(--warn) 38%, var(--bg1)); }
 .dh-table tbody tr.is-traffic-green {
@@ -552,9 +552,44 @@ a:hover { text-decoration: underline; }
    иначе пропадает главный сигнал строки. */
 .dh-table tbody tr.is-selected { outline: 2px solid var(--gold); outline-offset: -2px; }
 .dh-table tbody tr.is-selected.is-traffic-red { background: color-mix(in srgb, var(--err) 26%, var(--bg1)); }
-.dh-table tbody tr.is-selected.is-traffic-blue { background: color-mix(in srgb, var(--info) 26%, var(--bg1)); }
+.dh-table tbody tr.is-selected.is-traffic-blue { background: color-mix(in srgb, var(--info, var(--blue)) 26%, var(--bg1)); }
 .dh-table tbody tr.is-selected.is-traffic-yellow { background: color-mix(in srgb, var(--warn) 30%, var(--bg1)); }
 .dh-table tbody tr.is-selected.is-traffic-green { background: color-mix(in srgb, var(--ok) 24%, var(--bg1)); }
+
+/* D-XXX / 02.11.2026: на светлой теме color-mix(--ok 24%, --bg1) почти незаметен —
+   таблица сидит на белой карточке (--bg2), а микс шёл с серым --bg1. Пастель + полоса. */
+html[data-theme="light"] .dh-table tbody tr.is-traffic-red {
+  background: #FCE9EC;
+  box-shadow: inset 6px 0 0 #C41E31, inset 0 -1px 0 rgba(196, 30, 49, 0.28);
+}
+html[data-theme="light"] .dh-table tbody tr.is-traffic-red:hover,
+html[data-theme="light"] .dh-table tbody tr.is-selected.is-traffic-red {
+  background: #F8D5DB;
+}
+html[data-theme="light"] .dh-table tbody tr.is-traffic-blue {
+  background: #E8EEFC;
+  box-shadow: inset 6px 0 0 #1D4ED8, inset 0 -1px 0 rgba(29, 78, 216, 0.28);
+}
+html[data-theme="light"] .dh-table tbody tr.is-traffic-blue:hover,
+html[data-theme="light"] .dh-table tbody tr.is-selected.is-traffic-blue {
+  background: #D9E3FA;
+}
+html[data-theme="light"] .dh-table tbody tr.is-traffic-yellow {
+  background: #FFF3D6;
+  box-shadow: inset 6px 0 0 #B45309, inset 0 -1px 0 rgba(180, 83, 9, 0.28);
+}
+html[data-theme="light"] .dh-table tbody tr.is-traffic-yellow:hover,
+html[data-theme="light"] .dh-table tbody tr.is-selected.is-traffic-yellow {
+  background: #FFE9B5;
+}
+html[data-theme="light"] .dh-table tbody tr.is-traffic-green {
+  background: #E3F5EA;
+  box-shadow: inset 6px 0 0 #12874A, inset 0 -1px 0 rgba(18, 135, 74, 0.30);
+}
+html[data-theme="light"] .dh-table tbody tr.is-traffic-green:hover,
+html[data-theme="light"] .dh-table tbody tr.is-selected.is-traffic-green {
+  background: #D0EEDB;
+}
 /* U3(д): исходящие строки — класс ставился из JS, но CSS не было. */
 .dh-table tbody tr.is-out {
   border-left: 3px solid var(--gold);
