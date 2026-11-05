@@ -377,11 +377,13 @@ export default function FieldAcademyQuiz() {
         </div>
       </div>
 
-      {/* Navigation */}
+      {/* Navigation — zIndex выше контента (z=5), иначе Android WebView
+          отдаёт тап padding-зоне контента и «Далее» молчит (как уже починено в FieldLesson). */}
       <div style={{
-        position: 'fixed', bottom: 0, left: 0, right: 0,
+        position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 20,
         padding: '12px 16px calc(env(safe-area-inset-bottom, 0px) + 18px)',
         background: 'linear-gradient(transparent, var(--bg-primary) 30%)',
+        pointerEvents: 'auto',
       }}>
         {/* Answer count */}
         <div style={{ textAlign: 'center', fontSize: 12, color: C.muted, marginBottom: 8 }}>
@@ -399,7 +401,7 @@ export default function FieldAcademyQuiz() {
               block
               onClick={nextQuestion}
               style={{ flex: 1 }}
-              disabled={!answers[q.id]}
+              disabled={answers[q.id] == null}
             >
               Далее
             </KeyButton>

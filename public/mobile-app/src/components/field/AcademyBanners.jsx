@@ -10,10 +10,17 @@
  * Никаких литеральных цветов и fixed-оверлеев мимо BottomSheet.
  */
 import { useState, useEffect } from 'react';
+import { useLocation } from 'react-router-dom';
 import { Sparkles, Smartphone, Bell, Sun, Moon, Palette, Banknote } from 'lucide-react';
 import { fieldApi } from '@/api/fieldClient';
 import { useThemeStore } from '@/stores/themeStore';
 import { BottomSheet, KeyButton, IconTile, Banner } from '@/components/field/ui';
+
+/** Урок и испытание: нижние баннеры перекрывают «Далее» / CTA. */
+function useHideOnAcademyImmersive() {
+  const { pathname } = useLocation();
+  return /\/field\/academy\/(quiz|lesson)\//.test(pathname);
+}
 
 /* ── Оплата в рублях с 01.11 (одноразовый) ───────────────────────────────── */
 const RUB_PAY_NOTICE_KEY = 'field_rub_pay_notice_v1';
@@ -180,6 +187,7 @@ export function UpdateChangelogModal() {
 export function PwaInstallBanner() {
   const [deferredPrompt, setDeferredPrompt] = useState(null);
   const [visible, setVisible] = useState(false);
+  const hideOnImmersive = useHideOnAcademyImmersive();
 
   useEffect(() => {
     const isInstalled = window.matchMedia('(display-mode: standalone)').matches
@@ -211,7 +219,7 @@ export function PwaInstallBanner() {
     setVisible(false);
   }
 
-  if (!visible) return null;
+  if (hideOnImmersive || !visible) return null;
 
   return (
     <div style={{ position: 'fixed', left: 16, right: 16, bottom: 84, zIndex: 1000 }}>
@@ -231,6 +239,7 @@ export function PwaInstallBanner() {
 /* ── Push Permission Banner ──────────────────────────────────────────────── */
 export function PushPermissionBanner() {
   const [visible, setVisible] = useState(false);
+  const hideOnImmersive = useHideOnAcademyImmersive();
 
   useEffect(() => {
     if (!('Notification' in window)) return undefined;
@@ -252,7 +261,7 @@ export function PushPermissionBanner() {
     setVisible(false);
   }
 
-  if (!visible) return null;
+  if (hideOnImmersive || !visible) return null;
 
   return (
     <div style={{ position: 'fixed', left: 16, right: 16, bottom: 144, zIndex: 999 }}>

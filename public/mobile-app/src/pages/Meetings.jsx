@@ -88,6 +88,11 @@ function MeetingDetailSheet({ meeting, onClose }) {
   const [rsvpBusy, setRsvpBusy] = useState(false);
   if (!meeting) return null;
   const m = meeting;
+  /* Q12: ссылка на комнату. Может прийти как conference_url, thing.url или slug. */
+  const rawJoin = m.conference_url || m.thing_url || (m.thing_slug ? `/ting/${m.thing_slug}` : '');
+  const joinUrl = rawJoin
+    ? (/^https?:/i.test(rawJoin) ? rawJoin : (window.location.origin + (rawJoin.startsWith('/') ? rawJoin : `/${rawJoin}`)))
+    : '';
   const fields = [
     { label: 'Тема', value: m.topic || m.title },
     (m.date || m.start_time) && { label: 'Дата', value: formatDate(m.date || m.start_time) },
@@ -95,6 +100,7 @@ function MeetingDetailSheet({ meeting, onClose }) {
     m.organizer_name && { label: 'Организатор', value: m.organizer_name },
     m.location && { label: 'Место', value: m.location },
     m.conference_url && { label: 'ВКС', value: m.conference_url },
+    m.thing_slug && { label: 'Комната Тинга', value: m.thing_slug },
     m.description && { label: 'Описание', value: m.description, full: true },
     (m.protocol || m.minutes) && { label: 'Протокол', value: m.protocol || m.minutes, full: true },
   ].filter(Boolean);
@@ -127,6 +133,12 @@ function MeetingDetailSheet({ meeting, onClose }) {
           <button disabled={rsvpBusy} onClick={() => sendRsvp('tentative')} className="flex-1 spring-tap rounded-xl px-3 py-2.5 text-[13px] font-semibold" style={{ background: 'var(--bg-surface-alt)', border: '0.5px solid var(--border-norse)' }}>Возможно</button>
           <button disabled={rsvpBusy} onClick={() => sendRsvp('declined')} className="flex-1 spring-tap rounded-xl px-3 py-2.5 text-[13px] font-semibold c-danger" style={{ background: 'var(--bg-surface-alt)', border: '0.5px solid var(--border-norse)' }}>Отказ</button>
         </div>
+        {/* Q12: вход в видеокомнату с телефона. Раньше ссылка была только текстом. */}
+        {joinUrl && (
+          <a href={joinUrl} className="btn-primary spring-tap mt-2 text-[14px] text-center block">
+            Войти в Тинг
+          </a>
+        )}
       </div>
     </BottomSheet>
   );

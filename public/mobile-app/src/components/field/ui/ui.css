@@ -115,6 +115,18 @@
 .ui-key--md { min-height: 48px; padding: 0 18px; font-size: 15px; }
 .ui-key--lg { min-height: 54px; padding: 0 22px; font-size: 16px; }
 .ui-key--block { width: 100%; }
+.ui-key:disabled,
+.ui-key[aria-disabled='true'] {
+  opacity: .45;
+  cursor: not-allowed;
+  filter: grayscale(.25);
+  box-shadow:
+    0 2px 0 var(--edge),
+    0 4px 10px -6px var(--glow),
+    inset 0 1px 0 rgba(255, 255, 255, .25);
+  transform: none;
+  pointer-events: none;
+}
 
 /* ── SectionLabel ────────────────────────────────────────────────────────── */
 .ui-section {
