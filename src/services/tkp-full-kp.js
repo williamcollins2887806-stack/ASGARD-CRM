@@ -38,7 +38,10 @@ const TABLE_LABELS_DEFAULT = {
   tbl_col3: 'Объём и расчётные данные',
   tbl_col4: 'Кол-во',
   tbl_col5: 'Сумма без НДС, руб.',
-  tbl_transport_label: 'Транспортные расходы: мобилизация и демобилизация оборудования и персонала'
+  // НЕ «Транспортные расходы»: эта фраза в INTERNAL_WORDS клиентского линтера
+  // (client-doc-lint.js). Дефолтная подпись приложения не имеет права падать
+  // на собственном гейте — из-за неё полное КП не сохранялось (05.11.2026).
+  tbl_transport_label: 'Мобилизация и демобилизация'
 };
 
 /** Дружественные имена полей формы → имена плейсхолдеров шаблона. */
@@ -189,8 +192,14 @@ function calcTotals(full, vatPct) {
     subtotal += Number(row.amount_no_vat) || 0;
   }
   subtotal += Number(full.transport_amount) || 0;
-  const vatSum = Math.round(subtotal * vat / 100 * 100) / 100;
-  const total = Math.round((subtotal + vatSum) * 100) / 100;
+  // НДС в ЦЕЛЫХ копейках — та же формула, что vatFromBase в tkp-ai-draft
+  // и в модалке. Иначе на 0,08 % баз документ печатал 145 880,95 при
+  // сохранённых 145 880,96 (расхождение на копейку в клиентском файле).
+  const baseKop = Math.round(subtotal * 100);
+  const bp = Math.round(vat * 100); // 22% → 2200 базисных пунктов
+  const vatKop = Math.round(baseKop * bp / 10000);
+  const vatSum = vatKop / 100;
+  const total = (baseKop + vatKop) / 100;
   return { subtotal, vatPct: vat, vatSum, total };
 }
 
@@ -227,6 +236,9 @@ function buildFullKpHtml(tkp, opts = {}) {
   const validity = tkp.validity_days || 30;
 
   const cond = full.conditions || {};
+  // Пустые метки не печатаем: «Мобилизация и срок» без значения — это дырка
+  // в клиентском документе, а не раздел. Раньше в DOCX оставались заголовки
+  // без текста, и ТО видела «много мест не заполнено».
   const condRows = [
     ['Мобилизация и срок', cond.mobilization],
     ['Персонал', cond.personnel],
@@ -328,10 +340,10 @@ ${(full.apparatus || []).length ? sectionBlock(L.tbl_title, `
   </tr></thead>
   <tbody>
     ${apparatusRows}
-    <tr>
+    ${Number(full.transport_amount) > 0 ? `<tr>
       <td colspan="5"><b>${esc(L.tbl_transport_label)}</b></td>
       <td class="r"><b>${fmtMoney(full.transport_amount)}</b></td>
-    </tr>
+    </tr>` : ''}
   </tbody>
 </table>
 <div class="totals">
@@ -417,6 +429,14 @@ function buildFullKpTemplateData(tkp, company = {}) {
 
   const L = resolveTableLabels(tkp);
 
+  // Флаги разделов: заголовок печатается только при наличии содержания
+  // (см. tools/patch_full_kp_sections.js). Пустой «ПОРЯДОК СДАЧИ…» без текста
+  // — дефект клиентского документа, а не раздел.
+  const hasAcceptance = splitParas(full.acceptance).length > 0;
+  const hasRisks = splitParas(full.risks).length > 0;
+  const hasDuties = splitListItems(full.customer_duties).length > 0;
+  const hasDeliverables = splitListItems(full.deliverables).length > 0;
+
   let totalWords = '';
   try {
     const w = numberToWordsRu(totals.total);
@@ -444,6 +464,9 @@ function buildFullKpTemplateData(tkp, company = {}) {
     scope_paras: splitParas(full.scope),
     scope_boundary: full.scope_boundary || '',
     apparatus,
+    // Строка транспорта печатается только при ненулевой сумме (см. шаблон
+    // full-kp-nika-tpl.docx: строка обёрнута в {#has_transport}...{/has_transport}).
+    has_transport: Number(full.transport_amount) > 0,
     transport_amount: fmtMoney(full.transport_amount),
     subtotal: fmtMoney(totals.subtotal),
     vat_pct: String(vatPct),
@@ -451,13 +474,47 @@ function buildFullKpTemplateData(tkp, company = {}) {
     total: fmtMoney(totals.total),
     total_words: totalWords,
     cost_notes: full.cost_notes || '',
+    has_acceptance: hasAcceptance,
+    has_risks: hasRisks,
+    has_duties: hasDuties,
+    has_deliverables: hasDeliverables,
+    // Пустые строки таблицы условий не печатаем: метка без значения —
+    // дырка в документе (см. tools/patch_full_kp_conditions.js,
+    // tools/patch_full_kp_optional.js). 114 из 115 готовых просчётов не имеют
+    // crew/params — без guard'ов они давали «Персонал:» и «Режим производства:».
+    has_cond_mobilization: !!String(cond.mobilization || '').trim(),
+    has_cond_personnel: !!String(cond.personnel || '').trim(),
+    has_cond_regime: !!String(cond.regime || '').trim(),
+    has_cond_payment: !!String(cond.payment || '').trim(),
+    has_cond_customer_resources: !!String(cond.customer_resources || '').trim(),
+    has_cost_notes: !!String(full.cost_notes || '').trim(),
+    has_scope_boundary: !!String(full.scope_boundary || '').trim(),
     acceptance_paras: splitParas(full.acceptance),
     risks_paras: splitParas(full.risks),
     duties: splitListItems(full.customer_duties),
     deliverables: splitListItems(full.deliverables),
     author_position: full.author_position || 'Генеральный директор',
-    author_name: (full.author_name || company.director_name || company.director_full_name || '').toUpperCase()
+    // Пустая подпись «()» в клиентском документе недопустима: если ни в ТКП,
+    // ни в профиле компании нет ФИО — печатаем прочерк, а не пустые скобки.
+    author_name: _signerName(full, company)
   };
+}
+
+/**
+ * ФИО подписанта. Пустая строка превращала подпись в «()» — верификатор
+ * 05.11.2026 воспроизвёл это на реальных КП: таблицы company_profile в схеме
+ * нет, профиль тянулся из несуществующего источника и catch глотал ошибку.
+ */
+function _signerName(full, company) {
+  const c = company || {};
+  const pick = (v) => String(v == null ? '' : v).trim();
+  const name = pick(full && full.author_name)
+    || pick(c.director_name)
+    || pick(c.director_full_name)
+    || pick(c.director)
+    || '';
+  if (!name) return '________________';
+  return name.toUpperCase();
 }
 
 function generateFullKpDocxBuffer(tkp, company = {}) {
@@ -583,7 +640,7 @@ function generateClassicDocxBuffer(tkp, company = {}) {
   if (tkp.deadline) parts.push(docxP(`Сроки: ${tkp.deadline}`, { size: 20 }));
   if (cj.payment_terms) parts.push(docxP(`Оплата: ${cj.payment_terms}`, { size: 20 }));
   if (cj.notes || tkp.notes) parts.push(docxP(`Примечание: ${cj.notes || tkp.notes}`, { size: 20 }));
-  parts.push(docxP(`${cj.author_position || 'Генеральный директор'}\n____________________ / ${cj.author_name || company.director_name || ''} /`, { size: 20 }));
+  parts.push(docxP(`${cj.author_position || 'Генеральный директор'}\n____________________ / ${_signerName(cj, company)} /`, { size: 20 }));
 
   const documentXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">

@@ -373,15 +373,29 @@ window.AsgardTkpAi = (function () {
         : '<span class="tkpai-badge ok">ИИ</span>');
 
     const rows = items.map(function (it, i) {
-      return '<tr>' +
+      // Тип позиции нужен для подписи: «работы» и «МТР» в таблице разные сущности
+      // (оборудование идёт с инвентарным номером и своей единицей измерения).
+      const isMtr = it.section === 'MTR';
+      const qtyEditable = isMtr && !it.reference;
+      return '<tr data-item-row="' + i + '">' +
         '<td class="num" style="width:34px">' + (i + 1) + '</td>' +
         '<td><input data-item-name="' + i + '" value="' + esc(it.name) + '"></td>' +
         '<td style="width:70px"><input data-item-unit="' + i + '" value="' + esc(it.unit || '') + '"></td>' +
-        '<td class="num" style="width:70px">' + esc(String(it.qty)) + '</td>' +
+        '<td class="num" style="width:70px">' +
+          (qtyEditable
+            ? '<input type="number" min="0" step="1" style="width:64px" data-item-qty="' + i + '" value="' + esc(String(it.qty)) + '">'
+            : esc(String(it.qty))) +
+        '</td>' +
         '<td class="num" style="width:120px">' + fmtMoney(it.price) + '</td>' +
         '<td class="num" style="width:130px"><b>' + fmtMoney(it.total) + '</b></td>' +
         '</tr>';
     }).join('');
+
+    const worksCount = items.filter(function (it) { return it.section !== 'MTR'; }).length;
+    const mtrCount = items.length - worksCount;
+    const itemsNote = mtrCount
+      ? 'Работ: ' + worksCount + ' · МТР: ' + mtrCount + ' · сумма строк сверена с просчётом'
+      : 'Позиций: ' + items.length + ' · сумма строк сверена с просчётом';
 
     const hintFor = function (f) {
       return rep.has(f) ? '<span class="tkpai-hint">ИИ предложил недопустимую формулировку — подставлен шаблон. Проверьте текст.</span>' : '';
@@ -393,9 +407,12 @@ window.AsgardTkpAi = (function () {
 
       '<div class="tkpai-sums">' +
         '<div>Без НДС<br><b>' + fmtMoney(state.pricing.price_no_vat) + ' ₽</b></div>' +
-        '<div>НДС ' + esc(String(state.pricing.vat_pct)) + '%<br><b>' + fmtMoney(state.pricing.price_with_vat - state.pricing.price_no_vat) + ' ₽</b></div>' +
+        '<div>НДС ' + esc(String(state.pricing.vat_pct)) + '%<br><b>'
+          + fmtMoney(state.pricing.vat_sum != null
+            ? state.pricing.vat_sum
+            : (state.pricing.price_with_vat - state.pricing.price_no_vat)) + ' ₽</b></div>' +
         '<div>Итого<br><b>' + fmtMoney(state.pricing.price_with_vat) + ' ₽</b></div>' +
-        '<div class="tkpai-note">Позиций: ' + items.length + ' · сумма строк сверена с просчётом</div>' +
+        '<div class="tkpai-note">' + esc(itemsNote) + '</div>' +
       '</div>' +
 
       '<div class="tkpai-scroll">' +
@@ -431,6 +448,7 @@ window.AsgardTkpAi = (function () {
 
       '<div class="tkpai-actions">' +
         '<button type="button" class="tkpai-btn ghost" data-act="back">← Другой вариант</button>' +
+        (state.variant === 'full' ? '<button type="button" class="tkpai-btn ghost" data-act="rebuild">↻ Пересобрать позиции</button>' : '') +
         '<button type="button" class="tkpai-btn" data-act="preview">Предпросмотр PDF</button>' +
         '<button type="button" class="tkpai-btn primary" data-act="save">Сохранить ТКП</button>' +
       '</div>',
@@ -464,7 +482,26 @@ window.AsgardTkpAi = (function () {
       });
     });
 
+    // Количество правится только у МТР: это закупка/аренда, объём реальный.
+    // У работ количество фиксировано (1 усл.) — цена и есть объём.
+    modalEl.querySelectorAll('[data-item-qty]').forEach(function (el) {
+      el.addEventListener('change', function () {
+        const i = Number(el.dataset.itemQty);
+        const it = state.draft.items && state.draft.items.items[i];
+        if (!it) return;
+        const qty = Number(el.value);
+        if (!Number.isFinite(qty) || qty <= 0) return;
+        const unitPrice = Number(it.price) || 0;
+        it.qty = qty;
+        it.total = Math.round(qty * unitPrice * 100) / 100;
+        // Перерисовываем: суммы строк изменились, а итог обязан сойтись с ценой КП.
+        stepEditor();
+      });
+    });
+
     modalEl.querySelector('[data-act="back"]').addEventListener('click', function () { stepVariant(); });
+    const rebuildBtn = modalEl.querySelector('[data-act="rebuild"]');
+    if (rebuildBtn) rebuildBtn.addEventListener('click', rebuildItems);
     modalEl.querySelector('[data-act="preview"]').addEventListener('click', previewPdf);
     modalEl.querySelector('[data-act="save"]').addEventListener('click', saveTkp);
   }
@@ -581,11 +618,16 @@ window.AsgardTkpAi = (function () {
       btn.textContent = old;
       const hits = Array.isArray(err.hits) ? err.hits : [];
       if (msg) {
+        // PDF-хиты приходят без field (это текст готового файла). Показываем
+        // подсказку сервера, иначе ТО видит пустую строку и не знает, что править.
         msg.innerHTML = '<div class="tkpai-hits"><b>' + esc(err.message || 'Не удалось сохранить') + '</b>' +
           (hits.length
             ? '<ul style="margin-top:8px">' + hits.slice(0, 12).map(function (h) {
-                return '<li>' + esc(h.field || '') + ': <code>' + esc(h.phrase || '') + '</code>' +
-                  (h.context ? ' — ' + esc(h.context) : '') + '</li>';
+                const head = h.field ? esc(h.field) + ': ' : '';
+                return '<li>' + head + '<code>' + esc(h.phrase || '') + '</code>' +
+                  (h.context ? ' — ' + esc(h.context) : '') +
+                  (h.hint ? '<div class="tkpai-hint" style="margin-top:4px">' + esc(h.hint) + '</div>' : '') +
+                  '</li>';
               }).join('') + '</ul>'
             : '') +
           '</div>';
@@ -602,12 +644,85 @@ window.AsgardTkpAi = (function () {
     }
   }
 
+  /**
+   * НДС и итог от базы — ЕДИНСТВЕННАЯ формула для документа.
+   *
+   * Раньше здесь считалось `Math.round(base * pct * 100) / 100`, а на сервере
+   * `round2(base * pct / 100)` — на 0,08 % баз это давало копейку: в БД
+   * сохранялось 145 880,96, в DOCX печаталось 145 880,95. Теперь считаем в
+   * целых копейках (база × базисные пункты / 10000), ровно как
+   * `vatFromBase` в src/services/tkp-ai-draft.js.
+   */
+  function vatFromBase(base, vatPct) {
+    const b = Number(base);
+    const p = Number(vatPct);
+    if (!Number.isFinite(b) || b <= 0) return { half: 0, vat: 0, total: 0 };
+    if (!Number.isFinite(p) || p < 0) return { half: Math.round(b * 100) / 100, vat: 0, total: Math.round(b * 100) / 100 };
+    const baseKop = Math.round(b * 100);
+    const bp = Math.round(p * 100);
+    const vatKop = Math.round(baseKop * bp / 10000);
+    return {
+      half: baseKop / 100,
+      vat: vatKop / 100,
+      total: (baseKop + vatKop) / 100
+    };
+  }
+
   /* ───────────── старт генерации ───────────── */
 
   function startGeneration(variant) {
     if (!state) return;
     state.phase = STATE_LOADING;
     stepLoading(variant);
+  }
+
+  /**
+   * Пересобрать позиции полного КП.
+   *
+   * Зачем: ТО может поправить текст, потом увидеть, что разбивка не отражает
+   * реальный периметр (например, РП добавил МТР). Кнопка перезапрашивает
+   * черновик у сервера и обновляет ТОЛЬКО таблицу — правленые тексты
+   * (предмет, описание, условия) остаются как есть.
+   */
+  async function rebuildItems() {
+    if (!state || !modalEl) return;
+    const msg = modalEl.querySelector('#tkpAiEditorMsg');
+    const btn = modalEl.querySelector('[data-act="rebuild"]');
+    const old = btn ? btn.textContent : '';
+    if (btn) { btn.disabled = true; btn.textContent = 'Пересобираю…'; }
+    if (msg) msg.innerHTML = '';
+
+    try {
+      const res = await apiJson('/api/tkp/ai-draft', {
+        method: 'POST',
+        body: { tender_id: state.tenderId, variant: 'full' }
+      });
+      const fresh = (res.draft && res.draft.items) || null;
+      if (!fresh || !Array.isArray(fresh.items) || !fresh.items.length) {
+        throw new Error('Сервер вернул пустую таблицу');
+      }
+      // Обновляем только позиции: текст ТО не трогаем.
+      const keep = state.draft.items ? state.draft.items.items : [];
+      state.draft.items = Object.assign({}, fresh, {
+        items: fresh.items.map(function (it, i) {
+          // Сохраняем переименование, которое сделал ТО, если позиция на месте.
+          const prev = keep[i];
+          return prev && prev.name ? Object.assign({}, it, { name: prev.name }) : it;
+        })
+      });
+      state.pricing = res.pricing || state.pricing;
+      stepEditor();
+      if (msg) msg.innerHTML = '<div class="tkpai-hint">Позиции пересобраны по просчёту: '
+        + fresh.items.length + ' строк, сумма сверена.</div>';
+    } catch (err) {
+      if (msg) {
+        msg.innerHTML = '<div class="tkpai-hits"><b>Не удалось пересобрать позиции</b>'
+          + '<div style="margin-top:6px">' + esc(err.message || 'ошибка') + '</div></div>';
+      }
+    } finally {
+      const b = modalEl && modalEl.querySelector('[data-act="rebuild"]');
+      if (b) { b.disabled = false; b.textContent = old || '↻ Пересобрать позиции'; }
+    }
   }
 
   /* ───────────── публичный API ───────────── */
@@ -650,6 +765,11 @@ window.AsgardTkpAi = (function () {
 
     if (!priceWithVat && priceNoVat) priceWithVat = Math.round(priceNoVat * (1 + vatPct / 100) * 100) / 100;
 
+    // Превью на шаге выбора варианта: та же формула, что в документе
+    // (vatFromBase — целые копейки). Иначе превью показывало 1 305 793,99
+    // из сметы, а PDF печатал 1 305 794,60.
+    const vatCalc = vatFromBase(priceNoVat, vatPct);
+
     state = {
       tenderId: tenderId,
       tender: {
@@ -658,10 +778,10 @@ window.AsgardTkpAi = (function () {
         tender_title: row.tender_title || row.title || ''
       },
       pricingPreview: {
-        price_no_vat: priceNoVat,
-        price_with_vat: priceWithVat,
+        price_no_vat: vatCalc.half,
+        price_with_vat: vatCalc.total,
         vat_pct: vatPct,
-        vat_with: Math.max(0, priceWithVat - priceNoVat)
+        vat_with: vatCalc.vat
       },
       variant: 'classic',
       phase: STATE_IDLE,

@@ -14,6 +14,8 @@ const DEFAULT_PARAMS = {
   road_days: 2,
   mob_days: 4,
   trip_count: 1,
+  // Длина смены в часах. Нужна для человеко-часов в техплане; на деньги не влияет.
+  shift_hours: 12,
   rate_worker: 5500,
   rate_master: 7000,
   rate_itr: 10000,
@@ -35,6 +37,7 @@ const DEFAULT_PARAMS = {
 
 const PARAM_LABELS = [
   { key: 'shifts_per_day', label: 'Смен в сутки', unit: 'смен', note: 'режим 24/7' },
+  { key: 'shift_hours', label: 'Часов в смене', unit: 'ч', note: 'для человеко-часов' },
   { key: 'workers_per_shift', label: 'Рабочих в смене', unit: 'чел', note: 'вкл. наблюдающего/ОЗП' },
   { key: 'masters_per_shift', label: 'Мастеров в смене', unit: 'чел', note: '' },
   { key: 'work_days', label: 'Рабочих суток', unit: 'сут', note: '' },
@@ -60,6 +63,304 @@ const PARAM_LABELS = [
 function num(v, fallback = 0) {
   const n = Number(v);
   return Number.isFinite(n) ? n : fallback;
+}
+
+/* ─────────────────────────── техплан: бригада и МТР ─────────────────────────── */
+
+/**
+ * Роли бригады. `rateKey` — параметр ставки в PARAM_LABELS; если у строки
+ * бригады задана своя ставка (`rate`), она главнее.
+ *
+ * Список фиксированный намеренно: свободный ввод роли ломает группировку в
+ * ТКП и в отчёте «сколько кого». Экзотика вписывается в поле note.
+ */
+const CREW_ROLES = [
+  { code: 'itr', label: 'ИТР (РП)', rateKey: 'rate_itr' },
+  { code: 'master', label: 'Мастер / бригадир', rateKey: 'rate_master' },
+  { code: 'worker', label: 'Слесарь', rateKey: 'rate_worker' },
+  { code: 'welder', label: 'Сварщик (НАКС)', rateKey: 'rate_worker' },
+  { code: 'insulator', label: 'Изолировщик', rateKey: 'rate_worker' },
+  { code: 'assembler', label: 'Монтажник', rateKey: 'rate_worker' },
+  { code: 'observer', label: 'Наблюдающий', rateKey: 'rate_worker' },
+  { code: 'safety', label: 'Специалист ОТ / высота', rateKey: 'rate_itr' },
+  { code: 'driver', label: 'Водитель', rateKey: 'rate_worker' }
+];
+
+const CREW_ROLE_BY_CODE = CREW_ROLES.reduce((m, r) => { m[r.code] = r; return m; }, {});
+
+/** Источники МТР: со склада (с инв. номером), закупка, аренда. */
+const MTR_SOURCES = ['warehouse', 'purchase', 'rent'];
+
+function normalizeShiftMode(v) {
+  const s = String(v == null ? '' : v).trim();
+  if (s === '24/7') return '24/7';
+  if (s === '1' || s === '2' || s === '3') return s;
+  const n = Math.round(num(s, 0));
+  if (n >= 1 && n <= 3) return String(n);
+  return '';
+}
+
+function normalizeCrew(crew) {
+  if (!Array.isArray(crew)) return [];
+  const out = [];
+  crew.forEach((c, i) => {
+    if (!c) return;
+    const code = String(c.code || '').trim()
+      || (CREW_ROLE_BY_CODE[String(c.roleCode || '').trim()] ? String(c.roleCode).trim() : '');
+    const role = String(c.role || c.name || (CREW_ROLE_BY_CODE[code] && CREW_ROLE_BY_CODE[code].label) || '').trim();
+    if (!role) return;
+    out.push({
+      code: code || ('crew_' + (i + 1)),
+      role_code: CREW_ROLE_BY_CODE[code] ? code : '',
+      role,
+      count: Math.max(0, num(c.count, 0)),
+      unit: String(c.unit || 'чел·смен'),
+      shifts_per_day: num(c.shifts_per_day, 0) > 0 ? num(c.shifts_per_day) : null,
+      hours_per_shift: num(c.hours_per_shift, 0) > 0 ? num(c.hours_per_shift) : null,
+      rate: (c.rate != null && c.rate !== '') ? num(c.rate) : null,
+      source: c.source === 'hire' ? 'hire' : 'staff',
+      employee_ids: Array.isArray(c.employee_ids)
+        ? c.employee_ids.map((x) => parseInt(x, 10)).filter((x) => x > 0)
+        : [],
+      note: String(c.note || '')
+    });
+  });
+  return out;
+}
+
+function normalizeMtr(mtr) {
+  if (!Array.isArray(mtr)) return [];
+  const out = [];
+  mtr.forEach((m, i) => {
+    if (!m) return;
+    const name = String(m.name || m.equipment || '').trim();
+    if (!name) return;
+    const src = String(m.source || '').trim();
+    out.push({
+      code: String(m.code || '').trim() || ('mtr_' + (i + 1)),
+      name,
+      inventory_number: String(m.inventory_number || m.inventory_no || '').trim(),
+      equipment_id: m.equipment_id != null && m.equipment_id !== '' ? parseInt(m.equipment_id, 10) || null : null,
+      qty: Math.max(0, num(m.qty, 1)) || 1,
+      unit: String(m.unit || 'шт'),
+      source: MTR_SOURCES.includes(src) ? src : (m.equipment_id ? 'warehouse' : 'purchase'),
+      purpose: String(m.purpose || '').trim(),
+      price: (m.price != null && m.price !== '') ? num(m.price) : null,
+      note: String(m.note || '')
+    });
+  });
+  return out;
+}
+
+function normalizeSchedule(schedule, params) {
+  const s = (schedule && typeof schedule === 'object') ? schedule : {};
+  const trips = Array.isArray(s.trips)
+    ? s.trips.map((t) => ({
+      from: String((t && t.from) || '').trim(),
+      to: String((t && t.to) || '').trim(),
+      days: Math.max(0, num(t && t.days, 0))
+    })).filter((t) => t.from || t.to || t.days)
+    : [];
+  return {
+    start_plan: normalizeIsoDate(s.start_plan) || normalizeIsoDate(params && params.start_plan) || null,
+    work_days: num(s.work_days, 0) || null,
+    trip_count: num(s.trip_count, 0) || null,
+    shift_mode: normalizeShiftMode(s.shift_mode) || normalizeShiftMode(params && params.shifts_per_day) || '',
+    shift_hours: num(s.shift_hours, 0) || null,
+    trips
+  };
+}
+
+/** Ставка строки бригады: своя → параметр роли → ставка рабочего. */
+function crewRate(c, p) {
+  if (c.rate != null) return c.rate;
+  const def = CREW_ROLE_BY_CODE[c.role_code];
+  const key = def && def.rateKey;
+  if (key && p[key] != null) return num(p[key]);
+  return num(p.rate_worker);
+}
+
+/** Сколько человек в смене по техплану (для СИЗ/пайковых и подписей). */
+function crewPerShift(crew, p) {
+  if (!crew || !crew.length) return num(p.workers_per_shift) + num(p.masters_per_shift);
+  const shifts = num(p.shifts_per_day) || 1;
+  let total = 0;
+  crew.forEach((c) => {
+    const s = c.shifts_per_day || shifts;
+    total += num(c.count) * (s / shifts);
+  });
+  return total;
+}
+
+/**
+ * Роль Мимира/старой сметы → код роли из CREW_ROLES.
+ * Нужна, когда бригада приходит текстом («слесарь-универсал», «мастер»,
+ * «сварщик НАКС»), а не структурой. Возвращает '' если роль не распознана —
+ * такую строку нельзя молча записывать в «слесаря».
+ */
+function classifyMobileRole(rawRole) {
+  const s = String(rawRole == null ? '' : rawRole).toLowerCase().replace(/ё/g, 'е');
+  if (!s.trim()) return '';
+  if (/наблюдающ|озп|огневой/.test(s)) return 'observer';
+  if (/сварщик|накс/.test(s)) return 'welder';
+  if (/изолировщ|термоизол/.test(s)) return 'insulator';
+  if (/монтажник|сборщик/.test(s)) return 'assembler';
+  if (/водител/.test(s)) return 'driver';
+  if (/охрана труда|высот|промбезопасн|промышленн|специалист по от/.test(s)) return 'safety';
+  if (/мастер|бригадир|прораб|начальник участка/.test(s)) return 'master';
+  if (/итр|инженер|менеджер|руководител/.test(s)) return 'itr';
+  if (/слесар|рабоч|исполнит|универсал|оператор|чистильщик/.test(s)) return 'worker';
+  return '';
+}
+
+/**
+ * Короткая сводка техплана для карточек и ТКП: только факты.
+ * Возвращает null, если техплана нет — вызывающая сторона решает, что показать.
+ */
+function describeTechPlan(est) {
+  const src = est || {};
+  const crew = Array.isArray(src.crew) ? src.crew : [];
+  const mtr = Array.isArray(src.mtr) ? src.mtr : [];
+  const sch = (src.schedule && typeof src.schedule === 'object') ? src.schedule : {};
+  const totals = src.totals || {};
+  if (!crew.length && !mtr.length && !sch.work_days) return null;
+
+  const byRole = {};
+  crew.forEach((c) => {
+    const key = c.role || 'Прочее';
+    byRole[key] = (byRole[key] || 0) + num(c.count);
+  });
+
+  return {
+    work_days: sch.work_days != null ? num(sch.work_days) : null,
+    trip_count: sch.trip_count != null ? num(sch.trip_count) : null,
+    shift_mode: sch.shift_mode || '',
+    shift_hours: sch.shift_hours != null ? num(sch.shift_hours) : null,
+    start_plan: sch.start_plan || null,
+    man_hours: totals.man_hours != null ? num(totals.man_hours) : null,
+    headcount: crew.reduce((s, c) => s + num(c.count), 0),
+    roles: Object.keys(byRole).map((role) => ({ role, count: byRole[role] })),
+    mtr_count: mtr.length,
+    mtr_warehouse: mtr.filter((m) => m.source === 'warehouse').length,
+    mtr_purchase: mtr.filter((m) => m.source === 'purchase').length,
+    mtr_rent: mtr.filter((m) => m.source === 'rent').length,
+    crew,
+    mtr
+  };
+}
+
+/**
+ * Разложить техплан по строкам сметы.
+ *
+ * Правила:
+ *  - бригада закрывает строки A1–A6: если в crew[] есть роль из CREW_ROLES,
+ *    строка получает количество из техплана (count × смены × сутки) и свою ставку;
+ *  - дополнительные роли (сварщик, изолировщик, монтажник, наблюдающий, водитель)
+ *    добавляются отдельными строками секции A сразу после A3 — их не было в
+ *    скелете, и раньше они либо терялись, либо прятались в «Рабочий»;
+ *  - секция F пересобирается из mtr[] (перечень оборудования, справочно).
+ *
+ * Совместимость: пустой crew[] → строки A остаются на qtyExpr (старый расчёт),
+ * пустой mtr[] → секция F остаётся как была (шаблонная строка F1).
+ */
+function applyTechPlanRows(rows, crew, mtr, p) {
+  const list = Array.isArray(rows) ? rows.slice() : [];
+  const hasCrew = Array.isArray(crew) && crew.length > 0;
+  const hasMtr = Array.isArray(mtr) && mtr.length > 0;
+  if (!hasCrew && !hasMtr) return list;
+
+  const shifts = num(p.shifts_per_day) || 1;
+  const days = num(p.work_days);
+
+  if (hasCrew) {
+    const byRole = {};
+    crew.forEach((c) => {
+      if (!c.role_code) return;
+      byRole[c.role_code] = c;
+    });
+
+    // A1–A4: подставить количество и ставку из техплана.
+    list.forEach((r) => {
+      if (!r || r.kind !== 'line' || String(r.section) !== 'A') return;
+      const roleCode = r.crewRole || (String(r.code) === 'A1' ? 'itr'
+        : String(r.code) === 'A2' ? 'master'
+          : String(r.code) === 'A3' ? 'worker'
+            : String(r.code) === 'A4' ? 'safety' : '');
+      if (!roleCode) return;
+      const c = byRole[roleCode];
+      if (!c) return;
+      const roleShifts = c.shifts_per_day || shifts;
+      const perRoleDays = days * roleShifts;
+      const qty = num(c.count) * perRoleDays;
+      r.qty = Math.round(qty * 1000) / 1000;
+      r.price = crewRate(c, p);
+      r.override = true;
+      r.tech_from = 'crew';
+      r.note = c.note || r.note || '';
+      if (c.count > 0) r.name = c.role || r.name;
+    });
+
+    // Дополнительные роли — новыми строками после A3.
+    const extra = crew.filter((c) => c.role_code
+      && ['welder', 'insulator', 'assembler', 'observer', 'driver'].includes(c.role_code));
+    if (extra.length) {
+      const present = new Set(list.map((r) => r && r.crewRole).filter(Boolean));
+      const a3Idx = list.findIndex((r) => r && String(r.code) === 'A3');
+      const insertAt = a3Idx >= 0 ? a3Idx + 1 : list.findIndex((r) => r && String(r.section) === 'A');
+      const fresh = [];
+      extra.forEach((c, i) => {
+        if (present.has(c.role_code)) return;
+        const roleShifts = c.shifts_per_day || shifts;
+        fresh.push({
+          id: 'a_crew_' + c.role_code,
+          kind: 'line',
+          section: 'A',
+          code: 'A3.' + (i + 1),
+          name: c.role,
+          unit: 'чел·смен',
+          qty: Math.round(num(c.count) * days * roleShifts * 1000) / 1000,
+          price: crewRate(c, p),
+          override: true,
+          tech_from: 'crew',
+          crewRole: c.role_code,
+          note: c.note || '',
+          editable: { qty: true, price: true, name: true }
+        });
+      });
+      const at = insertAt >= 0 ? insertAt : list.length;
+      list.splice(at, 0, ...fresh);
+    }
+  }
+
+  if (hasMtr) {
+    // Убрать прежние строки перечня (в т.ч. шаблонную F1) и собрать из mtr.
+    for (let i = list.length - 1; i >= 0; i -= 1) {
+      const r = list[i];
+      if (!r) continue;
+      if (String(r.section) === 'F' && (r.kind === 'info' || r.kind === 'line')) list.splice(i, 1);
+    }
+    const secFIdx = list.findIndex((r) => r && r.kind === 'section' && String(r.section) === 'F');
+    const fresh = mtr.map((m, i) => ({
+      id: 'f_mtr_' + (m.code || i),
+      kind: 'info',
+      section: 'F',
+      code: 'F' + (i + 1),
+      name: m.name,
+      unit: m.unit || 'шт',
+      qty: num(m.qty) || 1,
+      price: m.price != null ? m.price : 0,
+      inventory_number: m.inventory_number || '',
+      equipment_id: m.equipment_id || null,
+      mtr_source: m.source,
+      note: m.purpose || m.note || '',
+      tech_from: 'mtr',
+      editable: { qty: true, price: true, name: true, note: true }
+    }));
+    if (secFIdx >= 0) list.splice(secFIdx + 1, 0, ...fresh);
+    else list.push(...fresh);
+  }
+
+  return list;
 }
 
 function ratio(v, fallback) {
@@ -171,13 +472,13 @@ function skeletonRows() {
   return [
     { id: 'sec_a', kind: 'section', section: 'A', name: 'A. Персонал' },
     { id: 'a1', kind: 'line', section: 'A', code: 'A1', name: 'ИТР (РП)', unit: 'чел·смен',
-      qtyExpr: 'itr_days', priceExpr: 'rate_itr', editable: { qty: true, price: true, name: true } },
+      crewRole: 'itr', qtyExpr: 'itr_days', priceExpr: 'rate_itr', editable: { qty: true, price: true, name: true } },
     { id: 'a2', kind: 'line', section: 'A', code: 'A2', name: 'Мастер', unit: 'чел·смен',
-      qtyExpr: 'master_shifts', priceExpr: 'rate_master', editable: { qty: true, price: true, name: true } },
+      crewRole: 'master', qtyExpr: 'master_shifts', priceExpr: 'rate_master', editable: { qty: true, price: true, name: true } },
     { id: 'a3', kind: 'line', section: 'A', code: 'A3', name: 'Рабочий (исполнитель)', unit: 'чел·смен',
-      qtyExpr: 'worker_shifts', priceExpr: 'rate_worker', editable: { qty: true, price: true, name: true } },
+      crewRole: 'worker', qtyExpr: 'worker_shifts', priceExpr: 'rate_worker', editable: { qty: true, price: true, name: true } },
     { id: 'a4', kind: 'line', section: 'A', code: 'A4', name: 'Специалист ОТ / высота', unit: 'чел·смен',
-      qty: 0, priceExpr: 'rate_itr', editable: { qty: true, price: true, name: true } },
+      crewRole: 'safety', qty: 0, priceExpr: 'rate_itr', editable: { qty: true, price: true, name: true } },
     { id: 'a5', kind: 'line', section: 'A', code: 'A5', name: 'Подготовка на складе', unit: 'чел·смен',
       qty: 8, priceExpr: 'rate_worker', editable: { qty: true, price: true, name: true } },
     { id: 'a6', kind: 'line', section: 'A', code: 'A6', name: 'Дни дороги', unit: 'чел·смен',
@@ -286,11 +587,18 @@ function recalcAsgardSmeta(estimate) {
   est.template = 'asgard_v1';
   est.params = mergeParams(est.params);
   const p = est.params;
+
+  // Техплан: бригада, МТР, график. Нормализуем ДО строк — из него строятся A и F.
+  est.crew = normalizeCrew(est.crew);
+  est.mtr = normalizeMtr(est.mtr);
+  est.schedule = normalizeSchedule(est.schedule, p);
+
   if (!Array.isArray(est.rows) || !est.rows.length) {
     est.rows = skeletonRows();
   } else {
     est.rows = mergeSkeletonRows(est.rows);
   }
+  est.rows = applyTechPlanRows(est.rows, est.crew, est.mtr, p);
 
   // Даты работ: план начала + примерный срок → расчётное окончание (для письма/Excel/модалки).
   const meta = (est.meta && typeof est.meta === 'object') ? est.meta : {};
@@ -403,6 +711,12 @@ function recalcAsgardSmeta(estimate) {
     ? Math.round(netProfit / personShifts * 100) / 100
     : null;
 
+  // Человеко-часы: из техплана, если бригада задана структурно; иначе из параметров.
+  const peoplePerShift = crewPerShift(est.crew, p);
+  const shiftHours = num(p.shift_hours) > 0 ? num(p.shift_hours) : 12;
+  const manHours = Math.round(num(p.work_days) * num(p.shifts_per_day) * peoplePerShift * shiftHours * 100) / 100;
+  const crewHeadcount = (est.crew || []).reduce((s, c) => s + num(c.count), 0) || peoplePerShift;
+
   const totalsMap = {
     fot, fot_tax: fotTax, fot_tax_base: fotTaxBase, personnel, current, travel, transport, materials,
     equipment_purchase: equipmentPurchase,
@@ -417,6 +731,10 @@ function recalcAsgardSmeta(estimate) {
     income_tax_amount: incomeTaxAmount,
     net_profit: netProfit,
     person_shifts: personShifts,
+    man_hours: manHours,
+    crew_headcount: crewHeadcount,
+    crew_roles: (est.crew || []).length,
+    mtr_count: (est.mtr || []).length,
     profit_per_person_shift: profitPerPersonShift
   };
 
@@ -727,10 +1045,17 @@ function segezhaFixtureParams() {
 root.AsgardSmeta = {
   DEFAULT_PARAMS,
   PARAM_LABELS,
+  CREW_ROLES,
+  MTR_SOURCES,
   mergeParams,
   normalizeSharePct,
   normalizeIsoDate,
   addDaysIso,
+  normalizeCrew,
+  normalizeMtr,
+  normalizeSchedule,
+  classifyMobileRole,
+  describeTechPlan,
   skeletonRows,
   mergeSkeletonRows,
   recalcAsgardSmeta,

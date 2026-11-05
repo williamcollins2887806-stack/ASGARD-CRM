@@ -162,6 +162,7 @@ window.AsgardToCalcsPage = (function () {
               ${approvalBadge(est)}
               ${tkp ? `<span style="display:inline-block;padding:2px 10px;border-radius:10px;background:#c8a84e22;color:#c8a84e;font-weight:600;font-size:12px">ТКП #${tkp.id}</span>` : ''}
             </div>
+            ${techSummary(t)}
           </div>
           <div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;min-width:280px">
             ${actions.join(' ')}
@@ -169,6 +170,33 @@ window.AsgardToCalcsPage = (function () {
         </div>
       </div>
     `;
+  }
+
+  /**
+   * Техплан в карточке ТО: срок, сколько кого, перечень МТР.
+   *
+   * Источник — `rp_review.tech_json` (колонка tender_rp_reviews, приходит
+   * вместе с реестром). Если техплана нет — берём смету из отчёта, чтобы
+   * старые просчёты тоже были видны.
+   */
+  function techSummary(t) {
+    const ui = window.AsgardTechPlanUI;
+    if (!ui) return '';
+    const rv = t.rp_review || {};
+    const rj = rv.report_json && typeof rv.report_json === 'object'
+      ? rv.report_json
+      : (typeof rv.report_json === 'string' ? safeJson(rv.report_json) : {});
+    const plan = ui.readPlan(
+      Object.assign({ tech_json: rv.tech_json }, rj),
+      (rj && rj.asgard_smeta) || {}
+    );
+    const chips = ui.chipsHtml(plan, { hideEmpty: true });
+    if (!chips) return '';
+    return '<div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap">' + chips + '</div>';
+  }
+
+  function safeJson(s) {
+    try { return JSON.parse(s || '{}'); } catch (_) { return {}; }
   }
 
   function bucketBlock(title, icon, items, est, tkp, user) {

@@ -1073,6 +1073,24 @@ async function routes(fastify, options) {
  * PDFKit — PDF генератор ТКП
  * Динамические высоты, кириллица (DejaVuSans), авто-перенос текста, нумерация страниц
  */
+/**
+ * НДС и итог от базы — единая формула для ВСЕХ точек записи ТКП.
+ *
+ * Считаем в целых копейках (канон D-181): база → копейки, ставка → базисные
+ * пункты. Раньше в разных местах было `Math.round(subtotal * (1 + vat/100))`
+ * (округление до РУБЛЕЙ), и сумма в БД расходилась с документом на копейки,
+ * а PDFKit-фолбэк печатал «145 881,00» при каноне «145 880,96».
+ */
+function _vatTotals(base, vatPct) {
+  const b = Number(base);
+  const p = Number(vatPct);
+  if (!Number.isFinite(b) || b <= 0) return { subtotal: 0, vat: 0, total: 0 };
+  const baseKop = Math.round(b * 100);
+  const bp = Math.round((Number.isFinite(p) && p >= 0 ? p : 0) * 100);
+  const vatKop = Math.round(baseKop * bp / 10000);
+  return { subtotal: baseKop / 100, vat: vatKop / 100, total: (baseKop + vatKop) / 100 };
+}
+
 async function generateTkpPdfKit(tkp, db, opts) {
   opts = opts || {};
   // Load company profile from DB
@@ -1346,8 +1364,19 @@ async function generateTkpPdfKit(tkp, db, opts) {
   // ─── ИТОГО ───
   if (rows.length > 0) {
     const subtotal = cj.subtotal || rows.reduce((s, r) => s + (r.total || (r.qty || 1) * (r.price || 0)), 0);
-    const vatSum = cj.vat_sum || Math.round(subtotal * vatPct / 100);
-    const totalWithVat = cj.total_with_vat || (subtotal + vatSum);
+    // НДС в ЦЕЛЫХ КОПЕЙКАХ — та же формула, что vatFromBase в tkp-ai-draft
+    // и calcTotals в tkp-full-kp. Раньше здесь было Math.round(subtotal*pct/100),
+    // то есть округление до РУБЛЕЙ: PDF печатал «145 881,00» при каноне
+    // «145 880,96» — расхождение в 99 % баз (до 0,50 ₽).
+    const baseKop = Math.round(Number(subtotal) * 100);
+    const bp = Math.round(Number(vatPct) * 100);
+    const vatKop = Math.round(baseKop * bp / 10000);
+    const vatSum = cj.vat_sum != null && Number(cj.vat_sum) > 0
+      ? Math.round(Number(cj.vat_sum) * 100) / 100
+      : vatKop / 100;
+    const totalWithVat = cj.total_with_vat != null && Number(cj.total_with_vat) > 0
+      ? Math.round(Number(cj.total_with_vat) * 100) / 100
+      : (baseKop + vatKop) / 100;
 
     ensureSpace(55);
     doc.font(F).fontSize(9.5).fillColor('#6B7280')
@@ -1389,12 +1418,90 @@ async function generateTkpPdfKit(tkp, db, opts) {
   terms.push(`Срок действия предложения: ${tkp.validity_days || 30} дней`);
   if (paymentTerms) terms.push(`Условия оплаты: ${paymentTerms}`);
 
+  // Техплан полного КП: персонал, режим, оборудование, инвентарные номера.
+  // Без этого фолбэк PDFKit печатал «голый» шаблон без технической части —
+  // и ТО видела «много мест не заполнено» даже при полном просчёте.
+  const full = (cj.full && typeof cj.full === 'object') ? cj.full : null;
+  const cond = (full && full.conditions && typeof full.conditions === 'object') ? full.conditions : {};
+  if (cond.personnel) terms.push(`Состав бригады: ${cond.personnel}`);
+  if (cond.regime) terms.push(`Режим работ: ${cond.regime}`);
+  if (cond.mobilization) terms.push(`Мобилизация: ${cond.mobilization}`);
+  if (cond.customer_resources) terms.push(`Ресурсы заказчика: ${cond.customer_resources}`);
+
   terms.forEach(t => {
     ensureSpace(18);
     doc.font(F).fontSize(9.5).fillColor('#374151')
        .text(`•  ${t}`, mL + 8, doc.y, { width: contentW - 8 });
     doc.moveDown(0.15);
   });
+
+  // ─── ТЕХНИЧЕСКИЙ ПЕРИМЕТР И ОБОРУДОВАНИЕ (полное КП) ───
+  if (full) {
+    const scope = String(full.scope || '').trim();
+    if (scope) {
+      ensureSpace(40);
+      doc.moveDown(0.3);
+      doc.font(FB).fontSize(11).fillColor('#1E4D8C')
+        .text('Технический периметр работ', mL, doc.y, { width: contentW });
+      doc.moveDown(0.25);
+      scope.split(/\n+/).filter(Boolean).forEach((line) => {
+        ensureSpace(18);
+        doc.font(F).fontSize(9.5).fillColor('#374151')
+          .text('•  ' + line.replace(/^[\s•\-–—]+/, ''), mL + 8, doc.y, { width: contentW - 8 });
+        doc.moveDown(0.12);
+      });
+    }
+    if (String(full.scope_boundary || '').trim()) {
+      ensureSpace(30);
+      doc.moveDown(0.2);
+      doc.font(F).fontSize(9.5).fillColor('#374151')
+        .text(String(full.scope_boundary), mL, doc.y, { width: contentW });
+    }
+    // Перечень оборудования с инвентарными номерами — то, чего не было в фолбэке.
+    const mtr = rows.filter((r) => r.section === 'MTR');
+    if (mtr.length) {
+      ensureSpace(50);
+      doc.moveDown(0.5);
+      doc.font(FB).fontSize(11).fillColor('#1E4D8C')
+        .text('Оборудование и материалы', mL, doc.y, { width: contentW });
+      doc.moveDown(0.25);
+      mtr.forEach((m, i) => {
+        ensureSpace(18);
+        const inv = m.inventory_number ? ` (инв. № ${m.inventory_number})` : '';
+        doc.font(F).fontSize(9.5).fillColor('#374151')
+          .text(`${i + 1}. ${m.name}${inv} — ${m.qty || 1} ${m.unit || 'шт'}`, mL + 8, doc.y, { width: contentW - 8 });
+        doc.moveDown(0.12);
+      });
+    }
+    const risks = String(full.risks || '').trim();
+    if (risks) {
+      ensureSpace(35);
+      doc.moveDown(0.4);
+      doc.font(FB).fontSize(11).fillColor('#1E4D8C')
+        .text('Условия, влияющие на сроки и стоимость', mL, doc.y, { width: contentW });
+      doc.moveDown(0.2);
+      risks.split(/\n+/).filter(Boolean).forEach((line) => {
+        ensureSpace(18);
+        doc.font(F).fontSize(9.5).fillColor('#374151')
+          .text('•  ' + line.replace(/^[\s•\-–—]+/, ''), mL + 8, doc.y, { width: contentW - 8 });
+        doc.moveDown(0.12);
+      });
+    }
+    const duties = String(full.customer_duties || '').trim();
+    if (duties) {
+      ensureSpace(35);
+      doc.moveDown(0.4);
+      doc.font(FB).fontSize(11).fillColor('#1E4D8C')
+        .text('Обязанности заказчика', mL, doc.y, { width: contentW });
+      doc.moveDown(0.2);
+      duties.split(/\n+/).filter(Boolean).forEach((line) => {
+        ensureSpace(18);
+        doc.font(F).fontSize(9.5).fillColor('#374151')
+          .text('•  ' + line.replace(/^[\s•\-–—]+/, ''), mL + 8, doc.y, { width: contentW - 8 });
+        doc.moveDown(0.12);
+      });
+    }
+  }
 
   if (cj.notes || tkp.notes) {
     doc.moveDown(0.2);
@@ -2078,11 +2185,26 @@ module.exports = async function routesWithExtensions(fastify, options) {
     if (!rows[0]) return reply.code(404).send({ error: 'TKP not found' });
     const tkp = rows[0];
     const fullKp = require('../services/tkp-full-kp');
-    let company = { name: 'ООО «АСГАРД-Сервис»', phone: '+7 499 322-30-62' };
+    // Профиль компании: таблицы company_profile в схеме НЕТ (проверено
+    // to_regclass → null), запрос падал и молча съедался catch — из-за этого
+    // в подписи печаталось «()». Берём реальный источник: settings.company_profile
+    // (как pdf-generator.getCompanyProfile), с фолбэком на реквизиты.
+    let company = {
+      name: 'ООО «АСГАРД-Сервис»',
+      phone: '+7 (499) 322-30-62',
+      director_name: 'Кудряшов Олег Сергеевич',
+      director_full_name: 'Кудряшов Олег Сергеевич',
+      director_title: 'Генеральный директор'
+    };
     try {
-      const r = await db.query('SELECT * FROM company_profile ORDER BY id LIMIT 1');
-      if (r.rows[0]) company = r.rows[0];
-    } catch (_) {}
+      const r = await db.query("SELECT value_json FROM settings WHERE key = 'company_profile' LIMIT 1");
+      if (r.rows[0] && r.rows[0].value_json) {
+        const p = typeof r.rows[0].value_json === 'string'
+          ? JSON.parse(r.rows[0].value_json)
+          : r.rows[0].value_json;
+        if (p && typeof p === 'object') company = Object.assign({}, company, p);
+      }
+    } catch (_) { /* реквизиты выше — рабочий фолбэк, пустой подписи быть не должно */ }
     const buf = tkp.kp_variant === 'full'
       ? fullKp.generateFullKpDocxBuffer(tkp, company)
       : fullKp.generateClassicDocxBuffer(tkp, company);
@@ -2565,7 +2687,7 @@ module.exports = async function routesWithExtensions(fastify, options) {
           `UPDATE tkp SET items = $1::jsonb, total_sum = $2, updated_at = NOW() WHERE id = $3`,
           [JSON.stringify({
             items: clientItems, vat_pct: vatPct, subtotal,
-            total_with_vat: Math.round(subtotal * (1 + vatPct / 100)),
+            total_with_vat: _vatTotals(subtotal, vatPct).total,
           }), subtotal, tkpId]);
       }
 
@@ -2577,7 +2699,7 @@ module.exports = async function routesWithExtensions(fastify, options) {
               WHERE tkp_id = $2 AND block_key = 'smeta'`,
             [JSON.stringify({
               items: clientItems, vat_pct: vatPct, subtotal,
-              total_with_vat: Math.round(subtotal * (1 + vatPct / 100)),
+              total_with_vat: _vatTotals(subtotal, vatPct).total,
             }), tkpId]);
         } catch (_) {}
       }
@@ -2608,7 +2730,7 @@ module.exports = async function routesWithExtensions(fastify, options) {
         type: 'done',
         items_count: clientItems.length,
         subtotal,
-        total_with_vat: Math.round(subtotal * (1 + vatPct / 100)),
+        total_with_vat: _vatTotals(subtotal, vatPct).total,
         message: clientItems.length
           ? `Заполнено позиций: ${clientItems.length}`
           : 'Смета не найдена — заполните позиции вручную',
@@ -2761,7 +2883,7 @@ module.exports = async function routesWithExtensions(fastify, options) {
             items: clientItems,
             vat_pct: vatPct,
             subtotal,
-            total_with_vat: Math.round(subtotal * (1 + vatPct / 100)),
+            total_with_vat: _vatTotals(subtotal, vatPct).total,
           };
           estimateSource = q.rows[0].status || 'draft';
         }
@@ -2866,7 +2988,7 @@ module.exports = async function routesWithExtensions(fastify, options) {
         items: scopeRows,
         vat_pct: initialVatPct,
         subtotal: initialSubtotal,
-        total_with_vat: Math.round(initialSubtotal * (1 + initialVatPct / 100)),
+        total_with_vat: _vatTotals(initialSubtotal, initialVatPct).total,
       });
       const initialTotal = initialSubtotal;
 
@@ -2919,7 +3041,7 @@ module.exports = async function routesWithExtensions(fastify, options) {
             items: scopeRows,
             vat_pct: initialVatPct,
             subtotal: initialSubtotal,
-            total_with_vat: Math.round(initialSubtotal * (1 + initialVatPct / 100))
+            total_with_vat: _vatTotals(initialSubtotal, initialVatPct).total
           } : {}),
           ...(key === 'preamble' && prefill.work_description ? {
             text: String(prefill.work_description).slice(0, 1200)
@@ -3657,7 +3779,11 @@ async function _renderTkpPdfBuffer(fastify, tkp, opts) {
       renderedFrom = 'blocks_smeta';
     }
   } else if (tkp.kp_variant === 'full') {
-    // Полное КП — шаблон «Ника» (DOCX → LibreOffice), fallback HTML→PDF
+    // Полное КП — шаблон «Ника» (DOCX → LibreOffice), fallback HTML→PDF.
+    // ВАЖЕН ТРЕТИЙ ШАГ: на сервере без LibreOffice и без Chromium рендер
+    // падал целиком («Не удалось отрендерить PDF»), и ТО не могла сохранить
+    // полное КП. Теперь последний fallback — PDFKit: структура беднее, но
+    // документ есть, суммы и позиции те же.
     try {
       const fullKp = require('../services/tkp-full-kp');
       let company = {};
@@ -3669,6 +3795,16 @@ async function _renderTkpPdfBuffer(fastify, tkp, opts) {
     } catch (err) {
       fastify.log.warn(`[TKP pdf] full template failed: ${err.message}`);
       buffer = null;
+    }
+    if (!buffer) {
+      try {
+        buffer = await generateTkpPdfKit(tkp, db, pdfOpts);
+        renderedFrom = 'full_fallback_pdfkit';
+        fastify.log.warn('[TKP pdf] полное КП отрисовано через PDFKit (нет LibreOffice/Chromium)');
+      } catch (err) {
+        fastify.log.warn(`[TKP pdf] PDFKit fallback failed: ${err.message}`);
+        buffer = null;
+      }
     }
   } else {
     // Классический путь
@@ -4061,6 +4197,34 @@ async function _persistTkpPdfAndAttach(fastify, tkp, buffer, filename) {
 }
 
 /**
+ * Подсказка «что менять» для хита из готового PDF.
+ *
+ * PDF-гейт работает по тексту файла, а не по полям формы: field у него нет.
+ * Без подсказки модалка ТКП показывала пустую строку и ТО не понимала, что
+ * править (инцидент 05.11.2026, полное КП блокировалось дефолтной подписью).
+ */
+function _pdfHitHint(h) {
+  const kind = h && h.kind;
+  if (kind === 'internal' || kind === 'internal_number') {
+    return 'Внутренние данные (себестоимость, маржа, структура затрат) в клиентском документе недопустимы. '
+      + 'Уберите фрагмент из текста ТКП.';
+  }
+  if (kind === 'ai_cliche') {
+    return 'Формулировка-штамп. Перепишите предложение простым деловым языком.';
+  }
+  if (kind === 'artifact') {
+    return 'Машинный артефакт (markdown/snake_case/placeholder). Уберите из текста.';
+  }
+  if (kind === 'alien_number') {
+    return 'Число не из просчёта. Суммы берутся только из просчёта РП — удалите это число.';
+  }
+  if (kind === 'amount_missing') {
+    return 'Сумма из просчёта не найдена в документе. Попробуйте пересобрать ТКП.';
+  }
+  return 'Проверьте текст ТКП и уберите фрагмент.';
+}
+
+/**
  * Завершить сохранение в режиме attach_pdf_only: отрендерить PDF, прогнать
  * через гейт чистоты и прикрепить к карточке тендера.
  *
@@ -4147,7 +4311,9 @@ async function _finishAttachPdfOnly(fastify, reply, tkp, isNew) {
       return reply.code(422).send({
         error: 'В сформированном документе найден недопустимый текст — файл к тендеру не прикреплён. Исправьте формулировки и сохраните снова.',
         code: 'pdf_lint_failed',
-        hits: gate.hits.slice(0, 40),
+        // field у PDF-хитов не бывает (это текст готового файла, а не поле формы).
+        // Отдаём hint, чтобы модалка показала «что менять», а не пустой field.
+        hits: gate.hits.slice(0, 40).map((h) => Object.assign({}, h, { hint: _pdfHitHint(h) })),
         pages: gate.pages,
         item: isNew ? null : tkp
       });

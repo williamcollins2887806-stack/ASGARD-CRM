@@ -323,8 +323,41 @@ function mapMimirToReportFields(phase, estimate, chatMd) {
   }
 
   // Структурная смета (asgard_v1) — чтобы просчёт не начинался с чужого скелета.
-  const smeta = buildSmetaFromMimir(estimate);
+  const smetaBase = buildSmetaFromMimir(estimate);
+
+  // Техплан (сроки/бригада/МТР). Раньше бригада и оборудование Мимира жили
+  // только в ai_meta и терялись при переносе в отчёт: РП видел «Рабочий
+  // (исполнитель)», а не «слесарь 5, сварщик 2». Собираем и пишем в отчёт.
+  let techPlan = null;
+  try {
+    const techSvc = require('./rp-tech-plan');
+    techPlan = techSvc.buildTechPlan({
+      estimate,
+      smeta: smetaBase || {},
+      stock: (estimate && Array.isArray(estimate.warehouse)) ? estimate.warehouse : null,
+      ctx: { work_start_plan: (estimate && (estimate.start_plan || estimate.work_start_plan)) || null },
+      filledBy: 'mimir'
+    });
+    if (techPlan && !techSvc.hasContent(techPlan)) techPlan = null;
+  } catch (e) {
+    // Техплан — обогащение: без него числа work_price/cost всё равно уезжают.
+    console.warn('[rp-review-drafts] tech plan skipped:', e.message);
+    techPlan = null;
+  }
+
+  // Смета с бригадой по ролям и перечнем МТР. Строки A/F строятся из техплана,
+  // поэтому applyToSmeta идёт ПОСЛЕ сборки: иначе в просчёте окажется
+  // шаблонная «АВД высокого давления» вместо реального перечня.
+  let smeta = smetaBase;
+  if (techPlan && smetaBase) {
+    try {
+      smeta = require('./rp-tech-plan').applyToSmeta(smetaBase, techPlan);
+    } catch (e) {
+      console.warn('[rp-review-drafts] tech plan → smeta skipped:', e.message);
+    }
+  }
   if (smeta) patch.asgard_smeta = smeta;
+  if (techPlan) patch.tech_json = techPlan;
 
   return patch;
 }

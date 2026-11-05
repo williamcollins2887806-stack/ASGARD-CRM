@@ -153,6 +153,15 @@ async function loadTenderContext(tenderId) {
        FROM documents
       WHERE tender_id = $1
         AND COALESCE(type,'') NOT IN ('ocr-extract')
+        AND (
+          ocr_text IS NULL
+          OR (
+            length(trim(ocr_text)) > 20
+            AND ocr_text NOT ILIKE '%[Demo]%'
+            AND ocr_text NOT ILIKE '%демо-режим%'
+            AND ocr_text NOT ILIKE '%[ошибка OCR%'
+          )
+        )
       ORDER BY (ocr_text IS NULL) ASC, created_at DESC
       LIMIT 30`,
     [tenderId]
@@ -189,6 +198,32 @@ function normalizeVatPct(raw) {
   if (CANON_VAT_RATES.includes(v)) return v;
   // 20% и любые прочие — в ТКП с 2026 ведём как 22.
   return 22;
+}
+
+/**
+ * Эталонный расчёт НДС и итога от базы.
+ *
+ * ЕДИНСТВЕННАЯ формула для клиентского документа: сервер и модалка обязаны
+ * считать одинаково. Раньше превью считало `round(base * pct * 100)/100`,
+ * а сервер `round2(subtotal * pct / 100)` — на 0,08 % баз это давало копейку
+ * расхождения: в БД сохранялось 145 880,96, в DOCX печаталось 145 880,95.
+ *
+ * Считаем в целых копейках (канон D-181): база → копейки, ставка → базисные
+ * пункты (22 % → 2200), поэтому произведение остаётся целым и точным.
+ */
+function vatFromBase(base, vatPct) {
+  const b = Number(base);
+  const p = Number(vatPct);
+  if (!Number.isFinite(b) || b <= 0) return { base: 0, vat: 0, total: 0 };
+  if (!Number.isFinite(p) || p < 0) return { base: round2(b), vat: 0, total: round2(b) };
+  const baseKop = Math.round(b * 100);
+  const bp = Math.round(p * 100);
+  const vatKop = Math.round(baseKop * bp / 10000);
+  return {
+    base: baseKop / 100,
+    vat: vatKop / 100,
+    total: (baseKop + vatKop) / 100
+  };
 }
 
 /**
@@ -312,6 +347,10 @@ function buildPromptContext({ tender, review, checklist, docs, pricing }) {
   // в промпт не идут: клиенту они не показываются, и модель не должна их видеть.
   const workNames = collectWorkNames(pricing, review);
 
+  // Техплан: сроки, бригада, МТР. Это факты из просчёта, а не выдумка модели —
+  // на их основе она разбивает работы на позиции и пишет условия.
+  const techLines = buildTechPromptLines(review, pricing);
+
   const ctx = {
     customer_name: tender.customer_name || '',
     customer_inn: tender.customer_inn || '',
@@ -334,6 +373,7 @@ function buildPromptContext({ tender, review, checklist, docs, pricing }) {
     price_with_vat: pricing.priceWithVat ? fmtMoney(pricing.priceWithVat) : '',
     vat_pct: String(pricing.vatPct),
     work_names: workNames.length ? workNames.map((n, i) => (i + 1) + '. ' + n).join('\n') : '(перечень работ не детализирован)',
+    tech_plan: techLines,
     ocr: truncate(ocrBlocks.join('\n\n'), OCR_BUDGET_CHARS)
   };
 
@@ -375,7 +415,31 @@ function fmtMoney(n) {
 
 // Те же служебные статьи, что прячет buildClientItems: клиент их не видит
 // по отдельности. Держим копию списка, чтобы модуль был самостоятельно тестируем.
-const INTERNAL_ROW_RE = /(ФОТ(?![а-яА-Я])|налог\s*\/?\s*взнос|накладн|непредвиден|пайков|проживан|билет|такси|подготовка на складе|дни дороги|доставка оборудования|проезд персонала|командировоч|суточн|зарплат|оклад|амортизац|себестоимост|маржинальн|наценк)/i;
+// Служебные статьи, которые нельзя показывать клиенту. Единственный источник
+// правды — client-doc-lint (INTERNAL_WORDS): здесь только быстрый предфильтр,
+// и ЛЮБОЕ название дополнительно проверяется линтером через isInternalName().
+// Раньше это была вторая копия списка, и она разошлась с линтером: «транспортные
+// расходы», «логистика», «мобилизация» проходили в позиции МТР и в PDF.
+const INTERNAL_ROW_RE = /(ФОТ(?![а-яА-Я])|налог\s*\/?\s*взнос|накладн|непредвиден|пайков|проживан|билет|такси|подготовка на складе|дни дороги|доставка оборудования|проезд персонала|командировоч|суточн|зарплат|оклад|амортизац|себестоимост|маржинальн|наценк|транспортн|логистик|мобилизац)/i;
+
+/**
+ * Внутренняя ли статья по названию.
+ *
+ * Решает ЛИНТЕР (единый словарь), а regex — только дешёвый предфильтр.
+ * Так список не может снова разойтись: новая формулировка в
+ * client-doc-lint автоматически закрывается и здесь.
+ */
+function isInternalName(name) {
+  const s = String(name == null ? '' : name).trim();
+  if (!s) return false;
+  if (INTERNAL_ROW_RE.test(s)) return true;
+  try {
+    const probe = lint.lintText(s, { skipNumbers: true });
+    return probe.hits.some((h) => h.kind === 'internal' || h.kind === 'internal_number');
+  } catch (_) {
+    return false;
+  }
+}
 
 /**
  * Строки сметы → позиции для клиента.
@@ -397,7 +461,7 @@ function collectClientRows(pricing) {
     if (r.kind !== 'line' && r.kind !== 'info') continue;
     const name = String(r.name || '').trim();
     if (!name) continue;
-    if (INTERNAL_ROW_RE.test(name)) continue;
+    if (isInternalName(name)) continue;
     const section = String(r.section || '');
     // Скрытые секции — это внутренняя структура затрат.
     if (['A', 'C', 'D', 'G', 'H'].includes(section)) continue;
@@ -450,6 +514,190 @@ function buildClientItems(pricing, opts) {
   }];
 }
 
+/* ─────────────────── позиции полного КП (разбивка) ─────────────────── */
+
+/**
+ * Позиции полного КП: N работ + N единиц МТР, а не одна сводная строка.
+ *
+ * Правила, которые нельзя нарушать:
+ *  1. Σ строк = цена КП без НДС до копейки. Остаток округления — в последнюю
+ *     строку. Иначе `_reconcileWithReview` блокирует публикацию.
+ *  2. Внутренние статьи (ФОТ, пайковые, амортизация, накладные) в клиентскую
+ *     таблицу не попадают НИКОГДА — от них остаётся только вес в цене.
+ *  3. Работы распределяются по трудозатратам (чел-часы по роли), МТР — по
+ *     стоимости из сметы, если она есть; иначе МТР идут справочно (0 ₽) и вес
+ *     переносится на работы.
+ *
+ * @param {object} p { pricing, techPlan, workNames, summaryName }
+ * @returns {Array<{name,unit,qty,price,total,section,inventory_number?}>}
+ */
+function buildItemizedClientItems(p) {
+  const o = p || {};
+  const pricing = o.pricing || {};
+  const target = round2(pricing.priceNoVat);
+  if (!(target > 0)) return [];
+
+  const plan = o.techPlan || {};
+  const crew = Array.isArray(plan.crew) ? plan.crew : [];
+  const mtr = Array.isArray(plan.mtr) ? plan.mtr : [];
+  const workNames = Array.isArray(o.workNames) ? o.workNames : [];
+  const smetaRows = Array.isArray(pricing.smeta && pricing.smeta.rows) ? pricing.smeta.rows : [];
+  const workDays = num(plan.schedule && plan.schedule.work_days);
+  const shifts = num(plan.schedule && plan.schedule.shift_mode) || 1;
+  const hours = num(plan.schedule && plan.schedule.shift_hours) || 12;
+
+  // ── 1. Строки работ
+  const works = [];
+  const seen = new Set();
+  const pushWork = (name, manHours) => {
+    const n = tidyItemName(name);
+    if (!n || n.length < 3) return;
+    if (isInternalName(n)) return;
+    if (seen.has(n.toLowerCase())) return;
+    seen.add(n.toLowerCase());
+    works.push({ name: n, manHours: manHours > 0 ? manHours : null });
+  };
+
+  // Работы из периметра просчёта: их трудозатраты неизвестны по отдельности,
+  // поэтому делим общий человеко-ресурс пропорционально (равно).
+  if (workNames.length) {
+    const totalMH = num(plan.man_hours_total) || (workDays * shifts * hours * Math.max(1, crew.reduce((s, c) => s + num(c.count), 0)));
+    const perWork = totalMH > 0 && workNames.length ? totalMH / workNames.length : null;
+    workNames.forEach((w) => pushWork(w, perWork));
+  }
+
+  // Строки сметы как работы — если периметра нет вообще.
+  if (!works.length) {
+    const clientRows = collectClientRows(pricing);
+    const names = clientRows.length
+      ? clientRows.map((r) => r.name)
+      : ['Выполнение работ по техническому заданию'];
+    const totalMH = num(plan.man_hours_total);
+    const perWork = totalMH > 0 ? totalMH / names.length : null;
+    names.forEach((n) => pushWork(n, perWork));
+  }
+
+  // ── 2. Строки МТР
+  const mtrRows = [];
+  mtr.forEach((m) => {
+    const name = tidyItemName(m.name);
+    if (!name) return;
+    // Внутренние статьи не имеют права попасть в перечень МТР: «ФОТ бригады»,
+    // «Транспортные расходы», «Амортизация» — наша экономика, а не оборудование.
+    // Тот же фильтр, что для работ: раньше проверка стояла только в pushWork,
+    // и грязные названия МТР проходили в предпросмотр PDF.
+    if (isInternalName(name)) return;
+    const qty = num(m.qty) || 1;
+    const unit = String(m.unit || 'шт').trim();
+    // Стоимость МТР: из строки сметы F (перечень) или из самой позиции.
+    let price = num(m.price);
+    if (!(price > 0)) {
+      const row = smetaRows.find((r) => r && String(r.section) === 'F'
+        && String(r.name || '').toLowerCase().trim() === String(m.name || '').toLowerCase().trim());
+      if (row) price = num(row.price);
+    }
+    mtrRows.push({
+      name,
+      unit,
+      qty,
+      price,
+      total: round2(qty * price),
+      section: 'MTR',
+      inventory_number: m.inventory_number || ''
+    });
+  });
+
+  // ── 3. Распределение цены
+  const mtrTotal = round2(mtrRows.reduce((s, r) => s + r.total, 0));
+  const worksTotalMH = works.reduce((s, w) => s + (num(w.manHours) > 0 ? num(w.manHours) : 1), 0);
+
+  // Если МТР дороже цены КП — это дефект данных: МТР уходят справочно,
+  // вся цена распределяется по работам (иначе получим отрицательные работы).
+  const mtrFits = mtrTotal > 0 && mtrTotal < target * 0.95;
+  const worksBudget = round2(mtrFits ? target - mtrTotal : target);
+
+  const items = [];
+  let allocated = 0;
+
+  works.forEach((w, i) => {
+    const weight = num(w.manHours) > 0 ? num(w.manHours) : 1;
+    const isLast = i === works.length - 1;
+    const share = worksTotalMH > 0 ? weight / worksTotalMH : 1 / works.length;
+    const total = isLast ? round2(worksBudget - allocated) : round2(worksBudget * share);
+    allocated = round2(allocated + total);
+    items.push({
+      name: w.name,
+      unit: 'усл.',
+      qty: 1,
+      price: total,
+      total,
+      section: 'WORK'
+    });
+  });
+
+  if (mtrFits) {
+    mtrRows.forEach((r) => {
+      items.push({
+        name: r.name + (r.inventory_number ? ' (инв. № ' + r.inventory_number + ')' : ''),
+        unit: r.unit,
+        qty: r.qty,
+        price: r.price,
+        total: r.total,
+        section: 'MTR',
+        inventory_number: r.inventory_number
+      });
+    });
+  } else if (mtrRows.length) {
+    // МТР справочно: показываем перечень, но цену не несёт (иначе Σ ≠ цена).
+    mtrRows.forEach((r) => {
+      items.push({
+        name: r.name + (r.inventory_number ? ' (инв. № ' + r.inventory_number + ')' : ''),
+        unit: r.unit,
+        qty: r.qty,
+        price: 0,
+        total: 0,
+        section: 'MTR',
+        inventory_number: r.inventory_number,
+        reference: true
+      });
+    });
+  }
+
+  // ── 4. Сверка суммы
+  const sum = round2(items.reduce((s, it) => s + num(it.total), 0));
+  const diff = round2(target - sum);
+  if (Math.abs(diff) >= 0.01 && items.length) {
+    // Остаток — в последнюю позицию с ненулевой суммой.
+    for (let i = items.length - 1; i >= 0; i -= 1) {
+      if (num(items[i].total) > 0) {
+        items[i].total = round2(items[i].total + diff);
+        items[i].price = items[i].qty ? round2(items[i].total / items[i].qty) : items[i].total;
+        break;
+      }
+    }
+  }
+
+  // Позиции без названия/с нулём qty — дефект сборки, не отдаём.
+  return items.filter((it) => it.name && num(it.qty) > 0);
+}
+
+/**
+ * Техплан из отчёта для ТКП. Читает `report_json.tech_json`, при его
+ * отсутствии — смету (`asgard_smeta.crew/mtr/schedule`).
+ */
+function readTechPlan(review, pricing) {
+  const rj = parseReviewJson(review);
+  const raw = rj.tech_json || {};
+  const sm = (pricing && pricing.smeta) || {};
+  return {
+    schedule: raw.schedule || sm.schedule || {},
+    crew: Array.isArray(raw.crew) && raw.crew.length ? raw.crew : (Array.isArray(sm.crew) ? sm.crew : []),
+    mtr: Array.isArray(raw.mtr) && raw.mtr.length ? raw.mtr : (Array.isArray(sm.mtr) ? sm.mtr : []),
+    man_hours_total: raw.man_hours_total != null ? raw.man_hours_total
+      : ((sm.totals && sm.totals.man_hours != null) ? sm.totals.man_hours : null)
+  };
+}
+
 /**
  * Названия работ для промпта и для текстового блока «что входит».
  * Берём только «работные» строки сметы (секции B/E — текущие расходы и материалы
@@ -460,7 +708,7 @@ function collectWorkNames(pricing, review) {
   const push = (s) => {
     const v = String(s == null ? '' : s).trim();
     if (!v) return;
-    if (INTERNAL_ROW_RE.test(v)) return;
+    if (isInternalName(v)) return;
     if (out.indexOf(v) === -1) out.push(v);
   };
 
@@ -471,7 +719,7 @@ function collectWorkNames(pricing, review) {
       const clean = line.replace(/^[\s\-–—•\d.)]+/, '').trim();
       // Предложение с внутренней статьёй («ФОТ бригады 300 000 руб.») целиком
       // отбрасываем: это не работа, а структура затрат.
-      if (clean.length >= 3 && !INTERNAL_ROW_RE.test(clean)) push(clean);
+      if (clean.length >= 3 && !isInternalName(clean)) push(clean);
     });
   }
 
@@ -527,7 +775,86 @@ function collectAllowedNumbers(ctx, pricing) {
     lint.extractNumbers(s).forEach((n) => out.push(n.raw));
   }
 
+  // Числа техплана (дни, чел-часы, количество) — тоже законные.
+  const plan = ctx.tech_plan_data || null;  if (plan) {
+    const sch = plan.schedule || {};
+    [sch.work_days, sch.trip_count, sch.shift_hours, plan.man_hours_total].forEach((v) => {
+      if (v != null && Number(v) !== 0) out.push(String(v));
+    });
+    (plan.crew || []).forEach((c) => { if (c && c.count != null) out.push(String(c.count)); });
+    (plan.mtr || []).forEach((m) => { if (m && m.qty != null) out.push(String(m.qty)); });
+  }
+
+  // Числа из текстовых строк техплана («9 раб. дн.», «36 чел-ч»).
+  lint.extractNumbers(String(ctx.tech_plan || '')).forEach((n) => out.push(n.raw));
+
   return out;
+}
+
+/**
+ * Текстовые строки техплана для промпта.
+ * Возвращает '' если техплана нет — тогда модель работает по составу работ.
+ */
+function buildTechPromptLines(review, pricing) {
+  const rj = parseReviewJson(review);
+  const raw = rj.tech_json || {};
+  const sm = pricing && pricing.smeta ? pricing.smeta : {};
+  // Сметная бригада/МТР — источник, если техплана нет: РП уже заполнил
+  // параметры, и условия в КП обязаны это отражать, а не быть пустыми.
+  const params = sm.params || {};
+  const crew = Array.isArray(raw.crew) && raw.crew.length
+    ? raw.crew
+    : (Array.isArray(sm.crew) && sm.crew.length ? sm.crew : []);
+  const mtr = Array.isArray(raw.mtr) && raw.mtr.length
+    ? raw.mtr
+    : (Array.isArray(sm.mtr) ? sm.mtr : []);
+  const schedule = Object.assign({}, sm.schedule || {}, raw.schedule || {});
+  if (!Number(schedule.work_days) && Number(params.work_days)) schedule.work_days = params.work_days;
+  if (!Number(schedule.shift_mode) && Number(params.shifts_per_day)) schedule.shift_mode = String(params.shifts_per_day);
+  if (!Number(schedule.shift_hours) && Number(params.shift_hours)) schedule.shift_hours = params.shift_hours;
+  if (!Number(schedule.trip_count) && Number(params.trip_count)) schedule.trip_count = params.trip_count;
+
+  const plan = {
+    schedule,
+    crew,
+    mtr,
+    man_hours_total: raw.man_hours_total != null ? raw.man_hours_total
+      : ((sm.totals && sm.totals.man_hours != null) ? sm.totals.man_hours : null)
+  };
+
+  // Если структурной бригады нет, но есть параметры — показываем их: иначе
+  // в полном КП блок «условия» окажется пустым при заполненном просчёте.
+  if (!plan.crew.length) {
+    const masters = Number(params.masters_per_shift) || 0;
+    const workers = Number(params.workers_per_shift) || 0;
+    if (masters > 0) plan.crew.push({ role: 'Мастер / бригадир', count: masters });
+    if (workers > 0) plan.crew.push({ role: 'Слесарь', count: workers });
+    if (plan.crew.length) plan.crew.unshift({ role: 'ИТР (РП)', count: 1 });
+  }
+
+  const lines = [];
+  const sch = plan.schedule;
+  if (Number(sch.work_days) > 0) {
+    let s = 'Срок: ' + Number(sch.work_days) + ' раб. дн.';
+    if (Number(sch.trip_count) > 1) s += ', заездов: ' + Number(sch.trip_count);
+    if (Number(sch.shift_mode) > 0) s += ', режим: ' + Number(sch.shift_mode) + ' смены/сут';
+    if (Number(sch.shift_hours) > 0) s += ', смена ' + Number(sch.shift_hours) + ' ч';
+    lines.push(s);
+  }
+  if (Number(plan.man_hours_total) > 0) {
+    lines.push('Трудозатраты: ' + Math.round(Number(plan.man_hours_total)) + ' чел-ч.');
+  }
+  if (plan.crew.length) {
+    lines.push('Бригада: ' + plan.crew.map((c) => (c.role || 'Роль') + ' — ' + Number(c.count || 0)).join('; '));
+  }
+  if (plan.mtr.length) {
+    lines.push('Оборудование и материалы: ' + plan.mtr.map((m) => {
+      const inv = m.inventory_number ? (' (' + m.inventory_number + ')') : '';
+      const src = m.source === 'warehouse' ? ', склад' : (m.source === 'rent' ? ', аренда' : '');
+      return (m.name || '') + inv + ' × ' + Number(m.qty || 1) + src;
+    }).join('; '));
+  }
+  return lines.join('\n');
 }
 
 function buildSystemPrompt(ctx) {
@@ -733,36 +1060,87 @@ function defaultDescription(tender, pricing, workNames) {
  * Суммы берём из позиций (уже приведённых к цене КП), имена — из строк.
  */
 function buildFullPayload(pricing, items, texts) {
+  const t = texts || {};
+  const plan = t.techPlan || {};
+  const sch = plan.schedule || {};
+  let crew = Array.isArray(plan.crew) ? plan.crew : [];
+
+  // Если структурной бригады нет, но в смете заданы параметры — показываем их.
+  // Иначе блок «условия» выходит пустым при полностью заполненном просчёте
+  // (ровно то, на что жаловались: «много мест не заполнено»).
+  const sm = (pricing && pricing.smeta) || {};
+  const par = sm.params || {};
+  if (!crew.length) {
+    const masters = num(par.masters_per_shift);
+    const workers = num(par.workers_per_shift);
+    if (masters > 0) crew.push({ role: 'Мастер / бригадир', count: masters });
+    if (workers > 0) crew.push({ role: 'Слесарь', count: workers });
+    if (crew.length) crew.unshift({ role: 'ИТР (РП)', count: 1 });
+  }
+
+  const schedule = Object.assign({}, plan.schedule || {});
+  if (!num(schedule.work_days) && num(par.work_days)) schedule.work_days = num(par.work_days);
+  if (!num(schedule.shift_mode) && num(par.shifts_per_day)) schedule.shift_mode = num(par.shifts_per_day);
+  if (!num(schedule.shift_hours) && num(par.shift_hours)) schedule.shift_hours = num(par.shift_hours);
+  if (!num(schedule.trip_count) && num(par.trip_count)) schedule.trip_count = num(par.trip_count);
+
+  // Позиции таблицы: для полного КП — N работ + N МТР с ценами (уже сведены
+  // к цене КП без НДС в buildItemizedClientItems). Единица измерения — в
+  // «Ед. изм.», объём/примечание — в третьей колонке.
   const apparatus = (items || []).map((it) => ({
     equipment: it.name,
-    unit: it.unit || 'усл.',
+    inventory_no: it.unit || 'усл.',
+    tube_data: it.inventory_number
+      ? ('инв. № ' + it.inventory_number)
+      : (it.reference ? 'справочно' : ''),
     qty: it.qty || 1,
     amount_no_vat: round2(it.total)
   }));
 
+  // Условия — из техплана, а не выдумка модели: цифры уже проверены РП.
+  const personnelParts = [];
+  if (crew.length) {
+    const byRole = {};
+    crew.forEach((c) => {
+      const r = String(c.role || 'Бригада').trim();
+      byRole[r] = (byRole[r] || 0) + num(c.count);
+    });
+    Object.keys(byRole).forEach((r) => personnelParts.push(r + ' — ' + byRole[r]));
+  }
+  const regimeParts = [];
+  if (num(schedule.shift_mode) > 0) regimeParts.push(num(schedule.shift_mode) + ' смены в сутки');
+  if (num(schedule.shift_hours) > 0) regimeParts.push('смена ' + num(schedule.shift_hours) + ' ч');
+  if (num(schedule.work_days) > 0) regimeParts.push('рабочих дней: ' + num(schedule.work_days));
+  if (num(schedule.trip_count) > 1) regimeParts.push('заездов: ' + num(schedule.trip_count));
+
   return {
-    object_name: texts.object_name || '',
-    basis: texts.basis || 'Техническое задание заказчика',
+    object_name: t.object_name || '',
+    basis: t.basis || 'Техническое задание заказчика',
     conditions: {
       mobilization: '',
-      personnel: '',
-      regime: '',
-      payment: texts.payment_terms_text || '',
+      personnel: personnelParts.length ? personnelParts.join(', ') : '',
+      regime: regimeParts.join(', '),
+      payment: t.payment_terms_text || '',
       customer_resources: '',
       price_summary: ''
     },
-    scope: (texts.scope_included || []).join('\n'),
-    scope_boundary: texts.scope_boundary || '',
+    scope: (t.scope_included || []).join('\n'),
+    scope_boundary: t.scope_boundary || '',
     apparatus,
+    // Транспорт НЕ передаём отдельной суммой: цена без НДС, которую распределяет
+    // buildItemizedClientItems, уже включает транспорт (он сидит в себестоимости).
+    // Раньше шаблон прибавлял transport_amount к Σ позиций — итог в документе
+    // расходился с ценой КП (5 935 430 + 50 000), и сохранение падало на проде,
+    // где LibreOffice рендерит DOCX, а не PDFKit-фолбэк.
     transport_amount: 0,
     table_labels: {},
-    cost_notes: texts.cost_notes || '',
+    cost_notes: t.cost_notes || '',
     acceptance: '',
-    risks: (texts.risks_paras || []).join('\n'),
-    customer_duties: texts.duties || '',
-    deliverables: texts.deliverables || '',
-    author_name: texts.author_name || '',
-    author_position: texts.author_position || 'Генеральный директор'
+    risks: (t.risks_paras || []).join('\n'),
+    customer_duties: t.duties || '',
+    deliverables: t.deliverables || '',
+    author_name: t.author_name || '',
+    author_position: t.author_position || 'Генеральный директор'
   };
 }
 
@@ -841,7 +1219,13 @@ async function buildAiDraft(p) {
   const summaryName = tidyItemName(
     pickWorkTitle(tender.tender_title) || workNames[0] || 'Выполнение работ по техническому заданию'
   );
-  const items = buildClientItems(pricing, { summaryName });
+  // Разбивка по позициям:
+  //  * краткое КП — одна сводная строка (как раньше);
+  //  * полное КП — N работ + N единиц МТР, Σ = цена КП до копейки.
+  const techPlan = readTechPlan(review, pricing);
+  const items = variant === 'full'
+    ? buildItemizedClientItems({ pricing, techPlan, workNames })
+    : buildClientItems(pricing, { summaryName });
   const allowedNumbers = collectAllowedNumbers(ctx, pricing);
 
   // ── текстовые поля: ИИ → валидация → шаблон
@@ -917,19 +1301,18 @@ async function buildAiDraft(p) {
     duties: CUSTOMER_DUTIES_DEFAULT,
     deliverables: '',
     author_name: authorName,
-    author_position: authorPosition
+    author_position: authorPosition,
+    techPlan
   });
 
   const subtotal = round2(finalItems.reduce((s, it) => s + num(it.total), 0));
-  // НДС считаем ровно по ставке просчёта. Если цена с НДС в просчёте задана,
-  // итог берём из неё (там мог быть другой порядок округления) — расхождение
-  // в копейку не должно ломать гейт сумм.
-  const vatSum = pricing.totals && Number(pricing.totals.vat_amount) > 0
-    ? round2(Number(pricing.totals.vat_amount))
-    : round2(subtotal * pricing.vatPct / 100);
-  const totalWithVat = pricing.priceWithVat > 0
-    ? round2(pricing.priceWithVat)
-    : round2(subtotal + vatSum);
+
+  // НДС и итог — по единой формуле vatFromBase (та же, что в модалке).
+  // Раньше здесь был round2(subtotal * pct / 100), а в превью — другая
+  // последовательность округлений: расходились на копейку на 0,08 % баз.
+  const vatCalc = vatFromBase(subtotal, pricing.vatPct);
+  const vatSum = vatCalc.vat;
+  const totalWithVat = vatCalc.total;
 
   const itemsPayload = {
     items: finalItems,
@@ -996,7 +1379,10 @@ async function buildAiDraft(p) {
   // ── финальная самопроверка: то, что уйдёт в документ, обязано быть чистым
   const lintResult = lint.lintDraftFields(draft, { allowedNumbers });
   const sumOk = Math.abs(subtotal - pricing.priceNoVat) < 0.02;
-  const vatOk = Math.abs(totalWithVat - (pricing.priceWithVat || totalWithVat)) < 0.02;
+  // Итог с НДС проверяем по арифметике самого документа, а не по priceWithVat:
+  // цена с НДС в смете считалась от неокруглённой базы и может отличаться на
+  // копейки. Клиенту важен документ, а не внутренняя смета.
+  const vatOk = Math.abs(totalWithVat - round2(subtotal + vatSum)) < 0.01;
 
   if (lintResult.blocking) {
     // Блокирующие нарушения после всех замен — значит, шаблон тоже грязный.
@@ -1014,9 +1400,10 @@ async function buildAiDraft(p) {
   return {
     draft,
     pricing: {
-      price_no_vat: pricing.priceNoVat,
-      price_with_vat: pricing.priceWithVat,
-      vat_pct: pricing.vatPct
+      price_no_vat: subtotal,
+      price_with_vat: totalWithVat,
+      vat_pct: pricing.vatPct,
+      vat_sum: vatSum
     },
     meta: Object.assign({}, ai.meta || {}, {
       variant,
@@ -1092,6 +1479,11 @@ module.exports = {
   // для тестов и переиспользования
   readPricing,
   normalizeVatPct,
+  vatFromBase,
+  isInternalName,
+  buildItemizedClientItems,
+  readTechPlan,
+  buildTechPromptLines,
   collectClientRows,
   collectWorkNames,
   collectAllowedNumbers,

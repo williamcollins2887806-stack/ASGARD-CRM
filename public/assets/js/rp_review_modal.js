@@ -160,6 +160,23 @@ window.AsgardRpReviewModal = (function () {
     return h + '</div>';
   }
 
+  /**
+   * Техплан: сроки, бригада, МТР.
+   *
+   * Раньше в карточке анализа была видна только смета — ТО не мог ответить
+   * «сколько человек, кого, на сколько дней, что за оборудование». Здесь
+   * сводка из `report_json.tech_json` (или из сметы, если техплан старый).
+   */
+  function renderTechPlanBlock(rj) {
+    const ui = window.AsgardTechPlanUI;
+    if (!ui) return '';
+    const plan = ui.readPlan(rj || {}, (rj && rj.asgard_smeta) || {});
+    const html = ui.summaryHtml(plan, { hideEmpty: true });
+    if (!html) return '';
+    return '<div class="rp-review-tech-block"><div class="rp-review-analysis-ref-head"><strong>Техплан</strong>' +
+      '<span class="muted">бригада · МТР · сроки</span></div>' + html + '</div>';
+  }
+
   function feasibilityLabel(v) {
     return { yes: 'Да', conditional: 'Условно', no: 'Нет' }[v] || '—';
   }
@@ -701,6 +718,9 @@ window.AsgardRpReviewModal = (function () {
       // Фаза анализа: предварительный расчёт Мимира (структурная смета), который просчёт подхватит как есть.
       if (mode === 'analysis') {
         h += renderAnalysisSmetaBlock(reportJson, { locked: isLocked });
+        // Техплан — сразу под сметой: сроки, сколько кого, перечень МТР.
+        // ТО решает по нему, хватает ли ресурсов, ещё до просчёта.
+        h += renderTechPlanBlock(reportJson);
       }
 
       if (decision === 'reject' && mode !== 'calc') {

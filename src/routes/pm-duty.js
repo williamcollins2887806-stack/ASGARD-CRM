@@ -1764,6 +1764,30 @@ async function reviewRoutes(fastify) {
   let pendingDirector = false;
   let approvalRecipients = null;
 
+  // Техплан: форма может прислать его явно (вкладка «Бригада и МТР»),
+  // иначе собираем из сметы — чтобы карточки ТО/анализа не отставали.
+  let techJsonPatch = null;
+  try {
+    const techSvc = require('../services/rp-tech-plan');
+    if (b.tech_json && typeof b.tech_json === 'object') {
+      techJsonPatch = JSON.stringify(Object.assign({}, b.tech_json, {
+        filled_by: b.tech_json.filled_by || 'rp',
+        updated_at: new Date().toISOString()
+      }));
+    } else if (report_json && report_json.asgard_smeta) {
+      const sm = report_json.asgard_smeta;
+      const plan = {
+        schedule: sm.schedule || {},
+        crew: Array.isArray(sm.crew) ? sm.crew : [],
+        mtr: Array.isArray(sm.mtr) ? sm.mtr : [],
+        man_hours_total: (sm.totals && sm.totals.man_hours != null) ? sm.totals.man_hours : null,
+        filled_by: 'rp',
+        updated_at: new Date().toISOString()
+      };
+      if (techSvc.hasContent(plan)) techJsonPatch = JSON.stringify(plan);
+    }
+  } catch (_) { /* техплан — обогащение, не блокер сохранения */ }
+
     if (isFinal && mode === 'analysis') {
       // D-203: анализ нельзя закрыть без заполненного чек-листа (10 базовых вопросов).
       const checklistSvc = require('../services/analysis-checklist');
@@ -1887,6 +1911,9 @@ async function reviewRoutes(fastify) {
           director_review_status = COALESCE($14, director_review_status),
           director_notify_at = COALESCE($15, director_notify_at),
           work_price_ex_vat = COALESCE($16, work_price_ex_vat),
+          -- Техплан: если форма его прислала — пишем как есть; иначе собираем из
+          -- сметы (crew/mtr/schedule), чтобы после правки просчёта он не отставал.
+          tech_json = COALESCE($18::jsonb, tech_json),
           updated_at = NOW()
         WHERE tender_id = $11
           -- JSON/JS Date only has ms; PG NOW() keeps µs → exact '=' never matches after round-trip
@@ -1903,7 +1930,8 @@ async function reviewRoutes(fastify) {
         directorReviewStatus,
         directorNotifyAt,
         workPriceExVat,
-        expectedAtValid
+        expectedAtValid,
+        techJsonPatch
       ]);
     } catch (err) {
       request.log.error({ err }, 'rp-review save failed');

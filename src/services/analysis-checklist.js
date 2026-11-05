@@ -27,12 +27,29 @@ const DEFAULT_QUESTIONS = [
   'Отклонения от ТЗ или ДВ возможны?'
 ];
 
+/**
+ * Технические вопросы — то, из чего собирается техплан (сроки, бригада, МТР).
+ *
+ * Без них Мимар писал «Рабочий (исполнитель)», а ТО не мог ответить заказчику
+ * «сколько человек, кого именно, на сколько дней, что за оборудование».
+ * Спрашиваем при анализе — до просчёта, а не после.
+ */
+const TECH_QUESTIONS = [
+  'Сколько заездов на объект и какой период работ по каждому?',
+  'Режим работ: 1 смена, 2 смены, 3 смены или 24/7? Сколько часов в смене?',
+  'Какой состав бригады требуется: ИТР, мастер, слесари, сварщики (НАКС), изолировщики, наблюдающие?',
+  'Кто предоставляет наблюдающего/спасателя — мы или заказчик?',
+  'Какое оборудование и техника нужны? Что у нас есть на складе, что закупаем или берём в аренду?',
+  'Нужны ли допуски и удостоверения (высота, НАКС, газ, ОТ)? Есть ли они у бригады?',
+  'Есть ли ограничения по доступу на площадку (пропуска, время заезда, карантин)?'
+];
+
 const SETTINGS_KEY = 'analysis_checklist_template';
 const FREE_SLOTS = 2;
 const MAX_QUESTIONS = 40;
 const MAX_TEXT_LEN = 500;
 
-/** Дефолтный шаблон: 10 базовых вопросов + 2 свободные строки. */
+/** Дефолтный шаблон: 10 базовых вопросов + техническая секция + 2 свободные строки. */
 function buildDefaultTemplate() {
   const items = DEFAULT_QUESTIONS.map((text, i) => ({
     id: 'q' + (i + 1),
@@ -40,6 +57,9 @@ function buildDefaultTemplate() {
     kind: 'question',
     required: true
   }));
+  // Технические вопросы идут до свободных строк: это чек-лист «что нужно
+  // посчитать», а не «что ещё спросить».
+  items.push(...buildTechQuestions());
   for (let i = 0; i < FREE_SLOTS; i++) {
     items.push({
       id: 'free' + (i + 1),
@@ -49,6 +69,22 @@ function buildDefaultTemplate() {
     });
   }
   return items;
+}
+
+/**
+ * Техническая секция шаблона.
+ *
+ * Отдельной функцией, а не частью buildDefaultTemplate: сохранённые шаблоны
+ * в settings остаются прежними (плюс блок дописывается при нормализации),
+ * поэтому у существующих карточек ничего не «прыгает».
+ */
+function buildTechQuestions() {
+  return TECH_QUESTIONS.map((text, i) => ({
+    id: 'tech' + (i + 1),
+    text,
+    kind: 'tech',
+    required: false
+  }));
 }
 
 const DEFAULT_TEMPLATE = buildDefaultTemplate();
@@ -76,14 +112,34 @@ function normalizeTemplate(raw) {
     const text = cleanText(typeof it === 'string' ? it : it.text);
     if (!text) continue;
     let id = cleanText(typeof it === 'string' ? '' : it.id).replace(/[^A-Za-z0-9_-]/g, '');
-    const kind = (it && it.kind === 'free') ? 'free' : 'question';
-    if (!id || seen.has(id)) id = (kind === 'free' ? 'free' : 'q') + (out.length + 1);
+    const rawKind = it && it.kind;
+    const kind = (rawKind === 'free' || rawKind === 'tech') ? rawKind : 'question';
+    if (!id || seen.has(id)) id = (kind === 'free' ? 'free' : (kind === 'tech' ? 'tech' : 'q')) + (out.length + 1);
     while (seen.has(id)) id = id + '_' + (out.length + 1);
     seen.add(id);
-    out.push({ id, text, kind, required: kind === 'free' ? false : (it.required !== false) });
+    out.push({
+      id,
+      text,
+      kind,
+      // Технические вопросы по умолчанию необязательные: не блокируем закрытие
+      // анализа, если ТО ещё не получил ответ по допускам.
+      required: kind === 'free' || kind === 'tech' ? false : (it.required !== false)
+    });
     if (out.length >= MAX_QUESTIONS) break;
   }
   if (!out.length) return buildDefaultTemplate();
+
+  // Техническая секция: дописываем, если её нет. Существующие вопросы и их id
+  // не трогаем — сохранённые чек-листы продолжают читаться.
+  const hasTech = out.some((x) => x.kind === 'tech');
+  if (!hasTech) {
+    buildTechQuestions().forEach((tq) => {
+      let id = tq.id;
+      while (seen.has(id)) id = id + '_x';
+      seen.add(id);
+      out.push({ id, text: tq.text, kind: 'tech', required: false });
+    });
+  }
 
   // Гарантируем наличие свободных строк — иначе ТО не сможет дописать свой вопрос.
   const freeCount = out.filter((x) => x.kind === 'free').length;
@@ -131,9 +187,11 @@ function validateAnswers(template, answers) {
 module.exports = {
   DEFAULT_TEMPLATE,
   DEFAULT_QUESTIONS,
+  TECH_QUESTIONS,
   SETTINGS_KEY,
   FREE_SLOTS,
   buildDefaultTemplate,
+  buildTechQuestions,
   normalizeTemplate,
   getTemplate,
   validateAnswers

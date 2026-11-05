@@ -17,6 +17,7 @@ window.AsgardRpCalcModal = (function () {
 
   const TABS = [
     { id: 'inputs', label: 'Вводные' },
+    { id: 'tech', label: 'Бригада и МТР' },
     { id: 'smeta', label: 'Смета' },
     { id: 'checklist', label: 'Чек-лист' },
     { id: 'files', label: 'Файлы' },
@@ -620,6 +621,15 @@ window.AsgardRpCalcModal = (function () {
     return !!state && stateApprovalNeeded(state) && state.wantApproval === true;
   }
 
+  /** Чипы техплана в шапке: срок, бригада, МТР, человеко-часы. */
+  function techChipsHtml(state) {
+    const ui = window.AsgardTechPlanUI;
+    if (!ui) return '';
+    const rj = parseReportJson(state.review && state.review.report_json);
+    const plan = state.techPlan || ui.readPlan(rj, state.estimate || {});
+    return ui.chipsHtml(plan, { hideEmpty: true });
+  }
+
   function renderShell(state) {
     const t = state.tender || {};
     const dl = deadlineTone(t.docs_deadline);
@@ -647,6 +657,7 @@ window.AsgardRpCalcModal = (function () {
       '<span>' + esc(t.customer_name || '—') + '</span>' +
       '</div></div>' +
       '<div class="rp-calc-hero__side">' +
+      '<span class="rp-calc-tech-chips" data-tech-chips>' + techChipsHtml(state) + '</span>' +
       '<span class="rp-calc-badge">' + (demo ? 'Демо' + (state.readOnly ? '' : '') : 'РП') + '</span>' +
       '<span class="rp-calc-dl rp-calc-dl--' + dl.cls + '">' + esc(dl.label) + '</span>' +
       '<button type="button" class="btn ghost rp-calc-open-analysis" data-rp-act="open-analysis" ' +
@@ -656,6 +667,7 @@ window.AsgardRpCalcModal = (function () {
       '<div class="rp-calc-body">' +
       (ready ? '' : renderSmetaNeededBanner(state)) +
       renderInputs(state) +
+      renderTech(state) +
       renderSmeta(state) +
       renderChecklist(state) +
       renderFiles(state) +
@@ -719,6 +731,34 @@ window.AsgardRpCalcModal = (function () {
     }
     h += '</div></div>';
     return h;
+  }
+
+  /**
+   * Вкладка «Бригада и МТР».
+   *
+   * Раньше бригада задавалась тремя параметрами («рабочих в смене», «мастеров
+   * в смене»), а оборудование — одной справочной строкой. Из этого нельзя
+   * собрать ни ТКП по позициям, ни ответ заказчику «сколько кого». Здесь —
+   * таблицы по ролям и по МТР, один источник для анализа, просчёта и ТО.
+   */
+  function renderTech(state) {
+    const active = state.tab === 'tech' ? ' is-active' : '';
+    const est = state.estimate || {};
+    const rj = parseReportJson(state.review && state.review.report_json);
+    const ui = window.AsgardTechPlanUI;
+    if (!ui) {
+      return '<div class="rp-calc-panel' + active + '" data-panel="tech">' +
+        '<div class="rp-calc-card"><div class="rp-calc-card__head">Бригада и МТР</div>' +
+        '<p class="muted">Модуль техплана не загружен — обновите страницу.</p></div></div>';
+    }
+    const plan = ui.readPlan(rj, est);
+    state.techPlan = plan;
+    return '<div class="rp-calc-panel' + active + '" data-panel="tech">' +
+      '<p class="rp-calc-hint">Сроки, состав бригады и перечень МТР. Это то, что уходит в ТКП ' +
+      'отдельными позициями и что видит ТО. Со склада подставляется инвентарный номер — ' +
+      'подтверждение за вами.</p>' +
+      '<div id="rpCalcTechHost">' + ui.editorHtml(plan, { readOnly: !!state.readOnly, stock: state.stock || [] }) + '</div>' +
+      '</div>';
   }
 
   function renderInputs(state) {
@@ -1089,6 +1129,10 @@ window.AsgardRpCalcModal = (function () {
       // и не сохраняем: иначе у всех карточек одна и та же сумма (2 818 084,50 ₽).
       // true только если смета пришла из анализа/Мимира или РП явно начал считать вручную.
       smetaReady: !!initial.smetaReady,
+      // Техплан (бригада/МТР/сроки). Грузится из отчёта, правится на вкладке
+      // «Бригада и МТР», переносится в смету при любом изменении.
+      techPlan: initial.techPlan || null,
+      stock: [],
       // Смета из снимка анализа — источник кнопки «Взять расчёт из анализа».
       analysisSmeta: initial.analysisSmeta || null,
       saving: false,
@@ -1201,6 +1245,132 @@ window.AsgardRpCalcModal = (function () {
     function recalc(keepFocus) {
       recalcModel();
       paint(keepFocus);
+    }
+
+    /* ── Техплан: бригада и МТР ──────────────────────────────────────────
+     * Правки идут в state.techPlan, затем план переносится в смету (crew/mtr),
+     * пересчёт строит строки A/F. Без этого ТКП разбивалось бы по старым
+     * трём параметрам, а не по реальным ролям. */
+
+    /** Перерисовать только блок техплана (без полного paint — не терять фокус). */
+    function repaintTech() {
+      const root = getRoot();
+      if (!root) return;
+      const host = root.querySelector('#rpCalcTechHost');
+      const ui = window.AsgardTechPlanUI;
+      if (!host || !ui) return;
+      host.innerHTML = ui.editorHtml(state.techPlan || {}, {
+        readOnly: !!state.readOnly,
+        stock: state.stock || []
+      });
+      bindTech(root);
+    }
+
+    function applyTechToEstimate() {
+      const sm = S();
+      const plan = state.techPlan;
+      if (!plan || !sm || !sm.recalcAsgardSmeta) return;
+      const est = JSON.parse(JSON.stringify(state.estimate || {}));
+      // Переносим техплан в смету: строки A (роли) и F (перечень) строятся из него.
+      est.schedule = plan.schedule || est.schedule || {};
+      est.crew = Array.isArray(plan.crew) ? plan.crew : (est.crew || []);
+      est.mtr = Array.isArray(plan.mtr) ? plan.mtr : (est.mtr || []);
+      est.params = est.params || {};
+      if (plan.schedule) {
+        if (Number(plan.schedule.work_days) > 0) est.params.work_days = Number(plan.schedule.work_days);
+        if (Number(plan.schedule.shift_hours) > 0) est.params.shift_hours = Number(plan.schedule.shift_hours);
+        if (Number(plan.schedule.shift_mode) > 0) est.params.shifts_per_day = Number(plan.schedule.shift_mode);
+        if (Number(plan.schedule.trip_count) > 0) est.params.trip_count = Number(plan.schedule.trip_count);
+        if (plan.schedule.start_plan) {
+          est.meta = est.meta || {};
+          est.meta.work_start_plan = plan.schedule.start_plan;
+          if (Number(plan.schedule.work_days) > 0) est.meta.work_duration_days = Number(plan.schedule.work_days);
+        }
+      }
+      state.estimate = sm.recalcAsgardSmeta(est);
+    }
+
+    function bindTech(root) {
+      const ui = window.AsgardTechPlanUI;
+      if (!ui || !root || state.readOnly) return;
+      const host = root.querySelector('#rpCalcTechHost');
+      if (!host) return;
+
+      const syncPlan = function () {
+        state.techPlan = ui.collect(host, state.techPlan || { schedule: {}, crew: [], mtr: [] });
+        applyTechToEstimate();
+        scheduleAutosave();
+      };
+
+      // Сроки и числовые поля: живой ввод обновляет модель, перерисовка — на change.
+      host.querySelectorAll('[data-tech]').forEach(function (el) {
+        el.addEventListener('input', syncPlan);
+        el.addEventListener('change', function () { syncPlan(); repaintTech(); });
+      });
+
+      host.querySelectorAll('[data-crew]').forEach(function (el) {
+        el.addEventListener('input', syncPlan);
+        el.addEventListener('change', function () { syncPlan(); repaintTech(); });
+      });
+
+      host.querySelectorAll('[data-mtr]').forEach(function (el) {
+        el.addEventListener('input', syncPlan);
+        el.addEventListener('change', function () { syncPlan(); repaintTech(); });
+      });
+
+      host.querySelectorAll('[data-tech-add]').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+          syncPlan();
+          state.techPlan = ui.addRow(state.techPlan, btn.getAttribute('data-tech-add'));
+          repaintTech();
+        });
+      });
+
+      host.querySelectorAll('[data-crew-del]').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+          syncPlan();
+          state.techPlan = ui.removeRow(state.techPlan, 'crew', Number(btn.getAttribute('data-crew-del')));
+          applyTechToEstimate();
+          repaintTech();
+          scheduleAutosave();
+        });
+      });
+
+      host.querySelectorAll('[data-mtr-del]').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+          syncPlan();
+          state.techPlan = ui.removeRow(state.techPlan, 'mtr', Number(btn.getAttribute('data-mtr-del')));
+          applyTechToEstimate();
+          repaintTech();
+          scheduleAutosave();
+        });
+      });
+
+      host.querySelectorAll('[data-mtr-take]').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+          syncPlan();
+          state.techPlan = ui.takeFromStock(state.techPlan, Number(btn.getAttribute('data-mtr-take')));
+          applyTechToEstimate();
+          repaintTech();
+          scheduleAutosave();
+        });
+      });
+    }
+
+    /** Склад подсказок. Грузим один раз, повторная отрисовка — по факту загрузки. */
+    let stockLoading = false;
+    function loadTechStockAndRepaint() {
+      const ui = window.AsgardTechPlanUI;
+      if (!ui || state.readOnly) return;
+      if (Array.isArray(state.stock) && state.stock.length) return;
+      if (stockLoading) return;
+      stockLoading = true;
+      ui.loadStock().then(function (rows) {
+        stockLoading = false;
+        if (!rows || !rows.length) return;
+        state.stock = rows;
+        repaintTech();
+      }).catch(function () { stockLoading = false; });
     }
 
     /* ── Debounce + автосейв черновика (D-186) ─────────────────────────
@@ -1334,8 +1504,11 @@ window.AsgardRpCalcModal = (function () {
           if (state.tab === 'checklist' && state.tender && state.tender.id && window.AsgardAnalysisChecklist) {
             window.AsgardAnalysisChecklist.renderInto('rpCalcChecklistHost', state.tender.id, { wordUrl: null });
           }
+          if (state.tab === 'tech') loadTechStockAndRepaint();
         });
       });
+
+      bindTech(root);
 
       // Тексты «Описание работ / Комментарий РП / Что нужно сделать» — живой ввод + автосейв (D-186).
       root.querySelectorAll('[data-rp-brief]').forEach(function (inp) {
@@ -1689,6 +1862,21 @@ window.AsgardRpCalcModal = (function () {
       } else if (rj.asgard_smeta == null) {
         delete rj.cost_without_vat;
       }
+      // Техплан: пишем и в отчёт (его читают анализ и ТО), и наверх — сервер
+      // обновляет tech_json из этого поля. Без него правки «Бригада и МТР»
+      // остались бы только в смете и не доехали до карточки ТО.
+      if (state.techPlan) {
+        rj.tech_json = state.techPlan;
+      } else if (state.estimate && Array.isArray(state.estimate.crew) && state.estimate.crew.length) {
+        rj.tech_json = {
+          schedule: state.estimate.schedule || {},
+          crew: state.estimate.crew,
+          mtr: state.estimate.mtr || [],
+          man_hours_total: (totals && totals.man_hours != null) ? totals.man_hours : null,
+          filled_by: 'rp',
+          updated_at: new Date().toISOString()
+        };
+      }
       if (state.brief) {
         if (state.brief.summary != null) rj.summary = state.brief.summary;
         if (state.brief.rp_comment != null) {
@@ -1705,6 +1893,9 @@ window.AsgardRpCalcModal = (function () {
         decision: 'submit',
         report_kind: 'work',
         report_json: rj,
+        // Техплан отдельным полем: сервер пишет его в tender_rp_reviews.tech_json
+        // (поле в report_json оставляем для совместимости чтения карточками).
+        tech_json: rj.tech_json || null,
         // Канон: work_price — цена работ БЕЗ НДС (порог директора тоже без НДС).
         work_price: totals.price_no_vat != null ? Math.round(totals.price_no_vat) : null,
         finalize: !!finalize,
