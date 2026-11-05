@@ -193,9 +193,15 @@ async function generateTkpPdf(tkpId, opts) {
   } catch (_) { cj = {}; }
   const items = Array.isArray(cj.items) ? cj.items : [];
   const vatPct = cj.vat_pct || 22;
-  const subtotal = cj.subtotal || items.reduce((s, r) => s + (r.total || (r.qty || r.quantity || 1) * (r.price || 0)), 0);
-  const vatSum = cj.vat_sum || Math.round(subtotal * vatPct / 100);
-  const totalWithVat = cj.total_with_vat || (subtotal + vatSum);
+  const subtotalRaw = cj.subtotal || items.reduce((s, r) => s + (r.total || (r.qty || r.quantity || 1) * (r.price || 0)), 0);
+  // НДС в целых копейках (канон D-181). Не доверяем cj.vat_sum / total_with_vat —
+  // старые записи округляли до рублей и ломали «база + НДС = ИТОГО».
+  const baseKop = Math.round(Number(subtotalRaw) * 100);
+  const bp = Math.round(Number(vatPct) * 100);
+  const vatKop = baseKop > 0 ? Math.round(baseKop * bp / 10000) : 0;
+  const subtotal = baseKop / 100;
+  const vatSum = vatKop / 100;
+  const totalWithVat = (baseKop + vatKop) / 100;
 
   // Payment info
   const paymentType = cj.payment_type || '';

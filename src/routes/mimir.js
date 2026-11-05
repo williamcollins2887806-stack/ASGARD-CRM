@@ -1246,13 +1246,17 @@ async function mimirRoutes(fastify, options) {
       const items = tkpData.items || [];
       let subtotal = 0;
       items.forEach(function(i) { subtotal += (i.total || i.qty * i.price || 0); });
-      const vatSum = Math.round(subtotal * vatPct / 100);
-      const totalWithVat = subtotal + vatSum;
+      // НДС в целых копейках (канон D-181 / vatFromBase). Math.round до рублей
+      // давал «база + НДС ≠ ИТОГО» в клиентском PDF.
+      const { vatFromBase } = require('../services/tkp-ai-draft');
+      const vatTotals = vatFromBase(subtotal, vatPct);
+      const vatSum = vatTotals.vat;
+      const totalWithVat = vatTotals.total;
 
       const itemsJson = JSON.stringify({
         vat_pct: vatPct,
         items: items,
-        subtotal: subtotal,
+        subtotal: vatTotals.base,
         vat_sum: vatSum,
         total_with_vat: totalWithVat,
         payment_terms: tkpData.payment_terms || '',

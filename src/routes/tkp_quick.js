@@ -1647,14 +1647,20 @@ async function routes(fastify, options) {
     const clientItems = mimirTkpQuick.buildClientItems(draft);
     const itemsSubtotal = clientItems.reduce((s, i) => s + (Number(i.total) || 0), 0);
     const vatPct = Number(draft.vat_pct) || 20;
+    // НДС в целых копейках (канон D-181 / vatFromBase). Раньше здесь было
+    // Math.round(subtotal * (1 + vat/100)) — округление до РУБЛЕЙ, и PDF
+    // печатал «Итого без НДС + НДС ≠ ИТОГО» (верификатор 05.11.2026).
+    const { vatFromBase } = require('../services/tkp-ai-draft');
+    const vatTotals = vatFromBase(itemsSubtotal, vatPct);
     const itemsVal = JSON.stringify({
       items: clientItems,
       vat_pct: vatPct,
-      subtotal: itemsSubtotal,
-      total_with_vat: Math.round(itemsSubtotal * (1 + vatPct / 100)),
+      subtotal: vatTotals.base,
+      vat_sum: vatTotals.vat,
+      total_with_vat: vatTotals.total,
     });
-    // Итог ТКП считаем из строк, чтобы не расходился с таблицей.
-    const tkpTotal = itemsSubtotal;
+    // total_sum в БД — цена БЕЗ НДС (как в модалке / классическом ТКП).
+    const tkpTotal = vatTotals.base;
 
     // D-301: статус НЕ 'sent'. ТКП из Мимира — это ЧЕРНОВИК, который РП ещё
     // должен проверить и отправить осознанно. Раньше он рождался «отправленным»,

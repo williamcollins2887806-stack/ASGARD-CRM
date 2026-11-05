@@ -147,6 +147,67 @@ check('нулевая и отрицательная база не ломают �
   assert.strictEqual(svc.vatFromBase(null, 22).vat, 0);
 });
 
+check('классический DOCX не печатает total_sum без НДС как «Итого с НДС»', () => {
+  // Регресс FAIL-2 (верификатор 05.11.2026): модалка шлёт total_sum = база,
+  // старый classic DOCX писал её в «Итого с НДС» → клиент на 16,7 % дешевле.
+  const AdmZip = require('adm-zip');
+  const base = 5935430;
+  const r = svc.vatFromBase(base, 22);
+  const buf = full.generateClassicDocxBuffer({
+    id: 3508,
+    total_sum: base, // без НДС — как пишет модалка
+    customer_name: 'КИРОВ ТАЙР',
+    subject: 'Работы',
+    items: {
+      vat_pct: 22,
+      subtotal: base,
+      // намеренно битый total_with_vat «как округлял tkp_quick» — документ
+      // обязан игнорировать и пересчитать
+      total_with_vat: Math.round(base * 1.22),
+      items: [{ name: 'Работы', unit: 'усл.', qty: 1, price: base, total: base }]
+    }
+  }, { name: 'ООО «АСГАРД-Сервис»' });
+  const zip = new AdmZip(buf);
+  const xml = zip.readAsText('word/document.xml');
+  // Нормализуем nbsp/тонкие пробелы ru-RU toLocaleString → обычный пробел
+  const text = xml.replace(/<[^>]+>/g, ' ').replace(/[\u00a0\u202f\u2009]/g, ' ').replace(/\s+/g, ' ');
+  assert.ok(/Итого без НДС/.test(text), 'нет строки «Итого без НДС»');
+  assert.ok(/Итого с НДС/.test(text), 'нет строки «Итого с НДС»');
+  const fmt = (n) => Number(n).toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+    .replace(/[\u00a0\u202f\u2009]/g, ' ');
+  assert.ok(text.includes('Итого с НДС: ' + fmt(r.total)),
+    'в DOCX нет правильного итога с НДС ' + r.total + '; фрагмент: ' + text.slice(-400));
+  assert.ok(!text.includes('Итого с НДС: ' + fmt(base)),
+    'DOCX всё ещё печатает базу без НДС как «Итого с НДС»');
+});
+
+check('tkp_quick больше не пишет Math.round до рублей', () => {
+  // Регресс FAIL-1: src/routes/tkp_quick.js finalize.
+  const src = fs.readFileSync(
+    path.join(__dirname, '..', 'src', 'routes', 'tkp_quick.js'), 'utf8'
+  );
+  assert.ok(/vatFromBase/.test(src), 'finalize не использует vatFromBase');
+  assert.ok(!/total_with_vat:\s*Math\.round\(itemsSubtotal\s*\*\s*\(1\s*\+\s*vatPct\s*\/\s*100\)\)/.test(src),
+    'остался Math.round(subtotal * (1+vat/100)) — округление до рублей');
+  assert.ok(/vat_sum:\s*vatTotals\.vat/.test(src), 'vat_sum не пишется в items');
+});
+
+check('PDFKit всегда пересчитывает итог, не берёт битый cj.total_with_vat', () => {
+  const src = fs.readFileSync(
+    path.join(__dirname, '..', 'src', 'routes', 'tkp.js'), 'utf8'
+  );
+  // Берём функцию generateTkpPdfKit целиком — там печатаются итоги.
+  const start = src.indexOf('async function generateTkpPdfKit');
+  assert.ok(start >= 0, 'generateTkpPdfKit не найдена');
+  const chunk = src.slice(start, start + 12000);
+  assert.ok(/_vatTotals\(subtotal,\s*vatPct\)/.test(chunk), 'PDFKit не зовёт _vatTotals');
+  // Не должно быть ветки «если cj.total_with_vat записан — берём его»
+  assert.ok(!/cj\.total_with_vat\s*!=\s*null/.test(chunk),
+    'PDFKit всё ещё предпочитает cj.total_with_vat');
+  assert.ok(!/cj\.vat_sum\s*!=\s*null/.test(chunk),
+    'PDFKit всё ещё предпочитает cj.vat_sum');
+});
+
 console.log('\ntkp-vat-consistency: ' + passed + '/' + (passed + failed) + ' проверок пройдено');
 if (failed) {
   failures.forEach((f) => console.log(' -', f.name, ':', f.error));

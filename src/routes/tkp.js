@@ -1364,23 +1364,16 @@ async function generateTkpPdfKit(tkp, db, opts) {
   // ─── ИТОГО ───
   if (rows.length > 0) {
     const subtotal = cj.subtotal || rows.reduce((s, r) => s + (r.total || (r.qty || 1) * (r.price || 0)), 0);
-    // НДС в ЦЕЛЫХ КОПЕЙКАХ — та же формула, что vatFromBase в tkp-ai-draft
-    // и calcTotals в tkp-full-kp. Раньше здесь было Math.round(subtotal*pct/100),
-    // то есть округление до РУБЛЕЙ: PDF печатал «145 881,00» при каноне
-    // «145 880,96» — расхождение в 99 % баз (до 0,50 ₽).
-    const baseKop = Math.round(Number(subtotal) * 100);
-    const bp = Math.round(Number(vatPct) * 100);
-    const vatKop = Math.round(baseKop * bp / 10000);
-    const vatSum = cj.vat_sum != null && Number(cj.vat_sum) > 0
-      ? Math.round(Number(cj.vat_sum) * 100) / 100
-      : vatKop / 100;
-    const totalWithVat = cj.total_with_vat != null && Number(cj.total_with_vat) > 0
-      ? Math.round(Number(cj.total_with_vat) * 100) / 100
-      : (baseKop + vatKop) / 100;
+    // ВСЕГДА пересчитываем НДС/итог из базы. Раньше брали cj.total_with_vat
+    // / cj.vat_sum «как записано» — а tkp_quick писал Math.round до рублей,
+    // и PDF печатал «база + НДС ≠ ИТОГО» (верификатор 05.11.2026).
+    const vat = _vatTotals(subtotal, vatPct);
+    const vatSum = vat.vat;
+    const totalWithVat = vat.total;
 
     ensureSpace(55);
     doc.font(F).fontSize(9.5).fillColor('#6B7280')
-       .text(`Итого без НДС: ${fmtNum(subtotal)} ₽`, mL, doc.y, { width: contentW, align: 'right' });
+       .text(`Итого без НДС: ${fmtNum(vat.subtotal || subtotal)} ₽`, mL, doc.y, { width: contentW, align: 'right' });
     doc.font(F).fontSize(9.5).fillColor('#6B7280')
        .text(`НДС ${vatPct}%: ${fmtNum(vatSum)} ₽`, mL, doc.y, { width: contentW, align: 'right' });
     doc.moveDown(0.15);
@@ -3846,12 +3839,13 @@ function _expectedAmountsFromTkp(tkp) {
   const items = Array.isArray(cj.items) ? cj.items : [];
   const vatPct = Number(cj.vat_pct) || 22;
   const subtotal = Number(cj.subtotal) || items.reduce((s, r) => s + (Number(r.total) || 0), 0);
-  const vatSum = Number(cj.vat_sum) || Math.round(subtotal * vatPct / 100 * 100) / 100;
-  const total = Number(cj.total_with_vat) || Math.round((subtotal + vatSum) * 100) / 100;
+  // Гейт PDF обязан ждать суммы из той же формулы, что печатает документ
+  // (_vatTotals / vatFromBase), а не битый cj.total_with_vat из старых записей.
+  const vat = _vatTotals(subtotal, vatPct);
 
   // Суммы берём как есть, БЕЗ округления до рубля: PDF печатает копейки
   // («7 241 223,99»), и сравнение по целой части уже делает numKey.
-  const out = [subtotal, vatSum, total, Number(tkp.total_sum) || 0].filter((v) => v > 0);
+  const out = [vat.subtotal, vat.vat, vat.total, Number(tkp.total_sum) || 0].filter((v) => v > 0);
   return Array.from(new Set(out.map((v) => Math.round(v * 100) / 100)));
 }
 

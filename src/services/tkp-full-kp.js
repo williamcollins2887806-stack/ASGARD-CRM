@@ -635,8 +635,23 @@ function generateClassicDocxBuffer(tkp, company = {}) {
   items.forEach((it, i) => {
     parts.push(docxP(`${i + 1}. ${it.name || '—'} | ${it.unit || 'усл.'} | ${it.qty || 1} × ${fmtMoney(it.price)} = ${fmtMoney(it.total || (it.qty || 1) * (it.price || 0))}`, { size: 18 }));
   });
-  const total = tkp.total_sum || cj.total_with_vat || 0;
-  parts.push(docxP(`Итого с НДС: ${fmtMoney(total)} руб.`, { bold: true, size: 22 }));
+  // total_sum в БД / модалке — цена БЕЗ НДС. Раньше её печатали как
+  // «Итого с НДС» → клиент получал документ на НДС дешевле PDF
+  // (верификатор 05.11.2026, ТКП 3508 / 3051). Считаем в копейках
+  // (та же формула, что vatFromBase / calcTotals).
+  const itemsSub = items.reduce((s, it) => s + (Number(it.total) || (Number(it.qty) || 1) * (Number(it.price) || 0)), 0);
+  const baseNoVat = Number(cj.subtotal) || itemsSub || Number(tkp.total_sum) || 0;
+  const vatPctClassic = Number(cj.vat_pct);
+  const vatPct = Number.isFinite(vatPctClassic) && vatPctClassic >= 0 ? vatPctClassic : 22;
+  const baseKop = Math.round(Number(baseNoVat) * 100);
+  const bp = Math.round(vatPct * 100);
+  const vatKop = baseKop > 0 ? Math.round(baseKop * bp / 10000) : 0;
+  const classicBase = baseKop / 100;
+  const classicVat = vatKop / 100;
+  const classicTotal = (baseKop + vatKop) / 100;
+  parts.push(docxP(`Итого без НДС: ${fmtMoney(classicBase)} руб.`, { size: 20 }));
+  parts.push(docxP(`НДС ${vatPct}%: ${fmtMoney(classicVat)} руб.`, { size: 20 }));
+  parts.push(docxP(`Итого с НДС: ${fmtMoney(classicTotal)} руб.`, { bold: true, size: 22 }));
   if (tkp.deadline) parts.push(docxP(`Сроки: ${tkp.deadline}`, { size: 20 }));
   if (cj.payment_terms) parts.push(docxP(`Оплата: ${cj.payment_terms}`, { size: 20 }));
   if (cj.notes || tkp.notes) parts.push(docxP(`Примечание: ${cj.notes || tkp.notes}`, { size: 20 }));
