@@ -1084,13 +1084,38 @@ body.ting-guest .ting-card,
 .ting-room-settings .ting-more-label { margin-top: 8px; }
 .ting-people-row .ting-list-actions { display: inline-flex; gap: 4px; align-items: center; }
 
-/* Фаза 3: pre-call индикатор микрофона (T25) */
+/* Фаза 3: pre-call эквалайзер микрофона (T25) — вне превью, не под аватаром */
+.ting-mic-eq {
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 5px;
+  height: 44px;
+  margin: 10px auto 2px;
+  padding: 0 8px;
+  position: relative;
+  z-index: 2;
+}
+.ting-mic-eq > i {
+  display: block;
+  width: 7px;
+  height: 12%;
+  min-height: 6px;
+  border-radius: 4px;
+  background: linear-gradient(180deg, #c8a84e 0%, #30d158 100%);
+  box-shadow: 0 0 10px rgba(48, 209, 88, 0.25);
+  transition: height 0.06s linear;
+}
+.ting-mic-eq[hidden] { display: none !important; }
+/* legacy single-bar (если где-то остался) */
 .ting-mic-meter {
-  position: absolute; left: 50%; transform: translateX(-50%);
-  bottom: 74px; width: min(220px, 60%);
+  position: relative;
+  width: min(220px, 70%);
+  margin: 8px auto 0;
   height: 6px; border-radius: 999px;
   background: rgba(255, 255, 255, 0.14);
   overflow: hidden;
+  z-index: 2;
 }
 .ting-mic-meter > i {
   display: block; height: 100%; width: 4%;

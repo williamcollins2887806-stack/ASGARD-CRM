@@ -679,9 +679,11 @@
             <button type="button" class="ting-dock-btn ${state.micOn ? 'active' : 'off'}" data-act="tog-mic" id="ting-lob-mic" title="${esc(COPY.mic)}" aria-label="${esc(COPY.mic)}">${svgMic(!state.micOn)}</button>
             <button type="button" class="ting-dock-btn ${state.camOn ? 'active' : 'off'}" data-act="tog-cam" id="ting-lob-cam" title="${esc(COPY.cam)}" aria-label="${esc(COPY.cam)}">${svgCam(!state.camOn)}</button>
           </div>
-          <div class="ting-mic-meter" id="ting-mic-meter" aria-hidden="true"><i></i></div>
         </div>
-        <p class="ting-muted ting-mic-hint" id="ting-mic-hint">Скажите пару слов — полоска должна двигаться</p>
+        <div class="ting-mic-eq" id="ting-mic-meter" aria-hidden="true" title="Уровень микрофона">
+          <i></i><i></i><i></i><i></i><i></i><i></i><i></i>
+        </div>
+        <p class="ting-muted ting-mic-hint" id="ting-mic-hint">Скажите пару слов — столбики должны прыгать</p>
         <input class="ting-field" id="ting-disp" value="${esc(name)}" placeholder="${namePh}" maxlength="80" autocomplete="name" />
         ${profile.jobTitle ? `<p class="ting-muted ting-lobby-job">${esc(profile.jobTitle)}</p>` : ''}
         <button type="button" class="ting-btn ting-btn-primary ting-full-btn" data-act="connect">${esc(COPY.join)}</button>
@@ -1139,24 +1141,26 @@
     const code = r.dial_code || (harnessDemo() ? '482917' : '');
     const pin = r.pin_code || (harnessDemo() ? '3914' : '');
     const phone = d.number || d.phone || '';
+    const ready = Boolean(phone);
     root.innerHTML = `<div class="ting-wrap">
       ${brand('телефон')}
       <div class="ting-card ting-center-card">
         <h2 class="ting-h2-tight">${esc(COPY.phoneGuide)}</h2>
         <div class="ting-dialin-hero">
           <div class="ting-muted ting-label-sm">Номер Тинга</div>
-          <div class="ting-dialin-number">${esc(phone || 'номер не настроен')}</div>
+          <div class="ting-dialin-number">${esc(phone || 'не подключён')}</div>
+          ${!ready ? `<p class="ting-muted ting-mt-8">Телефонный вход пока не включён на сервере (нет DID). Код комнаты ниже всё равно можно продиктовать, когда номер появится.</p>` : ''}
           ${code ? `<div class="ting-muted ting-label-sm ting-mt-12">Код комнаты</div><div class="ting-dial ting-dial-lg">${esc(code)}</div>` : ''}
           ${pin ? `<div class="ting-muted ting-label-sm">PIN (опц.)</div><div class="ting-dial">${esc(pin)}</div>` : ''}
         </div>
         <div class="ting-step-cards">
-          <div class="ting-step-card"><span class="n">1</span><div><strong>Позвоните</strong><p>${esc(phone || 'номер не настроен')}</p></div></div>
+          <div class="ting-step-card"><span class="n">1</span><div><strong>Позвоните</strong><p>${esc(phone || 'сначала настройте DID')}</p></div></div>
           <div class="ting-step-card"><span class="n">2</span><div><strong>Код комнаты</strong><p>${code ? esc(code) : '6 цифр с карточки'}</p></div></div>
           <div class="ting-step-card"><span class="n">3</span><div><strong>PIN</strong><p>${pin ? esc(pin) : 'если включён на карточке'}</p></div></div>
           <div class="ting-step-card"><span class="n">4</span><div><strong>В эфире</strong><p>Дождитесь соединения</p></div></div>
         </div>
         <div class="ting-cta-row ting-cta-center">
-          <button type="button" class="ting-btn ting-btn-primary" data-act="copy-dial-instr">Скопировать инструкцию</button>
+          ${ready ? '<button type="button" class="ting-btn ting-btn-primary" data-act="copy-dial-instr">Скопировать инструкцию</button>' : ''}
           <button type="button" class="ting-btn ting-btn-ghost" data-act="hub">${esc(COPY.back)}</button>
         </div>
       </div>
@@ -1170,17 +1174,29 @@
         state.previewStream.getTracks().forEach(t => t.stop());
         state.previewStream = null;
       }
-      const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+      let stream = null;
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+      } catch (_) {
+        /* Камера занята/запрещена — всё равно берём микрофон для эквалайзера */
+        stream = await navigator.mediaDevices.getUserMedia({ video: false, audio: true });
+      }
       if (gen !== state.previewGen || state.view !== 'lobby') {
         stream.getTracks().forEach(t => t.stop());
         return;
       }
       state.previewStream = stream;
-      state.micOn = true; state.camOn = true;
+      state.micOn = true;
+      state.camOn = stream.getVideoTracks().length > 0;
       const v = qs('#ting-prev-v');
       const av = qs('#ting-av');
-      if (v) { v.srcObject = stream; v.hidden = false; v.style.display = 'block'; }
-      if (av) av.style.display = 'none';
+      if (state.camOn && v) {
+        v.srcObject = stream; v.hidden = false; v.style.display = 'block';
+        if (av) av.style.display = 'none';
+      } else {
+        if (v) { v.hidden = true; v.style.display = 'none'; }
+        if (av) av.style.display = 'grid';
+      }
       const micB = qs('#ting-lob-mic');
       const camB = qs('#ting-lob-cam');
       if (micB) { micB.classList.toggle('active', state.micOn); micB.classList.toggle('off', !state.micOn); micB.innerHTML = svgMic(!state.micOn); }
@@ -1190,58 +1206,102 @@
   }
 
   /**
-   * Фаза 3 (T25): pre-call проверка микрофона. Без индикатора уровня человек
-   * не понимает, что его не слышно, и это выясняется уже в звонке.
+   * Фаза 3 (T25): pre-call эквалайзер микрофона.
+   * Баги: AudioContext часто suspended → нули; полоска была под аватаром.
    */
   function startMicMeter(stream) {
     stopMicMeter();
-    const bar = qs('#ting-mic-meter');
+    const eq = qs('#ting-mic-meter');
     const hint = qs('#ting-mic-hint');
-    if (!bar || !stream) return;
+    if (!eq || !stream) return;
     const audio = stream.getAudioTracks && stream.getAudioTracks()[0];
-    if (!audio) { bar.hidden = true; return; }
+    if (!audio || audio.readyState === 'ended') {
+      eq.hidden = true;
+      if (hint) hint.textContent = 'Микрофон недоступен';
+      return;
+    }
+    eq.hidden = false;
     let ctx;
     try {
       const AC = window.AudioContext || window.webkitAudioContext;
-      if (!AC) { bar.hidden = true; return; }
+      if (!AC) { eq.hidden = true; return; }
       ctx = new AC();
+      /* Chrome/Edge: без resume() analyser отдаёт тишину */
+      const kick = () => {
+        if (ctx && ctx.state === 'suspended') {
+          ctx.resume().catch(() => { /* */ });
+        }
+      };
+      kick();
+      document.addEventListener('pointerdown', kick, { once: true });
+      document.addEventListener('keydown', kick, { once: true });
+
       const src = ctx.createMediaStreamSource(new MediaStream([audio]));
       const an = ctx.createAnalyser();
-      an.fftSize = 512;
+      an.fftSize = 256;
+      an.smoothingTimeConstant = 0.55;
       src.connect(an);
-      const buf = new Uint8Array(an.frequencyBinCount);
+      const timeBuf = new Uint8Array(an.fftSize);
+      const freqBuf = new Uint8Array(an.frequencyBinCount);
+      const bars = Array.from(eq.querySelectorAll('i'));
       let peak = 0;
+      let alive = true;
       const tick = () => {
-        if (!state.micMeterRaf) return;
-        an.getByteFrequencyData(buf);
+        if (!alive) return;
+        kick();
+        an.getByteTimeDomainData(timeBuf);
         let sum = 0;
-        for (let i = 0; i < buf.length; i++) sum += buf[i];
-        const level = Math.min(100, Math.round((sum / buf.length) * 1.8));
+        for (let i = 0; i < timeBuf.length; i++) {
+          const v = (timeBuf[i] - 128) / 128;
+          sum += v * v;
+        }
+        const rms = Math.sqrt(sum / timeBuf.length);
+        const level = Math.min(100, Math.round(rms * 220));
         peak = Math.max(peak, level);
-        const inner = bar.firstElementChild;
-        if (inner) inner.style.width = Math.max(4, level) + '%';
-        if (hint) hint.textContent = peak > 12
-          ? 'Микрофон слышно'
-          : 'Скажите пару слов — полоска должна двигаться';
+
+        an.getByteFrequencyData(freqBuf);
+        const n = bars.length || 7;
+        const step = Math.max(1, Math.floor(freqBuf.length / (n + 2)));
+        for (let b = 0; b < n; b++) {
+          let band = 0;
+          const from = (b + 1) * step;
+          const to = Math.min(freqBuf.length, from + step);
+          for (let i = from; i < to; i++) band += freqBuf[i];
+          const avg = (to > from ? band / (to - from) : 0) / 255;
+          const h = Math.max(12, Math.round((avg * 0.65 + rms * 0.9) * 100));
+          if (bars[b]) bars[b].style.height = Math.min(100, h) + '%';
+        }
+        if (hint) {
+          hint.textContent = !state.micOn
+            ? 'Микрофон выключен — включите, чтобы проверить'
+            : (peak > 8 ? 'Микрофон слышно' : 'Скажите пару слов — столбики должны прыгать');
+        }
         state.micMeterRaf = requestAnimationFrame(tick);
       };
       state.micMeterCtx = ctx;
+      state._micMeterAlive = () => { alive = false; };
       state.micMeterRaf = requestAnimationFrame(tick);
     } catch (_) {
-      if (bar) bar.hidden = true;
+      if (eq) eq.hidden = true;
       if (ctx) { try { ctx.close(); } catch (__) { /* */ } }
     }
   }
 
   function stopMicMeter() {
+    if (typeof state._micMeterAlive === 'function') {
+      try { state._micMeterAlive(); } catch (_) { /* */ }
+      state._micMeterAlive = null;
+    }
     if (state.micMeterRaf) cancelAnimationFrame(state.micMeterRaf);
     state.micMeterRaf = null;
     if (state.micMeterCtx) {
       try { state.micMeterCtx.close(); } catch (_) { /* */ }
       state.micMeterCtx = null;
     }
-    const bar = qs('#ting-mic-meter');
-    if (bar && bar.firstElementChild) bar.firstElementChild.style.width = '4%';
+    const eq = qs('#ting-mic-meter');
+    if (eq) {
+      eq.querySelectorAll('i').forEach((el) => { el.style.height = '12%'; });
+    }
   }
   function stopPreview() {
     state.previewGen = (state.previewGen || 0) + 1;

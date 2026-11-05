@@ -1570,10 +1570,21 @@ module.exports = async function thingRoutes(fastify) {
       number = map.thing_dialin_number || '';
       fastify.log.warn({ err: e }, 'thing: parse thing_dialin_number');
     }
+    /* Env — запасной канал, если в settings ещё не прописали DID */
+    if (!number) {
+      number = String(process.env.THING_DIALIN_NUMBER || process.env.TING_DIALIN_PHONE || '').trim();
+    }
+    if (process.env.THING_DIALIN_ENABLED === '1' || process.env.THING_DIALIN_ENABLED === 'true') {
+      enabled = true;
+    }
+    const hasNumber = Boolean(number);
     return {
-      enabled: Boolean(enabled),
-      number: number || null,
-      instruction: 'Позвоните и введите 6 цифр кода Тинга'
+      enabled: Boolean(enabled) && hasNumber,
+      number: hasNumber ? number : null,
+      configured: hasNumber,
+      instruction: hasNumber
+        ? 'Позвоните и введите 6 цифр кода Тинга'
+        : 'Телефонный вход не настроен: нужен DID в settings.thing_dialin_number или THING_DIALIN_NUMBER'
     };
   }
 
