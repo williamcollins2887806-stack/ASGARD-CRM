@@ -58,6 +58,9 @@ async function routes(fastify, options) {
          AND ocr_status = 'done'
          AND ocr_text IS NOT NULL
          AND length(trim(ocr_text)) > 20
+         AND ocr_text NOT ILIKE '%[Demo]%'
+         AND ocr_text NOT ILIKE '%демо-режим%'
+         AND ocr_text NOT ILIKE '%[ошибка OCR%'
        ORDER BY
          CASE
            WHEN original_name ~* 'техническ|тех.?зада|тз|задан' THEN 0

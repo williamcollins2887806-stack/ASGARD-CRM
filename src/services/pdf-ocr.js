@@ -245,9 +245,31 @@ function _isEmptyOcrText(text) {
   if (!t) return true;
   if (/^\[ПУСТАЯ СТРАНИЦА\]$/i.test(t)) return true;
   if (/^\[НЕЧИТАЕМО\]$/i.test(t)) return true;
-  // только маркеры ошибок / короче 15 символов после очистки
-  const cleaned = t.replace(/\[НЕЧИТАЕМО\]/gi, '').replace(/\[ПУСТАЯ СТРАНИЦА\]/gi, '').replace(/\s+/g, '');
+  // Demo-stub AI-провайдера (гонка _loadKeysFromDB) — не текст страницы.
+  if (/\[Demo\]/i.test(t) || /AI-провайдер не настроен/i.test(t) || /демо-режим/i.test(t)) {
+    return true;
+  }
+  // Маркеры провала vision («[ошибка OCR стр.N]») — это не текст документа.
+  // Иначе склеенные маркеры (>20 симв.) сохраняются как done и навсегда
+  // блокируют повторный OCR (инцидент 2131/2134, 19 доков, 05.11.2026).
+  if (/ошибка\s*OCR/i.test(t)) {
+    const withoutErr = t
+      .replace(/\[ошибка\s*OCR[^\]]*\]/gi, '')
+      .replace(/\s+/g, '');
+    if (withoutErr.length < 40) return true;
+  }
+  // только маркеры пустоты / короче 15 символов после очистки
+  const cleaned = t
+    .replace(/\[НЕЧИТАЕМО\]/gi, '')
+    .replace(/\[ПУСТАЯ СТРАНИЦА\]/gi, '')
+    .replace(/\[ошибка\s*OCR[^\]]*\]/gi, '')
+    .replace(/\s+/g, '');
   return cleaned.length < 15;
+}
+
+/** Текст OCR — мусор из маркеров ошибок (для воркера / кэша). */
+function isOcrFailureText(text) {
+  return _isEmptyOcrText(text);
 }
 
 /**
@@ -485,22 +507,28 @@ async function _ocrOnePage(pngPath, pageNum, originalName, opts = {}) {
   }
 }
 
-const OCR_BATCH_PROMPT = `Твоя задача — извлечь текст со сканов нескольких страниц документа.
+// D-337 / OCR-zero (05.11.2026): старый батч-промпт «извлеки текст дословно»
+// ловил Gemini RECITATION/content_filter → пустой ответ → в БД писались
+// маркеры «[ошибка OCR стр.N]» со статусом done, и воркер их больше не трогал.
+// Формулировка как у OCR_PROMPT: «для архива / своими словами» — без RECITATION.
+const OCR_BATCH_PROMPT = `Ты обрабатываешь сканы документа для внутреннего архива организации.
+Опиши содержимое каждой страницы своими словами, сохраняя все реквизиты, числа, наименования, даты и строки таблиц.
+Это рабочий документ, ограничений на цитирование нет.
 
 СТРОГИЕ ПРАВИЛА:
-1. Читай ТОЛЬКО то что РЕАЛЬНО видишь на каждом изображении.
-2. НЕ ВЫДУМЫВАЙ текст. Если страница повёрнута — мысленно поверни.
-3. Если фрагмент нечитаем — пиши "[НЕЧИТАЕМО]" вместо догадки.
-4. Если изображение пустое — пиши "[ПУСТАЯ СТРАНИЦА]".
+1. Только то, что реально видно на изображении. Не додумывай.
+2. Повёрнутую страницу мысленно поверни.
+3. Нечитаемый фрагмент — "[НЕЧИТАЕМО]". Пустая страница — "[ПУСТАЯ СТРАНИЦА]".
+4. Числа, ИНН, суммы — точно, по цифрам.
 5. Сохраняй структуру: заголовки, нумерация, таблицы построчно.
-6. НЕ добавляй комментарии — только текст.
+6. Без вступлений и пояснений — сразу содержимое страницы.
 7. ОБЯЗАТЕЛЬНО разделяй страницы маркерами ровно в таком виде:
 <<<PAGE N>>>
-(текст страницы N)
+(содержимое страницы N)
 <<<END PAGE N>>>
 где N — номер страницы из подписи к изображению.
 
-Извлеки текст со всех страниц ниже:`;
+Обработай все страницы ниже:`;
 
 /**
  * Распарсить ответ батч-OCR по маркерам <<<PAGE N>>>.
@@ -747,8 +775,8 @@ async function ocrDocument(documentId) {
   const doc = r.rows[0];
   if (!doc) throw new Error(`Document ${documentId} not found`);
 
-  // 2. Уже OCR-ено успешно — возвращаем из кэша
-  if (doc.ocr_status === 'done' && doc.ocr_text) {
+  // 2. Уже OCR-ено успешно — возвращаем из кэша (мусор/demo — не кэш)
+  if (doc.ocr_status === 'done' && doc.ocr_text && !_isEmptyOcrText(doc.ocr_text)) {
     return {
       text: doc.ocr_text,
       pages: 0,
@@ -1146,9 +1174,12 @@ async function ocrManyPdfPaths(files, opts = {}) {
       // originalName для anti-halluc — первый файл в батче (эвристика мягкая)
       const label = gidMeta.get(batch[0].gid)?.originalName || 'archive';
       try {
-        const parsed = await _ocrPagesBatch(batch, label, { noFallback: true });
+        // noFallback:false — при пустом батче (RECITATION/API) идём в per-page
+        // и во fallback-модель; иначе снова получаем «[ошибка OCR стр.N]».
+        const parsed = await _ocrPagesBatch(batch, label, { noFallback: false });
         for (const p of batch) {
-          textsByGid[p.gid] = String(parsed[p.page_number] || '').trim();
+          const raw = String(parsed[p.page_number] || '').trim();
+          textsByGid[p.gid] = _isEmptyOcrText(raw) ? '' : raw;
         }
       } catch (e) {
         console.warn(`[OCR:many] batch failed: ${e.message}`);
@@ -1198,6 +1229,7 @@ module.exports = {
   ocrManyPdfPaths,
   ocrImageBuffer,
   resolveDocumentPath,
+  isOcrFailureText,
   PDFTOPPM_BIN,
   OCR_MODEL,
   OCR_MAX_PAGES

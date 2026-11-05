@@ -118,13 +118,20 @@ class TenderOcrWorker {
     this._timer = setInterval(() => this._tick(), POLL_MS);
     setImmediate(() => this._tick());
     // Подхватить тендеры с неготовым OCR (бэкап без хука)
-    setTimeout(() => this.enqueuePendingTenders().catch((e) => warn(`backfill: ${e.message}`)), 15000);
+    const backfill = () =>
+      this.enqueuePendingTenders().catch((e) => warn(`backfill: ${e.message}`));
+    setTimeout(backfill, 15000);
+    // Каждые 10 мин — failed / demo / маркеры ошибок снова в очередь
+    // (после max_attempts джобы attempts сбрасываются в enqueue).
+    this._backfillTimer = setInterval(backfill, 10 * 60 * 1000);
   }
 
   stop() {
     this._running = false;
     if (this._timer) clearInterval(this._timer);
     this._timer = null;
+    if (this._backfillTimer) clearInterval(this._backfillTimer);
+    this._backfillTimer = null;
     log('worker stopped');
   }
 
@@ -195,6 +202,17 @@ class TenderOcrWorker {
          AND (
            d.ocr_status IS NULL
            OR d.ocr_status IN ('failed', 'pending')
+           OR (
+             d.ocr_status = 'done'
+             AND (
+               d.ocr_text ILIKE '%[Demo]%'
+               OR d.ocr_text ILIKE '%демо-режим%'
+               OR (
+                 d.ocr_text ILIKE '%ошибка OCR%'
+                 AND length(regexp_replace(coalesce(d.ocr_text,''), '\\[ошибка[[:space:]]*OCR[^\\]]*\\]', '', 'gi')) < 40
+               )
+             )
+           )
            OR (
              (d.type = 'archive' OR d.original_name ~* '\\.(rar|zip|7z)$')
              AND NOT EXISTS (
@@ -367,7 +385,14 @@ class TenderOcrWorker {
         }
         continue;
       }
-      if (d.ocr_status === 'done' && d.ocr_text && String(d.ocr_text).trim().length > 20) {
+      // done с одними маркерами «[ошибка OCR стр.N]» — не кэш, а провал:
+      // length > 20, но текста нет → Мимир читает пустоту. Перегоняем заново.
+      if (
+        d.ocr_status === 'done' &&
+        d.ocr_text &&
+        String(d.ocr_text).trim().length > 20 &&
+        !pdfOcr.isOcrFailureText(d.ocr_text)
+      ) {
         stats.cached += 1;
         continue;
       }
@@ -414,7 +439,16 @@ class TenderOcrWorker {
 
         if (ocrItems.length) {
         log(`tender=#${tenderId} vision OCR: ${ocrItems.length} scan PDFs`);
-        let balanceError = null;
+        // Прогрев AI-ключей до параллельных батчей (антигонка demo-stub).
+        try {
+          const aiProvider = require('./ai-provider');
+          if (typeof aiProvider._loadKeysFromDB === 'function') {
+            await aiProvider._loadKeysFromDB();
+          }
+        } catch (e) {
+          warn(`tender=#${tenderId} AI key warmup: ${e.message}`);
+        }
+        let visionFailed = 0;
         const res = await pdfOcr.ocrManyPdfPaths(ocrItems, {
           dpi: 90,
           batchSize: 8,
@@ -423,10 +457,16 @@ class TenderOcrWorker {
         });
         for (const item of ocrItems) {
           const text = String(res.byKey[item.key] || '').trim();
-          if (text.length < 20) {
+          if (text.length < 20 || pdfOcr.isOcrFailureText(text)) {
             stats.failed += 1;
-            await this._markFailed(item.docId, `OCR пустой (${text.length} симв.)`);
-            warn(`tender=#${tenderId} pdf #${item.docId} «${item.originalName}»: OCR пустой`);
+            visionFailed += 1;
+            await this._markFailed(
+              item.docId,
+              pdfOcr.isOcrFailureText(text)
+                ? `OCR маркеры ошибок (${text.length} симв.)`
+                : `OCR пустой (${text.length} симв.)`
+            );
+            warn(`tender=#${tenderId} pdf #${item.docId} «${item.originalName}»: OCR пустой/мусор`);
             continue;
           }
           await this._saveText(item.docId, text, null, pdfOcr.OCR_MODEL);
@@ -436,10 +476,11 @@ class TenderOcrWorker {
         if (res.diagnostics?.ms) {
           log(`tender=#${tenderId} OCR batch ${Math.round(res.diagnostics.ms / 1000)}s, pages=${res.diagnostics.pages}, batches=${res.diagnostics.batches}`);
         }
-        // Если все сканы пустые — скорее всего баланс/API; не помечаем тендер done
-        if (ocrItems.length > 0 && stats.ocr_pdf === 0) {
-          balanceError = 'Vision OCR вернул пусто по всем сканам (проверь баланс RouterAI / OCR_MODEL)';
-          throw new Error(balanceError);
+        // Любой пустой/мусорный скан → retry джобы (ИИ не должен читать маркеры/demo).
+        if (visionFailed > 0) {
+          throw new Error(
+            `Vision OCR: ${visionFailed}/${ocrItems.length} сканов пустые/мусор — повтор`
+          );
         }
       }
     }
@@ -751,8 +792,15 @@ class TenderOcrWorker {
   }
 
   async _markFailed(docId, message) {
+    // Стираем ocr_text: иначе Мимир/ТКП читают маркеры «[ошибка OCR]» / demo-stub
+    // при status=failed (часть селектов смотрит только на непустой текст).
     await this.db.query(
-      `UPDATE documents SET ocr_status = 'failed', ocr_error = $1, ocr_completed_at = NOW() WHERE id = $2`,
+      `UPDATE documents SET
+         ocr_status = 'failed',
+         ocr_error = $1,
+         ocr_text = NULL,
+         ocr_completed_at = NOW()
+       WHERE id = $2`,
       [String(message).slice(0, 1000), docId]
     );
   }

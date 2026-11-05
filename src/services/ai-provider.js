@@ -133,47 +133,60 @@ function isStubMode() {
 
 // DB settings cache
 let _dbKeysLoaded = false;
+/** In-flight загрузка ключей: параллельные complete() ждут один и тот же Promise. */
+let _dbKeysPromise = null;
 
 /**
  * Загрузить AI ключи из БД settings (key = 'ai_config')
- * Вызывается один раз при первом запросе
+ * Вызывается один раз при первом запросе.
+ *
+ * ВАЖНО (OCR-zero, 05.11.2026): раньше `_dbKeysLoaded = true` ставился ДО await
+ * db.query. Параллельные vision-батчи OCR (concurrency 8–16) видели флаг true,
+ * возвращались с пустыми ключами и попадали в demo-stub (~87 символов /
+ * «AI-провайдер не настроен»). Эти заглушки писались в documents.ocr_text как
+ * done — Мимир читал мусор, повторный OCR не запускался.
  */
 async function _loadKeysFromDB() {
   if (_dbKeysLoaded) return;
-  _dbKeysLoaded = true;
+  if (!_dbKeysPromise) {
+    _dbKeysPromise = (async () => {
+      try {
+        const result = await db.query("SELECT value_json FROM settings WHERE key = 'ai_config'");
+        if (result.rows[0]?.value_json) {
+          let parsed = JSON.parse(result.rows[0].value_json);
+          // IndexedDB sync может хранить вложенно
+          const cfg = parsed.value_json ? JSON.parse(parsed.value_json) : parsed;
 
-  try {
-    const result = await db.query("SELECT value_json FROM settings WHERE key = 'ai_config'");
-    if (result.rows[0]?.value_json) {
-      let parsed = JSON.parse(result.rows[0].value_json);
-      // IndexedDB sync может хранить вложенно
-      const cfg = parsed.value_json ? JSON.parse(parsed.value_json) : parsed;
-
-      if (cfg.anthropic_api_key && !ANTHROPIC_API_KEY) {
-        ANTHROPIC_API_KEY = cfg.anthropic_api_key;
-        console.log('[AI Provider] Anthropic API key loaded from DB settings');
+          if (cfg.anthropic_api_key && !ANTHROPIC_API_KEY) {
+            ANTHROPIC_API_KEY = cfg.anthropic_api_key;
+            console.log('[AI Provider] Anthropic API key loaded from DB settings');
+          }
+          if (cfg.openai_api_key && !OPENAI_API_KEY) {
+            OPENAI_API_KEY = cfg.openai_api_key;
+            console.log('[AI Provider] OpenAI API key loaded from DB settings');
+          }
+          if (cfg.provider && !process.env.AI_PROVIDER) AI_PROVIDER = cfg.provider;
+          if (cfg.anthropic_model && !process.env.ANTHROPIC_MODEL) ANTHROPIC_MODEL = cfg.anthropic_model;
+          // Env wins over DB for model/url so clone can pin DeepSeek Flash + local proxy without fighting settings.
+          if (cfg.openai_model && !process.env.OPENAI_MODEL) OPENAI_MODEL = normalizeModelId(cfg.openai_model);
+          if (cfg.openai_url && !process.env.OPENAI_URL) {
+            OPENAI_URL = cfg.openai_url;
+            console.log('[AI Provider] Custom OpenAI URL:', OPENAI_URL);
+          } else if (process.env.OPENAI_URL) {
+            console.log('[AI Provider] OPENAI_URL from env:', OPENAI_URL);
+          }
+          if (process.env.OPENAI_MODEL) {
+            OPENAI_MODEL = normalizeModelId(process.env.OPENAI_MODEL);
+          }
+        }
+      } catch (e) {
+        // settings table may not have ai_config key yet — that's fine
+      } finally {
+        _dbKeysLoaded = true;
       }
-      if (cfg.openai_api_key && !OPENAI_API_KEY) {
-        OPENAI_API_KEY = cfg.openai_api_key;
-        console.log('[AI Provider] OpenAI API key loaded from DB settings');
-      }
-      if (cfg.provider && !process.env.AI_PROVIDER) AI_PROVIDER = cfg.provider;
-      if (cfg.anthropic_model && !process.env.ANTHROPIC_MODEL) ANTHROPIC_MODEL = cfg.anthropic_model;
-      // Env wins over DB for model/url so clone can pin DeepSeek Flash + local proxy without fighting settings.
-      if (cfg.openai_model && !process.env.OPENAI_MODEL) OPENAI_MODEL = normalizeModelId(cfg.openai_model);
-      if (cfg.openai_url && !process.env.OPENAI_URL) {
-        OPENAI_URL = cfg.openai_url;
-        console.log('[AI Provider] Custom OpenAI URL:', OPENAI_URL);
-      } else if (process.env.OPENAI_URL) {
-        console.log('[AI Provider] OPENAI_URL from env:', OPENAI_URL);
-      }
-      if (process.env.OPENAI_MODEL) {
-        OPENAI_MODEL = normalizeModelId(process.env.OPENAI_MODEL);
-      }
-    }
-  } catch (e) {
-    // settings table may not have ai_config key yet — that's fine
+    })();
   }
+  await _dbKeysPromise;
 }
 
 /**
@@ -662,12 +675,26 @@ async function complete({ system, messages, maxTokens, temperature, tools, plugi
     provider = 'anthropic';
   }
 
-  // Demo mode: if no API keys configured, return a mock response
+  // Demo mode: if no API keys configured, return a mock response.
+  // OCR/vision (image_url в content) — НЕ молчать демо: иначе батч OCR
+  // принимает ~87-символьный stub за текст страницы (см. _loadKeysFromDB).
   if (!ANTHROPIC_API_KEY && !OPENAI_API_KEY) {
     const lastMsg = messages[messages.length - 1]?.content || '';
+    const hasVision = messages.some((m) =>
+      Array.isArray(m.content) && m.content.some((b) =>
+        b && (b.type === 'image_url' || b.type === 'image' || b.type === 'document')
+      )
+    );
+    if (hasVision) {
+      throw new AIProviderError({
+        code: 'auth',
+        status: null,
+        providerMessage: 'AI API key не загружен — vision/OCR в demo-режиме запрещён'
+      });
+    }
     return {
-      text: `[Demo] Получено сообщение (${lastMsg.length} символов). AI-провайдер не настроен — работает демо-режим.`,
-      usage: { inputTokens: lastMsg.length, outputTokens: 30 },
+      text: `[Demo] Получено сообщение (${typeof lastMsg === 'string' ? lastMsg.length : 0} символов). AI-провайдер не настроен — работает демо-режим.`,
+      usage: { inputTokens: typeof lastMsg === 'string' ? lastMsg.length : 0, outputTokens: 30 },
       model: 'demo',
       provider: 'demo',
       stopReason: 'end_turn',
@@ -1691,7 +1718,7 @@ module.exports = {
   _loadKeysFromDB,
   getProvider,
   _loadKeysFromDB, // AP5: agent needs to ensure keys are loaded
-  _resetKeysCache: function () { _dbKeysLoaded = false; }, // сброс кэша после изменения ai_config из админ-панели
+  _resetKeysCache: function () { _dbKeysLoaded = false; _dbKeysPromise = null; }, // сброс кэша после изменения ai_config из админ-панели
   AIProviderError, // экспорт класса для классификации ошибок в caller-ах
   runAgentLoop, // agent-loop с автоматическим выполнением tool_calls (WebSearch)
   executeWebSearch, // прямой вызов web search (можно использовать без agent loop)
