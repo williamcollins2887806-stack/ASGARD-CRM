@@ -50,10 +50,13 @@
   function logoMark() {
     /* Тинг: золотой знак «T» + точка эфира (не Capacitor-заглушка) */
     return '<svg viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">'
-      + '<rect width="32" height="32" rx="8" fill="#0A0C10"/>'
-      + '<circle cx="16" cy="16" r="12" fill="#C8A84E" fill-opacity=".16"/>'
-      + '<path d="M9 9h14a1.6 1.6 0 0 1 0 3.2H17.2V23a1.6 1.6 0 0 1-3.2 0V12.2H9A1.6 1.6 0 0 1 9 9z" fill="#E8C35A"/>'
-      + '<circle cx="16" cy="26.2" r="1.6" fill="#C8A84E"/>'
+      + '<defs><linearGradient id="tg" x1="0" y1="0" x2="1" y2="1">'
+      + '<stop offset="0%" stop-color="#12163A"/><stop offset="100%" stop-color="#482478"/>'
+      + '</linearGradient></defs>'
+      + '<rect width="32" height="32" fill="url(#tg)"/>'
+      + '<circle cx="16" cy="15" r="11" fill="#FFD660" fill-opacity=".18"/>'
+      + '<path d="M8.5 8.5h15a1.8 1.8 0 0 1 0 3.6h-5.7V23a1.8 1.8 0 0 1-3.6 0V12.1H8.5a1.8 1.8 0 0 1 0-3.6z" fill="#FFD660"/>'
+      + '<circle cx="16" cy="26.5" r="1.7" fill="#FFD660"/>'
       + '</svg>';
   }
 
