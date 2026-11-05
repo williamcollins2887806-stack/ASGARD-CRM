@@ -1,0 +1,123 @@
+/* Warehouse Marketplace — Ozon-класс, dark + light */
+:root {
+  --wh-m-bg: transparent;
+  --wh-m-card: var(--bg-card, #161a22);
+  --wh-m-border: var(--border, #262c38);
+  --wh-m-price: #ff4d6d;
+  --wh-m-ok: #3ddc84;
+  --wh-m-warn: #e0a800;
+  --wh-m-muted: var(--t2, #8b93a3);
+  --wh-m-text: var(--t1, #e6e9ef);
+  --wh-m-accent: var(--gold, #D4A843);
+}
+
+html.theme-light, body.theme-light, html.light, body.light {
+  --wh-m-card: #fff;
+  --wh-m-border: #e6e8ee;
+  --wh-m-price: #d91656;
+  --wh-m-ok: #1a9f5c;
+  --wh-m-warn: #c48900;
+  --wh-m-muted: #6b7280;
+  --wh-m-text: #111827;
+}
+
+.wh2-m-hero {
+  padding: 18px 20px 14px;
+  border-radius: 18px;
+  border: 1px solid rgba(212,168,67,.22);
+  background: linear-gradient(135deg, rgba(212,168,67,.08), transparent 55%);
+  margin-bottom: 14px;
+}
+.wh2-m-hero h2 { margin: 0 0 4px; font-size: 22px; font-weight: 800; letter-spacing: -.03em; color: var(--wh-m-text); }
+.wh2-m-hero p { margin: 0 0 12px; color: var(--wh-m-muted); font-size: 13.5px; max-width: 720px; line-height: 1.45; }
+.wh2-m-bar { display: flex; gap: 10px; flex-wrap: wrap; }
+.wh2-m-bar input {
+  flex: 1; min-width: 220px; padding: 13px 16px; border-radius: 12px;
+  border: 1px solid rgba(255,255,255,.1); background: rgba(0,0,0,.28); color: var(--wh-m-text); font-size: 15px;
+}
+html.theme-light .wh2-m-bar input, body.theme-light .wh2-m-bar input {
+  background: #f3f4f6; border-color: #e5e7eb;
+}
+.wh2-m-bar input:focus { outline: none; border-color: var(--wh-m-accent); box-shadow: 0 0 0 3px rgba(212,168,67,.2); }
+.wh2-m-chips { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
+.wh2-m-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 12px;
+}
+.wh2-m-card {
+  background: var(--wh-m-card);
+  border: 1px solid var(--wh-m-border);
+  border-radius: 14px;
+  overflow: hidden;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  transition: border-color .15s, transform .15s;
+}
+.wh2-m-card:hover { border-color: rgba(212,168,67,.45); transform: translateY(-1px); }
+.wh2-m-card__media {
+  height: 140px; display: flex; align-items: center; justify-content: center;
+  background: rgba(255,255,255,.03); position: relative; font-size: 48px;
+}
+.wh2-m-card__media img { max-width: 100%; max-height: 100%; object-fit: contain; }
+.wh2-m-card__badges { position: absolute; top: 8px; left: 8px; right: 8px; display: flex; justify-content: space-between; gap: 6px; }
+.wh2-m-badge {
+  font-size: 11px; font-weight: 700; padding: 3px 8px; border-radius: 999px;
+  background: rgba(0,0,0,.45); color: #fff;
+}
+.wh2-m-badge--ok { background: rgba(48,209,88,.2); color: var(--wh-m-ok); }
+.wh2-m-badge--order { background: rgba(224,168,0,.2); color: var(--wh-m-warn); }
+.wh2-m-badge--type { background: rgba(255,255,255,.08); color: var(--wh-m-muted); }
+.wh2-m-card__body { padding: 10px 12px 12px; display: flex; flex-direction: column; gap: 6px; flex: 1; }
+.wh2-m-card__price { font-size: 18px; font-weight: 800; color: var(--wh-m-price); letter-spacing: -.02em; line-height: 1.15; }
+.wh2-m-card__unit { font-size: 11px; font-weight: 650; color: var(--wh-m-muted); }
+.wh2-m-card__note { font-size: 11px; font-weight: 700; color: var(--wh-m-accent); }
+.wh2-m-card__title { font-size: 13px; font-weight: 700; color: var(--wh-m-text); line-height: 1.3;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; min-height: 2.6em; }
+.wh2-m-card__desc { font-size: 11.5px; color: var(--wh-m-muted); line-height: 1.35;
+  display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; margin: 2px 0 4px; }
+.wh2-m-card__sub { font-size: 11.5px; color: var(--wh-m-muted); }
+.wh2-m-card__cta { margin-top: auto; }
+.wh2-m-card__cta .wh2-btn { width: 100%; justify-content: center; }
+
+/* Nav dropdowns */
+.wh2-nav { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin-bottom: 12px; }
+.wh2-nav-item { position: relative; }
+.wh2-nav-btn {
+  padding: 8px 12px; border-radius: 10px; border: 1px solid var(--wh-m-border);
+  background: transparent; color: var(--wh-m-muted); font-size: 13px; font-weight: 650; cursor: pointer;
+}
+.wh2-nav-btn.is-active, .wh2-nav-btn:hover { color: var(--wh-m-accent); border-color: rgba(212,168,67,.4); background: rgba(212,168,67,.08); }
+.wh2-nav-dd {
+  display: none; position: absolute; top: calc(100% + 4px); left: 0; z-index: 40;
+  min-width: 200px; padding: 6px; border-radius: 12px; border: 1px solid var(--wh-m-border);
+  background: var(--wh-m-card); box-shadow: 0 12px 32px rgba(0,0,0,.35);
+}
+.wh2-nav-item.is-open .wh2-nav-dd { display: block; }
+.wh2-nav-dd button {
+  display: block; width: 100%; text-align: left; padding: 8px 10px; border: 0; background: transparent;
+  color: var(--wh-m-text); font-size: 13px; border-radius: 8px; cursor: pointer;
+}
+.wh2-nav-dd button:hover { background: rgba(212,168,67,.1); color: var(--wh-m-accent); }
+
+/* Cart sheet AI */
+.wh2-sheet-tabs { display: flex; gap: 4px; padding: 8px 12px 0; border-bottom: 1px solid var(--wh-m-border); }
+.wh2-sheet-tab {
+  padding: 8px 14px; border: 0; background: transparent; color: var(--wh-m-muted);
+  font-weight: 700; font-size: 13px; cursor: pointer; border-bottom: 2px solid transparent;
+}
+.wh2-sheet-tab.is-on { color: var(--wh-m-accent); border-bottom-color: var(--wh-m-accent); }
+.wh2-ai-prop {
+  border: 1px solid var(--wh-m-border); border-radius: 10px; padding: 8px 10px; margin: 6px 0;
+  display: grid; grid-template-columns: auto 1fr auto; gap: 8px; align-items: start;
+}
+.wh2-ai-prop__nm { font-weight: 700; font-size: 13px; color: var(--wh-m-text); }
+.wh2-ai-prop__meta { font-size: 11.5px; color: var(--wh-m-muted); margin-top: 2px; }
+.wh2-ai-footer {
+  position: sticky; bottom: 0; padding: 10px 12px; border-top: 1px solid var(--wh-m-border);
+  background: var(--wh-m-card); display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
+}
+.wh2-ai-chatlog { max-height: 180px; overflow: auto; padding: 8px 12px; font-size: 13px; color: var(--wh-m-muted); }
+.wh2-ai-chatlog .me { color: var(--wh-m-text); margin: 4px 0; }
+.wh2-ai-chatlog .bot { margin: 4px 0; }
