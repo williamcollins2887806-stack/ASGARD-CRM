@@ -1181,15 +1181,26 @@ window.AsgardRegistryTab = (function () {
   }
 
   /**
-   * Кнопка «ТКП через ИИ» — появляется, когда просчёт РП закрыт («подаём»),
-   * у пользователя есть право создавать ТКП и по тендеру ещё нет ТКП.
-   * Логика «можно ли» живёт в tkp-ai-modal.js: один источник правды.
+   * Кнопка ТКП в реестре:
+   *  - нет ТКП + просчёт готов → «ТКП через ИИ» (создать);
+   *  - ТКП уже есть → «ТКП создано» (открыть существующее для правки/скачивания).
+   * Логика «можно ли» — в tkp-ai-modal.js.
    */
   function tkpAiButton(row) {
-    if (!window.AsgardTkpAi || typeof AsgardTkpAi.canOffer !== 'function') return '';
-    let ok = false;
-    try { ok = AsgardTkpAi.canOffer(row); } catch (_) { ok = false; }
-    if (!ok) return '';
+    if (!window.AsgardTkpAi) return '';
+    let offer = false;
+    let open = false;
+    try {
+      offer = typeof AsgardTkpAi.canOffer === 'function' && AsgardTkpAi.canOffer(row);
+      open = typeof AsgardTkpAi.canOpen === 'function' && AsgardTkpAi.canOpen(row);
+    } catch (_) { offer = false; open = false; }
+    if (open && row.tkp_id) {
+      return '<button type="button" class="btn mini reg-tkp-open" data-id="' + row.id + '"'
+        + ' data-tkp-id="' + Number(row.tkp_id) + '"'
+        + ' title="ТКП уже создано — открыть для правки и скачивания Word/PDF"'
+        + ' style="margin-top:6px">📄 ТКП создано</button>';
+    }
+    if (!offer) return '';
     return '<button type="button" class="btn mini reg-tkp-ai" data-id="' + row.id + '"'
       + ' title="Сформировать ТКП по готовому просчёту: ИИ пишет текст, суммы берём из просчёта"'
       + ' style="margin-top:6px">🤖 ТКП через ИИ</button>';
@@ -1854,6 +1865,24 @@ window.AsgardRegistryTab = (function () {
         if (!row) return;
         if (!window.AsgardTkpAi) { toast('Модуль ТКП через ИИ не загружен', 'err'); return; }
         AsgardTkpAi.open({ tenderId: row.id, row, onDone: () => { refresh(); onRefreshCb && onRefreshCb(); } });
+      });
+    });
+    mountEl.querySelectorAll('.reg-tkp-open').forEach((el) => {
+      el.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const row = rows.find((r) => r.id === Number(el.dataset.id));
+        if (!row) return;
+        if (!window.AsgardTkpAi || typeof AsgardTkpAi.openExisting !== 'function') {
+          const tid = Number(el.dataset.tkpId) || Number(row.tkp_id);
+          if (tid && window.AsgardTkpPage && typeof AsgardTkpPage.openEdit === 'function') {
+            AsgardTkpPage.openEdit(tid);
+          } else if (tid) {
+            window.location.hash = '#tkp?id=' + tid;
+          }
+          return;
+        }
+        AsgardTkpAi.openExisting(row);
       });
     });
     mountEl.querySelectorAll('.reg-rp-chat').forEach((el) => {

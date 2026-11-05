@@ -561,26 +561,33 @@ async function htmlToPdf(html) {
   }
 }
 
-/** DOCX → PDF через LibreOffice; при отсутствии LO — HTML fallback. */
+/**
+ * DOCX → PDF через LibreOffice; при отсутствии LO — HTML fallback.
+ *
+ * Если запрошены печать/подпись — НЕ идём в LibreOffice из «голого» DOCX
+ * (там нет картинок stamp/signature). Иначе кнопка «PDF с печатью» врала.
+ */
 async function generateFullKpPdfBuffer(tkp, opts = {}) {
   const company = await resolveCompany(opts.company);
-  const docxBuf = generateFullKpDocxBuffer(tkp, company);
+  const wantStamp = !!(opts.stamp || opts.signature);
 
-  const convert = _getConvertDocxToPdf();
-  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'asgard-full-kp-'));
-  try {
-    const docxPath = path.join(tmpDir, `full-kp-${tkp.id || 'preview'}.docx`);
-    fs.writeFileSync(docxPath, docxBuf);
-    const pdfPath = convert(docxPath, tmpDir);
-    if (pdfPath && fs.existsSync(pdfPath)) {
-      return fs.readFileSync(pdfPath);
+  if (!wantStamp) {
+    const docxBuf = generateFullKpDocxBuffer(tkp, company);
+    const convert = _getConvertDocxToPdf();
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'asgard-full-kp-'));
+    try {
+      const docxPath = path.join(tmpDir, `full-kp-${tkp.id || 'preview'}.docx`);
+      fs.writeFileSync(docxPath, docxBuf);
+      const pdfPath = convert(docxPath, tmpDir);
+      if (pdfPath && fs.existsSync(pdfPath)) {
+        return fs.readFileSync(pdfPath);
+      }
+    } finally {
+      try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch (_) {}
     }
-  } finally {
-    try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch (_) {}
+    console.warn('[tkp-full-kp] LibreOffice недоступен — PDF fallback HTML');
   }
 
-  // Fallback: старый HTML→Puppeteer (не 1:1 со шаблоном)
-  console.warn('[tkp-full-kp] LibreOffice недоступен — PDF fallback HTML');
   let logo = '';
   let signatureImg = '';
   let stampImg = '';

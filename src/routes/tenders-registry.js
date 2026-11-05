@@ -298,7 +298,13 @@ async function routes(fastify) {
              EXISTS(
                SELECT 1 FROM tkp k
                WHERE k.tender_id = t.id AND COALESCE(k.status,'') <> 'rejected'
-             ) AS tkp_exists
+             ) AS tkp_exists,
+             (
+               SELECT k.id FROM tkp k
+               WHERE k.tender_id = t.id AND COALESCE(k.status,'') <> 'rejected'
+               ORDER BY k.id DESC
+               LIMIT 1
+             ) AS tkp_id
       FROM tenders t
       LEFT JOIN users cb ON cb.id = t.created_by
       LEFT JOIN users calc ON calc.id = t.calculator_user_id

@@ -2,7 +2,8 @@
  * ASGARD CRM — «ТКП через ИИ» из реестра тендеров (vanilla)
  * ═══════════════════════════════════════════════════════════════════════════
  * Открывается из реестра ТО, когда просчёт РП закрыт (`is_final` + «подаём»)
- * и по тендеру ещё нет ТКП.
+ * и по тендеру ещё нет ТКП. Если ТКП уже есть — реестр показывает
+ * «ТКП создано» и открывает существующее (canOpen), без нового ai-draft.
  *
  * Поток:
  *   1. Выбор варианта: «Краткое ТКП (= КП)» или «Полное КП».
@@ -10,6 +11,7 @@
  *   3. Правка текста, «Предпросмотр PDF», «Сохранить».
  *   4. «Сохранить» → POST /api/tkp с attach_pdf_only: создаётся ТКП + PDF
  *      прикрепляется к карточке тендера. Статус тендера не меняется.
+ *   5. Экран успеха: Word + PDF с печатью/подписью + «Открыть ТКП».
  *
  * Ответственность за чистоту документа — на сервере (линтер + гейт PDF).
  * Здесь поля с найденным мусором подсвечиваются, чтобы ТО видел, что убрано.
@@ -587,20 +589,40 @@ window.AsgardTkpAi = (function () {
       render(shell(
         '<div class="tkpai-sums" style="background:rgba(27,115,57,.09)">' +
           '<div><b>ТКП №' + esc(String(id || '—')) + ' сохранено</b><br>' +
-          '<span class="tkpai-muted">PDF прикреплён к карточке тендера. Статус тендера не менялся — отправку КП делаете штатно.</span></div>' +
+          '<span class="tkpai-muted">PDF прикреплён к карточке тендера. Статус тендера не менялся — отправку КП делаете штатно. Скачайте Word или PDF с печатью прямо здесь.</span></div>' +
         '</div>' +
         '<div class="tkpai-actions">' +
           '<button type="button" class="tkpai-btn ghost" data-act="close">Закрыть</button>' +
+          (id ? '<button type="button" class="tkpai-btn ghost" data-act="docx" style="color:#1B7340">Word</button>' : '') +
+          (id ? '<button type="button" class="tkpai-btn ghost" data-act="pdf">PDF с печатью</button>' : '') +
           '<button type="button" class="tkpai-btn primary" data-act="open">Открыть ТКП</button>' +
         '</div>',
         { subtitle: state.tender.customer_name || '' }
       ));
 
+      function authQs() {
+        const t = token();
+        return t ? ('?token=' + encodeURIComponent(t)) : '';
+      }
       modalEl.querySelector('[data-act="close"]').addEventListener('click', function () {
         const doneCb = state && state.onDone;
         close();
         if (doneCb) doneCb();
       });
+      const docxBtn = modalEl.querySelector('[data-act="docx"]');
+      if (docxBtn) {
+        docxBtn.addEventListener('click', function () {
+          window.open('/api/tkp/' + id + '/docx' + authQs(), '_blank');
+        });
+      }
+      const pdfBtn = modalEl.querySelector('[data-act="pdf"]');
+      if (pdfBtn) {
+        pdfBtn.addEventListener('click', function () {
+          // Печать + подпись — как дефолт диалога на /tkp
+          const qs = '?token=' + encodeURIComponent(token()) + '&signature=1&stamp=1';
+          window.open('/api/tkp/' + id + '/pdf' + qs, '_blank');
+        });
+      }
       modalEl.querySelector('[data-act="open"]').addEventListener('click', function () {
         const doneCb = state && state.onDone;
         close();
@@ -792,25 +814,55 @@ window.AsgardTkpAi = (function () {
     stepVariant();
   }
 
-  /** Есть ли смысл показывать кнопку в строке реестра. */
-  function canOffer(row) {
-    if (!row || !canCreate()) return false;
-    if (row.tkp_exists) return false;
+  /** Просчёт готов к формированию ТКП (закрыт «подаём» / согласован директором). */
+  function reviewReady(row) {
+    if (!row) return false;
     const rev = row.rp_review || {};
     if (!rev.is_final) return false;
-    // Директор отклонил — ТКП не формируем. В ячейке реестра для этого состояния
-    // рисуется «✕ Отклонено», и предлагать рядом кнопку ИИ было бы противоречием.
+    // Директор отклонил — ТКП не формируем.
     if (rev.director_review_status === 'rejected') return false;
     // Ждём решения директора — цена ещё не зафиксирована.
     if (rev.director_review_status === 'pending') return false;
-    // Просчёт закрыт «подаём» либо согласован директором.
     if (rev.decision === 'submit') return true;
     return rev.director_review_status === 'approved';
   }
 
+  /** Можно создать новое ТКП через ИИ (просчёт готов, ТКП ещё нет). */
+  function canOffer(row) {
+    if (!row || !canCreate()) return false;
+    if (row.tkp_exists || row.tkp_id) return false;
+    return reviewReady(row);
+  }
+
+  /**
+   * ТКП уже есть — реестр показывает «ТКП создано» и открывает существующее.
+   * Не запускает новый ai-draft.
+   */
+  function canOpen(row) {
+    if (!row || !canCreate()) return false;
+    const id = Number(row.tkp_id);
+    return Number.isFinite(id) && id > 0;
+  }
+
+  function openExisting(row) {
+    const id = Number(row && row.tkp_id);
+    if (!Number.isFinite(id) || id <= 0) {
+      toast('ТКП', 'Не найден id существующего ТКП', 'err');
+      return;
+    }
+    if (window.AsgardTkpPage && typeof AsgardTkpPage.openEdit === 'function') {
+      AsgardTkpPage.openEdit(id);
+    } else {
+      window.location.hash = '#tkp?id=' + id;
+    }
+  }
+
   return {
     open: open,
+    openExisting: openExisting,
     canOffer: canOffer,
-    canCreate: canCreate
+    canOpen: canOpen,
+    canCreate: canCreate,
+    reviewReady: reviewReady
   };
 })();
