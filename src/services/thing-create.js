@@ -24,19 +24,30 @@ async function createThingRoom(db, opts) {
     throw Object.assign(new Error('PIN должен быть 4 цифры'), { statusCode: 400 });
   }
 
+  /* D15: «Запланировать» раньше терял время — колонки scheduled_at просто не было. */
+  let scheduledAt = null;
+  if (opts.scheduled_at) {
+    const d = new Date(opts.scheduled_at);
+    if (!Number.isNaN(d.getTime())) scheduledAt = d.toISOString();
+  }
+  if (mode === 'scheduled' && !scheduledAt) scheduledAt = new Date().toISOString();
+
   const { slug, dialCode } = await allocateCodes(db);
   const { livekitRoomName, createdOnServer } = await livekit.ensureLiveKitRoom(slug, {
     maxParticipants: opts.max_participants || 50
   });
 
-  const status = opts.status || (mode === 'instant' ? 'live' : 'scheduled');
+  /* D16: instant-комната больше не 'live' сразу — 'open' до первого входа.
+     Иначе вместе с отсутствием sweeper получались вечные «живые» комнаты. */
+  const status = opts.status || (mode === 'instant' ? 'open' : 'scheduled');
   const { rows } = await db.query(
     `INSERT INTO thing_rooms (
        meeting_id, slug, dial_code, livekit_room_name, title, host_user_id,
        mode, status, pin_code, lobby_enabled, allow_guests, max_participants,
-       max_video, recording_mode, protocol_enabled, started_at, created_at, updated_at
+       max_video, recording_mode, protocol_enabled, scheduled_at,
+       started_at, created_at, updated_at
      ) VALUES (
-       $1,$2,$3,$4,$5,$6,$7,$8::varchar,$9,$10,$11,$12,$13,$14,$15,
+       $1,$2,$3,$4,$5,$6,$7,$8::varchar,$9,$10,$11,$12,$13,$14,$15,$16::timestamptz,
        CASE WHEN $8::text = 'live' THEN NOW() ELSE NULL END,
        NOW(), NOW()
      ) RETURNING *`,
@@ -53,17 +64,21 @@ async function createThingRoom(db, opts) {
       Boolean(opts.lobby_enabled),
       opts.allow_guests !== false,
       Math.min(200, parseInt(opts.max_participants, 10) || 50),
-      Math.min(3, parseInt(opts.max_video, 10) || 3),
+      Math.min(12, Math.max(1, parseInt(opts.max_video, 10) || 3)),
       ['off', 'manual', 'auto'].includes(opts.recording_mode) ? opts.recording_mode : 'manual',
-      protocolEnabled
+      protocolEnabled,
+      scheduledAt
     ]
   );
   const room = rows[0];
 
   const displayName = opts.hostDisplayName || `user-${opts.hostUserId}`;
+  /* joined_at НЕ ставим: строка хоста создаётся заранее, чтобы он имел доступ,
+     но фактический вход отмечается при выдаче токена. Иначе sweeper видит
+     «вечного участника» и комната никогда не закрывается. */
   await db.query(
     `INSERT INTO thing_participants (room_id, user_id, role, display_name, identity, lobby_status, joined_at)
-     VALUES ($1, $2, 'host', $3, $4, 'admitted', NOW())`,
+     VALUES ($1, $2, 'host', $3, $4, 'admitted', NULL)`,
     [room.id, opts.hostUserId, displayName, `user_${opts.hostUserId}`]
   );
 

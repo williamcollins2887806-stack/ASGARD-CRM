@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Тинг Переговорка</string>
+    <string name="title_activity_main">Тинг Переговорка</string>
+    <string name="package_name">com.asgard.ting.room</string>
+    <string name="custom_url_scheme">com.asgard.ting.room</string>
+</resources>

@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192" width="192" height="192" role="img" aria-label=""8=3">
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#1a1f2a"/>
+      <stop offset="1" stop-color="#0c1018"/>
+    </linearGradient>
+  </defs>
+  <rect width="192" height="192" rx="42" fill="url(#g)"/>
+  <rect x="1.5" y="1.5" width="189" height="189" rx="40.5" fill="none" stroke="#c8a84e" stroke-opacity="0.55" stroke-width="3"/>
+  <text x="96" y="126" text-anchor="middle"
+        font-family="Manrope, Segoe UI, system-ui, sans-serif"
+        font-size="96" font-weight="800" fill="#c8a84e">"</text>
+</svg>

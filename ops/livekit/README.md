@@ -1,79 +1,106 @@
-# LiveKit ops for Тинг (ASGARD CRM)
+# ASGARD Тинг — LiveKit ops
 
-## Цель
+Жизненный цикл: SFU → webhook → БД. Без webhook комнаты «живут» вечно (D16/Q01).
 
-Self-hosted LiveKit на том же хосте CRM (`92.242.61.184`), нагрузка v1: **2–3 video + audio**.
+## Что изменилось в рыночном паритете (2026-11)
 
-## Порты (развести с Asterisk)
+| Было | Стало |
+|------|-------|
+| `:latest` у всех образов | Зафиксированные теги (D21) |
+| Секреты в git | Рендер из `/etc/asgard-crm/thing.env` через `envsubst` (D20) |
+| webhook только у Huginn | Второй URL `/api/thing/livekit/webhook` (Q01) |
+| coturn без TLS, relay 30000–39900 vs README 40000–49900 | TLS 5349/443, единый диапазон 30000–39900 (D23) |
+| Egress на локальный диск | S3/MinIO + backup + лимит 4h (D22) |
+| Нет sweeper | Cron каждые 5 минут (Q02) |
 
-| Сервис | Порты | Примечание |
-|--------|-------|------------|
-| Asterisk RTP | UDP **10000–20000** | уже в `ops/asterisk/rtp.conf.snippet` |
-| coturn listen | UDP **3478** | STUN/TURN |
-| coturn relay | UDP **40000–49900** | `min-port`/`max-port` в `turnserver.conf` |
-| LiveKit RTC | UDP **50000–60000** | `rtc.port_range_start/end` в `livekit.yaml` |
-| LiveKit API | 7880 | только localhost / nginx |
-| LiveKit RTC TCP | 7881 | fallback |
-| Redis | 6379 | localhost, отдельный db index |
+## Рендер конфигов
 
-## Файлы
-
-- `livekit.yaml` — конфиг SFU (`rtc.turn_servers` → coturn)
-- `turnserver.conf` — coturn (shared secret, realm, relay range)
-- `docker-compose.yml` — livekit + redis + coturn + egress + sip
-- `nginx_ting.conf.snippet` — `/ting/` SPA + `/ting/rtc` → LiveKit
-
-## Секреты
-
-`/etc/asgard-crm/thing.env` (не в git):
+Секретов в репозитории нет. Один раз на сервере:
 
 ```bash
-LIVEKIT_URL=http://127.0.0.1:7880
-LIVEKIT_WS_URL=wss://asgard-crm.ru/ting/rtc
+# /etc/asgard-crm/thing.env
 LIVEKIT_API_KEY=...
 LIVEKIT_API_SECRET=...
-THING_DIALIN_SECRET=...
-THING_WORKERS=1
-# TURN / coturn (один shared secret в turnserver.conf и livekit.yaml rtc.turn_servers[].secret)
-TURN_HOST=asgard-crm.ru
 TURN_SECRET=...
+TURN_HOST=turn.asgard-crm.ru
+TURN_EXTERNAL_IP=92.242.61.184
+S3_ENDPOINT=https://s3.asgard-crm.ru
+S3_REGION=ru-central-1
+S3_BUCKET=asgard-ting-recordings
+S3_ACCESS_KEY=...
+S3_SECRET_KEY=...
 ```
 
-Подключать в `asgard-crm.service` через `EnvironmentFile=`.
-
-## coturn (TURN для Symmetric NAT)
-
-Нужен, если гости за жёстким NAT не доходят до LiveKit RTC напрямую.
-
-1. В `turnserver.conf`: заменить `CHANGE_ME_TURN_SECRET` на значение `TURN_SECRET`; раскомментировать/задать `external-ip=` (публичный IP хоста, при NAT — `PUBLIC/PRIVATE`).
-2. В `livekit.yaml` → `rtc.turn_servers`: тот же `secret`, `host` = `TURN_HOST` (или IP).
-3. Firewall (ufw/iptables) на хосте:
-   - UDP **3478** (listen)
-   - UDP **40000–49900** (relay)
-4. Поднять вместе со стеком: `docker compose up -d` (сервис `coturn`, `network_mode: host`).
-
-Проверка: клиент за Symmetric NAT — ICE candidate `typ relay`; без TURN часто только `host`/`srflx` и тишина.
-
-## Установка (после явной команды на прод)
+Перед стартом стека:
 
 ```bash
-# на сервере
-mkdir -p /opt/asgard-livekit /var/lib/asgard-thing/recordings
-cp ops/livekit/* /opt/asgard-livekit/
-# сгенерировать keys: docker run --rm livekit/generate ...
-# подставить TURN_SECRET / external-ip в turnserver.conf и livekit.yaml
-docker compose -f /opt/asgard-livekit/docker-compose.yml up -d
-# firewall: UDP 3478 + 40000-49900
-# nginx: include snippet, reload
-# systemctl restart asgard-crm
-curl -s http://127.0.0.1:3000/api/thing/health
+set -a; . /etc/asgard-crm/thing.env; set +a
+cd /opt/asgard-livekit
+envsubst < livekit.yaml           > livekit.rendered.yaml
+envsubst < turnserver.conf        > turnserver.rendered.conf
+envsubst < egress.yaml            > egress.rendered.yaml
+envsubst < sip.yaml               > sip.rendered.yaml
+docker compose up -d
 ```
 
-## Health
+Файлы `*.rendered.*` в `.gitignore`; в git лежат только шаблоны с `${VAR}`.
 
-- `GET /api/thing/health` → `{ livekit: true }`
-- `livekit-cli list-rooms` / join smoke 2 клиента
+## TURN/TLS — обязателен, а не «при необходимости» (Q03)
+
+Корпоративные сети часто режут весь UDP, кроме 443. Без TURN/TLS гость
+из такого офиса не подключится вообще, и это выглядит как «Тинг не работает».
+
+1. Сертификат `asgard-crm.ru` уже есть (letsencrypt) → монтируется в coturn.
+2. Порты: UDP 3478 (listen), TCP 5349 и 443 (TLS), UDP 30000–39900 (relay).
+3. Порт 443 на том же IP конфликтует с nginx → нужен отдельный IP для TURN
+   или SNI-роутинг. Пока отдельного IP нет, TURN-TLS работает на 5349;
+   сети, где разрешён только 443, останутся неподключёнными — это записанный риск.
+4. Relay-диапазон открывать в **двух** фаерволах: у провайдера и на хосте.
+   Иначе открыт только 3478, а релей мёртв — самая частая причина «не подключается».
+
+Проверка (обязательно из чужой сети, не с сервера):
+
+```
+# в браузере
+await new Promise(r => { const pc = new RTCPeerConnection({ iceServers: [{urls:'turn:turn.asgard-crm.ru:3478?transport=udp', username:'...', credential:'...'}] }); pc.onicecandidate = e => { if (e.candidate) console.log(e.candidate.type); }; pc.createDataChannel('x'); pc.createOffer().then(o => pc.setLocalDescription(o)); setTimeout(r, 5000); });
+# ждём candidate.type === 'relay'
+```
+
+Затем звонок с LTE и из офиса: `iceTransportPolicy: 'relay'` должен работать.
+
+## Firewall
+
+| Порт | Протокол | Назначение |
+|------|----------|------------|
+| 7880 | TCP | LiveKit API/WS |
+| 7881 | TCP | LiveKit RTC over TCP |
+| 3478 | UDP | TURN |
+| 5349, 443 | TCP | TURN/TLS |
+| 30000–39900 | UDP | TURN relay |
+| 50000–60000 | UDP | LiveKit RTC |
+| 10000–20000 | UDP | Asterisk RTP (не пересекать) |
+
+## Health и мониторинг
+
+- `GET /api/thing/health` → `{ ok, livekit, db, rooms, recordings_active, disk }`
+- Алерты: `disk.free_mb < 5000`, `recordings_active` не падает после встреч,
+  рост `rooms.live` без участников (значит webhook/sweeper не работают).
+- `POST /api/thing/sweep` (ADMIN) — ручной прогон sweeper.
 
 ## Запись
 
-Egress пишет в `/var/lib/asgard-thing/recordings/{slug}/`. Retention — cron (P4): удалять старше N дней.
+Egress пишет в S3 (`S3_BUCKET`), локальный путь — только staging.
+Скачивание — `GET /api/thing/rooms/:id/recordings/:recId/download` (только участники комнаты).
+Retention: удалять объекты старше N дней (политика хранения — фаза 7).
+
+## Масштаб (важно не обещать лишнего)
+
+Комната LiveKit целиком живёт на одной ноде. Кластер добавляет **комнаты**, а не
+размер комнаты. Официальный бенчмарк 150×150 — это 16 ядер и ~744 Мбит/с.
+
+| Режим | Реальность |
+|-------|-----------|
+| 2–8 с камерой | одна нода тянет |
+| 9–12 с камерой | верхняя граница, нужен замер |
+| 13–40 | только 3–6 видео + аудио/аватар (`max_video` применяется) |
+| 40 с видео | второй медиа-узел, отдельный бюджет |

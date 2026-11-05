@@ -2,7 +2,8 @@
 (function () {
   'use strict';
 
-  const LK_CDN = 'https://cdn.jsdelivr.net/npm/livekit-client@2.9.1/dist/livekit-client.umd.min.js';
+  /* Self-hosted: внешний CDN — SPOF для гостя/ТВ (D24). Версия зафиксирована (D14). */
+  const LK_CDN = '/assets/vendor/livekit-client.umd.min.js';
 
   const COPY = {
     brandSub: 'совещания ASGARD',
@@ -89,6 +90,9 @@
     hubError: null,
     layout: 'speaker',
     isHost: false,
+    /* Фаза 3: шумодав по умолчанию включён (как у Телемоста). */
+    noiseSuppression: true,
+    hideRemoteVideo: false,
     unreadChat: 0,
     myIdentity: null,
     activeSpeakerId: null,
@@ -106,7 +110,11 @@
     bgPreset: 'none',
     devices: { mics: [], cams: [] },
     audioDeviceId: '',
-    videoDeviceId: ''
+    videoDeviceId: '',
+    tokenExpiresAt: null,
+    tokenRefreshTimer: null,
+    consentAsked: false,
+    guestJoinToken: null
   };
 
   function harnessDemo() {
@@ -173,6 +181,9 @@
       ? (errOrMsg.message || '')
       : String(errOrMsg || '');
     const status = errOrMsg && typeof errOrMsg === 'object' ? errOrMsg.status : null;
+    if (/Timeout starting video|Timed out|timeout/i.test(raw)) {
+      return 'Камера не успела включиться. Закройте другие приложения с камерой и попробуйте снова.';
+    }
     if (status && /^HTTP\s+\d+/i.test(raw)) return friendlyHttpStatus(status);
     if (/^HTTP\s+(\d+)/i.test(raw)) {
       const m = raw.match(/^HTTP\s+(\d+)/i);
@@ -217,16 +228,17 @@
     }
     return j;
   }
-  /** Premium grid class for N=1..10 (explicit matrices, not auto-fit soup). */
+  /** Premium grid class for N=1..12 (explicit matrices, not auto-fit soup). */
   function stageGridClass(n) {
-    const c = Math.max(1, Math.min(10, Number(n) || 1));
+    const c = Math.max(1, Math.min(12, Number(n) || 1));
     if (c === 1) return 'g1';
     if (c === 2) return 'g2';
     if (c === 3) return 'g3';
     if (c === 4) return 'g4';
     if (c <= 6) return 'g6';
     if (c <= 9) return 'g9';
-    return 'g10';
+    if (c <= 10) return 'g10';
+    return 'g12';
   }
   function demoRoster(n) {
     const pool = [
@@ -271,6 +283,7 @@
     return out || '?';
   }
   function setIncall(on) {
+    document.documentElement.classList.toggle('ting-incall', !!on);
     document.body.classList.toggle('ting-incall', !!on);
   }
   function logoMark(size) {
@@ -580,7 +593,8 @@
   }
 
   function qrUrl(link) {
-    return 'https://api.qrserver.com/v1/create-qr-code/?size=168x168&margin=8&data=' + encodeURIComponent(link);
+    /* D24: свой QR-эндпоинт вместо api.qrserver.com */
+    return '/api/thing/qr?size=168&data=' + encodeURIComponent(link);
   }
 
   function renderReady() {
@@ -665,7 +679,9 @@
             <button type="button" class="ting-dock-btn ${state.micOn ? 'active' : 'off'}" data-act="tog-mic" id="ting-lob-mic" title="${esc(COPY.mic)}" aria-label="${esc(COPY.mic)}">${svgMic(!state.micOn)}</button>
             <button type="button" class="ting-dock-btn ${state.camOn ? 'active' : 'off'}" data-act="tog-cam" id="ting-lob-cam" title="${esc(COPY.cam)}" aria-label="${esc(COPY.cam)}">${svgCam(!state.camOn)}</button>
           </div>
+          <div class="ting-mic-meter" id="ting-mic-meter" aria-hidden="true"><i></i></div>
         </div>
+        <p class="ting-muted ting-mic-hint" id="ting-mic-hint">Скажите пару слов — полоска должна двигаться</p>
         <input class="ting-field" id="ting-disp" value="${esc(name)}" placeholder="${namePh}" maxlength="80" autocomplete="name" />
         ${profile.jobTitle ? `<p class="ting-muted ting-lobby-job">${esc(profile.jobTitle)}</p>` : ''}
         <button type="button" class="ting-btn ting-btn-primary ting-full-btn" data-act="connect">${esc(COPY.join)}</button>
@@ -724,13 +740,36 @@
         <button type="button" class="ting-icon-btn ting-icon-sm" data-act="chat-close" title="Скрыть">✕</button>
       </div>
       <div class="ting-chat-list" id="ting-chat-list">${msgs}</div>
+      ${state.polls && state.polls.length ? `<div class="ting-polls" id="ting-polls">${pollsHtml()}</div>` : ''}
       <div class="ting-chat-input">
         <div class="ting-chat-compose">
           <input id="ting-chat-in" placeholder="${esc(COPY.chatPh)}" maxlength="2000" autocomplete="off" />
+          ${state.isHost ? `<button type="button" class="ting-icon-btn ting-icon-sm" data-act="poll-create" title="Создать опрос" aria-label="Создать опрос">📊</button>` : ''}
           <button type="button" class="ting-chat-send-ico" data-act="chat-send" title="${esc(COPY.send)}" aria-label="${esc(COPY.send)}">${(window.TingIcons && TingIcons.send()) || '→'}</button>
         </div>
       </div>
     </aside>`;
+  }
+
+  /** T21: опросы в комнате — как в Телемосте (создать/голосовать/результаты). */
+  function pollsHtml() {
+    return (state.polls || []).map(p => {
+      const opts = (p.options || []).map((o, i) => {
+        const n = (p.results && p.results.counts && p.results.counts[i]) || 0;
+        const total = (p.results && p.results.total) || 0;
+        const pct = total ? Math.round((n / total) * 100) : 0;
+        const voted = (p.my_choices || []).includes(i);
+        return `<button type="button" class="ting-poll-opt${voted ? ' voted' : ''}" data-act="poll-vote" data-poll="${p.id}" data-opt="${i}">
+          <span class="ting-poll-opt-label">${esc(o)}</span>
+          <span class="ting-poll-opt-bar" style="width:${pct}%"></span>
+          <span class="ting-poll-opt-n">${pct}%</span>
+        </button>`;
+      }).join('');
+      return `<div class="ting-poll${p.status === 'closed' ? ' closed' : ''}">
+        <div class="ting-poll-q">${esc(p.question)}${p.status === 'closed' ? ' · закрыт' : ''}</div>
+        ${opts}
+      </div>`;
+    }).join('');
   }
 
   function peopleDrawerHtml() {
@@ -772,7 +811,13 @@
           <span class="${micOff ? 'off' : ''}">${svgMic(!!micOff)}</span>
           <span class="${camOff ? 'off' : ''}">${svgCam(!!camOff)}</span>
         </span>
-        ${p.role !== 'host' ? `<span class="ting-list-actions"><button type="button" class="ting-btn ting-btn-ghost" data-act="remove" data-id="${esc(p.identity)}">${esc(COPY.remove)}</button></span>` : ''}
+        ${p.role !== 'host' && state.isHost ? `<span class="ting-list-actions">
+          <button type="button" class="ting-icon-btn ting-icon-sm" data-act="mute-mic-one" data-id="${esc(p.identity)}" title="Выключить микрофон" aria-label="Выключить микрофон">${svgMic(false)}</button>
+          <button type="button" class="ting-icon-btn ting-icon-sm" data-act="mute-cam-one" data-id="${esc(p.identity)}" title="Выключить камеру" aria-label="Выключить камеру">${svgCam(false)}</button>
+          ${handUp ? `<button type="button" class="ting-icon-btn ting-icon-sm" data-act="lower-hand-one" data-id="${esc(p.identity)}" title="Опустить руку" aria-label="Опустить руку">✋↓</button>` : ''}
+          ${p.role === 'member' ? `<button type="button" class="ting-icon-btn ting-icon-sm" data-act="make-cohost" data-id="${esc(p.identity)}" data-role="co_host" title="Назначить соорганизатором" aria-label="Назначить соорганизатором">★</button>` : ''}
+          <button type="button" class="ting-btn ting-btn-ghost" data-act="remove" data-id="${esc(p.identity)}">${esc(COPY.remove)}</button>
+        </span>` : ''}
       </div>`;
     }).join('');
     const count = (state.participants || []).length;
@@ -784,7 +829,37 @@
       ${parts || '<div class="ting-muted">Пока никого нет</div>'}
       ${(state.waiting || []).length || state.isHost ? `<h4 class="ting-drawer-sub">Зал ожидания</h4>${wait}` : ''}
       ${state.isHost ? `<button type="button" class="ting-btn ting-btn-ghost ting-full-btn ting-mt-12" data-act="mute-all">${esc(COPY.muteAll)}</button>` : ''}
-      ${state.isHost ? `<div class="ting-cta-row ting-mt-12"><button type="button" class="ting-btn ting-btn-ghost ting-btn-compact" data-act="rec-start">Запись</button><button type="button" class="ting-btn ting-btn-ghost ting-btn-compact" data-act="rec-stop">Стоп записи</button></div>` : ''}
+      ${state.isHost ? `<div class="ting-cta-row ting-mt-12">
+        <button type="button" class="ting-btn ting-btn-ghost ting-btn-compact" data-act="lock-toggle">${state.room && state.room.locked ? 'Открыть вход' : 'Закрыть вход'}</button>
+        <button type="button" class="ting-btn ting-btn-ghost ting-btn-compact" data-act="rec-start">Запись</button>
+        <button type="button" class="ting-btn ting-btn-ghost ting-btn-compact" data-act="rec-stop">Стоп записи</button>
+      </div>
+      <div class="ting-room-settings">
+        <label class="ting-more-label">Зал ожидания</label>
+        <select class="ting-field ting-device-select" data-act="lobby-policy">
+          <option value="all"${(state.room && state.room.lobby_policy) === 'all' ? ' selected' : ''}>Все, кроме меня</option>
+          <option value="guests"${(state.room && state.room.lobby_policy) === 'guests' ? ' selected' : ''}>Только гости</option>
+          <option value="uninvited"${(state.room && state.room.lobby_policy) === 'uninvited' ? ' selected' : ''}>Неприглашённые</option>
+        </select>
+        <label class="ting-more-label">Видео-слотов</label>
+        <select class="ting-field ting-device-select" data-act="max-video">
+          ${[1, 2, 3, 4, 6, 9, 12].map(n => `<option value="${n}"${Number(state.room && state.room.max_video) === n ? ' selected' : ''}>${n}</option>`).join('')}
+        </select>
+        <button type="button" class="ting-btn ting-btn-ghost ting-full-btn ting-mt-8" data-act="set-pin">${state.room && state.room.pin_required ? 'Сменить PIN' : 'Задать PIN'}</button>
+        <label class="ting-more-label">Режим конференции</label>
+        <select class="ting-field ting-device-select" data-act="conference-mode">
+          <option value="meeting"${(state.room && state.room.conference_mode) === 'meeting' ? ' selected' : ''}>Совещание (все равны)</option>
+          <option value="podium"${(state.room && state.room.conference_mode) === 'podium' ? ' selected' : ''}>Трибуна (N спикеров)</option>
+          <option value="webinar"${(state.room && state.room.conference_mode) === 'webinar' ? ' selected' : ''}>Вебинар (зрители)</option>
+        </select>
+        <label class="ting-more-label">Раскладка у всех</label>
+        <select class="ting-field ting-device-select" data-act="forced-layout">
+          <option value=""${!(state.room && state.room.forced_layout) ? ' selected' : ''}>Свободная</option>
+          <option value="speaker"${(state.room && state.room.forced_layout) === 'speaker' ? ' selected' : ''}>Спикер</option>
+          <option value="grid"${(state.room && state.room.forced_layout) === 'grid' ? ' selected' : ''}>Сетка</option>
+        </select>
+        <a class="ting-btn ting-btn-ghost ting-full-btn ting-mt-8" href="/api/thing/rooms/${encodeURIComponent(slug)}/analytics?format=csv" target="_blank" rel="noopener">Аналитика CSV</a>
+      </div>` : ''}
     </div>`;
   }
 
@@ -842,7 +917,9 @@
         <select class="ting-field ting-device-select" data-act="device-video">${camOpts || '<option value=\"\">По умолчанию</option>'}</select>
       </div>
       <div class="ting-more-grid">
-        <button type="button" class="ting-more-item" data-act="hand-toggle">${handOn ? 'Опустить руку' : 'Поднять руку'}</button>
+        <button type="button" class="ting-more-item${state.noiseSuppression ? ' on' : ''}" data-act="noise-toggle">${state.noiseSuppression ? '✓ ' : ''}Шумоподавление</button>
+        <button type="button" class="ting-more-item${state.hideRemoteVideo ? ' on' : ''}" data-act="hide-remote-toggle">${state.hideRemoteVideo ? '✓ ' : ''}Скрыть видео других</button>
+        <button type="button" class="ting-more-item${handOn ? ' on' : ''}" data-act="hand-toggle">${handOn ? 'Опустить руку' : 'Поднять руку'}</button>
         <button type="button" class="ting-more-item" data-act="react" data-emoji="👍">👍</button>
         <button type="button" class="ting-more-item" data-act="react" data-emoji="👏">👏</button>
         <button type="button" class="ting-more-item" data-act="react" data-emoji="❤️">❤️</button>
@@ -865,6 +942,10 @@
   function renderRoom() {
     setIncall(true);
     const r = state.room || {};
+    /* C14: принудительная раскладка от хоста перекрывает личный выбор. */
+    if (r.forced_layout && state.layout !== r.forced_layout) {
+      state.layout = r.forced_layout;
+    }
     const n = Math.max(1, (state.participants || []).length || (state.lkRoom ? 1 + state.lkRoom.remoteParticipants.size : 1));
     const peopleOpen = !!state.peopleOpen;
     const chatOpen = !!(state.chatOpen || state.chatOpenMobile);
@@ -1104,14 +1185,183 @@
       const camB = qs('#ting-lob-cam');
       if (micB) { micB.classList.toggle('active', state.micOn); micB.classList.toggle('off', !state.micOn); micB.innerHTML = svgMic(!state.micOn); }
       if (camB) { camB.classList.toggle('active', state.camOn); camB.classList.toggle('off', !state.camOn); camB.innerHTML = svgCam(!state.camOn); }
+      startMicMeter(stream);
     } catch (_) { /* preview optional — show avatar */ }
+  }
+
+  /**
+   * Фаза 3 (T25): pre-call проверка микрофона. Без индикатора уровня человек
+   * не понимает, что его не слышно, и это выясняется уже в звонке.
+   */
+  function startMicMeter(stream) {
+    stopMicMeter();
+    const bar = qs('#ting-mic-meter');
+    const hint = qs('#ting-mic-hint');
+    if (!bar || !stream) return;
+    const audio = stream.getAudioTracks && stream.getAudioTracks()[0];
+    if (!audio) { bar.hidden = true; return; }
+    let ctx;
+    try {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) { bar.hidden = true; return; }
+      ctx = new AC();
+      const src = ctx.createMediaStreamSource(new MediaStream([audio]));
+      const an = ctx.createAnalyser();
+      an.fftSize = 512;
+      src.connect(an);
+      const buf = new Uint8Array(an.frequencyBinCount);
+      let peak = 0;
+      const tick = () => {
+        if (!state.micMeterRaf) return;
+        an.getByteFrequencyData(buf);
+        let sum = 0;
+        for (let i = 0; i < buf.length; i++) sum += buf[i];
+        const level = Math.min(100, Math.round((sum / buf.length) * 1.8));
+        peak = Math.max(peak, level);
+        const inner = bar.firstElementChild;
+        if (inner) inner.style.width = Math.max(4, level) + '%';
+        if (hint) hint.textContent = peak > 12
+          ? 'Микрофон слышно'
+          : 'Скажите пару слов — полоска должна двигаться';
+        state.micMeterRaf = requestAnimationFrame(tick);
+      };
+      state.micMeterCtx = ctx;
+      state.micMeterRaf = requestAnimationFrame(tick);
+    } catch (_) {
+      if (bar) bar.hidden = true;
+      if (ctx) { try { ctx.close(); } catch (__) { /* */ } }
+    }
+  }
+
+  function stopMicMeter() {
+    if (state.micMeterRaf) cancelAnimationFrame(state.micMeterRaf);
+    state.micMeterRaf = null;
+    if (state.micMeterCtx) {
+      try { state.micMeterCtx.close(); } catch (_) { /* */ }
+      state.micMeterCtx = null;
+    }
+    const bar = qs('#ting-mic-meter');
+    if (bar && bar.firstElementChild) bar.firstElementChild.style.width = '4%';
   }
   function stopPreview() {
     state.previewGen = (state.previewGen || 0) + 1;
+    stopMicMeter();
     if (state.previewStream) {
       state.previewStream.getTracks().forEach(t => t.stop());
       state.previewStream = null;
     }
+  }
+  function releasePreviewKeepVideoTrack() {
+    /* Windows: don't stop the live video track — hand it to LiveKit; stop only audio. */
+    state.previewGen = (state.previewGen || 0) + 1;
+    stopMicMeter();
+    const stream = state.previewStream;
+    const v = qs('#ting-prev-v');
+    if (v) {
+      try { v.srcObject = null; } catch (_) { /* */ }
+      v.hidden = true;
+    }
+    let videoTrack = null;
+    if (stream) {
+      stream.getAudioTracks().forEach((t) => { try { t.stop(); } catch (_) { /* */ } });
+      videoTrack = stream.getVideoTracks()[0] || null;
+      state.previewStream = null;
+    }
+    return videoTrack && videoTrack.readyState === 'live' ? videoTrack : null;
+  }
+  async function enableLocalCamera(room) {
+    const LK = window.LivekitClient;
+    const busyRe = /NotReadable|Device in use|Could not start|AbortError|Permission|Timeout starting video|Timed out|Overconstrained/i;
+    const tryPublishMst = async (mst) => {
+      if (!mst || !LK || mst.readyState !== 'live') return false;
+      try { if (mst.muted) mst.enabled = true; } catch (_) { /* */ }
+      let localTrack = null;
+      try {
+        if (LK.LocalVideoTrack && typeof LK.LocalVideoTrack.createFromMediaStreamTrack === 'function') {
+          localTrack = LK.LocalVideoTrack.createFromMediaStreamTrack(mst);
+        } else if (typeof LK.createLocalVideoTrack === 'function') {
+          /* fallback: cannot wrap MST — caller will reopen device */
+          return false;
+        } else if (LK.LocalVideoTrack) {
+          localTrack = new LK.LocalVideoTrack(mst);
+        }
+      } catch (_) { localTrack = null; }
+      if (!localTrack) return false;
+      const opts = {};
+      try {
+        if (LK.Track && LK.Track.Source) opts.source = LK.Track.Source.Camera;
+      } catch (_) { /* */ }
+      await withTimeout(room.localParticipant.publishTrack(localTrack, opts), 8000, 'Timeout starting video source');
+      return true;
+    };
+    const mst = releasePreviewKeepVideoTrack();
+    if (mst) {
+      try {
+        if (await tryPublishMst(mst)) return true;
+      } catch (e) {
+        console.warn('[Ting] publish preview track', e);
+      }
+      /* Windows exclusive cam: must fully release before LiveKit opens again */
+      try { mst.stop(); } catch (_) { /* */ }
+    } else {
+      stopPreview();
+    }
+    await new Promise((r) => setTimeout(r, 450));
+    let lastErr = null;
+    for (let i = 0; i < 3; i++) {
+      try {
+        await withTimeout(room.localParticipant.setCameraEnabled(true), 9000, 'Timeout starting video source');
+        return true;
+      } catch (e) {
+        lastErr = e;
+        const msg = String((e && e.message) || e || '');
+        if (!busyRe.test(msg) || i === 2) break;
+        await new Promise((r) => setTimeout(r, 400 + i * 250));
+      }
+    }
+    if (lastErr) throw lastErr;
+    return false;
+  }
+  function parkCallToPip() {
+    const sess = window.TingSession;
+    if (state.lkRoom && sess && typeof sess.adoptRoom === 'function') {
+      try {
+        sess.adoptRoom(state.lkRoom, {
+          slug: state.room && state.room.slug,
+          title: roomTitleDisplay(state.room) || (state.room && state.room.slug),
+          identity: state.myIdentity,
+          role: state.isHost ? 'host' : null
+        });
+      } catch (_) { /* */ }
+    }
+    stopPreview();
+    stopLiveLoop();
+    stopCrmLobbyPoll();
+    setIncall(false);
+    document.body.classList.remove('ting-incall');
+    document.documentElement.classList.remove('ting-incall');
+    state.lkRoom = null;
+    if (root) {
+      try { root.onclick = null; root.onchange = null; root.innerHTML = ''; } catch (_) { /* */ }
+      root = null;
+    }
+    if (sess && typeof sess.syncChrome === 'function') sess.syncChrome();
+    if (sess && typeof sess.isActive === 'function' && sess.isActive()) {
+      try {
+        if (window.HuginnTing && typeof HuginnTing.ensurePip === 'function') HuginnTing.ensurePip();
+        if (window.HuginnDock && typeof HuginnDock.open === 'function') HuginnDock.open('ting');
+      } catch (_) { /* */ }
+      toast('Тинг свёрнут в мини-окно — можно работать в CRM', true);
+    }
+  }
+  function withTimeout(promise, ms, label) {
+    let t = null;
+    return Promise.race([
+      promise,
+      new Promise((_, rej) => {
+        t = setTimeout(() => rej(new Error(label || 'timeout')), ms);
+      })
+    ]).finally(() => { if (t) clearTimeout(t); });
   }
 
   function detachStageVideos() {
@@ -1161,8 +1411,10 @@
   async function loadTrackProcessors() {
     if (window.LivekitTrackProcessors) return window.LivekitTrackProcessors;
     if (window.TrackProcessors) return window.TrackProcessors;
+    /* D24: только локальный ассет. Внешний CDN — SPOF: за корп. фаерволом
+       размытие фона молча не работает, а ошибка не видна. */
     try {
-      const mod = await import('https://cdn.jsdelivr.net/npm/@livekit/track-processors@0.3.4/+esm');
+      const mod = await import('/assets/vendor/livekit-track-processors.esm.js');
       window.LivekitTrackProcessors = mod;
       return mod;
     } catch (_) {
@@ -1269,6 +1521,8 @@
     detachStageVideos();
     stage.innerHTML = '';
     if (strip) strip.innerHTML = '';
+    /* Фаза 3: «скрыть видео других» должно переживать перерисовку и новые треки. */
+    if (state.hideRemoteVideo) applyHideRemoteVideo();
 
     function resolvePartLabel(identity, fallback) {
       if (fallback === 'Вы') {
@@ -1523,7 +1777,12 @@
         });
       }
     } else {
-      const count = Math.min(10, 1 + remotes.length);
+      /* D2: 11-й и далее участники раньше молчаливо исчезали (slice(0,9)).
+         Теперь: 12 плиток на стейдже + плитка «+N» с остальными (клик — в режим спикера). */
+      const GRID_MAX = 12;
+      const visible = remotes.slice(0, GRID_MAX - 1);
+      const hidden = remotes.length - visible.length;
+      const count = 1 + visible.length + (hidden > 0 ? 1 : 0);
       stage.className = 'ting-stage ' + stageGridClass(count);
       const localSpeak = !activeId || lp.identity === activeId;
       const hostTile = makeTile(lp.identity, localScreenTrack || localCamTrack, 'Вы', lp.isMicrophoneEnabled === false, {
@@ -1531,14 +1790,30 @@
         gold: !localCamTrack && !localScreenTrack
       });
       stage.appendChild(hostTile);
-      remotes.slice(0, 9).forEach(p => {
+      visible.forEach(p => {
         const vt = pickVideo(p);
         stage.appendChild(makeTile(p.identity, vt, p.name || p.identity, p.isMicrophoneEnabled === false, {
           speak: !!(activeId && p.identity === activeId),
           contain: hasScreen(p)
         }));
       });
+      if (hidden > 0) stage.appendChild(makeOverflowTile(hidden));
     }
+  }
+
+  /** Плитка «+N»: остальные участники не теряются, а видны счётчиком. */
+  function makeOverflowTile(hidden) {
+    const div = document.createElement('button');
+    div.type = 'button';
+    div.className = 'ting-tile ting-tile--more';
+    div.title = 'Показать ещё ' + hidden + ' участников';
+    div.innerHTML = `<span class="ting-tile-more-n">+${hidden}</span><span class="ting-tile-more-cap">ещё</span>`;
+    div.addEventListener('click', () => {
+      state.layout = 'speaker';
+      try { localStorage.setItem('ting_layout', 'speaker'); } catch (_) { /* */ }
+      paintTiles();
+    });
+    return div;
   }
 
   function stopLiveLoop() {
@@ -1554,6 +1829,7 @@
         const prevLen = (state.chat || []).length;
         await refreshPeople(slug);
         await refreshChat(slug);
+        await refreshPolls(slug);
         if ((state.chat || []).length > prevLen && state.chatOpenMobile === false && window.innerWidth <= 820) {
           state.unreadChat = (state.chat || []).length - prevLen;
         }
@@ -1634,7 +1910,16 @@
     crmLobbyPollId = setInterval(async () => {
       if (enterBusy || state.view !== 'waiting') return;
       try {
-        const r = await fetch(`/api/thing/public/${encodeURIComponent(slug)}/lobby-status?identity=${encodeURIComponent(identity)}&join_token=${encodeURIComponent(joinToken)}`);
+        /* D5: join_token в теле, не в query (не течёт в логи/Referer/историю). */
+        const r = await fetch(`/api/thing/public/${encodeURIComponent(slug)}/lobby-status`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Ting-Identity': identity,
+            'X-Ting-Join-Token': joinToken
+          },
+          body: JSON.stringify({ identity, join_token: joinToken })
+        });
         const j = await r.json();
         if (j.lobby_status === 'ended' || j.lobby_status === 'left') {
           stopCrmLobbyPoll();
@@ -1677,6 +1962,11 @@
     }
     connectBusy = true;
     state.intentionalLeave = false;
+    state.joinInFlight = true;
+    /* Сразу UI комнаты — токен и LiveKit идут уже «внутри» */
+    state.view = 'room';
+    setIncall(true);
+    render();
     /* Keep preview alive until LiveKit publishes — avoids Windows cam lock race (laptop). */
     try {
       const typed = qs('#ting-disp') && qs('#ting-disp').value;
@@ -1684,14 +1974,27 @@
       const name = String(typed || fromCrm || '').trim();
       const body = {};
       if (name && !/^участник(\s+\d+)?$/i.test(name)) body.display_name = name;
-      const tok = await api(`/api/thing/rooms/${encodeURIComponent(slug)}/token`, {
-        method: 'POST',
-        body: JSON.stringify(body)
-      });
+      const tok = await withTimeout(
+        api(`/api/thing/rooms/${encodeURIComponent(slug)}/token`, {
+          method: 'POST',
+          body: JSON.stringify(body)
+        }),
+        10000,
+        'Таймаут получения доступа к комнате'
+      );
       tokenFailAt = 0;
       tokenFailSlug = null;
+      /* D8: раньше /start не вызывался из фронта, поэтому комната могла остаться
+         'scheduled' — от статуса зависят live-бейджи и протокол. Хост «будит» комнату. */
+      if ((tok.role === 'host' || state.isHost) && tok.room && tok.room.status === 'scheduled') {
+        try {
+          await api(`/api/thing/rooms/${encodeURIComponent(slug)}/start`, { method: 'POST', body: '{}' });
+        } catch (_) { /* не блокируем вход из-за уведомлений */ }
+      }
       if (tok.lobby_status === 'waiting') {
+        state.joinInFlight = false;
         stopPreview();
+        setIncall(false);
         state.myIdentity = tok.identity || null;
         state.joinToken = tok.join_token || null;
         if (tok.room) state.room = unwrapRoom(tok);
@@ -1701,11 +2004,16 @@
       }
       await connectRoomWithCreds(slug, tok);
     } catch (e) {
+      state.joinInFlight = false;
       stopPreview();
+      setIncall(false);
       tokenFailAt = Date.now();
       tokenFailSlug = slug;
-      const detail = [e.message, e.code].filter(Boolean).join(' · ');
-      toast(detail || 'Не удалось подключиться', false);
+      toast(friendlyErrorMessage(e, 'Не удалось подключиться'), false);
+      if (state.view === 'room' && !state.lkRoom) {
+        state.view = 'lobby';
+        render();
+      }
     } finally {
       connectBusy = false;
     }
@@ -1787,11 +2095,16 @@
             showReactionBurst(msg.emoji, msg.identity || msg.display_name || '');
             return;
           }
-          if (msg.type === 'hand_raise' || msg.type === 'hand_lower') {
+          if (msg.type === 'hand_raise' || msg.type === 'hand_lower' || msg.type === 'hand_force_lower') {
             const id = msg.identity || '';
             if (!id) return;
             if (msg.type === 'hand_raise') state.raisedHands[id] = true;
             else delete state.raisedHands[id];
+            const mine = state.myIdentity || (state.lkRoom && state.lkRoom.localParticipant && state.lkRoom.localParticipant.identity);
+            if (msg.type === 'hand_force_lower' && id === mine) {
+              state.handRaised = false;
+              toast('Организатор опустил вашу руку');
+            }
             if (state.view === 'room' && state.peopleOpen) render();
             else {
               const badge = qs('#ting-hand-badge');
@@ -1882,8 +2195,35 @@
         }
       });
 
-      await room.connect(tok.url || tok.livekit_url, tok.token);
+      /* UI комнаты сразу — не ждём 5–10с на камеру; hash без повторного route */
+      state.joinInFlight = true;
+      state.view = 'room';
+      state.timerSec = 0;
+      if (state.timerId) clearInterval(state.timerId);
+      state.timerId = setInterval(() => {
+        state.timerSec++;
+        const el = qs('#ting-timer');
+        if (el) el.textContent = fmtTime(state.timerSec);
+      }, 1000);
+      setIncall(true);
+      render();
+      try {
+        const q = new URLSearchParams({ view: 'room', slug: String(slug || '') });
+        const nextHash = '#/ting?' + q.toString();
+        if ((location.hash || '') !== nextHash) {
+          state.skipHashRoute = true;
+          location.hash = nextHash;
+        }
+      } catch (_) { /* */ }
+
+      /* lkRoom до connect — уход в CRM mid-join всё равно уйдёт в PiP/session */
       state.lkRoom = room;
+      await withTimeout(
+        room.connect(tok.url || tok.livekit_url, tok.token),
+        12000,
+        'Таймаут подключения к видеосерверу'
+      );
+      scheduleTokenRefresh(slug, tok);
       if (window.TingSession && typeof TingSession.adoptRoom === 'function') {
         try {
           TingSession.adoptRoom(room, {
@@ -1894,47 +2234,66 @@
           });
         } catch (_) { /* */ }
       }
+      /* Уже ушли в другое меню CRM → media в session/PiP, страницу не трогаем */
+      const parkedAway = !root || state.view !== 'room' || state.lkRoom !== room;
+      /* Фаза 3: шумодав/AEC по умолчанию ВКЛ (как у Телемоста).
+         На self-hosted Krisp недоступен (требует LiveKit Cloud), поэтому WebRTC NS. */
       try {
+        await room.localParticipant.setMicrophoneEnabled(state.micOn, {
+          echoCancellation: true,
+          noiseSuppression: state.noiseSuppression !== false,
+          autoGainControl: true
+        });
+      } catch (micErr) {
+        /* Фолбэк: некоторые устройства/браузеры не принимают AudioCaptureOptions. */
         await room.localParticipant.setMicrophoneEnabled(state.micOn);
+      }
+      try {
         if (state.camOn) {
           try {
-            await room.localParticipant.setCameraEnabled(true);
+            await enableLocalCamera(room);
           } catch (camErr) {
             const msg = String((camErr && camErr.message) || camErr || '');
-            const busy = /NotReadable|Device in use|Could not start|AbortError|Permission/i.test(msg);
+            const busy = /NotReadable|Device in use|Could not start|AbortError|Permission|Timeout starting video|Timed out/i.test(msg);
             toast(busy
-              ? 'Камера занята или недоступна. Закройте другие приложения и включите камеру снова.'
-              : ('Камера: ' + (msg || 'не удалось включить')), false);
+              ? 'Камера занята или не успела включиться. Закройте Zoom/Teams/другие вкладки и нажмите «Камера» снова.'
+              : friendlyErrorMessage(camErr, 'Камера не включилась'), false);
             state.camOn = false;
+            stopPreview();
           }
         } else {
+          stopPreview();
           await room.localParticipant.setCameraEnabled(false);
         }
-        stopPreview();
-        paintTiles();
-        setTimeout(() => { if (state.lkRoom === room && state.view === 'room') paintTiles(); }, 400);
-        setTimeout(() => { if (state.lkRoom === room && state.view === 'room') paintTiles(); }, 1200);
+        if (!parkedAway && state.lkRoom === room) {
+          paintTiles();
+          setTimeout(() => { if (state.lkRoom === room && state.view === 'room') paintTiles(); }, 400);
+          setTimeout(() => { if (state.lkRoom === room && state.view === 'room') paintTiles(); }, 1200);
+        }
       } catch (e) {
         console.warn('local media', e);
         stopPreview();
-        toast((e && e.message) || 'Не удалось включить микрофон/камеру', false);
+        toast(friendlyErrorMessage(e, 'Не удалось включить микрофон/камеру'), false);
       }
-      state.view = 'room';
-      state.timerSec = 0;
-      if (state.timerId) clearInterval(state.timerId);
-      state.timerId = setInterval(() => {
-        state.timerSec++;
-        const el = qs('#ting-timer');
-        if (el) el.textContent = fmtTime(state.timerSec);
-      }, 1000);
+      state.joinInFlight = false;
+      state.skipHashRoute = false;
+      if (parkedAway || !root || state.lkRoom !== room) {
+        try {
+          if (window.HuginnTing && typeof HuginnTing.ensurePip === 'function') HuginnTing.ensurePip();
+        } catch (_) { /* */ }
+        return;
+      }
       await refreshPeople(slug);
       await refreshChat(slug);
       startLiveLoop(slug);
       TingSound.play('join');
-      go('room', { slug });
+      render();
     } catch (e) {
+      state.joinInFlight = false;
+      state.skipHashRoute = false;
       try { if (room) await room.disconnect(); } catch (_) { /* */ }
       if (state.lkRoom === room) state.lkRoom = null;
+      setIncall(false);
       throw e;
     }
   }
@@ -1970,6 +2329,24 @@
       }
     }
   }
+  /**
+   * T21: опросы. Подтягиваем при входе и в общем цикле комнаты.
+   * my_choices нужен, чтобы показать, за что человек уже голосовал.
+   */
+  async function refreshPolls(slug) {
+    try {
+      const j = await api(`/api/thing/rooms/${encodeURIComponent(slug)}/polls`);
+      const mine = `user_${(window.ASGARD_USER && ASGARD_USER.id) || ''}`;
+      state.polls = (j.polls || []).map(p => {
+        const votes = p.votes || [];
+        const my = votes.find(v => v.identity === mine);
+        let choices = my ? my.choices : [];
+        if (typeof choices === 'string') { try { choices = JSON.parse(choices); } catch (_) { choices = []; } }
+        return { ...p, my_choices: Array.isArray(choices) ? choices.map(Number) : [] };
+      });
+    } catch (_) { /* опросы не критичны для звонка */ }
+  }
+
   async function refreshChat(slug) {
     try {
       const j = await api(`/api/thing/rooms/${encodeURIComponent(slug)}/chat`);
@@ -1994,62 +2371,100 @@
     const slug = state.room && state.room.slug;
     state.intentionalLeave = true;
     state.reconnecting = false;
+    state.joinInFlight = false;
+    state.consentAsked = false;
+    if (state.tokenRefreshTimer) {
+      clearTimeout(state.tokenRefreshTimer);
+      state.tokenRefreshTimer = null;
+    }
     TingSound.play('end');
     state.activeSpeakerId = null;
     state.swapPrimary = false;
     state.pinnedId = null;
     stopLiveLoop();
     stopCrmLobbyPoll();
+    stopPreview();
     if (state.timerId) { clearInterval(state.timerId); state.timerId = null; }
-    if (endAll && slug) {
-      try {
-        await api(`/api/thing/rooms/${encodeURIComponent(slug)}/end`, { method: 'POST', body: '{}' });
-        if (state.room) state.room.status = 'ended';
-      } catch (e) {
-        state.intentionalLeave = false;
-        toast(e.message || 'Не удалось завершить Тинг', false);
-        return false;
-      }
-    } else if (slug) {
-      try {
-        await api(`/api/thing/rooms/${encodeURIComponent(slug)}/leave`, { method: 'POST', body: '{}' });
-      } catch (_) { /* best-effort */ }
-    }
-    if (state.lkRoom) {
-      try { await state.lkRoom.disconnect(); } catch (_) { /* */ }
-      state.lkRoom = null;
-    }
-    if (window.TingSession && typeof TingSession.leave === 'function') {
-      try { await TingSession.leave(); } catch (_) { /* */ }
-    }
+    /* Медиа и session рвём сразу — сеть /end|/leave параллельно, UI не ждёт */
+    const lk = state.lkRoom;
+    state.lkRoom = null;
+    setIncall(false);
     document.body.classList.remove('ting-live', 'ting-incall');
+    document.documentElement.classList.remove('ting-incall');
+    if (window.HuginnTing && typeof HuginnTing.closePip === 'function') {
+      try { HuginnTing.closePip(); } catch (_) { /* */ }
+    }
     state.sharing = false;
     state.chatOpen = false;
     state.chatOpenMobile = false;
     state.peopleOpen = false;
     state.moreOpen = false;
-    setIncall(false);
+
+    const apiP = (async () => {
+      if (endAll && slug) {
+        try {
+          await withTimeout(
+            api(`/api/thing/rooms/${encodeURIComponent(slug)}/end`, { method: 'POST', body: '{}' }),
+            8000,
+            'Сервер не ответил на завершение'
+          );
+          if (state.room) state.room.status = 'ended';
+        } catch (e) {
+          toast(friendlyErrorMessage(e, 'Тинг завершён локально (сервер не ответил)'), false);
+        }
+      } else if (slug) {
+        try {
+          await withTimeout(
+            api(`/api/thing/rooms/${encodeURIComponent(slug)}/leave`, { method: 'POST', body: '{}' }),
+            5000,
+            'leave-timeout'
+          );
+        } catch (_) { /* best-effort */ }
+      }
+    })();
+
+    const mediaP = (async () => {
+      if (window.TingSession && typeof TingSession.leave === 'function') {
+        try { await withTimeout(TingSession.leave(), 4000, 'session-leave-timeout'); } catch (_) { /* */ }
+      }
+      /* на случай выхода до adoptRoom — session.leave мог не знать про lk */
+      if (lk) {
+        try { await withTimeout(lk.disconnect(), 4000, 'disconnect-timeout'); } catch (_) { /* */ }
+      }
+    })();
+
+    await Promise.all([apiP, mediaP]);
     return true;
   }
 
   async function leaveRoom(endAll) {
-    const ok = await teardownLive({ endAll: !!endAll });
-    if (!ok) return;
+    const slug = state.room && state.room.slug;
+    /* Сначала уводим экран — teardown сети не блокирует «Завершить» */
+    const p = teardownLive({ endAll: !!endAll });
     if (endAll) {
-      const slug = state.room && state.room.slug;
       if (slug) go('ended', { slug });
       else { state.view = 'ended'; render(); }
-      return;
+    } else {
+      go('hub');
     }
-    go('hub');
+    await p;
   }
 
   async function route() {
+    if (state.skipHashRoute) {
+      state.skipHashRoute = false;
+      return;
+    }
     const p = parseHash();
     if (!p) return;
+    /* Внутри #/ting уход с комнаты: leave уже сделал teardown; иначе → PiP */
     if (state.view === 'room' && p.view !== 'room' && state.lkRoom) {
-      const ok = await teardownLive({ endAll: false });
-      if (!ok) return;
+      if (state.intentionalLeave || p.view === 'ended') {
+        /* leaveRoom/teardown мог не успеть — добить без повторного /end */
+        await teardownLive({ endAll: false });
+      } else {
+        parkCallToPip();
+      }
     }
     state.view = p.view;
     state.tab = p.tab || state.tab;
@@ -2139,6 +2554,8 @@
   }
 
   async function adoptOrConnectRoom(slug) {
+    if (state.joinInFlight && state.lkRoom) return;
+    if (state.joinInFlight) return;
     const sess = window.TingSession;
     const meta = sess && typeof sess.getMeta === 'function' ? sess.getMeta() : null;
     const liveRoom = sess && typeof sess.getRoom === 'function' ? sess.getRoom() : null;
@@ -2182,10 +2599,119 @@
       await api(`/api/thing/rooms/${encodeURIComponent(slug)}/recording/start`, { method: 'POST', body: '{}' });
       state.recording = true;
       toast('Запись включена автоматически');
+      askRecordingConsent(slug);
       if (state.view === 'room') render();
     } catch (e) {
       autoRecStarted[slug] = false;
       toast('Не удалось начать запись: ' + (e.message || 'ошибка'), false);
+    }
+  }
+
+  /** Q09/R01: согласие на запись — по факту старта, не по конфигу комнаты. */
+  function askRecordingConsent(slug) {
+    if (state.consentAsked || !slug) return;
+    state.consentAsked = true;
+    const existing = document.getElementById('ting-consent-modal');
+    if (existing) return;
+    const modal = document.createElement('div');
+    modal.id = 'ting-consent-modal';
+    modal.className = 'ting-modal-backdrop';
+    modal.innerHTML = `<div class="ting-modal" role="dialog" aria-labelledby="ting-consent-title">
+      <h3 id="ting-consent-title">Идёт запись</h3>
+      <p>Встреча записывается. Продолжая участие, вы соглашаетесь на обработку вашей речи и изображения для протокола встречи.</p>
+      <div class="ting-cta-row">
+        <button type="button" class="ting-btn ting-btn-primary" data-consent="yes">Согласен, остаюсь</button>
+        <button type="button" class="ting-btn ting-btn-ghost" data-consent="no">Покинуть</button>
+      </div>
+    </div>`;
+    document.body.appendChild(modal);
+    modal.addEventListener('click', async (ev) => {
+      const t = ev.target.closest('[data-consent]');
+      if (!t) return;
+      const yes = t.getAttribute('data-consent') === 'yes';
+      try {
+        if (yes) {
+          await api(`/api/thing/rooms/${encodeURIComponent(slug)}/consent`, {
+            method: 'POST', body: JSON.stringify({ revoked: false })
+          });
+        } else {
+          await api(`/api/thing/rooms/${encodeURIComponent(slug)}/consent`, {
+            method: 'POST', body: JSON.stringify({ revoked: true })
+          }).catch(() => {});
+          modal.remove();
+          leaveRoom();
+          return;
+        }
+      } catch (_) { /* гости без auth — согласие локальное */ }
+      modal.remove();
+    });
+  }
+
+  /** T31: держим свежий JWT до reconnect (токен валидируется при connect). */
+  function scheduleTokenRefresh(slug, tok) {
+    if (state.tokenRefreshTimer) {
+      clearTimeout(state.tokenRefreshTimer);
+      state.tokenRefreshTimer = null;
+    }
+    const expiresAt = tok && tok.expires_at ? Date.parse(tok.expires_at) : 0;
+    state.tokenExpiresAt = expiresAt || null;
+    if (!expiresAt || !slug) return;
+    const msLeft = expiresAt - Date.now();
+    /* Обновить за 5 минут до истечения, минимум через 60 с. */
+    const wait = Math.max(60 * 1000, msLeft - 5 * 60 * 1000);
+    state.tokenRefreshTimer = setTimeout(async () => {
+      try {
+        const dn = resolveLocalProfile().name || undefined;
+        const fresh = await api(`/api/thing/rooms/${encodeURIComponent(slug)}/token`, {
+          method: 'POST',
+          body: JSON.stringify({ display_name: dn })
+        });
+        const tok2 = fresh.token ? fresh : (fresh.data || fresh);
+        if (window.TingSession && typeof TingSession.storeToken === 'function') {
+          try { TingSession.storeToken(tok2); } catch (_) { /* */ }
+        }
+        scheduleTokenRefresh(slug, tok2);
+      } catch (e) {
+        /* Повтор через 2 минуты — сеть могла моргнуть. */
+        state.tokenRefreshTimer = setTimeout(() => scheduleTokenRefresh(slug, tok), 120000);
+      }
+    }, wait);
+  }
+
+  /** Единая точка применения «скрыть видео других» — вызывается и при перерисовке,
+      и при новой подписке, иначе трек снова становится видимым. */
+  function applyHideRemoteVideo() {
+    if (!state.lkRoom) return;
+    Array.from(state.lkRoom.remoteParticipants.values()).forEach(p => {
+      Array.from(p.videoTrackPublications.values()).forEach(pub => {
+        try { pub.setSubscribed(!state.hideRemoteVideo); } catch (_) { /* */ }
+      });
+    });
+  }
+
+  /** Общая функция применения настроек комнаты (вызывается из onchange). */
+  async function applyRoomSetting(el) {
+    if (!root) return;
+    const slug = state.room && state.room.slug || (state.slug || '');
+    const act = el.getAttribute('data-act');
+    if (!slug) return;
+    let patch;
+    if (act === 'lobby-policy') patch = { lobby_policy: el.value, lobby_enabled: true };
+    else if (act === 'max-video') patch = { max_video: Number(el.value) };
+    else if (act === 'conference-mode') patch = { conference_mode: el.value };
+    else patch = { forced_layout: el.value || null };
+    try {
+      await api(`/api/thing/rooms/${encodeURIComponent(slug)}`, {
+        method: 'PATCH', body: JSON.stringify(patch)
+      });
+      state.room = Object.assign({}, state.room, patch);
+      toast('Настройка применена');
+      if (act === 'forced-layout' && el.value) {
+        state.layout = el.value;
+        paintTiles();
+      }
+    } catch (e) {
+      toast(friendlyErrorMessage(e, 'Не удалось сохранить'), false);
     }
   }
 
@@ -2419,15 +2945,35 @@
       if (act === 'connect') { await connectRoom(slug); return; }
       if (act === 'mic' && state.lkRoom) {
         state.micOn = !state.micOn;
-        await state.lkRoom.localParticipant.setMicrophoneEnabled(state.micOn);
+        try {
+          await state.lkRoom.localParticipant.setMicrophoneEnabled(state.micOn, {
+            echoCancellation: true,
+            noiseSuppression: state.noiseSuppression !== false,
+            autoGainControl: true
+          });
+        } catch (_) {
+          await state.lkRoom.localParticipant.setMicrophoneEnabled(state.micOn);
+        }
         TingSound.play('mic');
         updateDockMedia();
         return;
       }
       if (act === 'cam' && state.lkRoom) {
-        state.camOn = !state.camOn;
-        await state.lkRoom.localParticipant.setCameraEnabled(state.camOn);
+        const want = !state.camOn;
+        try {
+          if (want) {
+            await enableLocalCamera(state.lkRoom);
+            state.camOn = true;
+          } else {
+            await state.lkRoom.localParticipant.setCameraEnabled(false);
+            state.camOn = false;
+          }
+        } catch (e) {
+          state.camOn = false;
+          toast(friendlyErrorMessage(e, 'Камера не включилась'), false);
+        }
         updateDockMedia();
+        paintTiles();
         return;
       }
       if (act === 'share' && state.lkRoom) {
@@ -2545,14 +3091,118 @@
         await refreshPeople(slug); render();
         return;
       }
+      /* Фаза 2: точечная модерация — мик, камера, шаринг экрана. */
+      if (act === 'mute-mic-one' || act === 'mute-cam-one' || act === 'stop-share-one') {
+        const kind = act === 'mute-mic-one' ? 'audio' : (act === 'mute-cam-one' ? 'video' : 'screen');
+        try {
+          const r = await api(
+            `/api/thing/rooms/${encodeURIComponent(slug)}/participants/${encodeURIComponent(btn.dataset.id)}/mute`,
+            { method: 'POST', body: JSON.stringify({ kind }) }
+          );
+          toast(kind === 'audio' ? 'Микрофон выключен' : (kind === 'video' ? 'Камера выключена' : 'Демонстрация остановлена'));
+          await refreshPeople(slug); render();
+        } catch (e) {
+          toast(friendlyErrorMessage(e, 'Не удалось применить'), false);
+        }
+        return;
+      }
+      /* T09: опустить руку участнику (сервер + data-channel). */
+      if (act === 'lower-hand-one') {
+        const id = btn.dataset.id;
+        try {
+          await api(
+            `/api/thing/rooms/${encodeURIComponent(slug)}/participants/${encodeURIComponent(id)}/lower-hand`,
+            { method: 'POST', body: '{}' }
+          );
+          await publishTingData({ type: 'hand_force_lower', identity: id });
+          delete state.raisedHands[id];
+          toast('Рука опущена');
+          render();
+        } catch (e) {
+          toast(friendlyErrorMessage(e, 'Не удалось опустить руку'), false);
+        }
+        return;
+      }
+      if (act === 'make-cohost') {
+        try {
+          await api(`/api/thing/rooms/${encodeURIComponent(slug)}/roles`, {
+            method: 'POST',
+            body: JSON.stringify({ identity: btn.dataset.id, role: btn.dataset.role || 'co_host' })
+          });
+          toast('Роль назначена');
+          await refreshPeople(slug); render();
+        } catch (e) {
+          toast(friendlyErrorMessage(e, 'Не удалось назначить роль'), false);
+        }
+        return;
+      }
+      if (act === 'noise-toggle') {
+        state.noiseSuppression = !state.noiseSuppression;
+        if (state.lkRoom && state.micOn) {
+          try {
+            await state.lkRoom.localParticipant.setMicrophoneEnabled(true, {
+              echoCancellation: true,
+              noiseSuppression: state.noiseSuppression,
+              autoGainControl: true
+            });
+          } catch (_) { /* */ }
+        }
+        toast(state.noiseSuppression ? 'Шумоподавление включено' : 'Шумоподавление отключено');
+        render();
+        return;
+      }
+      if (act === 'hide-remote-toggle') {
+        state.hideRemoteVideo = !state.hideRemoteVideo;
+        applyHideRemoteVideo();
+        toast(state.hideRemoteVideo ? 'Видео других скрыто' : 'Видео других показано');
+        paintTiles();
+        return;
+      }
       if (act === 'mute-all') {
         await api(`/api/thing/rooms/${encodeURIComponent(slug)}/mute-all`, { method: 'POST', body: '{}' });
         toast('Микрофоны участников выключены');
         return;
       }
+      if (act === 'lock-toggle') {
+        const locked = !(state.room && state.room.locked);
+        try {
+          const r = await api(`/api/thing/rooms/${encodeURIComponent(slug)}`, {
+            method: 'PATCH', body: JSON.stringify({ locked })
+          });
+          state.room = Object.assign({}, state.room, { locked });
+          toast(locked ? 'Вход в комнату закрыт' : 'Вход открыт');
+          render();
+        } catch (e) {
+          toast(friendlyErrorMessage(e, 'Не удалось изменить вход'), false);
+        }
+        return;
+      }
+      /* Фаза 2: настройки комнаты на лету (D1) — политика лобби, видео-слоты, PIN. */
+      if (act === 'lobby-policy' || act === 'max-video' || act === 'conference-mode' || act === 'forced-layout') {
+        /* Селекты обрабатываются в onchange (applyRoomSetting) — здесь ничего не делаем,
+           чтобы не отправлять PATCH со старым значением при клике по списку. */
+        return;
+      }
+      if (act === 'set-pin') {
+        const pin = window.prompt('PIN из 4 цифр (пусто — убрать PIN):', '');
+        if (pin === null) return;
+        try {
+          const clean = String(pin).replace(/\D/g, '').slice(0, 4);
+          await api(`/api/thing/rooms/${encodeURIComponent(slug)}`, {
+            method: 'PATCH', body: JSON.stringify({ pin_code: clean })
+          });
+          state.room = Object.assign({}, state.room, { pin_required: Boolean(clean) });
+          toast(clean ? 'PIN установлен' : 'PIN снят');
+          render();
+        } catch (e) {
+          toast(friendlyErrorMessage(e, 'Не удалось изменить PIN'), false);
+        }
+        return;
+      }
       if (act === 'rec-start') {
         await api(`/api/thing/rooms/${encodeURIComponent(slug)}/recording/start`, { method: 'POST', body: '{}' });
         state.recording = true;
+        askRecordingConsent(slug);
         toast('Запись началась');
         render();
         return;
@@ -2599,6 +3249,41 @@
             `<div class="ting-chat-bubble me"><b>${esc(displayName)}</b>${esc(text)}</div>`);
           chatList.scrollTop = chatList.scrollHeight;
         } else if (!chatList) render();
+        return;
+      }
+      if (act === 'poll-create') {
+        const raw = window.prompt('Вопрос опроса:', '');
+        if (!raw) return;
+        const optsRaw = window.prompt('Варианты через точку с запятой:', '');
+        if (!optsRaw) return;
+        const options = String(optsRaw).split(';').map(s => s.trim()).filter(Boolean);
+        if (options.length < 2) { toast('Нужно минимум два варианта', false); return; }
+        try {
+          await api(`/api/thing/rooms/${encodeURIComponent(slug)}/polls`, {
+            method: 'POST',
+            body: JSON.stringify({ question: raw, options })
+          });
+          await refreshPolls(slug);
+          toast('Опрос создан');
+          render();
+        } catch (e) {
+          toast(friendlyErrorMessage(e, 'Не удалось создать опрос'), false);
+        }
+        return;
+      }
+      if (act === 'poll-vote') {
+        const pollId = btn.dataset.poll;
+        const opt = parseInt(btn.dataset.opt, 10);
+        try {
+          await api(`/api/thing/rooms/${encodeURIComponent(slug)}/polls/${pollId}/vote`, {
+            method: 'POST',
+            body: JSON.stringify({ choices: [opt] })
+          });
+          await refreshPolls(slug);
+          if (state.view === 'room') render();
+        } catch (e) {
+          toast(friendlyErrorMessage(e, 'Не удалось проголосовать'), false);
+        }
         return;
       }
       if (act === 'host-end-open') { renderHostEnd(); return; }
@@ -2680,18 +3365,30 @@
       root.classList.add('ting-page');
       root.onclick = onClick;
       root.onchange = async (ev) => {
-        const sel = ev.target && ev.target.closest
-          ? ev.target.closest('[data-act="device-audio"],[data-act="device-video"]')
-          : null;
-        if (!sel) return;
-        const id = sel.value;
-        if (!id) return;
-        if (sel.getAttribute('data-act') === 'device-audio') await switchTingDevice('audioinput', id);
-        else await switchTingDevice('videoinput', id);
+        const tgt = ev.target;
+        if (!tgt || !tgt.closest) return;
+        /* Устройства: отдельная логика переподключения трека. */
+        const dev = tgt.closest('[data-act="device-audio"],[data-act="device-video"]');
+        if (dev) {
+          const id = dev.value;
+          if (!id) return;
+          if (dev.getAttribute('data-act') === 'device-audio') await switchTingDevice('audioinput', id);
+          else await switchTingDevice('videoinput', id);
+          return;
+        }
+        /* Настройки комнаты на лету: в WebKit change не всплывает в onclick,
+           поэтому обрабатываем здесь, а не в click (иначе значение не применяется). */
+        const setting = tgt.closest('[data-act="lobby-policy"],[data-act="max-video"],[data-act="conference-mode"],[data-act="forced-layout"]');
+        if (setting) await applyRoomSetting(setting);
       };
       route();
     },
     unmount() {
+      /* Уход со страницы Тинга при живом созвоне → PiP, не disconnect */
+      if (state.lkRoom && !state.intentionalLeave) {
+        parkCallToPip();
+        return;
+      }
       stopPreview();
       stopLiveLoop();
       stopCrmLobbyPoll();
@@ -2700,10 +3397,9 @@
       const keep = sess && typeof sess.isActive === 'function' && sess.isActive();
       if (state.lkRoom) {
         if (keep && sess.getRoom && sess.getRoom() === state.lkRoom) {
-          /* session owned by rail/PiP — do not disconnect */
           if (typeof sess.syncChrome === 'function') sess.syncChrome();
         } else if (keep) {
-          try { sess.adoptRoom(state.lkRoom, { slug: state.room && state.room.slug, title: state.room && state.room.title, identity: state.myIdentity }); } catch (_) {}
+          try { sess.adoptRoom(state.lkRoom, { slug: state.room && state.room.slug, title: roomTitleDisplay(state.room), identity: state.myIdentity }); } catch (_) {}
         } else {
           try { state.lkRoom.disconnect(); } catch (_) { /* */ }
         }
@@ -2731,7 +3427,13 @@
   };
 
   window.addEventListener('hashchange', () => {
-    if ((location.hash || '').indexOf('#/ting') === 0 && root) route();
+    const onTing = (location.hash || '').indexOf('#/ting') === 0;
+    if (!onTing) {
+      /* Уход в другое меню CRM — не рвать созвон, свернуть в PiP */
+      if (root || (state.lkRoom && state.view === 'room')) parkCallToPip();
+      return;
+    }
+    if (root) route();
   });
   window.addEventListener('resize', () => {
     if (state.view === 'room' && root) render();

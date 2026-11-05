@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Тинг Переговорка</title>
+  <style>
+    html, body { margin: 0; height: 100%; background: #0a0c10; color: #f4f6f8;
+      font-family: system-ui, sans-serif; display: grid; place-items: center; }
+    p { opacity: .7; }
+  </style>
+</head>
+<body>
+  <div>
+    <h1>Тинг Переговорка</h1>
+    <p>Загрузка с сервера ASGARD…</p>
+  </div>
+  <script>
+    /* Offline stub — Capacitor server.url normally loads https://asgard-crm.ru/ting-tv/ */
+    setTimeout(function () {
+      if (!window.Capacitor || !window.Capacitor.isNativePlatform || !window.Capacitor.isNativePlatform()) {
+        location.replace('/ting-tv/');
+      }
+    }, 800);
+  </script>
+</body>
+</html>

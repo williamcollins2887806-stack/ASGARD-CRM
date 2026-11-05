@@ -1,0 +1,4 @@
+# Отрендеренные конфиги с прод-секретами (D20). В git только шаблоны ${VAR}.
+*.rendered.yaml
+*.rendered.conf
+thing.env

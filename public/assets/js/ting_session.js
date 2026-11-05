@@ -5,7 +5,8 @@
 (function (global) {
   'use strict';
 
-  const LK_CDN = 'https://cdn.jsdelivr.net/npm/livekit-client@2/dist/livekit-client.umd.min.js';
+  /* D14: та же версия, что страницы (было @2 → дрейф API). D24: локальный ассет. */
+  const LK_CDN = '/assets/vendor/livekit-client.umd.min.js';
   const listeners = new Map();
   let room = null;
   let meta = null; // { slug, title, identity, role, startedAt }

@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Android TV leanback banner 320×180 dp -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item>
+        <shape android:shape="rectangle">
+            <solid android:color="#0A0C10" />
+            <size android:width="320dp" android:height="180dp" />
+        </shape>
+    </item>
+    <item android:left="24dp" android:top="48dp" android:right="24dp" android:bottom="48dp">
+        <shape android:shape="rectangle">
+            <solid android:color="#C8A84E" />
+            <corners android:radius="12dp" />
+        </shape>
+    </item>
+</layer-list>

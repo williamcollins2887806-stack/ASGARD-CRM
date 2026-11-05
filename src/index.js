@@ -339,12 +339,23 @@ fastify.addHook('onRequest', (request, reply, done) => {
     console.log(`[onRequest] ${url}`);
   }
 
+  /* Фаза 1: privacy отдаётся ДО SPA-перехвата /ting/* — иначе ссылка ведёт на встречу. */
+  if (url === '/ting/privacy') {
+    const privacyPath = path.join(__dirname, '../public/ting/privacy.html');
+    try {
+      reply.type('text/html; charset=UTF-8')
+        .header('Cache-Control', 'public, max-age=3600')
+        .send(fs.readFileSync(privacyPath, 'utf8'));
+      return;
+    } catch (_) { /* fallthrough to /ting/ */ }
+  }
+
   // Тинг guest: /ting и /ting/{slug}
   if (url === '/ting') {
     reply.redirect(301, '/ting/');
     return;
   }
-  if (url === '/ting/' || (url.startsWith('/ting/') && !url.match(/\.(js|css|png|jpg|jpeg|gif|svg|ico|woff2?|ttf|eot|webp|json|map)$/i))) {
+  if (url === '/ting/' || (url.startsWith('/ting/') && !url.match(/\.(js|css|png|jpg|jpeg|gif|svg|ico|woff2?|ttf|eot|webp|json|map|webmanifest)$/i))) {
     if (tingHtml) {
       reply.type('text/html')
         .header('Cache-Control', 'no-cache, no-store, must-revalidate, max-age=0')
@@ -352,6 +363,8 @@ fastify.addHook('onRequest', (request, reply, done) => {
       return;
     }
   }
+
+  // Тинг: политика отдана выше, до SPA-перехвата (см. блок перед /ting).
 
   // Тинг TV Переговорка: /ting-tv (Android TV APK / fullscreen)
   if (url === '/ting-tv') {
@@ -1155,6 +1168,44 @@ try {
     }
   });
   fastify.addHook('onClose', async () => { thingWorker.stop(); });
+
+  /* Фаза 1: sweeper — закрывает комнаты, которые «живут» без участников.
+     Q02: без него instant-комнаты висели вечно (room_finished приходил только для Huginn). */
+  const sweepEnabled = process.env.THING_SWEEPER !== '0';
+  fastify.addHook('onReady', async () => {
+    if (!sweepEnabled) {
+      fastify.log.info('[Thing] Sweeper DISABLED (THING_SWEEPER=0)');
+      return;
+    }
+    const lifecycle = require('./services/thing-lifecycle');
+    const run = async () => {
+      try {
+        const r = await lifecycle.sweepStaleRooms(db, { staleMinutes: 20, log: fastify.log });
+        if (r && r.closed && r.closed.length) {
+          fastify.log.info({ closed: r.closed }, '[Thing] sweeper closed stale rooms');
+        }
+      } catch (e) {
+        fastify.log.warn('[Thing] sweeper failed: ' + e.message);
+      }
+      try {
+        const retainDays = parseInt(process.env.THING_RECORDING_RETAIN_DAYS || '90', 10);
+        const rr = await lifecycle.sweepExpiredRecordings(db, { retainDays, log: fastify.log });
+        if (rr && rr.deleted && rr.deleted.length) {
+          fastify.log.info({ deleted: rr.deleted }, '[Thing] retention deleted recordings');
+        }
+      } catch (e) {
+        fastify.log.warn('[Thing] retention sweeper failed: ' + e.message);
+      }
+    };
+    const timer = setInterval(run, 5 * 60 * 1000);
+    if (timer.unref) timer.unref();
+    setTimeout(run, 30 * 1000).unref?.();
+    fastify.decorate('thingSweeper', () => clearInterval(timer));
+    fastify.log.info('[Thing] Stale-room sweeper started (5 min)');
+  });
+  fastify.addHook('onClose', async () => {
+    if (fastify.thingSweeper) fastify.thingSweeper();
+  });
 } catch (thingErr) {
   fastify.log.warn('[Thing] Worker init skipped: ' + thingErr.message);
 }

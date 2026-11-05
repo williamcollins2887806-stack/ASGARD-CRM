@@ -24,7 +24,13 @@ const app = fs.readFileSync(path.join(root, 'public/assets/js/app.js'), 'utf8');
 const index = fs.readFileSync(path.join(root, 'public/index.html'), 'utf8');
 
 check('C01_no_skoro_toast', !/скоро появится|coming soon|заглушк|toast\(['\"]скоро/i.test(tingPage), 'no stub toasts');
-check('C02_livekit_cdn', /livekit-client@2/.test(tingPage) && /room\.connect/.test(tingPage), 'LiveKit connect');
+/* D24: LiveKit теперь self-hosted (/assets/vendor), внешний CDN запрещён.
+   Принимаем либо локальный путь, либо явную зафиксированную версию. */
+check('C02_livekit_cdn',
+  /(\/assets\/vendor\/livekit-client\.umd\.min\.js|livekit-client@2\.\d+\.\d+)/.test(tingPage)
+  && /room\.connect/.test(tingPage)
+  && !/cdn\.jsdelivr\.net\/npm\/livekit/.test(tingPage),
+  'LiveKit connect (self-hosted, без CDN)');
 check('C03_guest_livekit', /room\.connect|LivekitClient/.test(guest), 'guest LiveKit');
 check('C04_lobby_default_off', /lobby_enabled:\s*lobby/.test(tingPage) && /ting-lobby/.test(tingPage) && !/#ting-lobby" checked/.test(tingPage) && !/id="ting-lobby" checked/.test(tingPage), 'lobby checkbox unchecked by default');
 check('C05_no_kick_word', !/\bКик\b|Mute all|toast\(['\"]Kick/i.test(tingPage) && !/>Kick</i.test(tingPage), 'no Kick/Mute all UI anglicisms');
@@ -120,10 +126,10 @@ check('C52_icon_btn_svg_size', /\.ting-icon-btn svg\s*\{[^}]*width:\s*22px/.test
 check('C53_guest_title_and_cam_race',
   /function roomTitleDisplay/.test(guest)
   && /\^вкс\$/.test(guest)
-  && /NotReadable/.test(guest)
-  && guest.indexOf('setCameraEnabled(true)') > -1
-  && guest.indexOf('setCameraEnabled(true)') < guest.lastIndexOf('stopPreview()'),
-  'guest: ВКС→Тинг + cam NotReadable + preview до publish');
+  && /NotReadable|Timeout starting video/.test(guest)
+  && /enableLocalCamera|releasePreviewKeepVideoTrack/.test(guest)
+  && guest.indexOf('enableLocalCamera') > -1,
+  'guest: ВКС→Тинг + cam handoff (preview→publish)');
 check('C54_no_video_controls',
   /v\.controls\s*=\s*false/.test(tingPage)
   && /hardenVideoEl|controls\s*=\s*false/.test(guest)
@@ -150,6 +156,29 @@ check('C58_guest_attach_searches_strip',
   /strip\.querySelector\('\[data-id=/.test(guest)
   && /stage && stage\.querySelector\('\[data-id=/.test(guest),
   'attachTrack finds tiles in stage AND filmstrip');
+check('C59_cam_preview_handoff',
+  /function releasePreviewKeepVideoTrack/.test(tingPage)
+  && /function enableLocalCamera/.test(tingPage)
+  && /Timeout starting video/.test(tingPage)
+  && /withTimeout\(room\.localParticipant\.setCameraEnabled/.test(tingPage),
+  'CRM: preview MST handoff + timeout cam publish');
+check('C60_park_pip_on_nav',
+  /function parkCallToPip/.test(tingPage)
+  && /HuginnTing\.ensurePip/.test(tingPage)
+  && /parkCallToPip\(\)/.test(tingPage)
+  && /hashchange/.test(tingPage),
+  'уход из #/ting → PiP, не leave');
+check('C61_join_end_timeouts',
+  /withTimeout/.test(tingPage)
+  && /joinInFlight/.test(tingPage)
+  && /Сервер не ответил на завершение|disconnect-timeout/.test(tingPage)
+  && /Таймаут подключения к видеосерверу/.test(tingPage),
+  'join UI early + end/disconnect timeouts');
+check('C62_incall_credit_hidden',
+  /html\.ting-incall\s+\.credit|body\.ting-incall\s+\.credit/.test(tingCss)
+  && /overflow:\s*hidden\s*!important/.test(tingCss)
+  && /ting-room-shell[\s\S]*position:\s*fixed/.test(tingCss),
+  'ting-incall hides .credit + fixed room shell');
 
 const fail = checks.filter((c) => !c.pass);
 const md = [

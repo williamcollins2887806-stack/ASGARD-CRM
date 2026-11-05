@@ -53,7 +53,7 @@ async function allocateCodes(db, { maxAttempts = 40 } = {}) {
          EXISTS(SELECT 1 FROM thing_rooms WHERE slug = $1) AS slug_taken,
          EXISTS(
            SELECT 1 FROM thing_rooms
-           WHERE dial_code = $2 AND status IN ('scheduled', 'live')
+           WHERE dial_code = $2 AND status IN ('open', 'scheduled', 'live')
          ) AS dial_taken`,
       [slug, dialCode]
     );

@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Тинг Переговорка — скачать APK</title>
+  <style>
+    :root {
+      --bg: #0a0c10;
+      --card: #12161e;
+      --text: #f2f4f8;
+      --muted: rgba(242, 244, 248, 0.62);
+      --accent: #c8a84e;
+      --line: rgba(255, 255, 255, 0.1);
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      min-height: 100vh;
+      font-family: "Segoe UI", system-ui, sans-serif;
+      color: var(--text);
+      background:
+        radial-gradient(ellipse 70% 50% at 20% 0%, rgba(200, 168, 78, 0.14), transparent 55%),
+        radial-gradient(ellipse 50% 40% at 90% 100%, rgba(74, 144, 217, 0.1), transparent 50%),
+        var(--bg);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 32px 20px;
+    }
+    .card {
+      width: min(640px, 100%);
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 24px;
+      padding: 36px 32px 40px;
+      box-shadow: 0 24px 80px rgba(0, 0, 0, 0.35);
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      margin-bottom: 22px;
+    }
+    .mark {
+      width: 56px; height: 56px; border-radius: 16px;
+      background: linear-gradient(135deg, rgba(200,168,78,.35), rgba(74,144,217,.2));
+      border: 1px solid rgba(200,168,78,.45);
+      display: grid; place-items: center;
+      font-weight: 800; font-size: 22px; color: var(--accent);
+    }
+    .brand strong { display: block; font-size: 20px; }
+    .brand span { color: var(--muted); font-size: 14px; }
+    h1 { font-size: clamp(28px, 4vw, 36px); letter-spacing: -0.03em; margin-bottom: 12px; }
+    p { color: var(--muted); line-height: 1.55; margin-bottom: 18px; font-size: 16px; }
+    .dl {
+      display: flex; align-items: center; justify-content: center; gap: 10px;
+      width: 100%; min-height: 64px; margin: 8px 0 14px;
+      border: none; border-radius: 16px; text-decoration: none;
+      background: linear-gradient(135deg, #c8a84e, #b8943e);
+      color: #0a0a0c; font-size: 18px; font-weight: 800;
+      box-shadow: 0 10px 30px rgba(200, 168, 78, 0.28);
+    }
+    .meta { text-align: center; font-size: 13px; color: var(--muted); margin-bottom: 28px; }
+    .steps { display: grid; gap: 14px; }
+    .step {
+      display: grid; grid-template-columns: 36px 1fr; gap: 12px; align-items: start;
+      padding: 14px 16px; border: 1px solid var(--line); border-radius: 14px;
+      background: rgba(255,255,255,0.02);
+    }
+    .n {
+      width: 36px; height: 36px; border-radius: 50%;
+      display: grid; place-items: center; font-weight: 800;
+      background: rgba(200,168,78,0.15); color: var(--accent);
+    }
+    .step strong { display: block; margin-bottom: 4px; }
+    .step span { color: var(--muted); font-size: 14px; line-height: 1.45; }
+    .links { margin-top: 24px; display: flex; flex-wrap: wrap; gap: 14px; }
+    .links a { color: var(--accent); text-decoration: none; font-weight: 600; }
+  </style>
+</head>
+<body>
+  <main class="card">
+    <div class="brand">
+      <div class="mark">Т</div>
+      <div>
+        <strong>Тинг Переговорка</strong>
+        <span>приложение для Android TV / зала</span>
+      </div>
+    </div>
+    <h1>Скачать APK на телевизор</h1>
+    <p>
+      Откройте эту страницу в браузере телевизора и нажмите кнопку ниже.
+      Установится оболочка зала: ввод кода комнаты и PIN с карточки Тинга в CRM — без логина.
+    </p>
+    <a class="dl" id="dlBtn" href="/asgard-ting-tv.apk" download="asgard-ting-tv.apk">Скачать asgard-ting-tv.apk</a>
+    <div class="meta" id="meta">файл ~3,6 МБ · Android TV / Android 8+</div>
+    <div class="steps">
+      <div class="step">
+        <div class="n">1</div>
+        <div>
+          <strong>Установка</strong>
+          <span>После скачивания откройте файл и разрешите установку из браузера / неизвестных источников.</span>
+        </div>
+      </div>
+      <div class="step">
+        <div class="n">2</div>
+        <div>
+          <strong>Права</strong>
+          <span>Разрешите камеру и микрофон (USB-камера зала, если подключена).</span>
+        </div>
+      </div>
+      <div class="step">
+        <div class="n">3</div>
+        <div>
+          <strong>Вход в созвон</strong>
+          <span>В CRM откройте Тинг → скопируйте код комнаты (и PIN). На ТВ введите их и нажмите «Войти в Тинг». Имя зала — «Зал совещаний».</span>
+        </div>
+      </div>
+    </div>
+    <div class="links">
+      <a href="/ting-tv/">Открыть веб-оболочку зала</a>
+      <a href="/asgard-ting-tv.apk">Прямая ссылка на APK</a>
+    </div>
+  </main>
+  <script>
+    fetch('/asgard-ting-tv.apk', { method: 'HEAD' }).then(function (r) {
+      var el = document.getElementById('meta');
+      if (!r.ok) {
+        el.textContent = 'APK пока недоступен на сервере — обновите страницу позже';
+        return;
+      }
+      var len = Number(r.headers.get('content-length') || 0);
+      var type = (r.headers.get('content-type') || '').toLowerCase();
+      if (type.indexOf('html') !== -1 || len < 100000) {
+        el.textContent = 'На сервере ещё не тот файл APK — напишите в поддержку CRM';
+        return;
+      }
+      el.textContent = 'файл ~' + (len / 1048576).toFixed(1).replace('.', ',') + ' МБ · Android TV / Android 8+';
+    }).catch(function () {});
+  </script>
+</body>
+</html>

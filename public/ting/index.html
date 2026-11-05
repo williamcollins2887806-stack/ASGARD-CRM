@@ -4,6 +4,12 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no" />
   <title>Тинг</title>
+  <!-- T29: гостевая страница устанавливается как PWA (без native-приложения на первом рынке) -->
+  <link rel="manifest" href="/ting/manifest.webmanifest" />
+  <meta name="theme-color" content="#0a0c10" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Тинг" />
   <script>
     try {
       var t = localStorage.getItem('asgard_theme');
@@ -42,7 +48,7 @@
       backdrop-filter: blur(12px);
     }
   </style>
-  <script src="https://cdn.jsdelivr.net/npm/livekit-client@2.9.1/dist/livekit-client.umd.min.js"></script>
+  <script src="/assets/vendor/livekit-client.umd.min.js"></script>
   <script src="/assets/js/ting_icons.js"></script>
   <script src="/assets/js/ting_common.js"></script>
   <script src="/assets/js/ting_room_core.js"></script>
@@ -76,6 +82,13 @@
           <input class="ting-field" id="pin" inputmode="numeric" maxlength="4" placeholder="••••" />
         </div>
         <button type="button" class="ting-btn ting-btn-primary ting-full-btn" id="join">Войти</button>
+        <!-- R01/R03: юридический контур гостя. Раньше на странице не было ни слова
+             про персональные данные и согласие на запись. -->
+        <p class="ting-legal">
+          Входя во встречу, вы соглашаетесь на обработку персональных данных (152-ФЗ)
+          в объёме, необходимом для связи, и уведомлены, что встреча может записываться.
+          <a href="/ting/privacy" target="_blank" rel="noopener">Политика обработки</a>
+        </p>
         <div id="msg"></div>
       </div>
     </div>
@@ -276,6 +289,20 @@
       const previewAvatar = document.getElementById('previewAvatar');
       const peopleDrawer = document.getElementById('peopleDrawer');
       let room = null;
+      /* D4: устойчивый ключ гостя, чтобы кик нельзя было обойти перезагрузкой.
+         Живёт в localStorage: смена страницы/обновление ключ не меняет. */
+      function guestKey() {
+        try {
+          var k = localStorage.getItem('ting_guest_key');
+          if (!k) {
+            k = 'g_' + Math.random().toString(36).slice(2) + Date.now().toString(36);
+            localStorage.setItem('ting_guest_key', k);
+          }
+          return k;
+        } catch (e) {
+          return 'g_anon';
+        }
+      }
       let localAudio = true;
       let localVideo = true;
       let previewStream = null;
@@ -365,6 +392,78 @@
           previewStream = null;
         }
         if (previewVideo) previewVideo.srcObject = null;
+      }
+      function releasePreviewKeepVideoTrack() {
+        var stream = previewStream;
+        if (previewVideo) {
+          try { previewVideo.srcObject = null; } catch (_) { /* */ }
+          previewVideo.hidden = true;
+        }
+        var videoTrack = null;
+        if (stream) {
+          stream.getAudioTracks().forEach(function (t) { try { t.stop(); } catch (_) { /* */ } });
+          videoTrack = stream.getVideoTracks()[0] || null;
+          previewStream = null;
+        }
+        return videoTrack && videoTrack.readyState === 'live' ? videoTrack : null;
+      }
+      function withTimeout(promise, ms, label) {
+        var t = null;
+        return Promise.race([
+          promise,
+          new Promise(function (_, rej) {
+            t = setTimeout(function () { rej(new Error(label || 'timeout')); }, ms);
+          })
+        ]).finally(function () { if (t) clearTimeout(t); });
+      }
+      async function enableLocalCamera(lkRoom) {
+        var LK = window.LivekitClient;
+        var busyRe = /NotReadable|Device in use|Could not start|AbortError|Permission|Timeout starting video|Timed out|Overconstrained/i;
+        async function tryPublishMst(mst) {
+          if (!mst || !LK || mst.readyState !== 'live') return false;
+          try { if (mst.muted) mst.enabled = true; } catch (_) { /* */ }
+          var localTrack = null;
+          try {
+            if (LK.LocalVideoTrack && typeof LK.LocalVideoTrack.createFromMediaStreamTrack === 'function') {
+              localTrack = LK.LocalVideoTrack.createFromMediaStreamTrack(mst);
+            } else if (LK.LocalVideoTrack) {
+              localTrack = new LK.LocalVideoTrack(mst);
+            }
+          } catch (_) { localTrack = null; }
+          if (!localTrack) return false;
+          var opts = {};
+          try {
+            if (LK.Track && LK.Track.Source) opts.source = LK.Track.Source.Camera;
+          } catch (_) { /* */ }
+          await withTimeout(lkRoom.localParticipant.publishTrack(localTrack, opts), 8000, 'Timeout starting video source');
+          return true;
+        }
+        var mst = releasePreviewKeepVideoTrack();
+        if (mst) {
+          try {
+            if (await tryPublishMst(mst)) return true;
+          } catch (e) {
+            console.warn('[Ting guest] publish preview', e);
+          }
+          try { mst.stop(); } catch (_) { /* */ }
+        } else {
+          stopPreview();
+        }
+        await new Promise(function (r) { setTimeout(r, 450); });
+        var lastErr = null;
+        for (var i = 0; i < 3; i++) {
+          try {
+            await withTimeout(lkRoom.localParticipant.setCameraEnabled(true), 9000, 'Timeout starting video source');
+            return true;
+          } catch (e) {
+            lastErr = e;
+            var msg = String((e && e.message) || e || '');
+            if (!busyRe.test(msg) || i === 2) break;
+            await new Promise(function (r) { setTimeout(r, 400 + i * 250); });
+          }
+        }
+        if (lastErr) throw lastErr;
+        return false;
       }
 
       if (!slug) {
@@ -485,7 +584,7 @@
           return guestTrackProcessors;
         }
         try {
-          guestTrackProcessors = await import('https://cdn.jsdelivr.net/npm/@livekit/track-processors@0.3.4/+esm');
+          guestTrackProcessors = await import('/assets/vendor/livekit-track-processors.esm.js');
           window.LivekitTrackProcessors = guestTrackProcessors;
           return guestTrackProcessors;
         } catch (_) {
@@ -699,11 +798,16 @@
         guestToast._t = setTimeout(function () { toast.classList.add('hidden'); }, 4200);
       }
 
+      /**
+       * D7: плашка включалась по конфигу комнаты (recording_mode !== 'off'),
+       * то есть при manual/auto гость видел «Идёт запись», даже когда записи нет.
+       * Теперь состояние приходит с сервера по факту (recording_active).
+       */
+      let recordingActive = false;
       function syncRecConsent() {
         var el = document.getElementById('recConsent');
         if (!el) return;
-        var on = recordingMode && recordingMode !== 'off';
-        el.classList.toggle('hidden', !on);
+        el.classList.toggle('hidden', !recordingActive);
       }
 
       document.getElementById('waitLeave').addEventListener('click', async function () {
@@ -744,6 +848,8 @@
           titleEl.textContent = dispTitle;
           document.getElementById('roomTitle').textContent = dispTitle;
           recordingMode = res.j.recording_mode || 'off';
+          /* D7: показываем плашку только по факту записи, а не по конфигу. */
+          recordingActive = Boolean(res.j.recording_active);
           syncRecConsent();
           if (res.j.status === 'ended' || res.j.status === 'cancelled') {
             document.getElementById('endedMeta').textContent = dispTitle || 'Комната закрыта';
@@ -885,9 +991,12 @@
         pollId = setInterval(async function () {
           if (enterBusy) return;
           try {
-            const r = await fetch('/api/thing/public/' + encodeURIComponent(slug) +
-              '/lobby-status?identity=' + encodeURIComponent(identity) +
-              '&join_token=' + encodeURIComponent(joinToken || ''));
+            /* D5: join_token в теле, не в query (не течёт в логи/Referer). */
+            const r = await fetch('/api/thing/public/' + encodeURIComponent(slug) + '/lobby-status', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ identity: identity, join_token: joinToken || '' })
+            });
             const j = await r.json();
             if (j.lobby_status === 'ended' || j.lobby_status === 'left') {
               clearInterval(pollId); pollId = null;
@@ -938,9 +1047,12 @@
         var failToastAt = 0;
         async function pull() {
           try {
-            const r = await fetch('/api/thing/public/' + encodeURIComponent(slug) +
-              '/chat?identity=' + encodeURIComponent(guestIdentity) +
-              '&join_token=' + encodeURIComponent(joinToken));
+            /* D5: токен в заголовке, а не в query. */
+            const r = await fetch('/api/thing/public/' + encodeURIComponent(slug) + '/chat/list', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ identity: guestIdentity, join_token: joinToken })
+            });
             if (!r.ok) {
               if (Date.now() - failToastAt > 8000) {
                 failToastAt = Date.now();
@@ -1153,19 +1265,20 @@
           await next.localParticipant.setMicrophoneEnabled(localAudio);
           if (localVideo) {
             try {
-              await next.localParticipant.setCameraEnabled(true);
+              await enableLocalCamera(next);
             } catch (camErr) {
               var camMsg = String((camErr && camErr.message) || camErr || '');
-              var busy = /NotReadable|Device in use|Could not start|AbortError|Permission/i.test(camMsg);
+              var busy = /NotReadable|Device in use|Could not start|AbortError|Permission|Timeout starting video|Timed out/i.test(camMsg);
               guestToast(busy
-                ? 'Камера занята или недоступна. Закройте другие приложения и включите камеру снова.'
-                : ('Камера: ' + (camMsg || 'не удалось включить')));
+                ? 'Камера занята или не успела включиться. Закройте другие приложения и включите камеру снова.'
+                : 'Камера не включилась. Нажмите кнопку камеры ещё раз.');
               localVideo = false;
+              stopPreview();
             }
           } else {
+            stopPreview();
             await next.localParticipant.setCameraEnabled(false);
           }
-          stopPreview();
           next.localParticipant.videoTrackPublications.forEach(function (pub) {
             if (pub.track) attachTrack(pub.track, 'me', 'Вы', false);
           });
@@ -1198,7 +1311,7 @@
         fetch('/api/thing/public/' + encodeURIComponent(slug) + '/guest-token', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name: guestName, pin: pin || undefined })
+          body: JSON.stringify({ name: guestName, pin: pin || undefined, guest_key: guestKey() })
         })
           .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, status: r.status, j: j }; }); })
           .then(async function (res) {
@@ -1241,8 +1354,19 @@
       });
       document.getElementById('btnCam').addEventListener('click', async function () {
         if (!room) return;
-        localVideo = !localVideo;
-        await room.localParticipant.setCameraEnabled(localVideo);
+        var want = !localVideo;
+        try {
+          if (want) {
+            await enableLocalCamera(room);
+            localVideo = true;
+          } else {
+            await room.localParticipant.setCameraEnabled(false);
+            localVideo = false;
+          }
+        } catch (e) {
+          localVideo = false;
+          guestToast('Камера не включилась. Закройте другие приложения и попробуйте снова.');
+        }
         this.classList.toggle('off', !localVideo);
         this.classList.toggle('active', localVideo);
         this.innerHTML = (I.cam && I.cam(!localVideo)) || '';

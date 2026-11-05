@@ -135,6 +135,18 @@ async function handleTranscribe(db, job, log) {
   if (!speech.isConfigured()) {
     throw new Error('SpeechKit не настроен');
   }
+  /* При S3-записи file_path = s3://… — локального файла нет, STT по нему невозможен.
+     Честно пропускаем, а не падаем с «файл не готов». */
+  if (rec.file_path && /^s3:\/\//.test(String(rec.file_path))) {
+    await db.query(
+      `UPDATE thing_recordings SET transcript_status = 'failed',
+              protocol_status = 'skipped', protocol_error = 'S3-запись: расшифровка требует локального файла',
+              updated_at = NOW()
+        WHERE id = $1`,
+      [recId]
+    );
+    return { protocol: 'skipped', reason: 's3_requires_download' };
+  }
   if (!rec.file_path || !fs.existsSync(rec.file_path)) {
     throw new Error('Файл записи ещё не готов: ' + (rec.file_path || 'null'));
   }
@@ -335,6 +347,8 @@ function createThingWorker(db, log = console) {
     busy = true;
     try {
       const { rows } = await db.query(
+        /* D17: без SKIP LOCKED два инстанса брали один job → двойная расшифровка
+           и двойной протокол (деньги + мусор в БД). */
         `UPDATE thing_jobs
          SET status = 'processing', started_at = NOW(), attempts = attempts + 1
          WHERE id = (
@@ -342,6 +356,7 @@ function createThingWorker(db, log = console) {
            WHERE status IN ('pending', 'retry') AND scheduled_at <= NOW()
            ORDER BY id
            LIMIT 1
+           FOR UPDATE SKIP LOCKED
          )
          RETURNING *`
       );

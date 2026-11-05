@@ -1,13 +1,21 @@
-# LiveKit SIP — dial-in bridge for Asterisk (port 5066, Asterisk keeps 5060)
-api_key: REPLACE_KEY
-api_secret: REPLACE_SECRET
+# LiveKit SIP — dial-in bridge for Asterisk
+#
+# ПОРТЫ: SIP слушает 5066 (Asterisk держит 5060).
+# RTP: 40000+ — НЕ пересекается с Asterisk 10000-20000 и coturn relay 30000-39900.
+#   Раньше стоял rtp_port: 10000 (один порт!) — конфликт с Asterisk на первом звонке
+#   и невозможность второго одновременного.
+#
+# D20: секреты из /etc/asgard-crm/thing.env через envsubst, не в git.
+
+api_key: ${LIVEKIT_API_KEY}
+api_secret: ${LIVEKIT_API_SECRET}
 ws_url: ws://127.0.0.1:7880
 redis:
+  # тот же порт, что публикует docker-compose (6382), и та же db, что у livekit/egress
   address: 127.0.0.1:6382
-  db: 0
+  db: 2
 sip_port: 5066
-rtp_port: 10000
-# NOTE: LiveKit SIP RTP default may conflict — set high range via env if needed
+rtp_port: 40000
 use_external_ip: true
 logging:
   level: info

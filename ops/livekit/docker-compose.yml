@@ -1,53 +1,74 @@
 # ASGARD Тинг — LiveKit stack
-# UDP: Asterisk RTP 10000-20000; coturn relay 30000-39900;
-# LiveKit SIP RTP 40000+; LiveKit RTC 50000-60000
-# coturn listening: UDP 3478
+#
+# СЕТЬ (не пересекать):
+#   Asterisk RTP        10000-20000
+#   coturn relay        30000-39900
+#   LiveKit SIP RTP     40000-49900
+#   LiveKit RTC         50000-60000
+#   coturn TURN         3478/udp, 5349/tcp (TLS)
+#
+# ВЕРСИИ ЗАФИКСИРОВАНЫ (D21). Теги проверены в Docker Hub:
+#   livekit-server v1.13.11 (нужен >=1.13.5 для StartEgress)
+#   egress         v1.15.0  (нужен >=1.15.0: фикс рассинхрона A/V)
+#   sip            v1.23.0
+#   coturn         4.6.3-r3
+# Плавающий :latest — «однажды утром запись перестала». Обновлять осознанно + smoke записи.
+#
+# REDIS: единственный экземпляр ниже публикуется на 127.0.0.1:6382.
+# ВСЕ конфиги (livekit/egress/sip) должны смотреть на 6382 и одну и ту же db.
+#
+# СЕКРЕТЫ (D20): не в git. Файлы рендерятся envsubst из /etc/asgard-crm/thing.env.
 
 services:
   livekit-redis:
-    image: redis:7-alpine
+    image: redis:7.4-alpine
     restart: unless-stopped
     ports:
       - "127.0.0.1:6382:6379"
     command: ["redis-server", "--save", "", "--appendonly", "no"]
 
   livekit:
-    image: livekit/livekit-server:latest
+    image: livekit/livekit-server:${LIVEKIT_SERVER_TAG:-v1.13.11}
     restart: unless-stopped
     depends_on:
       - livekit-redis
     network_mode: host
     volumes:
-      - ./livekit.yaml:/etc/livekit.yaml:ro
+      - ./livekit.rendered.yaml:/etc/livekit.yaml:ro
     command: ["--config", "/etc/livekit.yaml"]
 
   coturn:
-    image: coturn/coturn:latest
+    image: coturn/coturn:4.6.3-r3
     restart: unless-stopped
-    # host networking: нужен для relay UDP 40000-49900 без проброса тысяч портов
+    # host networking: нужен для relay UDP 30000-39900 без проброса тысяч портов
     network_mode: host
     volumes:
-      - ./turnserver.conf:/etc/coturn/turnserver.conf:ro
-    # альтернатива без host: ports "3478:3478/udp" + "40000-49900:40000-49900/udp"
+      - ./turnserver.rendered.conf:/etc/coturn/turnserver.conf:ro
+      - /etc/letsencrypt:/etc/letsencrypt:ro
     command: ["-c", "/etc/coturn/turnserver.conf"]
 
   livekit-egress:
-    image: livekit/egress:latest
+    image: livekit/egress:${LIVEKIT_EGRESS_TAG:-v1.15.0}
     restart: unless-stopped
     network_mode: host
+    # RoomComposite egress ест 2-6 CPU. Бюджет = cpus × max_cpu_utilization;
+    # при 4 × 0.8 = 3.2 < room_composite_cpu_cost(4) вторая запись не запустится.
+    # Поэтому cpus: 6 → бюджет 4.8: одна запись гарантированно, вторая — при простое.
+    cpus: 6
+    mem_limit: 6g
     environment:
       EGRESS_CONFIG_FILE: /etc/egress.yaml
     volumes:
-      - ./egress.yaml:/etc/egress.yaml:ro
+      - ./egress.rendered.yaml:/etc/egress.yaml:ro
       - /var/lib/asgard-thing/recordings:/var/lib/asgard-thing/recordings
 
   livekit-sip:
-    image: livekit/sip:latest
+    image: livekit/sip:${LIVEKIT_SIP_TAG:-v1.23.0}
     restart: unless-stopped
     network_mode: host
     depends_on:
       - livekit
       - livekit-redis
     volumes:
-      - ./sip.yaml:/etc/sip.yaml:ro
+      - ./sip.rendered.yaml:/etc/sip.yaml:ro
     command: ["--config", "/etc/sip.yaml"]

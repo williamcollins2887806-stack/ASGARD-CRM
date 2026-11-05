@@ -1,5 +1,13 @@
 # LiveKit config for ASGARD Тинг
 # UDP RTC MUST NOT overlap Asterisk 10000-20000
+#
+# Секреты НЕ в git (D20): подставляются envsubst из /etc/asgard-crm/thing.env.
+#
+# ВАЖНО: поля turn_servers[].secret / .ttl появились только в livekit-server >= 1.9.10,
+# а strict-парсер (по умолчанию) отвергает неизвестные поля. Поэтому:
+#   - используем тег v1.13.11 (см. docker-compose.yml), где поля поддерживаются;
+#   - если откатываемся на более старую версию — убрать secret/ttl или добавить
+#     --disable-strict-config в command (не рекомендуется: скроет опечатки в конфиге).
 
 port: 7880
 bind_addresses:
@@ -10,22 +18,28 @@ rtc:
   port_range_start: 50000
   port_range_end: 60000
   use_external_ip: true
-  # External coturn (см. turnserver.conf). Ключ по LiveKit config-sample: rtc.turn_servers
-  # PLACEHOLDER: host/secret = TURN_HOST / TURN_SECRET из thing.env
+  # External coturn. Без TLS/443 гости из корпоративных сетей не подключатся (Q03).
   turn_servers:
-    - host: asgard-crm.ru
+    - host: ${TURN_HOST}
       port: 3478
       protocol: udp
-      secret: CHANGE_ME_TURN_SECRET
+      secret: ${TURN_SECRET}
+      ttl: 14400
+    - host: ${TURN_HOST}
+      port: 5349
+      protocol: tls
+      secret: ${TURN_SECRET}
       ttl: 14400
 
+# REDIS: контейнер публикует 6382 — здесь должен быть тот же порт и та же db,
+# что в egress.yaml и sip.yaml. Иначе нода SFU и воркеры не видят друг друга.
 redis:
-  address: 127.0.0.1:6379
+  address: 127.0.0.1:6382
   db: 2
 
-# keys: заменить на прод-секреты из /etc/asgard-crm/thing.env
+# keys: прод-секреты из /etc/asgard-crm/thing.env (D20)
 keys:
-  APItingdevkey: ting_dev_secret_change_me
+  ${LIVEKIT_API_KEY}: ${LIVEKIT_API_SECRET}
 
 logging:
   level: info
@@ -34,15 +48,10 @@ room:
   empty_timeout: 300
   max_participants: 50
 
-# Huginn 1:1 call hygiene — ENABLED on prod (applied to
-# /opt/asgard-livekit/livekit.yaml on 2026-10-07, verified: LiveKit logs
-# "sent webhook" for room_started/room_finished with 200 OK).
-#
-# `api_key` must be one of the keys above (the app verifies the signature with
-# LIVEKIT_API_KEY + LIVEKIT_WEBHOOK_SECRET || LIVEKIT_API_SECRET).
-# The path is public and signature-only: no secret -> 503, wrong content-type
-# -> 415, bad signature -> 401.
+# Webhook: два получателя — Huginn (1:1 звонки) и Тинг (комнаты).
+# Q01: раньше Тинг не получал room_finished → комнаты «жили» вечно.
 webhook:
-  api_key: APItingdevkey
+  api_key: ${LIVEKIT_API_KEY}
   urls:
     - https://asgard-crm.ru/api/chat-groups/calls/webhook
+    - https://asgard-crm.ru/api/thing/livekit/webhook

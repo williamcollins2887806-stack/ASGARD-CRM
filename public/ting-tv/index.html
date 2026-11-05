@@ -1,0 +1,860 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="ting-tv" content="1" />
+  <title>Тинг Переговорка</title>
+  <link rel="stylesheet" href="/assets/css/design-tokens.css" />
+  <link rel="stylesheet" href="/assets/css/ting.css" />
+  <link rel="stylesheet" href="/assets/css/ting-tv.css" />
+  <script src="/assets/vendor/livekit-client.umd.min.js"></script>
+  <script src="/assets/js/ting_icons.js"></script>
+  <script src="/assets/js/ting_common.js"></script>
+  <script src="/assets/js/ting_room_core.js"></script>
+</head>
+<body class="ting-tv">
+  <div class="ttv-screen" id="startView">
+    <div class="ttv-card">
+      <div class="ttv-brand">
+        <div class="ttv-brand-left">
+          <div class="ttv-logo-mark" id="startLogo"></div>
+          <div>
+            <strong>Тинг</strong>
+            <span>переговорная ASGARD</span>
+          </div>
+        </div>
+        <span class="ttv-chip">зал</span>
+      </div>
+      <h1 class="ttv-h1">Войти в совещание</h1>
+      <p class="ttv-muted">Код комнаты с карточки Тинга. Имя зала фиксированное — без логина CRM.</p>
+      <div class="ttv-grid">
+        <div>
+          <div class="ttv-preview" id="previewBox">
+            <video id="previewVideo" playsinline muted autoplay hidden></video>
+            <div class="ttv-avatar" id="previewAvatar">ЗС</div>
+            <div class="ttv-pre-dock">
+              <button type="button" class="ttv-dock-btn active" id="preMic" title="Микрофон" aria-label="Микрофон"></button>
+              <button type="button" class="ttv-dock-btn active" id="preCam" title="Камера" aria-label="Камера"></button>
+            </div>
+          </div>
+          <label class="ttv-field-label" for="roomCode">Код комнаты</label>
+          <input class="ttv-field" id="roomCode" autocomplete="off" spellcheck="false" placeholder="например k7m2qx" />
+          <label class="ttv-field-label" for="roomPin">PIN (если нужен)</label>
+          <input class="ttv-field" id="roomPin" inputmode="numeric" maxlength="8" placeholder="••••" />
+          <label class="ttv-field-label" for="roomName">Имя в созвоне</label>
+          <input class="ttv-field" id="roomName" maxlength="80" />
+          <div class="ttv-actions">
+            <button type="button" class="ttv-btn" id="btnJoin">Войти в Тинг</button>
+            <button type="button" class="ttv-btn ghost" id="btnRefreshDevices">Камера / микрофон</button>
+          </div>
+          <div class="ttv-msg" id="startMsg" role="status"></div>
+          <div class="ttv-settings">
+            <button type="button" class="ttv-settings-btn" id="btnSaveName">Сохранить имя зала</button>
+            <label class="ttv-field-label" for="camSelect" style="margin-top:14px">Камера</label>
+            <select class="ttv-field" id="camSelect" style="height:52px;font-size:16px"></select>
+            <label class="ttv-field-label" for="micSelect">Микрофон</label>
+            <select class="ttv-field" id="micSelect" style="height:52px;font-size:16px"></select>
+          </div>
+        </div>
+        <div class="ttv-qr-wrap">
+          <img id="qrImg" alt="QR для телефонов" width="220" height="220" />
+          <p id="qrHint">Введите код — появится QR для гостей с телефона</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="ttv-screen hidden" id="waitView">
+    <div class="ttv-card" style="max-width:560px;text-align:center">
+      <div class="ttv-wait-pulse" id="waitLogo"></div>
+      <h1 class="ttv-h1">Почти внутри</h1>
+      <p class="ttv-muted">Организатор пустит зал в комнату. Не выключайте приложение.</p>
+      <div class="ttv-actions" style="justify-content:center;margin-top:24px">
+        <button type="button" class="ttv-btn ghost" id="btnWaitLeave">Выйти</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="ttv-screen hidden" id="endedView">
+    <div class="ttv-card" style="max-width:560px;text-align:center">
+      <h1 class="ttv-h1">Тинг завершён</h1>
+      <p class="ttv-muted" id="endedMeta">Комната закрыта</p>
+      <div class="ttv-actions" style="justify-content:center;margin-top:24px">
+        <button type="button" class="ttv-btn" id="btnEndedBack">На старт</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="ttv-room hidden" id="roomView">
+    <div class="ttv-room-top">
+      <div class="ttv-room-title">
+        <div class="ttv-logo-mark" style="width:40px;height:40px;border-radius:12px" id="roomLogo"></div>
+        <div>
+          <strong id="roomTitle">Тинг</strong>
+          <div class="ttv-muted" id="roomTimer">00:00</div>
+        </div>
+      </div>
+      <div class="ttv-actions">
+        <button type="button" class="ttv-btn ghost" id="btnPeople" style="min-height:48px;font-size:16px">Участники</button>
+      </div>
+    </div>
+    <div class="ttv-stage-wrap">
+      <div class="ttv-stage g1" id="stage"></div>
+      <div class="ttv-filmstrip hidden" id="filmstrip"></div>
+      <div class="ttv-people hidden" id="peopleDrawer">
+        <h3>Участники</h3>
+        <div id="peopleList"></div>
+      </div>
+    </div>
+    <div class="ttv-dock">
+      <div class="ttv-dock-inner">
+        <button type="button" class="ttv-dock-btn" id="btnMic" title="Микрофон" aria-label="Микрофон"></button>
+        <button type="button" class="ttv-dock-btn" id="btnCam" title="Камера" aria-label="Камера"></button>
+        <button type="button" class="ttv-dock-btn" id="btnPeopleDock" title="Участники" aria-label="Участники"></button>
+        <button type="button" class="ttv-dock-btn danger" id="btnLeave" title="Выйти" aria-label="Выйти"></button>
+      </div>
+    </div>
+  </div>
+
+  <div id="ttvToast" class="ttv-toast hidden" role="status" aria-live="polite"></div>
+
+  <script>
+(function () {
+  'use strict';
+  var I = window.TingIcons || {};
+  var Core = window.TingRoomCore || {};
+  var PREF_NAME = 'ting_tv_room_name';
+  var PREF_SLUG = 'ting_tv_last_slug';
+  var PREF_CAM = 'ting_tv_cam_id';
+  var PREF_MIC = 'ting_tv_mic_id';
+  var DEFAULT_NAME = 'Зал совещаний';
+
+  /* D4: устойчивый ключ зала — кик не обходится перезагрузкой приложения. */
+  function guestKey() {
+    try {
+      var k = localStorage.getItem('ting_guest_key');
+      if (!k) {
+        k = 'g_' + Math.random().toString(36).slice(2) + Date.now().toString(36);
+        localStorage.setItem('ting_guest_key', k);
+      }
+      return k;
+    } catch (e) {
+      return 'g_anon';
+    }
+  }
+
+  var state = {
+    view: 'start',
+    slug: '',
+    pin: '',
+    displayName: DEFAULT_NAME,
+    micOn: true,
+    camOn: true,
+    previewStream: null,
+    room: null,
+    identity: null,
+    joinToken: null,
+    lobbyPoll: null,
+    timerId: null,
+    timerSec: 0,
+    intentionalLeave: false,
+    peopleOpen: false,
+    activeSpeakerId: null,
+    camDeviceId: localStorage.getItem(PREF_CAM) || '',
+    micDeviceId: localStorage.getItem(PREF_MIC) || ''
+  };
+
+  function qs(id) { return document.getElementById(id); }
+  function toast(msg) {
+    var el = qs('ttvToast');
+    if (!el) return;
+    el.textContent = String(msg || '');
+    el.classList.remove('hidden');
+    clearTimeout(el._t);
+    el._t = setTimeout(function () { el.classList.add('hidden'); }, 3200);
+  }
+  function prefsGet(key) {
+    return new Promise(function (resolve) {
+      try {
+        if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.Preferences) {
+          window.Capacitor.Plugins.Preferences.get({ key: key }).then(function (r) {
+            resolve((r && r.value) || null);
+          }).catch(function () { resolve(localStorage.getItem(key)); });
+          return;
+        }
+      } catch (_) { /* */ }
+      try { resolve(localStorage.getItem(key)); } catch (__){ resolve(null); }
+    });
+  }
+  function prefsSet(key, value) {
+    try { localStorage.setItem(key, value); } catch (_) { /* */ }
+    try {
+      if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.Preferences) {
+        window.Capacitor.Plugins.Preferences.set({ key: key, value: String(value || '') });
+      }
+    } catch (_) { /* */ }
+  }
+  function loadName() {
+    return prefsGet(PREF_NAME).then(function (n) {
+      if (n && String(n).trim()) state.displayName = String(n).trim().slice(0, 80);
+      if (qs('roomName')) qs('roomName').value = state.displayName;
+      syncPreviewAvatar();
+    });
+  }
+  function saveName() {
+    state.displayName = String(qs('roomName').value || DEFAULT_NAME).trim().slice(0, 80) || DEFAULT_NAME;
+    prefsSet(PREF_NAME, state.displayName);
+    toast('Имя зала сохранено');
+    syncPreviewAvatar();
+  }
+  function initials(name) {
+    if (window.TingCommon && TingCommon.initials) return TingCommon.initials(name);
+    var p = String(name || '?').trim().split(/\s+/).slice(0, 2);
+    return p.map(function (s) { return s[0] ? s[0].toUpperCase() : ''; }).join('') || '?';
+  }
+  function stageGridClass(n) {
+    var c = Math.max(1, Math.min(10, Number(n) || 1));
+    return 'g' + c;
+  }
+  function fmtTime(sec) {
+    var s = Math.max(0, sec | 0);
+    var m = Math.floor(s / 60);
+    var r = s % 60;
+    return String(m).padStart(2, '0') + ':' + String(r).padStart(2, '0');
+  }
+  function show(view) {
+    state.view = view;
+    ['startView', 'waitView', 'endedView', 'roomView'].forEach(function (id) {
+      var el = qs(id);
+      if (!el) return;
+      var on = (id === view + 'View') || (view === 'start' && id === 'startView')
+        || (view === 'wait' && id === 'waitView')
+        || (view === 'ended' && id === 'endedView')
+        || (view === 'room' && id === 'roomView');
+      el.classList.toggle('hidden', !on);
+    });
+  }
+  function paintIcons() {
+    var map = [
+      ['startLogo', I.logoMark], ['waitLogo', I.logoMark], ['roomLogo', I.logoMark],
+      ['preMic', function () { return I.mic && I.mic(!state.micOn); }],
+      ['preCam', function () { return I.cam && I.cam(!state.camOn); }],
+      ['btnMic', function () { return I.mic && I.mic(!state.micOn); }],
+      ['btnCam', function () { return I.cam && I.cam(!state.camOn); }],
+      ['btnPeopleDock', I.people],
+      ['btnLeave', I.hang]
+    ];
+    map.forEach(function (pair) {
+      var el = qs(pair[0]);
+      if (el && typeof pair[1] === 'function') el.innerHTML = pair[1]() || '';
+    });
+  }
+  function syncPreviewAvatar() {
+    var av = qs('previewAvatar');
+    if (av) av.textContent = initials(state.displayName);
+  }
+  function updateQr() {
+    var code = String(qs('roomCode').value || '').trim().toLowerCase();
+    var img = qs('qrImg');
+    var hint = qs('qrHint');
+    if (!code) {
+      if (img) img.removeAttribute('src');
+      if (hint) hint.textContent = 'Введите код — появится QR для гостей с телефона';
+      return;
+    }
+    var url = location.origin + '/ting/' + encodeURIComponent(code);
+    if (img) img.src = '/api/thing/qr?size=220&data=' + encodeURIComponent(url);
+    if (hint) hint.textContent = url;
+  }
+
+  function withTimeout(promise, ms, label) {
+    var t = null;
+    return Promise.race([
+      promise,
+      new Promise(function (_, rej) {
+        t = setTimeout(function () { rej(new Error(label || 'timeout')); }, ms);
+      })
+    ]).finally(function () { if (t) clearTimeout(t); });
+  }
+
+  function stopPreview() {
+    if (state.previewStream) {
+      state.previewStream.getTracks().forEach(function (tr) { try { tr.stop(); } catch (_) { /* */ } });
+      state.previewStream = null;
+    }
+    var v = qs('previewVideo');
+    if (v) { try { v.srcObject = null; } catch (_) { /* */ } v.hidden = true; }
+    var av = qs('previewAvatar');
+    if (av) av.style.display = 'grid';
+  }
+
+  function releasePreviewKeepVideoTrack() {
+    var stream = state.previewStream;
+    var v = qs('previewVideo');
+    if (v) { try { v.srcObject = null; } catch (_) { /* */ } v.hidden = true; }
+    var videoTrack = null;
+    if (stream) {
+      stream.getAudioTracks().forEach(function (tr) { try { tr.stop(); } catch (_) { /* */ } });
+      videoTrack = stream.getVideoTracks()[0] || null;
+      state.previewStream = null;
+    }
+    return videoTrack && videoTrack.readyState === 'live' ? videoTrack : null;
+  }
+
+  async function enableLocalCamera(lkRoom) {
+    var LK = window.LivekitClient;
+    var busyRe = /NotReadable|Device in use|Could not start|AbortError|Permission|Timeout starting video|Timed out|Overconstrained/i;
+    async function tryPublishMst(mst) {
+      if (!mst || !LK || mst.readyState !== 'live') return false;
+      try { if (mst.muted) mst.enabled = true; } catch (_) { /* */ }
+      var localTrack = null;
+      try {
+        if (LK.LocalVideoTrack && typeof LK.LocalVideoTrack.createFromMediaStreamTrack === 'function') {
+          localTrack = LK.LocalVideoTrack.createFromMediaStreamTrack(mst);
+        } else if (LK.LocalVideoTrack) {
+          localTrack = new LK.LocalVideoTrack(mst);
+        }
+      } catch (_) { localTrack = null; }
+      if (!localTrack) return false;
+      var opts = {};
+      try { if (LK.Track && LK.Track.Source) opts.source = LK.Track.Source.Camera; } catch (_) { /* */ }
+      await withTimeout(lkRoom.localParticipant.publishTrack(localTrack, opts), 8000, 'Timeout starting video source');
+      return true;
+    }
+    var mst = releasePreviewKeepVideoTrack();
+    if (mst) {
+      try {
+        if (await tryPublishMst(mst)) return true;
+      } catch (e) { console.warn('[TingTV] publish preview', e); }
+      try { mst.stop(); } catch (_) { /* */ }
+    } else {
+      stopPreview();
+    }
+    await new Promise(function (r) { setTimeout(r, 450); });
+    var lastErr = null;
+    for (var i = 0; i < 3; i++) {
+      try {
+        var camOpts = state.camDeviceId ? { deviceId: { exact: state.camDeviceId } } : true;
+        if (typeof lkRoom.localParticipant.setCameraEnabled === 'function') {
+          await withTimeout(lkRoom.localParticipant.setCameraEnabled(true, typeof camOpts === 'object' ? { resolution: undefined } : undefined), 9000, 'Timeout starting video source');
+          /* LiveKit setCameraEnabled may ignore deviceId on some versions — fallback publish */
+          return true;
+        }
+      } catch (e) {
+        lastErr = e;
+        var msg = String((e && e.message) || e || '');
+        if (!busyRe.test(msg) || i === 2) break;
+        await new Promise(function (r) { setTimeout(r, 400 + i * 250); });
+      }
+    }
+    /* last resort: createLocalVideoTrack with chosen device */
+    try {
+      if (LK && typeof LK.createLocalVideoTrack === 'function') {
+        var track = await LK.createLocalVideoTrack(state.camDeviceId ? { deviceId: state.camDeviceId } : {});
+        await lkRoom.localParticipant.publishTrack(track);
+        return true;
+      }
+    } catch (e2) { lastErr = e2; }
+    if (lastErr) throw lastErr;
+    return false;
+  }
+
+  async function refreshDevices() {
+    try {
+      if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) return;
+      var devices = await navigator.mediaDevices.enumerateDevices();
+      var cams = devices.filter(function (d) { return d.kind === 'videoinput'; });
+      var mics = devices.filter(function (d) { return d.kind === 'audioinput'; });
+      var camSel = qs('camSelect');
+      var micSel = qs('micSelect');
+      if (camSel) {
+        camSel.innerHTML = cams.map(function (d, i) {
+          var label = d.label || ('Камера ' + (i + 1));
+          var sel = d.deviceId === state.camDeviceId ? ' selected' : '';
+          return '<option value="' + String(d.deviceId).replace(/"/g, '') + '"' + sel + '>' + label.replace(/</g, '&lt;') + '</option>';
+        }).join('') || '<option value="">Нет камеры</option>';
+        if (!state.camDeviceId && cams[0]) state.camDeviceId = cams[0].deviceId;
+      }
+      if (micSel) {
+        micSel.innerHTML = mics.map(function (d, i) {
+          var label = d.label || ('Микрофон ' + (i + 1));
+          var sel = d.deviceId === state.micDeviceId ? ' selected' : '';
+          return '<option value="' + String(d.deviceId).replace(/"/g, '') + '"' + sel + '>' + label.replace(/</g, '&lt;') + '</option>';
+        }).join('') || '<option value="">Нет микрофона</option>';
+        if (!state.micDeviceId && mics[0]) state.micDeviceId = mics[0].deviceId;
+      }
+    } catch (_) { /* */ }
+  }
+
+  async function ensurePreview() {
+    stopPreview();
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) return;
+    var constraints = {
+      audio: state.micDeviceId ? { deviceId: { exact: state.micDeviceId } } : true,
+      video: state.camOn
+        ? (state.camDeviceId ? { deviceId: { exact: state.camDeviceId } } : true)
+        : false
+    };
+    try {
+      state.previewStream = await navigator.mediaDevices.getUserMedia(constraints);
+      state.previewStream.getAudioTracks().forEach(function (tr) { tr.enabled = state.micOn; });
+      var v = qs('previewVideo');
+      var av = qs('previewAvatar');
+      if (state.camOn && state.previewStream.getVideoTracks().length) {
+        if (v) { v.srcObject = state.previewStream; v.hidden = false; }
+        if (av) av.style.display = 'none';
+      } else {
+        if (v) v.hidden = true;
+        if (av) av.style.display = 'grid';
+      }
+      await refreshDevices();
+    } catch (e) {
+      state.camOn = false;
+      paintIcons();
+      toast('Камера или микрофон недоступны — можно войти только со звуком');
+      try {
+        state.previewStream = await navigator.mediaDevices.getUserMedia({
+          audio: state.micDeviceId ? { deviceId: { exact: state.micDeviceId } } : true,
+          video: false
+        });
+        state.previewStream.getAudioTracks().forEach(function (tr) { tr.enabled = state.micOn; });
+      } catch (_) { /* */ }
+    }
+  }
+
+  function setPeopleOpen(on) {
+    state.peopleOpen = !!on;
+    var d = qs('peopleDrawer');
+    if (d) d.classList.toggle('hidden', !state.peopleOpen);
+    if (state.peopleOpen) renderPeople();
+  }
+
+  function renderPeople() {
+    var list = qs('peopleList');
+    if (!list || !state.room) return;
+    var rows = [];
+    var local = state.room.localParticipant;
+    rows.push({ id: local && local.identity, name: state.displayName + ' (зал)', speaking: state.activeSpeakerId === (local && local.identity) });
+    state.room.remoteParticipants.forEach(function (p) {
+      rows.push({ id: p.identity, name: p.name || p.identity, speaking: state.activeSpeakerId === p.identity });
+    });
+    list.innerHTML = rows.map(function (r) {
+      return '<div class="ttv-people-item' + (r.speaking ? ' is-speaking' : '') + '">' +
+        String(r.name).replace(/</g, '&lt;') + (r.speaking ? ' · говорит' : '') + '</div>';
+    }).join('');
+  }
+
+  function hardenVideo(v) {
+    if (!v) return;
+    try {
+      v.controls = false;
+      v.setAttribute('playsinline', '');
+      v.setAttribute('webkit-playsinline', '');
+      v.disablePictureInPicture = true;
+    } catch (_) { /* */ }
+  }
+
+  function attachTrack(track, id, name, isLocal) {
+    var stage = qs('stage');
+    if (!stage || !track) return;
+    var tile = stage.querySelector('[data-id="' + id + '"]') || document.querySelector('#filmstrip [data-id="' + id + '"]');
+    if (!tile) {
+      tile = document.createElement('div');
+      tile.className = 'ttv-tile';
+      tile.setAttribute('data-id', id);
+      tile.innerHTML = '<div class="ttv-av-fallback">' + initials(name).replace(/</g, '') + '</div>' +
+        '<div class="ttv-lbl">' + String(name || id).replace(/</g, '&lt;') + '</div>';
+      stage.appendChild(tile);
+    }
+    if (track.kind === 'video' || (track.mediaStreamTrack && track.mediaStreamTrack.kind === 'video')) {
+      var video = tile.querySelector('video');
+      if (!video) {
+        video = document.createElement('video');
+        video.autoplay = true;
+        video.playsInline = true;
+        video.muted = !!isLocal;
+        hardenVideo(video);
+        tile.insertBefore(video, tile.firstChild);
+      }
+      try { track.attach(video); } catch (_) {
+        try { video.srcObject = new MediaStream([track.mediaStreamTrack]); } catch (__){ /* */ }
+      }
+      var fb = tile.querySelector('.ttv-av-fallback');
+      if (fb) fb.style.display = 'none';
+    }
+    relayout();
+  }
+
+  function relayout() {
+    var stage = qs('stage');
+    var strip = qs('filmstrip');
+    if (!stage || !state.room) return;
+    var ids = [];
+    var local = state.room.localParticipant;
+    if (local) ids.push(local.identity);
+    state.room.remoteParticipants.forEach(function (p) { ids.push(p.identity); });
+    var count = Math.max(1, ids.length);
+    var speakerId = state.activeSpeakerId && ids.indexOf(state.activeSpeakerId) >= 0
+      ? state.activeSpeakerId
+      : (ids.filter(function (id) { return id !== (local && local.identity); })[0] || ids[0]);
+
+    if (count >= 3) {
+      stage.className = 'ttv-stage speaker';
+      if (strip) strip.classList.remove('hidden');
+      /* move non-primary to filmstrip */
+      Array.from(stage.querySelectorAll('.ttv-tile')).forEach(function (tile) {
+        var id = tile.getAttribute('data-id');
+        if (id === speakerId) {
+          if (tile.parentElement !== stage) stage.appendChild(tile);
+        } else if (strip) {
+          strip.appendChild(tile);
+        }
+      });
+    } else {
+      stage.className = 'ttv-stage ' + stageGridClass(count);
+      if (strip) {
+        Array.from(strip.querySelectorAll('.ttv-tile')).forEach(function (tile) { stage.appendChild(tile); });
+        strip.classList.add('hidden');
+      }
+    }
+    stage.querySelectorAll('.ttv-tile').forEach(function (tile) {
+      tile.classList.toggle('is-speaking', tile.getAttribute('data-id') === state.activeSpeakerId);
+    });
+    if (strip) {
+      strip.querySelectorAll('.ttv-tile').forEach(function (tile) {
+        tile.classList.toggle('is-speaking', tile.getAttribute('data-id') === state.activeSpeakerId);
+      });
+    }
+  }
+
+  function paintAll() {
+    if (!state.room) return;
+    var stage = qs('stage');
+    if (stage) stage.innerHTML = '';
+    var strip = qs('filmstrip');
+    if (strip) strip.innerHTML = '';
+    function paintP(p, isLocal) {
+      var name = isLocal ? state.displayName : (p.name || p.identity);
+      var vid = Core.pickVideoTrack ? Core.pickVideoTrack(p) : null;
+      var tileId = p.identity;
+      var tile = document.createElement('div');
+      tile.className = 'ttv-tile' + (state.activeSpeakerId === tileId ? ' is-speaking' : '');
+      tile.setAttribute('data-id', tileId);
+      tile.innerHTML = '<div class="ttv-av-fallback">' + initials(name).replace(/</g, '') + '</div>' +
+        '<div class="ttv-lbl">' + String(name).replace(/</g, '&lt;') + '</div>';
+      stage.appendChild(tile);
+      if (vid) attachTrack(vid, tileId, name, isLocal);
+    }
+    paintP(state.room.localParticipant, true);
+    state.room.remoteParticipants.forEach(function (p) { paintP(p, false); });
+    relayout();
+    if (state.peopleOpen) renderPeople();
+  }
+
+  function startTimer() {
+    if (state.timerId) clearInterval(state.timerId);
+    state.timerSec = 0;
+    state.timerId = setInterval(function () {
+      state.timerSec += 1;
+      var el = qs('roomTimer');
+      if (el) el.textContent = fmtTime(state.timerSec);
+    }, 1000);
+  }
+
+  async function teardown() {
+    state.intentionalLeave = true;
+    if (state.lobbyPoll) { clearInterval(state.lobbyPoll); state.lobbyPoll = null; }
+    if (state.timerId) { clearInterval(state.timerId); state.timerId = null; }
+    stopPreview();
+    var lk = state.room;
+    state.room = null;
+    if (lk) {
+      try { await withTimeout(lk.disconnect(), 4000, 'disconnect'); } catch (_) { /* */ }
+    }
+    if (state.slug && state.identity) {
+      try {
+        await fetch('/api/thing/public/' + encodeURIComponent(state.slug) + '/leave', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ identity: state.identity, join_token: state.joinToken })
+        });
+      } catch (_) { /* */ }
+    }
+  }
+
+  async function enterRoom(creds) {
+    var LK = window.LivekitClient;
+    if (!LK) throw new Error('Видео-клиент не загрузился');
+    state.intentionalLeave = false;
+    show('room');
+    qs('roomTitle').textContent = (creds.room && (creds.room.title || creds.room.slug)) || state.slug || 'Тинг';
+    startTimer();
+    paintIcons();
+
+    var next = new LK.Room({ adaptiveStream: true, dynacast: true });
+    state.room = next;
+    var bump = function () { paintAll(); };
+    next.on(LK.RoomEvent.TrackSubscribed, bump);
+    next.on(LK.RoomEvent.TrackUnsubscribed, bump);
+    next.on(LK.RoomEvent.TrackMuted, bump);
+    next.on(LK.RoomEvent.TrackUnmuted, bump);
+    next.on(LK.RoomEvent.ParticipantConnected, bump);
+    next.on(LK.RoomEvent.ParticipantDisconnected, bump);
+    if (LK.RoomEvent.LocalTrackPublished) next.on(LK.RoomEvent.LocalTrackPublished, bump);
+    if (LK.RoomEvent.ActiveSpeakersChanged) {
+      next.on(LK.RoomEvent.ActiveSpeakersChanged, function (speakers) {
+        state.activeSpeakerId = (speakers && speakers[0] && speakers[0].identity) || null;
+        relayout();
+        if (state.peopleOpen) renderPeople();
+      });
+    }
+    next.on(LK.RoomEvent.Disconnected, function () {
+      if (state.intentionalLeave) return;
+      if (state.room !== next) return;
+      show('ended');
+      qs('endedMeta').textContent = 'Соединение прервано';
+    });
+
+    await withTimeout(next.connect(creds.url || creds.livekit_url, creds.token), 12000, 'Таймаут подключения');
+    try {
+      await next.localParticipant.setMicrophoneEnabled(state.micOn);
+    } catch (_) { /* */ }
+    if (state.camOn) {
+      try {
+        await enableLocalCamera(next);
+      } catch (e) {
+        state.camOn = false;
+        stopPreview();
+        toast('Камера не включилась. Можно говорить по микрофону.');
+      }
+    } else {
+      stopPreview();
+      try { await next.localParticipant.setCameraEnabled(false); } catch (_) { /* */ }
+    }
+    paintIcons();
+    paintAll();
+  }
+
+  function startLobbyPoll(identity, joinToken) {
+    if (state.lobbyPoll) clearInterval(state.lobbyPoll);
+    state.lobbyPoll = setInterval(async function () {
+      try {
+        /* D5: join_token в теле, не в query. */
+        var r = await fetch('/api/thing/public/' + encodeURIComponent(state.slug) + '/lobby-status', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Ting-Identity': identity,
+            'X-Ting-Join-Token': joinToken || ''
+          },
+          body: JSON.stringify({ identity: identity, join_token: joinToken || '' })
+        });
+        var j = await r.json();
+        if (!r.ok) return;
+        if (j.lobby_status === 'admitted' && j.token) {
+          clearInterval(state.lobbyPoll);
+          state.lobbyPoll = null;
+          await enterRoom(j);
+        } else if (j.lobby_status === 'rejected' || j.status === 'ended') {
+          clearInterval(state.lobbyPoll);
+          state.lobbyPoll = null;
+          show('ended');
+          qs('endedMeta').textContent = 'Вход отклонён или комната закрыта';
+        }
+      } catch (_) { /* */ }
+    }, 2000);
+  }
+
+  async function join() {
+    var msg = qs('startMsg');
+    msg.textContent = '';
+    msg.classList.remove('ok');
+    state.slug = String(qs('roomCode').value || '').trim().toLowerCase();
+    state.pin = String(qs('roomPin').value || '').trim();
+    state.displayName = String(qs('roomName').value || DEFAULT_NAME).trim().slice(0, 80) || DEFAULT_NAME;
+    if (!state.slug || state.slug.length < 4) {
+      msg.textContent = 'Введите код комнаты (не короче 4 символов)';
+      return;
+    }
+    prefsSet(PREF_SLUG, state.slug);
+    prefsSet(PREF_NAME, state.displayName);
+    qs('btnJoin').disabled = true;
+    try {
+      var meta = await fetch('/api/thing/public/' + encodeURIComponent(state.slug)).then(function (r) {
+        return r.json().then(function (j) { return { ok: r.ok, status: r.status, j: j }; });
+      });
+      if (!meta.ok) {
+        msg.textContent = (meta.j && meta.j.error) || ('Комната недоступна (' + meta.status + ')');
+        return;
+      }
+      if (meta.j.pin_required && !state.pin) {
+        msg.textContent = 'Нужен PIN с карточки доступа';
+        return;
+      }
+      var res = await fetch('/api/thing/public/' + encodeURIComponent(state.slug) + '/guest-token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: state.displayName, pin: state.pin || undefined, guest_key: guestKey() })
+      }).then(function (r) {
+        return r.json().then(function (j) { return { ok: r.ok, status: r.status, j: j }; });
+      });
+      if (!res.ok) {
+        msg.textContent = (res.j && res.j.error) || ('Ошибка ' + res.status);
+        return;
+      }
+      state.identity = res.j.identity;
+      state.joinToken = res.j.join_token || null;
+      if (res.j.lobby_status === 'waiting') {
+        stopPreview();
+        show('wait');
+        startLobbyPoll(res.j.identity, res.j.join_token);
+        return;
+      }
+      if (!res.j.token) {
+        msg.textContent = res.j.error || 'Нет media-токена';
+        return;
+      }
+      await enterRoom(res.j);
+    } catch (e) {
+      msg.textContent = 'Не удалось войти: ' + (e.message || e);
+    } finally {
+      qs('btnJoin').disabled = false;
+    }
+  }
+
+  /* D-pad: focusable cycle on start + dock */
+  function focusables() {
+    if (state.view === 'room') {
+      return Array.from(document.querySelectorAll('#roomView button.ttv-dock-btn, #roomView .ttv-btn'));
+    }
+    if (state.view === 'wait') return Array.from(document.querySelectorAll('#waitView button'));
+    if (state.view === 'ended') return Array.from(document.querySelectorAll('#endedView button'));
+    return Array.from(document.querySelectorAll('#startView input, #startView select, #startView button'));
+  }
+  document.addEventListener('keydown', function (ev) {
+    var key = ev.key;
+    if (key === 'Escape' || key === 'BrowserBack') {
+      if (state.view === 'room' && state.peopleOpen) { setPeopleOpen(false); ev.preventDefault(); return; }
+      if (state.view === 'room') { qs('btnLeave').click(); ev.preventDefault(); return; }
+      return;
+    }
+    if (key !== 'ArrowDown' && key !== 'ArrowUp' && key !== 'ArrowLeft' && key !== 'ArrowRight'
+        && key !== 'Enter' && key !== 'NumpadEnter') {
+      if (key === ' ' && document.activeElement && document.activeElement.tagName === 'BUTTON') {
+        ev.preventDefault();
+        document.activeElement.click();
+      }
+      return;
+    }
+    /* B3: OK/Enter на пульте. Раньше отдельного обработчика не было — работало только
+       нативное нажатие, а на части приставок Enter приходит как keydown. */
+    if (key === 'Enter' || key === 'NumpadEnter') {
+      var active = document.activeElement;
+      if (active && (active.tagName === 'BUTTON' || active.tagName === 'A')) {
+        ev.preventDefault();
+        active.click();
+        return;
+      }
+      if (active && (active.tagName === 'INPUT' || active.tagName === 'SELECT')) return;
+      var first = focusables().filter(function (el) { return !el.disabled && el.offsetParent !== null; })[0];
+      if (first) { ev.preventDefault(); first.click(); }
+      return;
+    }
+    var list = focusables().filter(function (el) { return !el.disabled && el.offsetParent !== null; });
+    if (!list.length) return;
+    var i = list.indexOf(document.activeElement);
+    if (i < 0) { list[0].focus(); ev.preventDefault(); return; }
+    var next = (key === 'ArrowDown' || key === 'ArrowRight') ? (i + 1) % list.length : (i - 1 + list.length) % list.length;
+    list[next].focus();
+    ev.preventDefault();
+  });
+
+  /* wire UI */
+  loadName();
+  prefsGet(PREF_SLUG).then(function (last) {
+    if (last && qs('roomCode')) qs('roomCode').value = last;
+    updateQr();
+  });
+  prefsGet(PREF_CAM).then(function (id) { if (id) state.camDeviceId = id; });
+  prefsGet(PREF_MIC).then(function (id) { if (id) state.micDeviceId = id; });
+  paintIcons();
+  syncPreviewAvatar();
+  updateQr();
+  show('start');
+
+  qs('roomCode').addEventListener('input', updateQr);
+  qs('btnSaveName').addEventListener('click', saveName);
+  qs('btnJoin').addEventListener('click', join);
+  qs('btnRefreshDevices').addEventListener('click', async function () {
+    await ensurePreview();
+    await refreshDevices();
+    toast('Устройства обновлены');
+  });
+  qs('camSelect').addEventListener('change', async function () {
+    state.camDeviceId = this.value || '';
+    prefsSet(PREF_CAM, state.camDeviceId);
+    await ensurePreview();
+  });
+  qs('micSelect').addEventListener('change', async function () {
+    state.micDeviceId = this.value || '';
+    prefsSet(PREF_MIC, state.micDeviceId);
+    await ensurePreview();
+  });
+  qs('preMic').addEventListener('click', function () {
+    state.micOn = !state.micOn;
+    if (state.previewStream) state.previewStream.getAudioTracks().forEach(function (t) { t.enabled = state.micOn; });
+    paintIcons();
+  });
+  qs('preCam').addEventListener('click', async function () {
+    state.camOn = !state.camOn;
+    paintIcons();
+    await ensurePreview();
+  });
+  qs('btnWaitLeave').addEventListener('click', async function () {
+    await teardown();
+    show('start');
+    ensurePreview();
+  });
+  qs('btnEndedBack').addEventListener('click', function () {
+    show('start');
+    ensurePreview();
+  });
+  qs('btnLeave').addEventListener('click', async function () {
+    await teardown();
+    show('ended');
+    qs('endedMeta').textContent = 'Вы вышли из совещания';
+  });
+  qs('btnPeople').addEventListener('click', function () { setPeopleOpen(!state.peopleOpen); });
+  qs('btnPeopleDock').addEventListener('click', function () { setPeopleOpen(!state.peopleOpen); });
+  qs('btnMic').addEventListener('click', async function () {
+    if (!state.room) return;
+    state.micOn = !state.micOn;
+    try { await state.room.localParticipant.setMicrophoneEnabled(state.micOn); } catch (_) { /* */ }
+    paintIcons();
+  });
+  qs('btnCam').addEventListener('click', async function () {
+    if (!state.room) return;
+    var want = !state.camOn;
+    try {
+      if (want) {
+        await enableLocalCamera(state.room);
+        state.camOn = true;
+      } else {
+        await state.room.localParticipant.setCameraEnabled(false);
+        state.camOn = false;
+      }
+    } catch (e) {
+      state.camOn = false;
+      toast('Камера не включилась');
+    }
+    paintIcons();
+    paintAll();
+  });
+
+  ensurePreview().then(refreshDevices);
+  setTimeout(function () { try { qs('roomCode').focus(); } catch (_) { /* */ } }, 200);
+})();
+  </script>
+</body>
+</html>

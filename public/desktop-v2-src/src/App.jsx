@@ -188,9 +188,21 @@ function Protected({ title, children, roles }) {
   );
 }
 
+/* T20: редирект в vanilla-комнату Тинга (в v2 её нет). Не молчаливый, а явный. */
+function TingRedirect() {
+  const { pathname } = window.location.hash ? { pathname: window.location.hash.replace(/^#/, '') } : { pathname: '' };
+  const m = /^\/ting\/([a-z0-9-]+)/i.exec(pathname || '');
+  const target = m ? `/ting/${m[1]}` : '/ting/';
+  window.location.replace(target);
+  return (
+    <div className="p-24 c-t3" role="status" aria-live="polite">
+      Открываем Тинг…
+    </div>
+  );
+}
+
 /* Full-screen pages bypass the AppShell (sidebar/header) — used for /big-screen. */
-function ProtectedBare({ children }) {
-  const { user, ready } = useAuth();
+function ProtectedBare({ children }) {  const { user, ready } = useAuth();
   useGlobalSSE(!!user);
   if (!ready) return (
     <div className="p-24 c-t3" role="status" aria-live="polite" aria-busy="true">
@@ -363,6 +375,10 @@ export default function App() {
               <Route path="/kpi-works"              element={<Protected title="Ярл • Аналитика Работ"><KpiWorks /></Protected>} />
               <Route path="/kpi-money"              element={<Protected title="Ярл • Аналитика Денег"><KpiMoney /></Protected>} />
               <Route path="/meetings"               element={<Protected title="Совещания"><Meetings /></Protected>} />
+              {/* T20/паритет: в v2 не было Тинга — пользователь проваливался на /home.
+                  Комната живёт в vanilla-оболочке, поэтому ведём туда явно, а не молча. */}
+              <Route path="/ting" element={<Protected title="Тинг"><TingRedirect /></Protected>} />
+              <Route path="/ting/:slug" element={<Protected title="Тинг"><TingRedirect /></Protected>} />
               <Route path="/reminders"              element={<Protected title="Напоминания"><Reminders /></Protected>} />
               <Route path="/pm-consents"            element={<Protected title="Согласия РП"><PmConsents /></Protected>} />
               <Route path="/gamification-dashboard" element={<Protected title="Дашборд геймификации"><GamificationDashboard /></Protected>} />

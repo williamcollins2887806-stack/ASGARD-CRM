@@ -1,0 +1,22 @@
+{
+  "name": "ting-android",
+  "private": true,
+  "version": "1.0.0",
+  "description": "ASGARD Ting Переговорка — Android TV APK",
+  "scripts": {
+    "sync": "npx cap sync android",
+    "open": "npx cap open android",
+    "build:debug": "cd android && .\\gradlew.bat assembleDebug",
+    "build:release": "cd android && .\\gradlew.bat assembleRelease bundleRelease"
+  },
+  "dependencies": {
+    "@capacitor/android": "^6.2.0",
+    "@capacitor/app": "^6.0.2",
+    "@capacitor/core": "^6.2.0",
+    "@capacitor/preferences": "^6.0.3"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^6.2.0",
+    "typescript": "^5.9.0"
+  }
+}

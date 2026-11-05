@@ -128,11 +128,42 @@ main:has(.ting-page) {
   box-sizing: border-box;
 }
 
-/* ?? CRM chrome off during call ?? */
+/* CRM chrome off during full-bleed call — no footer scroll / credit strip */
+html.ting-incall,
+body.ting-incall {
+  overflow: hidden !important;
+  height: 100% !important;
+  max-height: 100% !important;
+  overscroll-behavior: none;
+  background: var(--ting-bg0);
+}
+html.ting-incall body,
+body.ting-incall {
+  position: relative;
+}
+html.ting-incall #sidebar,
+html.ting-incall .sidebar,
+html.ting-incall aside.sidebar,
+html.ting-incall #app-sidebar,
+html.ting-incall .sidenav,
+html.ting-incall .crm-banner,
+html.ting-incall .asgard-crm-banner,
+html.ting-incall header.app-header,
+html.ting-incall .topbar,
+html.ting-incall .app-nav,
+html.ting-incall #nav,
+html.ting-incall .page-header,
+html.ting-incall footer,
+html.ting-incall .credit,
+html.ting-incall .runesep,
+html.ting-incall .hr,
+html.ting-incall .breadcrumbs,
+html.ting-incall .page-title,
 body.ting-incall #sidebar,
 body.ting-incall .sidebar,
 body.ting-incall aside.sidebar,
 body.ting-incall #app-sidebar,
+body.ting-incall .sidenav,
 body.ting-incall .crm-banner,
 body.ting-incall .asgard-crm-banner,
 body.ting-incall header.app-header,
@@ -140,22 +171,58 @@ body.ting-incall .topbar,
 body.ting-incall .app-nav,
 body.ting-incall #nav,
 body.ting-incall .page-header,
-body.ting-incall footer {
+body.ting-incall footer,
+body.ting-incall .credit,
+body.ting-incall .runesep,
+body.ting-incall .hr,
+body.ting-incall .breadcrumbs,
+body.ting-incall .page-title {
   display: none !important;
+  visibility: hidden !important;
+  height: 0 !important;
+  max-height: 0 !important;
+  overflow: hidden !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
 }
+html.ting-incall #content,
+html.ting-incall .content,
+html.ting-incall main,
+html.ting-incall #main,
+html.ting-incall .main-content,
+html.ting-incall #layout,
 body.ting-incall #content,
 body.ting-incall .content,
 body.ting-incall main,
 body.ting-incall #main,
-body.ting-incall .main-content {
+body.ting-incall .main-content,
+body.ting-incall #layout {
   margin: 0 !important;
   padding: 0 !important;
   max-width: none !important;
   width: 100% !important;
+  height: 100% !important;
+  max-height: 100vh !important;
+  max-height: 100dvh !important;
+  min-height: 0 !important;
+  overflow: hidden !important;
 }
-body.ting-incall {
-  overflow: hidden;
-  background: var(--ting-bg0);
+body.ting-incall .ting-page {
+  min-height: 100vh !important;
+  min-height: 100dvh !important;
+  height: 100vh !important;
+  height: 100dvh !important;
+  overflow: hidden !important;
+}
+body.ting-incall .ting-room-shell {
+  position: fixed !important;
+  inset: 0 !important;
+  z-index: 9000;
+  width: 100vw !important;
+  height: 100vh !important;
+  height: 100dvh !important;
+  overflow: hidden !important;
 }
 
 .ting-page,
@@ -880,6 +947,7 @@ body.ting-guest .ting-card,
   .ting-stage.g6,
   .ting-stage.g9,
   .ting-stage.g10,
+  .ting-stage.g12,
   .ting-stage.auto {
     grid-template-columns: 1fr;
     grid-template-rows: none;
@@ -892,6 +960,7 @@ body.ting-guest .ting-card,
   .ting-stage.g6 .ting-tile,
   .ting-stage.g9 .ting-tile,
   .ting-stage.g10 .ting-tile,
+  .ting-stage.g12 .ting-tile,
   .ting-stage.auto .ting-tile,
   .ting-stage.speaker .ting-tile {
     aspect-ratio: 16 / 9;
@@ -976,12 +1045,87 @@ body.ting-guest .ting-card,
   grid-template-rows: auto auto;
   align-content: center;
 }
+/* D2: 12 плиток на стейдже (было max 10, 11-й участник исчезал) */
+.ting-stage.g12 {
+  grid-template-columns: repeat(6, 1fr);
+  grid-template-rows: auto auto;
+  align-content: center;
+  /* 13-я плитка («+N») не должна уезжать под док на средних ширинах */
+  overflow-y: auto;
+  overflow-x: hidden;
+  max-height: 100%;
+}
+/* Плитка «+N» — остальные участники, не теряются молча */
+.ting-tile--more {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  border: 1px dashed var(--ting-line, rgba(255, 255, 255, 0.18));
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--ting-text, #f4f6f8);
+  cursor: pointer;
+  aspect-ratio: 16 / 9;
+  width: 100%;
+  padding: 0;
+}
+.ting-tile--more:hover { background: rgba(255, 255, 255, 0.08); }
+.ting-tile-more-n { font-size: clamp(20px, 1.8vw, 30px); font-weight: 800; line-height: 1; }
+.ting-tile-more-cap { font-size: clamp(10px, 0.75vw, 13px); opacity: 0.65; }
+
+/* Фаза 2: настройки комнаты на лету (D1) в панели участников */
+.ting-room-settings {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+.ting-room-settings .ting-more-label { margin-top: 8px; }
+.ting-people-row .ting-list-actions { display: inline-flex; gap: 4px; align-items: center; }
+
+/* Фаза 3: pre-call индикатор микрофона (T25) */
+.ting-mic-meter {
+  position: absolute; left: 50%; transform: translateX(-50%);
+  bottom: 74px; width: min(220px, 60%);
+  height: 6px; border-radius: 999px;
+  background: rgba(255, 255, 255, 0.14);
+  overflow: hidden;
+}
+.ting-mic-meter > i {
+  display: block; height: 100%; width: 4%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #30d158, #c8a84e);
+  transition: width 0.08s linear;
+}
+.ting-mic-hint { margin: 6px 0 0; font-size: 12px; text-align: center; }
+
+/* Фаза 3 (T21): опросы в комнате */
+.ting-polls { padding: 10px 12px 4px; display: grid; gap: 10px; border-top: 1px solid rgba(255,255,255,.07); }
+.ting-poll { border: 1px solid rgba(255,255,255,.1); border-radius: 12px; padding: 10px; background: rgba(255,255,255,.03); }
+.ting-poll.closed { opacity: .75; }
+.ting-poll-q { font-size: 13px; font-weight: 700; margin-bottom: 8px; }
+.ting-poll-opt {
+  position: relative; display: flex; align-items: center; gap: 8px;
+  width: 100%; padding: 8px 10px; margin-bottom: 6px;
+  border: 1px solid rgba(255,255,255,.12); border-radius: 9px;
+  background: transparent; color: inherit; font-size: 12px; cursor: pointer;
+  text-align: left; overflow: hidden;
+}
+.ting-poll-opt.voted { border-color: var(--ting-gold, #c8a84e); }
+.ting-poll-opt-bar {
+  position: absolute; left: 0; top: 0; bottom: 0;
+  background: rgba(200,168,78,.18); z-index: 0; transition: width .25s ease;
+}
+.ting-poll-opt-label, .ting-poll-opt-n { position: relative; z-index: 1; }
+.ting-poll-opt-n { margin-left: auto; opacity: .7; font-variant-numeric: tabular-nums; }
 .ting-stage.g2 > .ting-tile,
 .ting-stage.g3 > .ting-tile,
 .ting-stage.g4 > .ting-tile,
 .ting-stage.g6 > .ting-tile,
 .ting-stage.g9 > .ting-tile,
-.ting-stage.g10 > .ting-tile {
+.ting-stage.g10 > .ting-tile,
+.ting-stage.g12 > .ting-tile {
   aspect-ratio: 16 / 9;
   min-height: 0;
   width: 100%;
@@ -1017,12 +1161,16 @@ body.ting-guest .ting-card,
   .ting-stage.g10 {
     grid-template-columns: repeat(4, 1fr);
   }
+  .ting-stage.g12 {
+    grid-template-columns: repeat(4, 1fr);
+  }
 }
 @media (max-width: 900px) and (min-width: 821px) {
   .ting-stage.g3 { grid-template-columns: 1fr 1fr; }
   .ting-stage.g6 { grid-template-columns: 1fr 1fr; }
   .ting-stage.g9 { grid-template-columns: 1fr 1fr; }
   .ting-stage.g10 { grid-template-columns: 1fr 1fr; }
+  .ting-stage.g12 { grid-template-columns: 1fr 1fr; }
 }
 
 .ting-tile {
@@ -1602,7 +1750,8 @@ body.ting-guest .ting-card,
   .ting-stage.g4,
   .ting-stage.g6,
   .ting-stage.g9,
-  .ting-stage.g10 { grid-template-columns: 1fr; grid-template-rows: none; }
+  .ting-stage.g10,
+  .ting-stage.g12 { grid-template-columns: 1fr; grid-template-rows: none; }
   .ting-ready-foot { flex-direction: column; text-align: center; }
   .ting-count-chip { font-size: 11px; padding: 6px 10px; }
   .ting-call-row .ting-btn { padding: 8px 12px; min-height: 40px; font-size: 13px; }
@@ -1674,6 +1823,26 @@ body.ting-guest .ting-card,
 }
 .ting-people-row.hand-up { outline: 1px solid rgba(212,168,67,.45); border-radius: 10px; }
 .ting-consent.ting-reconnect { background: rgba(74,144,217,.18); }
+
+/* T28/D12: индикация, что камера/мик всё ещё в эфире при уходе в CRM (PiP). */
+body.ting-live::after {
+  content: '● Тинг в эфире';
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  z-index: 9998;
+  padding: 8px 12px;
+  border-radius: 999px;
+  font: 700 12px/1 var(--ting-font);
+  color: #fff;
+  background: rgba(232, 71, 90, .92);
+  box-shadow: 0 8px 24px rgba(0,0,0,.35);
+  pointer-events: none;
+}
+body.ting-live.ting-incall::after,
+body.hg-ting-pip-open::after { display: none; }
+/* Когда Huginn PiP уже на экране — плашку не дублируем. */
+body:has(.hg-ting-pip)::after { display: none; }
 
 .ting-more-section { display: flex; flex-direction: column; gap: 6px; margin-bottom: 10px; }
 .ting-more-label { font-size: 11px; font-weight: 700; color: var(--ting-on-media-muted, var(--ting-t3)); margin-top: 4px; }

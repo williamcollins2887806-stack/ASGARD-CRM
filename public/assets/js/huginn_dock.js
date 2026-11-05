@@ -5362,6 +5362,44 @@
 
     // ── Mimir AI path ─────────────────────────────────────────────
     if (isMimirMode()) {
+      // Мост на складскую корзину (без LLM / без мутаций)
+      const cartBridge = /^\/(корзина|cart|склад-корзина)\b/i.test(text)
+        || /^(собери\s+корзину|нужен\s+список\s+на\s+склад|открой\s+корзину\s+склада)\b/i.test(text);
+      if (cartBridge) {
+        const replyMd = 'Откройте сборку списка на складе — там AI подберёт позиции, а в корзину попадёт только после вашего подтверждения.\n\n[Открыть сборку на складе](#/warehouse-v2?tab=catalog&assist=1)';
+        state.messages = state.messages.filter((m) => m.id !== optimistic.id);
+        state.messages.push({
+          id: 'mimir-cart-' + Date.now(),
+          user_id: myId(),
+          message: text,
+          message_type: 'text',
+          created_at: new Date().toISOString(),
+          delivery_status: 'sent'
+        });
+        state.messages.push({
+          id: 'mimir-cart-bot-' + Date.now(),
+          user_id: 0,
+          message: replyMd,
+          message_type: 'text',
+          created_at: new Date().toISOString(),
+          is_mimir_bot: true,
+          user_name: 'Мимир'
+        });
+        renderMessagesIntoBox();
+        try {
+          if (location.hash.includes('/warehouse')) {
+            if (window.AsgardWarehouseCart && typeof AsgardWarehouseCart.openAssist === 'function') {
+              AsgardWarehouseCart.openAssist();
+            } else {
+              location.hash = '#/warehouse-v2?tab=catalog&assist=1';
+            }
+          } else {
+            location.hash = '#/warehouse-v2?tab=catalog&assist=1';
+          }
+        } catch (_) {}
+        return;
+      }
+
       // Show AI-is-thinking placeholder
       const thinkingId = 'mimir-think-' + Date.now();
       const thinkingMsg = {
