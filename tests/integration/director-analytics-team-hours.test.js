@@ -121,6 +121,27 @@ describe('team-hours: структура и честность данных', ()
     expect(r.code).toBe(200);
     expect(r.body.period.scope).toBe('week');
   });
+
+  test('по умолчанию открывается покрытый период, а не пустая текущая неделя', async () => {
+    // На проде залит октябрь: текущая неделя (02–08.11) не покрыта отчётом.
+    // Раздел не должен выглядеть пустым — сервер сам отдаёт последний покрытый.
+    const r = await get('/api/director-analytics/team-hours?period=week');
+    expect(r.code).toBe(200);
+    const coveredTo = r.body.data_quality.last_import
+      ? String(r.body.data_quality.last_import.period_to).slice(0, 10)
+      : null;
+    if (!coveredTo) return; // нет импортов — проверять нечего
+    expect(r.body.period.to <= coveredTo || r.body.period.from <= coveredTo).toBe(true);
+    // И норма реально посчитана: люди с нормой есть.
+    expect(r.body.people.some((p) => p.norm_minutes > 0)).toBe(true);
+  });
+
+  test('явный date не переопределяется авто-переходом', async () => {
+    const r = await get('/api/director-analytics/team-hours?period=week&date=2030-01-07');
+    expect(r.code).toBe(200);
+    expect(r.body.period.from).toBe('2030-01-07');
+    expect(r.body.norm.people_total).toBe(0);
+  });
 });
 
 describe('team-hours: сверка с контрольным SQL', () => {

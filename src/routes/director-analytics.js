@@ -1578,29 +1578,32 @@ module.exports = async function directorAnalyticsRoutes(fastify) {
       const periodQ = String(request.query.period || 'week');
       const scope = periodQ === 'month' ? 'month' : (periodQ === 'year' ? 'year' : 'week');
       const todayIso = officeHours.isoOf(new Date());
-      const anchor = /^\d{4}-\d{2}-\d{2}$/.test(String(request.query.date || ''))
+      const dateParam = /^\d{4}-\d{2}-\d{2}$/.test(String(request.query.date || ''))
         ? String(request.query.date).slice(0, 10)
-        : todayIso;
+        : null;
+      let anchor = dateParam || todayIso;
 
       // Норма начисляется только по прошедшим дням: если смотреть текущий
       // месяц/год, будущие дни не должны превращать всех в «красных».
       // Будущее в подписи периода остаётся (месяц — целиком), но в норму идёт
       // не дальше сегодня.
-      const rangeFull = scope === 'week'
-        ? {
-          from: officeHours.mondayOf(anchor),
-          to: officeHours.addDays(officeHours.mondayOf(anchor), 6)
-        }
-        : scope === 'year'
-          ? officeHours.yearRange(isoYear(anchor))
-          : officeHours.monthRange(isoYear(anchor), isoMonth(anchor));
-      const range = (rangeFull.from <= todayIso && todayIso < rangeFull.to)
-        ? { ...rangeFull, to: todayIso }
-        : rangeFull;
-      const meta = periodMeta(scope, rangeFull);
+      const buildRange = (iso) => {
+        const full = scope === 'week'
+          ? {
+            from: officeHours.mondayOf(iso),
+            to: officeHours.addDays(officeHours.mondayOf(iso), 6)
+          }
+          : scope === 'year'
+            ? officeHours.yearRange(isoYear(iso))
+            : officeHours.monthRange(isoYear(iso), isoMonth(iso));
+        const counted = (full.from <= todayIso && todayIso < full.to)
+          ? { ...full, to: todayIso }
+          : full;
+        return { full, counted };
+      };
+      let { full: rangeFull, counted: range } = buildRange(anchor);
 
       const settings = await officeHours.loadSettings(db);
-      const calendar = await officeHours.loadCalendar(db, range.from, range.to);
 
       // ── Покрытие СКУД по периодам импортов ──
       // Считается ДО разбора дней: норма начисляется только за дни, за которые
@@ -1624,6 +1627,42 @@ module.exports = async function directorAnalyticsRoutes(fastify) {
           guard += 1;
         }
       }
+
+      // Период «по умолчанию» открываем на данных, а не на пустоте: если за
+      // текущий месяц/неделю отчёта СКУД ещё нет (на проде залит октябрь),
+      // показываем последний покрытый период. Явный ?date= не переопределяем.
+      //
+      // Считаем РАБОЧИЕ дни: отчёт может «зацепить» только воскресенье 01.11 —
+      // формально покрытие есть, а нормы и людей за ним нет. Такой период
+      // пустой и для директора бесполезен.
+      const workingCovered = (r) => {
+        let iso = r.from;
+        let guard = 0;
+        while (iso <= r.to && guard < 400) {
+          if (coveredDays.has(iso)
+              && officeHours.dayNormMinutes(iso, {}, settings, null) > 0) return true;
+          iso = officeHours.addDays(iso, 1);
+          guard += 1;
+        }
+        return false;
+      };
+      if (!dateParam && lastImport && !workingCovered(rangeFull)) {
+        // Якорь выбираем так, чтобы период реально содержал рабочие дни с
+        // отчётом: для месяца/года — начало импорта (месяц октябрь), для
+        // недели — конец импорта (неделя, в которую он попал).
+        const candidates = scope === 'week'
+          ? [String(lastImport.period_to).slice(0, 10), String(lastImport.period_from).slice(0, 10)]
+          : [String(lastImport.period_from).slice(0, 10), String(lastImport.period_to).slice(0, 10)];
+        const picked = candidates.find((iso) => workingCovered(buildRange(iso).full));
+        if (picked) {
+          anchor = picked;
+          ({ full: rangeFull, counted: range } = buildRange(anchor));
+        }
+      }
+      const meta = periodMeta(scope, rangeFull);
+      // Календарь читаем ПОСЛЕ авто-перехода: иначе нормы считаются по
+      // диапазону, который уже заменён на покрытый.
+      const calendar = await officeHours.loadCalendar(db, range.from, range.to);
 
       // Кто вообще есть в графике офиса.
       //
