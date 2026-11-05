@@ -80,6 +80,7 @@ const WARN_ALLOWLIST = {
   AsgardMobileUI: 'mobile-only, guarded: window.AsgardMobileUI && AsgardMobileUI.mToast',
   AsgardPassRequests: 'guarded, с fallback на location.hash; определитель — AsgardPassRequestsPage',
   AsgardTmcRequests: 'guarded, с fallback на location.hash; определитель — AsgardTmcRequestsPage',
+  HuginnTing: 'guarded: window.HuginnTing && typeof HuginnTing.* — опциональный PIP из мёртвого huginn_ting.js; без скрипта вызовы no-op',
 };
 
 /**
@@ -270,12 +271,16 @@ for (const abs of jsFiles) {
 }
 
 const missingGeneric = [];
+const missingGenericAllowed = [];
 for (const name of [...genDefiners.keys()].sort()) {
   const defs = genDefiners.get(name);
   if ([...defs].some((rel) => loaded.has(rel))) continue; // определитель подключён
   const usingLoaded = [...(genUsers.get(name) || [])].filter((rel) => loaded.has(rel));
   if (usingLoaded.length === 0) continue;
-  missingGeneric.push({ name, definers: [...defs].sort().join(', '), from: usingLoaded.sort().join(', ') });
+  const row = { name, definers: [...defs].sort().join(', '), from: usingLoaded.sort().join(', ') };
+  // Guaranteed optional globals (window.X && …) — same class as WARN_ALLOWLIST.
+  if (WARN_ALLOWLIST[name]) missingGenericAllowed.push(row);
+  else missingGeneric.push(row);
 }
 
 // ── 4c. REQUIRED regression guard ─────────────────────────────────────────────
@@ -358,6 +363,12 @@ if (missingGeneric.length) {
   failed = true;
   console.log(red(`MISSING-G (${missingGeneric.length}): прочий глобал используется подключённым файлом, определяющий файл не подключён`));
   for (const x of missingGeneric) console.log(`  ${x.name}\n      определён в: ${x.definers}\n      используется: ${x.from}`);
+  console.log('');
+}
+
+if (missingGenericAllowed.length) {
+  console.log(`${COLORS.dim}NOTE (${missingGenericAllowed.length}): MISSING-G в allowlist (опциональный/guarded глобал)${COLORS.off}`);
+  for (const x of missingGenericAllowed) console.log(`  ${x.name} — ${WARN_ALLOWLIST[x.name]}\n      определён в: ${x.definers}\n      используется: ${x.from}`);
   console.log('');
 }
 

@@ -18,6 +18,9 @@
  *   node tools/academy-gen-images.js --lesson 32 --apply    # сгенерировать и записать
  *   node tools/academy-gen-images.js --lesson 32 --rollback # вернуть blocks из бэкапа
  *   node tools/academy-gen-images.js --lesson 32 --apply --max-cost 150
+ *   node tools/academy-gen-images.js --lesson 159 --fill --apply --max-cost 80
+ *     # --fill: дорисовать только недостающие до 7, НЕ трогая уже стоящие
+ *     # (иначе автопланёр меняет slug и перегенерирует почти всё — жжёт бюджет).
  *
  * Бюджет (инцидент 25.10.2026 — ~1000 ₽/вс из-за двойного крона):
  *   --max-cost <₽>   потолок на ОДИН прогон (по умолчанию 150).
@@ -27,6 +30,8 @@
  *                    academy_gen_blocked_until и не дёргает генератор зря.
  *   advisory-lock    pg_try_advisory_lock(42042) — одна генерация на БД.
  */
+
+const TARGET_IMGS = 7;
 
 const fs = require('fs');
 const path = require('path');
@@ -402,11 +407,24 @@ const PLANNER_SYSTEM = `Ты — арт-директор Чертогов Мим
 10. Промпт — ТОЛЬКО английский. Не пиши стиль/палитру/негатив (добавляются автоматически).
 11. slug: 01-cover, 02-..., 03-... по порядку.`;
 
-async function planIllustrations(lesson) {
+async function planIllustrations(lesson, opts = {}) {
   const base = lesson._cleanBlocks || stripIllustrations(lesson.blocks);
   const blockList = base.map((b, i) =>
     `[${i}] ${b.type}${b.title ? ' — ' + b.title : ''}${b.text ? ': ' + String(b.text).slice(0, 180) : ''}`
   ).join('\n');
+
+  const fillNeed = Number(opts.fillNeed) || 0;
+  const banSlugs = Array.isArray(opts.banSlugs) ? opts.banSlugs : [];
+  let fillHint = '';
+  if (fillNeed > 0) {
+    fillHint = `
+РЕЖИМ ДОРИСОВКИ (--fill):
+- Спланируй РОВНО ${fillNeed} НОВЫХ картинок (не 5–7, а именно ${fillNeed}).
+- Уже есть slug (НЕ повторяй их): ${banSlugs.join(', ') || '(нет)'}.
+- Новые slug начинай с номера ${String(banSlugs.length + 1).padStart(2, '0')}-... (например ${String(banSlugs.length + 1).padStart(2, '0')}-extra).
+- Ставь картинки к блокам, у которых ещё нет соседней иллюстрации по смыслу (промежуточные темы / финал, если финала нет).
+`;
+  }
 
   const user = `Лекция: «${lesson.title}»
 Раздел: ${lesson.saga}
@@ -414,7 +432,7 @@ async function planIllustrations(lesson) {
 
 Блоки (индекс — тип — начало текста):
 ${blockList}
-
+${fillHint}
 Спланируй иллюстрации. Верни ТОЛЬКО JSON.`;
 
   for (let a = 1; a <= 3; a++) {
@@ -547,6 +565,42 @@ function buildBlocks(original, images) {
       });
     }
   });
+  return out;
+}
+
+/** Индекс «чистого» блока → позиция в исходном массиве (с illustration). */
+function cleanIndexToOrigPos(blocks, cleanIdx) {
+  let c = -1;
+  for (let i = 0; i < blocks.length; i++) {
+    if (blocks[i] && blocks[i].type === 'illustration') continue;
+    c++;
+    if (c === cleanIdx) return i;
+  }
+  return Math.max(0, blocks.length - 1);
+}
+
+/**
+ * --fill: оставить уже стоящие illustration, вставить только новые.
+ * afterIndex у новых — по «чистым» блокам (как у планировщика).
+ */
+function buildBlocksFill(original, newImages) {
+  const out = (original || []).map((b) => ({ ...b }));
+  // Сортируем по afterIndex DESC, чтобы вставки не сдвигали следующие индексы
+  const sorted = [...newImages].sort((a, b) => b.afterIndex - a.afterIndex);
+  for (const im of sorted) {
+    const pos = cleanIndexToOrigPos(out, im.afterIndex);
+    out.splice(pos + 1, 0, {
+      type: 'illustration',
+      kind: im.kind,
+      url: im.url,
+      alt: im.caption,
+      caption: im.caption,
+      aspect: '16/9',
+      badge: im.badge || 'СЦЕНА',
+      slug: im.slug,
+      cast: im.cast || [],
+    });
+  }
   return out;
 }
 
@@ -698,6 +752,7 @@ async function main() {
   const doRollback = args.includes('--rollback');
   const doRecompress = args.includes('--recompress');
   const force = args.includes('--force');
+  const fillMode = args.includes('--fill');
   const list = args.includes('--list');
   const maxCost = parseMaxCost(args);
   let lockHeld = false;
@@ -729,16 +784,42 @@ async function main() {
   // Планируем и считаем afterIndex по ЧИСТЫМ блокам (без прошлых иллюстраций),
   // иначе повторный прогон сдвинет вставки и задвоит картинки.
   lesson._cleanBlocks = stripIllustrations(lesson.blocks);
+  const existingImgs = (lesson.blocks || []).filter((b) => b && b.type === 'illustration');
+  const existingSlugs = existingImgs.map((b) => String(b.slug || '')).filter(Boolean);
+  const fillNeed = Math.max(0, TARGET_IMGS - existingImgs.length);
+
+  if (fillMode) {
+    console.log(`[fill] уже есть ${existingImgs.length}/${TARGET_IMGS} (slug: ${existingSlugs.join(', ') || '—'}), нужно дорисовать: ${fillNeed}`);
+    if (fillNeed <= 0) {
+      console.log('[fill] комплект полный — ничего не генерирую, blocks не трогаю.');
+      await pool.end();
+      process.exit(0);
+    }
+  }
+
   let plan;
   try {
+    if (fillMode) throw new Error('fill → всегда автопланёр на недостающие');
     plan = planForLesson(lesson);
   } catch (_) {
-    console.log('[plan] жёсткого плана нет — планирую автопланировщиком (LLM)...');
-    plan = await planIllustrations(lesson);
+    console.log(fillMode
+      ? `[plan] дорисовка ${fillNeed} слотов автопланировщиком...`
+      : '[plan] жёсткого плана нет — планирую автопланировщиком (LLM)...');
+    plan = await planIllustrations(lesson, fillMode ? { fillNeed, banSlugs: existingSlugs } : {});
     if (!plan || !plan.length) {
       console.error('[plan] автопланировщик не вернул план — прерываю, blocks НЕ тронуты.');
       await pool.end();
       process.exit(1);
+    }
+    if (fillMode) {
+      // Жёстко: только новые slug, не больше fillNeed
+      const ban = new Set(existingSlugs);
+      plan = plan.filter((p) => p.slug && !ban.has(p.slug)).slice(0, fillNeed);
+      if (!plan.length) {
+        console.error('[fill] планёр вернул только уже существующие slug — прерываю.');
+        await pool.end();
+        process.exit(1);
+      }
     }
     console.log(`[plan] спланировано: ${plan.length} картинок (scene: ${plan.filter((p) => p.kind === 'scene').length}, diagram: ${plan.filter((p) => p.kind === 'diagram').length})`);
   }
@@ -894,7 +975,11 @@ async function main() {
     return;
   }
 
-  const newBlocks = buildBlocks(lesson.blocks, results);
+  // --fill: не выкидываем уже стоящие illustration (иначе перестановка slug
+  // сожгла бы оплаченные картинки). Полный прогон — как раньше, strip+rebuild.
+  const newBlocks = fillMode
+    ? buildBlocksFill(lesson.blocks, results)
+    : buildBlocks(lesson.blocks, results);
 
   // ВАЖНО (16.10.2026): помечаем в самих блоках сцены, которые НЕ прошли порог
   // даже после авто-перегенерации. Иначе тихо-плохая картинка уходит в прод,
@@ -905,18 +990,24 @@ async function main() {
     if (blk) { blk.needs_review = true; }
   }
 
-  const addedCount = newBlocks.length - lesson._cleanBlocks.length;
+  const imgsBefore = existingImgs.length;
+  const imgsAfter = newBlocks.filter((b) => b && b.type === 'illustration').length;
+  const addedCount = fillMode
+    ? Math.max(0, imgsAfter - imgsBefore)
+    : newBlocks.length - lesson._cleanBlocks.length;
 
   // Бэкап только если реально добавляем новые блоки (иначе повторный прогон
   // затирал бы хорошую версию своей же копией — B7c).
   if (addedCount > 0) {
     await ensureBackupTable();
-    await backupBlocks(lesson.id, lesson.blocks, `gen-images (${results.length} img, +${addedCount} блоков)`);
+    await backupBlocks(lesson.id, lesson.blocks, `gen-images${fillMode ? ' --fill' : ''} (${results.length} img, +${addedCount} блоков)`);
   }
 
   await pool.query(`UPDATE academy_lessons SET blocks=$1::jsonb WHERE id=$2`, [JSON.stringify(newBlocks), lesson.id]);
 
   // B6: подчищаем файлы-сироты (остались от прошлых прогонов) — иначе мусор копится.
+  // В --fill: не трогаем файлы существующих slug (даже если URL в блоке другой
+  // расширения) — только явно неиспользуемые имена.
   const used = new Set(newBlocks.filter((b) => b.type === 'illustration' && b.url).map((b) => String(b.url).split('?')[0].split('/').pop()));
   let removed = 0;
   for (const f of fs.readdirSync(dir)) {

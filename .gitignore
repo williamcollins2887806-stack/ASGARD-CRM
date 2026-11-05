@@ -199,26 +199,25 @@ _merge2/
 _prod_cmp/
 _clone_tmp/
 *_tmp/
+
+# Временные файлы сессий: разборы заказов, дампы, выгрузки.
 tmp_*.js
 tmp_*.py
+tmp_*.sh
+tmp_*.sql
+tmp_*.txt
+tmp_*.docx
+tmp_*.xlsx
+tmp_*.json
+tmp_*.csv
+/tmp_*/
+2025-01-01
 
-# S3: backups of original GLB models and temp dirs used by tools/optimize-field-models.js
+# Дампы и бэкапы прод-данных (не код): аудиты, копии блоков, временные json.
+_audit/
 _model_backup/
-_model_tmp/
-_draco_test/
-
-# Временные артефакты аудита прода и бэкапы секретов (20.10.2026)
-.env.bak-*
-tmp-*.sql
 tools/_prod_audit/
 tools/_prod_blocks_backup/
-
-# Локальная диагностика: выгрузки писем, отладочные скрипты, скриншоты (не исходники).
-_audit/
-
-
-# ������� ����� ��� ������� SQL-������ � �������� (�� ��������)
-/tmp/
-
-
 tmp-*.json
+tools/_asgard_logo_kp.png
+tools/_kp_gem_pages/

@@ -1391,7 +1391,9 @@ async function regenerateBrokenCurriculumWeeks(opts = {}) {
 }
 
 function init() {
-  // Ежедневно в 07:00 MSK — факт дня + health-check квизов + ДОГОН пропущенной лекции
+  // Ежедневно в 07:00 MSK — только факт дня + health-check квизов.
+  // Догон старых «лысых» картинок ВЫКЛЮЧЕН (05.11.2026): жрал баланс пачками.
+  // Новые лекции + картинки — только воскресный крон 17:00.
   cron.schedule('0 4 * * *', async () => {
     console.log('[AcademyCron] Generating daily fact...');
     try {
@@ -1404,29 +1406,20 @@ function init() {
     } catch (e) {
       console.error('[AcademyCron] Quiz health error:', e.message);
     }
-    // ДОГОН: если лекция на актуальный слот не вышла (или неполная) —
-    // пробуем каждый день, пока не закроем. Баланс пополнят — лекция выйдет.
-    try {
-      const id = await catchUpMissingLesson();
-      if (id) console.log(`[AcademyCron] Catch-up: лекция #${id} закрыта`);
-    } catch (e) {
-      console.warn('[AcademyCron] Catch-up не удался (попробуем завтра):', e.message);
-    }
   }, { timezone: 'Europe/Moscow' });
 
-  // Каждое воскресенье в 17:00 MSK — урок следующей недели (с retry-обёрткой)
+  // Каждое воскресенье в 17:00 MSK — урок следующей недели (текст + картинки)
   cron.schedule('0 17 * * 0', async () => {
     console.log('[AcademyCron] Generating weekly lesson...');
     try {
       await generateWeeklyLessonWithRetry();
     } catch (e) {
       console.error('[AcademyCron] Weekly lesson FINAL error (after all retries):', e.message);
-      // Догон подхватит завтра в 07:00 — не оставляем неделю без урока.
-      console.log('[AcademyCron] Догон возьмёт слот в следующий запуск (07:00).');
+      console.log('[AcademyCron] Слот останется пустым до следующего воскресенья (догон выключен).');
     }
   }, { timezone: 'Europe/Moscow' });
 
-  console.log('[AcademyCron] Scheduled: daily fact+quiz-health+catchup 07:00, weekly lesson Sunday 17:00 MSK');
+  console.log('[AcademyCron] Scheduled: daily fact+quiz-health 07:00; weekly lesson Sunday 17:00 MSK (catch-up OFF)');
   console.log(`[AcademyCron] Curriculum: ${CURRICULUM_48.length} topics, ${CURRICULUM_48.filter(t => t.mandatory).length} mandatory`);
 }
 

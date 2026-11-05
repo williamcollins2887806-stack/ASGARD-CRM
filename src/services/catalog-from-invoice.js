@@ -9,6 +9,9 @@
 // артикул, в item_name остаётся читаемое имя. Работает для ВСЕХ путей записи
 // в номенклатуру (почта, ручная загрузка, импорт) — не только для ИИ-парсера.
 const { splitItemName, tidyOrgName } = require('../lib/item-name-clean');
+const { resolveProductCategory } = require('./product-category-classify');
+const { enrichProductMarketCard } = require('./product-market-enrich');
+const marketAiJobs = require('./market-ai-jobs');
 
 function num(v) {
   const n = parseFloat(v);
@@ -54,16 +57,39 @@ async function ensureSupplier(db, { supplierId, supplierName }) {
   return ins.rows[0];
 }
 
-async function findOrCreateProduct(db, { name, article, unit, userId }) {
+async function findOrCreateProduct(db, { name, article, unit, userId, supplierName }) {
   const nm = String(name || '').trim();
   if (!nm) return null;
   const art = article ? String(article).trim() : null;
+  const resolved = await resolveProductCategory(db, { name: nm, unit, supplierName });
+  const catId = resolved.category_id || null;
+  // Расходники (химия/метизы/СИЗ-мелочь) — количественный учёт по умолчанию.
+  const isCons = ['consumable', 'ppe', 'materials'].includes(resolved.group);
+
+  async function maybeFillCategory(row) {
+    if (!row) return row;
+    if (row.category_id || !catId) return row;
+    try {
+      const upd = await db.query(
+        `UPDATE products SET category_id=$2,
+           is_consumable = CASE WHEN $3 THEN true ELSE is_consumable END,
+           updated_at=NOW()
+         WHERE id=$1 AND category_id IS NULL
+         RETURNING id, name, category_id`,
+        [row.id, catId, isCons]
+      );
+      return upd.rows[0] || row;
+    } catch (_) {
+      return row;
+    }
+  }
+
   if (art) {
     const byArt = await db.query(
       `SELECT id, name, category_id FROM products WHERE lower(article)=lower($1) LIMIT 1`,
       [art]
     );
-    if (byArt.rows[0]) return byArt.rows[0];
+    if (byArt.rows[0]) return maybeFillCategory(byArt.rows[0]);
   }
   // Exact name first — иначе trgm склеивает серии E2E/тестовых позиций в один product
   const byExact = await db.query(
@@ -72,7 +98,7 @@ async function findOrCreateProduct(db, { name, article, unit, userId }) {
      LIMIT 1`,
     [nm]
   );
-  if (byExact.rows[0]) return byExact.rows[0];
+  if (byExact.rows[0]) return maybeFillCategory(byExact.rows[0]);
   // Уникальный артикул без совпадения → всегда новая позиция (не схлопывать trgm)
   if (!art) {
     const byName = await db.query(
@@ -82,13 +108,13 @@ async function findOrCreateProduct(db, { name, article, unit, userId }) {
        ORDER BY s DESC LIMIT 1`,
       [nm]
     );
-    if (byName.rows[0]) return byName.rows[0];
+    if (byName.rows[0]) return maybeFillCategory(byName.rows[0]);
   }
   const ins = await db.query(
-    `INSERT INTO products(name, article, unit, created_from, created_by, created_at, updated_at)
-     VALUES($1,$2,COALESCE($3,'шт'),'procurement',$4,NOW(),NOW())
+    `INSERT INTO products(name, article, unit, category_id, is_consumable, created_from, created_by, created_at, updated_at)
+     VALUES($1,$2,COALESCE($3,'шт'),$4,$5,'procurement',$6,NOW(),NOW())
      RETURNING id, name, category_id`,
-    [nm, art, unit || 'шт', userId || null]
+    [nm, art, unit || 'шт', catId, isCons, userId || null]
   );
   return ins.rows[0];
 }
@@ -134,10 +160,24 @@ async function enrichCatalogFromLines(db, opts = {}) {
       name,
       article: articleLine,
       unit: line.unit,
-      userId: opts.userId
+      userId: opts.userId,
+      supplierName: supplier?.name || opts.supplierName || null
     });
     if (!product) continue;
     created++;
+    try {
+      await enrichProductMarketCard(db, product.id, {
+        name, article: articleLine, unit: line.unit, unit_price: price, pack_qty: line.pack_qty
+      });
+    } catch (_) { /* V449 / enrich optional */ }
+    // V450: key + enqueue photo/description — AI down не блокирует create
+    try {
+      await marketAiJobs.afterProductCreated(db, product, {
+        name,
+        unit: line.unit,
+        needCategoryRetry: !product.category_id,
+      });
+    } catch (_) { /* queue optional */ }
     const totalRow = qty ? Math.round(price * qty * 100) / 100 : null;
     // V410 (живой тест 18.10.2026): повторный intake того же счёта плодил ДУБЛИ
     // позиций (15 строк вместо 1 за 15 прогонов) — история цен искажалась.
@@ -194,7 +234,8 @@ async function enrichCatalogFromLines(db, opts = {}) {
     const label = opts.headerLabel || opts.supplierName || 'Счёт на оплату';
     const product = await findOrCreateProduct(db, {
       name: label,
-      userId: opts.userId
+      userId: opts.userId,
+      supplierName: supplier?.name || opts.supplierName || null
     });
     if (product) {
       await db.query(
