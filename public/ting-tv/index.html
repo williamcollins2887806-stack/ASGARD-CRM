@@ -27,7 +27,8 @@
         <span class="ttv-chip">зал</span>
       </div>
       <h1 class="ttv-h1">Войти в совещание</h1>
-      <p class="ttv-muted">Код комнаты с карточки Тинга. Имя зала фиксированное — без логина CRM.</p>
+      <p class="ttv-muted">Код с карточки Тинга: 6 цифр или буквенный slug. Без логина CRM.</p>
+      <div class="ttv-hall-chip" id="hallChip">Зал совещаний</div>
       <div class="ttv-grid">
         <div>
           <div class="ttv-preview" id="previewBox">
@@ -39,26 +40,37 @@
             </div>
           </div>
           <label class="ttv-field-label" for="roomCode">Код комнаты</label>
-          <input class="ttv-field" id="roomCode" autocomplete="off" spellcheck="false" placeholder="например k7m2qx" />
+          <input class="ttv-field" id="roomCode" autocomplete="off" spellcheck="false" inputmode="numeric" placeholder="6 цифр или slug, напр. 482917" />
           <label class="ttv-field-label" for="roomPin">PIN (если нужен)</label>
           <input class="ttv-field" id="roomPin" inputmode="numeric" maxlength="8" placeholder="••••" />
-          <label class="ttv-field-label" for="roomName">Имя в созвоне</label>
-          <input class="ttv-field" id="roomName" maxlength="80" />
+          <!-- Имя зала фиксировано: с пульта не вводим. Скрытое поле для совместимости. -->
+          <input type="hidden" id="roomName" maxlength="80" />
           <div class="ttv-actions">
             <button type="button" class="ttv-btn" id="btnJoin">Войти в Тинг</button>
-            <button type="button" class="ttv-btn ghost" id="btnRefreshDevices">Камера / микрофон</button>
+            <button type="button" class="ttv-btn ghost" id="btnRefreshDevices">Обновить камеру</button>
           </div>
           <div class="ttv-msg" id="startMsg" role="status"></div>
           <div class="ttv-settings">
-            <button type="button" class="ttv-settings-btn" id="btnSaveName">Сохранить имя зала</button>
-            <label class="ttv-field-label" for="camSelect" style="margin-top:14px">Камера</label>
-            <select class="ttv-field" id="camSelect" style="height:52px;font-size:16px"></select>
-            <label class="ttv-field-label" for="micSelect">Микрофон</label>
-            <select class="ttv-field" id="micSelect" style="height:52px;font-size:16px"></select>
+            <label class="ttv-field-label">Камера — OK переключает</label>
+            <div class="ttv-dev-row">
+              <button type="button" class="ttv-dev-cycle" id="camCycle" aria-label="Выбрать камеру">
+                Камера<small id="camCycleLabel">по умолчанию</small>
+              </button>
+            </div>
+            <label class="ttv-field-label">Микрофон — OK переключает</label>
+            <div class="ttv-dev-row">
+              <button type="button" class="ttv-dev-cycle" id="micCycle" aria-label="Выбрать микрофон">
+                Микрофон<small id="micCycleLabel">по умолчанию</small>
+              </button>
+            </div>
+            <button type="button" class="ttv-settings-btn" id="btnSaveName" hidden>Сохранить имя зала</button>
+            <select class="ttv-field" id="camSelect" hidden></select>
+            <select class="ttv-field" id="micSelect" hidden></select>
           </div>
         </div>
         <div class="ttv-qr-wrap">
-          <img id="qrImg" alt="QR для телефонов" width="220" height="220" />
+          <div class="ttv-qr-ph" id="qrPh">Введите код — QR для гостей с телефона</div>
+          <img id="qrImg" alt="QR для телефонов" width="220" height="220" hidden />
           <p id="qrHint">Введите код — появится QR для гостей с телефона</p>
         </div>
       </div>
@@ -253,19 +265,52 @@
   function syncPreviewAvatar() {
     var av = qs('previewAvatar');
     if (av) av.textContent = initials(state.displayName);
+    var chip = qs('hallChip');
+    if (chip) chip.textContent = state.displayName || DEFAULT_NAME;
+    var hn = qs('roomName');
+    if (hn) hn.value = state.displayName || DEFAULT_NAME;
   }
   function updateQr() {
     var code = String(qs('roomCode').value || '').trim().toLowerCase();
     var img = qs('qrImg');
     var hint = qs('qrHint');
+    var ph = qs('qrPh');
     if (!code) {
-      if (img) img.removeAttribute('src');
+      if (img) { img.hidden = true; img.removeAttribute('src'); }
+      if (ph) ph.hidden = false;
       if (hint) hint.textContent = 'Введите код — появится QR для гостей с телефона';
       return;
     }
     var url = location.origin + '/ting/' + encodeURIComponent(code);
-    if (img) img.src = '/api/thing/qr?size=220&data=' + encodeURIComponent(url);
+    if (img) {
+      img.hidden = false;
+      img.src = '/api/thing/qr?size=220&data=' + encodeURIComponent(url);
+    }
+    if (ph) ph.hidden = true;
     if (hint) hint.textContent = url;
+  }
+  function paintDeviceLabels() {
+    var camL = qs('camCycleLabel');
+    var micL = qs('micCycleLabel');
+    var camSel = qs('camSelect');
+    var micSel = qs('micSelect');
+    if (camL) {
+      var co = camSel && camSel.selectedOptions && camSel.selectedOptions[0];
+      camL.textContent = (co && co.textContent) || 'по умолчанию';
+    }
+    if (micL) {
+      var mo = micSel && micSel.selectedOptions && micSel.selectedOptions[0];
+      micL.textContent = (mo && mo.textContent) || 'по умолчанию';
+    }
+  }
+  function cycleSelect(sel) {
+    if (!sel || !sel.options || !sel.options.length) return;
+    var i = sel.selectedIndex;
+    if (i < 0) i = 0;
+    else i = (i + 1) % sel.options.length;
+    sel.selectedIndex = i;
+    sel.dispatchEvent(new Event('change', { bubbles: true }));
+    paintDeviceLabels();
   }
 
   function withTimeout(promise, ms, label) {
@@ -384,16 +429,18 @@
         }).join('') || '<option value="">Нет микрофона</option>';
         if (!state.micDeviceId && mics[0]) state.micDeviceId = mics[0].deviceId;
       }
+      paintDeviceLabels();
     } catch (_) { /* */ }
   }
 
   async function ensurePreview() {
     stopPreview();
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) return;
+    /* ideal, не exact: на ТВ deviceId часто протухает после перезагрузки WebView */
     var constraints = {
-      audio: state.micDeviceId ? { deviceId: { exact: state.micDeviceId } } : true,
+      audio: state.micDeviceId ? { deviceId: { ideal: state.micDeviceId } } : true,
       video: state.camOn
-        ? (state.camDeviceId ? { deviceId: { exact: state.camDeviceId } } : true)
+        ? (state.camDeviceId ? { deviceId: { ideal: state.camDeviceId } } : true)
         : false
     };
     try {
@@ -410,16 +457,31 @@
       }
       await refreshDevices();
     } catch (e) {
+      /* Сброс протухшего deviceId и повтор без привязки */
+      state.camDeviceId = '';
+      state.micDeviceId = '';
+      try {
+        state.previewStream = await navigator.mediaDevices.getUserMedia({
+          audio: true,
+          video: state.camOn
+        });
+        state.previewStream.getAudioTracks().forEach(function (tr) { tr.enabled = state.micOn; });
+        var v2 = qs('previewVideo');
+        var av2 = qs('previewAvatar');
+        if (state.camOn && state.previewStream.getVideoTracks().length) {
+          if (v2) { v2.srcObject = state.previewStream; v2.hidden = false; }
+          if (av2) av2.style.display = 'none';
+        }
+        await refreshDevices();
+        return;
+      } catch (_) { /* */ }
       state.camOn = false;
       paintIcons();
       toast('Камера или микрофон недоступны — можно войти только со звуком');
       try {
-        state.previewStream = await navigator.mediaDevices.getUserMedia({
-          audio: state.micDeviceId ? { deviceId: { exact: state.micDeviceId } } : true,
-          video: false
-        });
+        state.previewStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
         state.previewStream.getAudioTracks().forEach(function (tr) { tr.enabled = state.micOn; });
-      } catch (_) { /* */ }
+      } catch (__){ /* */ }
     }
   }
 
@@ -670,23 +732,30 @@
     var msg = qs('startMsg');
     msg.textContent = '';
     msg.classList.remove('ok');
-    state.slug = String(qs('roomCode').value || '').trim().toLowerCase();
+    var entered = String(qs('roomCode').value || '').trim().toLowerCase();
     state.pin = String(qs('roomPin').value || '').trim();
-    state.displayName = String(qs('roomName').value || DEFAULT_NAME).trim().slice(0, 80) || DEFAULT_NAME;
-    if (!state.slug || state.slug.length < 4) {
-      msg.textContent = 'Введите код комнаты (не короче 4 символов)';
+    /* ТВ: имя зала всегда фиксированное, с пульта не спрашиваем */
+    state.displayName = DEFAULT_NAME;
+    if (!entered || entered.length < 4) {
+      msg.textContent = 'Введите код комнаты: 6 цифр с карточки или slug';
       return;
     }
-    prefsSet(PREF_SLUG, state.slug);
+    prefsSet(PREF_SLUG, entered);
     prefsSet(PREF_NAME, state.displayName);
     qs('btnJoin').disabled = true;
     try {
-      var meta = await fetch('/api/thing/public/' + encodeURIComponent(state.slug)).then(function (r) {
+      var meta = await fetch('/api/thing/public/' + encodeURIComponent(entered)).then(function (r) {
         return r.json().then(function (j) { return { ok: r.ok, status: r.status, j: j }; });
       });
       if (!meta.ok) {
         msg.textContent = (meta.j && meta.j.error) || ('Комната недоступна (' + meta.status + ')');
         return;
+      }
+      /* Канонический slug после dial_code — дальше все запросы по нему */
+      state.slug = (meta.j && meta.j.slug) || entered;
+      if (meta.j && meta.j.slug) {
+        prefsSet(PREF_SLUG, meta.j.slug);
+        updateQr();
       }
       if (meta.j.pin_required && !state.pin) {
         msg.textContent = 'Нужен PIN с карточки доступа';
@@ -695,7 +764,12 @@
       var res = await fetch('/api/thing/public/' + encodeURIComponent(state.slug) + '/guest-token', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: state.displayName, pin: state.pin || undefined, guest_key: guestKey() })
+        body: JSON.stringify({
+          name: state.displayName,
+          pin: state.pin || undefined,
+          guest_key: guestKey(),
+          tv_hall: true
+        })
       }).then(function (r) {
         return r.json().then(function (j) { return { ok: r.ok, status: r.status, j: j }; });
       });
@@ -730,7 +804,9 @@
     }
     if (state.view === 'wait') return Array.from(document.querySelectorAll('#waitView button'));
     if (state.view === 'ended') return Array.from(document.querySelectorAll('#endedView button'));
-    return Array.from(document.querySelectorAll('#startView input, #startView select, #startView button'));
+    return Array.from(document.querySelectorAll(
+      '#startView input.ttv-field:not([type="hidden"]), #startView button.ttv-btn, #startView button.ttv-dock-btn, #startView button.ttv-dev-cycle'
+    ));
   }
   document.addEventListener('keydown', function (ev) {
     var key = ev.key;
@@ -784,7 +860,8 @@
   show('start');
 
   qs('roomCode').addEventListener('input', updateQr);
-  qs('btnSaveName').addEventListener('click', saveName);
+  var btnSave = qs('btnSaveName');
+  if (btnSave) btnSave.addEventListener('click', saveName);
   qs('btnJoin').addEventListener('click', join);
   qs('btnRefreshDevices').addEventListener('click', async function () {
     await ensurePreview();
@@ -794,13 +871,17 @@
   qs('camSelect').addEventListener('change', async function () {
     state.camDeviceId = this.value || '';
     prefsSet(PREF_CAM, state.camDeviceId);
+    paintDeviceLabels();
     await ensurePreview();
   });
   qs('micSelect').addEventListener('change', async function () {
     state.micDeviceId = this.value || '';
     prefsSet(PREF_MIC, state.micDeviceId);
+    paintDeviceLabels();
     await ensurePreview();
   });
+  qs('camCycle').addEventListener('click', function () { cycleSelect(qs('camSelect')); });
+  qs('micCycle').addEventListener('click', function () { cycleSelect(qs('micSelect')); });
   qs('preMic').addEventListener('click', function () {
     state.micOn = !state.micOn;
     if (state.previewStream) state.previewStream.getAudioTracks().forEach(function (t) { t.enabled = state.micOn; });

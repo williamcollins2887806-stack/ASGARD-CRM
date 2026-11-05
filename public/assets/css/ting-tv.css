@@ -200,22 +200,91 @@ html, body.ting-tv {
 .ttv-preview video {
   width: 100%; height: 100%; object-fit: cover;
   background: #000;
+  position: relative;
+  z-index: 1;
 }
+/* «ЗС» больше не на весь кадр поверх мик/камеры — кружок по центру выше дока */
 .ttv-preview .ttv-avatar {
-  position: absolute; inset: 0;
+  position: absolute;
+  left: 50%; top: 42%;
+  transform: translate(-50%, -50%);
+  width: clamp(72px, 8vw, 96px);
+  height: clamp(72px, 8vw, 96px);
+  border-radius: 50%;
   display: grid; place-items: center;
-  font-size: clamp(40px, 4vw, 56px); font-weight: 750;
+  font-size: clamp(22px, 2.4vw, 32px); font-weight: 750;
   background: linear-gradient(145deg, #1a2230, #0c1018);
   color: var(--ttv-gold);
+  border: 2px solid rgba(200, 168, 78, 0.35);
+  z-index: 1;
+  pointer-events: none;
 }
 .ttv-pre-dock {
   position: absolute; left: 50%; bottom: 12px; transform: translateX(-50%);
   display: flex; gap: 12px;
+  z-index: 5;
 }
 .ttv-pre-dock .ttv-dock-btn {
   width: 56px; height: 56px;
+  background: rgba(12, 16, 24, 0.88);
+  border: 1px solid rgba(255,255,255,.18);
 }
 .ttv-pre-dock .ttv-dock-btn svg { width: 24px; height: 24px; }
+
+/* Выбор устройств кнопками — native <select> на Android TV с пультом не открывается */
+.ttv-dev-row {
+  display: flex; gap: 10px; align-items: stretch; margin: 0 0 10px;
+}
+.ttv-dev-cycle {
+  flex: 1 1 auto;
+  min-height: 52px;
+  border-radius: 14px;
+  border: 1px solid var(--ttv-line);
+  background: rgba(8, 10, 14, 0.85);
+  color: var(--ttv-t1);
+  font: 600 16px/1.2 "Manrope", system-ui, sans-serif;
+  padding: 10px 14px;
+  text-align: left;
+  cursor: pointer;
+}
+.ttv-dev-cycle:focus {
+  outline: none;
+  box-shadow: var(--ttv-focus);
+  border-color: var(--ttv-gold);
+}
+.ttv-dev-cycle small {
+  display: block;
+  margin-top: 4px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ttv-t2);
+}
+.ttv-hall-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 14px;
+  padding: 8px 14px;
+  border-radius: 999px;
+  background: rgba(200, 168, 78, 0.12);
+  border: 1px solid rgba(200, 168, 78, 0.35);
+  color: var(--ttv-gold);
+  font: 700 15px/1 "Manrope", system-ui, sans-serif;
+}
+.ttv-qr-wrap img:not([src]),
+.ttv-qr-wrap img[src=""] {
+  display: none;
+}
+.ttv-qr-ph {
+  width: 220px; height: 220px; margin: 0 auto;
+  border-radius: 16px;
+  border: 1px dashed var(--ttv-line);
+  display: grid; place-items: center;
+  color: var(--ttv-t2);
+  font-size: 15px;
+  text-align: center;
+  padding: 16px;
+}
 
 .ttv-msg {
   min-height: 22px; margin-top: 8px;

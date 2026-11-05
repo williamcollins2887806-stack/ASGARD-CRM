@@ -2610,13 +2610,20 @@
   /** Q09/R01: согласие на запись — по факту старта, не по конфигу комнаты. */
   function askRecordingConsent(slug) {
     if (state.consentAsked || !slug) return;
+    /* Хост сам включает запись — модалку не показываем (иначе glass поверх комнаты). */
+    if (state.isHost) {
+      state.consentAsked = true;
+      return;
+    }
     state.consentAsked = true;
     const existing = document.getElementById('ting-consent-modal');
     if (existing) return;
     const modal = document.createElement('div');
     modal.id = 'ting-consent-modal';
     modal.className = 'ting-modal-backdrop';
-    modal.innerHTML = `<div class="ting-modal" role="dialog" aria-labelledby="ting-consent-title">
+    /* Без ting-modal-enter модалка остаётся opacity:0 — на экране только «стекло»
+       backdrop-filter, клики и камера кажутся мёртвыми (баг с зала 05.11.2026). */
+    modal.innerHTML = `<div class="ting-modal ting-modal-enter" role="dialog" aria-labelledby="ting-consent-title">
       <h3 id="ting-consent-title">Идёт запись</h3>
       <p>Встреча записывается. Продолжая участие, вы соглашаетесь на обработку вашей речи и изображения для протокола встречи.</p>
       <div class="ting-cta-row">

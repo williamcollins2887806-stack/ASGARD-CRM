@@ -223,6 +223,27 @@ module.exports = async function thingRoutes(fastify) {
     return rows[0] || null;
   }
 
+  /**
+   * Публичный вход: slug ИЛИ dial_code (6 цифр с карточки / ТВ / телефона).
+   * Раньше TV слал 333141 как slug → «Тинг не найден», хотя dial_code живой.
+   */
+  async function loadPublicRoomByCode(code) {
+    const key = String(code || '').trim().toLowerCase();
+    if (!key) return null;
+    if (isDialCode(key)) {
+      const { rows } = await db.query(
+        `SELECT * FROM thing_rooms
+          WHERE dial_code = $1 AND status IN ('open', 'scheduled', 'live')
+          ORDER BY id DESC LIMIT 1`,
+        [key]
+      );
+      return rows[0] || null;
+    }
+    if (!isSlug(key)) return null;
+    const { rows } = await db.query(`SELECT * FROM thing_rooms WHERE slug = $1`, [key]);
+    return rows[0] || null;
+  }
+
   async function canAccessRoom(room, user) {
     if (!room || !user) return false;
     if (DIRECTOR_ROLES.includes(user.role)) return true;
@@ -1017,9 +1038,10 @@ module.exports = async function thingRoutes(fastify) {
   // ─── PUBLIC guest ───────────────────────────────────────────
   fastify.get('/public/:code', async (request, reply) => {
     const code = String(request.params.code || '').toLowerCase();
-    if (!isSlug(code)) return reply.code(400).send({ error: 'Некорректный код' });
-    const { rows } = await db.query(`SELECT * FROM thing_rooms WHERE slug = $1`, [code]);
-    const room = rows[0];
+    if (!isSlug(code) && !isDialCode(code)) {
+      return reply.code(400).send({ error: 'Некорректный код' });
+    }
+    const room = await loadPublicRoomByCode(code);
     if (!room) return reply.code(404).send({ error: 'Тинг не найден' });
     if (!room.allow_guests) return reply.code(403).send({ error: 'Гости не допущены' });
 
@@ -1042,7 +1064,8 @@ module.exports = async function thingRoutes(fastify) {
       recording_active: recordingActive,
       locked: Boolean(room.locked),
       conference_mode: room.conference_mode || 'meeting',
-      slug: room.slug
+      slug: room.slug,
+      dial_code: room.dial_code || null
     };
   });
 
@@ -1051,10 +1074,11 @@ module.exports = async function thingRoutes(fastify) {
     const body = request.body || {};
     const name = String(body.name || '').trim();
     if (!name || name.length < 2) return reply.code(400).send({ error: 'Укажите имя' });
-    if (!isSlug(code)) return reply.code(400).send({ error: 'Некорректный код' });
+    if (!isSlug(code) && !isDialCode(code)) {
+      return reply.code(400).send({ error: 'Некорректный код' });
+    }
 
-    const { rows } = await db.query(`SELECT * FROM thing_rooms WHERE slug = $1`, [code]);
-    const room = rows[0];
+    const room = await loadPublicRoomByCode(code);
     if (!room) return reply.code(404).send({ error: 'Тинг не найден' });
     if (room.status === 'ended' || room.status === 'cancelled') {
       return reply.code(410).send({ error: 'Тинг завершён' });
@@ -1187,10 +1211,11 @@ module.exports = async function thingRoutes(fastify) {
     const src = Object.assign({}, request.query, request.body || {});
     const identity = String(src.identity || request.headers['x-ting-identity'] || '');
     const joinToken = String(src.join_token || request.headers['x-ting-join-token'] || '');
-    if (!isSlug(code) || !identity) return reply.code(400).send({ error: 'slug + identity' });
+    if ((!isSlug(code) && !isDialCode(code)) || !identity) {
+      return reply.code(400).send({ error: 'slug/dial + identity' });
+    }
     if (!joinToken) return reply.code(400).send({ error: 'Нужен join_token', code: 'JOIN_TOKEN_REQUIRED' });
-    const { rows } = await db.query(`SELECT * FROM thing_rooms WHERE slug = $1`, [code]);
-    const room = rows[0];
+    const room = await loadPublicRoomByCode(code);
     if (!room) return reply.code(404).send({ error: 'Тинг не найден' });
     if (room.status === 'ended' || room.status === 'cancelled') {
       return { lobby_status: 'ended' };
@@ -1245,10 +1270,11 @@ module.exports = async function thingRoutes(fastify) {
     const body = request.body || {};
     const identity = String(body.identity || '').trim();
     const joinToken = String(body.join_token || '').trim();
-    if (!isSlug(code) || !identity) return reply.code(400).send({ error: 'slug + identity' });
+    if ((!isSlug(code) && !isDialCode(code)) || !identity) {
+      return reply.code(400).send({ error: 'slug/dial + identity' });
+    }
     if (!joinToken) return reply.code(400).send({ error: 'Нужен join_token', code: 'JOIN_TOKEN_REQUIRED' });
-    const { rows } = await db.query(`SELECT * FROM thing_rooms WHERE slug = $1`, [code]);
-    const room = rows[0];
+    const room = await loadPublicRoomByCode(code);
     if (!room) return reply.code(404).send({ error: 'Тинг не найден' });
     const { rows: parts } = await db.query(
       `SELECT * FROM thing_participants WHERE room_id = $1 AND identity = $2`,

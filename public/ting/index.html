@@ -279,7 +279,7 @@
       }
       paintIcons();
 
-      const slug = location.pathname.replace(/^\/ting\/?/, '').split(/[/?#]/)[0].toLowerCase();
+      let slug = location.pathname.replace(/^\/ting\/?/, '').split(/[/?#]/)[0].toLowerCase();
       const titleEl = document.getElementById('title');
       const metaEl = document.getElementById('meta');
       const formEl = document.getElementById('form');
@@ -844,6 +844,15 @@
         .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
         .then(async function (res) {
           if (!res.ok) { showError(res.j.error || 'Тинг не найден'); return; }
+          /* dial_code в URL (/ting/333141) → канонический slug для дальнейших API */
+          if (res.j && res.j.slug && res.j.slug !== slug) {
+            slug = String(res.j.slug).toLowerCase();
+            try {
+              if (history && history.replaceState) {
+                history.replaceState(null, '', '/ting/' + encodeURIComponent(slug) + location.search);
+              }
+            } catch (_) { /* */ }
+          }
           var dispTitle = roomTitleDisplay(res.j.title);
           titleEl.textContent = dispTitle;
           document.getElementById('roomTitle').textContent = dispTitle;
