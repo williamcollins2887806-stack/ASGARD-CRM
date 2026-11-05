@@ -105,6 +105,79 @@ async function routes(fastify) {
     return { ok: true, row: rows[0] };
   });
 
+  fastify.post('/rates/:id/revert-last', {
+    preHandler: [fastify.authenticate, fastify.requireRoles(WRITE_ROLES)]
+  }, async (req, reply) => {
+    try {
+      const comment = requireComment(req.body);
+      const result = await workNorms.revertLastRateChange(
+        db, parseInt(req.params.id, 10), req.user, comment
+      );
+      return { ok: true, ...result };
+    } catch (e) {
+      return reply.code(e.statusCode || 500).send({ error: e.message });
+    }
+  });
+
+  fastify.post('/rates/from-smeta-edit', {
+    preHandler: [fastify.authenticate, fastify.requireRoles(WRITE_ROLES)]
+  }, async (req, reply) => {
+    try {
+      const result = await workNorms.applyNormPatchFromSmetaEdit(db, req.body || {}, req.user);
+      return result;
+    } catch (e) {
+      return reply.code(e.statusCode || 500).send({ error: e.message, ok: false });
+    }
+  });
+
+  /**
+   * POST /api/work-norms/rates/from-estimate
+   *
+   * Просчёт прошёл без нормы (fallback) → создаём/обновляем норму в справочнике.
+   * Требование: «после успешного просчёта в справочнике должна появиться норма».
+   * Тело: { category_code, method_code, inputs, work_days, crew, comment }
+   */
+  fastify.post('/rates/from-estimate', {
+    preHandler: [fastify.authenticate, fastify.requireRoles(WRITE_ROLES)]
+  }, async (req, reply) => {
+    try {
+      const result = await workNorms.createRateFromEstimate(db, req.body || {}, req.user);
+      return result;
+    } catch (e) {
+      return reply.code(e.statusCode || 500).send({ error: e.message, ok: false });
+    }
+  });
+
+  fastify.post('/rates/fit-from-batch', {
+    preHandler: [fastify.authenticate, fastify.requireRoles(WRITE_ROLES)]
+  }, async (req, reply) => {
+    try {
+      const comment = requireComment(req.body);
+      const b = req.body || {};
+      const fit = workNorms.fitRateFromPoints(b.points || []);
+      const paramsPatch = {
+        setup_days: fit.setup_days,
+        productivity: fit.productivity
+      };
+      if (fit.mh_per_unit != null) paramsPatch.mh_per_unit = fit.mh_per_unit;
+      const patch = await workNorms.applyNormPatch(db, {
+        rateId: b.rateId,
+        code: b.code,
+        categoryCode: b.categoryCode,
+        mode: b.mode || 'replace',
+        force: !!b.force,
+        comment,
+        paramsPatch,
+        values: b.values,
+        user: req.user,
+        source: 'fit-from-batch'
+      });
+      return { ok: true, fit, patch };
+    } catch (e) {
+      return reply.code(e.statusCode || 500).send({ error: e.message });
+    }
+  });
+
   // ─── Update rate ───────────────────────────────────────────────────────────
   fastify.put('/rates/:id', {
     preHandler: [fastify.authenticate, fastify.requireRoles(WRITE_ROLES)]
@@ -461,12 +534,65 @@ async function routes(fastify) {
     return { ok: true, derived };
   });
 
+  fastify.get('/experiences/delta', {
+    preHandler: [fastify.authenticate, fastify.requireRoles(READ_ROLES)]
+  }, async (req, reply) => {
+    const id = parseInt(req.query.id || '0', 10);
+    if (!id) return reply.code(400).send({ error: 'query id обязателен' });
+    const row = await workNorms.getExperience(db, id);
+    if (!row) return reply.code(404).send({ error: 'Не найдено' });
+    return {
+      ok: true,
+      id,
+      derived_value: row.derived_value,
+      delta_pct: row.delta_pct ?? null
+    };
+  });
+
   fastify.get('/experiences/:id', {
     preHandler: [fastify.authenticate, fastify.requireRoles(READ_ROLES)]
   }, async (req, reply) => {
     const row = await workNorms.getExperience(db, parseInt(req.params.id, 10));
     if (!row) return reply.code(404).send({ error: 'Не найдено' });
     return { ok: true, row };
+  });
+
+  fastify.post('/experiences/batch', {
+    preHandler: [fastify.authenticate, fastify.requireRoles(WRITE_ROLES)]
+  }, async (req, reply) => {
+    try {
+      const b = req.body || {};
+      const results = await workNorms.batchCreateExperiences(
+        db,
+        { items: b.items, default_source_kind: b.default_source_kind },
+        req.user
+      );
+      return { ok: true, results };
+    } catch (e) {
+      return reply.code(e.statusCode || 500).send({ error: e.message });
+    }
+  });
+
+  fastify.post('/experiences/import-tsv', {
+    preHandler: [fastify.authenticate, fastify.requireRoles(WRITE_ROLES)]
+  }, async (req, reply) => {
+    try {
+      const b = req.body || {};
+      let text = b.text;
+      if (!text && typeof req.body === 'string') text = req.body;
+      const items = workNorms.parseExperiencesTsv(text || '');
+      if (!items.length) {
+        return reply.code(400).send({ error: 'Пустой TSV или нет строк данных' });
+      }
+      const results = await workNorms.batchCreateExperiences(
+        db,
+        { items, default_source_kind: b.default_source_kind || 'import' },
+        req.user
+      );
+      return { ok: true, imported: items.length, results };
+    } catch (e) {
+      return reply.code(e.statusCode || 500).send({ error: e.message });
+    }
   });
 
   fastify.post('/experiences', {

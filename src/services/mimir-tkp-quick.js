@@ -196,7 +196,8 @@ async function _mergeCalcSettings(baseSettings) {
 async function _buildQuickCtx(opts, onProgress) {
   const {
     tz_text, customer_name, attachments_text, attachments,
-    session_uid, settings: rawSettings, tender_id
+    session_uid, settings: rawSettings, tender_id,
+    purpose, phase, analysisOnly
   } = opts;
 
   const safe = (step, msg) => {
@@ -256,6 +257,50 @@ async function _buildQuickCtx(opts, onProgress) {
   const permits = await mimirAutoEstimate.getEmployeePermitsSummary(db, fieldEmpIds, onProgress)
     .catch(() => ({ by_type: {}, by_employee: {}, total_active: 0, employees_with_permits: 0, expiring_soon: [] }));
 
+  let norm_preview = null;
+  let norm_preview_meta = null;
+  let norm_inputs_used = null;
+  try {
+    const workNorms = require('./work-norms');
+    const normBundle = await workNorms.tryNormPreviewForEstimate(db, {
+      work,
+      tender,
+      documents,
+      workType,
+      norm_inputs: opts.norm_inputs
+    });
+    norm_preview = normBundle.preview;
+    norm_preview_meta = normBundle.meta;
+    norm_inputs_used = normBundle.inputs;
+  } catch (e) {
+    norm_preview_meta = { error: e.message };
+  }
+
+  // Superbrain A3/M1: история заказчика/победителей в анализ и просчёт Quick
+  let history_block = '';
+  let customer_history = [];
+  try {
+    if (tender && tender.id) {
+      const { buildHistoryBlock } = require('./tender-history-brain');
+      history_block = await buildHistoryBlock(db, tender) || '';
+      if (history_block) customer_history = [{ source: 'tender-history-brain', text: history_block }];
+    } else if (work && (work.customer_inn || work.customer_name)) {
+      const { buildHistoryBlock } = require('./tender-history-brain');
+      history_block = await buildHistoryBlock(db, {
+        id: null,
+        customer_inn: work.customer_inn || null,
+        customer_name: work.customer_name || null,
+        tender_title: work.work_title || work.title || null
+      }) || '';
+      if (history_block) customer_history = [{ source: 'tender-history-brain', text: history_block }];
+    }
+  } catch (e) {
+    history_block = '⚠️ мало истории, вывод вероятностный (ошибка сборки: ' + e.message + ')';
+  }
+  if (!String(history_block || '').trim()) {
+    history_block = '⚠️ мало истории, вывод вероятностный';
+  }
+
   return {
     work,
     tender,
@@ -263,13 +308,20 @@ async function _buildQuickCtx(opts, onProgress) {
     linkedEstimate: null,
     workType,
     analogs: [],
-    customer_history: [],
+    customer_history,
+    history_block,
     warehouse,
     workers,
     permits,
     tariffs,
     settings: settingsFromDb,
-    work_norms_catalog: workNormsCatalog
+    work_norms_catalog: workNormsCatalog,
+    norm_preview,
+    norm_preview_meta,
+    norm_inputs_used,
+    purpose: purpose || null,
+    phase: phase || null,
+    analysisOnly: !!analysisOnly
   };
 }
 
@@ -550,6 +602,47 @@ function _buildChatMd(ai, recomputed) {
   return lines.join('\n');
 }
 
+function _buildAnalysisChatMd(ai) {
+  const rep = mimirAutoEstimate.normalizeAnalysisReport(ai);
+  const decLabel = {
+    go: 'Рекомендация: подаём',
+    no_go: 'Рекомендация: не подаём',
+    need_info: 'Рекомендация: нужны данные'
+  }[rep.decision_recommend] || rep.decision_recommend;
+  const lines = [
+    '### Анализ тендера (без сметы)',
+    '',
+    '**' + decLabel + '**',
+    ''
+  ];
+  if (rep.summary) lines.push(rep.summary, '');
+  if (rep.volume_summary) lines.push('**Объём:** ' + rep.volume_summary, '');
+  if (rep.risks) lines.push('**Риски:** ' + rep.risks, '');
+  if (rep.history_block) lines.push('**История заказчика:** ' + rep.history_block, '');
+  if (rep.norm_hint && rep.norm_hint.days != null) {
+    lines.push('**Ориентир по срокам (нормы):** ~' + rep.norm_hint.days + ' дн.', '');
+  }
+  if (rep.questions_for_customer && rep.questions_for_customer.length) {
+    lines.push('**Вопросы заказчику:**');
+    rep.questions_for_customer.slice(0, 8).forEach((q) => lines.push('- ' + q));
+  }
+  lines.push('', '_Смета и цена — на следующем шаге «Просчёт»._');
+  return lines.join('\n');
+}
+
+function _composeAnalysisEstimate(ai, aiCallMeta) {
+  const rep = mimirAutoEstimate.normalizeAnalysisReport(ai);
+  return {
+    ...rep,
+    ai_meta: {
+      analysis_only: true,
+      raw: ai,
+      model: aiCallMeta && aiCallMeta.model,
+      provider: aiCallMeta && aiCallMeta.provider
+    }
+  };
+}
+
 /**
  * Собрать estimate для UI Quick: asgard_v1 + legacy items.
  */
@@ -573,11 +666,16 @@ function _composeLegacyEstimate(ai, recomputed) {
       estimate: est,
       calculation: recomputed && recomputed.calculation,
       totals: recomputed && recomputed.totals,
+      settings: recomputed && recomputed.settings,
       equipment_status: ai && ai.equipment_status,
       permits_status: ai && ai.permits_status,
       route_plan: ai && ai.route_plan,
       mimir_notes: ai && ai.mimir_notes,
-      analysis: ai && ai.analysis
+      analysis: ai && ai.analysis,
+      norm_trace: (ai && ai.norm_trace) || null,
+      norm_preview_meta: (ai && ai._meta && ai._meta.norm_preview_note)
+        ? { note: ai._meta.norm_preview_note }
+        : null
     }
   };
 }
@@ -767,7 +865,8 @@ async function generateEstimate(opts) {
     tz_text, customer_inn, customer_name,
     customer_data, attachments_text, attachments,
     session_uid, history: rawHistory = [], settings, onProgress = () => {},
-    pre_tender_id, tender_id, author_id
+    pre_tender_id, tender_id, author_id,
+    purpose, phase, analysisOnly
   } = opts;
 
   // Sliding-window: если переписка раздулась > MAX_HISTORY_TOKENS — обрезаем
@@ -779,7 +878,7 @@ async function generateEstimate(opts) {
   // 1. Собрать ctx в формате Auto-Estimate (склад/рабочие/тарифы/допуска/настройки).
   const ctx = await _buildQuickCtx({
     tz_text, customer_name, attachments_text, attachments,
-    session_uid, settings, tender_id
+    session_uid, settings, tender_id, purpose, phase, analysisOnly
   }, onProgress);
 
   // 2. Кэш — детерминированный по системному промпту + user-сообщению.
@@ -862,6 +961,7 @@ async function generateEstimate(opts) {
   tickAi();
   const aiHb = setInterval(tickAi, 8000);
   let aiCall;
+  const analysisMode = mimirAutoEstimate.isAnalysisContext(ctx);
   try {
     // D-303: пробрасываем onReasoning, чтобы в UI шли РЕАЛЬНЫЕ рассуждения модели.
     aiCall = await mimirAutoEstimate.callMimirForEstimate(aiProvider, ctx, dialogMessage, {
@@ -874,12 +974,22 @@ async function generateEstimate(opts) {
   onProgress({
     type: 'progress',
     step: 'ai_done',
-    message: `Модель ответила за ${Math.round((Date.now() - aiStarted) / 1000)} сек — собираю смету…`
+    message: analysisMode
+      ? `Модель ответила за ${Math.round((Date.now() - aiStarted) / 1000)} сек — собираю отчёт анализа…`
+      : `Модель ответила за ${Math.round((Date.now() - aiStarted) / 1000)} сек — собираю смету…`
   });
 
-  // 4. Маппинг в legacy-формат Quick.
-  const estimate = _composeLegacyEstimate(aiCall.ai, aiCall.recomputed);
-  const chatMd = _buildChatMd(aiCall.ai, aiCall.recomputed);
+  // 4. Маппинг: анализ — без сметы; просчёт — legacy asgard_v1.
+  const estimate = analysisMode
+    ? _composeAnalysisEstimate(aiCall.ai, { model: aiCall.model, provider: aiCall.provider })
+    : _composeLegacyEstimate(aiCall.ai, aiCall.recomputed);
+  if (!analysisMode && (aiCall.norm_trace || aiCall.ai?.norm_trace)) {
+    estimate.meta = estimate.meta || {};
+    estimate.meta.norm_trace = aiCall.norm_trace || aiCall.ai.norm_trace;
+  }
+  const chatMd = analysisMode
+    ? _buildAnalysisChatMd(aiCall.ai)
+    : _buildChatMd(aiCall.ai, aiCall.recomputed);
 
   // 4a. 21.06.2026 ИЗМЕНЕНИЕ: больше НЕ сохраняем xlsx/docx в pre_tender_requests
   // на КАЖДОЙ chat-правке. Сохранение только при finalize endpoint (кнопка
@@ -1187,6 +1297,9 @@ async function _xlsxFromEstimateDraft(estimate_draft, recomputed, project, custo
 // БЕЗ сохранения в pre_tender_requests. Используется в /sessions/:uid/preview-doc.
 async function generatePreviewBuffers({ estimate_draft, pre_tender_id, tender_id, customer_name, customer_inn, author_id, work_type }) {
   if (!estimate_draft) throw new Error('Нет estimate_draft для генерации превью');
+  if (estimate_draft.template === 'mimir_analysis_v1' || estimate_draft.analysis_only) {
+    throw new Error('analysis_only_no_smeta_docs');
+  }
   const docGen = require('./document-generator');
   const { recomputed, project, customer, pmUser } = await _prepareForGenerator({
     estimate_draft, pre_tender_id, tender_id, customer_name, customer_inn, author_id, work_type
@@ -1248,6 +1361,7 @@ module.exports = {
   generateEstimate,
   continueChat,
   _loadSettings,
+  _buildQuickCtx,
   _composeLegacyEstimate,
   _buildChatMd,
   // Sliding-window helpers (reusable Conductor / другие чат-сервисы)

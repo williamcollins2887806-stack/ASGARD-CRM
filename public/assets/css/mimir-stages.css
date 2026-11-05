@@ -1,0 +1,1042 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   Мимир: этапы анализа и просчёта (C1–C9)
+
+   Правила:
+   • только токены темы (--bg*, --t*, --brd*, --gold, --ok, --warn, --err),
+     ни одного прямого hex-цвета в этом файле;
+   • каркас повторяет .pk3-modal (шапка, тело, футер) — новых «школ» не вводим;
+   • панель «Ход работы» — колонка справа, на узком экране уходит под контент;
+   • плотность как в существующих модалках: 13px база, 12px подписи.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.mst-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 20150;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: clamp(8px, 2vh, 24px);
+  background: var(--overlay);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  animation: mstFadeIn 0.18s ease both;
+}
+
+.mst-modal {
+  display: flex;
+  flex-direction: column;
+  width: min(1220px, 100%);
+  height: min(92vh, 940px);
+  overflow: hidden;
+  background: var(--bg1);
+  border: 1px solid var(--brd);
+  border-radius: 18px;
+  /* Двойная тень: контактная + глубокая. Так модалка «висит» над интерфейсом,
+     а не выглядит плоским прямоугольником. */
+  box-shadow:
+    0 1px 2px color-mix(in srgb, var(--bg0) 60%, transparent),
+    0 26px 70px color-mix(in srgb, var(--bg0) 55%, transparent),
+    0 0 0 1px color-mix(in srgb, var(--gold) 8%, transparent);
+  animation: mstIn 0.26s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+/* ── Шапка ──────────────────────────────────────────────────────────────── */
+.mst-head {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  padding: 16px 22px;
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--gold) 5%, transparent), transparent 70%),
+    var(--bg2);
+  border-bottom: 1px solid var(--brd-m);
+  flex: 0 0 auto;
+}
+/* Тонкая золотая линия под шапкой: опознаваемый приём премиальных интерфейсов,
+   не «рамка», а акцент. */
+.mst-head::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -1px;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--gold) 55%, transparent) 22%, color-mix(in srgb, var(--gold) 55%, transparent) 78%, transparent);
+  opacity: 0.55;
+}
+.mst-head__icon {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  flex: 0 0 auto;
+  border-radius: 12px;
+  color: var(--gold);
+  background:
+    radial-gradient(circle at 32% 26%, color-mix(in srgb, var(--gold) 26%, transparent), transparent 66%),
+    var(--bg3);
+  border: 1px solid color-mix(in srgb, var(--gold) 36%, transparent);
+  font-size: 16px;
+  box-shadow: 0 2px 10px color-mix(in srgb, var(--gold) 12%, transparent);
+}
+.mst-head__text { min-width: 0; flex: 1; }
+.mst-head__title {
+  margin: 0;
+  font-family: Cinzel, Georgia, serif;
+  font-size: 15.5px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  color: var(--t1);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.mst-head__sub {
+  margin: 3px 0 0;
+  font-size: 11.5px;
+  letter-spacing: 0.01em;
+  color: var(--t2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.mst-head__meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+.mst-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  font-size: 10.5px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  background: var(--bg3);
+  border: 1px solid var(--brd-m);
+  color: var(--t2);
+  white-space: nowrap;
+}
+.mst-chip--thinking { color: var(--gold); background: var(--gold-bg); border-color: color-mix(in srgb, var(--gold) 34%, transparent); }
+.mst-chip--wait { color: var(--warn-t); background: var(--warn-bg); border-color: color-mix(in srgb, var(--warn) 34%, transparent); }
+.mst-chip--done { color: var(--ok-t); background: var(--ok-bg); border-color: color-mix(in srgb, var(--ok) 34%, transparent); }
+.mst-chip i {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: currentColor; flex: 0 0 auto;
+}
+.mst-chip--thinking i { animation: mstPulse 1.6s ease-in-out infinite; }
+.mst-iconbtn {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--t2);
+  font-size: 15px;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+.mst-iconbtn:hover { background: var(--bg3); color: var(--t1); }
+.mst-iconbtn:focus-visible { outline: 2px solid var(--gold); outline-offset: 1px; }
+
+/* ── Рельс этапов ───────────────────────────────────────────────────────── */
+.mst-rail {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 11px 22px;
+  background: var(--bg2);
+  border-bottom: 1px solid var(--brd-m);
+  flex: 0 0 auto;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.mst-rail::-webkit-scrollbar { display: none; }
+.mst-step {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 12px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--t3);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.015em;
+  white-space: nowrap;
+  cursor: default;
+  transition: background 0.18s ease, color 0.18s ease;
+}
+.mst-step__n {
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  font-size: 9.5px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  background: var(--bg4);
+  color: var(--t3);
+  transition: background 0.18s ease, color 0.18s ease;
+}
+.mst-step.is-done { color: var(--t2); cursor: pointer; }
+.mst-step.is-done .mst-step__n { background: var(--ok-bg); color: var(--ok-t); }
+.mst-step.is-done:hover { background: var(--bg3); color: var(--t1); }
+.mst-step.is-now {
+  color: var(--gold-l);
+  font-weight: 600;
+  background: color-mix(in srgb, var(--gold) 13%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--gold) 30%, transparent);
+}
+.mst-step.is-now .mst-step__n {
+  background: linear-gradient(180deg, var(--gold-l), var(--gold));
+  color: var(--bg0);
+  box-shadow: 0 1px 6px color-mix(in srgb, var(--gold) 40%, transparent);
+}
+.mst-step:disabled { opacity: 0.42; cursor: not-allowed; }
+/* Соединительные штрихи между шагами: движение читается как прогресс. */
+.mst-step + .mst-step::before {
+  content: '';
+  width: 12px;
+  height: 1px;
+  margin-right: 4px;
+  background: var(--brd-m);
+  flex: 0 0 auto;
+}
+.mst-rail__progress {
+  display: none;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 22px;
+  background: var(--bg2);
+  border-bottom: 1px solid var(--brd-m);
+  font-size: 11.5px;
+  color: var(--t2);
+  flex: 0 0 auto;
+}
+.mst-rail__bar {
+  flex: 1;
+  height: 3px;
+  border-radius: 999px;
+  background: var(--bg4);
+  overflow: hidden;
+}
+.mst-rail__bar b {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--gold-h), var(--gold-l));
+  transform-origin: left center;
+  transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* ── Тело: контент + панель хода ────────────────────────────────────────── */
+.mst-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  flex: 1;
+  min-height: 0;
+}
+.mst-main {
+  padding: 20px 24px 26px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  min-width: 0;
+  /* Мягкая вертикальная «световая» подложка: глубина без картинок и шума. */
+  background:
+    radial-gradient(90% 60% at 50% 0%, color-mix(in srgb, var(--gold) 3%, transparent) 0%, transparent 70%);
+}
+.mst-side {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border-left: 1px solid var(--brd-m);
+  background: var(--bg2);
+}
+.mst-side__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 11px 14px;
+  border-bottom: 1px solid var(--brd-m);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--t3);
+  flex: 0 0 auto;
+}
+.mst-side__live {
+  display: flex;
+  gap: 9px;
+  padding: 12px 14px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--t1);
+  min-height: 54px;
+  flex: 0 0 auto;
+}
+.mst-side__live::before {
+  content: '';
+  flex: 0 0 auto;
+  width: 2px;
+  border-radius: 2px;
+  background: linear-gradient(180deg, var(--gold), transparent);
+}
+.mst-side__live p {
+  margin: 0;
+  display: -webkit-box;
+  -webkit-line-clamp: 10;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  word-break: break-word;
+}
+.mst-side__live p.is-stream::after {
+  content: '';
+  display: inline-block;
+  width: 4px;
+  height: 11px;
+  margin-left: 3px;
+  vertical-align: -1px;
+  background: var(--gold);
+  animation: mstCaret 1.05s steps(1, end) infinite;
+}
+.mst-side__log {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 4px 14px 14px;
+  scrollbar-width: thin;
+  border-top: 1px dashed var(--brd-m);
+}
+.mst-logline {
+  display: flex;
+  gap: 7px;
+  padding: 4px 0;
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: var(--t2);
+}
+.mst-logline b { color: var(--ok-t); font-weight: 700; flex: 0 0 auto; }
+.mst-logline span { min-width: 0; word-break: break-word; }
+.mst-side__toggle { display: none; }
+
+/* ── Общие блоки ────────────────────────────────────────────────────────── */
+.mst-lead {
+  margin: 0 0 14px;
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--t2);
+}
+.mst-lead b { color: var(--t1); }
+.mst-block {
+  padding: 16px 18px;
+  margin-bottom: 14px;
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--bg3) 40%, transparent), transparent 55%),
+    var(--bg2);
+  border: 1px solid var(--brd-m);
+  border-radius: 14px;
+}
+.mst-block__title {
+  margin: 0 0 12px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--gold);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.mst-block__title::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(90deg, color-mix(in srgb, var(--gold) 22%, transparent), transparent);
+}
+.mst-hint {
+  margin: 6px 0 0;
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--t3);
+}
+.mst-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* ── Поля ───────────────────────────────────────────────────────────────── */
+.mst-field { margin-bottom: 12px; }
+.mst-field > label {
+  display: block;
+  margin-bottom: 5px;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--t2);
+}
+.mst-input,
+.mst-textarea,
+.mst-select {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--brd);
+  background: var(--bg3);
+  color: var(--t1);
+  font: inherit;
+  font-size: 12.5px;
+  outline: none;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.mst-textarea { min-height: 76px; resize: vertical; line-height: 1.5; }
+.mst-input:focus,
+.mst-textarea:focus,
+.mst-select:focus {
+  border-color: var(--gold);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--gold) 16%, transparent);
+}
+.mst-input::placeholder,
+.mst-textarea::placeholder { color: var(--t3); }
+.mst-input[aria-invalid='true'],
+.mst-textarea[aria-invalid='true'] { border-color: var(--err); }
+.mst-inline-num {
+  width: 84px;
+  padding: 5px 7px;
+  border-radius: 7px;
+  border: 1px solid var(--brd);
+  background: var(--bg3);
+  color: var(--t1);
+  font: inherit;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+.mst-inline-num:focus { border-color: var(--gold); outline: none; }
+
+/* ── Кнопки ─────────────────────────────────────────────────────────────── */
+.mst-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  border-radius: 9px;
+  border: 1px solid var(--brd);
+  background: var(--bg3);
+  color: var(--t1);
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease, transform 0.08s ease;
+}
+.mst-btn:hover:not(:disabled) { background: var(--bg4); }
+.mst-btn:active:not(:disabled) { transform: translateY(1px); }
+.mst-btn:focus-visible { outline: 2px solid var(--gold); outline-offset: 1px; }
+.mst-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.mst-btn--primary {
+  background: linear-gradient(180deg, var(--gold-l), var(--gold));
+  border-color: var(--gold-h);
+  color: var(--bg0);
+  font-weight: 700;
+}
+.mst-btn--primary:hover:not(:disabled) { background: linear-gradient(180deg, var(--gold), var(--gold-h)); }
+.mst-btn--ghost { background: transparent; border-color: var(--brd-m); color: var(--t2); }
+.mst-btn--ghost:hover:not(:disabled) { background: var(--bg3); color: var(--t1); }
+.mst-btn--danger { border-color: color-mix(in srgb, var(--err) 44%, transparent); color: var(--err-t); background: var(--err-bg); }
+.mst-btn--sm { padding: 5px 10px; font-size: 11.5px; border-radius: 7px; }
+
+/* ── C1/C2: документы и чтение ──────────────────────────────────────────── */
+.mst-docs {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+.mst-doc {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 8px 11px;
+  border-radius: 9px;
+  background: var(--bg3);
+  border: 1px solid var(--brd-m);
+  font-size: 12px;
+  color: var(--t1);
+}
+.mst-doc__name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mst-doc__meta { font-size: 10.5px; color: var(--t3); flex: 0 0 auto; }
+.mst-doc__state { font-size: 10.5px; font-weight: 600; flex: 0 0 auto; }
+.mst-doc__state--ok { color: var(--ok-t); }
+.mst-doc__state--no { color: var(--warn-t); }
+.mst-doc__state--read { color: var(--gold); }
+
+.mst-readlist { display: flex; flex-direction: column; gap: 8px; }
+.mst-readcard {
+  padding: 11px 13px;
+  border-radius: 10px;
+  background: var(--bg3);
+  border: 1px solid var(--brd-m);
+  font-size: 12px;
+  color: var(--t2);
+}
+.mst-readcard b { color: var(--t1); }
+.mst-readcard__facts { margin: 6px 0 0; font-size: 11px; color: var(--t3); }
+
+/* ── C3: пробелы (чего не хватает) ──────────────────────────────────────── */
+.mst-gaps { display: flex; flex-direction: column; gap: 10px; }
+.mst-gap {
+  padding: 13px 15px;
+  border-radius: 11px;
+  background: var(--warn-bg);
+  border: 1px solid color-mix(in srgb, var(--warn) 30%, transparent);
+}
+.mst-gap.is-optional {
+  background: var(--bg2);
+  border-color: var(--brd-m);
+}
+.mst-gap__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 5px;
+}
+.mst-gap__title { flex: 1; font-size: 12.5px; font-weight: 700; color: var(--t1); }
+.mst-gap__tag {
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: var(--bg4);
+  color: var(--t2);
+}
+.mst-gap__why { margin: 0 0 8px; font-size: 11.5px; line-height: 1.5; color: var(--t2); }
+.mst-gap__actions { display: flex; gap: 7px; flex-wrap: wrap; align-items: center; margin-top: 8px; }
+.mst-gap.is-resolved { opacity: 0.72; border-style: dashed; }
+.mst-gap__answer { font-size: 11.5px; color: var(--ok-t); }
+
+/* ── C4: ДВ (таблица как смета) ─────────────────────────────────────────── */
+.mst-tablewrap {
+  overflow-x: auto;
+  border: 1px solid var(--brd-m);
+  border-radius: 11px;
+  background: var(--bg2);
+  /* Длинные тексты (технология, источник) переносим, а не растягиваем таблицу:
+     иначе справа обрезаются «Статус» и «Источник». */
+  max-width: 100%;
+}
+.mst-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  /* Фиксированная раскладка + проценты по колонкам: таблица физически не может
+     вылезти за контейнер (было 866 px при контейнере 858 → обрезка «Статуса»). */
+  table-layout: fixed;
+}
+
+/* ДВ: 9 колонок */
+.mst-table--dv th:nth-child(1), .mst-table--dv td:nth-child(1) { width: 19%; }
+.mst-table--dv th:nth-child(2), .mst-table--dv td:nth-child(2) { width: 9%; }
+.mst-table--dv th:nth-child(3), .mst-table--dv td:nth-child(3) { width: 8%; }
+.mst-table--dv th:nth-child(4), .mst-table--dv td:nth-child(4) { width: 6%; }
+.mst-table--dv th:nth-child(5), .mst-table--dv td:nth-child(5) { width: 12%; }
+.mst-table--dv th:nth-child(6), .mst-table--dv td:nth-child(6) { width: 9%; }
+.mst-table--dv th:nth-child(7), .mst-table--dv td:nth-child(7) { width: 15%; }
+.mst-table--dv th:nth-child(8), .mst-table--dv td:nth-child(8) { width: 10%; }
+.mst-table--dv th:nth-child(9), .mst-table--dv td:nth-child(9) { width: 12%; }
+
+/* План: 7 колонок */
+.mst-table--plan th:nth-child(1), .mst-table--plan td:nth-child(1) { width: 24%; }
+.mst-table--plan th:nth-child(2), .mst-table--plan td:nth-child(2) { width: 12%; }
+.mst-table--plan th:nth-child(3), .mst-table--plan td:nth-child(3) { width: 11%; }
+.mst-table--plan th:nth-child(4), .mst-table--plan td:nth-child(4) { width: 11%; }
+.mst-table--plan th:nth-child(5), .mst-table--plan td:nth-child(5) { width: 8%; }
+.mst-table--plan th:nth-child(6), .mst-table--plan td:nth-child(6) { width: 22%; }
+.mst-table--plan th:nth-child(7), .mst-table--plan td:nth-child(7) { width: 12%; }
+.mst-table th {
+  padding: 8px 9px;
+  text-align: left;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--t3);
+  background: var(--bg4);
+  border-bottom: 1px solid var(--brd-m);
+  white-space: nowrap;
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+.mst-table td {
+  padding: 7px 9px;
+  border-bottom: 1px solid var(--brd-m);
+  color: var(--t1);
+  vertical-align: top;
+  /* Длинная технология переносится по словам, а не выталкивает колонки. */
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+.mst-table tr:last-child td { border-bottom: 0; }
+.mst-table tr.is-blocked { background: var(--warn-bg); }
+.mst-table tr.is-approved { background: var(--ok-bg); }
+.mst-table__name { font-weight: 600; }
+.mst-table__num { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.mst-table__tech { color: var(--t2); font-size: 11.5px; line-height: 1.4; }
+.mst-table__src { color: var(--t3); font-size: 11px; }
+
+.mst-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+/* В таблицах колонки фиксированные: бейдж не должен вылезать за ячейку,
+   поэтому внутри таблицы он переносится и ужимается. */
+.mst-table .mst-status {
+  white-space: normal;
+  line-height: 1.25;
+  padding: 2px 6px;
+  font-size: 9.5px;
+  max-width: 100%;
+}
+.mst-status--ok { color: var(--ok-t); background: var(--ok-bg); }
+.mst-status--rp { color: var(--info-t); background: var(--info-bg); }
+.mst-status--bad { color: var(--warn-t); background: var(--warn-bg); }
+
+/* ── C5: технология ─────────────────────────────────────────────────────── */
+.mst-techlist { display: flex; flex-direction: column; gap: 8px; }
+.mst-tech {
+  border: 1px solid var(--brd-m);
+  border-radius: 11px;
+  background: var(--bg2);
+  overflow: hidden;
+}
+.mst-tech__head {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  padding: 10px 13px;
+  background: transparent;
+  border: 0;
+  color: var(--t1);
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+.mst-tech__head:hover { background: var(--bg3); }
+.mst-tech__head:focus-visible { outline: 2px solid var(--gold); outline-offset: -2px; }
+.mst-tech__chev { color: var(--t3); transition: transform 0.18s ease; }
+.mst-tech.is-open .mst-tech__chev { transform: rotate(90deg); }
+.mst-tech__body { display: none; padding: 0 13px 13px; }
+.mst-tech.is-open .mst-tech__body { display: block; }
+.mst-normcard {
+  margin-top: 9px;
+  padding: 9px 11px;
+  border-radius: 9px;
+  background: var(--bg3);
+  border: 1px solid var(--brd-m);
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--t2);
+}
+.mst-normcard b { color: var(--gold); font-variant-numeric: tabular-nums; }
+.mst-normcard ul { margin: 5px 0 0; padding-left: 16px; }
+.mst-normcard li { margin-bottom: 2px; color: var(--t3); font-size: 11px; }
+
+/* ── C6: решение ────────────────────────────────────────────────────────── */
+.mst-decide {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+.mst-decide__card {
+  padding: 14px 16px;
+  border-radius: 12px;
+  border: 2px solid var(--brd);
+  background: var(--bg2);
+  color: var(--t1);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+.mst-decide__card:hover { border-color: var(--brd-m); background: var(--bg3); }
+.mst-decide__card:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+.mst-decide__card.is-go { border-color: var(--ok); background: var(--ok-bg); }
+.mst-decide__card.is-nogo { border-color: var(--err); background: var(--err-bg); }
+.mst-decide__title { display: block; font-size: 14px; font-weight: 700; margin-bottom: 3px; }
+.mst-decide__sub { font-size: 11.5px; color: var(--t2); line-height: 1.4; }
+
+.mst-checklist { display: flex; flex-direction: column; gap: 7px; }
+.mst-check {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr);
+  gap: 9px;
+  padding: 8px 10px;
+  border-radius: 9px;
+  background: var(--bg3);
+  border: 1px solid var(--brd-m);
+}
+.mst-check.is-missing { border-color: color-mix(in srgb, var(--warn) 34%, transparent); }
+.mst-check__n {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--bg4);
+  color: var(--t3);
+  font-size: 10px;
+  font-weight: 700;
+}
+.mst-check.is-done .mst-check__n { background: var(--ok-bg); color: var(--ok-t); }
+.mst-check__q { font-size: 11.5px; color: var(--t2); line-height: 1.45; margin-bottom: 4px; }
+.mst-check__a { width: 100%; }
+
+/* ── C7: план просчёта ──────────────────────────────────────────────────── */
+.mst-summary {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+.mst-metric {
+  flex: 1 1 140px;
+  padding: 11px 14px;
+  border-radius: 12px;
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--bg3) 45%, transparent), transparent 70%),
+    var(--bg2);
+  border: 1px solid var(--brd-m);
+}
+.mst-metric__label {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--t3);
+}
+.mst-metric__value {
+  margin-top: 5px;
+  font-size: 19px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--t1);
+  font-variant-numeric: tabular-nums;
+}
+.mst-metric--gold { border-color: color-mix(in srgb, var(--gold) 26%, transparent); }
+.mst-metric--gold .mst-metric__value { color: var(--gold-l); }
+
+.mst-metric--warn {
+  border-color: color-mix(in srgb, var(--warn) 40%, transparent);
+  background: var(--warn-bg);
+}
+
+.mst-src {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10.5px;
+  font-weight: 600;
+  padding: 2px 7px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+.mst-src--norm { color: var(--ok-t); background: var(--ok-bg); }
+.mst-src--expert { color: var(--warn-t); background: var(--warn-bg); cursor: help; }
+.mst-src--analog, .mst-src--history { color: var(--info-t); background: var(--info-bg); }
+
+/* ── C8: калибровка ─────────────────────────────────────────────────────── */
+.mst-calib { display: flex; flex-direction: column; gap: 6px; }
+.mst-calibrow {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 8px 11px;
+  border-radius: 9px;
+  background: var(--bg3);
+  border: 1px solid var(--brd-m);
+  font-size: 11.5px;
+}
+.mst-calibrow__code { flex: 1; min-width: 0; font-weight: 600; color: var(--t1); overflow: hidden; text-overflow: ellipsis; }
+.mst-calibrow__delta { font-variant-numeric: tabular-nums; font-weight: 700; }
+.mst-calibrow__delta--up { color: var(--warn-t); }
+.mst-calibrow__delta--down { color: var(--ok-t); }
+
+/* ── C9: терминал «не подаём» ───────────────────────────────────────────── */
+.mst-terminal {
+  padding: 26px 22px;
+  border-radius: 14px;
+  text-align: center;
+  background: var(--err-bg);
+  border: 1px solid color-mix(in srgb, var(--err) 36%, transparent);
+}
+.mst-terminal__title { margin: 0 0 6px; font-size: 17px; font-weight: 700; color: var(--err-t); }
+.mst-terminal__text { margin: 0 0 14px; font-size: 12.5px; line-height: 1.55; color: var(--t2); }
+
+/* ── Футер ──────────────────────────────────────────────────────────────── */
+.mst-foot {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 12px 20px;
+  background: var(--bg2);
+  border-top: 1px solid var(--brd-m);
+  flex: 0 0 auto;
+}
+.mst-foot__left { display: flex; gap: 7px; flex-wrap: wrap; }
+.mst-foot__spacer { flex: 1; }
+.mst-foot__hint { font-size: 11px; color: var(--t3); }
+
+/* ── Загрузка документов в модалке ──────────────────────────────────────── */
+.mst-upload {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin: 10px 0 4px;
+}
+.mst-upload__hint { font-size: 11px; color: var(--t3); line-height: 1.4; }
+.mst-uploadlist { display: flex; flex-direction: column; gap: 4px; margin-bottom: 10px; }
+.mst-uploadrow {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: var(--bg3);
+  border: 1px solid var(--brd-m);
+  font-size: 11.5px;
+}
+.mst-uploadrow__name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--t1); }
+.mst-uploadrow__state { flex: 0 0 auto; font-size: 10.5px; color: var(--t3); }
+.mst-uploadrow.is-ok { border-color: color-mix(in srgb, var(--ok) 34%, transparent); }
+.mst-uploadrow.is-ok .mst-uploadrow__state { color: var(--ok-t); }
+.mst-uploadrow.is-warn { border-color: color-mix(in srgb, var(--warn) 34%, transparent); }
+.mst-uploadrow.is-warn .mst-uploadrow__state { color: var(--warn-t); }
+.mst-uploadrow.is-err { border-color: color-mix(in srgb, var(--err) 40%, transparent); }
+.mst-uploadrow.is-err .mst-uploadrow__state { color: var(--err-t); }
+
+/* ── Правка в таблице объёмов ───────────────────────────────────────────── */
+.mst-inline-text {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 4px 6px;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--t1);
+  font: inherit;
+  font-size: 12px;
+  line-height: 1.4;
+  resize: none;
+  overflow: hidden;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+.mst-inline-text:hover { border-color: var(--brd-m); background: var(--bg3); }
+.mst-inline-text:focus {
+  outline: none;
+  border-color: var(--gold);
+  background: var(--bg3);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--gold) 14%, transparent);
+}
+.mst-inline-text--short { text-align: center; }
+.mst-select--inline {
+  width: 100%;
+  padding: 4px 6px;
+  font-size: 11.5px;
+  border-radius: 6px;
+  border-color: transparent;
+  background: transparent;
+}
+.mst-select--inline:hover { border-color: var(--brd-m); background: var(--bg3); }
+.mst-select--inline:focus { border-color: var(--gold); background: var(--bg3); }
+.mst-rowacts { display: flex; gap: 3px; margin-top: 5px; }
+.mst-iconbtn--sm { width: 22px; height: 22px; font-size: 11px; border-radius: 6px; }
+.mst-iconbtn--sm:hover { background: var(--bg4); }
+.mst-iconbtn--danger:hover { background: var(--err-bg); color: var(--err-t); }
+.mst-table__acts { white-space: nowrap; }
+
+/* ── Блок «позвонить клиенту» ───────────────────────────────────────────── */
+.mst-callout {
+  padding: 14px 16px;
+  margin-bottom: 14px;
+  border-radius: 13px;
+  background:
+    radial-gradient(120% 130% at 0% 0%, color-mix(in srgb, var(--gold) 12%, transparent) 0%, transparent 62%),
+    var(--bg2);
+  border: 1px solid color-mix(in srgb, var(--gold) 30%, transparent);
+}
+.mst-callout__head { display: flex; align-items: flex-start; gap: 11px; }
+.mst-callout__icon {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  color: var(--gold);
+  background: var(--gold-bg);
+  border: 1px solid color-mix(in srgb, var(--gold) 34%, transparent);
+  font-size: 14px;
+}
+.mst-callout__title { font-size: 13px; font-weight: 700; color: var(--t1); }
+.mst-callout__sub { font-size: 11.5px; color: var(--t2); margin-top: 2px; line-height: 1.45; }
+.mst-callout__list {
+  margin: 11px 0 0;
+  padding-left: 20px;
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--t2);
+}
+.mst-callout__list li { margin-bottom: 4px; }
+.mst-callout__list li::marker { color: var(--gold); font-weight: 700; }
+.mst-callout__head .mst-btn { margin-left: auto; align-self: center; }
+
+.mst-callnote {
+  padding: 10px 13px;
+  margin-bottom: 14px;
+  border-radius: 10px;
+  background: var(--info-bg);
+  border: 1px solid color-mix(in srgb, var(--info) 28%, transparent);
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--t2);
+}
+.mst-callnote b { color: var(--info-t); }
+
+/* ── Состояния ──────────────────────────────────────────────────────────── */
+.mst-skeleton { display: flex; flex-direction: column; gap: 8px; }
+.mst-skel {
+  height: 14px;
+  border-radius: 6px;
+  background: linear-gradient(90deg, var(--bg3), var(--bg4), var(--bg3));
+  background-size: 200% 100%;
+  animation: mstShimmer 1.3s linear infinite;
+}
+.mst-empty {
+  padding: 30px 20px;
+  text-align: center;
+  color: var(--t3);
+  font-size: 12.5px;
+  line-height: 1.55;
+}
+.mst-empty b { display: block; margin-bottom: 4px; color: var(--t2); font-size: 13px; }
+.mst-error {
+  padding: 13px 15px;
+  border-radius: 11px;
+  background: var(--err-bg);
+  border: 1px solid color-mix(in srgb, var(--err) 36%, transparent);
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--t1);
+}
+.mst-error b { color: var(--err-t); }
+.mst-warn {
+  padding: 11px 13px;
+  border-radius: 10px;
+  background: var(--warn-bg);
+  border: 1px solid color-mix(in srgb, var(--warn) 30%, transparent);
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--t1);
+}
+
+/* ── Анимации ───────────────────────────────────────────────────────────── */
+@keyframes mstFadeIn { from { opacity: 0; } to { opacity: 1; } }
+@keyframes mstIn { from { opacity: 0; transform: translateY(8px) scale(0.995); } to { opacity: 1; transform: none; } }
+@keyframes mstPulse { 0%, 100% { opacity: 0.4; } 50% { opacity: 1; } }
+@keyframes mstCaret { 0%, 42% { opacity: 1; } 50%, 100% { opacity: 0; } }
+@keyframes mstShimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+
+/* ── Адаптив ────────────────────────────────────────────────────────────── */
+@media (max-width: 1024px) {
+  .mst-rail { display: none; }
+  .mst-rail__progress { display: flex; }
+}
+@media (max-width: 900px) {
+  .mst-body { grid-template-columns: minmax(0, 1fr); }
+  .mst-side {
+    border-left: 0;
+    border-top: 1px solid var(--brd-m);
+    max-height: 34vh;
+  }
+  .mst-side__toggle { display: inline-grid; }
+  .mst-side.is-collapsed .mst-side__live,
+  .mst-side.is-collapsed .mst-side__log { display: none; }
+}
+@media (max-width: 560px) {
+  .mst-modal { height: 100vh; border-radius: 0; }
+  .mst-overlay { padding: 0; }
+  .mst-main { padding: 14px 12px; }
+  .mst-head { padding: 11px 12px; gap: 9px; }
+  .mst-head__title { font-size: 13.5px; white-space: normal; }
+  .mst-head__sub { display: none; }
+  .mst-head__meta .mst-chip { display: none; }
+
+  /* Панель «Ход работы» на телефоне не должна съедать экран: по умолчанию
+     свёрнута до заголовка, разворачивается кнопкой. align-self: start —
+     иначе grid растягивает строку и свёрнутая панель всё равно занимает место. */
+  .mst-body { grid-template-rows: minmax(0, 1fr) auto; }
+  .mst-side { max-height: none; align-self: start; }
+  .mst-side:not(.is-open) .mst-side__live,
+  .mst-side:not(.is-open) .mst-side__log { display: none; }
+  .mst-side.is-open { max-height: 46vh; }
+
+  /* Футер: главное действие на всю ширину, вторичные — компактной строкой. */
+  .mst-foot {
+    padding: 9px 12px;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .mst-foot__left { order: 2; width: 100%; }
+  .mst-foot__spacer { display: none; }
+  .mst-foot__hint { order: 3; width: 100%; text-align: center; }
+  .mst-foot [data-main-action] { order: 1; width: 100%; justify-content: center; padding: 11px 14px; font-size: 14px; }
+  .mst-btn--sm { padding: 5px 9px; }
+
+  /* Таблицы на телефоне: скрываем второстепенные колонки, оставляем смысл. */
+  .mst-table th:nth-child(n + 6),
+  .mst-table td:nth-child(n + 6) { display: none; }
+  .mst-table__name { min-width: 110px; max-width: 150px; }
+  .mst-table__tech { min-width: 90px; max-width: 130px; font-size: 11px; }
+  .mst-inline-num { width: 62px; }
+  .mst-decide { grid-template-columns: 1fr; }
+  .mst-summary { gap: 6px; }
+  .mst-metric { flex: 1 1 46%; padding: 8px 10px; }
+  .mst-metric__value { font-size: 15px; }
+  .mst-tech__head { font-size: 12px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mst-overlay, .mst-modal { animation: none; }
+  .mst-chip--thinking i, .mst-side__live p.is-stream::after { animation: none; }
+  .mst-skel { animation: none; }
+  .mst-tech__chev { transition: none; }
+}

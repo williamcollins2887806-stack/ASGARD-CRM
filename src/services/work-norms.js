@@ -242,6 +242,21 @@ function physicalInputError(category, method, rateCode, kind, inputs) {
     if (!(Number(inputs.joints) > 0)) return 'Укажите число стыков';
     if (!(Number(inputs.dn_mm) > 0)) return 'Укажите Ду, мм';
   }
+  if (category === 'repair_weld' && method === 'cutting') {
+    if (!(Number(inputs.length_m) > 0)) return 'Укажите длину реза, м';
+  }
+  if (category === 'repair_weld' && method === 'fire_works') {
+    if (!(Number(inputs.points) > 0)) return 'Укажите число огневых точек';
+  }
+  if (category === 'mount' && (method === 'mount' || method === 'dismount')) {
+    if (!(Number(inputs.qty) > 0)) return 'Укажите количество аппаратов/узлов';
+  }
+  if (category === 'mount' && method === 'rigging') {
+    if (!(Number(inputs.lifts) > 0)) return 'Укажите число подъёмов/операций';
+  }
+  if (category === 'mount' && method === 'flange') {
+    if (!(Number(inputs.joints) > 0)) return 'Укажите число стыков/фланцев';
+  }
   if (category === 'insulation') {
     if (!(Number(inputs.surface_m2) > 0)) return 'Укажите площадь, м²';
     if (!(Number(inputs.diameter_mm) > 0)) return 'Укажите Ø трубы, мм';
@@ -265,6 +280,545 @@ function physicalInputError(category, method, rateCode, kind, inputs) {
 
 function calcKindLabel(kind) {
   return CALC_KIND_LABELS[kind] || kind || '—';
+}
+
+/**
+ * Отличает «нормы нет» от «не хватает входных данных».
+ * Фолбэк допустим только во втором смысле — когда нормы физически нет.
+ * Если не указан объём, Мимир должен спросить (этап clarify), а не выдумывать срок.
+ */
+function isMissingNormError(message) {
+  const m = String(message || '');
+  if (!m) return false;
+  // «Укажите …» / «Укажите объём» — это нехватка данных, не отсутствие нормы.
+  if (/^укажите/i.test(m)) return false;
+  return /нет нормы|не заполнена|нет подходящей/i.test(m);
+}
+
+/**
+ * Честный фолбэк «нормы в справочнике нет».
+ *
+ * Требование заказчика (05.11.2026): Мимир НЕ падает и не молчит, если нормы нет.
+ * Он считает сам, говорит, что расчёт не по справочнику, и после успешного
+ * просчёта норма появляется в справочнике (см. createRateFromEstimate).
+ *
+ * Возвращает объект той же формы, что previewCalc (ok/results/crew/trace),
+ * плюс `fallback: true` и `basis: 'mimir_expert'`, чтобы UI и промпт показали
+ * честную пометку, а не подсунули выдуманную норму под видом справочной.
+ */
+function buildFallbackPreview({ category_code, method_code, inputs, workDays, crew, reason, source }) {
+  const fouling = 'medium';
+  const shiftHours = 12;
+  const shiftsPerDay = 2;
+  const wd = Number(workDays) > 0 ? Math.ceil(Number(workDays)) : null;
+  if (wd == null) {
+    return {
+      ok: false,
+      fallback: true,
+      error: reason || 'Нормы нет, и Мимир не дал срок — нужен объём/уточнение',
+      trace: ['fallback: нет нормы и нет оценки срока']
+    };
+  }
+  const master = Number(crew && crew.master) || 1;
+  const exec = Number(crew && crew.exec) || 3;
+  const observers = Number(crew && crew.observers) || 0;
+  const posts = 1;
+  const peoplePerShift = master + exec + observers;
+  const personShifts = wd * peoplePerShift * shiftsPerDay * posts;
+  return {
+    ok: true,
+    fallback: true,
+    basis: 'mimir_expert',
+    category_code: category_code || null,
+    method_code: method_code || null,
+    rate: {
+      id: null,
+      code: null,
+      name: source || 'Оценка Мимира (нормы в справочнике нет)',
+      unit: null,
+      calc_kind: null,
+      rate_used: null,
+      fouling
+    },
+    crew: { master, exec, observers, posts, shifts_per_day: shiftsPerDay, shift_hours: shiftHours },
+    results: {
+      work_days: wd,
+      person_shifts: personShifts,
+      man_hours: Math.round(personShifts * shiftHours),
+      reagent_kg: null,
+      setup_days: null,
+      flow_days: null
+    },
+    trace: [
+      '⚠️ НОРМЫ В СПРАВОЧНИКЕ НЕТ — расчёт не по справочнику',
+      reason ? `причина: ${reason}` : null,
+      `оценка Мимира: ${wd} сут, бригада ${master}м+${exec}сл`,
+      'после сохранения просчёта норма будет создана в справочнике'
+    ].filter(Boolean)
+  };
+}
+
+/** derived_metric → calc_kind справочника (для publish и тестов). */
+function metricToCalcKind(metric) {
+  if (!metric) return null;
+  if (metric === 'days_per_section' || metric === 'days_per_unit') return 'days_per_unit';
+  if (
+    metric === 'm2_per_shift' || metric === 'm3_per_shift' || metric === 'm_per_shift' ||
+    metric === 'tubes_per_shift' || metric === 'joints_per_shift' || metric === 'plates_per_shift'
+  ) {
+    return 'per_unit_shift';
+  }
+  if (metric === 'hours_per_cycle') return 'hours_per_cycle';
+  if (metric === 'kg_per_m') return 'kg_per_m';
+  if (metric === 'mh_per_m3' || metric === 'mh_per_m2' || metric === 'mh_per_100_tubes') {
+    return 'mh_per_unit';
+  }
+  if (metric === 'min_per_tube') return 'min_per_unit';
+  return null;
+}
+
+function resolveSetupParam(val, fouling) {
+  if (val == null) return 0;
+  if (typeof val === 'number' && !Number.isNaN(val)) return val;
+  if (typeof val === 'object') {
+    const f = String(fouling || 'medium').toLowerCase();
+    if (f === 'loose' || f === 'light' || f === 'лёгкие' || f === 'легкие') {
+      return Number(val.light ?? val.loose ?? val.medium ?? 0) || 0;
+    }
+    if (f === 'hard' || f === 'heavy' || f === 'тяжёлые' || f === 'тяжелые') {
+      return Number(val.heavy ?? val.hard ?? val.medium ?? 0) || 0;
+    }
+    return Number(val.medium ?? val.light ?? val.heavy ?? 0) || 0;
+  }
+  return Number(val) || 0;
+}
+
+function isProtectedResearchBasis(basis) {
+  const b = String(basis || '').toLowerCase();
+  return b === 'research_seed' || b === 'research';
+}
+
+const RATE_SNAPSHOT_COLS = [
+  'id', 'category_code', 'method_code', 'object_code', 'code', 'name', 'unit', 'calc_kind',
+  'rate_loose', 'rate_medium', 'rate_hard', 'rate_default', 'crew_json', 'params_json',
+  'basis', 'notes', 'is_active', 'sort_order'
+];
+
+function rateSnapshot(row) {
+  if (!row) return null;
+  const out = {};
+  for (const k of RATE_SNAPSHOT_COLS) {
+    if (row[k] !== undefined) out[k] = row[k];
+  }
+  return out;
+}
+
+function blendRateValue(mode, prev, next) {
+  if (next == null || next === '') return prev;
+  const n = Number(next);
+  if (!(n >= 0) && n !== 0) return prev;
+  if (mode === 'note_only') return prev;
+  if (mode === 'replace' || prev == null) return n;
+  if (mode === 'average' && prev != null) {
+    return Math.round(((Number(prev) + n) / 2) * 100) / 100;
+  }
+  return n;
+}
+
+/**
+ * Подбор rate для publish: target_rate_id → primary_rate_code → code → method+calc_kind.
+ * Без «первой нормы только по calc_kind без method».
+ */
+async function findRateForPublish(db, exp, { calcKind, code }) {
+  if (exp.target_rate_id) {
+    const { rows } = await db.query(
+      `SELECT * FROM work_norm_rates WHERE id = $1 AND is_active`,
+      [exp.target_rate_id]
+    );
+    if (rows[0]) return rows[0];
+  }
+
+  const catRow = await loadCategory(db, exp.category_code);
+  const meta = methodMeta(catRow, exp.method_code);
+  const primaryCode = meta && meta.primary_rate_code;
+
+  if (primaryCode) {
+    const { rows } = await db.query(
+      `SELECT * FROM work_norm_rates WHERE category_code = $1 AND code = $2 AND is_active`,
+      [exp.category_code, primaryCode]
+    );
+    if (rows[0]) return rows[0];
+  }
+
+  if (code) {
+    const { rows } = await db.query(
+      `SELECT * FROM work_norm_rates WHERE category_code = $1 AND code = $2 AND is_active`,
+      [exp.category_code, code]
+    );
+    if (rows[0]) return rows[0];
+  }
+
+  if (exp.method_code && calcKind) {
+    const { rows } = await db.query(
+      `SELECT * FROM work_norm_rates
+       WHERE category_code = $1 AND method_code IS NOT DISTINCT FROM $2
+         AND calc_kind = $3 AND is_active
+       ORDER BY sort_order, id
+       LIMIT 1`,
+      [exp.category_code, exp.method_code, calcKind]
+    );
+    return rows[0] || null;
+  }
+
+  return null;
+}
+
+async function resolveRateForPatch(db, { rateId, code, categoryCode }) {
+  if (rateId) {
+    const { rows } = await db.query(`SELECT * FROM work_norm_rates WHERE id = $1`, [Number(rateId)]);
+    if (!rows[0]) {
+      const err = new Error('Норма не найдена по id');
+      err.statusCode = 404;
+      throw err;
+    }
+    return rows[0];
+  }
+  if (categoryCode && code) {
+    const { rows } = await db.query(
+      `SELECT * FROM work_norm_rates WHERE category_code = $1 AND code = $2`,
+      [categoryCode, code]
+    );
+    if (!rows[0]) {
+      const err = new Error(`Норма не найдена: ${categoryCode}/${code}`);
+      err.statusCode = 404;
+      throw err;
+    }
+    return rows[0];
+  }
+  const err = new Error('Укажите rateId или пару categoryCode+code');
+  err.statusCode = 400;
+  throw err;
+}
+
+/**
+ * Единая точка правки/создания нормы с audit log.
+ */
+async function applyNormPatch(db, opts) {
+  const {
+    rateId,
+    code,
+    categoryCode,
+    values = {},
+    mode = 'average',
+    source,
+    user,
+    force,
+    comment,
+    paramsPatch,
+    crewPatch,
+    name,
+    unit,
+    calcKind,
+    methodCode
+  } = opts || {};
+
+  let rateRow = null;
+  let created = false;
+  try {
+    rateRow = await resolveRateForPatch(db, { rateId, code, categoryCode });
+  } catch (e) {
+    if (e.statusCode !== 404 || !categoryCode || !code) throw e;
+    rateRow = null;
+  }
+
+  const publishMode = mode || 'average';
+  const c = String(comment || '').trim();
+  if (c.length < 5) {
+    const err = new Error('Комментарий обязателен (минимум 5 символов)');
+    err.statusCode = 400;
+    throw err;
+  }
+
+  if (!rateRow) {
+    if (!categoryCode || !code || !name || !unit) {
+      const err = new Error('Для создания нормы нужны categoryCode, code, name, unit');
+      err.statusCode = 400;
+      throw err;
+    }
+    const params = paramsPatch && typeof paramsPatch === 'object' ? { ...paramsPatch } : {};
+    if (values.by_diameter && typeof values.by_diameter === 'object') {
+      params.by_diameter = { ...(params.by_diameter || {}), ...values.by_diameter };
+    }
+    const crew = crewPatch && typeof crewPatch === 'object' ? crewPatch : { master: 1, exec: 3 };
+    const { rows } = await db.query(
+      `INSERT INTO work_norm_rates (
+        category_code, method_code, code, name, unit, calc_kind,
+        rate_loose, rate_medium, rate_hard, rate_default,
+        crew_json, params_json, basis, notes, sort_order, updated_by
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11::jsonb,$12::jsonb,$13,$14,50,$15)
+      RETURNING *`,
+      [
+        categoryCode,
+        methodCode || null,
+        code,
+        name,
+        unit,
+        calcKind || 'per_unit_shift',
+        values.rate_loose ?? null,
+        values.rate_medium ?? null,
+        values.rate_hard ?? null,
+        values.rate_default ?? null,
+        JSON.stringify(crew),
+        JSON.stringify(params),
+        source || 'field',
+        source ? `источник: ${source}` : null,
+        user?.id || null
+      ]
+    );
+    rateRow = rows[0];
+    created = true;
+    await writeChangeLog(db, {
+      entity_type: 'rate',
+      entity_id: String(rateRow.id),
+      category_code: rateRow.category_code,
+      action: 'create',
+      before: null,
+      after: rateSnapshot(rateRow),
+      comment: c,
+      user
+    });
+    return { before: null, after: rateSnapshot(rateRow), created: true };
+  }
+
+  const before = rateSnapshot(rateRow);
+  if (isProtectedResearchBasis(rateRow.basis) && !force) {
+    const err = new Error(
+      'Норма с basis research/research_seed — правка только с force=true (осознанное перезаписывание)'
+    );
+    err.statusCode = 400;
+    throw err;
+  }
+
+  let notes = rateRow.notes || '';
+  if (isProtectedResearchBasis(rateRow.basis) && force) {
+    notes = [notes, 'force: перезапись research_seed'].filter(Boolean).join('; ').slice(0, 2000);
+  }
+  if (source) {
+    notes = [notes, `источник: ${source}`].filter(Boolean).join('; ').slice(0, 2000);
+  }
+
+  const params = { ...(rateRow.params_json || {}) };
+  if (paramsPatch && typeof paramsPatch === 'object') {
+    Object.assign(params, paramsPatch);
+  }
+  if (values.by_diameter && typeof values.by_diameter === 'object') {
+    const by = { ...(params.by_diameter || {}) };
+    for (const [k, v] of Object.entries(values.by_diameter)) {
+      if (publishMode === 'average' && by[k] != null) {
+        by[k] = Math.round(((Number(by[k]) + Number(v)) / 2) * 100) / 100;
+      } else if (publishMode !== 'note_only') {
+        by[k] = Number(v);
+      }
+    }
+    params.by_diameter = by;
+  }
+
+  const crew = crewPatch && typeof crewPatch === 'object'
+    ? { ...(rateRow.crew_json || {}), ...crewPatch }
+    : (rateRow.crew_json || {});
+
+  let rate_loose = rateRow.rate_loose;
+  let rate_medium = rateRow.rate_medium;
+  let rate_hard = rateRow.rate_hard;
+  let rate_default = rateRow.rate_default;
+
+  if (publishMode !== 'note_only') {
+    if (values.rate_loose !== undefined) rate_loose = blendRateValue(publishMode, rate_loose, values.rate_loose);
+    if (values.rate_medium !== undefined) rate_medium = blendRateValue(publishMode, rate_medium, values.rate_medium);
+    if (values.rate_hard !== undefined) rate_hard = blendRateValue(publishMode, rate_hard, values.rate_hard);
+    if (values.rate_default !== undefined) rate_default = blendRateValue(publishMode, rate_default, values.rate_default);
+  }
+
+  const { rows } = await db.query(
+    `UPDATE work_norm_rates SET
+       name = COALESCE($2, name),
+       unit = COALESCE($3, unit),
+       calc_kind = COALESCE($4, calc_kind),
+       rate_loose = $5,
+       rate_medium = $6,
+       rate_hard = $7,
+       rate_default = $8,
+       crew_json = $9::jsonb,
+       params_json = $10::jsonb,
+       notes = $11,
+       method_code = COALESCE($12, method_code),
+       updated_at = NOW(),
+       updated_by = $13
+     WHERE id = $1 RETURNING *`,
+    [
+      rateRow.id,
+      name ?? null,
+      unit ?? null,
+      calcKind ?? null,
+      rate_loose,
+      rate_medium,
+      rate_hard,
+      rate_default,
+      JSON.stringify(crew),
+      JSON.stringify(params),
+      notes || null,
+      methodCode ?? null,
+      user?.id || null
+    ]
+  );
+  const after = rateSnapshot(rows[0]);
+  await writeChangeLog(db, {
+    entity_type: 'rate',
+    entity_id: String(rateRow.id),
+    category_code: after.category_code,
+    action: 'update',
+    before,
+    after,
+    comment: c,
+    user
+  });
+  return { before, after, created: false };
+}
+
+async function revertLastRateChange(db, rateId, user, comment) {
+  const id = Number(rateId);
+  if (!id) {
+    const err = new Error('rateId обязателен');
+    err.statusCode = 400;
+    throw err;
+  }
+  const { rows: logRows } = await db.query(
+    `SELECT * FROM work_norm_change_log
+     WHERE entity_type = 'rate' AND entity_id = $1
+       AND action IN ('update', 'create', 'publish')
+     ORDER BY id DESC
+     LIMIT 1`,
+    [String(id)]
+  );
+  const entry = logRows[0];
+  if (!entry || !entry.before_json) {
+    const err = new Error('Нет записи для отката');
+    err.statusCode = 404;
+    throw err;
+  }
+  const before = entry.before_json;
+  const { rows: curRows } = await db.query(`SELECT * FROM work_norm_rates WHERE id = $1`, [id]);
+  if (!curRows[0]) {
+    const err = new Error('Норма не найдена');
+    err.statusCode = 404;
+    throw err;
+  }
+  const current = rateSnapshot(curRows[0]);
+
+  const { rows } = await db.query(
+    `UPDATE work_norm_rates SET
+       name = $2, unit = $3, calc_kind = $4,
+       rate_loose = $5, rate_medium = $6, rate_hard = $7, rate_default = $8,
+       crew_json = $9::jsonb, params_json = $10::jsonb,
+       notes = $11, method_code = $12, is_active = COALESCE($13, is_active),
+       updated_at = NOW(), updated_by = $14
+     WHERE id = $1 RETURNING *`,
+    [
+      id,
+      before.name,
+      before.unit,
+      before.calc_kind,
+      before.rate_loose,
+      before.rate_medium,
+      before.rate_hard,
+      before.rate_default,
+      JSON.stringify(before.crew_json || {}),
+      JSON.stringify(before.params_json || {}),
+      before.notes,
+      before.method_code ?? null,
+      before.is_active,
+      user?.id || null
+    ]
+  );
+
+  await writeChangeLog(db, {
+    entity_type: 'rate',
+    entity_id: String(id),
+    category_code: rows[0].category_code,
+    action: 'revert',
+    before: current,
+    after: rateSnapshot(rows[0]),
+    comment: String(comment || '').trim(),
+    user
+  });
+  return { before: current, after: rateSnapshot(rows[0]), reverted_from_log_id: entry.id };
+}
+
+/**
+ * days ≈ setup + qty/productivity — простая регрессия или решение по двум точкам.
+ */
+function fitRateFromPoints(points) {
+  const pts = (points || [])
+    .map((p) => ({
+      qty: Number(p.qty),
+      days: Number(p.days),
+      fouling: p.fouling || 'medium'
+    }))
+    .filter((p) => p.qty > 0 && p.days > 0);
+  if (pts.length < 1) {
+    return { setup_days: 0, productivity: null, mh_per_unit: null, trace: 'нет точек' };
+  }
+  if (pts.length === 1) {
+    const p = pts[0];
+    return {
+      setup_days: 0,
+      productivity: Math.round((p.qty / p.days) * 1000) / 1000,
+      mh_per_unit: null,
+      trace: `1 точка: prod=${p.qty}/${p.days}`
+    };
+  }
+  const n = pts.length;
+  let sumQ = 0; let sumD = 0; let sumQQ = 0; let sumQD = 0;
+  for (const p of pts) {
+    sumQ += p.qty;
+    sumD += p.days;
+    sumQQ += p.qty * p.qty;
+    sumQD += p.qty * p.days;
+  }
+  const denom = n * sumQQ - sumQ * sumQ;
+  let setup = 0;
+  let invProd = 0;
+  if (Math.abs(denom) > 1e-9) {
+    invProd = (n * sumQD - sumQ * sumD) / denom;
+    setup = (sumD - invProd * sumQ) / n;
+  } else {
+    const p0 = pts[0];
+    const p1 = pts[pts.length - 1];
+    invProd = (p1.days - p0.days) / (p1.qty - p0.qty);
+    setup = p0.days - invProd * p0.qty;
+  }
+  if (setup < 0) setup = 0;
+  const productivity = invProd > 0 ? Math.round((1 / invProd) * 1000) / 1000 : null;
+  return {
+    setup_days: Math.round(setup * 1000) / 1000,
+    productivity,
+    mh_per_unit: null,
+    trace: `регрессия: setup=${setup.toFixed(3)}, prod=${productivity}`
+  };
+}
+
+async function computeExperienceDelta(db, exp) {
+  if (!exp || !(Number(exp.derived_value) > 0)) return null;
+  const calcKind = metricToCalcKind(exp.derived_metric);
+  const code = exp.derived_metric
+    ? `exp_${exp.category_code}_${exp.derived_metric}`
+    : null;
+  const rateRow = await findRateForPublish(db, exp, { calcKind, code });
+  if (!rateRow) return null;
+  const published = pickRate(rateRow, exp.fouling || 'medium');
+  if (!(published > 0)) return null;
+  const derived = Number(exp.derived_value);
+  return Math.round(((derived - published) / published) * 10000) / 100;
 }
 
 function pickRate(rateRow, fouling) {
@@ -411,6 +965,8 @@ async function previewCalc(db, body) {
   let manHours = 0;
   let reagentKg = null;
   let extraDays = 0;
+  let setupDaysBreakdown = null;
+  let flowDaysBreakdown = null;
 
   const params = rateRow.params_json || {};
   const kind = rateRow.calc_kind;
@@ -521,15 +1077,37 @@ async function previewCalc(db, body) {
         trace.push(`коэфф. ${c.coeff_code} ÷${m} → выработка ${effRate.toFixed(2)}`);
       }
     }
-    const execShiftsNeeded = volume / effRate;
-    const execPerDay = exec * shiftsPerDay * posts;
-    workDays = ceil(execShiftsNeeded / Math.max(1, execPerDay));
-    personShifts = workDays * peoplePerShift * shiftsPerDay * posts;
-    manHours = personShifts * shiftHours;
-    trace.push(`${volume} / ${effRate.toFixed(2)} = ${execShiftsNeeded.toFixed(2)} исполн.·смен`);
-    trace.push(`бригада ${master}м+${exec}сл` +
-      (observers ? `+${observers}набл` : '') +
-      `, смен/сут ${shiftsPerDay}, постов ${posts} → work_days=${workDays}`);
+
+    const useNonlinear = params.setup_days != null || Number(params.productivity) > 0;
+    if (useNonlinear) {
+      const sd = resolveSetupParam(params.setup_days, fouling);
+      let prodPerDay = Number(params.productivity) > 0
+        ? Number(params.productivity)
+        : effRate * Math.max(1, exec) * shiftsPerDay;
+      if (prodPerDay > 0) {
+        flowDaysBreakdown = volume / prodPerDay;
+        setupDaysBreakdown = sd;
+        workDays = ceil(sd + flowDaysBreakdown);
+        personShifts = workDays * peoplePerShift * shiftsPerDay * posts;
+        manHours = personShifts * shiftHours;
+        trace.push(
+          `нелинейно: setup ${sd} сут + flow ${volume}/${prodPerDay.toFixed(2)}` +
+          ` → work_days=${workDays}`
+        );
+      }
+    }
+
+    if (setupDaysBreakdown == null) {
+      const execShiftsNeeded = volume / effRate;
+      const execPerDay = exec * shiftsPerDay * posts;
+      workDays = ceil(execShiftsNeeded / Math.max(1, execPerDay));
+      personShifts = workDays * peoplePerShift * shiftsPerDay * posts;
+      manHours = personShifts * shiftHours;
+      trace.push(`${volume} / ${effRate.toFixed(2)} = ${execShiftsNeeded.toFixed(2)} исполн.·смен`);
+      trace.push(`бригада ${master}м+${exec}сл` +
+        (observers ? `+${observers}набл` : '') +
+        `, смен/сут ${shiftsPerDay}, постов ${posts} → work_days=${workDays}`);
+    }
 
     // котёл complex: + часы химии по контуру
     if (category === 'boilers' && method === 'complex' && Number(inputs.circuit_m3) > 0) {
@@ -625,7 +1203,12 @@ async function previewCalc(db, body) {
     }
 
     const adj = applyCoeffs(mhPer * u, coeffs, selectedCoeffs);
-    const baseMh = adj.value;
+    let baseMh = adj.value;
+    if (params.setup_mh != null) {
+      const setupMh = resolveSetupParam(params.setup_mh, fouling);
+      baseMh = setupMh + adj.value;
+      trace.push(`setup ${setupMh} чел·ч + ${adj.value.toFixed(1)} чел·ч на объём`);
+    }
     const peoplePerDay = peoplePerShift * shiftsPerDay * posts;
     // чел·ч → смены исполнителей (делим на shiftHours), затем на людей/день
     const rawPersonShifts = baseMh / shiftHours;
@@ -687,6 +1270,7 @@ async function previewCalc(db, body) {
     category_code: category,
     method_code: method,
     rate: {
+      id: rateRow.id,
       code: rateRow.code,
       name: rateRow.name,
       unit: rateRow.unit,
@@ -702,29 +1286,57 @@ async function previewCalc(db, body) {
       work_days: workDays,
       person_shifts: personShifts,
       man_hours: Math.round(manHours),
-      reagent_kg: reagentKg != null ? Math.round(reagentKg * 10) / 10 : null
+      reagent_kg: reagentKg != null ? Math.round(reagentKg * 10) / 10 : null,
+      setup_days: setupDaysBreakdown != null ? Math.round(setupDaysBreakdown * 1000) / 1000 : null,
+      flow_days: flowDaysBreakdown != null ? Math.round(flowDaysBreakdown * 1000) / 1000 : null
     },
     trace
   };
 }
 
+/** work_type (Mimir) → коды категорий норм для сужения промпта */
+const WORK_TYPE_CATEGORY_HINT = {
+  HYDRO_DYN: ['tubes', 'avo', 'plates'],
+  HYDRO_MECH: ['tubes', 'avo'],
+  CHEM: ['chem_circuits', 'boilers', 'pipelines', 'plates', 'tubes'],
+  HVAC: ['vent_sewer', 'towers_hvac'],
+  MOUNT: ['mount', 'repair_weld'],
+  INSULATION: ['insulation'],
+  DIAG: ['tubes', 'plates', 'boilers'],
+  CLEANING: null
+};
+
+function filterCatalogByWorkType(catalog, workTypeHint) {
+  if (!catalog || !workTypeHint) return catalog;
+  const codes = WORK_TYPE_CATEGORY_HINT[String(workTypeHint).toUpperCase()];
+  if (!codes || !codes.length) return catalog;
+  const set = new Set(codes);
+  return {
+    ...catalog,
+    categories: (catalog.categories || []).filter((c) => set.has(c.code)),
+    rates: (catalog.rates || []).filter((r) => set.has(r.category_code)),
+    experiences: (catalog.experiences || []).filter((e) => set.has(e.category_code))
+  };
+}
+
 function toPromptMarkdown(catalog, workTypeHint) {
   if (!catalog) return '(справочник норм CRM пуст)';
+  const scoped = filterCatalogByWorkType(catalog, workTypeHint);
   const lines = [];
   lines.push('═══ СПРАВОЧНИК НОРМ CRM (приоритет над MODULE §3.5 при конфликте) ═══');
-  lines.push('Globals: ' + Object.entries(catalog.globals || {})
+  lines.push('Globals: ' + Object.entries(scoped.globals || catalog.globals || {})
     .map(([k, v]) => `${k}=${v}`)
     .join(', '));
   lines.push('');
-  const cats = catalog.categories || [];
+  const cats = scoped.categories || [];
   for (const cat of cats) {
     lines.push(`### ${cat.title} (${cat.code})`);
-    const rates = (catalog.rates || []).filter((r) => r.category_code === cat.code);
+    const rates = (scoped.rates || catalog.rates || []).filter((r) => r.category_code === cat.code);
     for (const r of rates) {
       const def = r.rate_default != null ? r.rate_default : '—';
       const crew = r.crew_json || {};
       let line =
-        `- [${r.method_code || '—'}] ${r.name}: база=${def} ${r.unit}` +
+        `- [${r.method_code || '—'}] ${r.name} · код \`${r.code}\`: база=${def} ${r.unit}` +
         ` (${calcKindLabel(r.calc_kind)})` +
         (r.rate_loose != null
           ? `; лёгкие/средние/тяжёлые=${r.rate_loose}/${r.rate_medium}/${r.rate_hard}`
@@ -751,7 +1363,7 @@ function toPromptMarkdown(catalog, workTypeHint) {
     lines.push('');
   }
 
-  const facts = (catalog.experiences || []).filter((e) =>
+  const facts = (scoped.experiences || catalog.experiences || []).filter((e) =>
     e.status === 'published' || e.status === 'confirmed'
   );
   if (facts.length) {
@@ -1048,7 +1660,13 @@ async function listExperiences(db, { category, status, limit } = {}) {
 
 async function getExperience(db, id) {
   const { rows } = await db.query(`SELECT * FROM work_norm_experiences WHERE id = $1`, [id]);
-  return rows[0] || null;
+  const row = rows[0] || null;
+  if (!row) return null;
+  try {
+    const delta = await computeExperienceDelta(db, row);
+    if (delta != null) row.delta_pct = delta;
+  } catch (_) { /* без БД/колонок — не ломаем GET */ }
+  return row;
 }
 
 async function loadCategory(db, code) {
@@ -1081,6 +1699,7 @@ async function createExperience(db, body, user) {
     catRow
   );
 
+  const sourceKind = body.source_kind || 'manual';
   const { rows } = await db.query(
     `INSERT INTO work_norm_experiences (
       category_code, method_code, object_label, qty, volume_value, volume_unit,
@@ -1088,10 +1707,12 @@ async function createExperience(db, body, user) {
       calendar_days, shift_mode, crew_masters, crew_exec, crew_other_json,
       equipment_text, source_work_id, source_tender_id, customer_name, object_name, period_text,
       story_text, derived_metric, derived_value, derived_unit, derived_trace,
-      status, comment, created_by, extras_json
+      status, comment, created_by, extras_json,
+      target_rate_id, source_kind, source_estimate_id, norm_snapshot_json, delta_pct
     ) VALUES (
       $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15::jsonb,
-      $16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30::jsonb
+      $16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30::jsonb,
+      $31,$32,$33,$34::jsonb,$35
     ) RETURNING *`,
     [
       body.category_code,
@@ -1123,7 +1744,12 @@ async function createExperience(db, body, user) {
       body.status === 'confirmed' ? 'confirmed' : 'draft',
       body.comment || null,
       user?.id || null,
-      JSON.stringify(extras)
+      JSON.stringify(extras),
+      body.target_rate_id ?? null,
+      sourceKind,
+      body.source_estimate_id ?? null,
+      body.norm_snapshot_json ? JSON.stringify(body.norm_snapshot_json) : null,
+      body.delta_pct ?? null
     ]
   );
   const row = rows[0];
@@ -1261,65 +1887,20 @@ async function publishExperience(db, id, { comment, mode } = {}, user) {
 
   const publishMode = mode || 'replace';
   const fouling = exp.fouling || 'medium';
-  let calcKind = 'min_per_unit';
-  let unit = exp.derived_unit || 'мин/труб';
-  let code = `exp_${exp.category_code}_${exp.derived_metric}`;
-  let name = exp.object_label || `Норма с объекта #${exp.id}`;
-
   const metric = exp.derived_metric;
-  if (metric === 'days_per_section' || metric === 'days_per_unit') {
-    calcKind = 'days_per_unit';
-    unit = exp.derived_unit || 'сут/ед.';
-  } else if (metric === 'm2_per_shift' || metric === 'm3_per_shift' || metric === 'm_per_shift' ||
-             metric === 'tubes_per_shift' || metric === 'joints_per_shift') {
-    calcKind = 'per_unit_shift';
-    unit = exp.derived_unit || 'ед./смену';
-  } else if (metric === 'hours_per_cycle') {
-    calcKind = 'hours_per_cycle';
-    unit = 'ч/цикл';
-  } else if (metric === 'kg_per_m') {
-    calcKind = 'kg_per_m';
-    unit = 'кг/м';
-  } else if (metric === 'mh_per_m3' || metric === 'mh_per_m2' || metric === 'mh_per_100_tubes') {
-    calcKind = 'mh_per_unit';
-    unit = exp.derived_unit || 'чел·ч';
-  } else if (metric === 'min_per_tube') {
-    calcKind = 'min_per_unit';
-    unit = 'мин/труб';
-  }
+  const calcKind = metricToCalcKind(metric) || 'min_per_unit';
+  let unit = exp.derived_unit || 'мин/труб';
+  if (calcKind === 'days_per_unit') unit = exp.derived_unit || 'сут/ед.';
+  else if (calcKind === 'per_unit_shift') unit = exp.derived_unit || 'ед./смену';
+  else if (calcKind === 'hours_per_cycle') unit = 'ч/цикл';
+  else if (calcKind === 'kg_per_m') unit = 'кг/м';
 
-  const { rows: existing } = await db.query(
-    `SELECT * FROM work_norm_rates
-     WHERE category_code=$1 AND is_active
-       AND (
-         (method_code IS NOT DISTINCT FROM $2 AND calc_kind=$3)
-         OR code=$4
-       )
-     ORDER BY id LIMIT 1`,
-    [exp.category_code, exp.method_code || null, calcKind, code]
-  );
-
-  let rateRow = existing[0] || null;
+  const code = `exp_${exp.category_code}_${metric}`;
+  const name = exp.object_label || `Норма с объекта #${exp.id}`;
   const val = Number(exp.derived_value);
-  const beforeRate = rateRow ? { ...rateRow } : null;
 
-  const setFoulingRates = (row) => {
-    let loose = row.rate_loose != null ? Number(row.rate_loose) : null;
-    let medium = row.rate_medium != null ? Number(row.rate_medium) : null;
-    let hard = row.rate_hard != null ? Number(row.rate_hard) : null;
-    let def = row.rate_default != null ? Number(row.rate_default) : null;
-    const apply = (prev) => {
-      if (publishMode === 'average' && prev != null) return Math.round(((prev + val) / 2) * 100) / 100;
-      if (publishMode === 'note_only') return prev;
-      return val;
-    };
-    if (fouling === 'light') loose = apply(loose);
-    else if (fouling === 'heavy') hard = apply(hard);
-    else medium = apply(medium);
-    if (def == null || publishMode === 'replace') def = val;
-    else if (publishMode === 'average') def = Math.round(((def + val) / 2) * 100) / 100;
-    return { loose, medium, hard, def };
-  };
+  let rateRow = await findRateForPublish(db, exp, { calcKind, code });
+  const beforeRate = rateRow ? rateSnapshot(rateRow) : null;
 
   const noteBit =
     `опыт #${exp.id}` +
@@ -1327,72 +1908,79 @@ async function publishExperience(db, id, { comment, mode } = {}, user) {
     (exp.diameter_mm != null ? ` · Ø${exp.diameter_mm}` : '') +
     (exp.fouling_note ? ` · ${exp.fouling_note}` : '');
 
-  if (!rateRow) {
-    const rates = setFoulingRates({
-      rate_loose: null, rate_medium: null, rate_hard: null, rate_default: null
-    });
-    const params = {};
-    if (exp.diameter_mm != null && calcKind === 'min_per_unit') {
-      params.by_diameter = { [String(Math.round(Number(exp.diameter_mm)))]: val };
-    }
-    const crew = {
-      master: exp.crew_masters || 1,
-      exec: exp.crew_exec || 3,
-      observer_rule: 'none'
+  const values = {};
+  if (publishMode !== 'note_only') {
+    if (fouling === 'light') values.rate_loose = val;
+    else if (fouling === 'heavy') values.rate_hard = val;
+    else values.rate_medium = val;
+    if (publishMode === 'replace') values.rate_default = val;
+    else values.rate_default = val;
+  }
+  const paramsPatch = {};
+  if (exp.diameter_mm != null && calcKind === 'min_per_unit') {
+    paramsPatch.by_diameter = {
+      [String(Math.round(Number(exp.diameter_mm)))]: val
     };
-    const { rows } = await db.query(
-      `INSERT INTO work_norm_rates (
-        category_code, method_code, code, name, unit, calc_kind,
-        rate_loose, rate_medium, rate_hard, rate_default,
-        crew_json, params_json, basis, notes, sort_order, updated_by
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11::jsonb,$12::jsonb,'field',$13,50,$14)
-      RETURNING *`,
-      [
-        exp.category_code, exp.method_code || null, code, name, unit, calcKind,
-        rates.loose, rates.medium, rates.hard, rates.def,
-        JSON.stringify(crew), JSON.stringify(params),
-        noteBit, user?.id || null
-      ]
-    );
-    rateRow = rows[0];
-  } else if (publishMode !== 'note_only') {
-    const rates = setFoulingRates(rateRow);
-    const params = { ...(rateRow.params_json || {}) };
-    if (exp.diameter_mm != null && calcKind === 'min_per_unit') {
-      const by = { ...(params.by_diameter || {}) };
-      const key = String(Math.round(Number(exp.diameter_mm)));
-      if (publishMode === 'average' && by[key] != null) {
-        by[key] = Math.round(((Number(by[key]) + val) / 2) * 100) / 100;
-      } else {
-        by[key] = val;
-      }
-      params.by_diameter = by;
+  }
+  const crewPatch = {
+    master: exp.crew_masters || 1,
+    exec: exp.crew_exec || 3,
+    observer_rule: 'none'
+  };
+
+  let patchResult;
+  if (rateRow) {
+    patchResult = await applyNormPatch(db, {
+      rateId: rateRow.id,
+      values,
+      mode: publishMode,
+      source: `publish experience #${exp.id}`,
+      user,
+      comment: publishMode === 'note_only' ? `${c}; ${noteBit}` : c,
+      paramsPatch: publishMode === 'note_only' ? undefined : paramsPatch,
+      crewPatch: publishMode === 'note_only' ? undefined : crewPatch
+    });
+    rateRow = patchResult.after;
+    if (publishMode === 'note_only') {
+      const notes = [beforeRate?.notes, `справка ${noteBit}: ${val} ${unit}`].filter(Boolean).join('; ').slice(0, 2000);
+      const { rows } = await db.query(
+        `UPDATE work_norm_rates SET notes=$2, updated_at=NOW(), updated_by=$3 WHERE id=$1 RETURNING *`,
+        [rateRow.id, notes, user?.id || null]
+      );
+      rateRow = rateSnapshot(rows[0]);
     }
-    const notes = [rateRow.notes, noteBit].filter(Boolean).join('; ').slice(0, 2000);
-    const { rows } = await db.query(
-      `UPDATE work_norm_rates SET
-         rate_loose=$2, rate_medium=$3, rate_hard=$4, rate_default=$5,
-         params_json=$6::jsonb, notes=$7, basis='field',
-         updated_at=NOW(), updated_by=$8
-       WHERE id=$1 RETURNING *`,
-      [rateRow.id, rates.loose, rates.medium, rates.hard, rates.def,
-        JSON.stringify(params), notes, user?.id || null]
-    );
-    rateRow = rows[0];
   } else {
-    const notes = [rateRow.notes, `справка ${noteBit}: ${val} ${unit}`].filter(Boolean).join('; ').slice(0, 2000);
-    const { rows } = await db.query(
-      `UPDATE work_norm_rates SET notes=$2, updated_at=NOW(), updated_by=$3 WHERE id=$1 RETURNING *`,
-      [rateRow.id, notes, user?.id || null]
-    );
-    rateRow = rows[0];
+    patchResult = await applyNormPatch(db, {
+      categoryCode: exp.category_code,
+      code,
+      name,
+      unit,
+      calcKind,
+      methodCode: exp.method_code || null,
+      values: {
+        rate_loose: fouling === 'light' ? val : null,
+        rate_medium: fouling === 'medium' || !fouling ? val : null,
+        rate_hard: fouling === 'heavy' ? val : null,
+        rate_default: val
+      },
+      mode: 'replace',
+      source: `publish experience #${exp.id}`,
+      user,
+      comment: c,
+      paramsPatch,
+      crewPatch
+    });
+    rateRow = patchResult.after;
   }
 
+  const deltaPct = await computeExperienceDelta(db, { ...exp, derived_value: val });
   const { rows: expRows } = await db.query(
     `UPDATE work_norm_experiences SET
-       status='published', published_rate_id=$2, published_at=NOW(), updated_at=NOW()
+       status='published', published_rate_id=$2, published_at=NOW(), updated_at=NOW(),
+       target_rate_id=$2, delta_pct=$3,
+       norm_snapshot_json=$4::jsonb
      WHERE id=$1 RETURNING *`,
-    [id, rateRow.id]
+    [id, rateRow.id, deltaPct, JSON.stringify(rateRow)]
   );
 
   await writeChangeLog(db, {
@@ -1404,6 +1992,126 @@ async function publishExperience(db, id, { comment, mode } = {}, user) {
   });
 
   return { experience: expRows[0], rate: rateRow, conflict: beforeRate };
+}
+
+async function batchCreateExperiences(db, { items, default_source_kind } = {}, user) {
+  const list = Array.isArray(items) ? items : [];
+  const results = [];
+  for (let i = 0; i < list.length; i++) {
+    const item = list[i] || {};
+    try {
+      const body = {
+        ...item,
+        source_kind: item.source_kind || default_source_kind || 'manual',
+        status: item.status || 'draft'
+      };
+      const r = await createExperience(db, body, user);
+      results.push({ ok: true, index: i, id: r.row.id, row: r.row, derived: r.derived });
+    } catch (e) {
+      results.push({ ok: false, index: i, error: e.message });
+    }
+  }
+  return results;
+}
+
+function parseExperiencesTsv(text) {
+  const lines = String(text || '').split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+  if (!lines.length) return [];
+  const header = lines[0].split('\t').map((h) => h.trim().toLowerCase());
+  const rows = [];
+  for (let i = 1; i < lines.length; i++) {
+    const cols = lines[i].split('\t');
+    const obj = {};
+    header.forEach((h, idx) => {
+      const v = cols[idx];
+      if (v == null || v === '') return;
+      if (['qty', 'volume_value', 'diameter_mm', 'length_m', 'calendar_days', 'crew_masters', 'crew_exec', 'shift_mode'].includes(h)) {
+        obj[h] = Number(String(v).replace(',', '.'));
+      } else {
+        obj[h] = v;
+      }
+    });
+    if (obj.story_text || obj.category_code) rows.push(obj);
+  }
+  return rows;
+}
+
+const WORK_CLOSED_FOR_NORM = new Set([
+  'Закрыт', 'Работы сдали', 'Завершена', 'Завершено', 'Завершен', 'Завершён', 'Закрыта', 'Сдана', 'Сдан'
+]);
+
+function isWorkClosedStatus(status) {
+  if (!status) return false;
+  if (WORK_CLOSED_FOR_NORM.has(status)) return true;
+  return /закрыт/i.test(String(status)) || /сдали/i.test(String(status));
+}
+
+/** Черновик опыта при закрытии работы — не блокирует closeout/PUT. */
+async function tryAutoExperienceOnWorkClose(db, workId, user) {
+  try {
+    const wid = Number(workId);
+    if (!wid) return null;
+    const { rows: dup } = await db.query(
+      `SELECT id FROM work_norm_experiences
+       WHERE source_work_id = $1 AND source_kind = 'work_close' LIMIT 1`,
+      [wid]
+    );
+    if (dup[0]) return null;
+
+    const hint = await getWorkHint(db, wid);
+    if (!hint) return null;
+
+    const { rows: wRows } = await db.query(
+      `SELECT work_title, description FROM works WHERE id = $1 AND deleted_at IS NULL`,
+      [wid]
+    );
+    const w = wRows[0] || {};
+    const storyParts = [
+      hint.object_name,
+      hint.customer_name,
+      hint.period_text,
+      w.work_title
+    ].filter(Boolean);
+    let story_text = storyParts.join(' · ');
+    if (story_text.length < 10) {
+      story_text = `Закрытие работы #${wid}: ${w.work_title || hint.object_name || 'объект'}`;
+    }
+
+    const heur = heuristicExtractFromStory(
+      story_text + ' ' + String(w.description || '')
+    );
+    if (!heur.category_code) return null;
+
+    const result = await createExperience(db, {
+      category_code: heur.category_code,
+      method_code: heur.method_code || null,
+      qty: heur.qty,
+      volume_value: heur.volume_value,
+      volume_unit: heur.volume_unit,
+      diameter_mm: heur.diameter_mm,
+      length_m: heur.length_m,
+      fouling: heur.fouling,
+      fouling_note: heur.fouling_note,
+      calendar_days: hint.calendar_days ?? heur.calendar_days,
+      shift_mode: heur.shift_mode || 2,
+      crew_masters: heur.crew_masters,
+      crew_exec: hint.crew_exec ?? heur.crew_exec,
+      equipment_text: hint.equipment_text ?? heur.equipment_text,
+      source_work_id: wid,
+      source_tender_id: hint.source_tender_id,
+      customer_name: hint.customer_name,
+      object_name: hint.object_name,
+      object_label: w.work_title || hint.object_name,
+      period_text: hint.period_text,
+      story_text,
+      source_kind: 'work_close',
+      status: 'draft',
+      comment: `Авто при закрытии работы #${wid}`
+    }, user || { id: null, name: 'system' });
+    return result.row;
+  } catch (_) {
+    return null;
+  }
 }
 
 async function getWorkHint(db, workId) {
@@ -1781,20 +2489,573 @@ ${catList}`;
   };
 }
 
+function extractNormHintsFromText(text) {
+  const t = String(text || '');
+  const inputs = {};
+  const mTubes = t.match(/(\d{2,5})\s*(?:труб|трубок)/i);
+  if (mTubes) inputs.tubes = Number(mTubes[1]);
+  const mM2 = t.match(/(\d+(?:[.,]\d+)?)\s*(?:м²|м2|кв\.?\s*м)/i);
+  if (mM2) inputs.surface_m2 = Number(String(mM2[1]).replace(',', '.'));
+  const mLen = t.match(/(\d+(?:[.,]\d+)?)\s*(?:м\.?\s*п\.?|метр(?:ов|а)?\s*(?:труб|контура)?)/i);
+  if (mLen) inputs.length_m = Number(String(mLen[1]).replace(',', '.'));
+  const mDia = t.match(/(?:[øoØ]|диам(?:етр)?)\s*(\d{2,4})/i) || t.match(/\bду\s*(\d{2,4})/i);
+  if (mDia) {
+    inputs.diameter_mm = Number(mDia[1]);
+    inputs.dn_mm = Number(mDia[1]);
+  }
+  const mVol = t.match(/(\d+(?:[.,]\d+)?)\s*(?:м³|m3)/i);
+  if (mVol) inputs.volume_m3 = Number(String(mVol[1]).replace(',', '.'));
+  const mCircuit = t.match(/контур[^\d]{0,20}(\d+(?:[.,]\d+)?)\s*(?:м³|m3)/i);
+  if (mCircuit) inputs.circuit_m3 = Number(String(mCircuit[1]).replace(',', '.'));
+  const mQty = t.match(/(\d+)\s*(?:апп(?:арат|\.|)|кот(?:ёл|ел|\.|)|шт\.?)/i);
+  if (mQty) inputs.qty = Number(mQty[1]);
+  if (/опрессов|гидроиспыт/i.test(t)) inputs._hint_hydrotest = true;
+  if (/протрав/i.test(t)) inputs._hint_pickle = true;
+  if (/сверл/i.test(t)) inputs._hint_drill = true;
+  return inputs;
+}
+
+function resolveNormCategoryMethod(workType, text) {
+  const t = String(text || '').toLowerCase();
+  const wt = workType ? String(workType).toUpperCase() : null;
+  if (wt === 'MOUNT' || /монтаж|демонтаж|такелаж/i.test(t)) {
+    if (/демонтаж/i.test(t)) return { category_code: 'mount', method_code: 'dismount' };
+    if (/такелаж|кран|стрел/i.test(t)) return { category_code: 'mount', method_code: 'rigging' };
+    if (/фланец|проклад/i.test(t)) return { category_code: 'mount', method_code: 'flange' };
+    return { category_code: 'mount', method_code: 'mount' };
+  }
+  if (wt === 'INSULATION' || /изоляц|утепл/i.test(t)) {
+    return { category_code: 'insulation', method_code: 'insul' };
+  }
+  if (/огнев|наряд.?допуск|сварк/i.test(t) && /резк|рез\s/i.test(t)) {
+    return { category_code: 'repair_weld', method_code: 'cutting' };
+  }
+  if (/огнев|наряд.?допуск/i.test(t)) {
+    return { category_code: 'repair_weld', method_code: 'fire_works' };
+  }
+  if (/сварк|стык/i.test(t)) {
+    return { category_code: 'repair_weld', method_code: 'weld' };
+  }
+  if (inputsHintPickle(t)) return { category_code: 'pipelines', method_code: 'pickle' };
+  if (/опрессов|гидроиспыт/i.test(t)) return { category_code: 'pipelines', method_code: 'hydrotest' };
+  if (wt === 'HYDRO_DYN' || /\bгдо\b|гидродинам/i.test(t)) {
+    if (/сверл/i.test(t)) return { category_code: 'tubes', method_code: 'gdo', rate_code: 'tubes_drill_pcs_shift' };
+    return { category_code: 'tubes', method_code: 'gdo' };
+  }
+  if (wt === 'HYDRO_MECH' || /\bгмо\b|гидромех/i.test(t)) {
+    return { category_code: 'tubes', method_code: 'gmo' };
+  }
+  if (wt === 'CHEM' || /хим(?:ич)?|cip|промыв/i.test(t)) {
+    if (/кот/i.test(t)) return { category_code: 'boilers', method_code: 'chem' };
+    if (/трубоп/i.test(t)) return { category_code: 'pipelines', method_code: 'chem_ops' };
+    return { category_code: 'chem_circuits', method_code: 'cip' };
+  }
+  if (wt === 'HVAC' || /вентил|воздуховод|градир/i.test(t)) {
+    if (/градир/i.test(t)) return { category_code: 'towers_hvac', method_code: 'tower' };
+    return { category_code: 'vent_sewer', method_code: 'vent' };
+  }
+  if (/кот(?:ёл|ел)/i.test(t)) return { category_code: 'boilers', method_code: 'mech' };
+  if (/трубоп/i.test(t)) return { category_code: 'pipelines', method_code: 'hydro' };
+  if (/ёмкост|резервуар|рвс/i.test(t)) return { category_code: 'vessels', method_code: 'clean' };
+  if (/пластин|теплообмен/i.test(t)) return { category_code: 'plates', method_code: 'hydro_dis' };
+  if (/аво|аппарат/i.test(t)) return { category_code: 'avo', method_code: 'outer' };
+  return null;
+}
+
+function inputsHintPickle(t) {
+  return /протрав/i.test(t);
+}
+
+/**
+ * Math preview для Mimir до LLM: из work_type/TZ или явных norm_inputs.
+ */
+async function tryNormPreviewForEstimate(db, ctx) {
+  const meta = { skipped: false, reason: null, error: null };
+  const explicit = ctx?.norm_inputs && typeof ctx.norm_inputs === 'object' ? ctx.norm_inputs : null;
+  let category_code = explicit?.category_code || null;
+  let method_code = explicit?.method_code || null;
+  let rate_code = explicit?.rate_code || null;
+  let inputs = explicit?.inputs && typeof explicit.inputs === 'object' ? { ...explicit.inputs } : {};
+
+  const textParts = [
+    ctx?.work?.work_title,
+    ctx?.work?.work_description,
+    ctx?.tender?.tender_title,
+    ctx?.tender?.tender_description,
+    ...(ctx?.documents || []).map((d) => d.content || d.original_name || '')
+  ].filter(Boolean);
+  const blob = textParts.join('\n');
+
+  if (!category_code) {
+    const resolved = resolveNormCategoryMethod(ctx?.workType || ctx?.work_type, blob);
+    if (resolved) {
+      category_code = resolved.category_code;
+      method_code = method_code || resolved.method_code;
+      rate_code = rate_code || resolved.rate_code || null;
+    }
+  }
+
+  if (!category_code) {
+    meta.skipped = true;
+    meta.reason = 'category/method not inferred';
+    return { preview: null, inputs: null, meta };
+  }
+
+  const hinted = extractNormHintsFromText(blob);
+  inputs = { ...hinted, ...inputs };
+  delete inputs._hint_hydrotest;
+  delete inputs._hint_pickle;
+  delete inputs._hint_drill;
+
+  if (method_code === 'fire_works' && !(Number(inputs.points) > 0) && Number(inputs.joints) > 0) {
+    inputs.points = Number(inputs.joints);
+  }
+
+  try {
+    const preview = await previewCalc(db, {
+      category_code,
+      method_code,
+      rate_code,
+      inputs,
+      fouling: explicit?.fouling || 'medium',
+      coeffs: explicit?.coeffs,
+      posts: explicit?.posts
+    });
+    if (preview.error && !preview.ok) {
+      // Две разные ситуации:
+      //   1) нормы нет → фолбэк, Мимир оценивает сам и честно это говорит;
+      //   2) не хватает объёма/диаметра → это вопрос к человеку (этап clarify),
+      //      подменять его выдуманным сроком нельзя.
+      meta.error = preview.error;
+      if (!isMissingNormError(preview.error)) {
+        meta.needsInput = true;
+        return {
+          preview: { ok: false, error: preview.error, needs_input: true, trace: preview.trace || [] },
+          inputs: { category_code, method_code, rate_code, ...inputs },
+          meta
+        };
+      }
+      meta.fallback = true;
+      const fb = buildFallbackPreview({
+        category_code,
+        method_code,
+        inputs,
+        workDays: inputs.work_days || inputs.workDays,
+        crew: explicit?.crew,
+        reason: preview.error
+      });
+      return {
+        preview: preview.rate ? { ...fb, rate: preview.rate } : fb,
+        inputs: { category_code, method_code, rate_code, ...inputs },
+        meta
+      };
+    }
+    return { preview, inputs: { category_code, method_code, rate_code, ...inputs }, meta };
+  } catch (e) {
+    meta.error = e.message;
+    if (!isMissingNormError(e.message)) {
+      meta.needsInput = true;
+      return {
+        preview: { ok: false, error: e.message, needs_input: true, trace: [] },
+        inputs: { category_code, method_code, rate_code, ...inputs },
+        meta
+      };
+    }
+    meta.fallback = true;
+    return {
+      preview: buildFallbackPreview({
+        category_code,
+        method_code,
+        inputs,
+        workDays: inputs.work_days || inputs.workDays,
+        crew: explicit?.crew,
+        reason: e.message
+      }),
+      inputs: { category_code, method_code, rate_code, ...inputs },
+      meta
+    };
+  }
+}
+
+function normPreviewToMarkdown(preview, meta) {
+  if (!preview || preview.error) {
+    const err = preview?.error || meta?.error || meta?.reason;
+    if (!err) return '';
+    if (preview && preview.needs_input) {
+      // Это не «нормы нет», а «дай объём». Мимир обязан спросить, а не выдумывать.
+      return [
+        '',
+        '═══ NORM PREVIEW (CRM math, без LLM) ═══',
+        `⛔ СЧИТАТЬ НЕЛЬЗЯ: ${err}`,
+        'Не выдумывай объём и не подставляй типовой. Задай вопрос в questions_for_customer',
+        'или верни decision_recommend=need_info с отсутствующим параметром.'
+      ].join('\n');
+    }
+    return `\n═══ NORM PREVIEW (CRM math) ═══\n⚠️ ${err}\n`;
+  }
+  const r = preview.results || {};
+  const c = preview.crew || {};
+  if (preview.fallback) {
+    // Честно: нормы нет, это оценка модели, а не справочник.
+    return [
+      '',
+      '═══ NORM PREVIEW (CRM math, без LLM) ═══',
+      `⚠️ НОРМЫ В СПРАВОЧНИКЕ НЕТ (${preview.category_code || '—'} / ${preview.method_code || '—'})`,
+      `Причина: ${meta?.error || 'нет подходящей нормы'}`,
+      'Верни свою оценку сроков и бригады, но ОБЯЗАТЕЛЬНО отметь в analysis.warnings,',
+      'что расчёт выполнен НЕ по справочнику, и укажи основание (аналог, практика, документ).',
+      'После сохранения просчёта норма будет создана в справочнике автоматически.',
+      'Trace:',
+      ...(Array.isArray(preview.trace) ? preview.trace.slice(0, 8).map((x) => `- ${x}`) : [])
+    ].join('\n');
+  }
+  const lines = [
+    '',
+    '═══ NORM PREVIEW (CRM math, без LLM) ═══',
+    `Категория: ${preview.category_code} / ${preview.method_code || '—'}`,
+    `Норма: ${preview.rate?.code || '—'} — ${preview.rate?.name || ''}`,
+    `work_days: ${r.work_days ?? '—'}; person_shifts: ${r.person_shifts ?? '—'}; man_hours: ${r.man_hours ?? '—'}`,
+    `Бригада: ${c.master ?? 0}м+${c.exec ?? 0}сл` +
+      (c.observers ? `+${c.observers}набл` : '') +
+      `; смен/сут ${c.shifts_per_day ?? '—'}`,
+    'Trace:',
+    ...(Array.isArray(preview.trace) ? preview.trace.slice(0, 12).map((x) => `- ${x}`) : []),
+    'Используй как якорь для work_days/crew; при конфликте с MODULE — CRM preview выше.'
+  ];
+  return lines.join('\n');
+}
+
+function buildNormTrace(ctx, preview, ai) {
+  if (!preview || preview.error) {
+    // Просчёт без нормы — тоже валидный случай: фиксируем, что считали не по
+    // справочнику, чтобы UI мог показать честную пометку (требование 05.11.2026).
+    return {
+      rate_code: null,
+      rate_id: null,
+      fallback: true,
+      reason: preview?.error || null,
+      work_days: Number((ai && ai.estimate && ai.estimate.work_days))
+        || null,
+      crew: null,
+      category: ctx?.norm_inputs?.category_code || null,
+      method: ctx?.norm_inputs?.method_code || null,
+      inputs: ctx?.norm_inputs || null,
+      preview: null
+    };
+  }
+  const est = (ai && ai.estimate) || {};
+  const p = (ctx && ctx.estimate && ctx.estimate.params) || {};
+  const workers =
+    Number(est.workers_per_shift) ||
+    Number(p.workers_per_shift) ||
+    Number(p.workers) ||
+    null;
+  const masters =
+    Number(est.masters_per_shift) ||
+    Number(p.masters_per_shift) ||
+    Number(p.masters) ||
+    null;
+  return {
+    rate_code: preview.rate?.code || null,
+    rate_id: preview.rate?.id || null,
+    work_days: Number(est.work_days) || preview.results?.work_days || null,
+    crew: {
+      master: preview.crew?.master,
+      exec: preview.crew?.exec,
+      observers: preview.crew?.observers,
+      workers_per_shift: workers,
+      masters_per_shift: masters
+    },
+    category: preview.category_code,
+    method: preview.method_code,
+    inputs: ctx?.norm_inputs_used || ctx?.norm_inputs || null,
+    preview: {
+      work_days: preview.results?.work_days,
+      person_shifts: preview.results?.person_shifts,
+      trace: preview.trace
+    }
+  };
+}
+
+function resolveVolumeFromInputs(inputs) {
+  const i = inputs || {};
+  return Number(
+    i.tubes ?? i.joints ?? i.plates_count ?? i.surface_m2 ?? i.length_m ??
+    i.circuit_m3 ?? i.volume_m3 ?? i.qty ?? i.points ?? i.lifts ?? 0
+  );
+}
+
+function deriveImpliedRateValues(rateRow, inputs, workDays, crewOverride, globalsMap) {
+  const shiftHours = Number(globalsMap?.shift_hours) || 12;
+  const shiftsPerDay = Number(globalsMap?.shifts_per_day) || 2;
+  const posts = 1;
+  const crew = rateRow.crew_json || {};
+  const master = Number(crewOverride?.master ?? crewOverride?.masters_per_shift ?? crew.master) || 1;
+  const exec = Number(crewOverride?.exec ?? crewOverride?.workers_per_shift ?? crew.exec) || 3;
+  const observers = Number(
+    crewOverride?.observers != null
+      ? crewOverride.observers
+      : (crew.observer_rule === '1:1' ? 1 : 0)
+  ) || 0;
+  const peoplePerShift = master + exec + observers;
+  const peoplePerDay = peoplePerShift * shiftsPerDay * posts;
+  const volume = resolveVolumeFromInputs(inputs);
+  const wd = Number(workDays);
+  if (!(wd > 0) || !(volume > 0)) {
+    const err = new Error('Нужны work_days > 0 и объём из trace/inputs');
+    err.statusCode = 400;
+    throw err;
+  }
+
+  const kind = rateRow.calc_kind;
+  const values = {};
+
+  if (kind === 'per_unit_shift') {
+    const execPerDay = exec * shiftsPerDay * posts;
+    const execShifts = wd * execPerDay;
+    const implied = volume / Math.max(0.001, execShifts);
+    values.rate_default = Math.round(implied * 100) / 100;
+    values.rate_medium = values.rate_default;
+  } else if (kind === 'mh_per_unit') {
+    const baseMh = wd * peoplePerDay * shiftHours;
+    const mhPer = baseMh / volume;
+    values.rate_default = Math.round(mhPer * 1000) / 1000;
+    values.rate_medium = values.rate_default;
+  } else if (kind === 'hours_per_cycle') {
+    const cycles = Number(inputs?.cycles) > 0 ? Number(inputs.cycles) : 1;
+    const hours = wd * shiftHours * shiftsPerDay * posts;
+    values.rate_default = Math.round((hours / cycles) * 10) / 10;
+    values.rate_medium = values.rate_default;
+  } else if (kind === 'days_per_unit') {
+    const units = Number(inputs?.qty ?? inputs?.sections ?? inputs?.apparatus ?? 1) || 1;
+    values.rate_default = Math.round((wd / units) * 100) / 100;
+    values.rate_medium = values.rate_default;
+  } else {
+    const err = new Error(`calc_kind ${kind} не поддержан для обратного расчёта из сметы`);
+    err.statusCode = 400;
+    throw err;
+  }
+
+  return {
+    values,
+    crewPatch: { master, exec }
+  };
+}
+
+/**
+ * Определяет calc_kind для новой нормы, когда её ещё нет в справочнике.
+ * Выбираем по единице объёма — то, что калькулятор точно посчитает.
+ */
+function inferCalcKindForNewRate(categoryCode, methodCode, inputs) {
+  const i = inputs || {};
+  if (Number(i.cycles) > 0) return { calc_kind: 'hours_per_cycle', unit: 'ч/цикл' };
+  if (Number(i.tubes) > 0) return { calc_kind: 'per_unit_shift', unit: 'труб/смену' };
+  if (Number(i.joints) > 0) return { calc_kind: 'per_unit_shift', unit: 'стык/смену' };
+  if (Number(i.surface_m2) > 0) return { calc_kind: 'per_unit_shift', unit: 'м²/смену' };
+  if (Number(i.length_m) > 0) return { calc_kind: 'per_unit_shift', unit: 'м/смену' };
+  if (Number(i.volume_m3) > 0) return { calc_kind: 'per_unit_shift', unit: 'м³/смену' };
+  if (Number(i.circuit_m3) > 0) return { calc_kind: 'per_unit_shift', unit: 'м³/смену' };
+  if (Number(i.qty) > 0 || Number(i.apparatus) > 0) return { calc_kind: 'days_per_unit', unit: 'сут/шт' };
+  if (categoryCode === 'insulation') return { calc_kind: 'per_unit_shift', unit: 'м²/смену' };
+  return { calc_kind: 'fixed_days', unit: 'сут' };
+}
+
+/**
+ * Создаёт/обновляет норму в справочнике из успешного просчёта Мимира.
+ *
+ * Требование: «после успешного просчёта в справочнике должна появиться норма».
+ * Защита от мусора:
+ *   • только при work_days > 0;
+ *   • детерминированный code `auto_<category>_<method>` — повторный просчёт
+ *     обновляет ту же норму, а не плодит копии;
+ *   • basis = 'mimir_smeta', notes с источником и датой;
+ *   • change_log через applyNormPatch (комментарий обязателен).
+ */
+async function createRateFromEstimate(db, body, user) {
+  const categoryCode = String(body?.category_code || '').trim();
+  const methodCode = String(body?.method_code || '').trim() || null;
+  const inputs = body?.inputs && typeof body.inputs === 'object' ? body.inputs : {};
+  const workDays = Number(body?.work_days);
+  if (!categoryCode) {
+    const err = new Error('createRateFromEstimate: нужен category_code');
+    err.statusCode = 400;
+    throw err;
+  }
+  if (!(workDays > 0)) {
+    const err = new Error('createRateFromEstimate: нужен work_days > 0');
+    err.statusCode = 400;
+    throw err;
+  }
+
+  const cat = await loadCategory(db, categoryCode);
+  if (!cat) {
+    const err = new Error(`createRateFromEstimate: неизвестная категория ${categoryCode}`);
+    err.statusCode = 400;
+    throw err;
+  }
+  let primaryCode = null;
+  if (methodCode) {
+    const methods = Array.isArray(cat.methods_json) ? cat.methods_json : [];
+    const meta = methods.find((m) => m.code === methodCode) || null;
+    if (methods.length && !meta) {
+      const err = new Error(`createRateFromEstimate: метода ${methodCode} нет в категории ${categoryCode}`);
+      err.statusCode = 400;
+      throw err;
+    }
+    primaryCode = meta && meta.primary_rate_code ? meta.primary_rate_code : null;
+  }
+
+  // Норму ищем по primary_rate_code метода: именно её берёт previewCalc.
+  // Иначе автосоздание обновит соседний код (например weld_m_shift),
+  // а расчёт продолжит смотреть на weld_joint_shift и ничего не изменится.
+  let existing = null;
+  if (primaryCode) {
+    existing = (await db.query(
+      `SELECT * FROM work_norm_rates WHERE code = $1 AND is_active LIMIT 1`,
+      [primaryCode]
+    )).rows[0] || null;
+  }
+  if (!existing) {
+    existing = (await db.query(
+      `SELECT * FROM work_norm_rates
+        WHERE category_code = $1 AND ($2::text IS NULL OR method_code = $2) AND is_active
+        ORDER BY (method_code = $2) DESC, id LIMIT 1`,
+      [categoryCode, methodCode]
+    )).rows[0] || null;
+  }
+
+  const kindInfo = existing
+    ? { calc_kind: existing.calc_kind, unit: existing.unit }
+    : inferCalcKindForNewRate(categoryCode, methodCode, inputs);
+
+  const implied = deriveImpliedRateValues(
+    { calc_kind: kindInfo.calc_kind, crew_json: body.crew || null, code: existing ? existing.code : null },
+    inputs,
+    workDays,
+    body.crew || {},
+    (await loadGlobals(db)).map
+  );
+
+  const comment = String(body.comment || '').trim().length >= 5
+    ? String(body.comment).trim()
+    : `Просчёт Мимира ${new Date().toISOString().slice(0, 10)}: ${workDays} сут`;
+
+  if (existing) {
+    const patch = await applyNormPatch(db, {
+      rateId: existing.id,
+      categoryCode,
+      mode: 'average',
+      source: 'mimir_smeta',
+      force: isProtectedResearchBasis(existing.basis),
+      comment,
+      values: implied.values,
+      crewPatch: implied.crewPatch,
+      user
+    });
+    return { ok: true, created: false, updated: true, rate: patch.after, before: patch.before };
+  }
+
+  const code = `auto_${categoryCode}_${methodCode || 'default'}`;
+  const patch = await applyNormPatch(db, {
+    code,
+    categoryCode,
+    methodCode,
+    name: `Авто из просчёта Мимира · ${categoryCode}/${methodCode || '—'} · ${kindInfo.unit}`,
+    unit: kindInfo.unit,
+    calcKind: kindInfo.calc_kind,
+    values: implied.values,
+    crewPatch: implied.crewPatch,
+    paramsPatch: { inputs_template: inputs },
+    mode: 'replace',
+    source: 'mimir_smeta',
+    force: true,
+    comment,
+    user
+  });
+  return { ok: true, created: true, updated: false, rate: patch.after };
+}
+
+async function applyNormPatchFromSmetaEdit(db, body, user) {
+  const comment = String(body?.comment || '').trim();
+  if (comment.length < 5) {
+    const err = new Error('Комментарий обязателен (минимум 5 символов)');
+    err.statusCode = 400;
+    throw err;
+  }
+  const rateRow = await resolveRateForPatch(db, {
+    rateId: body.rate_id,
+    code: body.rate_code,
+    categoryCode: body.category_code
+  });
+  const globals = (await loadGlobals(db)).map;
+  const inputs = body.inputs || body.volumes || {};
+  const implied = deriveImpliedRateValues(
+    rateRow,
+    inputs,
+    body.work_days,
+    {
+      workers_per_shift: body.workers_per_shift,
+      masters_per_shift: body.masters_per_shift,
+      master: body.masters_per_shift,
+      exec: body.workers_per_shift
+    },
+    globals
+  );
+  const force = isProtectedResearchBasis(rateRow.basis);
+  const beforeDefault = rateRow.rate_default;
+  const patch = await applyNormPatch(db, {
+    rateId: rateRow.id,
+    categoryCode: rateRow.category_code,
+    mode: body.mode || 'average',
+    source: 'mimir_smeta',
+    force,
+    comment,
+    values: implied.values,
+    crewPatch: implied.crewPatch,
+    user
+  });
+  const afterDefault = patch.after?.rate_default ?? implied.values.rate_default;
+  const label = rateRow.name || rateRow.code;
+  return {
+    ok: true,
+    message: `Норма «${label}» обновлена: ${beforeDefault ?? '—'} → ${afterDefault}`,
+    patch
+  };
+}
+
 module.exports = {
   loadGlobals,
   loadCatalog,
   previewCalc,
   toPromptMarkdown,
+  filterCatalogByWorkType,
+  tryNormPreviewForEstimate,
+  normPreviewToMarkdown,
+  buildNormTrace,
+  isMissingNormError,
+  applyNormPatchFromSmetaEdit,
+  createRateFromEstimate,
+  buildFallbackPreview,
+  inferCalcKindForNewRate,
   globalsToCalcSettings,
   writeChangeLog,
   pickRate,
   calcKindLabel,
   CALC_KIND_LABELS,
+  metricToCalcKind,
+  applyNormPatch,
+  revertLastRateChange,
+  fitRateFromPoints,
+  findRateForPublish,
+  computeExperienceDelta,
   deriveFromExperience,
   listExperiences,
   getExperience,
   createExperience,
+  batchCreateExperiences,
+  parseExperiencesTsv,
+  tryAutoExperienceOnWorkClose,
+  isWorkClosedStatus,
   updateExperience,
   confirmExperience,
   publishExperience,

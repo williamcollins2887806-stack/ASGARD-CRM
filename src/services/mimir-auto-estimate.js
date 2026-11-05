@@ -640,7 +640,7 @@ async function getCalcSettings(db) {
  * @param {Function} onProgress — колбек прогресса (event) => void
  * @returns {Promise<Object>} полный контекст
  */
-async function buildAutoEstimateContext(db, workId, user, onProgress) {
+async function buildAutoEstimateContext(db, workId, user, onProgress, opts = {}) {
   const t0 = Date.now();
 
   safeProgress(onProgress, 'start', '🚀 Начинаю собирать данные для просчёта...');
@@ -663,7 +663,8 @@ async function buildAutoEstimateContext(db, workId, user, onProgress) {
     workers,
     tariffs,
     settings,
-    workNormsCatalog
+    workNormsCatalog,
+    historyBlock
   ] = await Promise.all([
     getAnalogs(db, workType, linkedEstimate?.id || null, titleHint, onProgress),
     getCustomerHistory(db, work.customer_name || tender?.customer_name, onProgress),
@@ -678,6 +679,16 @@ async function buildAutoEstimateContext(db, workId, user, onProgress) {
         return workNorms.toPromptMarkdown(cat, workType);
       } catch (_) {
         return '(справочник норм CRM ещё не развёрнут — V309)';
+      }
+    })(),
+    (async () => {
+      if (!tender) return '';
+      try {
+        const { buildHistoryBlock } = require('./tender-history-brain');
+        return await buildHistoryBlock(db, tender);
+      } catch (e) {
+        console.warn('[AP1] buildHistoryBlock:', e.message);
+        return '';
       }
     })()
   ]);
@@ -725,6 +736,25 @@ async function buildAutoEstimateContext(db, workId, user, onProgress) {
 
   safeProgress(onProgress, 'collected', '✅ Все данные собраны', summary);
 
+  let norm_preview = null;
+  let norm_preview_meta = null;
+  let norm_inputs_used = null;
+  try {
+    const workNorms = require('./work-norms');
+    const normBundle = await workNorms.tryNormPreviewForEstimate(db, {
+      work,
+      tender,
+      documents,
+      workType,
+      norm_inputs: opts.norm_inputs
+    });
+    norm_preview = normBundle.preview;
+    norm_preview_meta = normBundle.meta;
+    norm_inputs_used = normBundle.inputs;
+  } catch (e) {
+    norm_preview_meta = { error: e.message };
+  }
+
   return {
     work,
     tender,
@@ -733,12 +763,16 @@ async function buildAutoEstimateContext(db, workId, user, onProgress) {
     workType,
     analogs,
     customer_history: customerHistory,
+    history_block: historyBlock,
     warehouse,
     workers,
     permits,
     tariffs,
     settings,
     work_norms_catalog: workNormsCatalog,
+    norm_preview,
+    norm_preview_meta,
+    norm_inputs_used,
     summary
   };
 }
@@ -967,6 +1001,39 @@ function _isRussianReasoning(chunk, windowText) {
   return cyr >= lat;
 }
 
+function isAnalysisContext(ctx) {
+  if (!ctx || typeof ctx !== 'object') return false;
+  if (ctx.analysisOnly) return true;
+  if (ctx.phase === 'analysis') return true;
+  const purpose = String(ctx.purpose || '');
+  return purpose === 'rp_review_analysis';
+}
+
+function normalizeAnalysisReport(ai) {
+  const raw = ai && typeof ai === 'object' ? ai : {};
+  const normHint = raw.norm_hint && typeof raw.norm_hint === 'object' ? raw.norm_hint : {};
+  let days = normHint.days != null ? Number(normHint.days) : null;
+  if (!Number.isFinite(days)) days = null;
+  const dec = String(raw.decision_recommend || '').trim().toLowerCase();
+  const allowedDec = ['go', 'no_go', 'need_info'];
+  return {
+    template: 'mimir_analysis_v1',
+    analysis_only: true,
+    decision_recommend: allowedDec.includes(dec) ? dec : 'need_info',
+    feasibility: raw.feasibility || '',
+    competition: raw.competition || '',
+    volume_summary: raw.volume_summary || '',
+    risks: raw.risks || '',
+    summary: raw.summary || '',
+    questions_for_customer: Array.isArray(raw.questions_for_customer)
+      ? raw.questions_for_customer.filter(Boolean).map(String)
+      : [],
+    norm_hint: days != null ? { days } : {},
+    history_block: raw.history_block || '',
+    analysis: raw.analysis && typeof raw.analysis === 'object' ? raw.analysis : { warnings: [] }
+  };
+}
+
 function buildAutoEstimatePrompt(ctx) {
   try {
     // D-306: рассуждения модели показываются директору в живом журнале.
@@ -1029,6 +1096,7 @@ function buildAutoEstimatePrompt(ctx) {
       documents_text: documentsToPrompt(ctx.documents || []),
       analogs_table: analogsToPrompt(ctx.analogs || []),
       customer_history: customerHistoryToPrompt(ctx.customer_history || []),
+      history_block: ctx.history_block || '(блок истории Superbrain пуст)',
       warehouse_stock: warehouseToPrompt(ctx.warehouse || []),
       // === Бригада ===
       itr_busy_count: ctx.workers?.itr_busy_count || 0,
@@ -1047,10 +1115,27 @@ function buildAutoEstimatePrompt(ctx) {
       consumables_pct: settings.consumables_pct ?? 0,
       contingency_pct: settings.contingency_pct ?? 12,
       itr_rate_per_day: settings.itr_rate_per_day ?? 10000,
-      work_norms_catalog: ctx.work_norms_catalog || '(справочник норм CRM пуст)'
+      work_norms_catalog: (ctx.work_norms_catalog || '(справочник норм CRM пуст)') +
+        (() => {
+          try {
+            const workNorms = require('./work-norms');
+            return workNorms.normPreviewToMarkdown(ctx.norm_preview, ctx.norm_preview_meta);
+          } catch (_) {
+            return '';
+          }
+        })(),
+      norm_preview: (() => {
+        try {
+          const workNorms = require('./work-norms');
+          return workNorms.normPreviewToMarkdown(ctx.norm_preview, ctx.norm_preview_meta);
+        } catch (_) {
+          return '';
+        }
+      })()
     };
 
-    const builtPrompt = promptLoader.buildPrompt('PROMPT-quick-v4.md', substitutions);
+    const templateName = isAnalysisContext(ctx) ? 'PROMPT-analysis-v1.md' : 'PROMPT-quick-v4.md';
+    const builtPrompt = promptLoader.buildPrompt(templateName, substitutions);
     // D-306: русские рассуждения — добавляем в самое начало системного промпта.
     return RUSSIAN_THINKING + builtPrompt;
   } catch (e) {
@@ -2155,9 +2240,13 @@ async function updateDraftEstimate(db, estimateId, ai, recomputed, user, chatTur
 async function callMimirForEstimate(aiProvider, ctx, extraUserMessage = null) {
   const systemPrompt = buildAutoEstimatePrompt(ctx);
 
+  const analysisMode = isAnalysisContext(ctx);
+  const defaultUserMsg = analysisMode
+    ? 'Подготовь анализ тендера (go/no-go) по контексту выше. Верни строго JSON по схеме анализа — без сметы и без цен.'
+    : 'Заполни просчёт по контексту выше. Верни строго JSON.';
   const messages = extraUserMessage
     ? [{ role: 'user', content: extraUserMessage }]
-    : [{ role: 'user', content: 'Заполни просчёт по контексту выше. Верни строго JSON.' }];
+    : [{ role: 'user', content: defaultUserMsg }];
 
   // deepseek-v4-pro — reasoning-модель: thinking съедает max_tokens раньше content.
   // 8k часто даёт finish_reason=length и пустой content → поднимаем лимит.
@@ -2256,12 +2345,38 @@ async function callMimirForEstimate(aiProvider, ctx, extraUserMessage = null) {
   const ai = parseAIResponse(aiResult.text);
   ai._meta = { model: aiResult.model, provider: aiResult.provider };
 
+  if (analysisMode) {
+    return {
+      ai,
+      text: aiResult.text,
+      recomputed: null,
+      analysisReport: normalizeAnalysisReport(ai),
+      tokens: aiResult.usage,
+      model: aiResult.model,
+      provider: aiResult.provider,
+      duration_ms: aiResult.durationMs
+    };
+  }
+
   // Пересчитываем математику
   const recomputed = validateAndRecomputeMath(ai, ctx.settings, ctx);
 
   // Серверный пост-процессинг: AI пишет equipment_needed (что нужно),
   // сервер сверяет с реальным складом и разделяет на from_warehouse / to_purchase
   resolveEquipmentFromWarehouse(ai, ctx);
+
+  try {
+    const workNorms = require('./work-norms');
+    const normTrace = workNorms.buildNormTrace(ctx, ctx.norm_preview, ai);
+    if (normTrace) {
+      ai.norm_trace = normTrace;
+      if (!ai._meta) ai._meta = {};
+      ai._meta.norm_preview_ok = !!(ctx.norm_preview && !ctx.norm_preview.error);
+      if (ctx.norm_preview_meta?.error) {
+        ai._meta.norm_preview_note = ctx.norm_preview_meta.error;
+      }
+    }
+  } catch (_) { /* preview optional */ }
 
   return {
     ai,
@@ -2270,7 +2385,8 @@ async function callMimirForEstimate(aiProvider, ctx, extraUserMessage = null) {
     tokens: aiResult.usage,
     model: aiResult.model,
     provider: aiResult.provider,
-    duration_ms: aiResult.durationMs
+    duration_ms: aiResult.durationMs,
+    norm_trace: ai.norm_trace || null
   };
 }
 
@@ -2330,6 +2446,8 @@ module.exports = {
   buildAutoEstimatePrompt_legacy,
   parseAIResponse,
   validateAndRecomputeMath,
+  isAnalysisContext,
+  normalizeAnalysisReport,
   createDraftEstimate,
   updateDraftEstimate,
   callMimirForEstimate,

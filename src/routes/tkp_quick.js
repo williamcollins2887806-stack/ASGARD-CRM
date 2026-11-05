@@ -371,6 +371,598 @@ async function routes(fastify, options) {
   });
 
   // ─────────────────────────────────────────────────────────────────────────
+  // Этапы Мимира: GET /sessions/:uid/stage, POST /stage, /stage/answer, /stage/patch
+  // ─────────────────────────────────────────────────────────────────────────
+  const stageSvc = require('../services/mimir-tender-stages');
+
+  async function loadSessionForStages(uid) {
+    const { rows: [session] } = await db.query(
+      'SELECT * FROM tkp_quick_sessions WHERE session_uid = $1', [uid]
+    );
+    return session || null;
+  }
+
+  fastify.get('/sessions/:uid/stage', {
+    preHandler: [fastify.requireRoles(ROLES)]
+  }, async (request, reply) => {
+    const session = await loadSessionForStages(request.params.uid);
+    if (!session) return reply.code(404).send({ error: 'Сессия не найдена' });
+    if (!(await canSeeSession(db, request.user, session))) {
+      return reply.code(404).send({ error: 'Сессия не найдена' });
+    }
+    const s = await stageSvc.loadStage(db, request.params.uid);
+    // Категории и методы — для выпадающего списка в таблице объёмов.
+    let categories = [];
+    try {
+      categories = (await db.query(
+        `SELECT code, title, methods_json FROM work_norm_categories WHERE is_active ORDER BY sort_order`
+      )).rows;
+    } catch (_) { /* справочник необязателен для отрисовки */ }
+    return {
+      ...s,
+      labels: stageSvc.STAGE_LABELS,
+      analysis_stages: stageSvc.ANALYSIS_STAGES,
+      calc_stages: stageSvc.CALC_STAGES,
+      categories,
+      // Вопросы для звонка и контакт заказчика — считаются из сохранённого
+      // состояния объёмов и текста ТЗ, поэтому доступны на любом этапе.
+      call_questions: stageSvc.callQuestionsFromDv(
+        { positions: (s.state && s.state.positions) || [] },
+        { tz_text: session.tz_text || '' }
+      ),
+      contact: stageSvc.extractContact(session.tz_text || ''),
+      can_finish_tech: stageSvc.canFinishTech(s.state)
+    };
+  });
+
+  fastify.post('/sessions/:uid/stage', {
+    preHandler: [fastify.requireRoles(ROLES)]
+  }, async (request, reply) => {
+    const session = await loadSessionForStages(request.params.uid);
+    if (!session) return reply.code(404).send({ error: 'Сессия не найдена' });
+    if (!(await canSeeSession(db, request.user, session))) {
+      return reply.code(404).send({ error: 'Сессия не найдена' });
+    }
+    try {
+      const b = request.body || {};
+      return await stageSvc.saveStage(db, request.params.uid, {
+        stage: b.stage,
+        state: b.state,
+        expectedVersion: b.expected_version
+      });
+    } catch (e) {
+      return reply.code(e.statusCode || 500).send({ error: e.message });
+    }
+  });
+
+  /**
+   * POST /sessions/:uid/stage/files — приложить документы прямо в модалке этапов.
+   *
+   * РП может прислать файлы двумя путями:
+   *   1) здесь — они уходят в сессию и сразу участвуют в анализе;
+   *   2) в карточку тендера — тогда анализ читает их из кэша OCR.
+   * Оба пути поддерживаются, файл после загрузки не нужно прикреплять повторно.
+   */
+  fastify.post('/sessions/:uid/stage/files', {
+    preHandler: [fastify.requireRoles(ROLES)]
+  }, async (request, reply) => {
+    const session = await loadSessionForStages(request.params.uid);
+    if (!session) return reply.code(404).send({ error: 'Сессия не найдена' });
+    if (!(await canSeeSession(db, request.user, session))) {
+      return reply.code(404).send({ error: 'Сессия не найдена' });
+    }
+
+    const data = await request.file();
+    if (!data) return reply.code(400).send({ error: 'Файл не передан' });
+
+    const filename = data.filename || 'document';
+    const mime = data.mimetype || '';
+    let buffer;
+    try { buffer = await data.toBuffer(); } catch (_) {
+      return reply.code(400).send({ error: 'Не удалось прочитать файл' });
+    }
+    if (!buffer || !buffer.length) {
+      return reply.code(400).send({ error: 'Файл пустой — скачайте заново и приложите' });
+    }
+    if (data.file && data.file.truncated) {
+      return reply.code(413).send({ error: 'Файл больше допустимого размера' });
+    }
+
+    // Проверка сигнатуры: битые «PDF» от прокси не должны доходить до распознавания.
+    try {
+      const { checkFileSignature, explainSignatureFailure } = require('../lib/file-signature');
+      const ext = require('path').extname(filename).toLowerCase();
+      const sig = checkFileSignature(buffer, ext);
+      if (!sig.ok) {
+        return reply.code(422).send({
+          error: 'file_corrupted',
+          message: explainSignatureFailure(sig, filename)
+        });
+      }
+    } catch (_) { /* проверка сигнатур необязательна */ }
+
+    // Текст: txt/csv читаем напрямую, остальное отдаём распознаванию.
+    let text = '';
+    const ext = require('path').extname(filename).toLowerCase();
+    if (['.txt', '.csv', '.md', '.json'].includes(ext)) {
+      text = buffer.toString('utf8').slice(0, 200000);
+    } else {
+      try {
+        const tkpParser = require('../services/tkp-parser');
+        const parsed = await tkpParser.extractTextFromBuffer
+          ? await tkpParser.extractTextFromBuffer(buffer, filename)
+          : null;
+        if (parsed && parsed.text) text = String(parsed.text).slice(0, 200000);
+      } catch (_) { /* распознавание попробуем позже, в анализе */ }
+    }
+
+    const attachments = Array.isArray(session.tz_attachments) ? session.tz_attachments.slice() : [];
+    const item = {
+      filename,
+      original_name: filename,
+      mime_type: mime,
+      size: buffer.length,
+      ocr_text: text,
+      uploaded_at: new Date().toISOString(),
+      source: 'stage_modal'
+    };
+    attachments.push(item);
+    await db.query(
+      `UPDATE tkp_quick_sessions SET tz_attachments = $2::jsonb, updated_at = NOW()
+        WHERE session_uid = $1`,
+      [request.params.uid, JSON.stringify(attachments)]
+    );
+
+    return {
+      ok: true,
+      file: {
+        original_name: filename,
+        size: buffer.length,
+        text_len: text.length,
+        has_text: text.length > 40
+      },
+      attachments: attachments.map((a) => ({
+        original_name: a.original_name || a.filename,
+        size: a.size || 0,
+        text_len: String(a.ocr_text || '').length
+      }))
+    };
+  });
+
+  /**
+   * POST /sessions/:uid/stage/answer — ответ на пробел этапа clarify.
+   * Тело: { gap_id, text } | { gap_id, later:true } | { gap_id, continue_without:true }
+   */
+  fastify.post('/sessions/:uid/stage/answer', {
+    preHandler: [fastify.requireRoles(ROLES)]
+  }, async (request, reply) => {
+    const session = await loadSessionForStages(request.params.uid);
+    if (!session) return reply.code(404).send({ error: 'Сессия не найдена' });
+    if (!(await canSeeSession(db, request.user, session))) {
+      return reply.code(404).send({ error: 'Сессия не найдена' });
+    }
+    const b = request.body || {};
+    if (!b.gap_id) return reply.code(400).send({ error: 'gap_id обязателен' });
+
+    const cur = await stageSvc.loadStage(db, request.params.uid);
+    let state = cur.state;
+
+    if (b.later) {
+      return { stage: cur.stage, state, version: cur.version, deferred: true };
+    }
+
+    if (b.continue_without) {
+      try {
+        state = stageSvc.waiveGap(state, b.gap_id);
+      } catch (e) {
+        return reply.code(e.statusCode || 400).send({ error: e.message });
+      }
+    } else if (typeof b.text === 'string' && b.text.trim()) {
+      state = stageSvc.resolveGap(state, b.gap_id, {
+        answer: b.text.trim(), resolved_at: new Date().toISOString()
+      });
+      // Текст объёмов сразу подмешиваем в ТЗ — иначе следующий расчёт снова спросит.
+      if (b.gap_id === 'volume' || b.gap_id === 'tz') {
+        await db.query(
+          `UPDATE tkp_quick_sessions
+              SET tz_text = COALESCE(NULLIF(tz_text, ''), '') ||
+                            CASE WHEN COALESCE(tz_text,'') = '' THEN '' ELSE E'\n\n' END || $2,
+                  updated_at = NOW()
+            WHERE session_uid = $1`,
+          [request.params.uid, 'Уточнение по объёмам: ' + b.text.trim()]
+        );
+      }
+    } else {
+      return reply.code(400).send({ error: 'Нужен text, later или continue_without' });
+    }
+
+    const remaining = state.gaps.filter((g) => !g.resolved);
+    const blocking = remaining.filter((g) => g.blocking).length;
+    const out = await stageSvc.saveStage(db, request.params.uid, {
+      stage: blocking === 0 ? 'read' : 'clarify',
+      state,
+      expectedVersion: b.expected_version
+    });
+    return { ...out, blocking_left: blocking };
+  });
+
+  /**
+   * POST /sessions/:uid/stage/analyze — сгенерировать ДВ (ведомость объёмов).
+   * Возвращает позиции, пробелы и вопросы заказчику. Не падает: при сбое модели
+   * отдаёт { ok:false, error } и UI показывает «Повторить».
+   */
+  fastify.post('/sessions/:uid/stage/analyze', {
+    preHandler: [fastify.requireRoles(ROLES)]
+  }, async (request, reply) => {
+    const session = await loadSessionForStages(request.params.uid);
+    if (!session) return reply.code(404).send({ error: 'Сессия не найдена' });
+    if (!(await canSeeSession(db, request.user, session))) {
+      return reply.code(404).send({ error: 'Сессия не найдена' });
+    }
+
+    const b = request.body || {};
+    const workNorms = require('../services/work-norms');
+    const stagesAi = require('../services/mimir-tender-stages-ai');
+    const aiProvider = require('../services/ai-provider');
+
+    try {
+      // Документы сессии + кэш OCR тендера (если есть) — тот же путь, что у расчёта.
+      const attachments = Array.isArray(session.tz_attachments) ? session.tz_attachments : [];
+      let documents = attachments.map((a) => ({
+        original_name: a.filename || a.original_name || 'документ',
+        text: a.ocr_text || a.text || '',
+        size: a.size || null
+      }));
+
+      if (session.tender_id) {
+        try {
+          const { rows } = await db.query(
+            `SELECT original_name, ocr_text, size FROM documents
+              WHERE tender_id = $1 AND COALESCE(ocr_text, '') <> ''
+              ORDER BY created_at DESC LIMIT 30`,
+            [session.tender_id]
+          );
+          const known = new Set(documents.map((d) => d.original_name));
+          for (const r of rows) {
+            if (known.has(r.original_name)) continue;
+            documents.push({ original_name: r.original_name, text: r.ocr_text, size: r.size });
+          }
+        } catch (_) { /* кэш OCR необязателен */ }
+      }
+
+      const tzText = String(b.tz_text || session.tz_text || '').trim();
+
+      // 1. Preflight: не зовём модель, если данных заведомо нет.
+      const pf = stageSvc.preflight({
+        tz_text: tzText,
+        documents,
+        inputs: b.inputs || {},
+        start_date: b.start_date,
+        end_date: b.end_date,
+        contact: b.contact
+      });
+      if (!pf.ok) {
+        const state = stageSvc.normalizeState({ gaps: pf.gaps });
+        const saved = await stageSvc.saveStage(db, request.params.uid, {
+          stage: 'clarify', state, expectedVersion: b.expected_version
+        });
+        return { ok: false, stage: 'clarify', gaps: pf.gaps, state: saved.state, version: saved.version };
+      }
+
+      // 2. Каталог норм и ДВ через модель.
+      const catalog = await workNorms.loadCatalog(db);
+      const gen = await stagesAi.generateDv({
+        db,
+        aiProvider,
+        tz_text: tzText,
+        documents,
+        history_block: b.history_block || '',
+        catalog
+      });
+
+      if (!gen.ok) {
+        return reply.code(502).send({ ok: false, error: gen.error, raw: gen.raw || null });
+      }
+
+      // 3. Норма-превью по каждой позиции + привязка к технологии.
+      const positions = [];
+      for (const pos of gen.dv.positions) {
+        const enriched = Object.assign({}, pos);
+        if (pos.category_code && !pos.needs_classification) {
+          try {
+            const bundle = await workNorms.tryNormPreviewForEstimate(db, {
+              work: { work_title: pos.name },
+              norm_inputs: {
+                category_code: pos.category_code,
+                method_code: pos.method_code,
+                inputs: inputsForPosition(pos),
+                fouling: pos.fouling || 'medium'
+              }
+            });
+            if (bundle.preview && bundle.preview.ok) {
+              enriched.norm = {
+                code: bundle.preview.rate && bundle.preview.rate.code,
+                work_days: bundle.preview.results && bundle.preview.results.work_days,
+                crew: bundle.preview.crew,
+                trace: bundle.preview.trace,
+                fallback: !!bundle.preview.fallback
+              };
+            } else if (bundle.preview && bundle.preview.needs_input) {
+              enriched.norm = { error: bundle.preview.error, needs_input: true };
+            }
+          } catch (e) {
+            enriched.norm = { error: e.message };
+          }
+        }
+        positions.push(enriched);
+      }
+
+      const state = stageSvc.normalizeState({
+        gaps: pf.gaps.map((g) => ({ ...g, resolved: true })),
+        positions
+      });
+      const saved = await stageSvc.saveStage(db, request.params.uid, {
+        stage: 'dv', state, expectedVersion: b.expected_version
+      });
+
+      // ТЗ дописываем в сессию, чтобы следующий заход не спрашивал то же самое.
+      if (tzText && tzText !== session.tz_text) {
+        await db.query(
+          'UPDATE tkp_quick_sessions SET tz_text = $2, updated_at = NOW() WHERE session_uid = $1',
+          [request.params.uid, tzText]
+        );
+      }
+
+      return {
+        ok: true,
+        stage: saved.stage,
+        state: saved.state,
+        version: saved.version,
+        decision_recommend: gen.dv.decision_recommend,
+        questions_for_customer: gen.dv.questions_for_customer,
+        // Вопросы для звонка и контакт: анализ сам напоминает позвонить клиенту.
+        call_questions: stageSvc.callQuestionsFromDv(gen.dv, {
+          start_date: b.start_date, end_date: b.end_date,
+          tz_text: tzText
+        }),
+        contact: stageSvc.extractContact(tzText + '\n' + documents.map((d) => d.text || '').join('\n')),
+        blocked: gen.dv.blocked,
+        documents: documents.map((d) => ({ original_name: d.original_name, text_len: String(d.text || '').length })),
+        model: gen.model
+      };
+    } catch (e) {
+      request.log.error({ err: e }, 'stage/analyze failed');
+      return reply.code(500).send({ ok: false, error: e.message });
+    }
+  });
+
+  /** Ключи объёма под calc_kind метода (для норма-превью по позиции ДВ). */
+  function inputsForPosition(pos) {
+    const u = String(pos.unit || '').toLowerCase();
+    const v = Number(pos.volume) || 0;
+    if (u.includes('м³') || u.includes('м3')) return { circuit_m3: v, cycles: 2 };
+    if (u.includes('м²') || u.includes('м2')) return { surface_m2: v };
+    if (u.includes('труб')) return { tubes: v, diameter_mm: 25, length_m: 6 };
+    if (u.includes('стык')) return { joints: v, dn_mm: 159 };
+    if (u.includes('цикл')) return { cycles: v };
+    if (u.includes('м')) return { length_m: v, dn_mm: 159 };
+    return { qty: v };
+  }
+
+  /**
+   * POST /sessions/:uid/stage/calc-plan — сгенерировать план (люди, сроки, оборудование).
+   */
+  fastify.post('/sessions/:uid/stage/calc-plan', {
+    preHandler: [fastify.requireRoles(ROLES)]
+  }, async (request, reply) => {
+    const session = await loadSessionForStages(request.params.uid);
+    if (!session) return reply.code(404).send({ error: 'Сессия не найдена' });
+    if (!(await canSeeSession(db, request.user, session))) {
+      return reply.code(404).send({ error: 'Сессия не найдена' });
+    }
+
+    const workNorms = require('../services/work-norms');
+    const stagesAi = require('../services/mimir-tender-stages-ai');
+    const aiProvider = require('../services/ai-provider');
+
+    try {
+      const cur = await stageSvc.loadStage(db, request.params.uid);
+      const positions = cur.state.positions || [];
+      if (!positions.length) {
+        return reply.code(400).send({ ok: false, error: 'Нет позиций — сначала заполните ДВ' });
+      }
+
+      const globals = await workNorms.loadGlobals(db);
+      const maxPosts = Number(globals.map.max_parallel_posts) || 2;
+
+      // Сводка норма-превью по всем позициям — как якорь для модели.
+      const normLines = [];
+      for (const p of positions) {
+        if (p.norm && p.norm.code) {
+          normLines.push(`${p.name}: ${p.norm.code} → ${p.norm.work_days ?? '—'} сут` +
+            (p.norm.crew ? `, бригада ${p.norm.crew.master || 0}м+${p.norm.crew.exec || 0}сл` : ''));
+        } else if (p.norm && p.norm.needs_input) {
+          normLines.push(`${p.name}: норма есть, но не хватает данных (${p.norm.error})`);
+        } else {
+          normLines.push(`${p.name}: нормы нет — нужна оценка с обоснованием`);
+        }
+      }
+
+      const gen = await stagesAi.generateCalcPlan({
+        aiProvider,
+        positions,
+        normPreviewMd: normLines.join('\n') || '(нормативов нет)',
+        workersMd: request.body && request.body.workers_md ? String(request.body.workers_md) : '',
+        dateWindow: request.body && request.body.date_window != null ? Number(request.body.date_window) : null,
+        maxParallelPosts: maxPosts
+      });
+
+      if (!gen.ok) return reply.code(502).send({ ok: false, error: gen.error, raw: gen.raw || null });
+
+      const windowCheck = stageSvc.checkDateWindow(
+        gen.plan,
+        request.body && request.body.date_window != null ? Number(request.body.date_window) : null
+      );
+      const calibration = stagesAi.buildCalibrationPreview(positions, gen.plan)
+        .map((c) => Object.assign({}, c, {
+          delta_pct: 0 // предпросмотр без записи: дельту даст сервер при сохранении
+        }));
+
+      const state = stageSvc.normalizeState(Object.assign({}, cur.state, { calc: gen.plan }));
+      const saved = await stageSvc.saveStage(db, request.params.uid, {
+        stage: 'calc_plan', state, expectedVersion: request.body && request.body.expected_version
+      });
+
+      return {
+        ok: true,
+        stage: saved.stage,
+        plan: gen.plan,
+        date_window: windowCheck,
+        calibration,
+        model: gen.model,
+        version: saved.version
+      };
+    } catch (e) {
+      request.log.error({ err: e }, 'stage/calc-plan failed');
+      return reply.code(500).send({ ok: false, error: e.message });
+    }
+  });
+
+  /**
+   * POST /sessions/:uid/stage/finalize — закрыть анализ, перенести в отчёт и обучить нормы.
+   * Тело: { go: true|false, reason?, answers?, expected_version? }
+   */
+  fastify.post('/sessions/:uid/stage/finalize', {
+    preHandler: [fastify.requireRoles(ROLES)]
+  }, async (request, reply) => {
+    const session = await loadSessionForStages(request.params.uid);
+    if (!session) return reply.code(404).send({ error: 'Сессия не найдена' });
+    if (!(await canSeeSession(db, request.user, session))) {
+      return reply.code(404).send({ error: 'Сессия не найдена' });
+    }
+
+    const b = request.body || {};
+    const cur = await stageSvc.loadStage(db, request.params.uid);
+    const go = b.go === true;
+
+    try {
+      if (!go) {
+        const reason = String(b.reason || '').trim();
+        if (reason.length < 5) return reply.code(400).send({ ok: false, error: 'Укажите причину отказа' });
+        const state = stageSvc.normalizeState(Object.assign({}, cur.state, {
+          decision: { go: false, reason }
+        }));
+        const saved = await stageSvc.saveStage(db, request.params.uid, {
+          stage: 'nogo', state, expectedVersion: b.expected_version
+        });
+        return { ok: true, stage: saved.stage, decision: 'reject', reason };
+      }
+
+      // «Подаём»: переносим ДВ и технологию в отчёт тендера.
+      let reportPatch = null;
+      if (session.tender_id) {
+        const rpDrafts = require('../services/rp-review-drafts');
+        const positions = cur.state.positions || [];
+        const plan = (cur.state.calc && cur.state.calc.positions) || [];
+        const scope = positions.map((p) => `${p.name} — ${p.volume} ${p.unit}`).join('; ');
+        const resources = positions.map((p) => p.tech_equip).filter(Boolean).join('; ');
+
+        const { rows: [review] } = await db.query(
+          'SELECT * FROM tender_rp_reviews WHERE tender_id = $1', [session.tender_id]
+        );
+        if (review) {
+          const rj = rpDrafts.parseJson(review.report_json);
+          const next = Object.assign({}, rj, {
+            scope: rj.scope || scope,
+            volume_summary: rj.volume_summary || scope,
+            resources: rj.resources || resources,
+            dv_positions: positions,
+            calc_plan: plan,
+            stage_version: cur.version,
+            decision: 'submit'
+          });
+          await db.query(
+            `UPDATE tender_rp_reviews SET report_json = $1::jsonb, updated_at = NOW() WHERE id = $2`,
+            [JSON.stringify(next), review.id]
+          );
+          reportPatch = { scope: next.scope, positions: positions.length, plan_rows: plan.length };
+        }
+      }
+
+      const state = stageSvc.normalizeState(Object.assign({}, cur.state, { decision: { go: true } }));
+      const saved = await stageSvc.saveStage(db, request.params.uid, {
+        stage: 'done', state, expectedVersion: b.expected_version
+      });
+
+      return { ok: true, stage: saved.stage, decision: 'submit', report_patch: reportPatch };
+    } catch (e) {
+      request.log.error({ err: e }, 'stage/finalize failed');
+      return reply.code(e.statusCode || 500).send({ ok: false, error: e.message });
+    }
+  });
+
+  /**
+   * POST /sessions/:uid/stage/reset — вернуть сессию в указанный этап.
+   *
+   * Нужен для демо и тестов: прогон должен быть воспроизводимым, а не зависеть
+   * от того, чем закончился предыдущий. В проде обычный путь — переходы /stage.
+   */
+  fastify.post('/sessions/:uid/stage/reset', {
+    preHandler: [fastify.requireRoles(ROLES)]
+  }, async (request, reply) => {
+    const session = await loadSessionForStages(request.params.uid);
+    if (!session) return reply.code(404).send({ error: 'Сессия не найдена' });
+    if (!(await canSeeSession(db, request.user, session))) {
+      return reply.code(404).send({ error: 'Сессия не найдена' });
+    }
+    const to = String((request.body && request.body.to) || 'intake');
+    if (!stageSvc.isStage(to)) return reply.code(400).send({ error: 'Неизвестный этап: ' + to });
+    const { rows } = await db.query(
+      `UPDATE tkp_quick_sessions
+          SET stage = $2, stage_state = '{"v":1}'::jsonb,
+              stage_version = stage_version + 1, stage_updated_at = NOW(), updated_at = NOW()
+        WHERE session_uid = $1
+        RETURNING stage, stage_version`,
+      [request.params.uid, to]
+    );
+    return { ok: true, stage: rows[0].stage, version: Number(rows[0].stage_version) };
+  });
+
+  /**
+   * POST /sessions/:uid/stage/patch — правка позиции ДВ / технологии / плана.
+   * Тело: { position_id, patch, expected_version } или { state, expected_version }
+   */
+  fastify.post('/sessions/:uid/stage/patch', {
+    preHandler: [fastify.requireRoles(ROLES)]
+  }, async (request, reply) => {
+    const session = await loadSessionForStages(request.params.uid);
+    if (!session) return reply.code(404).send({ error: 'Сессия не найдена' });
+    if (!(await canSeeSession(db, request.user, session))) {
+      return reply.code(404).send({ error: 'Сессия не найдена' });
+    }
+    const b = request.body || {};
+    const cur = await stageSvc.loadStage(db, request.params.uid);
+    let state = cur.state;
+    try {
+      if (b.position_id) {
+        state = stageSvc.applyPositionPatch(state, b.position_id, b.patch || {});
+      } else if (b.state && typeof b.state === 'object') {
+        state = stageSvc.normalizeState(b.state);
+      } else {
+        return reply.code(400).send({ error: 'Нужен position_id+patch или state' });
+      }
+      const out = await stageSvc.saveStage(db, request.params.uid, {
+        stage: b.stage || cur.stage,
+        state,
+        expectedVersion: b.expected_version
+      });
+      return { ...out, can_finish_tech: stageSvc.canFinishTech(out.state) };
+    } catch (e) {
+      return reply.code(e.statusCode || 500).send({ error: e.message });
+    }
+  });
+
+  // ─────────────────────────────────────────────────────────────────────────
   // PUT /sessions/:uid — Обновить поля (customer_inn, customer_name, tz_text)
   // ─────────────────────────────────────────────────────────────────────────
   fastify.put('/sessions/:uid', {
@@ -916,6 +1508,14 @@ async function routes(fastify, options) {
     }
     if (!session.tz_text?.trim()) return reply.code(400).send({ error: 'Добавьте техническое задание перед расчётом' });
 
+    const reqBody = request.body || {};
+    const sessionPurpose = session.purpose || 'kanban';
+    if (sessionPurpose === 'rp_review_analysis' && reqBody.purpose === 'rp_review_calc') {
+      return reply.code(400).send({
+        error: 'Сессия в фазе анализа — просчётная смета здесь недоступна. Используйте phase=calc / новую сессию просчёта.'
+      });
+    }
+
     // Пометить как calculating. D-389: calc_owner_pid — признак живого
     // владельца. Без него после рестарта нельзя отличить «расчёт идёт»
     // от «расчёт умер вместе с процессом».
@@ -1035,6 +1635,7 @@ async function routes(fastify, options) {
 
       const settings = await mimirTkpQuick._loadSettings(db);
 
+      const analysisSession = sessionPurpose === 'rp_review_analysis';
       const result = await mimirTkpQuick.generateEstimate({
         tz_text: session.tz_text,
         customer_inn: session.customer_inn,
@@ -1042,6 +1643,9 @@ async function routes(fastify, options) {
         customer_data: session.customer_data,
         attachments_text: attachmentsText,
         settings,
+        purpose: sessionPurpose,
+        phase: analysisSession ? 'analysis' : (sessionPurpose === 'rp_review_calc' ? 'calc' : null),
+        analysisOnly: analysisSession,
         onProgress: (ev) => {
           sendEvent(ev);
           touchCalculating();

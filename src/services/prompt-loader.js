@@ -4,6 +4,7 @@
  * Общий загрузчик файлов промптов из `templates/prompts/`:
  *   - MODULE-norms-asgard-v1.md — единый модуль норм (ЕНиР, R1-R8, цены)
  *   - PROMPT-quick-v4.md         — Quick-просчёт (один агент)
+ *   - PROMPT-analysis-v1.md      — Анализ тендера (go/no-go, без сметы)
  *   - PROMPT-conductor-v2.md     — Conductor (оркестратор агентов)
  *
  * Mustache-like подстановка `{{placeholder}}`. Сначала встраивается
