@@ -159,6 +159,12 @@ html.ting-incall .runesep,
 html.ting-incall .hr,
 html.ting-incall .breadcrumbs,
 html.ting-incall .page-title,
+html.ting-incall #huginnDock,
+html.ting-incall .hg-rail,
+html.ting-incall .hg-float,
+html.ting-incall #phoneWidget,
+html.ting-incall .ph-fab,
+html.ting-incall .ph-panel,
 body.ting-incall #sidebar,
 body.ting-incall .sidebar,
 body.ting-incall aside.sidebar,
@@ -176,7 +182,13 @@ body.ting-incall .credit,
 body.ting-incall .runesep,
 body.ting-incall .hr,
 body.ting-incall .breadcrumbs,
-body.ting-incall .page-title {
+body.ting-incall .page-title,
+body.ting-incall #huginnDock,
+body.ting-incall .hg-rail,
+body.ting-incall .hg-float,
+body.ting-incall #phoneWidget,
+body.ting-incall .ph-fab,
+body.ting-incall .ph-panel {
   display: none !important;
   visibility: hidden !important;
   height: 0 !important;
@@ -185,6 +197,12 @@ body.ting-incall .page-title {
   margin: 0 !important;
   padding: 0 !important;
   border: 0 !important;
+  pointer-events: none !important;
+}
+/* Во время звонка убираем запас под рельс Хугинна */
+html.ting-incall body,
+body.ting-incall {
+  padding-right: 0 !important;
 }
 html.ting-incall #content,
 html.ting-incall .content,

@@ -342,75 +342,99 @@
     if (av) av.style.display = 'grid';
   }
 
-  function releasePreviewKeepVideoTrack() {
-    var stream = state.previewStream;
-    var v = qs('previewVideo');
-    if (v) { try { v.srcObject = null; } catch (_) { /* */ } v.hidden = true; }
-    var videoTrack = null;
-    if (stream) {
-      stream.getAudioTracks().forEach(function (tr) { try { tr.stop(); } catch (_) { /* */ } });
-      videoTrack = stream.getVideoTracks()[0] || null;
-      state.previewStream = null;
-    }
-    return videoTrack && videoTrack.readyState === 'live' ? videoTrack : null;
+  async function unpublishLocalCamera(lkRoom) {
+    if (!lkRoom || !lkRoom.localParticipant) return;
+    try {
+      var pubs = Array.from(lkRoom.localParticipant.videoTrackPublications.values());
+      for (var i = 0; i < pubs.length; i++) {
+        var pub = pubs[i];
+        if (/screen/i.test(String(pub.source || ''))) continue;
+        try {
+          if (pub.track) await lkRoom.localParticipant.unpublishTrack(pub.track, true);
+        } catch (_) { /* */ }
+        try { if (pub.track && pub.track.stop) pub.track.stop(); } catch (_) { /* */ }
+      }
+    } catch (_) { /* */ }
   }
 
+  /* Не переиспользуем preview MST — на Android TV/Windows publish зависает. */
   async function enableLocalCamera(lkRoom) {
     var LK = window.LivekitClient;
-    var busyRe = /NotReadable|Device in use|Could not start|AbortError|Permission|Timeout starting video|Timed out|Overconstrained/i;
-    async function tryPublishMst(mst) {
-      if (!mst || !LK || mst.readyState !== 'live') return false;
-      try { if (mst.muted) mst.enabled = true; } catch (_) { /* */ }
-      var localTrack = null;
-      try {
-        if (LK.LocalVideoTrack && typeof LK.LocalVideoTrack.createFromMediaStreamTrack === 'function') {
-          localTrack = LK.LocalVideoTrack.createFromMediaStreamTrack(mst);
-        } else if (LK.LocalVideoTrack) {
-          localTrack = new LK.LocalVideoTrack(mst);
-        }
-      } catch (_) { localTrack = null; }
-      if (!localTrack) return false;
-      var opts = {};
-      try { if (LK.Track && LK.Track.Source) opts.source = LK.Track.Source.Camera; } catch (_) { /* */ }
-      await withTimeout(lkRoom.localParticipant.publishTrack(localTrack, opts), 8000, 'Timeout starting video source');
-      return true;
-    }
-    var mst = releasePreviewKeepVideoTrack();
-    if (mst) {
-      try {
-        if (await tryPublishMst(mst)) return true;
-      } catch (e) { console.warn('[TingTV] publish preview', e); }
-      try { mst.stop(); } catch (_) { /* */ }
-    } else {
-      stopPreview();
-    }
-    await new Promise(function (r) { setTimeout(r, 450); });
+    var busyRe = /NotReadable|Device in use|Could not start|AbortError|Permission|Timeout starting video|Timed out|Overconstrained|publication promise/i;
+    stopPreview();
+    await unpublishLocalCamera(lkRoom);
+    await new Promise(function (r) { setTimeout(r, 400); });
     var lastErr = null;
     for (var i = 0; i < 3; i++) {
       try {
-        var camOpts = state.camDeviceId ? { deviceId: { exact: state.camDeviceId } } : true;
-        if (typeof lkRoom.localParticipant.setCameraEnabled === 'function') {
-          await withTimeout(lkRoom.localParticipant.setCameraEnabled(true, typeof camOpts === 'object' ? { resolution: undefined } : undefined), 9000, 'Timeout starting video source');
-          /* LiveKit setCameraEnabled may ignore deviceId on some versions — fallback publish */
+        if (LK && typeof LK.createLocalVideoTrack === 'function') {
+          var opts = {};
+          if (state.camDeviceId) opts.deviceId = state.camDeviceId;
+          var track = await withTimeout(LK.createLocalVideoTrack(opts), 12000, 'Timeout starting video source');
+          var pubOpts = {};
+          try { if (LK.Track && LK.Track.Source) pubOpts.source = LK.Track.Source.Camera; } catch (_) { /* */ }
+          await withTimeout(lkRoom.localParticipant.publishTrack(track, pubOpts), 15000, 'Timeout starting video source');
           return true;
         }
+        await withTimeout(lkRoom.localParticipant.setCameraEnabled(true), 15000, 'Timeout starting video source');
+        return true;
       } catch (e) {
         lastErr = e;
+        console.warn('[TingTV] enableLocalCamera', i, e);
+        await unpublishLocalCamera(lkRoom);
         var msg = String((e && e.message) || e || '');
-        if (!busyRe.test(msg) || i === 2) break;
-        await new Promise(function (r) { setTimeout(r, 400 + i * 250); });
+        if (!busyRe.test(msg) && i === 2) break;
+        await new Promise(function (r) { setTimeout(r, 450 + i * 300); });
       }
     }
-    /* last resort: createLocalVideoTrack with chosen device */
-    try {
-      if (LK && typeof LK.createLocalVideoTrack === 'function') {
-        var track = await LK.createLocalVideoTrack(state.camDeviceId ? { deviceId: state.camDeviceId } : {});
-        await lkRoom.localParticipant.publishTrack(track);
-        return true;
-      }
-    } catch (e2) { lastErr = e2; }
     if (lastErr) throw lastErr;
     return false;
+  }
+
+  function ensureAudioSink() {
+    var sink = document.getElementById('ting-tv-audio-sink');
+    if (!sink) {
+      sink = document.createElement('div');
+      sink.id = 'ting-tv-audio-sink';
+      sink.setAttribute('aria-hidden', 'true');
+      sink.style.cssText = 'position:fixed;width:0;height:0;overflow:hidden;opacity:0;pointer-events:none;left:-9999px';
+      document.body.appendChild(sink);
+    }
+    return sink;
+  }
+
+  function syncRemoteAudio(room) {
+    if (!room) return;
+    var sink = ensureAudioSink();
+    var want = {};
+    try {
+      room.remoteParticipants.forEach(function (p) {
+        Array.from(p.audioTrackPublications.values()).forEach(function (pub) {
+          if (!pub || !pub.track) return;
+          try { if (pub.isMuted || pub.track.isMuted) return; } catch (_) { /* */ }
+          var sid = String(pub.trackSid || (pub.track && pub.track.sid) || '');
+          if (!sid) return;
+          want[sid] = true;
+          var el = sink.querySelector('[data-track-sid="' + sid + '"]');
+          if (!el) {
+            try { el = pub.track.attach(); } catch (_) {
+              el = document.createElement('audio');
+              try { el.srcObject = new MediaStream([pub.track.mediaStreamTrack]); } catch (__) { return; }
+            }
+            el.autoplay = true;
+            el.setAttribute('data-track-sid', sid);
+            sink.appendChild(el);
+            try { if (el.play) el.play().catch(function () {}); } catch (_) { /* */ }
+          }
+        });
+      });
+    } catch (_) { /* */ }
+    Array.from(sink.querySelectorAll('[data-track-sid]')).forEach(function (el) {
+      if (!want[el.getAttribute('data-track-sid')]) {
+        try { el.srcObject = null; } catch (_) { /* */ }
+        try { el.remove(); } catch (_) { /* */ }
+      }
+    });
   }
 
   async function refreshDevices() {
@@ -604,6 +628,7 @@
     if (stage) stage.innerHTML = '';
     var strip = qs('filmstrip');
     if (strip) strip.innerHTML = '';
+    syncRemoteAudio(state.room);
     function paintP(p, isLocal) {
       var name = isLocal ? state.displayName : (p.name || p.identity);
       var vid = Core.pickVideoTrack ? Core.pickVideoTrack(p) : null;
@@ -664,8 +689,11 @@
 
     var next = new LK.Room({ adaptiveStream: true, dynacast: true });
     state.room = next;
-    var bump = function () { paintAll(); };
-    next.on(LK.RoomEvent.TrackSubscribed, bump);
+    var bump = function () { syncRemoteAudio(next); paintAll(); };
+    next.on(LK.RoomEvent.TrackSubscribed, function (track) {
+      if (track && track.kind === 'audio') syncRemoteAudio(next);
+      bump();
+    });
     next.on(LK.RoomEvent.TrackUnsubscribed, bump);
     next.on(LK.RoomEvent.TrackMuted, bump);
     next.on(LK.RoomEvent.TrackUnmuted, bump);
@@ -687,6 +715,8 @@
     });
 
     await withTimeout(next.connect(creds.url || creds.livekit_url, creds.token), 12000, 'Таймаут подключения');
+    try { if (typeof next.startAudio === 'function') await next.startAudio(); } catch (_) { /* */ }
+    syncRemoteAudio(next);
     try {
       await next.localParticipant.setMicrophoneEnabled(state.micOn);
     } catch (_) { /* */ }
