@@ -106,31 +106,16 @@ export default function DirectorsInboxPage() {
   const [color, setColor] = useState('');
   const [search, setSearch] = useState('');
 
-  // 27.06.2026 Stage C: единый источник для маркетплейса = inbox_applications + pre_tender_requests.
-  // Параллельная загрузка, дедуп по email_id (если есть pre_tender — скрываем родительский inbox).
-  // Каждой записи проставляем _type ('inbox'|'pre_tender') для дальнейшего роутинга действий.
+  // 02.11.2026: единый контур — только pre_tender (маркетплейс).
+  // orphan inbox больше не показываем с кнопкой «Назначить РП».
   const refresh = () => {
     if (!allowed) return;
     setLoading(true);
     Promise.all([
-      loadList({ search, color }),
       loadAllPreTenders({ limit: 200 }),
       loadStats()
     ])
-      .then(([inboxList, ptList, st]) => {
-        // Унификация полей в один shape: id, _type, title, source_name, source_email,
-        // ai_classification, ai_color, ai_confidence, ai_summary, assigned_pm_id,
-        // assigned_pm_name, status, attachment_count, created_at, email_id.
-        const inboxItems = inboxList.map((it) => ({
-          ...it,
-          _type: 'inbox',
-          title: it.subject || '',
-          source_name: it.source_name || it.original_sender_name || '',
-          source_email: it.source_email || it.original_sender_email || ''
-        }));
-        // 27.06.2026 Stage C fix: pre_tender, который уже породил tender
-        // (derived_tender_id != null), скрываем из маркетплейса — иначе один объект
-        // виден дважды: как pre_tender здесь и как tender на /tenders.
+      .then(([ptList, st]) => {
         const ptItems = ptList
           .filter((pt) => !pt.derived_tender_id)
           .map((pt) => ({
@@ -150,13 +135,7 @@ export default function DirectorsInboxPage() {
             ai_summary: pt.ai_summary
           }));
 
-        // Дедуп: если email_id присутствует в pre_tender — скрываем родительский inbox.
-        const ptEmailIds = new Set(ptItems.map((x) => x.email_id).filter(Boolean));
-        const dedupedInbox = inboxItems.filter((x) => !x.email_id || !ptEmailIds.has(x.email_id));
-
-        // 30.06.2026 UX: свободные заявки (assigned_pm_id == null) — сверху, забранные —
-        // ниже и приглушённые (видно, что РП их уже забрал). Внутри группы — по дате.
-        const merged = [...dedupedInbox, ...ptItems].sort((a, b) => {
+        const merged = [...ptItems].sort((a, b) => {
           const aFree = a.assigned_pm_id ? 1 : 0;
           const bFree = b.assigned_pm_id ? 1 : 0;
           if (aFree !== bFree) return aFree - bFree;
@@ -164,13 +143,12 @@ export default function DirectorsInboxPage() {
         });
         setItems(merged);
         const ptFree = ptItems.filter((x) => !x.assigned_pm_id).length;
-        const inboxNew = (st.byStatus?.new || 0) + (st.byStatus?.ai_processed || 0);
         setStats({
           ...st,
           pre_tender_total: ptItems.length,
           pre_tender_free: ptFree,
-          combined_total: (st.total || inboxList.length) + ptItems.length,
-          combined_new: inboxNew + ptItems.filter((x) => ['new', 'in_review', 'need_docs'].includes(x.status)).length
+          combined_total: ptItems.length,
+          combined_new: ptItems.filter((x) => ['new', 'in_review', 'need_docs'].includes(x.status)).length
         });
       })
       .catch((e) => toast.error('Не удалось загрузить заявки: ' + (e?.message || e)))
@@ -452,7 +430,8 @@ function ApplicationCard({ item, bucket, userRole, onAssign, onClaim, onReject, 
   // (у pre_tender нет endpoint'а assign-pm; PM забирает себе через claim).
   const isInbox = item?._type === 'inbox';
   const isTo  = userRole === 'TO' || userRole === 'HEAD_TO';
-  const canAssign = isDir && isInbox && bucket === 'requests' && !isAssigned && !isArchived && !isRejected;
+  // 02.11.2026: inbox-контур убран — «Назначить РП» только через pre_tender transfer/claim.
+  const canAssign = false;
   const canClaim  = isPm  && bucket === 'requests' && !isAssigned && !isArchived && !isRejected;
   // 27.06.2026 Stage C: ТО на свободном inbox-приглашении → создать pre_tender.
   const canAccept = isTo && isInbox && bucket === 'invitations' && !isAssigned && !isArchived && !isRejected;

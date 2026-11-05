@@ -635,6 +635,115 @@ module.exports = async function (fastify) {
   });
 
   // ═══════════════════════════════════════════════════════════════════
+  // 2.55 POST /backfill-orphaned-inbox
+  // 02.11.2026: сироты inbox (есть заявка, нет pre_tender) → маркетплейс.
+  // Закрывает второй контур «Назначить РП» для уже созданных карточек.
+  // ═══════════════════════════════════════════════════════════════════
+  fastify.post('/backfill-orphaned-inbox', {
+    preHandler: [fastify.requireRoles(['ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV', 'HEAD_PM'])]
+  }, async (request, reply) => {
+    const dryRun = !!(request.body && request.body.dry_run);
+
+    // 1) Призраки: inbox ещё «новый», а pre_tender по тому же письму уже есть
+    //    (часто в другом статусе → дедуп по вкладке «Новые» не срабатывал).
+    const ghostsRes = await db.query(`
+      SELECT ia.id AS inbox_id, ia.email_id, ia.subject, pt.id AS pre_tender_id, pt.status AS pt_status
+        FROM inbox_applications ia
+        JOIN pre_tender_requests pt ON pt.email_id = ia.email_id
+       WHERE ia.status = ANY(ARRAY['new','ai_processed','under_review'])
+         AND ia.assigned_pm_id IS NULL
+       ORDER BY ia.created_at ASC
+       LIMIT 500
+    `);
+
+    // 2) Сироты: inbox без pre_tender вообще.
+    const orphanRes = await db.query(`
+      SELECT ia.id AS inbox_id, ia.email_id, ia.subject, ia.status, ia.assigned_pm_id
+        FROM inbox_applications ia
+       WHERE ia.email_id IS NOT NULL
+         AND ia.status = ANY(ARRAY['new','ai_processed','under_review'])
+         AND NOT EXISTS (
+           SELECT 1 FROM pre_tender_requests pt WHERE pt.email_id = ia.email_id
+         )
+       ORDER BY ia.created_at ASC
+       LIMIT 500
+    `);
+
+    const closedGhosts = [];
+    const created = [];
+    const skipped = [];
+    const errors = [];
+
+    for (const row of ghostsRes.rows) {
+      if (dryRun) {
+        closedGhosts.push({ ...row, dry_run: true });
+        continue;
+      }
+      try {
+        await db.query(
+          `UPDATE inbox_applications
+              SET status = 'accepted',
+                  decision_notes = COALESCE(decision_notes,'') || ' [ghost-close→pre_tender #' || $2 || ']',
+                  updated_at = NOW()
+            WHERE id = $1`,
+          [row.inbox_id, String(row.pre_tender_id)]
+        );
+        closedGhosts.push(row);
+      } catch (e) {
+        errors.push({ inbox_id: row.inbox_id, error: e.message, kind: 'ghost' });
+      }
+    }
+
+    for (const row of orphanRes.rows) {
+      if (dryRun) {
+        created.push({ inbox_id: row.inbox_id, email_id: row.email_id, subject: row.subject, dry_run: true });
+        continue;
+      }
+      try {
+        const r = await preTenderService.createPreTenderFromEmail(row.email_id, {
+          assignedTo: row.assigned_pm_id || null,
+          assignedBy: request.user.id,
+          assignNote: 'Backfill orphan inbox → marketplace'
+        });
+        if (!r || !r.id) {
+          errors.push({ inbox_id: row.inbox_id, error: 'create_failed' });
+          continue;
+        }
+        if (r.exists) {
+          skipped.push({ inbox_id: row.inbox_id, pre_tender_id: r.id, reason: 'already_exists' });
+        } else {
+          created.push({ inbox_id: row.inbox_id, email_id: row.email_id, pre_tender_id: r.id, subject: row.subject });
+        }
+        await db.query(
+          `UPDATE inbox_applications
+              SET status = 'accepted',
+                  decision_notes = COALESCE(decision_notes,'') || ' [backfill→marketplace pre_tender #' || $2 || ']',
+                  updated_at = NOW()
+            WHERE id = $1`,
+          [row.inbox_id, String(r.id)]
+        );
+      } catch (e) {
+        errors.push({ inbox_id: row.inbox_id, error: e.message, kind: 'orphan' });
+      }
+    }
+
+    return {
+      success: true,
+      dry_run: dryRun,
+      ghosts_found: ghostsRes.rows.length,
+      orphans_found: orphanRes.rows.length,
+      ghosts_closed: closedGhosts.length,
+      created_count: created.length,
+      skipped_count: skipped.length,
+      error_count: errors.length,
+      closedGhosts,
+      created,
+      skipped,
+      errors
+    };
+  });
+
+  // ═══════════════════════════════════════════════════════════════════
   // 2.6 POST /:id/claim — РП забирает свободную заявку из маркетплейса
   // ═══════════════════════════════════════════════════════════════════
   // 23.06.2026 Маркетплейс заявок.
@@ -1010,13 +1119,27 @@ module.exports = async function (fastify) {
     if (!emailRes.rows.length) return reply.code(404).send({ error: 'Письмо не найдено' });
 
     const email = emailRes.rows[0];
-    if (!['direct_request', 'platform_tender'].includes(email.email_type)) {
+    // 02.11.2026: единый контур — commercial_offer и прочие рабочие типы тоже в маркетплейс.
+    const allowedTypes = ['direct_request', 'platform_tender', 'commercial_offer'];
+    if (email.email_type && !allowedTypes.includes(email.email_type)) {
       return reply.code(400).send({ error: 'Тип письма не подходит: ' + email.email_type });
     }
 
     const result = await preTenderService.createPreTenderFromEmail(email_id);
     if (!result) return reply.code(500).send({ error: 'Ошибка создания' });
     if (result.exists) return reply.code(409).send({ error: 'Заявка уже создана', id: result.id });
+
+    try {
+      await db.query(
+        `UPDATE inbox_applications
+            SET status = 'accepted',
+                decision_notes = COALESCE(decision_notes,'') || ' [auto→marketplace pre_tender #' || $2 || ']',
+                updated_at = NOW()
+          WHERE email_id = $1 AND assigned_pm_id IS NULL
+            AND status = ANY(ARRAY['new','ai_processed','under_review'])`,
+        [email_id, String(result.id)]
+      );
+    } catch (_) { /* non-fatal */ }
 
     return { success: true, id: result.id };
   });

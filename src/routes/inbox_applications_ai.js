@@ -370,7 +370,31 @@ module.exports = async function (fastify) {
       }
     }
 
-    return { success: true, id: appId };
+    // 02.11.2026: единый контур — ручное «из письма» тоже сразу в маркетплейс.
+    let preTenderId = null;
+    try {
+      const preTenderService = require('../services/pre-tender-service');
+      const pt = await preTenderService.createPreTenderFromEmail(email_id, {
+        assignedBy: user.id,
+        assignNote: 'Создано вручную из письма → маркетплейс'
+      });
+      if (pt && pt.id) {
+        preTenderId = pt.id;
+        await db.query(
+          `UPDATE inbox_applications
+              SET status = 'accepted',
+                  decision_notes = COALESCE(decision_notes,'') || ' [auto→marketplace pre_tender #' || $2 || ']',
+                  updated_at = NOW()
+            WHERE id = $1
+              AND assigned_pm_id IS NULL`,
+          [appId, String(pt.id)]
+        );
+      }
+    } catch (ptErr) {
+      console.error('[InboxApp] auto pre_tender from-email failed:', ptErr.message);
+    }
+
+    return { success: true, id: appId, pre_tender_id: preTenderId };
   });
 
   // ═══════════════════════════════════════════════════════════════════

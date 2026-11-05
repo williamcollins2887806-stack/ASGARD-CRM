@@ -15,23 +15,19 @@ window.AsgardDirectorInboxPage = (function () {
   const PM_ROLES = ['PM','HEAD_PM'];
   // HEAD_PM участвует в обоих списках — может и распределять, и забирать.
 
+  // 02.11.2026: единый контур — только pre_tender (маркетплейс).
+  // Inbox больше не показываем отдельной корзиной с «Назначить РП».
   const FILTERS = [
-    { key: 'new',     label: 'Новые',    statuses: ['new', 'ai_processed', 'under_review'],
-      ptStatuses: ['new', 'in_review', 'need_docs'] },
-    // Wave A+ fix MIN#7: 'accepted' добавлен — pre_tender'ы после accept конвертируются в tender,
-    // но запись pre_tender_requests со status='accepted' остаётся; для согласованности с inbox
-    // 'accepted' и в 'В работе' (видны 1 цикл до закрытия).
-    { key: 'working', label: 'В работе', statuses: ['assigned', 'accepted'],
-      ptStatuses: ['pending_approval', 'approved', 'accepted'] },
-    { key: 'archive', label: 'Архив',    statuses: ['rejected', 'archived'],
-      ptStatuses: ['rejected', 'expired'] }
+    { key: 'new',     label: 'Новые',    ptStatuses: ['new', 'in_review', 'need_docs'] },
+    { key: 'working', label: 'В работе', ptStatuses: ['pending_approval', 'approved', 'accepted'] },
+    { key: 'archive', label: 'Архив',    ptStatuses: ['rejected', 'expired'] }
   ];
 
-  // Wave C: тип-фильтр (inbox / pre_tender / все)
+  // Свободные / назначенные внутри вкладки «Новые»
   const TYPE_FILTERS = [
-    { key: 'all',        label: 'Все типы' },
-    { key: 'inbox',      label: '📥 Заявки' },
-    { key: 'pre_tender', label: '🗂 Пре-тендеры' }
+    { key: 'all',        label: 'Все' },
+    { key: 'free',       label: '🟢 Свободные' },
+    { key: 'assigned',   label: '🎯 Назначенные' }
   ];
 
   const COLOR_LABEL = {
@@ -52,7 +48,7 @@ window.AsgardDirectorInboxPage = (function () {
   let _layout = null;
   let _user = null;
   let _filterKey = 'new';
-  let _typeFilter = 'all'; // Wave C: тип-фильтр
+  let _typeFilter = 'all'; // free | assigned | all
   let _items = [];
   let _pmList = null;
   // 23.06.2026 Маркетплейс
@@ -178,44 +174,32 @@ window.AsgardDirectorInboxPage = (function () {
       return;
     }
 
-    // ── Директор: как раньше ─────────────────────────────────────────────
+    // ── Директор: только pre_tender (единый маркетплейс) ────────────────
     const flt = FILTERS.find(f => f.key === _filterKey) || FILTERS[0];
     const all = [];
 
-    // 1. inbox_applications (если не отфильтровано только pre_tender)
-    if (_typeFilter === 'all' || _typeFilter === 'inbox') {
-      for (const st of flt.statuses) {
-        const r = await api(`/?status=${encodeURIComponent(st)}&limit=200&offset=0`);
-        if (r.ok && r.data && r.data.items) {
-          for (const it of r.data.items) all.push({ ...it, _type: 'inbox' });
-        }
+    for (const st of (flt.ptStatuses || [])) {
+      const r = await apiPreTender(`/?status=${encodeURIComponent(st)}&limit=200&offset=0`);
+      if (r.ok && r.data && r.data.items) {
+        for (const it of r.data.items) all.push({ ...it, _type: 'pre_tender' });
       }
     }
 
-    // 2. pre_tender_requests (если не отфильтровано только inbox)
-    if (_typeFilter === 'all' || _typeFilter === 'pre_tender') {
-      for (const st of (flt.ptStatuses || [])) {
-        const r = await apiPreTender(`/?status=${encodeURIComponent(st)}&limit=200&offset=0`);
-        if (r.ok && r.data && r.data.items) {
-          for (const it of r.data.items) all.push({ ...it, _type: 'pre_tender' });
-        }
-      }
+    let filtered = all;
+    if (_typeFilter === 'free') {
+      filtered = all.filter((it) => !it.assigned_to);
+    } else if (_typeFilter === 'assigned') {
+      filtered = all.filter((it) => !!it.assigned_to);
     }
 
-    // 27.06.2026 FIX дубля: одно письмо может породить и inbox_application,
-    // и pre_tender_request (через общий email_id). Если оба попали в выдачу —
-    // показываем только pre_tender (он «свежее» в воронке). Раньше письмо
-    // отображалось дважды (📥 Заявка + 🗂 Pre-tender) и путало директора.
-    const preTenderEmailIds = new Set(
-      all
-        .filter((it) => it._type === 'pre_tender' && it.email_id)
-        .map((it) => it.email_id)
-    );
-    const deduped = all.filter(
-      (it) => !(it._type === 'inbox' && it.email_id && preTenderEmailIds.has(it.email_id))
-    );
-    deduped.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
-    _items = deduped;
+    filtered.sort((a, b) => {
+      // Свободные сверху — чтобы админ сразу видел, что ещё можно раздать/забрать.
+      const af = a.assigned_to ? 1 : 0;
+      const bf = b.assigned_to ? 1 : 0;
+      if (af !== bf) return af - bf;
+      return new Date(b.created_at) - new Date(a.created_at);
+    });
+    _items = filtered;
   }
 
   // 23.06.2026 Маркетплейс: подгрузка X/5.
@@ -290,15 +274,22 @@ window.AsgardDirectorInboxPage = (function () {
     const workType = it.ai_work_type || '';
     const attN = it.email_attachments_count || it.attachment_count || 0;
 
-    return `<div class="di-card" data-id="${it.id}" data-type="pre_tender">
+    const isFree = !it.assigned_to;
+    const canDirAssign = _mode === 'director' && isFree;
+
+    return `<div class="di-card ${isFree ? 'di-card-free' : 'di-card-taken'}" data-id="${it.id}" data-type="pre_tender">
       <div class="di-card-row">
         <div class="di-card-title" title="${esc(title)}">
-          <span style="font-size:11px;padding:1px 5px;background:var(--bg-elevated);border-radius:4px;margin-right:6px">🗂 Pre-tender</span>
+          <span style="font-size:11px;padding:1px 5px;background:var(--bg-elevated);border-radius:4px;margin-right:6px">🗂 Заявка</span>
           ${esc(title)}
         </div>
         <div class="di-color-badge ${color.cls}" title="${esc(color.label)}">${color.icon} ${esc(color.label)}</div>
       </div>
-      <div style="font-size:11px;color:var(--text-secondary);margin-top:4px"><b>Статус:</b> ${esc(ptStatusLabel)}</div>
+      <div style="font-size:11px;color:var(--text-secondary);margin-top:4px"><b>Статус:</b> ${esc(ptStatusLabel)}
+        ${isFree
+          ? ' · <span style="color:#f0c040;font-weight:600">🟢 Свободна — можно забрать</span>'
+          : ` · <span style="color:#6bcf7f;font-weight:600">🎯 ${esc(assigned)}</span>`}
+      </div>
       ${summary ? `<div class="di-summary">${esc(summary.slice(0, 280))}</div>` : ''}
       <div class="di-meta">
         ${contact ? `<span>${esc(contact)}</span>` : ''}
@@ -308,13 +299,14 @@ window.AsgardDirectorInboxPage = (function () {
         ${deadline ? `<span>· ${esc(deadline)}</span>` : ''}
         ${attN > 0 ? `<span>· 📎 ${attN}</span>` : ''}
         <span>· ${formatDateTime(it.created_at)}</span>
-        ${assigned ? `<span>· 🎯 ${esc(assigned)}</span>` : '<span>· Свободна</span>'}
       </div>
       <div class="di-card-actions">
-        ${_mode === 'marketplace' ? `
+        ${_mode === 'marketplace' && isFree ? `
           <button class="btn primary di-claim-btn" data-act="pt-claim" data-id="${it.id}">
             🎯 Забрать себе
           </button>` : ''}
+        ${canDirAssign ? `
+          <button class="btn primary" data-act="pt-assign" data-id="${it.id}">Назначить РП</button>` : ''}
         <button class="btn ghost" data-act="pt-view" data-id="${it.id}">Просмотр</button>
         ${it.email_id ? `<button class="btn ghost" data-act="email" data-id="${it.email_id}">📧 Письмо целиком</button>` : ''}
       </div>
@@ -343,10 +335,10 @@ window.AsgardDirectorInboxPage = (function () {
         : { icon: '📦', title: 'Пусто', desc: 'В этом разделе пока нет заявок.' };
       body = `<div class="di-grid"></div>${emptyState(msg)}`;
     } else {
-      const inboxN = _items.filter(i => i._type === 'inbox').length;
-      const ptN = _items.filter(i => i._type === 'pre_tender').length;
+      const freeN = _items.filter(i => !i.assigned_to).length;
+      const takenN = _items.length - freeN;
       const counter = `<div style="font-size:11px;color:var(--text-secondary);margin:6px 0">
-        Всего: <b>${_items.length}</b> · 📥 ${inboxN} · 🗂 ${ptN}
+        Всего: <b>${_items.length}</b> · 🟢 Свободные: <b>${freeN}</b> · 🎯 Назначенные: <b>${takenN}</b>
       </div>`;
       body = counter + `<div class="di-grid">${_items.map(htmlCard).join('')}</div>`;
     }
@@ -456,19 +448,14 @@ window.AsgardDirectorInboxPage = (function () {
     const direct = $('#di-btn-direct');
     if (direct) direct.addEventListener('click', openDirectFromDirectorModal);
 
-    $$('button[data-act="assign"]').forEach(b => {
-      b.addEventListener('click', () => openAssignPmModal(Number(b.dataset.id)));
-    });
-    $$('button[data-act="view"]').forEach(b => {
-      b.addEventListener('click', () => openApplicationDetailModal(Number(b.dataset.id)));
-    });
-    // Wave C: pre_tender detail
     $$('button[data-act="pt-view"]').forEach(b => {
       b.addEventListener('click', () => openPreTenderDetailModal(Number(b.dataset.id)));
     });
-    // 23.06.2026 Маркетплейс: «Забрать себе»
     $$('button[data-act="pt-claim"]').forEach(b => {
       b.addEventListener('click', () => claimPreTender(Number(b.dataset.id), b));
+    });
+    $$('button[data-act="pt-assign"]').forEach(b => {
+      b.addEventListener('click', () => openAssignPreTenderPmModal(Number(b.dataset.id)));
     });
     $$('button[data-act="email"]').forEach(b => {
       b.addEventListener('click', () => {
@@ -799,6 +786,56 @@ window.AsgardDirectorInboxPage = (function () {
             await loadItems(); renderPage();
           } else if (r.status === 409 && r.data && r.data.error === 'already_assigned') {
             toast('Ошибка', 'Уже назначен — обновите страницу', 'err');
+            await loadItems(); renderPage();
+          } else {
+            toast('Ошибка', (r.data && (r.data.message || r.data.error)) || 'Не удалось назначить', 'err');
+          }
+        });
+      }
+    });
+  }
+
+  // 02.11.2026: назначение свободного pre_tender директором через /transfer.
+  async function openAssignPreTenderPmModal(ptId) {
+    const pmList = await loadPmList();
+    const options = pmList.map(u =>
+      `<option value="${u.id}">${esc(u.name || u.login)} (${esc(u.role)})</option>`
+    ).join('');
+    const html = `
+      <div class="pk-form-grp">
+        <label>РП</label>
+        <select id="di-assign-pm">
+          <option value="">— Выберите РП —</option>${options}
+        </select>
+      </div>
+      <div class="pk-form-grp">
+        <label>Комментарий (опционально)</label>
+        <textarea id="di-assign-note" rows="3" placeholder="Кратко: что важно для РП"></textarea>
+      </div>
+      <div class="pk-modal-foot">
+        <button class="btn ghost" id="di-assign-cancel">Отмена</button>
+        <button class="btn primary" id="di-assign-ok">Назначить</button>
+      </div>`;
+    showModal({
+      title: 'Назначить РП', html, icon: '👤',
+      onMount: () => {
+        $('#di-assign-cancel').addEventListener('click', hideModal);
+        $('#di-assign-ok').addEventListener('click', async () => {
+          const pmId = Number($('#di-assign-pm').value || 0);
+          if (!pmId) { toast('Ошибка', 'Выберите РП', 'err'); return; }
+          const note = $('#di-assign-note').value.trim() || null;
+          const btn = $('#di-assign-ok'); btn.disabled = true;
+          const r = await apiPreTender(`/${ptId}/transfer`, {
+            method: 'POST',
+            body: { to_user_id: pmId, reason: note }
+          });
+          btn.disabled = false;
+          if (r.ok && r.data && r.data.success) {
+            hideModal();
+            toast('Готово', `Назначен — ${r.data.item?.assigned_to_name || 'РП'}`, 'ok');
+            await loadItems(); renderPage();
+          } else if (r.status === 409 && r.data && r.data.error === 'already_owns') {
+            toast('Ошибка', 'Уже у этого РП', 'err');
             await loadItems(); renderPage();
           } else {
             toast('Ошибка', (r.data && (r.data.message || r.data.error)) || 'Не удалось назначить', 'err');
