@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Логотип Тинг: золотая «T» с точкой эфира на тёмном круге -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- мягкое золотое пятно -->
+    <path
+        android:fillColor="#1A1620"
+        android:pathData="M18,18h72v72h-72z" />
+    <path
+        android:fillColor="#C8A84E"
+        android:fillAlpha="0.18"
+        android:pathData="M54,22c17.7,0 32,14.3 32,32s-14.3,32 -32,32 -32,-14.3 -32,-32 14.3,-32 32,-32z" />
+    <!-- перекладина T -->
+    <path
+        android:fillColor="#E8C35A"
+        android:pathData="M34,34h40c2.2,0 4,1.8 4,4s-1.8,4 -4,4H58v30c0,2.2 -1.8,4 -4,4s-4,-1.8 -4,-4V42H34c-2.2,0 -4,-1.8 -4,-4s1.8,-4 4,-4z" />
+    <!-- точка «в эфире» -->
+    <path
+        android:fillColor="#C8A84E"
+        android:pathData="M54,80c2.8,0 5,2.2 5,5s-2.2,5 -5,5 -5,-2.2 -5,-5 2.2,-5 5,-5z" />
+</vector>

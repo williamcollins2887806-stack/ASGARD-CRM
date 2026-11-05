@@ -1,16 +1,57 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Android TV leanback banner 320×180 dp -->
+<!-- Android TV leanback banner 320×180 — «Тинг» + золотой знак -->
 <layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- фон -->
     <item>
         <shape android:shape="rectangle">
             <solid android:color="#0A0C10" />
             <size android:width="320dp" android:height="180dp" />
         </shape>
     </item>
-    <item android:left="24dp" android:top="48dp" android:right="24dp" android:bottom="48dp">
+    <!-- золотая плашка слева под лого -->
+    <item
+        android:left="28dp"
+        android:top="48dp"
+        android:right="220dp"
+        android:bottom="48dp">
         <shape android:shape="rectangle">
             <solid android:color="#C8A84E" />
-            <corners android:radius="12dp" />
+            <corners android:radius="14dp" />
+        </shape>
+    </item>
+    <!-- тёмная «T»-зона внутри золота (имитация знака) -->
+    <item
+        android:left="42dp"
+        android:top="62dp"
+        android:right="234dp"
+        android:bottom="98dp">
+        <shape android:shape="rectangle">
+            <solid android:color="#0A0C10" />
+            <corners android:radius="2dp" />
+        </shape>
+    </item>
+    <item
+        android:left="58dp"
+        android:top="74dp"
+        android:right="250dp"
+        android:bottom="62dp">
+        <shape android:shape="rectangle">
+            <solid android:color="#0A0C10" />
+            <corners android:radius="2dp" />
+        </shape>
+    </item>
+    <!-- правая золотая полоса-акцент -->
+    <item
+        android:left="118dp"
+        android:top="70dp"
+        android:right="28dp"
+        android:bottom="70dp">
+        <shape android:shape="rectangle">
+            <solid android:color="#1A1620" />
+            <corners android:radius="10dp" />
+            <stroke
+                android:width="2dp"
+                android:color="#C8A84E" />
         </shape>
     </item>
 </layer-list>

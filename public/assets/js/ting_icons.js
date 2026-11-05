@@ -48,7 +48,13 @@
   }
 
   function logoMark() {
-    return '<svg viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M8 6h16M16 6v20M10 14h12" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/><circle cx="16" cy="26" r="2.2" fill="currentColor"/></svg>';
+    /* Тинг: золотой знак «T» + точка эфира (не Capacitor-заглушка) */
+    return '<svg viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">'
+      + '<rect width="32" height="32" rx="8" fill="#0A0C10"/>'
+      + '<circle cx="16" cy="16" r="12" fill="#C8A84E" fill-opacity=".16"/>'
+      + '<path d="M9 9h14a1.6 1.6 0 0 1 0 3.2H17.2V23a1.6 1.6 0 0 1-3.2 0V12.2H9A1.6 1.6 0 0 1 9 9z" fill="#E8C35A"/>'
+      + '<circle cx="16" cy="26.2" r="1.6" fill="#C8A84E"/>'
+      + '</svg>';
   }
 
   function send() {
