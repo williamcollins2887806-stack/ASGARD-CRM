@@ -122,22 +122,31 @@ async function openDashboard(page) {
   const beforeScope = await sec.locator('.og-range').innerText();
   const beforeRows = await sec.locator('.og-row').count();
 
-  const crownCount = await sec.locator('.og-row.is-crown').count();
-  if (crownCount === 0) {
-    // Текущий период может быть ещё не покрыт отчётом СКУД (нормы нет — это
-    // «нет данных», а не прогул). Уходим на неделю, покрытую отчётом.
+  // Если авто-выбор не сработал и период пуст — сами уходим на покрытую
+  // неделю. Счёт проверок при этом не меняется: обе ветки выполняются всегда.
+  let crownCount = await sec.locator('.og-row.is-crown').count();
+  if (crownCount === 0 && await sec.locator('.og-row.is-none, .og-row').count() > 0) {
     await sec.locator('[data-team-scope="week"]').click();
     await page.waitForTimeout(2200);
     await sec.locator('[data-team-anchor]').first().click();
     await page.waitForTimeout(2400);
-    const label = await sec.locator('.og-range').innerText();
-    check('переход на покрытую неделю', /26\.10/.test(label), label);
   }
-  const crowns = await sec.locator('.og-row.is-crown').count();
-  const crownName = crowns ? (await sec.locator('.og-row.is-crown .og-name-txt').first().innerText()).trim() : '';
+  const coveredLabel = await sec.locator('.og-range').innerText();
+  const coveredRows = await sec.locator('.og-row').count();
+  // 4-я ячейка строки — «Норма». Если в ней прочерк у всех, нормы за период нет.
+  const normFilled = await sec.locator('.og-row').evaluateAll((rows) => rows.filter((r) => {
+    const cells = r.querySelectorAll('.og-cell');
+    const norm = cells[cells.length - 1];
+    return norm && norm.textContent.trim() !== '—';
+  }).length);
+  check('период по умолчанию содержит норму (покрыт отчётом СКУД)',
+    coveredRows > 0 && normFilled > 0, `${coveredLabel}, строк ${coveredRows}, с нормой ${normFilled}`);
+
+  crownCount = await sec.locator('.og-row.is-crown').count();
+  const crownName = crownCount ? (await sec.locator('.og-row.is-crown .og-name-txt').first().innerText()).trim() : '';
   const greenCrown = await sec.locator('.og-row.is-crown.is-green').count();
-  check('корона у зелёного лидера', crowns >= 1 && greenCrown === crowns,
-    `корон: ${crowns}, лидер: ${crownName}`);
+  check('корона у зелёного лидера', crownCount >= 1 && greenCrown === crownCount,
+    `корон: ${crownCount}, лидер: ${crownName}`);
 
   // Скриншот именно покрытого периода — здесь видны все четыре цвета.
   await sec.scrollIntoViewIfNeeded();

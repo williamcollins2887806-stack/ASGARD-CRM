@@ -975,6 +975,16 @@ module.exports = async function (fastify, options) {
       `INSERT INTO office_hours_daily (staff_id, date, office_minutes, manual_minutes, manual_reason, updated_at)
        VALUES ($1, $2::date, $3, $4, $5, NOW())
        ON CONFLICT (staff_id, date) DO UPDATE SET
+         -- Отмена правки возвращает часы из импорта СКУД, а не ноль: строка
+         -- остаётся (на неё опираются segments/first_in/last_out), но
+         -- office_minutes пересобирается из фактических проходов. Раньше
+         -- «откат» оставлял часы правки навсегда — верификатор 05.11.2026.
+         office_minutes = CASE WHEN $4::int IS NULL
+           THEN COALESCE((
+             SELECT SUM(GREATEST(0, COALESCE((seg->>'minutes')::int, 0)))
+               FROM jsonb_array_elements(office_hours_daily.segments) seg
+           ), 0)
+           ELSE EXCLUDED.office_minutes END,
          manual_minutes = EXCLUDED.manual_minutes,
          manual_reason  = EXCLUDED.manual_reason,
          updated_at     = NOW()`,

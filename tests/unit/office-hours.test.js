@@ -111,7 +111,7 @@ describe('office-hours: зачёт офис + СРМ вне офиса', () => {
     expect(r.warn).toBe('not_confirmed');
   });
 
-  test('«оф» без единого прохода — 0 зачёта и предупреждение no_punches', () => {
+  test('«оф» без единого прохода (импорт есть) — 0 зачёта и предупреждение no_punches', () => {
     const r = oh.creditDay({ ...base, date: '2026-10-26', statusCode: 'оф', officeMinutes: 0, crmMinutes: 120 });
     expect(r.credited_minutes).toBe(0);
     expect(r.warn).toBe('no_punches');
@@ -120,6 +120,18 @@ describe('office-hours: зачёт офис + СРМ вне офиса', () => {
   test('нет импорта СКУД за день — предупреждение skud_missing, а не «прогул»', () => {
     const r = oh.creditDay({ ...base, skudMissing: true, date: '2026-10-26', statusCode: 'оф', officeMinutes: 0, crmMinutes: 0 });
     expect(r.warn).toBe('skud_missing');
+    expect(r.counts_in_norm).toBe(false);
+  });
+
+  test('нет импорта СКУД, но есть СРМ — зачёт по СРМ (не 0 из‑за «ждём отчёт»)', () => {
+    const r = oh.creditDay({
+      ...base, skudMissing: true, date: '2026-11-05', statusCode: 'оф',
+      officeMinutes: 0, crmMinutes: 205
+    });
+    expect(r.warn).toBe('skud_missing');
+    expect(r.source).toBe('crm_skud_pending');
+    expect(r.credited_minutes).toBe(205);
+    expect(r.counts_in_norm).toBe(true);
   });
 
   test('часы СРМ до выкатки серверного учёта не начисляют недоработку', () => {
@@ -272,6 +284,49 @@ describe('office-hours: дисциплина выработки (График о
     expect(s.norm_minutes).toBe(480);      // только рабочий день
     expect(s.worked_minutes).toBe(240);    // факт по всем дням
     expect(s.days_counted).toBe(1);
+  });
+
+  test('ручные часы офиса без проходов не дают двойной учёт СРМ', () => {
+    // Верификатор 05.11.2026, FAIL P1: офис-менеджер вписал 300 мин через
+    // /adjust (segments пустые, импорта за день нет) — и вся активность СРМ
+    // 480 мин прибавилась сверху: 780 мин «факта» при норме 480, человек
+    // стал зелёным (101,9 %). Должно быть 300 офиса + 0 удалёнки.
+    const r = oh.creditDay({
+      date: '2026-10-29',
+      statusCode: 'оф',
+      officeMinutes: 300,
+      crmMinutes: 480,
+      crmSessions: [{ from: '18:00', to: '01:59', minutes: 480 }],
+      officeSegments: [],           // ручная правка: окон СКУД нет
+      crmHasData: true,
+      skudMissing: true,
+      normMinutes: 480
+    });
+    expect(r.crm_remote_minutes).toBe(0);
+    expect(r.credited_minutes).toBe(300);
+    const s = oh.summarizeDays([r]);
+    expect(s.worked_minutes).toBe(300);
+    expect(s.remote_minutes).toBe(0);
+    // 300 из 480 = −37,5 % → жёлтый (красным был бы только < −50 %).
+    expect(oh.workloadState({ workedMinutes: s.worked_minutes, normMinutes: s.norm_minutes }).state)
+      .toBe('yellow');
+  });
+
+  test('с окнами СКУД пересечение всё равно вычитается', () => {
+    // Тот же день, но с проходами: 300 мин офиса 09:00–14:00, СРМ после.
+    const r = oh.creditDay({
+      date: '2026-10-29',
+      statusCode: 'оф',
+      officeMinutes: 300,
+      crmMinutes: 480,
+      crmSessions: [{ from: '16:00', to: '23:59', minutes: 480 }],
+      officeSegments: [{ from: '09:00', to: '13:59', minutes: 300 }],
+      crmHasData: true,
+      skudMissing: false,
+      normMinutes: 480
+    });
+    expect(r.crm_remote_minutes).toBe(480);   // окна не пересекаются
+    expect(r.credited_minutes).toBe(780);
   });
 
   test('parseSegments терпит строку, массив и мусор', () => {

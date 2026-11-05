@@ -242,7 +242,15 @@ function creditDay(p) {
   if (p.crmRemoteMinutes != null) {
     remoteCrm = Math.max(0, Math.round(Number(p.crmRemoteMinutes) || 0));
   } else if (Array.isArray(p.crmSessions) && p.crmSessions.length) {
-    remoteCrm = crmMinutesOutsideOffice(p.crmSessions, p.officeSegments);
+    // Окна СКУД нужны, чтобы вычесть время, проведённое в офисе. Если часов
+    // офиса есть, а окон нет (ручная правка офис-менеджера через /adjust,
+    // импорт СКУД за день отсутствует) — пересечение не вычислить. Прибавлять
+    // «голый» СРМ поверх ручных часов нельзя: 300 мин офиса + 480 мин СРМ
+    // давали 780 мин «факта» при норме 480 (верификатор 05.11.2026).
+    const segs = Array.isArray(p.officeSegments) ? p.officeSegments : [];
+    remoteCrm = (office > 0 && !segs.length)
+      ? 0
+      : crmMinutesOutsideOffice(p.crmSessions, p.officeSegments);
   } else if (office > 0) {
     // Есть офис, но нет сессий СРМ с временем — пересечение не посчитать.
     // Не прибавляем «голый» crm: иначе двойной учёт за работу в офисе.
@@ -294,12 +302,21 @@ function creditDay(p) {
     if (!office) {
       out.warn = p.skudMissing ? 'skud_missing' : 'no_punches';
       if (p.skudMissing) {
+        // Отчёта СКУД за день ещё нет — человека не наказываем нулём.
+        // Есть работа в СРМ → засчитываем её (как «вне офиса», окон СКУД нет).
+        if (remoteCrm > 0 || crm > 0) {
+          const add = remoteCrm > 0 ? remoteCrm : crm;
+          out.credited_minutes = add;
+          out.crm_remote_minutes = add;
+          out.source = 'crm_skud_pending';
+          out.warn = 'skud_missing';
+          return out;
+        }
         out.source = 'skud_missing';
         out.counts_in_norm = false;
         return out;
       }
-      // «оф» без прохода: СРМ вне офиса не зачитываем — иначе ложный «оф»
-      // (детектор как раз ищет такие дни) получит часы и спрячется.
+      // Импорт за день есть, проходов нет: ложный «оф» — СРМ не прячем в зачёт.
       out.source = 'skud';
       out.credited_minutes = 0;
       return out;
