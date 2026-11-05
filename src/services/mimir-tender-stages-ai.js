@@ -52,7 +52,68 @@ function safeJson(text) {
   if (i >= 0 && j > i) {
     try { return JSON.parse(body.slice(i, j + 1)); } catch (_) {}
   }
-  return null;
+  // Частичный ответ: модель упёрлась в лимит токенов и не закрыла JSON.
+  // Спасаем все целые объекты из массива positions — лучше 6 позиций,
+  // чем ноль и «попробуйте ещё раз» (прод 06.11, тендер 2131: 30 КБ, stop=length).
+  return salvagePartialDv(body);
+}
+
+/**
+ * Достаёт из обрезанного JSON всё, что успело сформироваться:
+ * целые объекты массива positions и decision_recommend.
+ */
+function salvagePartialDv(body) {
+  const text = String(body || '');
+  const decMatch = text.match(/"decision_recommend"\s*:\s*"(go|no_go|need_info)"/);
+  const dec = decMatch ? decMatch[1] : 'need_info';
+
+  const start = text.indexOf('"positions"');
+  if (start < 0) return null;
+  const arrStart = text.indexOf('[', start);
+  if (arrStart < 0) return null;
+
+  const positions = [];
+  let depth = 0;
+  let objStart = -1;
+  let inStr = false;
+  let esc = false;
+
+  for (let i = arrStart + 1; i < text.length; i += 1) {
+    const ch = text[i];
+    if (inStr) {
+      if (esc) esc = false;
+      else if (ch === '\\') esc = true;
+      else if (ch === '"') inStr = false;
+      continue;
+    }
+    if (ch === '"') { inStr = true; continue; }
+    if (ch === '{') {
+      if (depth === 0) objStart = i;
+      depth += 1;
+      continue;
+    }
+    if (ch === '}') {
+      depth -= 1;
+      if (depth === 0 && objStart >= 0) {
+        const chunk = text.slice(objStart, i + 1);
+        try {
+          const obj = JSON.parse(chunk);
+          if (obj && obj.name) positions.push(obj);
+        } catch (_) { /* повреждённый объект пропускаем */ }
+        objStart = -1;
+      }
+      if (depth < 0) break;
+    }
+  }
+
+  if (!positions.length) return null;
+  return {
+    decision_recommend: dec,
+    positions,
+    questions_for_customer: [],
+    _salvaged: true,
+    _note: 'Ответ модели обрезан по лимиту — сохранены полностью сформированные позиции'
+  };
 }
 
 function docsToText(documents, limit = 60000) {
@@ -123,6 +184,7 @@ async function generateDv(p) {
   return {
     ok: true,
     dv,
+    salvaged: !!parsed._salvaged,
     model: res.model || null,
     provider: res.provider || null,
     tokens: res.usage || null

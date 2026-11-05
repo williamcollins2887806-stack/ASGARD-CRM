@@ -57,6 +57,9 @@ check('Этапы: API на клоне', api.code === 0, tail(api.out, 1));
 const flow = run('node', ['tests/mimir-stages-flow.test.js', `--db=${DB}`]);
 check('Этапы: сквозной конвейер', flow.code === 0, tail(flow.out, 1));
 
+// ── 4b. Спасение обрезанного ответа модели ──────────────────────────────────
+const salvage = run('node', ['tests/mimir-dv-salvage.test.js']);
+check('Ответы модели: частичный JSON спасается', salvage.code === 0, tail(salvage.out, 1));
 // ── 5. UI-статика ───────────────────────────────────────────────────────────
 const cssPath = path.join(ROOT, 'public/assets/css/mimir-stages.css');
 const uiPath = path.join(ROOT, 'public/assets/js/mimir_stages_ui.js');

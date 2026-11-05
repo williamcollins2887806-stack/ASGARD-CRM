@@ -200,7 +200,8 @@ async function ensureAnalysisSession(db, { tenderId, authorId, tzText, customerN
         phone: contact.phone
       });
       console.log(`${mark}: сессия ${sessionUid} · этап ${saved.stage} · ` +
-        `позиций ${gen.dv.positions.length} (без метода ${gen.dv.blocked}), ` +
+        `позиций ${gen.dv.positions.length} (без метода ${gen.dv.blocked})` +
+        `${gen.salvaged ? ' [ответ был обрезан, спасены целые позиции]' : ''}, ` +
         `решение ${gen.dv.decision_recommend}, вопросов ${questions.length}, телефон ${contact.phone || '—'}`);
     } catch (e) {
       out.push({ id: t.id, status: 'error', error: e.message });
