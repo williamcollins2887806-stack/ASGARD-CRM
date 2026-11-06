@@ -1491,21 +1491,21 @@ async function reviewRoutes(fastify) {
     let tkp_file = null;
     if (review.estimate_file_id) {
       const ef = await db.query(
-        'SELECT id, original_name, download_url, size, mime_type, created_at FROM documents WHERE id = $1',
+        'SELECT id, original_name, filename, download_url, size, mime_type, created_at FROM documents WHERE id = $1',
         [review.estimate_file_id]
       );
       estimate_file = ef.rows[0] || null;
     }
     if (review.report_file_id) {
       const rf = await db.query(
-        'SELECT id, original_name, download_url, size, mime_type, created_at FROM documents WHERE id = $1',
+        'SELECT id, original_name, filename, download_url, size, mime_type, created_at FROM documents WHERE id = $1',
         [review.report_file_id]
       );
       report_file = rf.rows[0] || null;
     }
     if (review.tkp_file_id) {
       const tf = await db.query(
-        'SELECT id, original_name, download_url, size, mime_type, created_at FROM documents WHERE id = $1',
+        'SELECT id, original_name, filename, download_url, size, mime_type, created_at FROM documents WHERE id = $1',
         [review.tkp_file_id]
       );
       tkp_file = tf.rows[0] || null;
@@ -1628,6 +1628,59 @@ async function reviewRoutes(fastify) {
       team_drafts,
       team_summary
     };
+  });
+
+  /**
+   * POST /:id/rp-review/calc-plan — план по позициям карточки, без сессии.
+   *
+   * Нужен, когда анализ вёл дежурный РП или он уже закрыт: своей сессии у
+   * текущего пользователя нет, а цифры по срокам нужны. Смету и решение
+   * не трогаем — считаем только план и возвращаем, запись делает фронт
+   * обычным PUT.
+   */
+  fastify.post('/:id/rp-review/calc-plan', {
+    preHandler: [fastify.requireRoles(PM_ROLES)]
+  }, async (request, reply) => {
+    const positions = request.body && Array.isArray(request.body.positions)
+      ? request.body.positions : [];
+    if (!positions.length) {
+      return reply.code(400).send({ ok: false, error: 'Нет позиций для плана' });
+    }
+    try {
+      const workNorms = require('../services/work-norms');
+      const stagesAi = require('../services/mimir-tender-stages-ai');
+      const aiProvider = require('../services/ai-provider');
+      const catalog = await workNorms.loadCatalog(db);
+
+      const normLines = [];
+      for (const p of positions) {
+        if (p.norm && p.norm.code) {
+          normLines.push(`${p.name}: ${p.norm.code} → ${p.norm.work_days ?? '—'} сут`);
+        } else {
+          normLines.push(`${p.name}: нормы нет — нужна оценка с обоснованием`);
+        }
+      }
+
+      const win = request.body && request.body.date_window != null
+        ? Number(request.body.date_window) : null;
+      const gen = await stagesAi.generateCalcPlan({
+        aiProvider,
+        positions: positions.map((p) => Object.assign({}, p, {
+          norm: p.norm || null,
+          category_code: p.category_code,
+          method_code: p.method_code
+        })),
+        normPreviewMd: normLines.join('\n'),
+        workersMd: '',
+        dateWindow: win,
+        maxParallelPosts: 2
+      });
+      if (!gen.ok) return reply.code(502).send({ ok: false, error: gen.error });
+      return { ok: true, plan: gen.plan, model: gen.model, catalog_size: (catalog.rates || []).length };
+    } catch (e) {
+      request.log.error({ err: e }, 'rp-review/calc-plan failed');
+      return reply.code(500).send({ ok: false, error: e.message });
+    }
   });
 
   fastify.put('/:id/rp-review', {

@@ -412,7 +412,7 @@
       qty: num(m.qty, 1) || 1,
       unit: txt(m.unit) || 'шт',
       source: MTR_SOURCES.some((s) => s.code === m.source) ? m.source : 'purchase'
-    })).filter((m) => m.name);
+    })).filter((m) => m.name || m.inventory_number);
 
     base.man_hours_total = manHours(base);
     base.filled_by = 'rp';
@@ -475,7 +475,12 @@
         });
         if (!r.ok) return [];
         const d = await r.json();
-        const rows = Array.isArray(d) ? d : (d.items || d.rows || []);
+        // Бэкенд отдаёт { success: true, equipment: [...] } (equipment.js:325).
+        // Раньше читались только items/rows — склад всегда был пуст, автодополнение
+        // и кнопка «Взять со склада» не появлялись.
+        const rows = Array.isArray(d)
+          ? d
+          : (d.equipment || d.items || d.rows || []);
         _stockCache = rows.map((e) => ({
           id: e.id,
           name: e.name,

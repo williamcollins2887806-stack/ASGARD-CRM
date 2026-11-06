@@ -266,6 +266,14 @@ function applyTechPlanRows(rows, crew, mtr, p) {
   const list = Array.isArray(rows) ? rows.slice() : [];
   const hasCrew = Array.isArray(crew) && crew.length > 0;
   const hasMtr = Array.isArray(mtr) && mtr.length > 0;
+  // МТР удалили: строки, созданные из МТР, нельзя оставлять в себестоимости.
+  // Убираем только их (tech_from === 'mtr'), шаблонные строки не трогаем.
+  if (!hasMtr) {
+    for (let i = list.length - 1; i >= 0; i -= 1) {
+      const r = list[i];
+      if (r && r.tech_from === 'mtr') list.splice(i, 1);
+    }
+  }
   if (!hasCrew && !hasMtr) return list;
 
   const shifts = num(p.shifts_per_day) || 1;

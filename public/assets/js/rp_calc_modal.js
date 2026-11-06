@@ -781,7 +781,12 @@ window.AsgardRpCalcModal = (function () {
     const active = state.tab === 'dv' ? ' is-active' : '';
     const rj = parseReportJson(state.review && state.review.report_json);
     const positions = Array.isArray(rj.dv_positions) ? rj.dv_positions : [];
-    const calc = rj.calc_plan && Array.isArray(rj.calc_plan.positions) ? rj.calc_plan.positions : [];
+    // calc_plan приходит в двух видах: объект { positions, work_days } после
+    // расчёта плана и МАССИВ позиций после закрытия анализа
+    // (tkp_quick.js finalize: calc_plan: plan — там просто массив).
+    const rawPlan = rj.calc_plan;
+    const plan = Array.isArray(rawPlan) ? { positions: rawPlan } : (rawPlan || {});
+    const calc = Array.isArray(plan.positions) ? plan.positions : [];
     const byPos = {};
     calc.forEach((c) => { if (c.position_id) byPos[c.position_id] = c; });
 
@@ -795,8 +800,7 @@ window.AsgardRpCalcModal = (function () {
     const foulingMap = { light: 'лёгкие', medium: 'средние', heavy: 'тяжёлые' };
     const foulingCls = { light: 'is-light', medium: 'is-medium', heavy: 'is-heavy' };
     const srcMap = { norm: 'справочник', expert: 'оценка', analog: 'аналог', history: 'история' };
-    const plan = rj.calc_plan || {};
-    const hasPlan = Array.isArray(calc) && calc.length > 0;
+    const hasPlan = calc.length > 0;
 
     // Позиции — карточками, как в анализе: на 9 колонок в модалке не читается.
     let cards = '';
@@ -1167,14 +1171,22 @@ window.AsgardRpCalcModal = (function () {
   /** Ссылки «Просмотр» и «Скачать» для документа (D-187). */
   function fileLinksHtml(f) {
     if (!f) return '';
-    const F = window.AsgardFileDownload;
-    const url = F && F.fileDownloadUrl ? F.fileDownloadUrl(f) : (f.download_url || f.file_url || '');
+    // Бэкенд отдаёт download_url / id / original_name, но НЕ filename.
+    // Раньше просмотр строился только по f.filename — его никогда нет,
+    // поэтому кнопка «Просмотр» не появлялась ни у одного файла.
+    const base = f.download_url || f.file_url || '';
+    const token = localStorage.getItem('asgard_token') || '';
+    const withTok = (u) => (u && token ? u + (u.indexOf('?') >= 0 ? '&' : '?') + 'token=' + encodeURIComponent(token) : u);
+
+    const url = withTok(base);
     if (!url) return '';
     const name = f.original_name || f.name || f.filename || '';
     const parts = [];
-    // Просмотр — через /preview/:filename (inline для PDF/картинок) с токеном.
-    const previewUrl = F && F.fileDownloadUrl && f.filename
-      ? F.fileDownloadUrl('/api/files/preview/' + encodeURIComponent(f.filename))
+
+    // Просмотр: /api/files/preview/:filename (files.js:313) — inline.
+    // filename теперь приходит с бэкенда (добавлен в SELECT в pm-duty.js).
+    const previewUrl = f.filename
+      ? withTok('/api/files/preview/' + encodeURIComponent(f.filename))
       : '';
     if (previewUrl) {
       parts.push('<a class="rp-calc-file-link" href="' + esc(previewUrl) + '" target="_blank" rel="noopener" ' +
@@ -1331,6 +1343,17 @@ window.AsgardRpCalcModal = (function () {
       const crew = payload.crew || {};
       if (Number(crew.exec) > 0) state.estimate.params.workers_per_shift = Number(crew.exec);
       if (Number(crew.master) > 0) state.estimate.params.masters_per_shift = Number(crew.master);
+      // Смета считает людей по crew[], а не по params (applyTechPlanRows).
+      // Без переноса в crew «Применить норму» не меняло численность бригады —
+      // тост говорил «перенесено», а в смете оставались прежние люди.
+      if (state.estimate.crew == null || !state.estimate.crew.length) {
+        const next = [];
+        const m = Number(crew.master) || 0;
+        const e = Number(crew.exec) || 0;
+        if (m > 0) next.push({ role_code: 'master', role: 'Мастер', count: m });
+        if (e > 0) next.push({ role_code: 'worker', role: 'Слесарь', count: e });
+        if (next.length) state.estimate.crew = next;
+      }
       state.estimate.meta = state.estimate.meta || {};
       state.estimate.meta.norm_trace = {
         rate_code: payload.rate && payload.rate.code,
@@ -1606,7 +1629,10 @@ window.AsgardRpCalcModal = (function () {
       // остаётся доступным — там пользователь видит результат нажатия.
       const totals = (state.estimate && state.estimate.totals) || {};
       if (totals.price_no_vat == null) return false;
-      return !!(r.is_real_final_owner || r.is_final_owner || r.can_finalize);
+      // Только РЕАЛЬНЫЙ владелец фазы. is_final_owner бэкенд выставляет и
+      // директору/админу (isWide), а на PUT они получают 403 need_override —
+      // автосейв молча упирался в 403 раз в 2.5 с, индикатор врал «не сохранено».
+      return !!r.is_real_final_owner;
     }
 
     function paintSaveIndicator(text, kind) {
@@ -1732,9 +1758,10 @@ window.AsgardRpCalcModal = (function () {
         planBtn.textContent = 'Считаю…';
         try {
           // Берём сессию анализа этого тендера: план строится по её ДВ.
-          // Список /sessions отдаёт только свои сессии, поэтому смотрим ещё и
-          // сессию, которой владеет дежурный РП (phase=analysis).
-          const auth = 'Bearer ' + (window.AsgardRegistryApi?._token?.() || localStorage.getItem('asgard_token') || '');
+          // /sessions отдаёт только свои и незакрытые сессии, поэтому если
+          // анализ вёл дежурный РП или он уже закрыт, сессии не будет —
+          // тогда считаем план прямо по позициям карточки (без сессии).
+          const auth = 'Bearer ' + (localStorage.getItem('asgard_token') || '');
           const list = await fetch('/api/tkp-quick/sessions', { headers: { Authorization: auth } })
             .then(function (r) { return r.json(); }).catch(function () { return {}; });
           let own = null;
@@ -1744,22 +1771,50 @@ window.AsgardRpCalcModal = (function () {
             }).then(function (r) { return r.ok ? r.json() : null; }).catch(function () { return null; });
             if (st && String(st.tender_id) === String(state.tender.id)) { own = { session_uid: s.session_uid }; break; }
           }
-          if (!own) throw new Error('Нет сессии анализа по этому тендеру');
-          const res = await fetch('/api/tkp-quick/sessions/' + encodeURIComponent(own.session_uid) + '/stage/calc-plan', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', Authorization: auth },
-            body: JSON.stringify({})
-          });
-          const out = await res.json().catch(function () { return {}; });
-          if (!res.ok || !out.ok) throw new Error(out.error || 'План не посчитан');
+
+          let out = null;
+          if (own) {
+            const res = await fetch('/api/tkp-quick/sessions/' + encodeURIComponent(own.session_uid) + '/stage/calc-plan', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', Authorization: auth },
+              body: JSON.stringify({})
+            });
+            out = await res.json().catch(function () { return {}; });
+            if (!res.ok || !out || !out.ok) out = null;
+          }
+
+          // Запасной путь: считаем по позициям карточки, без сессии анализа.
+          if (!out) {
+            const rjNow = parseReportJson(state.review && state.review.report_json);
+            const posNow = Array.isArray(rjNow.dv_positions) ? rjNow.dv_positions : [];
+            if (!posNow.length) throw new Error('Нет позиций для плана — сначала разберите ТЗ');
+            const res2 = await fetch('/api/tenders/' + state.tender.id + '/rp-review/calc-plan', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', Authorization: auth },
+              body: JSON.stringify({
+                positions: posNow,
+                date_window: (state.tender && state.tender.days_to_deadline) || null
+              })
+            });
+            out = await res2.json().catch(function () { return {}; });
+            if (!res2.ok || !out || !out.ok) {
+              throw new Error(out && out.error ? out.error : 'План не посчитан');
+            }
+          }
 
           // Кладём план в карточку и сохраняем, чтобы он жил после перезагрузки.
           const rj = parseReportJson(state.review && state.review.report_json);
           rj.calc_plan = out.plan || null;
+          // expected_updated_at обязателен: без него бэкенд не проверяет
+          // блокировку и PUT затирает чужой report_json (tech_json, бриф,
+          // решение директора), если карточку открыли двое (находка аудита).
+          const lockToken = state.review && state.review.updated_at;
+          const putBody = { mode: 'calc', report_json: rj };
+          if (lockToken) putBody.expected_updated_at = lockToken;
           const put = await fetch('/api/tenders/' + state.tender.id + '/rp-review', {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json', Authorization: auth },
-            body: JSON.stringify({ mode: 'calc', report_json: rj })
+            body: JSON.stringify(putBody)
           });
           if (put.ok) {
             const pd = await put.json().catch(function () { return {}; });
@@ -2243,6 +2298,13 @@ window.AsgardRpCalcModal = (function () {
       const need = approvalNeeded();          // порог: согласование ВОЗМОЖНО
       const totals = (state.estimate && state.estimate.totals) || {};
       const noVat = Number(totals.price_no_vat) || 0;
+      // Цена 0 — это не «ниже порога», это незаполненный просчёт. Раньше
+      // оверлей писал «согласование не требуется» и отправлял отчёт
+      // с work_price = 0 (находка аудита 06.11).
+      if (!state.demo && !(noVat > 0)) {
+        toast('Просчёт', 'Сначала посчитайте смету: цена работ равна нулю', 'err');
+        return;
+      }
 
       function buildHtml() {
         const codes = approvalWanted() ? selectedRecipients() : [];
@@ -2510,6 +2572,17 @@ window.AsgardRpCalcModal = (function () {
         loadRpReview(tender.id).then(function (d) {
           if (d.tender) Object.assign(session.state.tender, d.tender);
           session.state.review = d.review || null;
+          // Флаги прав приходят НА ВЕРХНЕМ уровне ответа, а не внутри review
+          // (pm-duty.js: final_owner_user_id, is_final_owner, is_real_final_owner,
+          // can_finalize). Без этого мержа autosaveAllowed() всегда видел
+          // undefined и автосохранение не работало ни у кого — РП терял правки.
+          if (session.state.review) {
+            session.state.review.is_final_owner = !!d.is_final_owner;
+            session.state.review.is_real_final_owner = !!d.is_real_final_owner;
+            session.state.review.can_finalize = !!d.can_finalize;
+            if (d.final_owner_user_id != null) session.state.review.final_owner_user_id = d.final_owner_user_id;
+            if (d.final_owner_name) session.state.review.final_owner_name = d.final_owner_name;
+          }
           // Порог согласования приходит с бэкенда — фронт больше не хардкодит 10 млн (D-185).
           if (d.director_threshold != null) {
             const th = Number(d.director_threshold);
