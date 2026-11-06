@@ -675,6 +675,29 @@
     </div>`;
   }
 
+  function setPreviewCamVisual(on) {
+    const box = qs('#ting-preview');
+    const v = qs('#ting-prev-v');
+    const av = qs('#ting-av');
+    if (box) box.classList.toggle('cam-off', !on);
+    if (v) {
+      if (on) {
+        v.hidden = false;
+        v.style.display = 'block';
+      } else {
+        v.hidden = true;
+        v.style.display = 'none';
+        v.srcObject = null;
+      }
+    }
+    if (av) {
+      /* Класс .cam-off — источник истины; inline-стиль убираем, чтобы он
+         не спорил с CSS (это и давало «чёрный прямоугольник» без аватара). */
+      av.style.display = '';
+      av.hidden = false;
+    }
+  }
+
   function renderLobby() {
     setIncall(false);
     const r = state.room || {};
@@ -1229,15 +1252,11 @@
       /* Desktop Windows: video в лобби намеренно не берём — camOn не сбрасываем в false. */
       if (hasPrevVideo) state.camOn = true;
       else if (!desktopNoPrevCam) state.camOn = false;
-      const v = qs('#ting-prev-v');
-      const av = qs('#ting-av');
-      if (hasPrevVideo && v) {
-        v.srcObject = stream; v.hidden = false; v.style.display = 'block';
-        if (av) av.style.display = 'none';
-      } else {
-        if (v) { v.hidden = true; v.style.display = 'none'; v.srcObject = null; }
-        if (av) av.style.display = 'grid';
+      if (hasPrevVideo) {
+        const v = qs('#ting-prev-v');
+        if (v) v.srcObject = stream;
       }
+      setPreviewCamVisual(hasPrevVideo);
       const micB = qs('#ting-lob-mic');
       const camB = qs('#ting-lob-cam');
       if (micB) { micB.classList.toggle('active', state.micOn); micB.classList.toggle('off', !state.micOn); micB.innerHTML = svgMic(!state.micOn); }
@@ -1402,79 +1421,83 @@
   }
 
   /**
-   * Спросить разрешение на камеру «в лоб» — до всякого LiveKit.
-   * В PWA на Windows промис getUserMedia может висеть вечно, если системный
-   * диалог ушёл за окно. Поэтому: сначала permissions.query, затем НЕ ждём
-   * бесконечно — 3 с, и если всё ещё 'prompt', говорим человеку про окно.
+   * Диагностика камеры. НЕ бросает и НЕ блокирует: в PWA на Windows
+   * permissions.query часто врёт (возвращает 'denied'/'prompt' при рабочей
+   * камере), поэтому единственный достоверный источник — сам getUserMedia.
+   * Здесь только логируем состояние и заранее подсказываем про окно.
    */
-  async function ensureCameraPermission() {
-    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-      const e = new Error('Браузер не даёт доступ к камере');
-      e.name = 'NotSupportedError';
-      throw e;
-    }
-    let st = null;
+  async function logCameraEnvironment() {
+    const info = { standalone: isStandalonePwa(), secure: false, permission: null, devices: 0, deviceLabels: 0 };
+    try { info.secure = window.isSecureContext === true; } catch (_) { /* */ }
     try {
       if (navigator.permissions && navigator.permissions.query) {
-        st = await withTimeout(navigator.permissions.query({ name: 'camera' }), 2000, 'perm-timeout');
+        const st = await withTimeout(navigator.permissions.query({ name: 'camera' }), 1500, 'perm');
+        info.permission = st && st.state;
       }
-    } catch (_) { /* Safari/старые — просто идём дальше */ }
-    if (st && st.state === 'denied') {
-      const e = new Error('Доступ к камере запрещён в настройках сайта');
-      e.name = 'NotAllowedError';
-      throw e;
-    }
-    if (st && st.state === 'granted') return;
-    /* 'prompt' — нужен жест пользователя/диалог. Подсказываем заранее:
-       иначе человек смотрит на «Камера не успела включиться» и не понимает. */
-    if (st && st.state === 'prompt' && isStandalonePwa()) {
+    } catch (_) { info.permission = 'query-unsupported'; }
+    try {
+      if (navigator.mediaDevices && navigator.mediaDevices.enumerateDevices) {
+        const list = await navigator.mediaDevices.enumerateDevices();
+        const cams = list.filter((d) => d.kind === 'videoinput');
+        info.devices = cams.length;
+        info.deviceLabels = cams.filter((d) => d.label).length;
+      }
+    } catch (_) { /* */ }
+    console.info('[Ting] cam env', info);
+    if (info.permission === 'prompt' && info.standalone) {
       toast('Разрешите камеру: откройте окно браузера, оно может быть позади этого', false);
     }
+    if (info.devices === 0) {
+      const e = new Error('Камера не найдена');
+      e.name = 'NotFoundError';
+      throw e;
+    }
+    return info;
   }
 
   /**
    * Камера: getUserMedia ПЕРВЫМ, публикация готового трека.
    * Корень отказа в PWA на Windows: getUserMedia висит, пока не нажмут
-   * в диалоге разрешения, а диалог уходит за окно приложения. Прежний
-   * таймаут 8 с срабатывал раньше, чем человек успевал найти окно.
+   * в диалоге разрешения, а диалог уходит за окно приложения.
    */
   async function enableLocalCamera(room) {
     const LK = window.LivekitClient;
+    console.info('[Ting] enableLocalCamera: start');
     /* Отпускаем только video из preview, mic preview не трогаем — mic уже в LiveKit. */
     if (state.previewStream) {
       state.previewStream.getVideoTracks().forEach((t) => { try { t.stop(); } catch (_) { /* */ } });
     }
     stopPreview();
     await unpublishLocalCamera(room);
-    await new Promise((r) => setTimeout(r, 150));
+    /* Windows отдаёт камеру не мгновенно после stop() превью — ждём. */
+    await new Promise((r) => setTimeout(r, 600));
 
-    await ensureCameraPermission();
+    await logCameraEnvironment();
 
     const constraintsList = [];
     const base = {};
     if (state.videoDeviceId) base.deviceId = { ideal: state.videoDeviceId };
     constraintsList.push(Object.assign({}, base, { width: { ideal: 1280 }, height: { ideal: 720 } }));
     constraintsList.push(Object.assign({}, base));
-    constraintsList.push({}); /* без привязки к протухшему deviceId */
+    constraintsList.push({});
 
     let stream = null;
     let lastErr = null;
     for (let i = 0; i < constraintsList.length; i++) {
       try {
+        console.info('[Ting] getUserMedia video try', i, JSON.stringify(constraintsList[i]));
         stream = await withTimeout(
           navigator.mediaDevices.getUserMedia({ video: constraintsList[i], audio: false }),
-          /* 30 с: в PWA Windows драйвер + диалог разрешения легко дают 10–20 с.
-             Меньший таймаут = ложное «камера занята» и следующая попытка бьётся
-             о ту же неотпущенную камеру. */
+          /* 30 с: в PWA Windows драйвер + диалог разрешения легко дают 10–20 с. */
           30000,
           'Timeout starting video source'
         );
+        console.info('[Ting] getUserMedia OK', i, stream.getVideoTracks().map((t) => t.label));
         break;
       } catch (e) {
         lastErr = e;
         console.warn('[Ting] getUserMedia video try', i, e && e.name, e && e.message);
         const name = String((e && e.name) || '');
-        /* Разрешение/устройство не лечатся повтором с другими constraints. */
         if (name === 'NotAllowedError' || name === 'NotFoundError' || name === 'SecurityError') break;
       }
     }
@@ -3390,14 +3413,53 @@
         return;
       }
       if (act === 'tog-cam') {
-        state.camOn = !state.camOn;
-        const v = qs('#ting-prev-v'), av = qs('#ting-av');
-        if (state.previewStream) state.previewStream.getVideoTracks().forEach(t => { t.enabled = state.camOn; });
-        if (v) { v.hidden = !state.camOn; v.style.display = state.camOn ? 'block' : 'none'; }
-        if (av) av.style.display = state.camOn ? 'none' : 'grid';
+        const want = !state.camOn;
+        state.camOn = want;
+        const v = qs('#ting-prev-v');
+        try {
+          if (want) {
+            /* Превью камеры в лобби: раньше кнопка только переключала флаг,
+               а видео не появлялось — человек видел чёрный прямоугольник.
+               Берём поток здесь же и гасим его в connectRoom (LiveKit откроет
+               камеру заново сам, чтобы не делить устройство с превью). */
+            let stream = state.previewStream;
+            const hasVideo = stream && stream.getVideoTracks().some((t) => t.readyState === 'live');
+            if (!hasVideo) {
+              stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+              if (state.previewStream) {
+                state.previewStream.getTracks().forEach((t) => { try { t.stop(); } catch (_) { /* */ } });
+              }
+              state.previewStream = stream;
+              state.micOn = true;
+            }
+            if (v) {
+              v.srcObject = state.previewStream;
+              try { await v.play(); } catch (_) { /* autoplay-политика */ }
+            }
+            setPreviewCamVisual(true);
+          } else {
+            if (state.previewStream) {
+              state.previewStream.getVideoTracks().forEach((t) => { t.enabled = false; });
+            }
+            setPreviewCamVisual(false);
+          }
+        } catch (e) {
+          /* Не глотаем: без тоста «кнопка не работает». */
+          state.camOn = false;
+          setPreviewCamVisual(false);
+          console.warn('[Ting] lobby camera', e && e.name, e && e.message);
+          toast(cameraErrorMessage(e), false);
+        }
         btn.classList.toggle('active', state.camOn);
         btn.classList.toggle('off', !state.camOn);
         btn.innerHTML = svgCam(!state.camOn);
+        const micB = qs('#ting-lob-mic');
+        if (micB) {
+          micB.classList.toggle('active', state.micOn);
+          micB.classList.toggle('off', !state.micOn);
+          micB.innerHTML = svgMic(!state.micOn);
+        }
+        try { startMicMeter(state.previewStream); } catch (_) { /* */ }
         return;
       }
       if (act === 'connect') { await connectRoom(slug); return; }

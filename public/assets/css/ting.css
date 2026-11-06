@@ -784,6 +784,15 @@ body.ting-guest .ting-card,
   z-index: 1;
   box-shadow: 0 0 0 6px rgba(255,255,255,.06), 0 12px 36px rgba(0,0,0,.35);
 }
+/* Камера выключена: видео нет, но и «чёрный прямоугольник» недопустим —
+   аватар должен вернуться. Раньше inline display:none перебивался CSS
+   `.ting-preview .ting-avatar { display: grid }`, и вместо аватара висело
+   пустое чёрное поле (баг лобби 06.11.2026). */
+.ting-preview.cam-off .ting-avatar {
+  display: grid !important;
+  visibility: visible !important;
+}
+.ting-preview.cam-off video { display: none !important; }
 
 /* In-call shell — Telemost cinema full-bleed (chat/people = overlay, not G-column) */
 .ting-room-shell,
