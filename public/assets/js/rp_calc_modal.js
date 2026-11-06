@@ -856,7 +856,8 @@ window.AsgardRpCalcModal = (function () {
       '</div>' +
       (hasPlan
         ? '<div class="rp-calc-dv-summary">' +
-            (plan.crews ? '<span>Бригад: <b>' + esc(String(plan.crews)) + '</b></span>' : '') +
+            (plan.crews ? '<span>Бригад: <b>' + esc(String(plan.crews)) + '</b> × ' +
+              esc(String(plan.crew_size || 5)) + ' чел</span>' : '') +
             (plan.work_days != null ? '<span>Срок: <b>' + esc(String(plan.work_days)) + ' сут</b></span>' : '') +
             (plan.window_days
               ? '<span>Срок заказчика: <b>' + esc(String(plan.window_days)) + ' сут</b>' +
@@ -866,6 +867,9 @@ window.AsgardRpCalcModal = (function () {
               : '') +
             (plan.people_total ? '<span>Людей на объекте: <b>' + esc(String(plan.people_total)) + '</b></span>' : '') +
             (plan.total_crew_days ? '<span>Трудозатрат: <b>' + esc(String(plan.total_crew_days)) + '</b> бр.-сут</span>' : '') +
+            (Array.isArray(plan.crew) && plan.crew.length
+              ? '<span>Состав: ' + plan.crew.map((c) => esc(c.role || c.role_code) + ' ' + esc(String(c.count))).join(' · ') + '</span>'
+              : '') +
           '</div>' +
           (Array.isArray(plan.warnings) && plan.warnings.length
             ? '<ul class="rp-calc-dv-warn">' +
@@ -1805,6 +1809,19 @@ window.AsgardRpCalcModal = (function () {
           // Кладём план в карточку и сохраняем, чтобы он жил после перезагрузки.
           const rj = parseReportJson(state.review && state.review.report_json);
           rj.calc_plan = out.plan || null;
+          // Состав бригады из плана кладём в техплан карточки: оттуда его
+          // читает смета (строки A). Иначе роли (мастер, слесари, химик)
+          // считаются в плане, но в деньгах не появляются.
+          if (out.plan && Array.isArray(out.plan.crew) && out.plan.crew.length) {
+            rj.tech_json = rj.tech_json || {};
+            rj.tech_json.crew = out.plan.crew;
+            if (out.plan.work_days > 0) {
+              rj.tech_json.schedule = Object.assign({}, rj.tech_json.schedule || {}, {
+                work_days: out.plan.work_days
+              });
+            }
+            if (out.plan.crew_breakdown) rj.tech_json.crew_breakdown = out.plan.crew_breakdown;
+          }
           // expected_updated_at обязателен: без него бэкенд не проверяет
           // блокировку и PUT затирает чужой report_json (tech_json, бриф,
           // решение директора), если карточку открыли двое (находка аудита).

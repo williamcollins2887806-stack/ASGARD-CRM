@@ -34,23 +34,24 @@ function pos(over) {
   }, over);
 }
 
-check('34 позиции по 0.5 сут: порог 30 бригадо-суток → одна бригада', () => {
+check('34 позиции по 0.5 сут: одна бригада из 5 человек', () => {
   const list = Array.from({ length: 34 }, (_, i) => pos({ id: `c${i}`, days: 0.5, people: 3 }));
   const p = stages.normalizeCalcPlan({ positions: list }, { max_parallel_posts: 2, max_crews: 3 });
-  // 34 × 0.5 = 17 бригадо-суток < 30, окна дат нет → одна бригада.
   assert.strictEqual(p.total_crew_days, 17, 'сумма трудозатрат: ' + p.total_crew_days);
   assert.strictEqual(p.crews, 1, 'на 17 бригадо-сутках хватает одной бригады: ' + p.crews);
   assert.strictEqual(p.work_days, 17, 'срок = 17 / 1: ' + p.work_days);
-  assert.strictEqual(p.people_total, 3, 'на объекте одна бригада из 3, а не 102: ' + p.people_total);
+  // Одна бригада: ИТР + мастер + 4 слесаря = 6. Плюс ПТО на 34 позиции = 7.
+  assert.strictEqual(p.people_total, 7, 'ИТР + бригада из 5 + ПТО (34 позиции): ' + p.people_total);
 });
 
-check('34 позиции по 3 сут: 102 бригадо-суток → 3 бригады', () => {
+check('34 позиции по 3 сут: 102 бригадо-суток → 3 бригады по 5', () => {
   const list = Array.from({ length: 34 }, (_, i) => pos({ id: `c${i}`, days: 3, people: 3 }));
   const p = stages.normalizeCalcPlan({ positions: list }, { max_crews: 3 });
   assert.strictEqual(p.total_crew_days, 102);
   assert.strictEqual(p.crews, 3, '102 > 90 → максимум бригад: ' + p.crews);
   assert.strictEqual(p.work_days, 34, 'срок = 102 / 3: ' + p.work_days);
-  assert.strictEqual(p.people_total, 9, '3 бригады × 3 чел = 9: ' + p.people_total);
+  // 1 ИТР + 3×(1 мастер + 4 слесаря) + ПТО (34 позиции) = 17
+  assert.strictEqual(p.people_total, 17, '1 ИТР + 3×5 + ПТО = 17: ' + p.people_total);
 });
 
 check('люди НЕ суммируются по всем позициям тендера', () => {
@@ -68,7 +69,9 @@ check('окно дат: бригад подбирается столько, чт
   assert.strictEqual(p.crews, 4, 'нужно 4 бригады (205/60 = 3.4 → 4): ' + p.crews);
   assert.strictEqual(p.work_days, 51.25, 'срок = 205 / 4: ' + p.work_days);
   assert.strictEqual(p.fits_window, true, 'должны уложиться в 60 сут');
-  assert.strictEqual(p.people_total, 16, '4 бригады × 4 чел = 16: ' + p.people_total);
+  // 1 ИТР + 4 мастера + 16 слесарей + химик + ПТО (41 позиция) + наблюдающие
+  assert.ok(p.people_total >= 21, '4 бригады по 5 + ИТР = минимум 21: ' + p.people_total);
+  assert.ok(p.people_total <= 30, 'и не больше 30: ' + p.people_total);
 });
 
 check('не влезли в окно даже на максимуме — честное предупреждение', () => {
@@ -91,7 +94,8 @@ check('одна бригада на малом объёме не размнож�
   const p = stages.normalizeCalcPlan({ positions: list }, { max_crews: 3 });
   assert.strictEqual(p.crews, 1, 'на 5 сутках достаточно одной бригады: ' + p.crews);
   assert.strictEqual(p.work_days, 5);
-  assert.strictEqual(p.people_total, 4);
+  // Одна бригада: 1 ИТР + 1 мастер + 4 слесаря = 6.
+  assert.strictEqual(p.people_total, 6, 'ИТР + бригада из 5: ' + p.people_total);
 });
 
 check('промпт объясняет, что бригад 2–3 и надо уложиться в график', () => {

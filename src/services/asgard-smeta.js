@@ -82,7 +82,11 @@ const CREW_ROLES = [
   { code: 'assembler', label: 'Монтажник', rateKey: 'rate_worker' },
   { code: 'observer', label: 'Наблюдающий', rateKey: 'rate_worker' },
   { code: 'safety', label: 'Специалист ОТ / высота', rateKey: 'rate_itr' },
-  { code: 'driver', label: 'Водитель', rateKey: 'rate_worker' }
+  { code: 'driver', label: 'Водитель', rateKey: 'rate_worker' },
+  // Химик нужен там, где работают реагентами: промывка, пассивация,
+  // нейтрализация. ПТО — на приёмке объёмов и скрытых работ.
+  { code: 'chemist', label: 'Химик', rateKey: 'rate_itr' },
+  { code: 'pto', label: 'ПТО / приёмка', rateKey: 'rate_itr' }
 ];
 
 const CREW_ROLE_BY_CODE = CREW_ROLES.reduce((m, r) => { m[r.code] = r; return m; }, {});

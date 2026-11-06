@@ -561,6 +561,24 @@ async function routes(fastify, options) {
       state = stageSvc.resolveGap(state, b.gap_id, {
         answer: b.text.trim(), resolved_at: new Date().toISOString()
       });
+      // Ответ про СРОК запоминаем отдельным полем: из него считается окно дат
+      // и число бригад. Иначе РП ответил «30 дней», а план взял другое окно.
+      if (b.gap_id === 'schedule_days') {
+        const sched = require('../services/schedule-extract');
+        const parsed = sched.extractSchedule(b.text.trim());
+        const days = Number(parsed && parsed.days) > 0
+          ? Number(parsed.days)
+          : (Number(String(b.text).replace(/[^\d.,]/g, '').replace(',', '.')) || null);
+        if (days > 0) {
+          state.schedule_days = days;
+          state.schedule = Object.assign({}, state.schedule || {}, {
+            days,
+            source: 'rp',
+            raw: b.text.trim(),
+            mode: (parsed && parsed.mode) || (state.schedule && state.schedule.mode) || null
+          });
+        }
+      }
       // Текст объёмов сразу подмешиваем в ТЗ — иначе следующий расчёт снова спросит.
       if (b.gap_id === 'volume' || b.gap_id === 'tz') {
         await db.query(
@@ -632,7 +650,14 @@ async function routes(fastify, options) {
 
       const tzText = String(b.tz_text || session.tz_text || '').trim();
 
-      // 1. Preflight: не зовём модель, если данных заведомо нет.
+      // 1. Срок и режим работ из ТЗ и документов — ДО preflight.
+      // Если срока нет, это обязательно нужно знать: без него план бригад
+      // и срок работ считаются по выдумке (задача заказчика 06.11).
+      const scheduleSvc = require('../services/schedule-extract');
+      const allText = tzText + '\n' + documents.map((d) => d.text || '').join('\n');
+      const sched = scheduleSvc.extractSchedule(allText);
+
+      // 2. Preflight: не зовём модель, если данных заведомо нет.
       const pf = stageSvc.preflight({
         tz_text: tzText,
         documents,
@@ -641,12 +666,34 @@ async function routes(fastify, options) {
         end_date: b.end_date,
         contact: b.contact
       });
-      if (!pf.ok) {
-        const state = stageSvc.normalizeState({ gaps: pf.gaps });
+
+      // Срок нашли в ТЗ, но РП его не подтвердил — тоже стоп: цифра может
+      // относиться к подаче заявки, а не к работам.
+      const scheduleGap = !sched.found && !(Number(b.schedule_days) > 0)
+        ? [{
+          id: 'schedule_days',
+          kind: 'schedule',
+          blocking: true,
+          label: 'Срок выполнения работ',
+          why: 'в ТЗ срок работ не найден — без него нельзя рассчитать бригады и график',
+          hint: 'укажите срок в днях или приложите документ с графиком'
+        }]
+        : [];
+
+      if (!pf.ok || scheduleGap.length) {
+        const gaps = (pf.gaps || []).concat(scheduleGap);
+        const state = stageSvc.normalizeState({ gaps });
         const saved = await stageSvc.saveStage(db, request.params.uid, {
           stage: 'clarify', state, expectedVersion: b.expected_version
         });
-        return { ok: false, stage: 'clarify', gaps: pf.gaps, state: saved.state, version: saved.version };
+        return {
+          ok: false,
+          stage: 'clarify',
+          gaps,
+          state: saved.state,
+          version: saved.version,
+          schedule: sched
+        };
       }
 
       // 2. Каталог норм и ДВ через модель.
@@ -770,10 +817,14 @@ async function routes(fastify, options) {
     if (u.includes('труб')) {
       return Object.assign({}, base, { tubes: v, diameter_mm: 25, length_m: 6 });
     }
-    // Стыки, метры, циклы.
     if (u.includes('стык')) return Object.assign({}, base, { joints: v, dn_mm: 159 });
-    if (u.includes('цикл')) return Object.assign({}, base, { cycles: v || 2 });
-    if (u.includes('м')) return Object.assign({}, base, { length_m: v, dn_mm: 159 });
+    // ВАЖНО: «м³»/«м²» проверяем ДО общей «м». Иначе объём совпадает с «м»
+    // и уходит как длина — из-за этого у 41 позиции тендера 2131 норма
+    // не находилась и весь план считался «экспертом» (06.11).
+    if (!isM3 && !isM2) {
+      if (u.includes('цикл')) return Object.assign({}, base, { cycles: v || 2 });
+      if (u.includes('м')) return Object.assign({}, base, { length_m: v, dn_mm: 159 });
+    }
 
     // Дополняем обязательные поля, которых нет в ДВ, разумными значениями:
     // без них норма отвечает «укажите…» и позиция уходит в «эксперт».
@@ -834,11 +885,22 @@ async function routes(fastify, options) {
         }
       }
 
-      // Окно дат: из тела запроса, а если не передали — из срока подачи тендера
-      // минус сегодня. Без него нельзя посчитать, сколько нужно бригад,
-      // чтобы уложиться в график заказчика.
+      // Окно дат: тело запроса → срок из ТЗ → срок подачи тендера.
+      // Срок из ТЗ приоритетнее: заказчик устанавливает график РАБОТ,
+      // а deadline тендера — это подача заявки, разные вещи.
       let dateWindow = request.body && request.body.date_window != null
         ? Number(request.body.date_window) : null;
+      if (!(dateWindow > 0) && Number(request.body && request.body.schedule_days) > 0) {
+        dateWindow = Number(request.body.schedule_days);
+      }
+      if (!(dateWindow > 0)) {
+        try {
+          const cur2 = await stageSvc.loadStage(db, request.params.uid);
+          const st = (cur2 && cur2.state) || {};
+          const fromState = Number(st.schedule_days) || Number(st.schedule && st.schedule.days);
+          if (fromState > 0) dateWindow = fromState;
+        } catch (_) { /* нет состояния — не страшно */ }
+      }
       if (!(dateWindow > 0) && session.tender_id) {
         const t = await db.query(
           'SELECT deadline FROM tenders WHERE id = $1 AND deleted_at IS NULL',

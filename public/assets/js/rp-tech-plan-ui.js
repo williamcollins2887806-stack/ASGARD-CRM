@@ -36,7 +36,9 @@
     { code: 'assembler', label: 'Монтажник' },
     { code: 'observer', label: 'Наблюдающий' },
     { code: 'safety', label: 'Специалист ОТ / высота' },
-    { code: 'driver', label: 'Водитель' }
+    { code: 'driver', label: 'Водитель' },
+    { code: 'chemist', label: 'Химик' },
+    { code: 'pto', label: 'ПТО / приёмка' }
   ];
 
   const MTR_SOURCES = [

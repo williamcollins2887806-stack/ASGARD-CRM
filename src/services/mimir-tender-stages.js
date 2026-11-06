@@ -454,26 +454,72 @@ function normalizeCalcPlan(ai, opts) {
    * больше окна с предупреждением. Подгонять цифру нельзя.
    */
   const totalCrewDays = positions.reduce((s, p) => s + (Number(p.days) || 0), 0);
-  const crewSize = positions.reduce((m, p) => Math.max(m, Number(p.people) || 0), 0);
   const windowDays = Number(opts && opts.window_days) > 0 ? Number(opts.window_days) : null;
 
-  // Сколько бригад максимум допускает проект (настройка), но не меньше 2:
-  // одна бригада на 40 позиций — это не план, а отговорка.
-  const maxCrews = Math.max(2, Number(opts && opts.max_crews) || Number(opts && opts.max_parallel_posts) || 3);
+  /**
+   * Состав одной бригады: 1 мастер + 4 слесаря = 5 человек. Это рабочая
+   * единица, а не «сколько модель написала в people». Раньше брали максимум
+   * people по позициям и умножали на бригады — выходило «2 бригады по 10»,
+   * хотя по факту это 4 бригады по 5.
+   */
+  const CREW_SIZE = Math.max(2, Number(opts && opts.crew_size) || 5);
+  const maxWorkersPerCrew = Math.max(1, CREW_SIZE - 1);
+
+  // Сколько бригад максимум: считаем по людям, а не по настройке постов.
+  const maxCrews = Math.max(2, Number(opts && opts.max_crews) || 6);
 
   let crews = 1;
   if (windowDays) {
     crews = Math.ceil(totalCrewDays / windowDays);
     crews = Math.min(Math.max(crews, 1), maxCrews);
   } else {
-    // Окна нет — берём разумное число бригад по объёму работ:
-    // до 30 бригадо-суток справится одна бригада, дальше нужно больше.
     crews = totalCrewDays > 90 ? maxCrews : (totalCrewDays > 30 ? Math.min(2, maxCrews) : 1);
   }
 
   const rawDays = crews > 0 ? totalCrewDays / crews : totalCrewDays;
   const workDays = Math.round(rawDays * 100) / 100;
-  const peopleTotal = crews * crewSize;
+
+  // Бригады: в каждой 1 мастер + до 4 слесарей. На все бригады — один ИТР.
+  const crewList = [];
+  for (let i = 1; i <= crews; i += 1) {
+    crewList.push([
+      { role_code: 'master', role: 'Мастер / бригадир', count: 1, shifts_per_day: null, note: `бригада ${i}` },
+      { role_code: 'worker', role: 'Слесарь', count: maxWorkersPerCrew, shifts_per_day: null, note: `бригада ${i}` }
+    ]);
+  }
+  const crewRows = [];
+  crewRows.push({ role_code: 'itr', role: 'ИТР (РП)', count: 1, shifts_per_day: null, note: 'на все бригады' });
+  crewRows.push({ role_code: 'master', role: 'Мастер / бригадир', count: crews, shifts_per_day: null, note: '' });
+  crewRows.push({
+    role_code: 'worker', role: 'Слесарь',
+    count: crews * maxWorkersPerCrew, shifts_per_day: null, note: ''
+  });
+
+  // Наблюдающий обязателен при работе ВНУТРИ аппарата (наряд-допуск):
+  // сосуды, котлы, бункеры, каналы. Снаружи не нужен.
+  const insideWork = positions.some((p) => {
+    const t = `${p.name || ''} ${p.tech_equip || ''}`.toLowerCase();
+    return /внутри|внутренн|днищ|бункер|резервуар|ёмкост|емкост|котл|канал|приямк|колодец|аппарат/.test(t);
+  });
+  if (insideWork) {
+    crewRows.push({ role_code: 'observer', role: 'Наблюдающий', count: crews, shifts_per_day: null, note: 'работа внутри аппарата' });
+  }
+
+  // Химик нужен, если работают реагентами (промывка, пассивация, нейтрализация).
+  const chemWork = positions.some((p) => {
+    const t = `${p.name || ''} ${p.tech_equip || ''} ${p.category_code || ''}`.toLowerCase();
+    return /хим|кислот|щелоч|реагент|промыв|пассивац|нейтрализ|cip|ингибитор/.test(t);
+  });
+  if (chemWork) {
+    crewRows.push({ role_code: 'chemist', role: 'Химик', count: 1, shifts_per_day: null, note: 'реагентные работы' });
+  }
+
+  // ПТО / приёмка — на объёмных работах с приёмкой скрытых работ (больше 10 позиций).
+  if (positions.length > 10) {
+    crewRows.push({ role_code: 'pto', role: 'ПТО / приёмка', count: 1, shifts_per_day: null, note: 'приёмка объёмов' });
+  }
+
+  const peopleTotal = crewRows.reduce((s, r) => s + (Number(r.count) || 0), 0);
 
   // Группы оставляем как есть — это раскладка модели по бригадам, полезна
   // для показа, но срок больше не выводится из неё.
@@ -496,7 +542,11 @@ function normalizeCalcPlan(ai, opts) {
     road_days: Number(raw.road_days) > 0 ? Number(raw.road_days) : null,
     people_total: peopleTotal || null,
     crews,
-    crew_size: crewSize || null,
+    crew_size: CREW_SIZE,
+    // Состав бригад целиком: кто именно нужен (мастер, слесари, ИТР,
+    // наблюдающий, химик, ПТО). Это уходит в техплан и в смету.
+    crew: crewRows,
+    crew_breakdown: crewList,
     total_crew_days: Math.round(totalCrewDays * 100) / 100,
     window_days: windowDays,
     fits_window: windowDays ? fitsWindow : null,

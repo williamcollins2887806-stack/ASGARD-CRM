@@ -10,10 +10,10 @@
   <link rel="manifest" href="/h/manifest.webmanifest"/>
   <link rel="apple-touch-icon" href="/assets/img/apple-touch-icon.png"/>
   <title>Хугинн</title>
-  <link rel="stylesheet" href="/assets/css/design-tokens.css?v=20.28.409"/>
-  <link rel="stylesheet" href="/assets/css/huginn_dock.css?v=20.28.409"/>
+  <link rel="stylesheet" href="/assets/css/design-tokens.css?v=20.28.411"/>
+  <link rel="stylesheet" href="/assets/css/huginn_dock.css?v=20.28.411"/>
   <!-- Звонки (PBX-панель) на /h/: те же файлы, что на десктопе. -->
-  <link rel="stylesheet" href="/assets/css/phone.css?v=20.28.409"/>
+  <link rel="stylesheet" href="/assets/css/phone.css?v=20.28.411"/>
   <style>
     html, body {
       margin: 0; height: 100%;
@@ -219,18 +219,18 @@
   <div id="app"></div>
   <!-- ?v= обязателен: /assets/* отдаётся с Cache-Control: immutable, max-age=30д.
        Без версии в URL телефон держал старый JS/CSS месяцами и «не видел» деплой. -->
-  <script src="/assets/js/huginn_icons.js?v=20.28.409"></script>
-  <script src="/assets/js/phone_mask.js?v=20.28.409"></script>
-  <script src="/assets/js/huginn_sse.js?v=20.28.409"></script>
+  <script src="/assets/js/huginn_icons.js?v=20.28.411"></script>
+  <script src="/assets/js/phone_mask.js?v=20.28.411"></script>
+  <script src="/assets/js/huginn_sse.js?v=20.28.411"></script>
   <!-- TingSound: рингтон звонка (startRing/stopRing). Обязателен ДО модуля
        звонков: без него звонок в /h/ был молчаливым (методы не находились). -->
-  <script src="/assets/js/ting_common.js?v=20.28.409"></script>
-  <script src="/assets/js/huginn_calls.js?v=20.28.409"></script>
-  <script src="/assets/js/huginn_dock.js?v=20.28.409"></script>
-  <script src="/assets/vendor/jssip.min.js?v=20.28.409"></script>
-  <script src="/assets/js/phone_core.js?v=20.28.409"></script>
-  <script src="/assets/js/phone_ui.js?v=20.28.409"></script>
-  <script src="/h/app.js?v=20.28.409"></script>
+  <script src="/assets/js/ting_common.js?v=20.28.411"></script>
+  <script src="/assets/js/huginn_calls.js?v=20.28.411"></script>
+  <script src="/assets/js/huginn_dock.js?v=20.28.411"></script>
+  <script src="/assets/vendor/jssip.min.js?v=20.28.411"></script>
+  <script src="/assets/js/phone_core.js?v=20.28.411"></script>
+  <script src="/assets/js/phone_ui.js?v=20.28.411"></script>
+  <script src="/h/app.js?v=20.28.411"></script>
   <script>
     (function () {
       var saved = localStorage.getItem('asgard_theme') || localStorage.getItem('hg_theme');
@@ -267,23 +267,49 @@
     // ≠ сторож (старый) → бесконечная перезагрузка у клиента.
     // Не переименовывать переменную VER — на неё завязан bump.
     //
-    // D-352 (06.11.2026): перезагрузка НЕ должна быть безлимитной. Инцидент:
+    // D-396 (06.11.2026): перезагрузка НЕ должна быть безлимитной. Инцидент:
     // на / отдавалась копия /h/ версии 20.28.406, а /api/version уже 20.28.407 —
     // условие не сходилось никогда, клиент перезагружался 360 раз в минуту
     // 13 минут (4093 полных загрузки). `_busy` умирает вместе со страницей,
     // поэтому от цикла не защищал. Защёлка в sessionStorage переживает
     // перезагрузку: одна попытка на версию, дальше — баннер «Перезагрузить».
     (function () {
-      var VER = '20.28.409';
+      var VER = '20.28.411';
       var _busy = false;
       var LOCK_KEY = '_hg_shell_reload_'; // + версия сервера
       function lockKey(v) { return LOCK_KEY + v; }
-      function alreadyTried(v) {
-        try { return sessionStorage.getItem(lockKey(v)) === '1'; } catch (_) { return false; }
+
+      /**
+       * Защёлка «одна перезагрузка на версию». Возвращает true, если попытка
+       * уже была — тогда перезагружаться нельзя, показываем баннер.
+       *
+       * D-396: нельзя полагаться на то, что sessionStorage ПИШЕТСЯ. В приватном
+       * режиме Safari/WebKit setItem бросает QuotaExceededError, а в некоторых
+       * встроенных webview хранилище недоступно целиком. Раньше rememberTry
+       * молча глотал ошибку и защёлка не ставилась НИКОГДА — цикл возвращался
+       * (проверено верификатором: 5 загрузок → 5 перезагрузок, 0 баннеров).
+       * Инцидент 06.11 случился именно в мобильном браузере, то есть это не
+       * редкий край, а целевая среда.
+       *
+       * Решение: если запись не подтвердилась — считаем, что попытка уже была.
+       * Чего мы не можем запомнить, того мы не можем гарантировать, поэтому
+       * жёсткий отказ от перезагрузки вместо риска бесконечного цикла.
+       */
+      function triedThisVersion(v) {
+        var k = lockKey(v);
+        try {
+          if (sessionStorage.getItem(k) === '1') return true;
+          sessionStorage.setItem(k, '1');
+          // Проверяем, что запись реально сохранилась, а не была проглочена.
+          return sessionStorage.getItem(k) !== '1';
+        } catch (_) {
+          return true; // хранилище недоступно — перезагрузку не делаем вовсе
+        }
       }
-      function rememberTry(v) {
-        try { sessionStorage.setItem(lockKey(v), '1'); } catch (_) {}
+      function clearTry(v) {
+        try { sessionStorage.removeItem(lockKey(v)); } catch (_) {}
       }
+
       // Одна версия не перезагружается дважды: вторая попытка = цикл.
       // Вместо неё — видимая кнопка, чтобы человек сам решил, когда обновляться.
       function showReloadNotice(serverVer) {
@@ -305,7 +331,7 @@
           + 'background:#4A90D9;color:#fff;font:600 14px system-ui,-apple-system,sans-serif;cursor:pointer';
         btn.onclick = function () {
           // Ручное действие снимает защёлку: человек осознанно просит ещё раз.
-          try { sessionStorage.removeItem(lockKey(serverVer)); } catch (_) {}
+          clearTry(serverVer);
           try { location.replace('/h/?_v=' + Date.now() + (location.hash || '')); }
           catch (_) { location.reload(); }
         };
@@ -319,8 +345,7 @@
           .then(function (r) { return r.ok ? r.json() : null; })
           .then(function (j) {
             if (!j || !j.version || j.version === VER) return;
-            if (alreadyTried(j.version)) { showReloadNotice(j.version); return; }
-            rememberTry(j.version);
+            if (triedThisVersion(j.version)) { showReloadNotice(j.version); return; }
             _busy = true;
             var cleared = ('caches' in window)
               ? caches.keys().then(function (ns) { return Promise.all(ns.map(function (n) { return caches.delete(n); })); }).catch(function () {})
