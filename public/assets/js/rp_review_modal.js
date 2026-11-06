@@ -175,6 +175,78 @@ window.AsgardRpReviewModal = (function () {
   }
 
   /**
+   * ДВ в карточке анализа: позиции с объёмом, методом, технологией и источником.
+   * Раньше всё это схлопывалось в одну строку текста, и проверить, что именно
+   * разобрал Мимир, было нельзя.
+   */
+  function renderDvBlock(rj) {
+    const positions = Array.isArray(rj && rj.dv_positions) ? rj.dv_positions : [];
+    if (!positions.length) return '';
+    let h = '<div class="rp-review-dv-block">' +
+      '<div class="rp-review-analysis-ref-head"><strong>Ведомость объёмов</strong>' +
+      '<span class="muted">' + positions.length + ' позиц. · что разобрал Мимир</span></div>';
+    h += '<div class="rp-review-dv-scroll"><table class="rp-review-dv-table"><thead><tr>' +
+      '<th>Позиция</th><th>Аппараты</th><th>Объём</th><th>Метод</th>' +
+      '<th>Отложения</th><th>Технология</th><th>Источник</th><th>Статус</th>' +
+      '</tr></thead><tbody>';
+    positions.forEach((p) => {
+      const objects = Array.isArray(p.objects)
+        ? p.objects.map((o) => o.tag || o.type).filter(Boolean).join(', ') : '';
+      const method = [p.category_code, p.method_code].filter(Boolean).join('.');
+      const src = p.source_ref
+        ? [p.source_ref.document, p.source_ref.fragment].filter(Boolean).join(' · ')
+        : '';
+      const st = p.needs_classification
+        ? '<span class="rp-dv-st rp-dv-st--bad">нужен метод</span>'
+        : (p.approved
+          ? '<span class="rp-dv-st rp-dv-st--ok">согласовано</span>'
+          : '<span class="rp-dv-st">проверено</span>');
+      const foulingMap = { light: 'лёгкие', medium: 'средние', heavy: 'тяжёлые' };
+      h += '<tr>' +
+        '<td class="rp-dv-name">' + esc(p.name || '—') + '</td>' +
+        '<td>' + esc(objects || '—') + '</td>' +
+        '<td class="rp-dv-num">' + (p.volume != null ? esc(String(p.volume)) : '—') +
+          ' ' + esc(p.unit || '') + '</td>' +
+        '<td>' + esc(method || '—') + '</td>' +
+        '<td>' + esc(foulingMap[p.fouling] || '—') + '</td>' +
+        '<td class="rp-dv-tech">' + esc(p.tech_equip || '—') + '</td>' +
+        '<td class="rp-dv-src" title="' + esc(src) + '">' + esc(src || '—') + '</td>' +
+        '<td>' + st + '</td>' +
+        '</tr>';
+    });
+    h += '</tbody></table></div></div>';
+    return h;
+  }
+
+  /**
+   * Блок «Позвоните клиенту»: телефон, контакт и вопросы из ТЗ.
+   * Требование: анализ напоминает позвонить и подсказывает, что спросить.
+   */
+  function renderCallBlock(rj) {
+    const c = (rj && rj.contact) || {};
+    const questions = Array.isArray(rj && rj.call_questions) ? rj.call_questions : [];
+    if (!c.phone && !c.name && !questions.length) return '';
+    const phoneHref = String(c.phone || '').replace(/[^+\d]/g, '');
+    let h = '<div class="rp-review-call-block">' +
+      '<div class="rp-review-call-head">' +
+      '<span class="rp-review-call-ic">☎</span>' +
+      '<div class="rp-review-call-text">' +
+      '<strong>Позвоните клиенту до решения</strong>' +
+      '<span class="muted">' + esc(c.name || 'Контакт заказчика') +
+      (c.phone ? ' · ' + esc(c.phone) : ' · телефон в документах не указан') +
+      (c.window ? ' · ' + esc(c.window) : '') + '</span></div>' +
+      (c.phone ? '<a class="btn mini" href="tel:' + esc(phoneHref) + '">Позвонить</a>' : '') +
+      '</div>';
+    if (questions.length) {
+      h += '<ol class="rp-review-call-list">' +
+        questions.slice(0, 8).map((q) => '<li>' + esc(q) + '</li>').join('') +
+        '</ol>';
+    }
+    h += '</div>';
+    return h;
+  }
+
+  /**
    * Техплан: сроки, бригада, МТР.
    *
    * Раньше в карточке анализа была видна только смета — ТО не мог ответить
@@ -789,6 +861,10 @@ window.AsgardRpReviewModal = (function () {
         } else if (!isLocked) {
           h += '<p class="muted" style="font-size:12px;margin:0 0 10px">Нажмите «Анализ Мимир» — в отчёт попадут рекомендация, объём и риски без сметы.</p>';
         }
+        // ДВ, технология и звонок — то, что разобрал Мимир. Без них карточка
+        // показывала только текст и не давала проверить объёмы.
+        h += renderDvBlock(reportJson);
+        h += renderCallBlock(reportJson);
         h += renderTechPlanBlock(reportJson);
       }
 
@@ -1539,6 +1615,15 @@ window.AsgardRpReviewModal = (function () {
                 // риски, выполнимость. Раньше карточка оставалась пустой, и было
                 // непонятно, что дал анализ.
                 const positions = (d.state && d.state.positions) || [];
+
+                // Вопросы для звонка и контакт пишем ВСЕГДА, даже если позиций нет:
+                // именно в этом случае они особенно нужны — чтобы позвонить и
+                // добрать объёмы. Раньше они лежали внутри if (positions.length)
+                // и терялись при пустом разборе (прод 06.11).
+                reportJson.call_questions = Array.isArray(d.call_questions) ? d.call_questions : [];
+                reportJson.contact = d.contact || null;
+                reportJson.decision_recommend = d.decision_recommend || 'need_info';
+
                 if (positions.length) {
                   const scopeText = positions.map((p) =>
                     `${p.name} — ${p.volume} ${p.unit || ''}`.trim()).join('; ');
@@ -1546,6 +1631,12 @@ window.AsgardRpReviewModal = (function () {
                   reportJson.volume_summary = scopeText;
                   reportJson.resources = positions
                     .map((p) => p.tech_equip).filter(Boolean).join('; ');
+
+                  // ДВ и всё, что разобрал Мимир, кладём в отчёт ЦЕЛИКОМ:
+                  // карточка должна показывать позиции, технологию, источник,
+                  // вопросы для звонка и контакт, а не только текст объёма.
+                  reportJson.dv_positions = positions;
+                  reportJson.decision_recommend = d.decision_recommend || 'need_info';
 
                   // Выполнимость: needs_classification/проблемы → «условно».
                   const problems = positions.filter((p) => p.needs_classification || (p.problems || []).length);
@@ -1564,7 +1655,6 @@ window.AsgardRpReviewModal = (function () {
 
                   const total = positions.length;
                   const decisionMap = { go: 'submit', no_go: 'reject', need_info: 'pending' };
-                  reportJson.decision_recommend = d.decision_recommend || 'need_info';
                   if (decisionMap[d.decision_recommend]) decision = decisionMap[d.decision_recommend];
                   reportJson.summary = reportJson.summary
                     || `Мимир разобрал ТЗ: ${total} позиц. ` +
@@ -1573,6 +1663,21 @@ window.AsgardRpReviewModal = (function () {
                            : 'Нужны уточнения у заказчика.');
                 }
                 rerender();
+                // Сохраняем карточку на сервер: иначе разбор живёт только до
+                // перезагрузки, а просчёт и ТО не видят ни ДВ, ни вопросов к клиенту.
+                // Вопросы для звонка и контакт берём из ОТВЕТА РАЗБОРА, а не из
+                // stage: там они привязаны к сессии, и при смене сессии пропадали.
+                try {
+                  const saved = await API.saveRpReview(tender.id, {
+                    mode: 'analysis',
+                    report_json: reportJson,
+                    decision: decision === 'reject' ? 'reject' : (decision === 'submit' ? 'submit' : 'pending')
+                  });
+                  if (saved && saved.review) review = saved.review;
+                } catch (e) {
+                  console.warn('[Mimir] analysis save failed:', e && e.message);
+                  toast('Анализ', 'Разбор не сохранён: ' + (e.message || 'ошибка'), 'warn');
+                }
                 return d;
               },
               onDecide: async (res) => {

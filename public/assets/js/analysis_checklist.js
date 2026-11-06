@@ -59,18 +59,37 @@ window.AsgardAnalysisChecklist = (function () {
     const qs = tpl.filter((q) => !isFree(q));
     const freeTpl = tpl.filter(isFree);
 
-    h += '<div class="rp-cl-list">';
-    qs.forEach((q, i) => {
-      const val = a[q.id] != null ? String(a[q.id]) : '';
-      h += '<div class="rp-cl-item">' +
-        '<label class="rp-cl-label" for="' + rowIds().base(i) + '">' +
-        esc(q.text) + (q.required ? ' <span class="req">*</span>' : '') +
-        '</label>' +
-        '<textarea class="inp rp-cl-answer" id="' + rowIds().base(i) + '" data-cl-id="' + esc(q.id) + '" rows="2"' +
-        (ro ? ' readonly' : '') + '>' + esc(val) + '</textarea>' +
-        '</div>';
-    });
-    h += '</div>';
+    // Делим вопросы на базовые (про клиента и решение) и технические (бригада,
+    // допуски, оборудование). Раньше шли одним списком, и было непонятно, что
+    // обязательно, а что — для просчёта.
+    const baseQs = qs.filter((q) => q.kind !== 'tech');
+    const techQs = qs.filter((q) => q.kind === 'tech');
+    const answeredBase = baseQs.filter((q) => String(a[q.id] || '').trim()).length;
+    const answeredTech = techQs.filter((q) => String(a[q.id] || '').trim()).length;
+
+    function group(title, list, answered) {
+      if (!list.length) return '';
+      let g = '<div class="rp-cl-group">' +
+        '<div class="rp-cl-group-head"><strong>' + esc(title) + '</strong>' +
+        '<span class="muted">' + answered + '/' + list.length + '</span></div>';
+      g += '<div class="rp-cl-list">';
+      list.forEach((q) => {
+        const i = qs.indexOf(q);
+        const val = a[q.id] != null ? String(a[q.id]) : '';
+        g += '<div class="rp-cl-item' + (val.trim() ? ' is-done' : '') + '">' +
+          '<label class="rp-cl-label" for="' + rowIds().base(i) + '">' +
+          esc(q.text) + (q.required ? ' <span class="req">*</span>' : '') +
+          '</label>' +
+          '<textarea class="inp rp-cl-answer" id="' + rowIds().base(i) + '" data-cl-id="' + esc(q.id) + '" rows="2"' +
+          (ro ? ' readonly' : '') + '>' + esc(val) + '</textarea>' +
+          '</div>';
+      });
+      g += '</div></div>';
+      return g;
+    }
+
+    h += group('Вопросы клиенту', baseQs, answeredBase);
+    h += group('Технические вопросы для просчёта', techQs, answeredTech);
 
     // Свободные строки: ТО/РП дописывает свои вопросы, ответ идёт в Word.
     h += '<div class="rp-cl-free-head">Свои вопросы <span class="muted">(необязательно)</span></div>';

@@ -5,6 +5,9 @@
 window.AsgardRpCalcModal = (function () {
   'use strict';
 
+  /** Активная сессия просчёта — для «В просчёт» из work_norms_ui */
+  let activeRpCalcSession = null;
+
   const UI = window.AsgardUI || {};
   const esc = UI.esc || function (s) {
     return String(s == null ? '' : s)
@@ -17,6 +20,7 @@ window.AsgardRpCalcModal = (function () {
 
   const TABS = [
     { id: 'inputs', label: 'Вводные' },
+    { id: 'dv', label: 'Объёмы' },
     { id: 'tech', label: 'Бригада и МТР' },
     { id: 'smeta', label: 'Смета' },
     { id: 'checklist', label: 'Чек-лист' },
@@ -667,6 +671,7 @@ window.AsgardRpCalcModal = (function () {
       '<div class="rp-calc-body">' +
       (ready ? '' : renderSmetaNeededBanner(state)) +
       renderInputs(state) +
+      renderDv(state) +
       renderTech(state) +
       renderSmeta(state) +
       renderChecklist(state) +
@@ -745,6 +750,10 @@ window.AsgardRpCalcModal = (function () {
     const active = state.tab === 'tech' ? ' is-active' : '';
     const est = state.estimate || {};
     const rj = parseReportJson(state.review && state.review.report_json);
+    // GAP-9: колонка tender_rp_reviews.tech_json — fallback, если в report_json пусто
+    if (state.review && state.review.tech_json && !rj.tech_json) {
+      rj.tech_json = state.review.tech_json;
+    }
     const ui = window.AsgardTechPlanUI;
     if (!ui) {
       return '<div class="rp-calc-panel' + active + '" data-panel="tech">' +
@@ -759,6 +768,69 @@ window.AsgardRpCalcModal = (function () {
       'подтверждение за вами.</p>' +
       '<div id="rpCalcTechHost">' + ui.editorHtml(plan, { readOnly: !!state.readOnly, stock: state.stock || [] }) + '</div>' +
       '</div>';
+  }
+
+  /**
+   * Вкладка «Объёмы»: ДВ из анализа с людьми, сроками и источником каждой цифры.
+   *
+   * Раньше в просчёте не было видно, из чего сложился срок: позиции терялись
+   * между анализом и сметой. Здесь они собраны в одном месте и связаны с
+   * калибровкой справочника.
+   */
+  function renderDv(state) {
+    const active = state.tab === 'dv' ? ' is-active' : '';
+    const rj = parseReportJson(state.review && state.review.report_json);
+    const positions = Array.isArray(rj.dv_positions) ? rj.dv_positions : [];
+    const calc = rj.calc_plan && Array.isArray(rj.calc_plan.positions) ? rj.calc_plan.positions : [];
+    const byPos = {};
+    calc.forEach((c) => { if (c.position_id) byPos[c.position_id] = c; });
+
+    if (!positions.length) {
+      return '<div class="rp-calc-panel' + active + '" data-panel="dv">' +
+        '<div class="rp-calc-card"><div class="rp-calc-card__head">Объёмы работ</div>' +
+        '<p class="muted">Ведомости пока нет. Запустите «Анализ Мимир» — он разберёт ТЗ ' +
+        'и выпишет позиции с объёмами, методом и технологией.</p></div></div>';
+    }
+
+    const foulingMap = { light: 'лёгкие', medium: 'средние', heavy: 'тяжёлые' };
+    const srcMap = { norm: 'норма', expert: 'эксперт', analog: 'аналог', history: 'история' };
+    let rows = '';
+    positions.forEach((p) => {
+      const c = byPos[p.id] || {};
+      const src = c.source ? srcMap[c.source] || c.source : '—';
+      const srcCls = c.source === 'norm' ? ' is-norm' : (c.source === 'expert' ? ' is-expert' : '');
+      const objects = Array.isArray(p.objects)
+        ? p.objects.map((o) => o.tag || o.type).filter(Boolean).join(', ') : '';
+      rows += '<tr data-dv-pos="' + esc(p.id) + '">' +
+        '<td class="name">' + esc(p.name || '—') + '</td>' +
+        '<td>' + esc(objects || '—') + '</td>' +
+        '<td class="num">' + (p.volume != null ? esc(String(p.volume)) : '—') + ' ' + esc(p.unit || '') + '</td>' +
+        '<td>' + esc([p.category_code, p.method_code].filter(Boolean).join('.')) + '</td>' +
+        '<td>' + esc(foulingMap[p.fouling] || '—') + '</td>' +
+        '<td class="tech">' + esc(p.tech_equip || '—') + '</td>' +
+        '<td class="num">' + (c.people != null ? esc(String(c.people)) : '—') + '</td>' +
+        '<td class="num">' + (c.days != null ? esc(String(c.days)) : '—') + '</td>' +
+        '<td><span class="rp-dv-source' + srcCls + '" title="' + esc(c.explain || '') + '">' +
+          esc(src) + (c.source_ref ? ' · ' + esc(c.source_ref) : '') + '</span></td>' +
+        '</tr>';
+    });
+
+    const plan = rj.calc_plan || {};
+    return '<div class="rp-calc-panel' + active + '" data-panel="dv">' +
+      '<div class="rp-calc-card">' +
+      '<div class="rp-calc-card__head">Объёмы работ · ' + positions.length + ' позиц.</div>' +
+      '<div class="rp-calc-dv-summary">' +
+        (plan.work_days != null ? '<span>Срок: <b>' + esc(String(plan.work_days)) + ' сут</b></span>' : '') +
+        (plan.man_hours ? '<span>Человеко-часы: <b>' + esc(String(plan.man_hours)) + '</b></span>' : '') +
+        (plan.people_total ? '<span>Людей: <b>' + esc(String(plan.people_total)) + '</b></span>' : '') +
+      '</div>' +
+      '<div class="rp-calc-dv-scroll"><table class="rp-calc-dv-table"><thead><tr>' +
+        '<th>Позиция</th><th>Аппараты</th><th>Объём</th><th>Метод</th><th>Отложения</th>' +
+        '<th>Технология</th><th>Люди</th><th>Сутки</th><th>Источник</th>' +
+      '</tr></thead><tbody>' + rows + '</tbody></table></div>' +
+      '<p class="rp-calc-hint">Источник «норма» — из справочника (код показан рядом). ' +
+        '«эксперт» — оценка Мимира, при сохранении она уйдёт в калибровку.</p>' +
+      '</div></div>';
   }
 
   function renderInputs(state) {
@@ -1141,8 +1213,106 @@ window.AsgardRpCalcModal = (function () {
       onRefresh: initial.onRefresh || null,
       root: null,
       hostEl: initial.hostEl || null,
-      pms: initial.pms || []
+      pms: initial.pms || [],
+      normTraceBaseline: initial.normTraceBaseline || null
     };
+
+    function captureNormTraceBaseline() {
+      const trace = (state.estimate && state.estimate.meta && state.estimate.meta.norm_trace) || null;
+      if (trace) {
+        try {
+          state.normTraceBaseline = JSON.parse(JSON.stringify(trace));
+        } catch (_) {
+          state.normTraceBaseline = trace;
+        }
+      }
+    }
+
+    function normCrewChangedVsTrace() {
+      const trace = state.estimate && state.estimate.meta && state.estimate.meta.norm_trace;
+      const base = state.normTraceBaseline;
+      if (!trace || !base) return false;
+      const p = state.estimate.params || {};
+      const wd = Number(p.work_days);
+      const w = Number(p.workers_per_shift);
+      const m = Number(p.masters_per_shift);
+      if (Number.isFinite(wd) && Number(base.work_days) !== wd) return true;
+      const bc = base.crew || {};
+      const baseW = Number(bc.workers_per_shift != null ? bc.workers_per_shift : bc.exec);
+      const baseM = Number(bc.masters_per_shift != null ? bc.masters_per_shift : bc.master);
+      if (Number.isFinite(w) && Number.isFinite(baseW) && w !== baseW) return true;
+      if (Number.isFinite(m) && Number.isFinite(baseM) && m !== baseM) return true;
+      return false;
+    }
+
+    function pushNormFeedbackFromSmeta() {
+      if (state.demo || state.readOnly) return Promise.resolve(null);
+      if (!normCrewChangedVsTrace()) return Promise.resolve(null);
+      const trace = state.estimate.meta.norm_trace;
+      const p = state.estimate.params || {};
+      const body = {
+        rate_code: trace.rate_code,
+        rate_id: trace.rate_id,
+        category_code: trace.category,
+        work_days: Number(p.work_days),
+        workers_per_shift: Number(p.workers_per_shift),
+        masters_per_shift: Number(p.masters_per_shift),
+        inputs: trace.inputs,
+        comment: 'Калибровка нормы из правок просчёта РП (mimir_smeta)',
+        mode: 'average'
+      };
+      return fetch('/api/work-norms/rates/from-smeta-edit', {
+        method: 'POST',
+        headers: {
+          Authorization: 'Bearer ' + authToken(),
+          'Content-Type': 'application/json',
+          Accept: 'application/json'
+        },
+        body: JSON.stringify(body)
+      }).then(function (r) {
+        return r.json().then(function (d) {
+          if (!r.ok) throw new Error(d.error || 'HTTP ' + r.status);
+          return d;
+        });
+      });
+    }
+
+    function applyNormPreview(payload) {
+      if (!payload || !payload.results) return;
+      state.smetaReady = true;
+      state.estimate = ensureEstimate(state.estimate);
+      state.estimate.params = state.estimate.params || {};
+      if (Number(payload.results.work_days) > 0) {
+        state.estimate.params.work_days = Number(payload.results.work_days);
+      }
+      const crew = payload.crew || {};
+      if (Number(crew.exec) > 0) state.estimate.params.workers_per_shift = Number(crew.exec);
+      if (Number(crew.master) > 0) state.estimate.params.masters_per_shift = Number(crew.master);
+      state.estimate.meta = state.estimate.meta || {};
+      state.estimate.meta.norm_trace = {
+        rate_code: payload.rate && payload.rate.code,
+        rate_id: payload.rate && payload.rate.id,
+        work_days: payload.results.work_days,
+        crew: {
+          master: crew.master,
+          exec: crew.exec,
+          workers_per_shift: Number(crew.exec) || null,
+          masters_per_shift: Number(crew.master) || null
+        },
+        category: payload.category_code,
+        method: payload.method_code,
+        inputs: payload.inputs || null,
+        preview: {
+          work_days: payload.results.work_days,
+          person_shifts: payload.results.person_shifts,
+          trace: payload.trace
+        }
+      };
+      captureNormTraceBaseline();
+      recalc(true);
+      scheduleAutosave();
+      toast('Нормы', 'Параметры бригады и сроков перенесены в просчёт', 'ok');
+    }
 
     function getRoot() {
       if (state.hostEl && state.hostEl.isConnected) {
@@ -1762,6 +1932,7 @@ window.AsgardRpCalcModal = (function () {
           if (patch.asgard_smeta) {
             state.estimate = patch.asgard_smeta;
             state.smetaReady = true;
+            captureNormTraceBaseline();
           }
           if (patch.work_price != null) state.workPriceFromMimir = patch.work_price;
           if (result && result.review) state.review = result.review;
@@ -1859,6 +2030,10 @@ window.AsgardRpCalcModal = (function () {
       if (ready) {
         rj.asgard_smeta = state.estimate;
         rj.cost_without_vat = totals.cost != null ? Math.round(totals.cost) : null;
+        if (state.estimate.meta && state.estimate.meta.norm_trace) {
+          rj.ai_meta = rj.ai_meta || {};
+          rj.ai_meta.norm_trace = state.estimate.meta.norm_trace;
+        }
       } else if (rj.asgard_smeta == null) {
         delete rj.cost_without_vat;
       }
@@ -2143,6 +2318,18 @@ window.AsgardRpCalcModal = (function () {
       const body = buildPayload(finalize);
       saveRpReview(state.tender.id, body).then(function (d) {
         if (d.review) state.review = d.review;
+        return pushNormFeedbackFromSmeta().then(function (normRes) {
+          if (normRes && normRes.message) {
+            toast('Нормы', normRes.message, 'ok');
+            captureNormTraceBaseline();
+          }
+          return d;
+        }).catch(function (ne) {
+          if (!auto) toast('Нормы', ne.message || 'Не удалось обновить норму', 'err');
+          return d;
+        });
+      }).then(function (d) {
+        if (!d) return;
         if (auto) {
           state.busy = false;
           paintSaveIndicator('Черновик сохранён', 'ok');
@@ -2182,7 +2369,15 @@ window.AsgardRpCalcModal = (function () {
       });
     }
 
-    return { state: state, paint: paint, bind: bind, recalc: recalc };
+    captureNormTraceBaseline();
+
+    return {
+      state: state,
+      paint: paint,
+      bind: bind,
+      recalc: recalc,
+      applyNormPreview: applyNormPreview
+    };
   }
 
   /* ── public API ────────────────────────────────────────── */
@@ -2203,6 +2398,7 @@ window.AsgardRpCalcModal = (function () {
       role: opts.role,
       directorThreshold: opts.directorThreshold
     });
+    activeRpCalcSession = session;
 
     showModal({
       title: 'Просчёт',
@@ -2242,6 +2438,15 @@ window.AsgardRpCalcModal = (function () {
               executor: 'ООО «АСГАРД-Сервис»'
             }
           });
+          if (!session.state.estimate.meta.norm_trace && rj.ai_meta && rj.ai_meta.norm_trace) {
+            session.state.estimate.meta = session.state.estimate.meta || {};
+            session.state.estimate.meta.norm_trace = rj.ai_meta.norm_trace;
+          }
+          if (session.state.estimate.meta && session.state.estimate.meta.norm_trace) {
+            try {
+              session.state.normTraceBaseline = JSON.parse(JSON.stringify(session.state.estimate.meta.norm_trace));
+            } catch (_) { /* ignore */ }
+          }
           session.state.files = {
             estimate: d.estimate_file || null,
             tkp: d.tkp_file || null,
@@ -2303,6 +2508,15 @@ window.AsgardRpCalcModal = (function () {
     });
     return session;
   }
+
+  window.AsgardRpCalc = window.AsgardRpCalc || {};
+  window.AsgardRpCalc.applyNormPreview = function (payload) {
+    if (activeRpCalcSession && typeof activeRpCalcSession.applyNormPreview === 'function') {
+      activeRpCalcSession.applyNormPreview(payload);
+      return;
+    }
+    toast('Просчёт', 'Откройте карточку просчёта, чтобы перенести норму', 'err');
+  };
 
   return {
     open: open,

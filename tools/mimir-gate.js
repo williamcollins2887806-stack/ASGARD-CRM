@@ -65,8 +65,11 @@ check('Ответы модели: частичный JSON спасается', s
 const modeCheck = run('node', ['tests/rp-review-mode.test.js']);
 check('Карточка анализа открывается в режиме анализа', modeCheck.code === 0, tail(modeCheck.out, 1));
 
-// ── 4d. Кнопка «Анализ Мимир» ведёт в поэтапный анализ ─────────────────────
-// Клон на :3100; если он не поднят — проверка пропускается с явной пометкой.
+// ── 4d. Обязательные поля модалок анализа и просчёта ───────────────────────
+const modalFields = run('node', ['tests/modal-fields.test.js']);
+check('Модалки: все поля анализа и просчёта', modalFields.code === 0, tail(modalFields.out, 1));
+
+// ── 4e. Кнопка «Анализ Мимир» ведёт в поэтапный анализ ─────────────────────// Клон на :3100; если он не поднят — проверка пропускается с явной пометкой.
 const wiring = run('node', ['-e', 'process.exit(0)']);
 const cloneUp = spawnSync('node', ['-e',
   "fetch('http://127.0.0.1:3100/api/version').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
