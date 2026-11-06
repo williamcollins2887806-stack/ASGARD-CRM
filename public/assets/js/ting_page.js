@@ -1456,6 +1456,91 @@
   }
 
   /**
+   * Чёрный список камер, которые не годятся для звонка.
+   * На ноутбуках Windows по умолчанию часто выбирается ИК-камера Windows Hello
+   * (face unlock): Chromium пытается её открыть и падает с AbortError
+   * «Timeout starting video source». Поэтому ИК и виртуальные камеры
+   * отсекаем, а реальную выбираем явно по deviceId.
+   */
+  const CAMERA_DENY_RE = /infrared|\bir\b|windows hello|hello face|face unlock|depth|tof|virtual|obs virtual|snap camera|manycam|droidcam|xsplit/i;
+  const CAMERA_PREFER_RE = /usb video|uvc|webcam|hd camera|fhd|logitech|razer|avermedia|elgato|integrated|built-in|front/i;
+
+  /** Камеры в порядке приоритета: сначала обычные, ИК/виртуальные — в конце. */
+  async function rankCameras() {
+    const out = [];
+    try {
+      if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) return out;
+      const list = await navigator.mediaDevices.enumerateDevices();
+      const cams = list.filter((d) => d.kind === 'videoinput');
+      const scored = cams.map((d, i) => {
+        const label = String(d.label || '');
+        let score = 0;
+        if (CAMERA_DENY_RE.test(label)) score -= 100;
+        if (CAMERA_PREFER_RE.test(label)) score += 10;
+        if (state.videoDeviceId && d.deviceId === state.videoDeviceId) score += 5;
+        score -= i * 0.1;
+        return { deviceId: d.deviceId, label, score };
+      });
+      scored.sort((a, b) => b.score - a.score);
+      scored.forEach((c) => out.push(c));
+      console.info('[Ting] cameras', out.map((c) => ({ label: c.label || '(no label)', score: c.score })));
+    } catch (e) {
+      console.warn('[Ting] enumerateDevices failed', e && e.message);
+    }
+    return out;
+  }
+
+  /** Прогрессивный список constraints: хорошая камера → любая → базовый режим. */
+  async function cameraConstraintsList() {
+    const cams = await rankCameras();
+    const usable = cams.filter((c) => c.score > -50);
+    const list = [];
+    const hd = { width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 } };
+    usable.forEach((c) => {
+      if (!c.deviceId) return;
+      list.push(Object.assign({ deviceId: { exact: c.deviceId } }, hd));
+      list.push({ deviceId: { exact: c.deviceId } });
+    });
+    /* Без привязки к устройству — браузер выберет сам. frameRate смягчает
+       AbortError: часть драйверов не стартует без явного fps. */
+    list.push(hd);
+    list.push({ frameRate: { ideal: 30 } });
+    list.push(true);
+    return list;
+  }
+
+  /**
+   * Открыть камеру с перебором устройств. Единая точка для лобби и звонка,
+   * чтобы «одна кнопка работает, другая нет» больше не повторялось.
+   */
+  async function openCameraStream(opts) {
+    const wantAudio = !!(opts && opts.audio);
+    const list = await cameraConstraintsList();
+    let lastErr = null;
+    for (let i = 0; i < list.length; i++) {
+      const c = list[i];
+      try {
+        console.info('[Ting] getUserMedia try', i, JSON.stringify(c));
+        const stream = await withTimeout(
+          navigator.mediaDevices.getUserMedia({ video: c, audio: wantAudio }),
+          30000,
+          'Timeout starting video source'
+        );
+        const vt = stream.getVideoTracks()[0];
+        console.info('[Ting] getUserMedia OK', i, vt ? vt.label : '(no track)');
+        return stream;
+      } catch (e) {
+        lastErr = e;
+        console.warn('[Ting] getUserMedia try', i, e && e.name, e && e.message);
+        const name = String((e && e.name) || '');
+        /* Разрешение/устройство повтором не лечатся — дальше нет смысла. */
+        if (name === 'NotAllowedError' || name === 'NotFoundError' || name === 'SecurityError') break;
+      }
+    }
+    throw (lastErr || new Error('Камера не включилась'));
+  }
+
+  /**
    * Камера: getUserMedia ПЕРВЫМ, публикация готового трека.
    * Корень отказа в PWA на Windows: getUserMedia висит, пока не нажмут
    * в диалоге разрешения, а диалог уходит за окно приложения.
@@ -1470,41 +1555,11 @@
     stopPreview();
     await unpublishLocalCamera(room);
     /* Windows отдаёт камеру не мгновенно после stop() превью — ждём. */
-    await new Promise((r) => setTimeout(r, 600));
+    await new Promise((r) => setTimeout(r, 900));
 
     await logCameraEnvironment();
 
-    const constraintsList = [];
-    const base = {};
-    if (state.videoDeviceId) base.deviceId = { ideal: state.videoDeviceId };
-    constraintsList.push(Object.assign({}, base, { width: { ideal: 1280 }, height: { ideal: 720 } }));
-    constraintsList.push(Object.assign({}, base));
-    constraintsList.push({});
-
-    let stream = null;
-    let lastErr = null;
-    for (let i = 0; i < constraintsList.length; i++) {
-      try {
-        console.info('[Ting] getUserMedia video try', i, JSON.stringify(constraintsList[i]));
-        stream = await withTimeout(
-          navigator.mediaDevices.getUserMedia({ video: constraintsList[i], audio: false }),
-          /* 30 с: в PWA Windows драйвер + диалог разрешения легко дают 10–20 с. */
-          30000,
-          'Timeout starting video source'
-        );
-        console.info('[Ting] getUserMedia OK', i, stream.getVideoTracks().map((t) => t.label));
-        break;
-      } catch (e) {
-        lastErr = e;
-        console.warn('[Ting] getUserMedia video try', i, e && e.name, e && e.message);
-        const name = String((e && e.name) || '');
-        if (name === 'NotAllowedError' || name === 'NotFoundError' || name === 'SecurityError') break;
-      }
-    }
-    if (!stream) {
-      const err = lastErr || new Error('Камера не включилась');
-      throw err;
-    }
+    const stream = await openCameraStream({ audio: false });
 
     const mst = stream.getVideoTracks()[0];
     if (!mst) {
@@ -3425,12 +3480,25 @@
             let stream = state.previewStream;
             const hasVideo = stream && stream.getVideoTracks().some((t) => t.readyState === 'live');
             if (!hasVideo) {
-              stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+              /* КОРЕНЬ AbortError: в лобби микрофон УЖЕ открыт из startPreview().
+                 Просить video+audio повторно — Chromium не даёт открыть то же
+                 устройство дважды и прерывает запрос (AbortError
+                 «Timeout starting video source»). Берём только видео и
+                 подмешиваем уже открытую дорожку микрофона. */
+              const videoOnly = await openCameraStream({ audio: false });
+              const merged = new MediaStream();
+              videoOnly.getVideoTracks().forEach((t) => merged.addTrack(t));
+              const oldAudio = state.previewStream && state.previewStream.getAudioTracks
+                ? state.previewStream.getAudioTracks().filter((t) => t.readyState === 'live')
+                : [];
+              oldAudio.forEach((t) => merged.addTrack(t));
+              /* Прежний видеопоток отпускаем, аудио переиспользуем. */
               if (state.previewStream) {
-                state.previewStream.getTracks().forEach((t) => { try { t.stop(); } catch (_) { /* */ } });
+                state.previewStream.getVideoTracks().forEach((t) => { try { t.stop(); } catch (_) { /* */ } });
               }
-              state.previewStream = stream;
-              state.micOn = true;
+              state.previewStream = merged;
+              stream = merged;
+              if (oldAudio.length) state.micOn = true;
             }
             if (v) {
               v.srcObject = state.previewStream;
