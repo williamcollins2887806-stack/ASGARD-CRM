@@ -1489,7 +1489,10 @@
       });
       scored.sort((a, b) => b.score - a.score);
       scored.forEach((c) => out.push(c));
-      console.info('[Ting] cameras', out.map((c) => ({ label: c.label || '(no label)', score: c.score })));
+      /* Полный список — по нему видно, ИК это, виртуальная или реальная. */
+      console.info('[Ting] cameras', cams.map((d, i) => ({
+        i, label: d.label || '(no label)', id: String(d.deviceId || '').slice(0, 12)
+      })));
     } catch (e) {
       console.warn('[Ting] enumerateDevices failed', e && e.message);
     }

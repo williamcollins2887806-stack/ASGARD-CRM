@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Тинг — проверка камеры</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 24px 18px 60px;
+    font: 15px/1.5 "Segoe UI", system-ui, sans-serif;
+    background: #0a0c10; color: #eef1f6;
+  }
+  .wrap { max-width: 720px; margin: 0 auto; }
+  h1 { font-size: 22px; margin: 0 0 6px; }
+  .sub { color: rgba(238,241,246,.6); margin: 0 0 20px; font-size: 14px; }
+  .card {
+    background: #12161e; border: 1px solid rgba(255,255,255,.1);
+    border-radius: 16px; padding: 18px; margin-bottom: 14px;
+  }
+  .row { display: flex; justify-content: space-between; gap: 12px; padding: 6px 0; font-size: 14px; }
+  .row span:first-child { color: rgba(238,241,246,.6); }
+  .row b { font-weight: 600; word-break: break-word; text-align: right; }
+  button {
+    width: 100%; min-height: 52px; border: 0; border-radius: 12px;
+    font: inherit; font-weight: 700; cursor: pointer;
+    background: linear-gradient(180deg, #e8c35a, #d4a843); color: #141414;
+  }
+  button.ghost { background: transparent; color: #eef1f6; border: 1px solid rgba(255,255,255,.18); }
+  button + button { margin-top: 10px; }
+  #videoWrap { margin-top: 14px; border-radius: 14px; overflow: hidden; background: #000; display: none; }
+  video { display: block; width: 100%; height: auto; }
+  .ok { color: #5ad4a8; }
+  .bad { color: #ff8a96; }
+  .warn { color: #e8c35a; }
+  pre {
+    background: #0b0f15; border: 1px solid rgba(255,255,255,.08);
+    border-radius: 10px; padding: 12px; font-size: 12px; overflow-x: auto;
+    color: rgba(238,241,246,.8); white-space: pre-wrap; word-break: break-word;
+  }
+  ol { padding-left: 20px; margin: 8px 0 0; }
+  li { margin: 6px 0; font-size: 14px; color: rgba(238,241,246,.8); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Проверка камеры</h1>
+  <p class="sub">Эта страница только открывает камеру браузером — без Тинга и без LiveKit.</p>
+
+  <div class="card" id="envCard">
+    <div class="row"><span>Режим</span><b id="eMode">…</b></div>
+    <div class="row"><span>HTTPS</span><b id="eSecure">…</b></div>
+    <div class="row"><span>Разрешение (permissions)</span><b id="ePerm">…</b></div>
+    <div class="row"><span>Камер найдено</span><b id="eCams">…</b></div>
+    <div class="row"><span>Микрофонов найдено</span><b id="eMics">…</b></div>
+  </div>
+
+  <div class="card">
+    <button id="btnTest">Открыть камеру (video: true)</button>
+    <button id="btnTestHd" class="ghost">Открыть камеру 1280×720</button>
+    <button id="btnStop" class="ghost">Остановить</button>
+    <div id="videoWrap"><video id="v" playsinline muted autoplay></video></div>
+  </div>
+
+  <div class="card">
+    <div class="row"><span>Результат</span><b id="result">не запускалось</b></div>
+    <pre id="log">Готово к проверке.</pre>
+  </div>
+
+  <div class="card">
+    <div class="row"><span>Что делать, если ошибка AbortError</span><b></b></div>
+    <ol>
+      <li>Закройте все приложения, которые могут держать камеру: Zoom, Teams, Skype, «Камера» Windows, OBS.</li>
+      <li>Параметры Windows → Конфиденциальность → Камера: включите доступ для устройства и для классических приложений.</li>
+      <li>Диспетчер устройств → Камеры: если есть жёлтый значок — обновите драйвер.</li>
+      <li>Полностью закройте PWA (все окна) и откройте снова. F5 не помогает — Chromium дёржит media-сервис.</li>
+      <li>Перезагрузите ноутбук и повторите.</li>
+    </ol>
+  </div>
+</div>
+
+<script>
+(function () {
+  var lines = [];
+  function log(msg) {
+    lines.push(new Date().toLocaleTimeString('ru-RU') + '  ' + msg);
+    if (lines.length > 40) lines.shift();
+    document.getElementById('log').textContent = lines.join('\n');
+  }
+  function set(id, text, cls) {
+    var el = document.getElementById(id);
+    el.textContent = text;
+    el.className = cls || '';
+  }
+
+  var stream = null;
+
+  function describe(err) {
+    var name = (err && err.name) || 'Error';
+    var msg = (err && err.message) || String(err || '');
+    return name + ': ' + msg;
+  }
+
+  async function readEnv() {
+    var standalone = false;
+    try { standalone = window.matchMedia('(display-mode: standalone)').matches; } catch (_) {}
+    set('eMode', standalone ? 'PWA (установленное приложение)' : 'обычная вкладка браузера');
+    set('eSecure', window.isSecureContext ? 'да' : 'НЕТ — камера не откроется', window.isSecureContext ? 'ok' : 'bad');
+
+    try {
+      if (navigator.permissions && navigator.permissions.query) {
+        var st = await navigator.permissions.query({ name: 'camera' });
+        set('ePerm', st.state, st.state === 'granted' ? 'ok' : (st.state === 'denied' ? 'bad' : 'warn'));
+      } else {
+        set('ePerm', 'не поддерживается');
+      }
+    } catch (e) {
+      set('ePerm', 'запрос не удался');
+    }
+
+    try {
+      var list = await navigator.mediaDevices.enumerateDevices();
+      var cams = list.filter(function (d) { return d.kind === 'videoinput'; });
+      var mics = list.filter(function (d) { return d.kind === 'audioinput'; });
+      set('eCams', cams.length ? cams.length + ' (' + cams.map(function (c) { return c.label || 'без имени'; }).join(', ') + ')' : '0 — нет доступа или нет устройства',
+        cams.length ? 'ok' : 'bad');
+      set('eMics', String(mics.length), mics.length ? 'ok' : 'warn');
+      log('Устройства: камер ' + cams.length + ', микрофонов ' + mics.length);
+      cams.forEach(function (c, i) { log('  камера[' + i + '] ' + (c.label || '(без имени)') + ' ' + c.deviceId.slice(0, 12) + '…'); });
+    } catch (e) {
+      set('eCams', 'ошибка списка');
+      log('enumerateDevices: ' + describe(e));
+    }
+  }
+
+  function stop() {
+    if (stream) {
+      stream.getTracks().forEach(function (t) { try { t.stop(); } catch (_) {} });
+      stream = null;
+    }
+    var v = document.getElementById('v');
+    v.srcObject = null;
+    document.getElementById('videoWrap').style.display = 'none';
+  }
+
+  async function open(constraints, label) {
+    stop();
+    set('result', 'открываем…', 'warn');
+    log('--- ' + label + ' ---');
+    log('constraints: ' + JSON.stringify(constraints));
+    var started = performance.now();
+    try {
+      stream = await navigator.mediaDevices.getUserMedia(constraints);
+      var vt = stream.getVideoTracks()[0];
+      var elapsed = Math.round(performance.now() - started);
+      var settings = {};
+      try { settings = vt.getSettings(); } catch (_) {}
+      log('OK за ' + elapsed + ' мс, track: ' + (vt ? vt.label : 'нет'));
+      log('readyState=' + (vt && vt.readyState) + ' muted=' + (vt && vt.muted) + ' settings=' + JSON.stringify(settings));
+      var v = document.getElementById('v');
+      v.srcObject = stream;
+      document.getElementById('videoWrap').style.display = 'block';
+      try { await v.play(); } catch (_) {}
+      await new Promise(function (r) { setTimeout(r, 1200); });
+      var alive = vt && vt.readyState === 'live' && !vt.muted;
+      set('result', alive ? 'КАМЕРА РАБОТАЕТ' : 'поток открылся, но кадры не идут', alive ? 'ok' : 'bad');
+      log(alive ? 'Кадры идут — проблема именно в Тинге.' : 'Трек muted/ended — камеру не отдаёт система.');
+    } catch (e) {
+      set('result', describe(e), 'bad');
+      log('ОШИБКА ' + describe(e));
+      if (e && e.name === 'AbortError') {
+        log('AbortError = устройство не отдаёт кадры. Смотрите список действий ниже.');
+      }
+      if (e && e.name === 'NotAllowedError') {
+        log('NotAllowedError = разрешение не выдано. Нажмите на замок в адресной строке.');
+      }
+      if (e && e.name === 'NotReadableError') {
+        log('NotReadableError = камера занята другим приложением.');
+      }
+    }
+  }
+
+  document.getElementById('btnTest').addEventListener('click', function () {
+    open({ video: true }, 'video: true');
+  });
+  document.getElementById('btnTestHd').addEventListener('click', function () {
+    open({ video: { width: { ideal: 1280 }, height: { ideal: 720 } } }, 'HD 1280x720');
+  });
+  document.getElementById('btnStop').addEventListener('click', function () {
+    stop();
+    set('result', 'остановлено');
+    log('--- остановлено ---');
+  });
+
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    set('result', 'браузер не поддерживает getUserMedia', 'bad');
+  }
+  readEnv();
+})();
+</script>
+</body>
+</html>
