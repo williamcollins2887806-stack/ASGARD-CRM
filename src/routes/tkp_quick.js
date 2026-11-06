@@ -719,6 +719,14 @@ async function routes(fastify, options) {
         state: saved.state,
         version: saved.version,
         decision_recommend: gen.dv.decision_recommend,
+        // Готовые формулировки для карточки ТО: суть, объём, выполнимость,
+        // риски. Промпт их просит у модели, а не собирает шаблоном.
+        summary: gen.dv.summary,
+        volume_summary: gen.dv.volume_summary,
+        feasibility: gen.dv.feasibility,
+        feasibility_note: gen.dv.feasibility_note,
+        competition: gen.dv.competition,
+        risks: gen.dv.risks,
         questions_for_customer: gen.dv.questions_for_customer,
         // Вопросы для звонка и контакт: анализ сам напоминает позвонить клиенту.
         call_questions: stageSvc.callQuestionsFromDv(gen.dv, {

@@ -959,45 +959,94 @@ html[data-theme='light'] .rp-calc-approve-toggle input[type='checkbox']:checked 
 .rp-tech-take:hover { background: color-mix(in srgb, var(--primary) 18%, transparent); }
 .rp-tech-edit { display: grid; gap: 12px; }
 
-/* ── Вкладка «Объёмы» в просчёте: ДВ с людьми, сроками и источником ─────── */
+/* ── Вкладка «Объёмы» в просчёте: позиции карточками ─────────────────────── */
 .rp-calc-dv-summary {
-  display: flex; flex-wrap: wrap; gap: 8px 18px; margin-bottom: 10px;
+  display: flex; flex-wrap: wrap; gap: 8px 18px; margin-bottom: 12px;
   font-size: 12px; color: var(--t2);
 }
 .rp-calc-dv-summary b { color: var(--t1); font-variant-numeric: tabular-nums; }
-.rp-calc-dv-scroll { overflow-x: auto; }
-.rp-calc-dv-table { width: 100%; border-collapse: collapse; font-size: 12px; table-layout: fixed; }
-.rp-calc-dv-table th {
-  padding: 7px 8px; text-align: left; font-size: 9.5px; font-weight: 700;
-  letter-spacing: 0.1em; text-transform: uppercase; color: var(--t3);
-  background: var(--bg4); border-bottom: 1px solid var(--brd-m); white-space: nowrap;
+.rp-calc-dv-empty { margin: 0 0 12px; font-size: 12px; color: var(--t2); line-height: 1.5; }
+.rp-calc-dv-plan { margin-left: auto; }
+
+.rp-calc-dv-cards { display: grid; gap: 10px; }
+.rp-calc-dv-card {
+  padding: 13px 15px;
+  border-radius: 11px;
+  background: var(--bg3);
+  border: 1px solid var(--brd-m);
 }
-.rp-calc-dv-table td {
-  padding: 7px 8px; border-bottom: 1px solid var(--brd-m); color: var(--t1);
-  vertical-align: top; word-break: break-word;
+.rp-calc-dv-card__top { display: flex; align-items: flex-start; gap: 10px; }
+.rp-calc-dv-card__num {
+  flex: 0 0 auto; display: grid; place-items: center;
+  width: 22px; height: 22px; margin-top: 1px;
+  border-radius: 7px; font-size: 10.5px; font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--gold); background: var(--gold-bg);
+  border: 1px solid color-mix(in srgb, var(--gold) 26%, transparent);
 }
-.rp-calc-dv-table td.name { font-weight: 600; }
-.rp-calc-dv-table td.num { font-variant-numeric: tabular-nums; white-space: nowrap; }
-.rp-calc-dv-table td.tech { color: var(--t2); font-size: 11.5px; line-height: 1.4; }
-.rp-calc-dv-table th:nth-child(1), .rp-calc-dv-table td:nth-child(1) { width: 18%; }
-.rp-calc-dv-table th:nth-child(2), .rp-calc-dv-table td:nth-child(2) { width: 9%; }
-.rp-calc-dv-table th:nth-child(3), .rp-calc-dv-table td:nth-child(3) { width: 8%; }
-.rp-calc-dv-table th:nth-child(4), .rp-calc-dv-table td:nth-child(4) { width: 11%; }
-.rp-calc-dv-table th:nth-child(5), .rp-calc-dv-table td:nth-child(5) { width: 9%; }
-.rp-calc-dv-table th:nth-child(6), .rp-calc-dv-table td:nth-child(6) { width: 17%; }
-.rp-calc-dv-table th:nth-child(7), .rp-calc-dv-table td:nth-child(7) { width: 7%; }
-.rp-calc-dv-table th:nth-child(8), .rp-calc-dv-table td:nth-child(8) { width: 7%; }
-.rp-calc-dv-table th:nth-child(9), .rp-calc-dv-table td:nth-child(9) { width: 14%; }
+.rp-calc-dv-card__title { flex: 1; min-width: 0; }
+.rp-calc-dv-card__title h4 {
+  margin: 0; font-size: 12.5px; font-weight: 650; line-height: 1.4; color: var(--t1);
+}
+.rp-calc-dv-card__meta {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 5px;
+}
+.rp-calc-dv-card__meta b {
+  font-size: 12.5px; font-weight: 700; color: var(--t1);
+  font-variant-numeric: tabular-nums; white-space: nowrap;
+}
+.rp-calc-dv-card__meta b i { font-style: normal; font-weight: 500; font-size: 11px; color: var(--t3); }
+.rp-calc-dv-card__meta span { display: inline-flex; gap: 4px; flex-wrap: wrap; }
+.rp-calc-dv-card__meta em {
+  font-style: normal; padding: 1px 7px; border-radius: 5px;
+  font-size: 10px; font-weight: 600; color: var(--t2);
+  background: var(--bg4); border: 1px solid var(--brd-m); white-space: nowrap;
+}
+.rp-calc-dv-card__grid {
+  display: grid; grid-template-columns: repeat(4, 1fr);
+  gap: 8px 14px; margin: 10px 0 0; padding-top: 9px;
+  border-top: 1px dashed var(--brd-m);
+}
+.rp-calc-dv-card__grid > div { min-width: 0; }
+.rp-calc-dv-card__grid dt {
+  font-size: 9px; font-weight: 700; letter-spacing: 0.09em;
+  text-transform: uppercase; color: var(--t3);
+}
+.rp-calc-dv-card__grid dd {
+  margin: 3px 0 0; font-size: 11.5px; line-height: 1.4; color: var(--t1);
+  font-variant-numeric: tabular-nums;
+}
+.rp-dv-foul { font-weight: 600; }
+.rp-dv-foul.is-light { color: var(--ok-t); }
+.rp-dv-foul.is-medium { color: var(--warn-t); }
+.rp-dv-foul.is-heavy { color: var(--red); font-weight: 700; }
+.rp-calc-dv-card__tech {
+  margin-top: 9px; padding: 8px 10px; border-radius: 8px;
+  background: var(--bg2);
+  border-left: 2px solid color-mix(in srgb, var(--gold) 44%, transparent);
+}
+.rp-calc-dv-card__tech span {
+  display: block; font-size: 9px; font-weight: 700;
+  letter-spacing: 0.09em; text-transform: uppercase; color: var(--gold);
+}
+.rp-calc-dv-card__tech p {
+  margin: 3px 0 0; font-size: 11.5px; line-height: 1.45; color: var(--t2);
+}
+.rp-calc-dv-card__ref { margin-top: 7px; font-size: 10.5px; color: var(--t3); }
 .rp-dv-source {
-  display: inline-block; padding: 2px 7px; border-radius: 999px; font-size: 10px;
-  font-weight: 600; background: var(--bg4); color: var(--t2);
-  white-space: normal; line-height: 1.3;
+  display: inline-block; padding: 2px 8px; border-radius: 999px;
+  font-size: 10px; font-weight: 700; flex: 0 0 auto;
+  background: var(--bg4); border: 1px solid var(--brd-m); color: var(--t2);
+  white-space: nowrap;
 }
-.rp-dv-source.is-norm { background: var(--ok-bg); color: var(--ok-t); }
-.rp-dv-source.is-expert { background: var(--warn-bg); color: var(--warn-t); }
+.rp-dv-source.is-norm {
+  background: var(--ok-bg); border-color: color-mix(in srgb, var(--ok) 40%, transparent); color: var(--ok-t);
+}
+.rp-dv-source.is-expert {
+  background: var(--warn-bg); border-color: color-mix(in srgb, var(--warn) 42%, transparent); color: var(--warn-t);
+}
 @media (max-width: 900px) {
-  .rp-calc-dv-table th:nth-child(n + 6),
-  .rp-calc-dv-table td:nth-child(n + 6) { display: none; }
+  .rp-calc-dv-card__grid { grid-template-columns: repeat(2, 1fr); }
 }
 .rp-calc-dv-empty { margin: 0 0 10px; font-size: 12px; color: var(--t2); line-height: 1.5; }
 .rp-calc-dv-plan { margin-left: auto; }

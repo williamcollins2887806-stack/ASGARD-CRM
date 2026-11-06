@@ -327,6 +327,16 @@ function normalizeDv(ai, catalog) {
   return {
     decision_recommend: ['go', 'no_go', 'need_info'].includes(raw.decision_recommend)
       ? raw.decision_recommend : 'need_info',
+    // Поля для карточки ТО. Раньше промпт их не просил, и РП видел пустые
+    // «Суть для ТО», «Риски», «Выполнимость» — приходилось заполнять руками.
+    summary: String(raw.summary || '').trim() || null,
+    volume_summary: String(raw.volume_summary || '').trim() || null,
+    feasibility: ['yes', 'no', 'conditional'].includes(String(raw.feasibility))
+      ? raw.feasibility : null,
+    feasibility_note: String(raw.feasibility_note || '').trim() || null,
+    competition: ['low', 'medium', 'high', 'unknown'].includes(String(raw.competition))
+      ? raw.competition : null,
+    risks: String(raw.risks || '').trim() || null,
     positions,
     questions_for_customer: Array.isArray(raw.questions_for_customer)
       ? raw.questions_for_customer.filter(Boolean).map(String) : [],

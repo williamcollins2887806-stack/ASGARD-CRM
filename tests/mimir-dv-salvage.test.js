@@ -48,5 +48,26 @@ check('спасение не ломается на кавычках внутри
   assert.ok(r.positions[0].name.includes('К-1'));
 });
 
+check('обрезанный JSON: суть и риски не теряются', () => {
+  // Модель пишет summary/risks ДО positions, поэтому при обрыве они в тексте
+  // уже есть. Раньше спасатель их выбрасывал — карточка была пустой
+  // при живых позициях (прод 06.11).
+  const partial = '{"decision_recommend":"go",' +
+    '"summary":"Два бункера по 875 м³, снимаем отбойным молотком.",' +
+    '"volume_summary":"1750 м³",' +
+    '"feasibility":"conditional",' +
+    '"feasibility_note":"нужен наряд-допуск",' +
+    '"risks":"Работа внутри аппарата",' +
+    '"positions":[{"name":"Бункер 1","volume":875,"unit":"м³"},{"name":"обор'; 
+  const r = s.safeJson(partial);
+  assert.ok(r && r._salvaged, 'должен быть спасён');
+  assert.ok(String(r.summary).includes('875'), 'суть потеряна: ' + r.summary);
+  assert.strictEqual(r.volume_summary, '1750 м³');
+  assert.strictEqual(r.feasibility, 'conditional');
+  assert.strictEqual(r.feasibility_note, 'нужен наряд-допуск');
+  assert.ok(String(r.risks).includes('внутри'), 'риски потеряны');
+  assert.strictEqual(r.positions.length, 1);
+});
+
 console.log(`\nитог: ${pass} PASS, ${fail} FAIL`);
 process.exitCode = fail ? 1 : 0;

@@ -23,10 +23,25 @@ function check(name, fn) {
 }
 
 // ── Анализ ─────────────────────────────────────────────────────────────────
-check('анализ: ДВ с позициями и колонками', () => {
+check('анализ: ДВ позициями-карточками', () => {
   assert.ok(REVIEW.includes('renderDvBlock'), 'нет renderDvBlock');
-  for (const col of ['Позиция', 'Аппараты', 'Объём', 'Метод', 'Отложения', 'Технология', 'Источник', 'Статус']) {
-    assert.ok(REVIEW.includes(col), 'нет колонки ' + col);
+  assert.ok(REVIEW.includes('rp-dv-card'), 'нет карточки позиции');
+  for (const part of ['rp-dv-card__num', 'rp-dv-card__grid', 'rp-dv-card__tech', 'rp-dv-card__src']) {
+    assert.ok(REVIEW.includes(part), 'нет блока ' + part);
+  }
+  for (const label of ['Ведомость объёмов', 'Метод', 'Отложения', 'Чем работаем', 'Источник']) {
+    assert.ok(REVIEW.includes(label), 'нет подписи ' + label);
+  }
+  assert.ok(!REVIEW.includes('rp-review-dv-table'), 'старая сжатая таблица осталась');
+});
+
+check('анализ: новые поля от модели (суть, риски, выполнимость)', () => {
+  for (const k of ['d.summary', 'd.risks', 'd.feasibility', 'd.volume_summary', 'd.competition']) {
+    assert.ok(REVIEW.includes(k), 'не пишется ' + k);
+  }
+  const prompt = fs.readFileSync(path.join(ROOT, 'templates/prompts/PROMPT-dv-v1.md'), 'utf8');
+  for (const k of ['"summary"', '"risks"', '"feasibility"', '"volume_summary"']) {
+    assert.ok(prompt.includes(k), 'промпт не просит ' + k);
   }
 });
 
@@ -58,10 +73,12 @@ check('просчёт: вкладка «Объёмы» есть', () => {
 });
 
 check('просчёт: ДВ показывает людей, сроки и источник', () => {
-  for (const col of ['Люди', 'Сутки', 'Источник']) {
-    assert.ok(CALC.includes(col), 'нет колонки ' + col);
+  for (const col of ['Люди', 'Сутки']) {
+    assert.ok(CALC.includes(col), 'нет подписи ' + col);
   }
-  assert.ok(CALC.includes('source_ref'), 'нет ссылки на норму');
+  assert.ok(CALC.includes('rp-calc-dv-card'), 'нет карточки позиции в просчёте');
+  assert.ok(CALC.includes('rp-dv-source'), 'нет пометки источника');
+  assert.ok(CALC.includes('source_ref'), 'нет обоснования');
   assert.ok(CALC.includes('is-expert'), 'нет пометки экспертной оценки');
 });
 

@@ -107,8 +107,28 @@ function salvagePartialDv(body) {
   }
 
   if (!positions.length) return null;
+
+  /**
+   * Строковое поле из обрезанного JSON.
+   * Модель пишет summary, volume_summary и risks ДО массива positions,
+   * поэтому при упоре в лимит токенов они уже есть в тексте, но терялись:
+   * карточка показывала пустую «Суть для ТО» при живых позициях.
+   */
+  function strField(name) {
+    const re = new RegExp('"' + name + '"\\s*:\\s*"((?:[^"\\\\]|\\\\.)*)"');
+    const m = re.exec(text);
+    if (!m) return null;
+    try { return JSON.parse('"' + m[1] + '"'); } catch (_) { return m[1]; }
+  }
+
   return {
     decision_recommend: dec,
+    summary: strField('summary'),
+    volume_summary: strField('volume_summary'),
+    feasibility: strField('feasibility'),
+    feasibility_note: strField('feasibility_note'),
+    competition: strField('competition'),
+    risks: strField('risks'),
     positions,
     questions_for_customer: [],
     _salvaged: true,

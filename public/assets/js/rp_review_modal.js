@@ -175,23 +175,37 @@ window.AsgardRpReviewModal = (function () {
   }
 
   /**
-   * ДВ в карточке анализа: позиции с объёмом, методом, технологией и источником.
-   * Раньше всё это схлопывалось в одну строку текста, и проверить, что именно
-   * разобрал Мимир, было нельзя.
+   * ДВ в карточке анализа: позиции карточками, а не сжатой таблицей.
+   *
+   * Сжатая таблица на 8 колонок в модалке 900 px нечитаема: позиция
+   * переносится по слову, технология — в 4 строки. Здесь каждая позиция —
+   * блок: слева номер и название с объёмом, справа метод, отложения, статус,
+   * ниже технология и источник. На экране 1–2 позиции целиком, без скролла
+   * по горизонтали.
    */
   function renderDvBlock(rj) {
     const positions = Array.isArray(rj && rj.dv_positions) ? rj.dv_positions : [];
     if (!positions.length) return '';
+
+    const foulingMap = { light: 'лёгкие', medium: 'средние', heavy: 'тяжёлые' };
+    const foulingCls = { light: 'is-light', medium: 'is-medium', heavy: 'is-heavy' };
+    const agreed = positions.filter((p) => p.approved).length;
+    const blocked = positions.filter((p) => p.needs_classification).length;
+
     let h = '<div class="rp-review-dv-block">' +
-      '<div class="rp-review-analysis-ref-head"><strong>Ведомость объёмов</strong>' +
-      '<span class="muted">' + positions.length + ' позиц. · что разобрал Мимир</span></div>';
-    h += '<div class="rp-review-dv-scroll"><table class="rp-review-dv-table"><thead><tr>' +
-      '<th>Позиция</th><th>Аппараты</th><th>Объём</th><th>Метод</th>' +
-      '<th>Отложения</th><th>Технология</th><th>Источник</th><th>Статус</th>' +
-      '</tr></thead><tbody>';
-    positions.forEach((p) => {
+      '<div class="rp-review-dv-head">' +
+        '<div><strong>Ведомость объёмов</strong>' +
+        '<span class="rp-review-dv-sub">что разобрал Мимир по документам</span></div>' +
+        '<div class="rp-review-dv-metrics">' +
+          '<span><b>' + positions.length + '</b> позиц.</span>' +
+          '<span' + (agreed ? '' : ' class="is-dim"') + '><b>' + agreed + '</b> согласовано</span>' +
+          (blocked ? '<span class="is-warn"><b>' + blocked + '</b> без метода</span>' : '') +
+        '</div>' +
+      '</div><div class="rp-review-dv-list">';
+
+    positions.forEach((p, idx) => {
       const objects = Array.isArray(p.objects)
-        ? p.objects.map((o) => o.tag || o.type).filter(Boolean).join(', ') : '';
+        ? p.objects.map((o) => o.tag || o.type).filter(Boolean) : [];
       const method = [p.category_name, p.method_name].filter(Boolean).join(' · ')
         || [p.category_code, p.method_code].filter(Boolean).join('.');
       const src = p.source_ref
@@ -202,20 +216,40 @@ window.AsgardRpReviewModal = (function () {
         : (p.approved
           ? '<span class="rp-dv-st rp-dv-st--ok">согласовано</span>'
           : '<span class="rp-dv-st">проверено</span>');
-      const foulingMap = { light: 'лёгкие', medium: 'средние', heavy: 'тяжёлые' };
-      h += '<tr>' +
-        '<td class="rp-dv-name">' + esc(p.name || '—') + '</td>' +
-        '<td>' + esc(objects || '—') + '</td>' +
-        '<td class="rp-dv-num">' + (p.volume != null ? esc(String(p.volume)) : '—') +
-          ' ' + esc(p.unit || '') + '</td>' +
-        '<td>' + esc(method || '—') + '</td>' +
-        '<td>' + esc(foulingMap[p.fouling] || '—') + '</td>' +
-        '<td class="rp-dv-tech">' + esc(p.tech_equip || '—') + '</td>' +
-        '<td class="rp-dv-src" title="' + esc(src) + '">' + esc(src || '—') + '</td>' +
-        '<td>' + st + '</td>' +
-        '</tr>';
+
+      h += '<article class="rp-dv-card' + (p.approved ? ' is-approved' : '') + '">' +
+        '<div class="rp-dv-card__top">' +
+          '<span class="rp-dv-card__num">' + (idx + 1) + '</span>' +
+          '<div class="rp-dv-card__title">' +
+            '<h4>' + esc(p.name || '—') + '</h4>' +
+            '<div class="rp-dv-card__meta">' +
+              '<span class="rp-dv-vol">' +
+                (p.volume != null ? esc(String(p.volume)) : '—') +
+                ' <i>' + esc(p.unit || '') + '</i></span>' +
+              (objects.length ? '<span class="rp-dv-tags">' +
+                objects.slice(0, 4).map((t) => '<b>' + esc(t) + '</b>').join('') +
+                (objects.length > 4 ? '<b>+' + (objects.length - 4) + '</b>' : '') +
+              '</span>' : '') +
+            '</div>' +
+          '</div>' +
+          '<div class="rp-dv-card__side">' + st + '</div>' +
+        '</div>' +
+        '<dl class="rp-dv-card__grid">' +
+          '<div><dt>Метод</dt><dd>' + esc(method || '—') + '</dd></div>' +
+          '<div><dt>Отложения</dt><dd><span class="rp-dv-foul ' +
+            (foulingCls[p.fouling] || '') + '">' +
+            esc(foulingMap[p.fouling] || 'не указаны') + '</span></dd></div>' +
+        '</dl>' +
+        (p.tech_equip
+          ? '<div class="rp-dv-card__tech"><span>Чем работаем</span><p>' +
+            esc(p.tech_equip) + '</p></div>'
+          : '<div class="rp-dv-card__tech is-empty"><span>Чем работаем</span><p>не указано</p></div>') +
+        (src ? '<div class="rp-dv-card__src" title="' + esc(src) + '">' +
+          '<span>Источник</span> ' + esc(src) + '</div>' : '') +
+        '</article>';
     });
-    h += '</tbody></table></div></div>';
+
+    h += '</div></div>';
     return h;
   }
 
@@ -903,13 +937,20 @@ window.AsgardRpReviewModal = (function () {
         h += presets;
       }
 
-      if (decision === 'submit') {
-        if (mode === 'analysis' || (mode === 'calc' && !hasSnap)) {
+      // Оценка нужна ДО решения: дежурный смотрит выполнимость и риски, чтобы
+      // решить, подаём или нет. Раньше блок рисовался только при decision=submit,
+      // и до нажатия «Подаём» все поля стояли пустые (прод 06.11).
+      if (mode === 'analysis' || (mode === 'calc' && !hasSnap)) {
         const assess = section('assess', 'Оценка и рекомендация', (() => {
           let ih = '<div class="rp-review-field-row">';
           ih += '<div class="rp-review-field"><label>Выполнимость' + (!isLocked ? ' <span class="req">*</span>' : '') + '</label>';
           ih += isLocked ? renderRo('', feasibilityLabel(reportJson.feasibility)) :
             renderSeg('feasibility', [{ id: 'yes', label: 'Да' }, { id: 'conditional', label: 'Условно' }, { id: 'no', label: 'Нет' }], reportJson.feasibility, isLocked);
+          // Пояснение от модели: почему «условно» или «нет». Без него статус
+          // не даёт ТО никакой информации.
+          if (reportJson.feasibility_note) {
+            ih += '<p class="rp-feasibility-note">' + esc(reportJson.feasibility_note) + '</p>';
+          }
           ih += '</div><div class="rp-review-field"><label>Конкуренция</label>';
           ih += isLocked ? renderRo('', competitionLabel(reportJson.competition)) :
             renderSeg('competition', [{ id: 'low', label: 'Низкая' }, { id: 'medium', label: 'Средняя' }, { id: 'high', label: 'Высокая' }], reportJson.competition, isLocked);
@@ -936,6 +977,9 @@ window.AsgardRpReviewModal = (function () {
           ih += '<div class="rp-review-field"><label>Суть для ТО' + (!isLocked ? ' <span class="req">*</span>' : '') + '</label>';
           ih += isLocked ? renderRo('', reportJson.summary) :
             '<textarea class="inp" id="rpSummary" rows="3">' + esc(reportJson.summary || '') + '</textarea>';
+          ih += '</div><div class="rp-review-field"><label>Объём коротко</label>';
+          ih += isLocked ? renderRo('', reportJson.volume_summary) :
+            '<textarea class="inp" id="rpVolumeSummary" rows="2">' + esc(reportJson.volume_summary || '') + '</textarea>';
           ih += '</div><div class="rp-review-field"><label>Риски</label>';
           ih += isLocked ? renderRo('', reportJson.risks) :
             '<textarea class="inp" id="rpRisks" rows="2">' + esc(reportJson.risks || '') + '</textarea>';
@@ -946,7 +990,6 @@ window.AsgardRpReviewModal = (function () {
           return ih;
         })());
         h += assess;
-        }
 
         if (mode === 'calc') {
           h += section('scope', 'Объём и сроки', (() => {
@@ -1376,9 +1419,12 @@ window.AsgardRpReviewModal = (function () {
         const on = seg.querySelector('button.on');
         if (on) reportJson[name] = on.dataset.val;
       });
-      if (decision === 'submit') {
+      // Оценка есть всегда (она нужна до решения), поэтому и сохраняем всегда.
+      {
         const summaryEl = document.getElementById('rpSummary');
         if (summaryEl) reportJson.summary = summaryEl.value || '';
+        const volEl = document.getElementById('rpVolumeSummary');
+        if (volEl) reportJson.volume_summary = volEl.value || '';
         const risksEl = document.getElementById('rpRisks');
         if (risksEl) reportJson.risks = risksEl.value || '';
         const recoEl = document.getElementById('rpRecommendation');
@@ -1625,6 +1671,15 @@ window.AsgardRpReviewModal = (function () {
                 reportJson.contact = d.contact || null;
                 reportJson.decision_recommend = d.decision_recommend || 'need_info';
 
+                // Готовые формулировки от модели: суть, объём, выполнимость,
+                // риски. Раньше промпт их не просил — поля стояли пустые.
+                if (d.summary) reportJson.summary = String(d.summary).trim();
+                if (d.volume_summary) reportJson.volume_summary = String(d.volume_summary).trim();
+                if (d.feasibility) reportJson.feasibility = d.feasibility;
+                if (d.feasibility_note) reportJson.feasibility_note = String(d.feasibility_note).trim();
+                if (d.competition) reportJson.competition = d.competition;
+                if (d.risks) reportJson.risks = String(d.risks).trim();
+
                 if (positions.length) {
                   const scopeText = positions.map((p) =>
                     `${p.name} — ${p.volume} ${p.unit || ''}`.trim()).join('; ');
@@ -1652,16 +1707,21 @@ window.AsgardRpReviewModal = (function () {
                   if (Array.isArray(d.questions_for_customer) && d.questions_for_customer.length) {
                     riskLines.push('Открытые вопросы к заказчику: ' + d.questions_for_customer.slice(0, 3).join('; '));
                   }
-                  reportJson.risks = riskLines.join('\n');
+                  reportJson.risks = reportJson.risks || riskLines.join('\n');
 
                   const total = positions.length;
                   const decisionMap = { go: 'submit', no_go: 'reject', need_info: 'pending' };
                   if (decisionMap[d.decision_recommend]) decision = decisionMap[d.decision_recommend];
-                  reportJson.summary = reportJson.summary
-                    || `Мимир разобрал ТЗ: ${total} позиц. ` +
-                       (d.decision_recommend === 'go' ? 'Данных достаточно для участия.'
-                         : d.decision_recommend === 'no_go' ? 'Рекомендуется не участвовать.'
-                           : 'Нужны уточнения у заказчика.');
+                  // Суть: если модель не дала — собираем честно из позиций,
+                  // а не пишем «разобрал N позиций» (это не суть для ТО).
+                  if (!reportJson.summary) {
+                    const names = positions.slice(0, 3).map((p) => p.name).filter(Boolean);
+                    reportJson.summary = (names.join('; ') || 'Позиции по ТЗ') +
+                      ` — всего ${total} позиц.` +
+                      (d.decision_recommend === 'go' ? ' Данных достаточно для участия.'
+                        : d.decision_recommend === 'no_go' ? ' Рекомендуется не участвовать.'
+                          : ' Нужны уточнения у заказчика.');
+                  }
                 }
                 rerender();
                 // Сохраняем карточку на сервер: иначе разбор живёт только до

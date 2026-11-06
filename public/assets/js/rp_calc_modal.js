@@ -793,32 +793,53 @@ window.AsgardRpCalcModal = (function () {
     }
 
     const foulingMap = { light: 'лёгкие', medium: 'средние', heavy: 'тяжёлые' };
+    const foulingCls = { light: 'is-light', medium: 'is-medium', heavy: 'is-heavy' };
     const srcMap = { norm: 'норма', expert: 'эксперт', analog: 'аналог', history: 'история' };
-    let rows = '';
-    positions.forEach((p) => {
-      const c = byPos[p.id] || {};
-      const src = c.source ? srcMap[c.source] || c.source : '—';
-      const srcCls = c.source === 'norm' ? ' is-norm' : (c.source === 'expert' ? ' is-expert' : '');
-      const objects = Array.isArray(p.objects)
-        ? p.objects.map((o) => o.tag || o.type).filter(Boolean).join(', ') : '';
-      rows += '<tr data-dv-pos="' + esc(p.id) + '">' +
-        '<td class="name">' + esc(p.name || '—') + '</td>' +
-        '<td>' + esc(objects || '—') + '</td>' +
-        '<td class="num">' + (p.volume != null ? esc(String(p.volume)) : '—') + ' ' + esc(p.unit || '') + '</td>' +
-        '<td>' + esc(p.method_name
-          || [p.category_name, p.method_name].filter(Boolean).join(' · ')
-          || [p.category_code, p.method_code].filter(Boolean).join('.')) + '</td>' +
-        '<td>' + esc(foulingMap[p.fouling] || '—') + '</td>' +
-        '<td class="tech">' + esc(p.tech_equip || '—') + '</td>' +
-        '<td class="num">' + (c.people != null ? esc(String(c.people)) : '—') + '</td>' +
-        '<td class="num">' + (c.days != null ? esc(String(c.days)) : '—') + '</td>' +
-        '<td><span class="rp-dv-source' + srcCls + '" title="' + esc(c.explain || '') + '">' +
-          esc(src) + (c.source_ref ? ' · ' + esc(c.source_ref) : '') + '</span></td>' +
-        '</tr>';
-    });
-
     const plan = rj.calc_plan || {};
     const hasPlan = Array.isArray(calc) && calc.length > 0;
+
+    // Позиции — карточками, как в анализе: на 9 колонок в модалке не читается.
+    let cards = '';
+    positions.forEach((p, idx) => {
+      const c = byPos[p.id] || {};
+      const src = c.source ? srcMap[c.source] || c.source : null;
+      const srcCls = c.source === 'norm' ? ' is-norm' : (c.source === 'expert' ? ' is-expert' : '');
+      const objects = Array.isArray(p.objects)
+        ? p.objects.map((o) => o.tag || o.type).filter(Boolean) : [];
+      const method = (p.method_name && p.category_name
+        ? p.category_name + ' · ' + p.method_name
+        : (p.method_name || p.category_name
+          || [p.category_code, p.method_code].filter(Boolean).join('.'))) || null;
+
+      cards += '<article class="rp-calc-dv-card" data-dv-pos="' + esc(p.id) + '">' +
+        '<div class="rp-calc-dv-card__top">' +
+          '<span class="rp-calc-dv-card__num">' + (idx + 1) + '</span>' +
+          '<div class="rp-calc-dv-card__title"><h4>' + esc(p.name || '—') + '</h4>' +
+            '<div class="rp-calc-dv-card__meta">' +
+              '<b>' + (p.volume != null ? esc(String(p.volume)) : '—') +
+              ' <i>' + esc(p.unit || '') + '</i></b>' +
+              (objects.length ? '<span>' +
+                objects.slice(0, 4).map((t) => '<em>' + esc(t) + '</em>').join('') + '</span>' : '') +
+            '</div>' +
+          '</div>' +
+          (src ? '<span class="rp-dv-source' + srcCls + '" title="' + esc(c.explain || '') + '">' +
+            esc(src) + '</span>' : '') +
+        '</div>' +
+        '<dl class="rp-calc-dv-card__grid">' +
+          '<div><dt>Метод</dt><dd>' + esc(method || '—') + '</dd></div>' +
+          '<div><dt>Отложения</dt><dd><span class="rp-dv-foul ' +
+            (foulingCls[p.fouling] || '') + '">' + esc(foulingMap[p.fouling] || 'не указаны') + '</span></dd></div>' +
+          '<div><dt>Люди</dt><dd>' + (c.people != null ? esc(String(c.people)) : '—') + '</dd></div>' +
+          '<div><dt>Сутки</dt><dd>' + (c.days != null ? esc(String(c.days)) : '—') + '</dd></div>' +
+        '</dl>' +
+        (p.tech_equip
+          ? '<div class="rp-calc-dv-card__tech"><span>Чем работаем</span><p>' + esc(p.tech_equip) + '</p></div>'
+          : '') +
+        (c.source_ref ? '<div class="rp-calc-dv-card__ref">Обоснование: ' +
+          esc(c.source_ref) + '</div>' : '') +
+        '</article>';
+    });
+
     return '<div class="rp-calc-panel' + active + '" data-panel="dv">' +
       '<div class="rp-calc-card">' +
       '<div class="rp-calc-card__head">Объёмы работ · ' + positions.length + ' позиц.' +
@@ -833,11 +854,8 @@ window.AsgardRpCalcModal = (function () {
           '</div>'
         : '<p class="rp-calc-dv-empty">План ещё не считан. Нажмите «Рассчитать людей и сроки» — ' +
           'Мимир подберёт бригаду и срок по каждой позиции и покажет, откуда взял цифру.</p>') +
-      '<div class="rp-calc-dv-scroll"><table class="rp-calc-dv-table"><thead><tr>' +
-        '<th>Позиция</th><th>Аппараты</th><th>Объём</th><th>Метод</th><th>Отложения</th>' +
-        '<th>Технология</th><th>Люди</th><th>Сутки</th><th>Источник</th>' +
-      '</tr></thead><tbody>' + rows + '</tbody></table></div>' +
-      '<p class="rp-calc-hint">Источник «норма» — из справочника (код показан рядом). ' +
+      '<div class="rp-calc-dv-cards">' + cards + '</div>' +
+      '<p class="rp-calc-hint">Источник «норма» — из справочника. ' +
         '«эксперт» — оценка Мимира, при сохранении она уйдёт в калибровку.</p>' +
       '</div></div>';
   }
