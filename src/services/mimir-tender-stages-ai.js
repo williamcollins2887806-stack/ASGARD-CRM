@@ -290,45 +290,96 @@ async function generateDv(p) {
     history_block: o.history_block || '(истории нет)'
   });
 
-  const user = 'Составь ведомость объёмов по этим данным. Верни ТОЛЬКО JSON по схеме.';
+  let user = 'Составь ведомость объёмов по этим данным. Верни ТОЛЬКО JSON по схеме.';
 
-  let res;
-  try {
-    // response_format json_object + отключённый reasoning: иначе DeepSeek
-    // уходит в 8000 токенов рассуждений и возвращает пустой content
-    // (finish_reason=length). Проверено на проде 06.11.2026.
-    //
-    // maxTokens поднят до 32000: на тендере 2133 было 553 тыс. символов
-    // документов, и при 12000 ответ обрывался на середине массива позиций.
-    res = await o.aiProvider.complete({
-      system,
-      messages: [{ role: 'user', content: user }],
-      maxTokens: 32000,
-      temperature: 0.15,
-      responseFormat: { type: 'json_object' },
-      reasoning: { enabled: false }
-    });
-  } catch (e) {
-    return { ok: false, error: 'Модель недоступна: ' + e.message };
+  // ── Генерация порциями ─────────────────────────────────────────────────────
+  // Дефект 06.11 (тендер 2138, дефектная ведомость на 673 позиции):
+  // ответ упирался в 32000 токенов, salvage спасал начало, а остальные
+  // позиции терялись молча. Через API это давало 0 (модель успевала
+  // вернуть только заголовок), при прямом вызове — 155 из 673.
+  //
+  // Теперь при обрезке делаем ДОБОР: просим модель продолжить с той позиции,
+  // на которой оборвалась, пока не придём к финалу или не кончатся попытки.
+  const MAX_ROUNDS = 8;
+  const allPositions = [];
+  let firstDv = null;
+  let lastRaw = '';
+  let totalUsage = { inputTokens: 0, outputTokens: 0 };
+  let salvaged = false;
+  let usedModel = null;
+  let usedProvider = null;
+  let rounds = 0;
+
+  for (let round = 0; round < MAX_ROUNDS; round += 1) {
+    let res;
+    try {
+      res = await o.aiProvider.complete({
+        system,
+        messages: [{ role: 'user', content: user }],
+        maxTokens: 32000,
+        temperature: 0.15,
+        responseFormat: { type: 'json_object' },
+        reasoning: { enabled: false }
+      });
+    } catch (e) {
+      return { ok: false, error: 'Модель недоступна: ' + e.message };
+    }
+    rounds += 1;
+    if (res && res.model) usedModel = res.model;
+    if (res && res.provider) usedProvider = res.provider;
+
+    if (res && res.usage) {
+      totalUsage.inputTokens += Number(res.usage.inputTokens) || 0;
+      totalUsage.outputTokens += Number(res.usage.outputTokens) || 0;
+    }
+    lastRaw = String((res && res.text) || '');
+
+    const parsed = safeJson(lastRaw);
+    if (!parsed) {
+      // Первый круг без разбора JSON — это провал. Дальше — обрываем добор.
+      if (!firstDv) {
+        return {
+          ok: false,
+          error: 'Модель вернула ответ не по схеме — попробуйте ещё раз',
+          raw: lastRaw.slice(0, 500)
+        };
+      }
+      break;
+    }
+
+    const dvRound = stages.normalizeDv(parsed, catalog);
+    if (!firstDv) firstDv = dvRound;
+
+    const got = (dvRound.positions || []).length;
+    for (const p of (dvRound.positions || [])) allPositions.push(p);
+
+    // Ответ полный — дальше добирать нечего.
+    if (!parsed._salvaged) break;
+    salvaged = true;
+    if (!got) break;
+
+    // Просим продолжить с последней полученной позиции.
+    const last = allPositions[allPositions.length - 1] || {};
+    user = `Продолжи ведомость с позиции «${String(last.name || '').slice(0, 80)}» (её уже учли, не повторяй).
+Верни ТОЛЬКО JSON с массивом positions — остальные позиции, которых ещё нет.
+Уже собрано ${allPositions.length} позиций. Не начинай сначала.`;
   }
 
-  const parsed = safeJson(res && res.text);
-  if (!parsed) {
-    return {
-      ok: false,
-      error: 'Модель вернула ответ не по схеме — попробуйте ещё раз',
-      raw: (res && res.text || '').slice(0, 500)
-    };
+  if (!firstDv) {
+    return { ok: false, error: 'Модель не вернула разбор — попробуйте ещё раз', raw: lastRaw.slice(0, 500) };
   }
 
-  const dv = stages.normalizeDv(parsed, catalog);
+  // Собираем итоговую ДВ: поля-описания из первого круга, позиции — все.
+  const dv = Object.assign({}, firstDv, { positions: allPositions });
+
   return {
     ok: true,
     dv,
-    salvaged: !!parsed._salvaged,
-    model: res.model || null,
-    provider: res.provider || null,
-    tokens: res.usage || null
+    salvaged,
+    rounds,
+    model: usedModel,
+    provider: usedProvider,
+    tokens: totalUsage
   };
 }
 

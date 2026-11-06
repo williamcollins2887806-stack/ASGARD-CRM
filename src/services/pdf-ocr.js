@@ -777,6 +777,13 @@ function resolveDocumentPath(doc) {
     }
   };
 
+  // ВАЖНО: file_url — основной путь для файлов, пришедших почтой.
+  // Дефект 06.11 (тендер 2121): у документа «Карточка ДБК.doc» файл лежал
+  // в /uploads/mail/2026-10-20/<uuid>/…, и этот путь хранился ТОЛЬКО в
+  // file_url. Резолвер смотрел download_url и filename → «файл не найден»,
+  // документ навсегда остался failed, и тендер закрылся как «нет данных».
+  // Модуль document_parser.js такой фикс получил ещё 20.06 — сюда не доехал.
+  pushCand(doc.file_url);
   pushCand(doc.download_url);
   pushCand(doc.filename);
   if (doc.filename && String(doc.filename).includes('/')) {

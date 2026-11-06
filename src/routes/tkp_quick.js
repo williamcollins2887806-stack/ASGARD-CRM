@@ -634,10 +634,29 @@ async function routes(fastify, options) {
 
       if (session.tender_id) {
         try {
+          // Дефект 06.11 (тендер 2138): стояло LIMIT 30 с сортировкой
+          // created_at DESC. У тендера 68 документов, и дефектная ведомость
+          // на 673 позиции просто не попадала в первые 30 — модель получала
+          // только договоры и формы, отвечала 0 позиций.
+          //
+          // Теперь: лимит по ВАЖНОСТИ, а не по дате загрузки. Документы,
+          // которые дают объёмы (ВОР, ведомость, ТЗ), идут первыми.
+          // Лимит поднят до 200 — 68 документов проходят целиком.
           const { rows } = await db.query(
             `SELECT original_name, ocr_text, size FROM documents
-              WHERE tender_id = $1 AND COALESCE(ocr_text, '') <> ''
-              ORDER BY created_at DESC LIMIT 30`,
+              WHERE tender_id = $1
+                AND COALESCE(ocr_text, '') <> ''
+                AND COALESCE(ocr_status, 'done') <> 'failed'
+              ORDER BY
+                CASE
+                  WHEN original_name ~* 'ведомост|дефектн|вор\\b|объ[её]м' THEN 0
+                  WHEN original_name ~* 'техническ|тех.?зада|тз\\b|задан' THEN 1
+                  WHEN original_name ~* 'смет|спецификац|перечень' THEN 2
+                  WHEN original_name ~* 'договор|контракт|шаблон|форма' THEN 8
+                  ELSE 4
+                END,
+                LENGTH(ocr_text) DESC
+              LIMIT 200`,
             [session.tender_id]
           );
           const known = new Set(documents.map((d) => d.original_name));
@@ -752,7 +771,26 @@ async function routes(fastify, options) {
         return reply.code(502).send({ ok: false, error: gen.error, raw: gen.raw || null });
       }
 
-      // 3. Норма-превью по каждой позиции + привязка к технологии.
+      // 3. Паспортное обогащение: если объём не задан, но марка аппарата
+      // известна (РВС-5000, ПСВ-315, КВГМ-100), объём берётся по паспорту.
+      // Требование РП 07.11: отсутствие ВОР не должно быть блокером —
+      // бывает только ТЗ, и объёмы надо вывести из оборудования.
+      // Незнакомые марки ищем веб-поиском. Всё найденное помечается
+      // confidence: low и требует подтверждения РП.
+      let passportEnriched = 0;
+      try {
+        const passport = require('../services/equipment-passport');
+        const res = await passport.enrichPositions(gen.dv.positions, {
+          aiProvider,
+          allowWeb: true
+        });
+        gen.dv.positions = res.positions;
+        passportEnriched = res.enriched;
+      } catch (e) {
+        request.log.warn({ err: e }, 'паспортное обогащение не выполнено');
+      }
+
+      // 4. Норма-превью по каждой позиции + привязка к технологии.
       const positions = [];
       for (const pos of gen.dv.positions) {
         const enriched = Object.assign({}, pos);
@@ -823,6 +861,12 @@ async function routes(fastify, options) {
         }),
         contact: stageSvc.extractContact(tzText + '\n' + documents.map((d) => d.text || '').join('\n')),
         blocked: gen.dv.blocked,
+        // Сколько позиций получили объём по паспорту оборудования
+        // (когда ведомости объёмов в тендере нет).
+        passport_enriched: passportEnriched,
+        // Сколько раундов заняла генерация: на больших ведомостях модель
+        // отвечает порциями, и РП должен видеть, что разбор шёл частями.
+        generation_rounds: gen.rounds || 1,
         // Срок и режим работ: РП видит, что нашлось в ТЗ и документах.
         schedule: sched,
         // История заказчика: видно, подтянулась ли и сколько прошлых тендеров.
