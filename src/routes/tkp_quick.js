@@ -853,23 +853,38 @@ async function routes(fastify, options) {
     const isM3 = u.includes('м³') || u.includes('м3');
     const isM2 = u.includes('м²') || u.includes('м2');
 
+    // Параметры пересчёта из ДВ: диаметр, длина трубки, толщина слоя.
+    // Дефект 06.11: здесь стояли выдуманные diameter_mm: 25, length_m: 6,
+    // dn_mm: 159 для ВСЕХ позиций. Модель уже отдаёт реальные параметры,
+    // их надо брать, а не подставлять «средние по отрасли».
+    const cp = pos.conversion_params || {};
+    const realDn = Number(cp.dn_mm) > 0 ? Number(cp.dn_mm) : null;
+    const realLen = Number(cp.length_m) > 0 ? Number(cp.length_m) : null;
+    const realThick = Number(cp.thickness_mm) > 0 ? Number(cp.thickness_mm) : null;
+
     // Объёмы и площади — одинаковые имена во многих схемах.
     const base = {};
     if (isM3) base.circuit_m3 = v;
     if (isM3) base.volume_m3 = v;
     if (isM2) base.surface_m2 = v;
+    if (realThick) base.thickness_mm = realThick;
 
-    // Трубки: нужны Ø и длина, иначе норма не считает.
+    // Трубки: нужны Ø и длина. Берём реальные из ДВ; если их нет — норма
+    // сама скажет «укажите длину», а не посчитает по выдуманным 6 метрам.
     if (u.includes('труб')) {
-      return Object.assign({}, base, { tubes: v, diameter_mm: 25, length_m: 6 });
+      return Object.assign({}, base, {
+        tubes: v,
+        diameter_mm: realDn,
+        length_m: realLen
+      });
     }
-    if (u.includes('стык')) return Object.assign({}, base, { joints: v, dn_mm: 159 });
+    if (u.includes('стык')) return Object.assign({}, base, { joints: v, dn_mm: realDn });
     // ВАЖНО: «м³»/«м²» проверяем ДО общей «м». Иначе объём совпадает с «м»
     // и уходит как длина — из-за этого у 41 позиции тендера 2131 норма
     // не находилась и весь план считался «экспертом» (06.11).
     if (!isM3 && !isM2) {
       if (u.includes('цикл')) return Object.assign({}, base, { cycles: v || 2 });
-      if (u.includes('м')) return Object.assign({}, base, { length_m: v, dn_mm: 159 });
+      if (u.includes('м')) return Object.assign({}, base, { length_m: v, dn_mm: realDn });
     }
 
     // Дополняем обязательные поля, которых нет в ДВ, разумными значениями:
