@@ -197,7 +197,10 @@
   function toast(msg, ok) {
     const text = friendlyErrorMessage(msg, typeof msg === 'string' ? msg : 'Ошибка');
     if (window.AsgardUI && typeof AsgardUI.toast === 'function') {
-      AsgardUI.toast(text, ok === false ? 'error' : 'success');
+      /* AsgardUI.toast(title, msg, type). Раньше тип передавали во 2-й аргумент,
+         и в подзаголовке тоста печаталось «success» / «error» — отсюда
+         «Ссылка скопирована / success». */
+      AsgardUI.toast(text, '', ok === false ? 'err' : 'ok');
       return;
     }
     let el = document.getElementById('ting-dom-toast');
@@ -1380,17 +1383,60 @@
       return 'Камера не поддерживает выбранное разрешение. Пробуем ещё раз в базовом режиме.';
     }
     if (/Timeout starting video|Timed out|timeout/i.test(raw)) {
+      if (isStandalonePwa()) {
+        return 'Камера не ответила за 30 секунд. Откройте окно браузера — там может висеть запрос разрешения на камеру — и нажмите «Камера» снова.';
+      }
       return 'Камера не успела включиться. Закройте другие приложения с камерой и попробуйте снова.';
     }
     return 'Камера не включилась' + (raw ? ': ' + raw : '.');
   }
 
+  /** Идёт ли приложение как установленная PWA (там диалог разрешения часто за окном). */
+  function isStandalonePwa() {
+    try {
+      if (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) return true;
+      if (window.matchMedia && window.matchMedia('(display-mode: window-controls-overlay)').matches) return true;
+      if (navigator.standalone === true) return true;
+    } catch (_) { /* */ }
+    return false;
+  }
+
+  /**
+   * Спросить разрешение на камеру «в лоб» — до всякого LiveKit.
+   * В PWA на Windows промис getUserMedia может висеть вечно, если системный
+   * диалог ушёл за окно. Поэтому: сначала permissions.query, затем НЕ ждём
+   * бесконечно — 3 с, и если всё ещё 'prompt', говорим человеку про окно.
+   */
+  async function ensureCameraPermission() {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      const e = new Error('Браузер не даёт доступ к камере');
+      e.name = 'NotSupportedError';
+      throw e;
+    }
+    let st = null;
+    try {
+      if (navigator.permissions && navigator.permissions.query) {
+        st = await withTimeout(navigator.permissions.query({ name: 'camera' }), 2000, 'perm-timeout');
+      }
+    } catch (_) { /* Safari/старые — просто идём дальше */ }
+    if (st && st.state === 'denied') {
+      const e = new Error('Доступ к камере запрещён в настройках сайта');
+      e.name = 'NotAllowedError';
+      throw e;
+    }
+    if (st && st.state === 'granted') return;
+    /* 'prompt' — нужен жест пользователя/диалог. Подсказываем заранее:
+       иначе человек смотрит на «Камера не успела включиться» и не понимает. */
+    if (st && st.state === 'prompt' && isStandalonePwa()) {
+      toast('Разрешите камеру: откройте окно браузера, оно может быть позади этого', false);
+    }
+  }
+
   /**
    * Камера: getUserMedia ПЕРВЫМ, публикация готового трека.
-   * Почему не setCameraEnabled: если первая попытка LiveKit ушла в таймаут,
-   * он держит незавершённую публикацию — и все повторы в ЭТОЙ комнате падают
-   * так же (третий деплой «не помогает», а в обычном браузере работает).
-   * getUserMedia даёт точную ошибку устройства до всякой сети.
+   * Корень отказа в PWA на Windows: getUserMedia висит, пока не нажмут
+   * в диалоге разрешения, а диалог уходит за окно приложения. Прежний
+   * таймаут 8 с срабатывал раньше, чем человек успевал найти окно.
    */
   async function enableLocalCamera(room) {
     const LK = window.LivekitClient;
@@ -1401,6 +1447,8 @@
     stopPreview();
     await unpublishLocalCamera(room);
     await new Promise((r) => setTimeout(r, 150));
+
+    await ensureCameraPermission();
 
     const constraintsList = [];
     const base = {};
@@ -1415,7 +1463,10 @@
       try {
         stream = await withTimeout(
           navigator.mediaDevices.getUserMedia({ video: constraintsList[i], audio: false }),
-          8000,
+          /* 30 с: в PWA Windows драйвер + диалог разрешения легко дают 10–20 с.
+             Меньший таймаут = ложное «камера занята» и следующая попытка бьётся
+             о ту же неотпущенную камеру. */
+          30000,
           'Timeout starting video source'
         );
         break;
@@ -1455,6 +1506,20 @@
       const pubOpts = {};
       try {
         if (LK.Track && LK.Track.Source) pubOpts.source = LK.Track.Source.Camera;
+      } catch (_) { /* */ }
+      /* D-176: БЕЗ явных simulcast-слоёв публикуется один поток, и
+         setVideoQuality(HIGH) у зрителя выбирать не из чего — отсюда «пиксели»
+         на ноуте при хорошем канале. Слои задаём всегда (кроме screen share). */
+      try {
+        if (LK.VideoPresets) {
+          const layers = [];
+          if (LK.VideoPresets.h180) layers.push(LK.VideoPresets.h180);
+          if (LK.VideoPresets.h360) layers.push(LK.VideoPresets.h360);
+          if (layers.length) {
+            pubOpts.videoSimulcastLayers = layers;
+            pubOpts.simulcast = true;
+          }
+        }
       } catch (_) { /* */ }
       await withTimeout(
         room.localParticipant.publishTrack(track, pubOpts),
@@ -2198,6 +2263,45 @@
     }, 2000);
   }
 
+  /**
+   * D-176: метка устройства для identity.
+   * Ноут и телефон под одним аккаунтом раньше получали одинаковую identity
+   * `user_<id>` → LiveKit выкидывал первое подключение, и человек видел
+   * два своих тайла / терял звук. Метка постоянна на устройство.
+   */
+  function deviceTag() {
+    const KEY = 'ting_device_tag';
+    try {
+      let t = localStorage.getItem(KEY);
+      if (t && /^[a-z0-9]{3,24}$/.test(t)) return t;
+    } catch (_) { /* */ }
+    const ua = String(navigator.userAgent || '');
+    let base = 'web';
+    if (/Android TV|TV;/i.test(ua)) base = 'tv';
+    else if (/Android|iPhone|iPad|Mobile/i.test(ua)) base = 'mob';
+    else if (/Windows/i.test(ua)) base = 'win';
+    else if (/Mac OS X/i.test(ua)) base = 'mac';
+    else if (/Linux/i.test(ua)) base = 'lin';
+    let rnd = '';
+    try {
+      const a = new Uint8Array(3);
+      (window.crypto || {}).getRandomValues ? crypto.getRandomValues(a) : null;
+      rnd = Array.from(a).map((x) => x.toString(16).padStart(2, '0')).join('');
+    } catch (_) { rnd = ''; }
+    if (!rnd) rnd = Math.random().toString(16).slice(2, 8);
+    const tag = (base + rnd).slice(0, 24);
+    try { localStorage.setItem(KEY, tag); } catch (_) { /* */ }
+    return tag;
+  }
+
+  /** Тело запроса токена: имя + метка устройства (сервер соберёт identity). */
+  function tokenBody(name) {
+    const body = {};
+    if (name && !/^участник(\s+\d+)?$/i.test(name)) body.display_name = name;
+    body.device = deviceTag();
+    return body;
+  }
+
   async function connectRoom(slug) {
     if (connectBusy) return;
     const now = Date.now();
@@ -2217,8 +2321,7 @@
       const typed = qs('#ting-disp') && qs('#ting-disp').value;
       const fromCrm = resolveLocalProfile().name;
       const name = String(typed || fromCrm || '').trim();
-      const body = {};
-      if (name && !/^участник(\s+\d+)?$/i.test(name)) body.display_name = name;
+      const body = tokenBody(name);
       const tok = await withTimeout(
         api(`/api/thing/rooms/${encodeURIComponent(slug)}/token`, {
           method: 'POST',
@@ -2481,7 +2584,7 @@
           const dn = resolveLocalProfile().name || undefined;
           const fresh = await api(`/api/thing/rooms/${encodeURIComponent(slug)}/token`, {
             method: 'POST',
-            body: JSON.stringify({ display_name: dn })
+            body: JSON.stringify(tokenBody(dn))
           });
           const tok2 = fresh.token ? fresh : (fresh.data || fresh);
           await connectRoomWithCreds(slug, tok2);
@@ -3019,7 +3122,7 @@
         const dn = resolveLocalProfile().name || undefined;
         const fresh = await api(`/api/thing/rooms/${encodeURIComponent(slug)}/token`, {
           method: 'POST',
-          body: JSON.stringify({ display_name: dn })
+          body: JSON.stringify(tokenBody(dn))
         });
         const tok2 = fresh.token ? fresh : (fresh.data || fresh);
         if (window.TingSession && typeof TingSession.storeToken === 'function') {
@@ -3299,21 +3402,42 @@
       }
       if (act === 'connect') { await connectRoom(slug); return; }
       if (act === 'mic' && state.lkRoom) {
-        state.micOn = !state.micOn;
+        const want = !state.micOn;
+        const lp = state.lkRoom.localParticipant;
         try {
-          if (typeof state.lkRoom.startAudio === 'function') await state.lkRoom.startAudio();
-        } catch (_) { /* */ }
-        try {
-          await state.lkRoom.localParticipant.setMicrophoneEnabled(state.micOn, {
-            echoCancellation: true,
-            noiseSuppression: state.noiseSuppression !== false,
-            autoGainControl: true
-          });
-        } catch (_) {
-          await state.lkRoom.localParticipant.setMicrophoneEnabled(state.micOn);
+          if (typeof state.lkRoom.startAudio === 'function') {
+            try { await state.lkRoom.startAudio(); } catch (_) { /* */ }
+          }
+          try {
+            await lp.setMicrophoneEnabled(want, {
+              echoCancellation: true,
+              noiseSuppression: state.noiseSuppression !== false,
+              autoGainControl: true
+            });
+          } catch (_) {
+            /* Фолбэк без AudioCaptureOptions — часть устройств их не принимает. */
+            await lp.setMicrophoneEnabled(want);
+          }
+          /* Источник истины — фактическое состояние публикации, а не наш флаг. */
+          state.micOn = lp.isMicrophoneEnabled !== false;
+        } catch (e) {
+          /* Раньше здесь стоял пустой catch: кнопка «не нажималась» и никто
+             не понимал почему. Показываем реальную причину. */
+          state.micOn = lp.isMicrophoneEnabled === true;
+          const name = String((e && e.name) || '');
+          const msg = name === 'NotAllowedError'
+            ? 'Браузер не даёт микрофон. Разрешите его в настройках сайта (замок в адресной строке).'
+            : (name === 'NotFoundError'
+              ? 'Микрофон не найден. Подключите его и попробуйте снова.'
+              : (name === 'NotReadableError'
+                ? 'Микрофон занят другим приложением.'
+                : (e && e.message) || 'Не удалось переключить микрофон'));
+          toast(msg, false);
+        } finally {
+          /* Без этого при исключении кнопка оставалась в старом состоянии. */
+          try { TingSound.play('mic'); } catch (_) { /* звук не критичен */ }
+          updateDockMedia();
         }
-        TingSound.play('mic');
-        updateDockMedia();
         return;
       }
       if (act === 'cam' && state.lkRoom) {
@@ -3330,9 +3454,11 @@
         } catch (e) {
           state.camOn = false;
           toast(cameraErrorMessage(e), false);
+        } finally {
+          try { TingSound.play('mic'); } catch (_) { /* */ }
+          updateDockMedia();
+          paintTiles();
         }
-        updateDockMedia();
-        paintTiles();
         return;
       }
       if (act === 'share' && state.lkRoom) {

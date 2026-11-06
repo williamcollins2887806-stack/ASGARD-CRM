@@ -46,6 +46,22 @@ function isPlaceholderDisplayName(name) {
   return false;
 }
 
+/**
+ * D-176: короткая метка устройства для identity.
+ * Один человек с ноута и с телефона — две независимые сессии, иначе LiveKit
+ * выкидывает первого при совпадении identity (второй тайл «себя»).
+ * Белый список символов — identity уходит в LiveKit как есть.
+ */
+function sanitizeDeviceTag(raw) {
+  const s = String(raw || '').toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 24);
+  return s || '';
+}
+
+/** Аудио/видео-слоты считаем по «людям», а не по устройствам (D-176). */
+function baseIdentityOf(identity) {
+  return String(identity || '').replace(/__[a-z0-9]{1,24}$/i, '');
+}
+
 function roomPublicUrl(slug) {
   return `${publicBaseUrl()}/ting/${slug}`;
 }
@@ -167,9 +183,13 @@ module.exports = async function thingRoutes(fastify) {
 
   /** Уже в комнате (для admit / CRM token). Waiting не считаем — иначе admit deadlock ROOM_FULL. */
   async function countAdmittedParticipants(roomId) {
+    /* D-176: считаем ЛЮДЕЙ, не устройства — иначе ноут+телефон одного
+       сотрудника съедали два места из max_participants. */
     const { rows } = await db.query(
-      `SELECT COUNT(*)::int AS n FROM thing_participants
-       WHERE room_id = $1 AND left_at IS NULL AND lobby_status = 'admitted'`,
+      `SELECT COUNT(DISTINCT COALESCE(user_id::text,
+              regexp_replace(identity, '__[a-z0-9]{1,24}$', '')))::int AS n
+         FROM thing_participants
+        WHERE room_id = $1 AND left_at IS NULL AND lobby_status = 'admitted'`,
       [roomId]
     );
     return rows[0] ? rows[0].n : 0;
@@ -185,12 +205,16 @@ module.exports = async function thingRoutes(fastify) {
     if (!livekit.isConfigured()) return { allowed: true, used: 0, max: maxVideo };
     try {
       const parts = await livekit.listLiveKitParticipants(room.livekit_room_name);
-      let used = 0;
+      /* D-176: один человек с двух устройств занимает ОДИН слот —
+         считаем уникальные базовые identity, а не подключения. */
+      const withCam = new Set();
       for (const p of parts || []) {
+        if (/^EG_/i.test(String(p && p.identity))) continue;
         /* SDK отдаёт source числом (CAMERA=1) — сравнение строками не работало. */
         const hasCam = (p.tracks || []).some(t => livekit.isCameraSource(livekit.trackSourceName(t)));
-        if (hasCam) used++;
+        if (hasCam) withCam.add(baseIdentityOf(p.identity));
       }
+      const used = withCam.size;
       return { allowed: used < maxVideo, used, max: maxVideo };
     } catch (_) {
       return { allowed: true, used: 0, max: maxVideo };
@@ -199,9 +223,12 @@ module.exports = async function thingRoutes(fastify) {
 
   /** Очередь + в комнате (лимит на guest-token, чтобы не забить waiting). */
   async function countOccupyingParticipants(roomId) {
+    /* D-176: по людям, а не по устройствам. */
     const { rows } = await db.query(
-      `SELECT COUNT(*)::int AS n FROM thing_participants
-       WHERE room_id = $1 AND left_at IS NULL AND lobby_status IN ('admitted', 'waiting')`,
+      `SELECT COUNT(DISTINCT COALESCE(user_id::text,
+              regexp_replace(identity, '__[a-z0-9]{1,24}$', '')))::int AS n
+         FROM thing_participants
+        WHERE room_id = $1 AND left_at IS NULL AND lobby_status IN ('admitted', 'waiting')`,
       [roomId]
     );
     return rows[0] ? rows[0].n : 0;
@@ -509,7 +536,14 @@ module.exports = async function thingRoutes(fastify) {
       });
     }
 
-    const identity = `user_${request.user.id}`;
+    /* D-176: identity с суффиксом устройства. Раньше был ровно `user_<id>`,
+       поэтому ноут и телефон под одним аккаунтом заходили в LiveKit с ОДНОЙ
+       identity. LiveKit при дубле выкидывает первого, клиенты на мгновение
+       видят два тайла себя и теряют треки. Суффикс делает сессии независимыми;
+       базовый `user_<id>` остаётся для опросов/согласия (один человек = голос). */
+    const identityBase = `user_${request.user.id}`;
+    const deviceTag = sanitizeDeviceTag(request.body && request.body.device);
+    const identity = deviceTag ? `${identityBase}__${deviceTag}` : identityBase;
     const bodyName = request.body && String(request.body.display_name || '').trim();
     let displayName = request.user.name || request.user.email || `Участник ${request.user.id}`;
     let jobTitle = roleTitle(request.user.role);
@@ -671,10 +705,12 @@ module.exports = async function thingRoutes(fastify) {
     const room = await loadRoom(request.params.id);
     if (!room) return reply.code(404).send({ error: 'Тинг не найден' });
     const identity = `user_${request.user.id}`;
+    /* D-176: строк может быть несколько — по одной на устройство (`base__tag`). */
     await db.query(
       `UPDATE thing_participants
        SET left_at = NOW()
-       WHERE room_id = $1 AND identity = $2 AND lobby_status <> 'rejected'`,
+       WHERE room_id = $1 AND (identity = $2 OR identity LIKE $2 || '__%')
+         AND lobby_status <> 'rejected'`,
       [room.id, identity]
     );
     return { ok: true };
@@ -2257,7 +2293,7 @@ module.exports = async function thingRoutes(fastify) {
 
     await db.query(
       `UPDATE thing_participants SET consent_at = $3
-        WHERE room_id = $1 AND identity = $2`,
+        WHERE room_id = $1 AND (identity = $2 OR identity LIKE $2 || '__%')`,
       [room.id, identity, revoked ? null : new Date()]
     );
     await db.query(
