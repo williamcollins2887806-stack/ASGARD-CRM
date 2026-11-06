@@ -1534,6 +1534,45 @@ window.AsgardRpReviewModal = (function () {
                 );
                 const d = await r.json().catch(() => ({}));
                 if (!r.ok || !d.ok) throw new Error(d.error || 'Анализ не удался');
+
+                // Заполняем КАРТОЧКУ отчёта из результата анализа: объём, суть,
+                // риски, выполнимость. Раньше карточка оставалась пустой, и было
+                // непонятно, что дал анализ.
+                const positions = (d.state && d.state.positions) || [];
+                if (positions.length) {
+                  const scopeText = positions.map((p) =>
+                    `${p.name} — ${p.volume} ${p.unit || ''}`.trim()).join('; ');
+                  reportJson.scope = scopeText;
+                  reportJson.volume_summary = scopeText;
+                  reportJson.resources = positions
+                    .map((p) => p.tech_equip).filter(Boolean).join('; ');
+
+                  // Выполнимость: needs_classification/проблемы → «условно».
+                  const problems = positions.filter((p) => p.needs_classification || (p.problems || []).length);
+                  reportJson.feasibility = problems.length ? 'conditional' : 'yes';
+
+                  // Риски собираем из проблем и предупреждений, а не выдумываем.
+                  const riskLines = [];
+                  if (problems.length) {
+                    riskLines.push(`Требуют уточнения: ${problems.map((p) => p.name).join(', ')}`);
+                  }
+                  if (d.blocked) riskLines.push(`Позиций без метода: ${d.blocked}`);
+                  if (Array.isArray(d.questions_for_customer) && d.questions_for_customer.length) {
+                    riskLines.push('Открытые вопросы к заказчику: ' + d.questions_for_customer.slice(0, 3).join('; '));
+                  }
+                  reportJson.risks = riskLines.join('\n');
+
+                  const total = positions.length;
+                  const decisionMap = { go: 'submit', no_go: 'reject', need_info: 'pending' };
+                  reportJson.decision_recommend = d.decision_recommend || 'need_info';
+                  if (decisionMap[d.decision_recommend]) decision = decisionMap[d.decision_recommend];
+                  reportJson.summary = reportJson.summary
+                    || `Мимир разобрал ТЗ: ${total} позиц. ` +
+                       (d.decision_recommend === 'go' ? 'Данных достаточно для участия.'
+                         : d.decision_recommend === 'no_go' ? 'Рекомендуется не участвовать.'
+                           : 'Нужны уточнения у заказчика.');
+                }
+                rerender();
                 return d;
               },
               onDecide: async (res) => {
