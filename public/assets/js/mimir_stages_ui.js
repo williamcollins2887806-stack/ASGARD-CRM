@@ -422,7 +422,7 @@
     const checklist = s.checklist || { items: [], answered: 0, total: 0 };
     const rows = positions.map((p) => `<div class="mst-readcard">
       <b>${esc(p.name)}</b> — ${p.volume != null ? p.volume : '—'} ${esc(p.unit || '')},
-      ${esc((p.category_code || '—') + '.' + (p.method_code || '—'))}
+      ${esc((p.category_name || p.category_code || '—') + (p.method_name ? ' · ' + p.method_name : ''))}
       ${p.tech_equip ? `<div class="mst-readcard__facts">${esc(p.tech_equip)}</div>` : ''}
     </div>`).join('');
 

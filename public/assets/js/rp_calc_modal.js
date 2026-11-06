@@ -805,7 +805,9 @@ window.AsgardRpCalcModal = (function () {
         '<td class="name">' + esc(p.name || '—') + '</td>' +
         '<td>' + esc(objects || '—') + '</td>' +
         '<td class="num">' + (p.volume != null ? esc(String(p.volume)) : '—') + ' ' + esc(p.unit || '') + '</td>' +
-        '<td>' + esc([p.category_code, p.method_code].filter(Boolean).join('.')) + '</td>' +
+        '<td>' + esc(p.method_name
+          || [p.category_name, p.method_name].filter(Boolean).join(' · ')
+          || [p.category_code, p.method_code].filter(Boolean).join('.')) + '</td>' +
         '<td>' + esc(foulingMap[p.fouling] || '—') + '</td>' +
         '<td class="tech">' + esc(p.tech_equip || '—') + '</td>' +
         '<td class="num">' + (c.people != null ? esc(String(c.people)) : '—') + '</td>' +
@@ -816,14 +818,21 @@ window.AsgardRpCalcModal = (function () {
     });
 
     const plan = rj.calc_plan || {};
+    const hasPlan = Array.isArray(calc) && calc.length > 0;
     return '<div class="rp-calc-panel' + active + '" data-panel="dv">' +
       '<div class="rp-calc-card">' +
-      '<div class="rp-calc-card__head">Объёмы работ · ' + positions.length + ' позиц.</div>' +
-      '<div class="rp-calc-dv-summary">' +
-        (plan.work_days != null ? '<span>Срок: <b>' + esc(String(plan.work_days)) + ' сут</b></span>' : '') +
-        (plan.man_hours ? '<span>Человеко-часы: <b>' + esc(String(plan.man_hours)) + '</b></span>' : '') +
-        (plan.people_total ? '<span>Людей: <b>' + esc(String(plan.people_total)) + '</b></span>' : '') +
+      '<div class="rp-calc-card__head">Объёмы работ · ' + positions.length + ' позиц.' +
+        '<button type="button" class="btn mini rp-calc-dv-plan" data-act="plan-dv">' +
+        (hasPlan ? 'Пересчитать план' : 'Рассчитать людей и сроки') + '</button>' +
       '</div>' +
+      (hasPlan
+        ? '<div class="rp-calc-dv-summary">' +
+            (plan.work_days != null ? '<span>Срок: <b>' + esc(String(plan.work_days)) + ' сут</b></span>' : '') +
+            (plan.man_hours ? '<span>Человеко-часы: <b>' + esc(String(plan.man_hours)) + '</b></span>' : '') +
+            (plan.people_total ? '<span>Людей: <b>' + esc(String(plan.people_total)) + '</b></span>' : '') +
+          '</div>'
+        : '<p class="rp-calc-dv-empty">План ещё не считан. Нажмите «Рассчитать людей и сроки» — ' +
+          'Мимир подберёт бригаду и срок по каждой позиции и покажет, откуда взял цифру.</p>') +
       '<div class="rp-calc-dv-scroll"><table class="rp-calc-dv-table"><thead><tr>' +
         '<th>Позиция</th><th>Аппараты</th><th>Объём</th><th>Метод</th><th>Отложения</th>' +
         '<th>Технология</th><th>Люди</th><th>Сутки</th><th>Источник</th>' +
@@ -1676,6 +1685,58 @@ window.AsgardRpCalcModal = (function () {
           }
           if (state.tab === 'tech') loadTechStockAndRepaint();
         });
+      });
+
+      // Расчёт плана прямо на вкладке «Объёмы»: без него люди/сроки/источник
+      // остаются пустыми, и таблица выглядит недоделанной.
+      root.addEventListener('click', async function (ev) {
+        const planBtn = ev.target.closest('[data-act="plan-dv"]');
+        if (!planBtn || planBtn.disabled) return;
+        if (!state.tender || !state.tender.id) return;
+        planBtn.disabled = true;
+        const prev = planBtn.textContent;
+        planBtn.textContent = 'Считаю…';
+        try {
+          // Берём сессию анализа этого тендера: план строится по её ДВ.
+          // Список /sessions отдаёт только свои сессии, поэтому смотрим ещё и
+          // сессию, которой владеет дежурный РП (phase=analysis).
+          const auth = 'Bearer ' + (window.AsgardRegistryApi?._token?.() || localStorage.getItem('asgard_token') || '');
+          const list = await fetch('/api/tkp-quick/sessions', { headers: { Authorization: auth } })
+            .then(function (r) { return r.json(); }).catch(function () { return {}; });
+          let own = null;
+          for (const s of (list.sessions || [])) {
+            const st = await fetch('/api/tkp-quick/sessions/' + encodeURIComponent(s.session_uid) + '/stage', {
+              headers: { Authorization: auth }
+            }).then(function (r) { return r.ok ? r.json() : null; }).catch(function () { return null; });
+            if (st && String(st.tender_id) === String(state.tender.id)) { own = { session_uid: s.session_uid }; break; }
+          }
+          if (!own) throw new Error('Нет сессии анализа по этому тендеру');
+          const res = await fetch('/api/tkp-quick/sessions/' + encodeURIComponent(own.session_uid) + '/stage/calc-plan', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: auth },
+            body: JSON.stringify({})
+          });
+          const out = await res.json().catch(function () { return {}; });
+          if (!res.ok || !out.ok) throw new Error(out.error || 'План не посчитан');
+
+          // Кладём план в карточку и сохраняем, чтобы он жил после перезагрузки.
+          const rj = parseReportJson(state.review && state.review.report_json);
+          rj.calc_plan = out.plan || null;
+          const put = await fetch('/api/tenders/' + state.tender.id + '/rp-review', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json', Authorization: auth },
+            body: JSON.stringify({ mode: 'calc', report_json: rj })
+          });
+          if (put.ok) {
+            const pd = await put.json().catch(function () { return {}; });
+            if (pd.review) state.review = pd.review;
+          }
+          paint();
+        } catch (e) {
+          planBtn.disabled = false;
+          planBtn.textContent = prev;
+          toast('Объёмы', e.message || 'Не удалось посчитать план', 'err');
+        }
       });
 
       bindTech(root);

@@ -809,13 +809,25 @@ async function routes(fastify, options) {
         }));
 
       const state = stageSvc.normalizeState(Object.assign({}, cur.state, { calc: gen.plan }));
-      const saved = await stageSvc.saveStage(db, request.params.uid, {
-        stage: 'calc_plan', state, expectedVersion: request.body && request.body.expected_version
-      });
+      // План считаем всегда, когда есть позиции. Перевод этапа — только если он
+      // разрешён: из просчёта карточку открывают и на середине анализа, и
+      // падать из-за порядка этапов там нельзя (цифры нужны уже сейчас).
+      let saved = { stage: cur.stage, version: cur.version };
+      let stageAdvanced = false;
+      try {
+        saved = await stageSvc.saveStage(db, request.params.uid, {
+          stage: 'calc_plan', state, expectedVersion: request.body && request.body.expected_version
+        });
+        stageAdvanced = true;
+      } catch (e) {
+        const soft = await stageSvc.loadStage(db, request.params.uid).catch(() => null);
+        if (soft) saved = { stage: soft.stage, version: soft.version };
+      }
 
       return {
         ok: true,
         stage: saved.stage,
+        stage_advanced: stageAdvanced,
         plan: gen.plan,
         date_window: windowCheck,
         calibration,

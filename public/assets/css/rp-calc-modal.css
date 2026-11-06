@@ -999,3 +999,6 @@ html[data-theme='light'] .rp-calc-approve-toggle input[type='checkbox']:checked 
   .rp-calc-dv-table th:nth-child(n + 6),
   .rp-calc-dv-table td:nth-child(n + 6) { display: none; }
 }
+.rp-calc-dv-empty { margin: 0 0 10px; font-size: 12px; color: var(--t2); line-height: 1.5; }
+.rp-calc-dv-plan { margin-left: auto; }
+.rp-calc-card__head .rp-calc-dv-plan { flex: 0 0 auto; }

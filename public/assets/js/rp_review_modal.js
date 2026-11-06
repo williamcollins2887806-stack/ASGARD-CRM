@@ -149,7 +149,7 @@ window.AsgardRpReviewModal = (function () {
     const badge = analysisDecisionBadge(rj.decision_recommend);
     let h = '<div class="rp-review-analysis-report rp-review-analysis-ref">';
     h += '<div class="rp-review-analysis-ref-head"><strong>Отчёт Мимира</strong>' +
-      '<span class="muted">go/no-go · объём и риски · без сметы</span></div>';
+      '<span class="muted">решение · объём и риски · без сметы</span></div>';
     if (badge.label) {
       h += '<div class="rp-review-mimir-decision rp-review-summary-card ' + badge.cls + '"><strong>' +
         esc(badge.label) + '</strong></div>';
@@ -192,7 +192,8 @@ window.AsgardRpReviewModal = (function () {
     positions.forEach((p) => {
       const objects = Array.isArray(p.objects)
         ? p.objects.map((o) => o.tag || o.type).filter(Boolean).join(', ') : '';
-      const method = [p.category_code, p.method_code].filter(Boolean).join('.');
+      const method = [p.category_name, p.method_name].filter(Boolean).join(' · ')
+        || [p.category_code, p.method_code].filter(Boolean).join('.');
       const src = p.source_ref
         ? [p.source_ref.document, p.source_ref.fragment].filter(Boolean).join(' · ')
         : '';
@@ -715,7 +716,7 @@ window.AsgardRpReviewModal = (function () {
       const short = t.length > 90 ? t.slice(0, 90) + '…' : t;
       let base = c + (c && short ? ' · ' : '') + short;
       if (mode === 'analysis') {
-        base += (base ? ' · ' : '') + 'Решение go/no-go без сметы — цену считаем в просчёте';
+        base += (base ? ' · ' : '') + 'Решение «подаём / не подаём» без сметы — цену считаем в просчёте';
       }
       return base;
     }

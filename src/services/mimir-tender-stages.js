@@ -251,14 +251,20 @@ function normalizeDv(ai, catalog) {
     if (!cat) return false;
     const row = cats.find((c) => c.code === cat);
     if (!row) return false;
-    const ms = Array.isArray(row.methods_json) ? row.methods_json : [];
-    if (!method) return ms.length > 0 ? false : true;
+    const ms = Array.isArray(row.methods_json) ? row.methods_json : [];    if (!method) return ms.length > 0 ? false : true;
     return ms.some((m) => m.code === method);
   };
 
   const positions = list.map((p, i) => {
     const cat = p.category_code || p.category || null;
     const method = p.method_code || p.method || null;
+    // Человеческие названия: код видит только РП в справочнике, в таблице
+    // должно быть «Химическая промывка», а не `vessels.clean`.
+    const catRow = cat ? cats.find((c) => c.code === cat) : null;
+    const catName = (catRow && (catRow.title || catRow.name)) || null;
+    const methodRow = (catRow && Array.isArray(catRow.methods_json))
+      ? catRow.methods_json.find((m) => m && m.code === method) : null;
+    const methodName = (methodRow && (methodRow.label || methodRow.name || methodRow.title)) || null;
     const volume = Number(p.volume);
     const unit = String(p.unit || '').trim();
     const knownCategory = !cat || cats.some((c) => c.code === cat);
@@ -285,6 +291,8 @@ function normalizeDv(ai, catalog) {
       name: String(p.name || '').trim() || '(без названия)',
       category_code: cat,
       method_code: method,
+      category_name: catName,
+      method_name: methodName,
       volume: isFinitePositive(volume) ? volume : null,
       unit,
       fouling: ['light', 'medium', 'heavy'].includes(String(p.fouling)) ? p.fouling : null,
