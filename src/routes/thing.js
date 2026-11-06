@@ -704,14 +704,12 @@ module.exports = async function thingRoutes(fastify) {
   fastify.post('/rooms/:id/leave', { preHandler: [fastify.authenticate] }, async (request, reply) => {
     const room = await loadRoom(request.params.id);
     if (!room) return reply.code(404).send({ error: 'Тинг не найден' });
-    const identity = `user_${request.user.id}`;
-    /* D-176: строк может быть несколько — по одной на устройство (`base__tag`). */
-    await db.query(
+    const { rows } = await db.query(
       `UPDATE thing_participants
-       SET left_at = NOW()
-       WHERE room_id = $1 AND (identity = $2 OR identity LIKE $2 || '__%')
-         AND lobby_status <> 'rejected'`,
-      [room.id, identity]
+       SET left_at = COALESCE(left_at, NOW())
+       WHERE room_id = $1
+         AND (user_id = $2 OR identity = $3 OR identity LIKE $3 || '__%')`,
+      [room.id, request.user.id, `user_${request.user.id}`]
     );
     return { ok: true };
   });
@@ -1454,8 +1452,22 @@ module.exports = async function thingRoutes(fastify) {
     let livekit_error = null;
     try {
       if (livekit.isConfigured()) {
-        await livekit.removeLiveKitParticipant(room.livekit_room_name, identity);
-        livekit_removed = true;
+        /* D-176: кик по базовой identity должен снять человека со ВСЕХ его
+           устройств — иначе второе подключение остаётся в комнате. */
+        const parts = await livekit.listLiveKitParticipants(room.livekit_room_name);
+        const base = baseIdentityOf(identity);
+        const targets = parts.filter(x => x.identity === identity || baseIdentityOf(x.identity) === base);
+        if (!targets.length && parts.length >= 0) {
+          await livekit.removeLiveKitParticipant(room.livekit_room_name, identity);
+          livekit_removed = true;
+        } else {
+          for (const t of targets) {
+            try {
+              await livekit.removeLiveKitParticipant(room.livekit_room_name, t.identity);
+              livekit_removed = true;
+            } catch (_) { /* одно устройство уже ушло */ }
+          }
+        }
       }
     } catch (e) {
       livekit_error = e.message || 'LiveKit remove failed';
@@ -1466,7 +1478,7 @@ module.exports = async function thingRoutes(fastify) {
     const { rows: kicked } = await db.query(
       `UPDATE thing_participants SET left_at = NOW(), lobby_status = 'rejected',
               banned_until = NOW() + INTERVAL '24 hours'
-       WHERE room_id = $1 AND identity = $2
+       WHERE room_id = $1 AND (identity = $2 OR identity LIKE $2 || '__%')
        RETURNING guest_key`,
       [room.id, identity]
     );
@@ -1916,18 +1928,23 @@ module.exports = async function thingRoutes(fastify) {
     let muted = 0;
     try {
       const parts = await livekit.listLiveKitParticipants(room.livekit_room_name);
-      const p = parts.find(x => x.identity === identity);
-      if (!p) return reply.code(404).send({ error: 'Участник не в комнате' });
-      for (const t of (p.tracks || [])) {
-        const src = livekit.trackSourceName(t);
-        const sid = t.sid || t.trackSid;
-        if (!sid) continue;
-        const match = kind === 'audio' ? livekit.isAudioSource(src)
-          : kind === 'video' ? livekit.isCameraSource(src)
-            : livekit.isScreenSource(src);
-        if (match) {
-          await livekit.muteLiveKitTrack(room.livekit_room_name, identity, sid, true);
-          muted++;
+      /* D-176: один человек может быть с нескольких устройств (identity
+         `user_<id>__<device>`). Модерация по базовой identity бьёт по всем
+         его подключениям, иначе «выключить микрофон» попадал в 404. */
+      const targets = parts.filter(x => x.identity === identity || baseIdentityOf(x.identity) === baseIdentityOf(identity));
+      if (!targets.length) return reply.code(404).send({ error: 'Участник не в комнате' });
+      for (const p of targets) {
+        for (const t of (p.tracks || [])) {
+          const src = livekit.trackSourceName(t);
+          const sid = t.sid || t.trackSid;
+          if (!sid) continue;
+          const match = kind === 'audio' ? livekit.isAudioSource(src)
+            : kind === 'video' ? livekit.isCameraSource(src)
+              : livekit.isScreenSource(src);
+          if (match) {
+            await livekit.muteLiveKitTrack(room.livekit_room_name, p.identity, sid, true);
+            muted++;
+          }
         }
       }
     } catch (e) {
