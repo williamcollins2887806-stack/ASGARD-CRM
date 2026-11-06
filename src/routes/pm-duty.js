@@ -91,6 +91,24 @@ function reportMode(reportJson) {
   return rj.mode === 'analysis' ? 'analysis' : 'calc';
 }
 
+/** Анализ закрыт, просчёт ещё не начат (нет цены и файла сметы). */
+function reviewNeedsCalc(row) {
+  if (!row || !row.analysis_finalized_at || row.is_final) return false;
+  const wp = Number(row.work_price);
+  if (Number.isFinite(wp) && wp > 0) return false;
+  if (row.estimate_file_id) return false;
+  return true;
+}
+
+function attachNeedCalcFlags(row) {
+  const needs = reviewNeedsCalc(row);
+  return {
+    ...row,
+    needs_calc: needs,
+    need_calc_label: needs ? 'Нужен просчёт' : null
+  };
+}
+
 function buildAnalysisSnapshot(rj, decision, userId, userName) {
   const at = new Date().toISOString();
   return {
@@ -661,6 +679,7 @@ async function routes(fastify) {
     const baseSelect = `
       SELECT t.*, rev.decision, rev.is_final, rev.id AS review_id, rev.updated_at AS review_updated_at,
              rev.analysis_finalized_at, rev.analysis_owner_user_id,
+             rev.work_price, rev.estimate_file_id,
              calc.name AS calculator_user_name, cb.name AS created_by_name,
              starter.name AS started_by_name,
              owneru.name AS analysis_owner_name,
@@ -722,11 +741,16 @@ async function routes(fastify) {
         ORDER BY rev.updated_at DESC NULLS LAST, t.created_at DESC
         LIMIT 300
       `, [userId]);
-      const items = r.rows.map((row) => ({
+      const items = r.rows.map((row) => attachNeedCalcFlags({
         ...row,
         // Участник списка «Мои»: править общий отчёт, пока анализ не закрыт
         can_edit: !row.analysis_finalized_at
-      }));
+      })).sort((a, b) => {
+        const na = a.needs_calc ? 0 : 1;
+        const nb = b.needs_calc ? 0 : 1;
+        if (na !== nb) return na - nb;
+        return 0;
+      });
       return { items, tab, duty, is_duty: isDuty };
     }
 
@@ -753,6 +777,12 @@ async function routes(fastify) {
           ${notArchivedStatuses}
           ${excludeClause}
         ORDER BY
+          CASE
+            WHEN rev.analysis_finalized_at IS NOT NULL AND rev.is_final IS NOT TRUE
+              AND (rev.work_price IS NULL OR rev.work_price <= 0)
+              AND rev.estimate_file_id IS NULL
+            THEN 0 ELSE 1
+          END,
           CASE WHEN rev.id IS NOT NULL AND rev.is_final IS NOT TRUE THEN 0 ELSE 1 END,
           t.docs_deadline ASC NULLS LAST,
           rev.updated_at DESC NULLS LAST,
@@ -764,19 +794,22 @@ async function routes(fastify) {
         // D-177: «взять дежурному» показываем только на активных статусах — self-heal
         // (`ensureCalcOwner`) лечит ровно те же `рассмотрение`/`готовим`. Иначе дежурный
         // видел кнопку там, где карточку нельзя взять (лечение выходит без изменений).
-        if (!ownerless || !isDuty || !isActiveCalcStatus(row.registry_status)) return row;
-        return {
+        if (!ownerless || !isDuty || !isActiveCalcStatus(row.registry_status)) return attachNeedCalcFlags(row);
+        return attachNeedCalcFlags({
           ...row,
           queue_source: 'Просчёт без владельца — взять дежурному',
           queue_mode: 'duty_orphan',
           can_edit: true
-        };
+        });
       });
       return { items, tab, duty, is_duty: isDuty };
     }
 
     // analysis — очередь дежурного / коллабораторов / preview для остальных
-    const analysisOnlyClause = `AND COALESCE(t.calculator_kind, '') != 'to'`;
+    // source='phone_call' — сага, ошибочно созданная из звонка до фикса V467:
+    // её место в маркетплейсе, дежурному РП она не должна падать на анализ.
+    const analysisOnlyClause = `AND COALESCE(t.calculator_kind, '') != 'to'
+      AND COALESCE(t.source, '') <> 'phone_call'`;
     const userRole = request.user.role || '';
     const oversight = ASSIGN_ROLES.includes(userRole) || userRole === 'HEAD_PM' || userRole === 'ADMIN';
     let items = [];
@@ -905,6 +938,7 @@ async function routes(fastify) {
             WHERE t.deleted_at IS NULL AND t.registry_status = 'рассмотрение'
               ${noFinal} AND rev.analysis_finalized_at IS NULL
               AND COALESCE(t.calculator_kind, '') != 'to'
+              AND COALESCE(t.source, '') <> 'phone_call'
               ${excludeClause}`)
         : db.query(`SELECT COUNT(*)::int AS c
             FROM tenders t
@@ -915,6 +949,7 @@ async function routes(fastify) {
               ${noFinal} AND rev.analysis_finalized_at IS NULL
               ${working}
               AND COALESCE(t.calculator_kind, '') != 'to'
+              AND COALESCE(t.source, '') <> 'phone_call'
               ${excludeClause}`, [userId]),
       // calc: анализ закрыт; мои (владелец) + безвладельные при дежурстве.
       db.query(`SELECT COUNT(*)::int AS c

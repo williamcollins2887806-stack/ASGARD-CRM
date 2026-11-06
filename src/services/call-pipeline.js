@@ -294,6 +294,33 @@ class CallPipeline {
     }
   }
 
+  /**
+   * Предыдущие заявки клиента по номеру звонка (для контекста ИИ и дедупа).
+   * Возвращает максимум 5 последних «живых» карточек маркетплейса.
+   */
+  async _clientHistoryForCall(call) {
+    try {
+      const raw = call.client_number
+        || (call.call_type === 'outbound' ? call.to_number : call.from_number)
+        || call.caller_number || '';
+      const digits = String(raw).replace(/\D/g, '').slice(-10);
+      if (digits.length !== 10) return [];
+      const r = await this.db.query(
+        `SELECT id, created_at, work_title, status
+           FROM pre_tender_requests
+          WHERE right(regexp_replace(COALESCE(contact_phone, ''), '\\D', '', 'g'), 10) = $1
+            AND COALESCE(status, '') NOT IN ('rejected', 'expired')
+          ORDER BY created_at DESC
+          LIMIT 5`,
+        [digits]
+      );
+      return r.rows || [];
+    } catch (err) {
+      console.warn('[CallPipeline] client history lookup failed:', err.message);
+      return [];
+    }
+  }
+
   async _aiAnalyze(call) {
     try {
       console.log(`[CallPipeline] AI analyzing call #${call.id}...`);
@@ -305,12 +332,16 @@ class CallPipeline {
         if (mgr.rows.length) managerName = mgr.rows[0].name;
       }
 
+      // История обращений клиента: чтобы второй звонок не выглядел новой заявкой.
+      const clientHistory = await this._clientHistoryForCall(call);
+
       const analysis = await this.analyzer.analyze(call.transcript, {
         direction: call.call_type === 'outbound' ? 'outbound' : 'inbound',
         from_number: call.from_number || call.caller_number,
         to_number: call.to_number || call.called_number,
         duration_seconds: call.duration_seconds || call.duration,
-        manager_name: managerName
+        manager_name: managerName,
+        client_history: clientHistory
       });
 
       // Сохраняем результат анализа

@@ -10163,6 +10163,30 @@ body.call-detail-open .asg-main-wrap {
   padding: 6px 0;
 }
 
+/* V470: другие звонки клиента по той же заявке маркетплейса */
+.call-sibling-row {
+  display: grid;
+  grid-template-columns: 84px 64px 52px 1fr;
+  gap: 8px;
+  align-items: baseline;
+  padding: 6px 8px;
+  border-radius: 6px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.call-sibling-row:hover {
+  background: var(--bg-hov, rgba(0, 0, 0, 0.04));
+}
+.call-sibling-when { color: var(--t3); white-space: nowrap; }
+.call-sibling-type { color: var(--t2); }
+.call-sibling-dur { color: var(--t3); font-variant-numeric: tabular-nums; }
+.call-sibling-sum {
+  color: var(--t1);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .call-detail-label {
   font-size: 12px;
   color: var(--t3);

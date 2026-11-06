@@ -16,7 +16,8 @@ function createMockAi(responseText) {
   };
 }
 
-function createMockDb() {
+function createMockDb(opts) {
+  const options = opts || {};
   const queries = [];
   return {
     queries,
@@ -30,6 +31,12 @@ function createMockDb() {
       }
       if (sql.includes('UPDATE call_history') || sql.includes('UPDATE pre_tender_requests')) {
         return { rows: [], rowCount: 1 };
+      }
+      if (sql.includes('FROM call_history') && sql.includes('direction')) {
+        return { rows: [{ from_number: '79654862200', caller_number: '79654862200', client_number: '79654862200', direction: 'inbound' }] };
+      }
+      if (sql.includes('FROM pre_tender_requests') && sql.includes('created_at >=')) {
+        return { rows: options.existingPt ? [options.existingPt] : [] };
       }
       return { rows: [], rowCount: 0 };
     }
@@ -167,6 +174,86 @@ test('createDraftLead() привязывает к call_history.pre_tender_id', a
     q.sql.includes('UPDATE call_history') && q.sql.includes('pre_tender_id')
   );
   if (!updateQuery) throw new Error('Should UPDATE call_history with pre_tender_id');
+});
+
+// ── Дедуп: один клиент = одна заявка (06.11.2026) ──
+
+test('createDraftLead() не плодит вторую заявку тому же клиенту', async () => {
+  const mockDb = createMockDb({ existingPt: { id: 777, work_title: 'Химическая очистка котла', status: 'new' } });
+  const CallAnalyzer = require('../../src/services/call-analyzer');
+  const analyzer = new CallAnalyzer({}, mockDb);
+
+  const analysis = helpers.generateAiAnalysis();
+  const ptId = await analyzer.createDraftLead(analysis, 101, 5);
+
+  if (ptId !== 777) throw new Error('Should return existing pre_tender id, got ' + ptId);
+  const insertQuery = mockDb.queries.find(q => q.sql.includes('INSERT INTO pre_tender_requests'));
+  if (insertQuery) throw new Error('Must NOT INSERT a duplicate pre_tender');
+  const linkQuery = mockDb.queries.find(q =>
+    q.sql.includes('UPDATE call_history') && q.sql.includes('pre_tender_id')
+  );
+  if (!linkQuery) throw new Error('Should link call to existing pre_tender');
+  if (Number(linkQuery.params[0]) !== 777) throw new Error('Should link to existing id 777');
+});
+
+test('createDraftLead() дописывает историю звонка в описании заявки', async () => {
+  const mockDb = createMockDb({ existingPt: { id: 778, work_title: 'ГДО', status: 'new' } });
+  const CallAnalyzer = require('../../src/services/call-analyzer');
+  const analyzer = new CallAnalyzer({}, mockDb);
+
+  await analyzer.createDraftLead(helpers.generateAiAnalysis(), 102, 5);
+
+  const appendQuery = mockDb.queries.find(q =>
+    q.sql.includes('work_description') && q.sql.includes('chr(10)')
+  );
+  if (!appendQuery) throw new Error('Should append call summary to work_description');
+  if (!String(appendQuery.params[1] || '').startsWith('Звонок ')) {
+    throw new Error('Appended line should start with «Звонок »');
+  }
+});
+
+test('createDraftLead() ищет только «живую» заявку за 30 дней', async () => {
+  const mockDb = createMockDb();
+  const CallAnalyzer = require('../../src/services/call-analyzer');
+  const analyzer = new CallAnalyzer({}, mockDb);
+
+  await analyzer.createDraftLead(helpers.generateAiAnalysis(), 103, 5);
+
+  const dedupQuery = mockDb.queries.find(q =>
+    q.sql.includes('FROM pre_tender_requests') && q.sql.includes('created_at >=')
+  );
+  if (!dedupQuery) throw new Error('Should look up existing pre_tender before insert');
+  if (!dedupQuery.sql.includes("'rejected', 'expired'")) {
+    throw new Error('Dedup must skip rejected/expired заявки');
+  }
+  if (!dedupQuery.sql.includes('created_tender_id IS NULL')) {
+    throw new Error('Dedup must skip заявки, уже ушедшие в сагу');
+  }
+  const days = dedupQuery.params[dedupQuery.params.length - 1];
+  if (Number(days) !== 30) throw new Error('Dedup window should be 30 days, got ' + days);
+});
+
+test('findOpenPreTenderForClient() возвращает null без телефона/ИНН/названия', async () => {
+  const mockDb = createMockDb();
+  const CallAnalyzer = require('../../src/services/call-analyzer');
+  const analyzer = new CallAnalyzer({}, mockDb);
+
+  const found = await analyzer.findOpenPreTenderForClient({ phone: '', inn: null, company: null });
+  if (found !== null) throw new Error('Should return null when no identifying data');
+});
+
+test('appendCallToPreTender() дописывает строку с датой и резюме', async () => {
+  const mockDb = createMockDb();
+  const CallAnalyzer = require('../../src/services/call-analyzer');
+  const analyzer = new CallAnalyzer({}, mockDb);
+
+  const ok = await analyzer.appendCallToPreTender(555, { summary: 'Уточнил сроки' });
+  if (!ok) throw new Error('Should report success');
+
+  const q = mockDb.queries.find(x => x.sql.includes('work_description'));
+  if (!q) throw new Error('Should UPDATE work_description');
+  if (Number(q.params[0]) !== 555) throw new Error('Wrong pre_tender id');
+  if (!String(q.params[1]).includes('Уточнил сроки')) throw new Error('Summary missing in appended line');
 });
 
 module.exports = { name: 'Call Analyzer', tests };

@@ -23,6 +23,7 @@
  * @param {string} callData.managerName   — имя менеджера
  * @param {string} callData.clientName    — имя клиента (если известно)
  * @param {string} callData.clientCompany — компания клиента (если известна)
+ * @param {Array}  callData.clientHistory — предыдущие заявки клиента [{id,created_at,work_title,status}]
  * @returns {string} — системный промпт
  */
 function getCallAnalysisPrompt(callData) {
@@ -45,6 +46,24 @@ function getCallAnalysisPrompt(callData) {
 - Имя клиента: ${clientName || 'не указано'}
 - Компания клиента: ${clientCompany || 'не указана'}
 Используй эту информацию как подсказку, но если в разговоре прозвучали другие данные — бери из разговора.`;
+  }
+
+  let historyBlock = '';
+  const hist = Array.isArray(callData && callData.clientHistory) ? callData.clientHistory : [];
+  if (hist.length) {
+    const lines = hist.slice(0, 5).map((h) => {
+      const dt = h.created_at ? new Date(h.created_at).toLocaleDateString('ru-RU') : 'ранее';
+      return `- Заявка #${h.id} от ${dt}: «${String(h.work_title || 'без названия').slice(0, 120)}», статус ${h.status || 'new'}`;
+    }).join('\n');
+    historyBlock = `
+
+ИСТОРИЯ ОБРАЩЕНИЙ ЭТОГО КЛИЕНТА:
+${lines}
+
+Клиент уже в работе. Если текущий разговор — уточнение, продолжение или вопрос
+по этой же заявке, то is_target=true, но classification должен быть repeat_order,
+и в summary НЕ описывай объект заново: начни с «Продолжение обращения #${hist[0].id}:».
+Новой заявки по этому клиенту не создаётся — звонок дописывается в существующую.`;
   }
 
   return `
@@ -94,7 +113,7 @@ function getCallAnalysisPrompt(callData) {
 - Номер назначения: ${calledNumber}
 - Длительность: ${durationMinutes} мин (${duration} сек)
 - Менеджер: ${managerName}
-${knownClientBlock}
+${knownClientBlock}${historyBlock}
 
 ================================================================================
 ТВОЯ ЗАДАЧА

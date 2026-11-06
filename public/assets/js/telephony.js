@@ -2126,6 +2126,23 @@ window.AsgardTelephonyPage = (function () {
       keyReqsHtml +
       renderAiAnalysis(call) +
 
+      (Array.isArray(call.sibling_calls) && call.sibling_calls.length
+        ? '<div class="call-detail-section"><div class="telephony-chart-title">Другие звонки по этой заявке</div>' +
+          call.sibling_calls.map(function (s) {
+            var dt = s.started_at || s.created_at;
+            var d = dt ? new Date(dt) : null;
+            var when = d ? d.toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '';
+            var sec = s.duration_seconds ? (Math.floor(s.duration_seconds / 60) + ':' + String(s.duration_seconds % 60).padStart(2, '0')) : '';
+            return '<div class="call-sibling-row" data-ph-open="detail" data-id="' + s.id + '">' +
+              '<span class="call-sibling-when">' + when + '</span>' +
+              '<span class="call-sibling-type">' + (s.call_type || s.direction || '') + '</span>' +
+              '<span class="call-sibling-dur">' + sec + '</span>' +
+              '<span class="call-sibling-sum">' + esc(String(s.summary || '').slice(0, 120)) + '</span>' +
+            '</div>';
+          }).join('') +
+          '</div>'
+        : '') +
+
       '<div class="call-detail-section call-detail-actions">' +
         '<button class="btn primary" id="callbackBtn" data-tooltip="Исходящий звонок">Перезвонить</button>' +
         (call.ai_is_target && !call.pre_tender_id && !call.lead_id ? '<button class="btn secondary" id="createLeadBtn" data-tooltip="Создать заявку в маркетплейс из данных звонка">Создать заявку</button>' : '') +

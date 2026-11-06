@@ -19,6 +19,7 @@ class CallAnalyzer {
       managerName: callData.manager_name,
       clientName: callData.client_name,
       clientCompany: callData.client_company,
+      clientHistory: callData.client_history,
     });
     try {
       const completeFn = this.aiProvider.completeAnalytics || this.aiProvider.complete || this.aiProvider;
@@ -93,6 +94,76 @@ class CallAnalyzer {
     return m[wt] || null;
   }
 
+  /**
+   * Найти «живую» заявку того же клиента за windowDays.
+   * Один клиент = одна заявка: 10 звонков не должны давать 10 карточек.
+   * Матч по нормализованному телефону, ИНН или названию компании.
+   */
+  async findOpenPreTenderForClient({ phone, inn, company, windowDays = 30 }) {
+    const digits = String(phone || '').replace(/\D/g, '').slice(-10);
+    if (!digits && !inn && !company) return null;
+    const params = [];
+    const matches = [];
+    if (digits.length === 10) {
+      params.push(digits);
+      matches.push(`right(regexp_replace(COALESCE(contact_phone, ''), '\\D', '', 'g'), 10) = $${params.length}`);
+    }
+    if (inn) {
+      params.push(String(inn).trim());
+      matches.push(`customer_inn = $${params.length}`);
+    }
+    if (company) {
+      params.push(String(company).trim());
+      matches.push(`LOWER(TRIM(customer_name)) = LOWER($${params.length})`);
+    }
+    if (!matches.length) return null;
+    params.push(Number(windowDays) || 30);
+    try {
+      const r = await this.db.query(
+        `SELECT id, work_title, work_description, status, created_at
+           FROM pre_tender_requests
+          WHERE COALESCE(status, '') NOT IN ('rejected', 'expired')
+            AND created_tender_id IS NULL
+            AND created_at >= NOW() - ($${params.length}::int * INTERVAL '1 day')
+            AND (${matches.join(' OR ')})
+          ORDER BY created_at DESC
+          LIMIT 1`,
+        params
+      );
+      return r.rows[0] || null;
+    } catch (err) {
+      console.warn('[CallAnalyzer] dedup lookup failed:', err.message);
+      return null;
+    }
+  }
+
+  /** Дописать звонок в историю существующей заявки. */
+  async appendCallToPreTender(ptId, { summary, at }) {
+    if (!ptId) return false;
+    const when = at ? new Date(at) : new Date();
+    const stamp = when.toLocaleString('ru-RU', {
+      day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit',
+      timeZone: 'Europe/Moscow'
+    });
+    const line = `Звонок ${stamp}: ${String(summary || 'без резюме').slice(0, 400)}`;
+    try {
+      await this.db.query(
+        `UPDATE pre_tender_requests
+            SET work_description = CASE
+                  WHEN COALESCE(work_description, '') = '' THEN $2
+                  ELSE work_description || chr(10) || $2
+                END,
+                updated_at = NOW()
+          WHERE id = $1`,
+        [ptId, line]
+      );
+      return true;
+    } catch (err) {
+      console.warn('[CallAnalyzer] append to pre-tender failed:', err.message);
+      return false;
+    }
+  }
+
   async createDraftLead(ar, callId, managerId) {
     if (!ar.is_target) return null;
     const db = this.db;
@@ -113,6 +184,40 @@ class CallAnalyzer {
       ar.access_conditions ? 'Условия доступа: ' + ar.access_conditions : null,
       ar.key_requirements && ar.key_requirements.length > 0 ? 'Требования: ' + ar.key_requirements.join('; ') : null
     ].filter(Boolean).join('. ') || null;
+
+    // Дедуп: второй/десятый звонок клиента — это та же заявка, не новая.
+    let callMeta = null;
+    try {
+      const c = await db.query(
+        'SELECT from_number, caller_number, client_number, direction FROM call_history WHERE id = $1',
+        [callId]
+      );
+      callMeta = c.rows[0] || null;
+    } catch (_) { /* не критично */ }
+    const callerPhone = (callMeta && (callMeta.client_number
+      || (callMeta.direction === 'outbound' ? callMeta.to_number : callMeta.from_number)
+      || callMeta.caller_number)) || ctp;
+
+    try {
+      const existing = await this.findOpenPreTenderForClient({
+        phone: callerPhone || ctp,
+        inn: ar.customer_inn || (ar.company && ar.company.inn) || null,
+        company: cn,
+        windowDays: 30
+      });
+      if (existing && existing.id) {
+        await db.query(
+          'UPDATE call_history SET pre_tender_id = $1, updated_at = NOW() WHERE id = $2',
+          [existing.id, callId]
+        );
+        await this.appendCallToPreTender(existing.id, { summary: ar.summary });
+        console.log('[CallAnalyzer] Call #' + callId + ' appended to existing pre-tender #' + existing.id);
+        return existing.id;
+      }
+    } catch (err) {
+      console.warn('[CallAnalyzer] dedup step skipped:', err.message);
+    }
+
     try {
       // Маркетплейс (director-inbox), не сага tenders.
       const r = await db.query(
@@ -122,16 +227,17 @@ class CallAnalyzer {
            work_title, ai_work_type, ai_summary, ai_color,
            status, created_by, assigned_to, has_documents, created_at, updated_at
          ) VALUES (
-           'phone', $1, $2, NULL,
-           $3, $4, $5, $6,
-           $7, $8, $9, 'yellow',
-           'new', $10, $10, false, NOW(), NOW()
+           'phone', $1, $2, $3,
+           $4, $5, $6, $7,
+           $8, $9, $10, 'yellow',
+           'new', $11, $11, false, NOW(), NOW()
          ) RETURNING id`,
         [
           cn || 'Из звонка',
           cte,
+          ar.customer_inn || (ar.company && ar.company.inn) || null,
           ctn,
-          ctp,
+          ctp || callerPhone || null,
           workDescription,
           loc,
           workTitle,

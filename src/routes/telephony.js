@@ -1100,6 +1100,30 @@ module.exports = async function telephonyRoutes(fastify, opts) {
     const call = res.rows[0];
     delete call.webhook_payload; // Не отдаём сырые данные клиенту
 
+    // Другие звонки клиента по той же заявке маркетплейса (история обращений).
+    // Один клиент может звонить несколько раз — РП должен видеть все контакты.
+    try {
+      if (call.pre_tender_id) {
+        const sib = await db.query(
+          `SELECT ch.id, ch.call_type, ch.direction, ch.duration_seconds,
+                  ch.started_at, ch.created_at,
+                  COALESCE(ch.ai_summary, ch.transcript) AS summary,
+                  u.name AS employee_name
+             FROM call_history ch
+             LEFT JOIN users u ON u.id = COALESCE(ch.user_id, ch.answered_by)
+            WHERE ch.pre_tender_id = $1
+              AND ch.id <> $2
+              AND ch.parent_call_id IS NULL
+            ORDER BY ch.created_at ASC
+            LIMIT 20`,
+          [call.pre_tender_id, call.id]
+        );
+        call.sibling_calls = sib.rows || [];
+      } else {
+        call.sibling_calls = [];
+      }
+    } catch (_) { call.sibling_calls = []; }
+
     // Идентификация СТОРОН по данным звонка (не по индексу спикера):
     // клиент — по номеру (входящий: from_number, исходящий: to_number),
     // оператор — user_id/answered_by. Имена нужны субтитрам для подписей.
