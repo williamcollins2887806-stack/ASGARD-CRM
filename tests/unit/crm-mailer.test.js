@@ -2,6 +2,8 @@
  * Unit tests: CRM Mailer Helper
  * Tests getTransportForUser, getCrmBccAddress, sendCrmEmail
  */
+const fs = require('fs');
+const path = require('path');
 const { describe, test, expect, beforeEach } = require('@jest/globals');
 
 jest.mock('../../src/services/db', () => ({ query: jest.fn() }));
@@ -247,5 +249,18 @@ describe('CRM Mailer — sendCrmEmail', () => {
     // Should have called INSERT INTO emails
     const insertCall = db.query.mock.calls.find(c => c[0].includes('INSERT INTO emails'));
     expect(insertCall).toBeDefined();
+  });
+});
+
+describe('CRM Mailer — email_attachments schema columns', () => {
+  test('INSERT uses file_path/mime_type, not filepath/content_type', () => {
+    const src = fs.readFileSync(
+      path.join(__dirname, '../../src/services/crm-mailer.js'),
+      'utf8'
+    );
+    expect(src).toMatch(/INSERT INTO email_attachments\s*\([^)]*\bfile_path\b/);
+    expect(src).toMatch(/INSERT INTO email_attachments\s*\([^)]*\bmime_type\b/);
+    expect(src).not.toMatch(/INSERT INTO email_attachments\s*\([^)]*\bfilepath\b/);
+    expect(src).not.toMatch(/INSERT INTO email_attachments\s*\([^)]*\bcontent_type\b/);
   });
 });

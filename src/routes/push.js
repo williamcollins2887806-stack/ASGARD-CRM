@@ -14,7 +14,9 @@ async function routes(fastify) {
   var db = fastify.db;
 
   // ── GET /vapid-key — public VAPID key for client subscription ──
-  fastify.get('/vapid-key', async function() {
+  // rateLimit: false — ключ публичный, SPA дергает его при каждом реконнекте
+  // вместе с SSE; без Authorization упирается в anon-лимит (см. sse.js).
+  fastify.get('/vapid-key', { config: { rateLimit: false } }, async function() {
     return { publicKey: process.env.VAPID_PUBLIC_KEY || '' };
   });
 

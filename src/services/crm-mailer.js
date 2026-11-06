@@ -327,16 +327,20 @@ async function sendCrmEmail(db, userId, mailOptions) {
 
         for (const att of attachments) {
           try {
-            const fname = `${emailId}_${Date.now()}_${att.filename || 'file'}`;
+            // Колонки как в schema/IMAP: file_path + mime_type (не filepath/content_type).
+            // 06.11.2026: INSERT с filepath валил сохранение вложений исходящих писем.
+            const safeName = String(att.filename || 'file').replace(/[^\w.\-а-яА-ЯёЁ]+/gi, '_').slice(0, 180);
+            const fname = `${emailId}_${Date.now()}_${safeName}`;
             const filePath = path.join(sentDir, fname);
             if (att.content && Buffer.isBuffer(att.content)) {
               fs.writeFileSync(filePath, att.content);
             }
             await db.query(
-              `INSERT INTO email_attachments (email_id, filename, filepath, size, content_type)
-               VALUES ($1, $2, $3, $4, $5)`,
-              [emailId, att.filename || 'file', `email_sent/${fname}`,
-               att.content?.length || 0, att.contentType || 'application/octet-stream']
+              `INSERT INTO email_attachments (email_id, filename, original_filename, mime_type, size, file_path)
+               VALUES ($1, $2, $3, $4, $5, $6)`,
+              [emailId, safeName, att.filename || 'file',
+               att.contentType || 'application/octet-stream',
+               att.content?.length || 0, `email_sent/${fname}`]
             );
           } catch (attErr) {
             console.error('[CRM-Mailer] Attachment save error:', attErr.message);

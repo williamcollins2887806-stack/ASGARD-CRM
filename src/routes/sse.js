@@ -72,7 +72,10 @@ async function sseRoutes(fastify) {
   // уровне). Для long-lived SSE Fastify не должен ждать промис и финализировать ответ:
   // именно это давало ERR_HTTP_HEADERS_SENT при переподключениях. Всё, что может
   // бросить, — внутри try/catch, промисов наружу не отдаём.
-  fastify.get('/stream', (request, reply) => {
+  // rateLimit: false — EventSource ходит с ?token= без Authorization, иначе
+  // попадает под анонимный лимит (~180/мин) и при реконнектах даёт шторм
+  // «Rate limit exceeded» (06.11.2026: ×2455 за 3ч у одного пользователя).
+  fastify.get('/stream', { config: { rateLimit: false } }, (request, reply) => {
     // Авторизация через query-параметр (EventSource не поддерживает заголовки)
     const token = request.query.token;
     if (!token) {

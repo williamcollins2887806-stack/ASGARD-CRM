@@ -66,14 +66,20 @@ const NOISE_RE = new RegExp([
   // в каждом уведомлении. Глушим ТОЛЬКО эти формулировки по отдельности,
   // а не весь IMAP: любая другая ошибка почты (исключение в парсере, падение
   // поллера, ошибка авторизации) по-прежнему приходит в уведомлении.
-  '\\[IMAP\\] Sync error[^\\n]*: (?:read )?(?:ECONNRESET|ETIMEDOUT|EPIPE|Unexpected close|Connection not available|Command failed|NoConnection)',
+  '\\[IMAP\\] Sync error[^\\n]*: (?:read )?(?:ECONNRESET|ETIMEDOUT|EPIPE|Unexpected close|Connection not available|Command failed|NoConnection|ECONNREFUSED|Failed to establish connection)',
+  '\\[IMAP\\] Sync error[^\\n]*\\(code=(?:ECONNREFUSED|CONNECT_TIMEOUT|ETIMEDOUT|ECONNRESET|EPIPE)\\)',
   '\\[IMAP\\] Sync error[^\\n]*:\\s*$',
   'Async client error account=[^\\n]*(?:ECONNRESET|NoConnection|Already logged out|ETIMEOUT|ETIMEDOUT)',
   'Async client error account=',
+  // ImapFlow: гонка logout/reauth → Unhandled Rejection «Already logged out».
+  // Синк после этого обычно проходит; будить админа незачем.
+  '"message":"Already logged out"[^\\n]*"msg":"Unhandled Promise Rejection"',
   // Тот же класс: сетевой таймаут IMAP на инициализации сортировщика папок.
   // Яндекс.Почта на 77.88.21.125:993 то отвечает, то нет; сортировщик
   // ретраит сам. Это не наш код и не влияет на приём писем.
-  '\\[FolderSorter\\][^\\n]*(?:ETIMEDOUT|ENETUNREACH|ECONNRESET|ECONNREFUSED)',
+  // 06.11.2026: «Connection not available» / Unexpected close тоже шум сети,
+  // но раньше фильтр их не ловил → пуш в 18:00 с 7 папками CRM/*.
+  '\\[FolderSorter\\][^\\n]*(?:ETIMEDOUT|ENETUNREACH|ECONNRESET|ECONNREFUSED|Connection not available|Unexpected close|Already logged out|NoConnection|ClosedAfterConnectTLS|Command failed)',
   // ВАЖНО: `Reply was already sent` и `ERR_HTTP_HEADERS_SENT` НЕ глушим.
   // Это серверные ошибки (двойной ответ), и гейт tests/fastify-onsend-guard.test.js
   // реально ловит их причину — значит ночное уведомление не будет вечным шумом,
