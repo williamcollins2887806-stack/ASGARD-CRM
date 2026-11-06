@@ -296,6 +296,29 @@ async function _cleanup(tmpDir) {
  * @param {string} pdfPath абсолютный путь к PDF
  * @returns {Promise<{text:string, pages:number, pageTexts:string[]}|null>}
  */
+/**
+ * Битый текстовый слой PDF (кастомные шрифты без ToUnicode).
+ * Пример: Ситилинк «ПродажаСчетПроформаCL6_V052717397.pdf» (05.11.2026) —
+ * 17k «символов», но кириллица → IPA/control (`ɋɱɟɬ…`, `\u0003`), цифры ИНН
+ * тоже в control-диапазоне. Старый код принимал слой → intake без контрагента
+ * → needs_manual, заявка Тумаевой не создавалась.
+ */
+function isGarbledPdfText(text) {
+  const s = String(text || '');
+  if (s.trim().length < 40) return false;
+  const controls = (s.match(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g) || []).length;
+  const cyr = (s.match(/[А-Яа-яЁё]/g) || []).length;
+  const digits = (s.match(/[0-9]/g) || []).length;
+  const weird = (s.match(/[\u0250-\u02AF\u1D00-\u1DBF]/g) || []).length; // IPA extensions
+  // Много управляющих символов — типичный сломанный ToUnicode
+  if (controls >= 15 && controls / s.length >= 0.015) return true;
+  // Почти нет кириллицы, но куча IPA-букв
+  if (cyr < 40 && weird >= 30) return true;
+  // Длинный «счёт», а цифр почти нет (суммы/ИНН уехали в controls)
+  if (s.length >= 400 && digits < 8 && controls >= 10) return true;
+  return false;
+}
+
 async function _tryTextLayer(pdfPath) {
   try {
     const pdfParse = require('pdf-parse');
@@ -723,7 +746,13 @@ async function _ocrOnePageInner(imgPath, pageNum, originalName, opts = {}) {
  * Учитывает download_url (/uploads/tender_archives/…, /api/files/download/…).
  */
 function resolveDocumentPath(doc) {
-  const baseDir = path.resolve(process.env.UPLOAD_DIR || process.env.UPLOADS_DIR || path.join(process.cwd(), 'uploads'));
+  // ВАЖНО: относительный ./uploads зависит от cwd процесса. Сервис работает
+  // из /var/www/asgard-crm, а служебные скрипты — из любой папки, и тогда
+  // «файл не найден» появлялся при живом файле (тендер 2142, 06.11).
+  // Поэтому базу считаем от расположения самого файла: src/services → ../../uploads.
+  const appRoot = path.resolve(__dirname, '..', '..');
+  const rawBase = process.env.UPLOAD_DIR || process.env.UPLOADS_DIR || './uploads';
+  const baseDir = path.isAbsolute(rawBase) ? rawBase : path.resolve(appRoot, rawBase);
   const candidates = [];
 
   const pushCand = (raw) => {
@@ -741,6 +770,10 @@ function resolveDocumentPath(doc) {
     } else {
       candidates.push(path.join(baseDir, s));
       candidates.push(path.join(baseDir, path.basename(s)));
+      // Абсолютный путь от корня приложения — на случай, если сервис
+      // запущен из другого каталога.
+      candidates.push(path.join(appRoot, s));
+      candidates.push(path.join(appRoot, 'uploads', s));
     }
   };
 
@@ -972,20 +1005,25 @@ async function ocrPdfPath(pdfPath, originalName, opts = {}) {
   if (opts.textLayer !== false) {
     const layer = await _tryTextLayer(pdfPath);
     if (layer && layer.text && layer.text.trim().length >= (opts.textLayerMin || 80)) {
-      console.log(`[OCR:pdfPath] ${originalName}: текстовый слой ${layer.text.length} chars (${layer.pages} стр) — vision не нужен`);
-      return {
-        text: layer.text,
-        diagnostics: {
-          source: 'text_layer',
-          pages: layer.pages,
-          chars: layer.text.length,
-          page_diag: layer.pageTexts.map((t, i) => ({
-            page: i + 1, chars: t.length, empty: !t.trim(), source: 'text_layer'
-          }))
-        }
-      };
-    }
-    if (layer) {
+      if (isGarbledPdfText(layer.text)) {
+        console.warn(
+          `[OCR:pdfPath] ${originalName}: текстовый слой ${layer.text.length} chars — БИТЫЙ (garbled/ToUnicode), → vision-OCR`
+        );
+      } else {
+        console.log(`[OCR:pdfPath] ${originalName}: текстовый слой ${layer.text.length} chars (${layer.pages} стр) — vision не нужен`);
+        return {
+          text: layer.text,
+          diagnostics: {
+            source: 'text_layer',
+            pages: layer.pages,
+            chars: layer.text.length,
+            page_diag: layer.pageTexts.map((t, i) => ({
+              page: i + 1, chars: t.length, empty: !t.trim(), source: 'text_layer'
+            }))
+          }
+        };
+      }
+    } else if (layer) {
       console.log(`[OCR:pdfPath] ${originalName}: текстовый слой пуст/мал (${(layer.text || '').trim().length} chars) → vision-OCR`);
     }
   }
@@ -1230,6 +1268,7 @@ module.exports = {
   ocrImageBuffer,
   resolveDocumentPath,
   isOcrFailureText,
+  isGarbledPdfText,
   PDFTOPPM_BIN,
   OCR_MODEL,
   OCR_MAX_PAGES

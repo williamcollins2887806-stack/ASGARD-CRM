@@ -93,9 +93,52 @@ function listFilesRecursive(dir, base = dir) {
 }
 
 // Async wrapper для child_process.spawn — собирает stdout/stderr, ловит таймаут.
+//
+// ВАЖНО (06.11.2026): 7-Zip и unrar на Windows стоят, но НЕ в PATH, поэтому
+// spawn('7z') падал с ENOENT, и вложенные .7z внутри zip не распаковывались —
+// именно там лежали ведомости объёмов. Теперь ищем исполняемый файл в
+// типовых местах установки, прежде чем сдаться.
+const TOOL_CANDIDATES = {
+  '7z': [
+    'C:\\Program Files\\7-Zip\\7z.exe',
+    'C:\\Program Files (x86)\\7-Zip\\7z.exe',
+    '/usr/bin/7z', '/usr/local/bin/7z'
+  ],
+  '7za': [
+    'C:\\Program Files\\7-Zip\\7za.exe',
+    '/usr/bin/7za', '/usr/local/bin/7za'
+  ],
+  'unrar': [
+    'C:\\Program Files\\WinRAR\\UnRAR.exe',
+    'C:\\Program Files\\WinRAR\\unrar.exe',
+    'C:\\Program Files (x86)\\WinRAR\\UnRAR.exe',
+    '/usr/bin/unrar', '/usr/local/bin/unrar'
+  ],
+  'tar': ['C:\\Windows\\System32\\tar.exe', '/bin/tar', '/usr/bin/tar']
+};
+
+const _toolCache = {};
+
+function resolveTool(cmd) {
+  if (_toolCache[cmd] !== undefined) return _toolCache[cmd];
+  const candidates = TOOL_CANDIDATES[cmd] || [];
+  for (const p of candidates) {
+    try {
+      if (fs.existsSync(p)) {
+        _toolCache[cmd] = p;
+        return p;
+      }
+    } catch (_) { /* нет доступа */ }
+  }
+  // Не нашли — пробуем как есть, вдруг он в PATH.
+  _toolCache[cmd] = cmd;
+  return cmd;
+}
+
 function runCmd(cmd, args, { timeout = EXTRACT_TIMEOUT_MS, cwd } = {}) {
   return new Promise((resolve) => {
-    const child = spawn(cmd, args, { cwd });
+    const bin = resolveTool(cmd);
+    const child = spawn(bin, args, { cwd });
     let stdout = '', stderr = '';
     let killed = false;
     const timer = setTimeout(() => {

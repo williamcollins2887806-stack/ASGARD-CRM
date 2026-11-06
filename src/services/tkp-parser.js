@@ -17,7 +17,7 @@ const os   = require('os');
 const fs   = require('fs');
 const aiProvider = require('./ai-provider');
 
-const SUPPORTED_TEXT  = new Set(['.pdf', '.docx', '.xlsx', '.xls', '.txt', '.csv', '.rtf']);
+const SUPPORTED_TEXT  = new Set(['.pdf', '.doc', '.docx', '.xlsx', '.xls', '.txt', '.csv', '.rtf']);
 const SUPPORTED_IMAGE = new Set(['.jpg', '.jpeg', '.png', '.webp', '.gif', '.bmp', '.tif', '.tiff']);
 
 const MAX_TEXT_CHARS = 100000;
@@ -79,8 +79,117 @@ function _truthy(v) {
  * @param {{ forceOcr?: boolean, mode?: string }} opts
  * @returns {{ text: string, usedOcr: boolean, ocrDiagnostics?: object }}
  */
-async function _extractText(buf, originalName, opts = {}) {
-  const ext = path.extname(originalName || '').toLowerCase();
+/**
+ * Старый Word .doc (OLE2) через LibreOffice.
+ *
+ * mammoth понимает только .docx, а .doc — это OLE-контейнер. Раньше такие
+ * файлы давали 0 символов: ТЗ АО «АЗП» на 5,8 МБ не читалось вообще.
+ * Конвертируем сначала в docx (mammoth даёт чистый текст), затем в txt.
+ */
+function _docViaLibreOffice(buf, originalName) {
+  const { spawnSync } = require('child_process');
+  const os = require('os');
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'doc-'));
+  try {
+    const src = path.join(tmpDir, 'in.doc');
+    fs.writeFileSync(src, buf);
+
+    const bins = [
+      'soffice', 'libreoffice', '/usr/bin/soffice', '/usr/bin/libreoffice',
+      'C:\\Program Files\\LibreOffice\\program\\soffice.exe'
+    ];
+
+    for (const bin of bins) {
+      const profile = path.join(tmpDir, 'prof');
+      fs.mkdirSync(profile, { recursive: true });
+      const base = [
+        '--headless', '--norestore', '--nolockcheck',
+        `-env:UserInstallation=file://${profile.replace(/\\/g, '/')}`
+      ];
+
+      // 1) txt:Text — самый простой и надёжный путь для .doc.
+      const rTxt = spawnSync(bin, base.concat(['--convert-to', 'txt:Text', '--outdir', tmpDir, src]),
+        { timeout: 90000, encoding: 'utf8' });
+      if (!rTxt.error && rTxt.status === 0) {
+        const txt = fs.readdirSync(tmpDir).find((f) => f.toLowerCase().endsWith('.txt'));
+        if (txt) {
+          const text = String(fs.readFileSync(path.join(tmpDir, txt), 'utf8') || '')
+            .replace(/^\uFEFF/, '').trim();
+          if (text.length >= 20) return text.slice(0, MAX_TEXT_CHARS);
+        }
+      }
+
+      // 2) docx + mammoth — если txt-фильтр недоступен.
+      const rDocx = spawnSync(bin, base.concat(['--convert-to', 'docx', '--outdir', tmpDir, src]),
+        { timeout: 90000, encoding: 'utf8' });
+      if (!rDocx.error && rDocx.status === 0) {
+        const docx = fs.readdirSync(tmpDir).find((f) => f.toLowerCase().endsWith('.docx'));
+        if (docx) {
+          try {
+            const mammoth = require('mammoth');
+            const m = mammoth.extractRawText({ buffer: fs.readFileSync(path.join(tmpDir, docx)) });
+            const text = String((m && m.value) || '').trim();
+            if (text.length >= 20) return text.slice(0, MAX_TEXT_CHARS);
+          } catch (_) { /* пробуем следующий бинарь */ }
+        }
+      }
+    }
+    return '';
+  } catch (_) {
+    return '';
+  } finally {
+    try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch (_) {}
+  }
+}
+
+/**
+ * Старый .xls через LibreOffice → CSV → текст.
+ *
+ * ExcelJS читает только .xlsx (это zip с XML), а .xls — это OLE-контейнер,
+ * на котором он падает. Раньше такие документы загружались с 0 символов,
+ * и анализ не видел объёмов. LibreOffice конвертирует .xls в CSV.
+ */
+function _xlsViaLibreOffice(buf, originalName) {
+  const { spawnSync } = require('child_process');
+  const os = require('os');
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'xls-'));
+  try {
+    const src = path.join(tmpDir, 'in' + (path.extname(originalName || '') || '.xls'));
+    fs.writeFileSync(src, buf);
+
+    // Ищем бинарь: на Linux это soffice/libreoffice, на Windows — в Program Files.
+    const candidates = [
+      'soffice', 'libreoffice',
+      'C:\\Program Files\\LibreOffice\\program\\soffice.exe'
+    ];
+    let done = false;
+    for (const bin of candidates) {
+      const profile = path.join(tmpDir, 'prof');
+      fs.mkdirSync(profile, { recursive: true });
+      const r = spawnSync(bin, [
+        '--headless', '--norestore', '--nolockcheck',
+        `-env:UserInstallation=file://${profile.replace(/\\/g, '/')}`,
+        '--convert-to', 'csv:Text - txt - csv (StarCalc)',
+        '--outdir', tmpDir, src
+      ], { timeout: 90000, encoding: 'utf8' });
+      if (r.error || r.status !== 0) continue;
+      const csv = fs.readdirSync(tmpDir).find((f) => f.toLowerCase().endsWith('.csv'));
+      if (!csv) continue;
+      const text = String(fs.readFileSync(path.join(tmpDir, csv), 'utf8') || '')
+        .replace(/^\uFEFF/, '')
+        .replace(/\r\n/g, '\n')
+        .slice(0, MAX_TEXT_CHARS);
+      if (text.trim().length >= 20) { done = true; return text; }
+    }
+    return done ? '' : '';
+  } catch (_) {
+    return '';
+  } finally {
+    try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch (_) {}
+  }
+}
+
+async function _extractText(buf, originalName, opts = {}) {  const ext = path.extname(originalName || '').toLowerCase();
   const forceOcr = !!opts.forceOcr;
   const refine = (opts.mode || 'initial') === 'refine';
 
@@ -110,6 +219,15 @@ async function _extractText(buf, originalName, opts = {}) {
     }
   }
 
+  if (ext === '.doc') {
+    // Старый Word (OLE2, сигнатура D0CF11E0). mammoth его не читает,
+    // ExcelJS не при чём. Без этой ветки документ давал 0 символов
+    // (проверено на ТЗ АО «АЗП», 5,8 МБ → 4177 символов через LibreOffice).
+    const viaLo = _docViaLibreOffice(buf, originalName);
+    if (viaLo && viaLo.length >= 20) return { text: viaLo, usedOcr: false };
+    return { text: '', usedOcr: false };
+  }
+
   if (ext === '.docx') {
     const mammoth = require('mammoth');
     const result = await mammoth.extractRawText({ buffer: buf });
@@ -117,28 +235,58 @@ async function _extractText(buf, originalName, opts = {}) {
   }
 
   if (ext === '.xlsx' || ext === '.xls') {
-    const ExcelJS = require('exceljs');
-    const wb = new ExcelJS.Workbook();
-    await wb.xlsx.load(buf);
-    let text = '';
-    wb.eachSheet((sheet) => {
-      if (text.length >= MAX_TEXT_CHARS) return;
-      text += `\n=== ${sheet.name} ===\n`;
-      sheet.eachRow((row) => {
+    // Сначала пробуем ExcelJS: он понимает .xlsx, но НЕ старый OLE .xls.
+    // ВАЖНО: ExcelJS падает на файлах с картинками ("Cannot read properties
+    // of undefined (reading 'anchors')") и на OLE .xls ("Can't find end of
+    // central directory"). Оба случая теперь уходят в xlsx-библиотеку
+    // и LibreOffice вместо тихого провала в 0 символов.
+    try {
+      const ExcelJS = require('exceljs');
+      const wb = new ExcelJS.Workbook();
+      await wb.xlsx.load(buf);
+      let text = '';
+      wb.eachSheet((sheet) => {
         if (text.length >= MAX_TEXT_CHARS) return;
-        const vals = [];
-        row.eachCell({ includeEmpty: false }, (cell) => {
-          const v = cell.value;
-          if (v == null) return;
-          if (typeof v === 'object' && v.text) vals.push(String(v.text));
-          else if (typeof v === 'object' && v.result != null) vals.push(String(v.result));
-          else if (typeof v === 'object' && v.error) vals.push(String(v.error));
-          else if (typeof v !== 'object') vals.push(String(v));
+        text += `\n=== ${sheet.name} ===\n`;
+        sheet.eachRow((row) => {
+          if (text.length >= MAX_TEXT_CHARS) return;
+          const vals = [];
+          row.eachCell({ includeEmpty: false }, (cell) => {
+            const v = cell.value;
+            if (v == null) return;
+            if (typeof v === 'object' && v.text) vals.push(String(v.text));
+            else if (typeof v === 'object' && v.result != null) vals.push(String(v.result));
+            else if (typeof v === 'object' && v.error) vals.push(String(v.error));
+            else if (typeof v !== 'object') vals.push(String(v));
+          });
+          if (vals.length) text += vals.join(' | ') + '\n';
         });
-        if (vals.length) text += vals.join(' | ') + '\n';
       });
-    });
-    return { text, usedOcr: false };
+      if (String(text).trim().length >= 20) return { text, usedOcr: false };
+    } catch (_) { /* падение ExcelJS — идём дальше, не сдаёмся */ }
+
+    // Запасной путь 1: SheetJS (xlsx) — читает и .xlsx, и старый .xls,
+    // и не спотыкается на картинках.
+    try {
+      const XLSX = require('xlsx');
+      const wb = XLSX.read(buf, { type: 'buffer', cellDates: false, cellText: true });
+      let text = '';
+      for (const name of wb.SheetNames) {
+        if (text.length >= MAX_TEXT_CHARS) break;
+        const sheet = wb.Sheets[name];
+        if (!sheet) continue;
+        text += `\n=== ${name} ===\n`;
+        const csv = XLSX.utils.sheet_to_csv(sheet, { blankrows: false });
+        text += String(csv || '').slice(0, MAX_TEXT_CHARS - text.length);
+      }
+      if (String(text).trim().length >= 20) return { text, usedOcr: false };
+    } catch (_) { /* нет SheetJS или файл битый */ }
+
+    // Запасной путь 2: старый .xls (OLE) через LibreOffice.
+    const viaLo = _xlsViaLibreOffice(buf, originalName);
+    if (viaLo && viaLo.length >= 20) return { text: viaLo, usedOcr: false };
+
+    return { text: '', usedOcr: false };
   }
 
   if (ext === '.txt' || ext === '.csv' || ext === '.rtf') {
