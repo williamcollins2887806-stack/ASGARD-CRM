@@ -829,8 +829,12 @@ window.AsgardRpCalcModal = (function () {
           '<div><dt>Метод</dt><dd>' + esc(method || '—') + '</dd></div>' +
           '<div><dt>Отложения</dt><dd><span class="rp-dv-foul ' +
             (foulingCls[p.fouling] || '') + '">' + esc(foulingMap[p.fouling] || 'не указаны') + '</span></dd></div>' +
-          '<div><dt>Люди</dt><dd>' + (c.people != null ? esc(String(c.people)) : '—') + '</dd></div>' +
-          '<div><dt>Сутки</dt><dd>' + (c.days != null ? esc(String(c.days)) : '—') + '</dd></div>' +
+          // Люди и сутки показываем только когда план посчитан: прочерки
+          // в каждой карточке выглядят как недоделка (жалоба 06.11).
+          (hasPlan
+            ? '<div><dt>Люди</dt><dd>' + (c.people != null ? esc(String(c.people)) : '—') + '</dd></div>' +
+              '<div><dt>Сутки</dt><dd>' + (c.days != null ? esc(String(c.days)) : '—') + '</dd></div>'
+            : '') +
         '</dl>' +
         (p.tech_equip
           ? '<div class="rp-calc-dv-card__tech"><span>Чем работаем</span><p>' + esc(p.tech_equip) + '</p></div>'

@@ -41,9 +41,11 @@ test('прод: просчёт — вкладка «Объёмы»', async ({ pa
   const info = await page.evaluate(() => {
     const panel = document.querySelector('[data-panel="dv"]');
     return {
-      table: document.querySelectorAll('.rp-calc-dv-table').length,
-      rows: document.querySelectorAll('.rp-calc-dv-table tbody tr').length,
-      headers: Array.from(document.querySelectorAll('.rp-calc-dv-table th')).map((t) => t.textContent.trim()),
+      cards: document.querySelectorAll('.rp-calc-dv-card').length,
+      names: Array.from(document.querySelectorAll('.rp-calc-dv-card h4'))
+        .slice(0, 3).map((h) => h.textContent.trim().slice(0, 40)),
+      methods: Array.from(document.querySelectorAll('.rp-calc-dv-card__grid'))
+        .slice(0, 3).map((g) => g.textContent.trim().slice(0, 60)),
       summary: (document.querySelector('.rp-calc-dv-summary') || {}).textContent || null,
       active: (document.querySelector('.rp-calc-tab.is-active') || {}).textContent || null,
       visible: panel ? panel.offsetHeight > 0 : false
@@ -58,6 +60,6 @@ test('прод: просчёт — вкладка «Объёмы»', async ({ pa
   fs.mkdirSync(OUT, { recursive: true });
   await page.screenshot({ path: path.join(OUT, '81-prod-calc-dv.png') });
 
-  expect(info.rows, 'строки ДВ в просчёте').toBeGreaterThan(0);
+  expect(info.cards, 'карточки ДВ в просчёте').toBeGreaterThan(0);
   expect(info.visible, 'панель «Объёмы» видна').toBe(true);
 });

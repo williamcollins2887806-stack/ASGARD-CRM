@@ -1003,7 +1003,7 @@ html[data-theme='light'] .rp-calc-approve-toggle input[type='checkbox']:checked 
   background: var(--bg4); border: 1px solid var(--brd-m); white-space: nowrap;
 }
 .rp-calc-dv-card__grid {
-  display: grid; grid-template-columns: repeat(4, 1fr);
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
   gap: 8px 14px; margin: 10px 0 0; padding-top: 9px;
   border-top: 1px dashed var(--brd-m);
 }
