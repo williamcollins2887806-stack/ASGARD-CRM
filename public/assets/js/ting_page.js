@@ -290,23 +290,32 @@
     document.documentElement.classList.toggle('ting-incall', !!on);
     document.body.classList.toggle('ting-incall', !!on);
   }
-  function logoMark(size) {
+  /** Логотип-плитка: квадрат с собственным фоном (для «Тинг готов», ожидания). */
+  function logoTile(size) {
     const s = size || 44;
-    /* Новый премиальный знак v3 (aperture + T). PNG full-bleed,
-       без дублей SVG-id и без «плитки в Paint». */
-    return `<div class="ting-logo-mark" style="width:${s}px;height:${s}px;border-radius:${Math.round(s * 0.3)}px;overflow:hidden" aria-hidden="true">`
-      + `<img src="/assets/img/ting-brand/ting-mark-v3-1024.png" alt="" width="${s}" height="${s}" style="display:block;width:100%;height:100%;object-fit:cover" />`
+    return `<div class="ting-logo-tile" style="width:${s}px;height:${s}px;border-radius:${Math.round(s * 0.28)}px" aria-hidden="true">`
+      + `<img src="/assets/img/ting-brand/ting-mark-v3-1024.png" alt="" width="${s}" height="${s}" />`
       + `</div>`;
+  }
+
+  /**
+   * Знак без фона — для мест, где подложка своя (шапка, карточка на светлой
+   * теме, верх комнаты). Раньше везде вставлялся непрозрачный PNG с тёмным
+   * фоном: на светлой теме он читался как «серый квадрат» (баг 06.11.2026).
+   */
+  function logoGlyph(size) {
+    const s = size || 28;
+    return `<img class="ting-logo-glyph" src="/assets/img/ting-brand/ting-mark-v3-cutout-512.png"`
+      + ` alt="" width="${s}" height="${s}" style="width:${s}px;height:${s}px;object-fit:contain;display:block" aria-hidden="true" />`;
   }
   function brand(chip) {
     return `<div class="ting-brand-row">
-      <div class="ting-logo">${logoMark(44)}
+      <div class="ting-logo">${logoGlyph(38)}
         <div class="ting-logo-text"><strong>Тинг</strong><span>${esc(COPY.brandSub)}</span></div>
       </div>
       ${chip ? `<span class="ting-chip gold">${esc(chip)}</span>` : ''}
     </div>`;
-  }
-  function svgMic(off) { return (window.TingIcons && TingIcons.mic(off)) || ''; }
+  }  function svgMic(off) { return (window.TingIcons && TingIcons.mic(off)) || ''; }
   function svgCam(off) { return (window.TingIcons && TingIcons.cam(off)) || ''; }
   function svgScreen() { return (window.TingIcons && TingIcons.screen()) || ''; }
   function svgPeople() { return (window.TingIcons && TingIcons.people()) || ''; }
@@ -436,7 +445,7 @@
       ${bannerError(state.hubError)}
       <div class="ting-hub-hero">
         <button type="button" class="ting-hub-card primary" data-act="new">
-          <div class="ico">${logoMark(40)}</div>
+          <div class="ico">${logoGlyph(28)}</div>
           <strong>${esc(COPY.newTing)}</strong>
           <small>${esc(COPY.newTingHint)}</small>
         </button>
@@ -621,7 +630,7 @@
       ${brand()}
       <div class="ting-card ting-center-card">
         <div class="ting-ready-hero">
-          ${logoMark(40)}
+          ${logoTile(56)}
           <h2>Тинг готов</h2>
           <p class="ting-muted">Отправьте ссылку коллегам и клиентам</p>
           <p class="ting-ready-title">${esc(roomTitleDisplay(r))}</p>
@@ -735,7 +744,7 @@
     root.innerHTML = `<div class="ting-wrap">
       ${brand('ожидание')}
       <div class="ting-card ting-center-card ting-stack">
-        <div class="ting-wait-pulse" aria-hidden="true">${logoMark(56)}</div>
+        <div class="ting-wait-pulse" aria-hidden="true">${logoTile(56)}</div>
         <h2>Почти внутри</h2>
         <p class="ting-muted ting-wait-copy">Организатор скоро пустит · не закрывайте вкладку</p>
         <button type="button" class="ting-btn ting-btn-ghost" data-act="waiting-leave">${esc(COPY.leave)}</button>
@@ -1011,7 +1020,7 @@
           ${state.reconnecting ? `<div class="ting-consent ting-reconnect" role="status">Переподключение…</div>` : ''}
           <div class="ting-room-top-row">
             <div class="ting-room-title">
-              ${logoMark(28)}
+              ${logoGlyph(26)}
               <div class="ting-room-title-text">
                 <strong>${esc(roomTitleDisplay(r))}</strong>
                 <span class="ting-muted" id="ting-timer">${fmtTime(state.timerSec)}</span>
