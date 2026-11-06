@@ -204,8 +204,45 @@ async function routes(fastify, options) {
   }, async (request, reply) => {
     const {
       customer_inn, customer_name, tz_text,
-      pre_tender_id, tender_id, parent_work_id
+      pre_tender_id, tender_id, parent_work_id,
+      reuse_existing
     } = request.body || {};
+
+    // Повторный анализ того же тендера НЕ должен плодить сессии.
+    // Дефект 07.11 (тендер 2138): каждый прогон создавал новую сессию,
+    // у тендера накопилось 18 сессий. Последняя случайно дала 5 позиций
+    // вместо 271 — и именно её видит РП, а прежний полный разбор потерян.
+    // Теперь при reuse_existing (и по умолчанию для тендера с готовым
+    // состоянием) отдаём существующую сессию — анализ обновит её же.
+    if (tender_id) {
+      try {
+        const { rows: [exist] } = await db.query(
+          `SELECT session_uid, stage, stage_state
+             FROM tkp_quick_sessions
+            WHERE tender_id = $1
+              AND stage_state IS NOT NULL
+              AND jsonb_array_length(COALESCE(stage_state->'positions', '[]'::jsonb)) > 0
+            ORDER BY id DESC LIMIT 1`,
+          [tender_id]
+        );
+        if (exist && exist.session_uid) {
+          return {
+            ok: true,
+            reused: true,
+            session: {
+              session_uid: exist.session_uid,
+              tender_id,
+              stage: exist.stage || 'intake',
+              state: require('../services/mimir-tender-stages').normalizeState(exist.stage_state),
+              version: 0
+            }
+          };
+        }
+      } catch (e) {
+        // Не критично: если не нашли — создадим новую как раньше.
+        request.log.warn({ err: e }, 'reuse existing session failed');
+      }
+    }
 
     const sessionUid = crypto.randomUUID();
 
