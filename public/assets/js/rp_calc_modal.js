@@ -654,7 +654,7 @@ window.AsgardRpCalcModal = (function () {
     return '<div class="rp-calc-modal' + (state.embedded ? ' rp-calc-modal--embedded' : '') + '" data-rp-calc-root="1">' +
       '<div class="rp-calc-hero">' +
       '<div class="rp-calc-hero__main">' +
-      '<div class="rp-calc-hero__kicker">АСГАРД · ПРОСЧЁТ' + (demo ? ' · DEMO' : '') + '</div>' +
+      '<div class="rp-calc-hero__kicker">АСГАРД · ПРОСЧЁТ' + (demo ? ' · демо' : '') + '</div>' +
       '<h2 class="rp-calc-hero__title">Просчёт</h2>' +
       '<div class="rp-calc-hero__sub">' +
       '<span>№ <b>' + esc(t.registry_no || t.id || '—') + '</b></span>' +

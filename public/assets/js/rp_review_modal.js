@@ -950,7 +950,7 @@ window.AsgardRpReviewModal = (function () {
 
         if (mode === 'calc') {
           h += section('scope', 'Объём и сроки', (() => {
-            let ih = '<div class="rp-review-field"><label>Объём работ (scope)</label>';
+            let ih = '<div class="rp-review-field"><label>Объём работ</label>';
             ih += isLocked ? renderRo('', reportJson.scope) :
               '<textarea class="inp" id="rpScope" rows="3">' + esc(reportJson.scope || '') + '</textarea>';
             ih += '</div><div class="rp-review-field-row">';
