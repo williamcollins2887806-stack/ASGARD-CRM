@@ -210,11 +210,42 @@ function docsToText(documents, limit = 400000) {
   const minPer = 1500;
   const budget = Math.max(limit, items.length * minPer);
 
+  // ПРОХОД 1: раздаём квоты по весам.
+  // ПРОХОД 2: остаток бюджета отдаём тем, кто не влез.
+  // Дефект 06.11 (тендер 2138): дефектная ведомость на 100 тыс. символов
+  // обрезалась до 50 тыс., хотя в бюджете лежало ещё 225 тыс. неиспользованных:
+  // квоты делились поровну, и место коротких документов просто пропадало.
+  // Модель недосчитывала объёмы из-за обрезки середины таблицы.
+  const alloc = items.map((it) => ({ it, quota: (budget * (it.pr || 1)) / totalWeight }));
+  let free = budget - alloc.reduce((s, a) => s + Math.min(a.it.text.length, a.quota), 0);
+
+  // Нуждающиеся — от самого важного и самого длинного.
+  const needy = alloc
+    .filter((a) => a.it.text.length > a.quota)
+    .sort((a, b) => (b.it.pr - a.it.pr) || (b.it.text.length - a.it.text.length));
+
+  for (const a of needy) {
+    if (free <= 0) break;
+    const room = a.it.text.length - a.quota;
+    const add = Math.min(room, Math.floor(free * 0.6));   // 60 %, чтобы хватило всем
+    a.quota += add;
+    free -= add;
+  }
+  // Второй добор: если после первого круга остались и место, и нужда.
+  for (const a of needy) {
+    if (free <= 0) break;
+    const room = a.it.text.length - a.quota;
+    if (room <= 0) continue;
+    const add = Math.min(room, free);
+    a.quota += add;
+    free -= add;
+  }
+
   const parts = [];
-  for (const it of items) {
+  for (const a of alloc) {
+    const it = a.it;
     const head = `=== ${it.name}${it.roleTitle ? ` [${it.roleTitle}]` : ''} ===\n`;
-    const quota = Math.max(minPer, Math.floor((budget * (it.pr || 1)) / totalWeight));
-    const room = Math.max(800, quota - head.length);
+    const room = Math.max(800, Math.floor(a.quota) - head.length);
 
     if (it.text.length <= room) {
       parts.push(head + it.text);

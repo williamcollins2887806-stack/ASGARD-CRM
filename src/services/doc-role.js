@@ -167,13 +167,50 @@ function describe(role, source) {
  * Один и тот же документ из разных архивов даёт один и тот же хеш.
  */
 function contentHash(text) {
-  const t = String(text || '')
-    .replace(/\s+/g, ' ')
-    .replace(/[«»"'`]/g, '')
-    .trim()
-    .toLowerCase();
+  const t = normalizeForHash(text);
   if (t.length < 40) return null;   // слишком коротко — не рискуем схлопывать
   return crypto.createHash('sha1').update(t).digest('hex');
+}
+
+/** Нормализация под сравнение: без пробелов, регистра и пунктуации. */
+function normalizeForHash(text) {
+  return String(text || '')
+    .replace(/\s+/g, '')
+    .replace(/[«»"'`.,;:!?()[\]{}\-–—/\\|]/g, '')
+    .trim()
+    .toLowerCase();
+}
+
+/**
+ * Похожесть нормализованных текстов, 0..1.
+ * Нужна потому, что копии одного PDF распознаются по-разному: OCR путает
+ * «3» и «З», теряет пробелы. Хеш у них разный, а документ — один.
+ * Тендер 2138: 6 копий «Техническое задание.pdf» дали 6 разных хешей.
+ */
+function similarity(a, b) {
+  const A = normalizeForHash(a);
+  const B = normalizeForHash(b);
+  if (!A || !B) return 0;
+  if (A === B) return 1;
+  const shortLen = Math.min(A.length, B.length);
+  const longLen = Math.max(A.length, B.length);
+  if (shortLen < 40) return 0;
+  // Разная длина больше чем на четверть — это разные документы.
+  if (shortLen / longLen < 0.75) return 0;
+
+  // Сравниваем начало (первые 2000 знаков достаточно для отпечатка).
+  const a2 = A.slice(0, 2000);
+  const b2 = B.slice(0, 2000);
+  const grams = new Set();
+  for (let i = 0; i + 3 <= a2.length; i += 1) grams.add(a2.slice(i, i + 3));
+  if (!grams.size) return 0;
+  let hit = 0;
+  let total = 0;
+  for (let i = 0; i + 3 <= b2.length; i += 1) {
+    total += 1;
+    if (grams.has(b2.slice(i, i + 3))) hit += 1;
+  }
+  return total ? hit / total : 0;
 }
 
 /**
@@ -202,16 +239,25 @@ function selectForPrompt(documents, opts) {
     }
 
     const role = detectRole({ name, text });
+    const useful = role.use || (role.role === 'unknown' && includeUnknown);
 
     // Копия уже отобранного документа — не тратим бюджет.
+    // Сначала точный хеш, затем нечёткое сравнение: копии одного PDF
+    // распознаются по-разному, хеш у них разный, а документ один.
+    // Сверяем ТОЛЬКО с отобранными: иначе ВОР схлопнется с договором,
+    // у которого случайно совпал кусок текста.
     const hash = contentHash(text);
     if (hash && seen.has(hash)) {
       const first = seen.get(hash);
-      duplicates.push({ name, copy_of: first.name, chars: text.length });
+      duplicates.push({ name, copy_of: first.name, chars: text.length, match: 'точное' });
+      continue;
+    }
+    const twin = kept.find((k) => similarity(k.text, text) >= 0.9);
+    if (twin) {
+      duplicates.push({ name, copy_of: twin.original_name, chars: text.length, match: 'распознано иначе' });
       continue;
     }
 
-    const useful = role.use || (role.role === 'unknown' && includeUnknown);
     if (!useful) {
       dropped.push({ name, role: role.role, title: role.title, reason: 'не нужен для объёмов', chars: text.length });
       continue;
@@ -268,6 +314,7 @@ module.exports = {
   ROLES,
   detectRole,
   contentHash,
+  similarity,
   selectForPrompt,
   describeSelection
 };

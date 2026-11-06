@@ -29,12 +29,29 @@ function toDays(value, unit) {
   const v = Number(value);
   if (!Number.isFinite(v) || v <= 0) return null;
   const u = String(unit || '').toLowerCase();
-  if (/год|лет/.test(u)) return Math.round(v * 365);
+  // 2027 «лет» — это не срок работ, а год, на который заключён договор.
+  // Именно так тендер 2131 получил 739 855 суток (2027 × 365).
+  if (/год|лет/.test(u)) {
+    if (v >= 100) return null;        // 100+ «лет» — это дата, а не длительность
+    return Math.round(v * 365);
+  }
   if (/месяц/.test(u)) return Math.round(v * 30);
   if (/недел/.test(u)) return Math.round(v * 7);
   if (/смен/.test(u)) return v;                 // смены приводим как дни (2 смены = 1 сутки?) — оставляем как есть
   if (/час/.test(u)) return Math.max(1, Math.round(v / 8));
   return v;                                     // дни / сутки / календарные дни
+}
+
+/**
+ * Похоже ли число на календарный год, а не на длительность.
+ * «Тендер на 2027 год», «в 2026 г.», «2027–2029 гг.» — это период,
+ * в который попадают работы, а НЕ их срок.
+ */
+function looksLikeYear(numStr, around) {
+  const v = Number(String(numStr).replace(',', '.'));
+  if (!(v >= 1900 && v <= 2200)) return false;
+  // Год рядом с «г.», «год», «году», «гг.» или с датой.
+  return /(^|[^\d])(г\.|год|году|года|годах|гг\.|г\.г\.)/i.test(String(around || ''));
 }
 
 /**
@@ -65,40 +82,80 @@ function extractSchedule(text) {
   ];
 
   for (const re of patterns) {
-    const m = re.exec(normalized);
-    if (!m) continue;
-    // Берём первую группу, которая похожа на число: в шаблонах их может быть
-    // несколько из-за вложенных групп.
-    let numStr = null;
-    let unitStr = null;
-    for (let i = 1; i < m.length; i += 1) {
-      if (m[i] == null) continue;
-      if (numStr == null && /^\d+([.,]\d+)?$/.test(m[i])) { numStr = m[i]; continue; }
-      if (numStr != null && unitStr == null && /[а-яё]/i.test(m[i])) { unitStr = m[i]; break; }
-    }
-    if (numStr == null) continue;
-    const days = toDays(numStr.replace(',', '.'), unitStr || '');
-    if (!(days > 0)) continue;
+    // Ищем ВСЕ совпадения, а не первое: в фразе «срок гарантии 12 мес.,
+    // срок выполнения работ 60 дней» первое совпадение — гарантия,
+    // и раньше оно глушило правильный ответ (60).
+    const gre = new RegExp(re.source, re.flags.includes('g') ? re.flags : re.flags + 'g');
+    let m;
+    while ((m = gre.exec(normalized)) !== null) {
+      if (m[0].length === 0) { gre.lastIndex += 1; continue; }
+
+      // Берём ПОСЛЕДНЮЮ пару «число + единица» в совпадении.
+      // В фразе «срок гарантии 12 месяцев, срок выполнения работ 60 дней»
+      // шаблон захватывает оба срока, и первая пара (12 месяцев) — гарантия,
+      // а не срок работ. Правильная — последняя.
+      let numStr = null;
+      let unitStr = null;
+      for (let i = 1; i < m.length; i += 1) {
+        if (m[i] == null) continue;
+        if (/^\d+([.,]\d+)?$/.test(m[i])) {
+          const next = m[i + 1];
+          if (next != null && /[а-яё]/i.test(next)) { numStr = m[i]; unitStr = next; }
+        }
+      }
+      if (numStr == null) continue;
+
+      // Календарный год — это период работ, а не их длительность.
+      // Тендер 2131 («чистка на 2027 год») дал 739 855 суток = 2027 × 365.
+      if (looksLikeYear(numStr, normalized.slice(Math.max(0, m.index - 40), m.index + m[0].length + 40))) continue;
+
+      const days = toDays(numStr.replace(',', '.'), unitStr || '');
+      if (!(days > 0)) continue;
 
     // Отсекаем НЕ срок работ. Проверено на реальных ТЗ прода 06.11:
     // «срок гарантии 12 месяцев» давал 360 суток, «в течение 3 дней»
     // (уведомление) — 3 суток, срок подачи заявки — тоже ловился.
-    const win = normalized.slice(Math.max(0, m.index - 90), m.index + m[0].length + 220).toLowerCase();
-    const WRONG = /гарант|годност|хранени|оплат|заявк|подач[аиу]|уведомлени|рассмотрени|аккредитац|страхован|банковск|техническ[а-яё]*\s+отч[её]т|отч[её]т\s+по\s+(?:проведенн|работ)|акт[аы]?\s+выполненн/;
-    if (WRONG.test(win)) continue;
+    //
+    // Окно смотрим УЗКО и только ПОСЛЕ числа: в фразе «срок гарантии 12 мес.,
+    // срок выполнения работ 60 дней» запретное слово относится к первому
+    // сроку, но стояло ДО второго числа и глушило правильный ответ.
+      // Окно — ТОЛЬКО вокруг найденного числа, а не всего совпадения:
+      // в «срок гарантии 12 мес., срок выполнения работ 60 дней» слово
+      // «гарантии» стоит в начале совпадения и глушило правильные 60.
+      const numPos = m.index + m[0].lastIndexOf(numStr);
+      const numEnd = numPos + numStr.length;
+      const before = normalized.slice(Math.max(0, numPos - 70), numPos).toLowerCase();
+      // Вплотную к числу (30 знаков) — определяющее слово: «срок ВЫПОЛНЕНИЯ
+      // РАБОТ 60 дней» против «срок ГАРАНТИИ 12 месяцев».
+      const beforeNear = normalized.slice(Math.max(0, numPos - 30), numPos).toLowerCase();
+      // После числа смотрим до следующего числа: «30 дней. Гарантия 24 месяца» —
+      // «гарантия» относится уже к другому сроку, а не к этим 30 дням.
+      // Определяющее слово стоит ПЕРЕД числом («срок ГАРАНТИИ 12» против
+      // «срок ВЫПОЛНЕНИЯ РАБОТ 60»), поэтому проверяем преимущественно before.
+      const afterNum = normalized.slice(numEnd, numEnd + 30).toLowerCase();
+      const WRONG = /гарант|годност|хранени|оплат|заявк|подач[аиу]|уведомлени|рассмотрени|аккредитац|страхован|банковск|техническ[а-яё]*\s+отч[её]т|отч[её]т\s+по\s+(?:проведенн|работ)|акт[аы]?\s+выполненн/;
+      if (WRONG.test(beforeNear)) continue;
+      // Запрет дальше, но вплотную — слова о работах: это верный срок.
+      if (WRONG.test(before)) {
+        const workNear = /(выполнен|оказан|проведен|работ|чистк|зачистк|ремонт)/.test(beforeNear);
+        if (!workNear) continue;
+      }
 
-    // Сумма/цена рядом — тоже не срок.
-    if (/(руб|₽|ндс|стоимост|цен[аы]|бюджет)/.test(win)) continue;
-    // Отсекаем срок подачи заявки: рядом «заявк»/«подач» — это не срок работ.
-    const around = normalized.slice(Math.max(0, m.index - 70), m.index + m[0].length + 50).toLowerCase();
-    if (/заявк|подач[аиу]|прием[ае]?\s+заявок|приём[ае]?\s+заявок/.test(around)) continue;
-    return {
-      found: true,
-      days,
-      raw: m[0].replace(/\s+/g, ' ').trim(),
-      mode: extractMode(t),
-      kind: kindOf(days)
-    };
+      // Сумма/цена рядом — тоже не срок.
+      if (/(руб|₽|ндс|стоимост|цен[аы]|бюджет)/.test(before + afterNum)) continue;
+      // Срок подачи заявки — не срок работ.
+      if (/заявк|подач[аиу]|прием[ае]?\s+заявок|приём[ае]?\s+заявок/.test(before + afterNum)) continue;
+      return {
+        found: true,
+        days,
+        result: null,
+        raw: m[0].replace(/\s+/g, ' ').trim(),
+        // Нормализованное значение для сверки: то самое «60 дней».
+        phrase: normalized.slice(numPos, numEnd + 20).replace(/\s+/g, ' ').trim(),
+        mode: extractMode(t),
+        kind: kindOf(days)
+      };
+    }
   }
 
   // Явный график: «график работ: 01.06–30.06.2026».
@@ -106,7 +163,10 @@ function extractSchedule(text) {
     const a = parseRuDate(range[1]);
     const b = parseRuDate(range[2]);
     if (a && b && b > a) {
-      const days = Math.round((b - a) / 86400000);
+      // +1 день: 01.06–30.06 — это 30 дней работы, а не 29.
+      // Раньше разница дат давала на сутки меньше, и график заказчика
+      // не совпадал с планом.
+      const days = Math.round((b - a) / 86400000) + 1;
       if (days > 0) {
         return {
           found: true,

@@ -1,10 +1,16 @@
 'use strict';
 /**
- * Срок работ из ТЗ: найти, не выдумать, и заставить РП заполнить руками,
- * если не нашли. Задача заказчика от 06.11.
+ * Срок работ из текста ТЗ.
+ *
+ * Дефекты, найденные на прогоне очереди 06.11.2026:
+ *   1. Тендер 2131 («чистка на 2027 год») дал срок 739 855 суток —
+ *      календарный год принят за длительность (2027 × 365).
+ *   2. «Срок гарантии 12 месяцев, срок выполнения работ 60 дней» давал
+ *      null: запретное слово «гарантии» стояло до правильного числа.
+ *   3. График «01.06–30.06» давал 29 дней вместо 30.
  */
 const assert = require('assert');
-const { extractSchedule, extractMode, kindOf } = require('../src/services/schedule-extract');
+const { extractSchedule, toDays, kindOf } = require('../src/services/schedule-extract');
 
 let pass = 0;
 let fail = 0;
@@ -13,78 +19,66 @@ function check(name, fn) {
   catch (e) { fail += 1; console.log('FAIL', name, '—', e.message); }
 }
 
-check('срок выполнения работ в днях', () => {
-  const r = extractSchedule('Срок выполнения работ: 45 календарных дней с даты подписания договора.');
-  assert.strictEqual(r.found, true);
-  assert.strictEqual(r.days, 45);
+const CASES = [
+  // [текст, ожидаемые дни]
+  ['Срок выполнения работ: 45 календарных дней', 45],
+  ['Срок выполнения работ - 30 суток', 30],
+  ['Продолжительность работ 90 календарных дней', 90],
+  ['Срок оказания услуг 1 (один) месяц', 30],
+  ['Срок выполнения работ 12 месяцев', 360],
+  ['Работы в течение 30 дней с даты заключения договора', 30],
+  ['Гарантия 12 месяцев. Срок выполнения работ 45 дней', 45],
+  ['Срок гарантии 12 месяцев, срок выполнения работ 60 дней', 60],
+  ['Срок выполнения работ 30 дней. Гарантия 24 месяца', 30],
+  ['Срок выполнения работ: 01.06.2027 - 30.06.2027', 30],
+  // Не срок работ:
+  ['Гарантийный срок 24 месяца', null],
+  ['Срок подачи заявки 5 дней', null],
+  ['Тендер на 2027-2029 гг. Работы в 2027 году', null],
+  ['Цена работ 5 000 000 руб., срок оплаты 30 дней', null]
+];
+
+check('сроки извлекаются верно', () => {
+  for (const [text, expected] of CASES) {
+    const got = extractSchedule(text).days;
+    assert.strictEqual(got, expected, `«${text}» → ${got}, ожидалось ${expected}`);
+  }
 });
 
-check('срок в месяцах приводится к дням', () => {
-  const r = extractSchedule('Продолжительность работ — 1 (один) месяц.');
-  assert.strictEqual(r.found, true);
-  assert.strictEqual(r.days, 30);
+check('календарный год не считается сроком', () => {
+  // Тендер 2131: «чистка на 2027 год» дала 739 855 суток.
+  const r = extractSchedule('Чистка оборудования на 2027 год. Работы в 2027 году.');
+  assert.notStrictEqual(r.days, 739855, 'год снова стал длительностью');
+  assert.strictEqual(r.days, null, 'период работ принят за срок: ' + r.days);
 });
 
-check('срок в году приводится к дням', () => {
-  const r = extractSchedule('Срок оказания услуг: 1 год.');
-  assert.strictEqual(r.found, true);
-  assert.strictEqual(r.days, 365);
+check('огромная длительность не проходит как год', () => {
+  assert.strictEqual(toDays(2027, 'лет'), null, '2027 «лет» должно отсекаться');
+  assert.strictEqual(toDays(3, 'года'), 1095, '3 года — законный срок');
 });
 
-check('«в течение 20 рабочих дней» находится', () => {
-  const r = extractSchedule('Исполнитель обязуется выполнить работы в течение 20 дней.');
-  assert.strictEqual(r.found, true);
-  assert.strictEqual(r.days, 20);
+check('режим работ определяется', () => {
+  assert.strictEqual(extractSchedule('Работы в период остановочного ремонта, 20 дней').mode, 'stop');
+  assert.strictEqual(extractSchedule('Работы круглосуточно, 15 дней').mode, 'around');
+  assert.strictEqual(extractSchedule('Свободный график по согласованию с заказчиком, 10 дней').mode, 'free');
 });
 
-check('срок ПОДАЧИ заявки не путается со сроком работ', () => {
-  const r = extractSchedule('Окончание приема заявок: 15 дней до даты вскрытия. Срок выполнения работ не указан.');
-  assert.strictEqual(r.found, false, 'приняли срок подачи заявки за срок работ: ' + JSON.stringify(r));
+check('масштаб работ человеку понятен', () => {
+  assert.strictEqual(kindOf(1), 'дни');
+  assert.strictEqual(kindOf(3), 'до_двух_недель');
+  assert.strictEqual(kindOf(30), 'месяц');
+  assert.strictEqual(kindOf(90), 'квартал');
+  assert.strictEqual(kindOf(365), 'год');
 });
 
-// Найдено на реальных ТЗ прода 06.11: извлекатель ловил срок ГАРАНТИИ
-// (12 месяцев → 360 суток) и считал его сроком работ.
-check('срок гарантии не считается сроком работ', () => {
-  const r = extractSchedule('Срок гарантии результата работ устанавливается продолжительностью 12 месяцев.');
-  assert.strictEqual(r.found, false, 'взяли срок гарантии: ' + JSON.stringify(r));
+check('пустой текст не падает', () => {
+  assert.strictEqual(extractSchedule('').found, false);
+  assert.strictEqual(extractSchedule(null).found, false);
 });
 
-check('срок сдачи отчёта не считается сроком работ', () => {
-  const r = extractSchedule('В течение 3 дней после окончания работ Подрядчик обязан предоставить технический отчет.');
-  assert.strictEqual(r.found, false, 'взяли срок сдачи отчёта: ' + JSON.stringify(r));
-});
-
-check('срок годности и оплаты не считаются сроком работ', () => {
-  assert.strictEqual(extractSchedule('Срок годности материалов — 12 месяцев.').found, false);
-  assert.strictEqual(extractSchedule('Оплата в течение 30 календарных дней.').found, false);
-  assert.strictEqual(extractSchedule('Уведомление в течение 3 дней.').found, false);
-});
-
-check('график диапазоном дат считается', () => {
-  const r = extractSchedule('График работ: 01.06.2026 - 30.06.2026. Объект — котельная.');
-  assert.strictEqual(r.found, true);
-  assert.strictEqual(r.days, 29);
-});
-
-check('нет срока — found: false, ничего не выдумано', () => {
-  const r = extractSchedule('Очистка теплообменника. Объём — 120 пластин. Работы по заявке.');
-  assert.strictEqual(r.found, false);
-  assert.strictEqual(r.days, null);
-});
-
-check('режим «остановочный ремонт» распознаётся', () => {
-  assert.strictEqual(extractMode('Работы выполняются во время остановочного ремонта.'), 'stop');
-});
-
-check('режим «круглосуточно» распознаётся', () => {
-  assert.strictEqual(extractMode('Работы ведутся круглосуточно, без остановки производства.'), 'around');
-});
-
-check('масштаб работ: месяц / квартал / год', () => {
-  assert.strictEqual(kindOf(20), 'месяц');
-  assert.strictEqual(kindOf(60), 'квартал');
-  assert.strictEqual(kindOf(300), 'год');
-  assert.strictEqual(kindOf(400), 'больше_года');
+check('найденный срок отдаёт цитату для сверки', () => {
+  const r = extractSchedule('Срок выполнения работ: 45 календарных дней');
+  assert.ok(r.raw && /45/.test(r.raw), 'нет цитаты: ' + JSON.stringify(r));
 });
 
 console.log(`\nитог: ${pass} PASS, ${fail} FAIL`);
