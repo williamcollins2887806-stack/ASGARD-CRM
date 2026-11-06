@@ -55,7 +55,11 @@ test('прод: анализ — ДВ и звонок в карточке', asyn
     localStorage.setItem('asgard_token', t); localStorage.setItem('token', t);
   }, token);
   await page.goto(`${BASE}/#/tenders-registry`, { waitUntil: 'commit' });
-  await page.waitForTimeout(4000);
+  await page.waitForFunction(
+    () => typeof window.AsgardRpReviewModal === 'object' && typeof window.AsgardRpCalcModal === 'object',
+    null, { timeout: 30000 }
+  );
+  await page.waitForTimeout(800);
 
   await page.evaluate(async (tid) => {
     const auth = 'Bearer ' + localStorage.getItem('asgard_token');
