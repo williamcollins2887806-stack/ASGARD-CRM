@@ -292,9 +292,10 @@
   }
   function logoMark(size) {
     const s = size || 44;
-    /* PNG full-bleed — без дублей SVG-id градиента и без «плитки в Paint» */
-    return `<div class="ting-logo-mark" style="width:${s}px;height:${s}px;border-radius:${Math.round(s * 0.32)}px;overflow:hidden" aria-hidden="true">`
-      + `<img src="/assets/img/ting-launcher-round-512.png" alt="" width="${s}" height="${s}" style="display:block;width:100%;height:100%;object-fit:cover" />`
+    /* Новый премиальный знак v3 (aperture + T). PNG full-bleed,
+       без дублей SVG-id и без «плитки в Paint». */
+    return `<div class="ting-logo-mark" style="width:${s}px;height:${s}px;border-radius:${Math.round(s * 0.3)}px;overflow:hidden" aria-hidden="true">`
+      + `<img src="/assets/img/ting-brand/ting-mark-v3-1024.png" alt="" width="${s}" height="${s}" style="display:block;width:100%;height:100%;object-fit:cover" />`
       + `</div>`;
   }
   function brand(chip) {
@@ -417,7 +418,7 @@
           r.dial_code ? 'код ' + r.dial_code : ''
         ].filter(Boolean).join(' · ');
         return `<div class="ting-call-row" data-slug="${esc(slug)}">
-          <div class="ting-avatar ${st === 'live' ? 'gold' : ''}">${esc(initials(title))}</div>
+          <div class="ting-avatar tone-${avatarTone(title)}${st === 'live' ? ' gold' : ''}">${esc(initials(title))}</div>
           <div class="ting-call-meta">
             <strong>${esc(title)}</strong>
             <span class="${missed ? 'missed' : ''}">${esc(statusLabel(st))}${metaBits ? ' · ' + esc(metaBits) : ''}</span>
@@ -710,7 +711,7 @@
         <h2 class="ting-h2-tight">${esc(roomTitleDisplay(r))}</h2>
         <div class="ting-preview" id="ting-preview">
           <div class="ting-avatar tone-${avatarTone(name || 'me')} gold" id="ting-av">${esc(initials(name || '?'))}</div>
-          <video id="ting-prev-v" playsinline muted autoplay class="ting-preview-video" hidden></video>
+          <video id="ting-prev-v" playsinline muted autoplay class="ting-preview-video is-mirrored" hidden></video>
           <div class="ting-precall-controls">
             <button type="button" class="ting-dock-btn ${state.micOn ? 'active' : 'off'}" data-act="tog-mic" id="ting-lob-mic" title="${esc(COPY.mic)}" aria-label="${esc(COPY.mic)}">${svgMic(!state.micOn)}</button>
             <button type="button" class="ting-dock-btn ${state.camOn ? 'active' : 'off'}" data-act="tog-cam" id="ting-lob-cam" title="${esc(COPY.cam)}" aria-label="${esc(COPY.cam)}">${svgCam(!state.camOn)}</button>
@@ -2026,6 +2027,13 @@
         try { v.setAttribute('controlsList', 'nodownload nofullscreen noremoteplayback'); } catch (_) { /* */ }
         v.muted = !!(opts && opts.mutedLocal);
         if (opts && opts.contain) v.classList.add('is-contain');
+        /* Своё видео зеркалим, как в Телемосте/Zoom: человек видит себя как
+           в зеркале («я поднял левую руку — вижу слева»). Драйвер камеры при
+           этом может отдавать кадры как есть — нормализуем на своей плитке.
+           Только камера: screen share и чужие потоки не отражаются. */
+        if (opts && opts.mutedLocal && !(opts && opts.contain)) {
+          v.classList.add('is-mirrored');
+        }
         videoTrack.attach(v);
         div.appendChild(v);
       } else {
