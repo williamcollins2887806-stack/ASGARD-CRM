@@ -22,6 +22,33 @@ const stages = require('./mimir-tender-stages');
 function catalogForPrompt(catalog) {
   const cats = (catalog && Array.isArray(catalog.categories)) ? catalog.categories : [];
   const rates = (catalog && Array.isArray(catalog.rates)) ? catalog.rates : [];
+
+  /**
+   * Одна норма в строке промпта: код, единица, доверие, происхождение
+   * и область применимости. Без этого модель не может решить, доверять ли
+   * цифре, и применяет её не по адресу (запрос заказчика 06.11).
+   */
+  function rateLine(r) {
+    const conf = r.confidence != null ? Number(r.confidence) : null;
+    const confTxt = conf == null ? '' : ` | доверие ${conf.toFixed(2)}`;
+    const basisTxt = r.basis ? ` | basis: ${r.basis}` : '';
+    let app = '';
+    const a = r.applicability && typeof r.applicability === 'object' ? r.applicability : null;
+    if (a && Object.keys(a).length) {
+      const bits = [];
+      if (a.min_value != null && a.max_value != null) bits.push(`${a.min_value}–${a.max_value}`);
+      else if (a.min_value != null) bits.push(`от ${a.min_value}`);
+      else if (a.max_value != null) bits.push(`до ${a.max_value}`);
+      if (Array.isArray(a.fouling) && a.fouling.length) bits.push(`отложения ${a.fouling.join('/')}`);
+      if (a.method_note) bits.push(a.method_note);
+      if (bits.length) app = ` | применимо: ${bits.join(', ')}`;
+    }
+    const warn = (conf != null && conf < 0.4)
+      ? ' | ОЦЕНКА, не норма — объясни в explain'
+      : '';
+    return `${r.code}: «${r.unit}», считать как ${r.calc_kind}${basisTxt}${confTxt}${app}${warn}`;
+  }
+
   return cats.map((c) => {
     const ms = Array.isArray(c.methods_json) ? c.methods_json : [];
     const lines = ms.map((m) => {
@@ -30,9 +57,7 @@ function catalogForPrompt(catalog) {
       const methodRates = rates.filter((r) => r.category_code === c.code && r.method_code === m.code);
       const primary = methodRates.find((r) => r.code === m.primary_rate_code) || methodRates[0] || null;
       const others = methodRates.filter((r) => r !== primary).slice(0, 3);
-      const list = [primary, ...others].filter(Boolean)
-        .map((r) => `${r.code}: «${r.unit}», считать как ${r.calc_kind}`)
-        .join(' | ');
+      const list = [primary, ...others].filter(Boolean).map(rateLine).join(' | ');
       return `  - ${m.code} (${m.label || m.code}): ${list || 'единица ' + (m.volume_unit || '—')}`;
     });
     return `${c.code} — ${c.title || c.code}\n${lines.join('\n')}`;

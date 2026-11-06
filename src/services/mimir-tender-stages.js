@@ -379,6 +379,21 @@ function normalizeDv(ai, catalog) {
       method_name: methodName,
       volume: isFinitePositive(volume) ? volume : null,
       unit,
+      // ── Альтернативные единицы (V472) ────────────────────────────────────
+      // Как объём задан в ВОР на самом деле: «1750 м²», «1353 т», «12 дюймов».
+      // Норма считает в своей единице, поэтому храним и измеренное, и параметры
+      // пересчёта (толщина, плотность), чтобы РП мог их поправить.
+      measured_unit: unit || null,
+      measured_value: isFinitePositive(volume) ? volume : null,
+      conversion_params: {
+        thickness_mm: Number(p.thickness_mm) > 0 ? Number(p.thickness_mm) : null,
+        density_t_m3: Number(p.density_t_m3) > 0 ? Number(p.density_t_m3) : null,
+        dn_mm: Number(p.dn_mm) > 0 ? Number(p.dn_mm) : null,
+        length_m: Number(p.length_m) > 0 ? Number(p.length_m) : null,
+        area_per_plate_m2: Number(p.area_per_plate_m2) > 0 ? Number(p.area_per_plate_m2) : null,
+        deposit_type: String(p.deposit_type || '').trim() || null
+      },
+      conversion_note: null,
       fouling: ['light', 'medium', 'heavy'].includes(String(p.fouling)) ? p.fouling : null,
       tech_equip: String(p.tech_equip || p.technology || '').trim() || null,
       tech_status: p.tech_status === 'rp' ? 'rp' : 'ai',
@@ -437,7 +452,9 @@ function applyPositionPatch(state, positionId, patch) {
     err.statusCode = 404;
     throw err;
   }
-  const allow = ['volume', 'unit', 'category_code', 'method_code', 'fouling', 'tech_equip', 'rp_note', 'approved'];
+  const allow = ['volume', 'unit', 'category_code', 'method_code', 'fouling', 'tech_equip', 'rp_note', 'approved',
+    // Альтернативные единицы: РП может поправить толщину, плотность и диаметр.
+    'thickness_mm', 'density_t_m3', 'dn_mm', 'length_m', 'area_per_plate_m2', 'deposit_type'];
   for (const k of allow) {
     if (patch && patch[k] !== undefined) p[k] = patch[k];
   }

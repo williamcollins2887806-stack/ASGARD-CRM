@@ -157,6 +157,78 @@ function resolvePlatesCount(inputs, trace) {
  * Жёсткая проверка физ. полей по category/method/rate.
  * Возвращает строку ошибки или null.
  */
+function expectedInputField(category, method, rateCode, kind) {
+  // Основное поле, которое читает норма. Нужно для пересчёта единиц:
+  // если его нет в inputs, но есть объём в другой единице — приводим.
+  if (category === 'vessels') return 'volume_m3';
+  if (category === 'tubes' && (method === 'gdo' || method === 'gmo')) return 'tubes';
+  if (category === 'tubes' && method === 'chem') return 'tubes';
+  if (category === 'avo' && method === 'tubes') return 'tubes';
+  if (category === 'avo' && method === 'outer') return 'surface_m2';
+  if (category === 'plates' && method === 'hydro_dis') return 'surface_m2';
+  if (category === 'plates' && method === 'chem_cip') return 'circuit_m3';
+  if (category === 'boilers' && method === 'chem') return 'circuit_m3';
+  if (category === 'boilers') return 'surface_m2';
+  if (category === 'pipelines') return method === 'hydrotest' ? 'circuit_m3' : 'length_m';
+  if (category === 'chem_circuits') return 'circuit_m3';
+  if (category === 'towers_hvac' && method === 'tower') return 'surface_m2';
+  if (category === 'towers_hvac' && method === 'pneumo') return 'length_m';
+  if (category === 'towers_hvac') return 'circuit_m3';
+  if (category === 'vent_sewer' && method === 'disinfect') return 'surface_m2';
+  if (category === 'vent_sewer') return 'length_m';
+  if (category === 'repair_weld' && method === 'weld') return 'joints';
+  if (category === 'repair_weld' && method === 'cutting') return 'length_m';
+  if (category === 'repair_weld' && method === 'plates_pack') return 'plates_count';
+  if (category === 'repair_weld' && method === 'compabloc') return 'surface_m2';
+  if (category === 'repair_weld' && method === 'fire_works') return 'points';
+  if (category === 'insulation') return 'surface_m2';
+  if (category === 'mount' && method === 'flange') return 'joints';
+  if (category === 'mount' && method === 'rigging') return 'lifts';
+  if (category === 'mount') return 'qty';
+  return null;
+}
+
+/** Правило пересчёта единицы из справочника (V472). */
+async function loadConversionRule(db, category, method, fromUnit, toField) {
+  const uc = require('./unit-convert');
+  const u = uc.normUnit(fromUnit);
+  try {
+    const { rows } = await db.query(
+      `SELECT * FROM work_norm_unit_conversions
+        WHERE category_code = $1 AND is_active
+          AND (method_code IS NULL OR method_code = $2)
+          AND to_field = $3
+          AND lower(from_unit) = lower($4)
+        ORDER BY CASE WHEN method_code = $2 THEN 0 ELSE 1 END, id
+        LIMIT 1`,
+      [category, method, toField, u]
+    );
+    return rows[0] || null;
+  } catch (_) {
+    // Таблицы может не быть (миграция не применена) — не ломаем расчёт.
+    return null;
+  }
+}
+
+/** Типовые толщина и плотность по типу отложений (V472). */
+async function loadLayerDefaults(db, depositType) {
+  if (!depositType) return {};
+  try {
+    const { rows } = await db.query(
+      `SELECT * FROM work_norm_layer_defaults WHERE deposit_type = $1 AND is_active LIMIT 1`,
+      [String(depositType)]
+    );
+    const r = rows[0];
+    if (!r) return {};
+    return {
+      thickness_mm: Number(r.thickness_typical_mm) || null,
+      density_t_m3: Number(r.density_typical_t_m3) || null
+    };
+  } catch (_) {
+    return {};
+  }
+}
+
 function physicalInputError(category, method, rateCode, kind, inputs) {
   if (category === 'avo' && method === 'outer') {
     if (!(resolveSurfaceM2(inputs) > 0)) {
@@ -915,9 +987,62 @@ async function previewCalc(db, body) {
   if (category === 'repair_weld' && method === 'plates_pack' && platesN > 0 && !(Number(inputs.joints) > 0)) {
     inputs.tubes = platesN; // per_unit_shift читает tubes|... — подставим ниже явно
   }
-  // ITP/heating: circuit_m3 как volume для per_unit_shift
+  // ITP/heating: circuit_m3 как volume для per_uni_shift
   if ((method === 'itp' || method === 'heating') && Number(inputs.circuit_m3) > 0) {
     // ok — per_unit_shift уже берёт circuit_m3
+  }
+
+  // ── Пересчёт альтернативных единиц (V472) ────────────────────────────────
+  // В ВОР объём приходит как удобно заказчику: м², тонны, литры, дюймы.
+  // Норма считает в своей единице. Если ожидаемого поля нет, а для единицы
+  // есть правило пересчёта — приводим. При нехватке параметра (толщина,
+  // плотность) НЕ выдумываем: возвращаем needs_input с точным списком.
+  const unitConv = require('./unit-convert');
+  const sanityCheck = require('./norm-sanity');
+  let conversionNote = null;
+  let conversionAssumed = false;
+  try {
+    const needField = expectedInputField(category, method, rateRow.code, rateRow.calc_kind);
+    const haveIt = needField ? Number(inputs[needField]) > 0 : true;
+    const measuredUnit = inputs._measured_unit || inputs.measured_unit || null;
+    const measuredValue = Number(inputs._measured_value || inputs.measured_value) || 0;
+
+    if (needField && !haveIt && measuredUnit && measuredValue > 0) {
+      const rule = await loadConversionRule(db, category, method, measuredUnit, needField);
+      if (rule) {
+        const cv = unitConv.convert({
+          category, method,
+          fromUnit: measuredUnit,
+          value: measuredValue,
+          toField: needField,
+          params: inputs,
+          rule,
+          defaults: await loadLayerDefaults(db, inputs.deposit_type),
+          allowAssumed: inputs._allow_assumed === true,
+          fouling: inputs.fouling
+        });
+        if (cv.ok) {
+          inputs[needField] = cv.value;
+          conversionNote = cv.trace.join('; ');
+          conversionAssumed = !!cv.assumed;
+          normTrace.push('пересчёт: ' + conversionNote);
+          if (cv.assumed) {
+            normTrace.push('⚠ пересчёт по типовому значению — это допущение');
+          }
+        } else if (cv.missing && cv.missing.length) {
+          return {
+            error: `Нужно уточнить: ${cv.missing.join(', ')}. ${cv.note || ''}`.trim(),
+            needs_input: true,
+            missing: cv.missing,
+            rate: rateRow,
+            trace: normTrace
+          };
+        }
+      }
+    }
+  } catch (_) {
+    // Пересчёт не должен ломать расчёт: если что-то пошло не так,
+    // работаем как раньше — с исходными полями.
   }
 
   const physErr = physicalInputError(category, method, rateRow.code, rateRow.calc_kind, inputs);
@@ -3028,6 +3153,9 @@ module.exports = {
   loadCatalog,
   previewCalc,
   toPromptMarkdown,
+  expectedInputField,
+  loadConversionRule,
+  loadLayerDefaults,
   filterCatalogByWorkType,
   tryNormPreviewForEstimate,
   normPreviewToMarkdown,

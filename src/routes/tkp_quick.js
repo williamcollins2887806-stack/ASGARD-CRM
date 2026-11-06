@@ -707,12 +707,35 @@ async function routes(fastify, options) {
 
       // 2. Каталог норм и ДВ через модель.
       const catalog = await workNorms.loadCatalog(db);
+
+      // История заказчика: раньше сюда уходила пустая строка, и Мимир не видел
+      // прошлых тендеров этого заказчика. Теперь строим блок по ИНН/названию.
+      let historyBlock = '';
+      let historyCount = 0;
+      if (session.tender_id) {
+        try {
+          const { buildHistoryBlock } = require('../services/tender-history-brain');
+          const tRow = await db.query(
+            'SELECT * FROM tenders WHERE id = $1 AND deleted_at IS NULL',
+            [session.tender_id]
+          );
+          if (tRow.rows[0]) {
+            historyBlock = await buildHistoryBlock(db, tRow.rows[0]) || '';
+            // Сколько прошлых тендеров попало в блок — по строкам-позициям.
+            historyCount = (historyBlock.match(/^\s*\d+\.\s/gm) || []).length || 0;
+          }
+        } catch (e) {
+          request.log.warn({ err: e }, 'история заказчика не построена');
+        }
+      }
+      if (!historyBlock) historyBlock = '(истории по заказчику нет)';
+
       const gen = await stagesAi.generateDv({
         db,
         aiProvider,
         tz_text: tzText,
         documents,
-        history_block: b.history_block || '',
+        history_block: historyBlock,
         catalog
       });
 
@@ -793,6 +816,9 @@ async function routes(fastify, options) {
         blocked: gen.dv.blocked,
         // Срок и режим работ: РП видит, что нашлось в ТЗ и документах.
         schedule: sched,
+        // История заказчика: видно, подтянулась ли и сколько прошлых тендеров.
+        history_found: historyCount > 0,
+        history_count: historyCount,
         documents: documents.map((d) => ({ original_name: d.original_name, text_len: String(d.text || '').length })),
         model: gen.model
       };

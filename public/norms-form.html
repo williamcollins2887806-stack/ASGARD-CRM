@@ -1,0 +1,592 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Нормы Асгард-Сервис — заполнение</title>
+<style>
+  :root{
+    --bg:#0D1117; --bg2:#151A23; --bg3:#1C2128; --bg4:#232A34;
+    --brd:#2A313C; --brd2:#39414E;
+    --t1:#E8EAED; --t2:#A8B0BD; --t3:#727C89;
+    --gold:#D4A843; --gold-bg:rgba(212,168,67,.12);
+    --ok:#2D8659; --ok-t:#4ADE80; --ok-bg:rgba(45,134,89,.12);
+    --warn:#D4A843; --warn-t:#D4A843; --warn-bg:rgba(212,168,67,.12);
+    --red:#C8293B;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; padding:0 0 120px; background:var(--bg); color:var(--t1);
+    font:14px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Ubuntu,sans-serif;
+  }
+  header{
+    position:sticky; top:0; z-index:20; padding:16px 24px;
+    background:rgba(13,17,23,.94); backdrop-filter:blur(12px);
+    border-bottom:1px solid var(--brd);
+  }
+  .hwrap{max-width:1180px; margin:0 auto; display:flex; align-items:center; gap:18px; flex-wrap:wrap}
+  h1{margin:0; font-size:17px; font-weight:650; letter-spacing:.01em}
+  .sub{color:var(--t3); font-size:12px; margin-top:2px}
+  .bar{margin-left:auto; display:flex; align-items:center; gap:10px; flex-wrap:wrap}
+  .progress{font-size:12px; color:var(--t2); font-variant-numeric:tabular-nums}
+  .progress b{color:var(--gold)}
+  .btn{
+    font:inherit; font-size:12.5px; font-weight:600; padding:8px 15px; cursor:pointer;
+    border-radius:8px; border:1px solid var(--brd2); background:var(--bg3); color:var(--t1);
+    transition:background .15s, border-color .15s;
+  }
+  .btn:hover{background:var(--bg4); border-color:var(--gold)}
+  .btn-primary{background:var(--gold); border-color:var(--gold); color:#1A1206}
+  .btn-primary:hover{background:#E2B851}
+  .btn-ghost{background:transparent}
+  main{max-width:1180px; margin:0 auto; padding:20px 24px}
+
+  .intro{
+    padding:16px 18px; border-radius:12px; margin-bottom:20px;
+    background:var(--bg2); border:1px solid var(--brd); border-left:3px solid var(--gold);
+  }
+  .intro p{margin:0 0 8px; color:var(--t2); font-size:13px; line-height:1.6}
+  .intro p:last-child{margin:0}
+  .intro b{color:var(--t1)}
+  .intro .rule{
+    display:inline-block; margin-top:6px; padding:5px 10px; border-radius:6px;
+    background:var(--gold-bg); color:var(--gold); font-size:12px; font-weight:600;
+  }
+
+  .cat{
+    margin-bottom:18px; border:1px solid var(--brd); border-radius:12px;
+    background:var(--bg2); overflow:hidden;
+  }
+  .cat-head{
+    display:flex; align-items:center; gap:10px; padding:12px 16px;
+    background:var(--bg3); border-bottom:1px solid var(--brd); cursor:pointer;
+    user-select:none;
+  }
+  .cat-head:hover{background:var(--bg4)}
+  .cat-head h2{margin:0; font-size:13.5px; font-weight:650}
+  .cat-head .code{font-size:11px; color:var(--t3); font-family:ui-monospace,monospace}
+  .cat-head .cnt{
+    margin-left:auto; font-size:11.5px; color:var(--t3);
+    font-variant-numeric:tabular-nums;
+  }
+  .cat-head .chev{color:var(--t3); font-size:11px; transition:transform .18s}
+  .cat.is-collapsed .chev{transform:rotate(-90deg)}
+  .cat.is-collapsed .cat-body{display:none}
+  .cat-body{padding:0}
+
+  table{width:100%; border-collapse:collapse; table-layout:fixed}
+  thead th{
+    padding:9px 10px; text-align:left; font-size:9.5px; font-weight:700;
+    letter-spacing:.09em; text-transform:uppercase; color:var(--t3);
+    background:var(--bg3); border-bottom:1px solid var(--brd); white-space:nowrap;
+  }
+  tbody td{
+    padding:8px 10px; border-bottom:1px solid var(--brd); vertical-align:top;
+    font-size:12.5px; color:var(--t1);
+  }
+  tbody tr:last-child td{border-bottom:0}
+  tbody tr:hover{background:rgba(255,255,255,.02)}
+  tbody tr.is-filled{background:rgba(45,134,89,.055)}
+
+  .m-name{font-weight:600; font-size:12.5px; line-height:1.35}
+  .m-code{font-size:10px; color:var(--t3); font-family:ui-monospace,monospace; margin-top:2px}
+  .m-unit{
+    display:inline-block; margin-top:4px; padding:1px 6px; border-radius:4px;
+    font-size:10px; background:var(--bg4); color:var(--t2); border:1px solid var(--brd);
+  }
+
+  input[type="text"], input[type="number"], select, textarea{
+    width:100%; font:inherit; font-size:12px; padding:6px 8px;
+    background:var(--bg); color:var(--t1);
+    border:1px solid var(--brd2); border-radius:6px; outline:none;
+    transition:border-color .15s, box-shadow .15s;
+  }
+  input:focus, select:focus, textarea:focus{
+    border-color:var(--gold); box-shadow:0 0 0 2px var(--gold-bg);
+  }
+  input::placeholder, textarea::placeholder{color:var(--t3); opacity:.7}
+  textarea{resize:vertical; min-height:34px; line-height:1.45}
+  select{cursor:pointer}
+  select option{background:var(--bg3); color:var(--t1)}
+
+  .pair{display:flex; gap:4px}
+  .pair input:first-child{flex:1 1 52%}
+  .pair input:last-child{flex:1 1 44%; min-width:0}
+
+  .hint{font-size:10.5px; color:var(--t3); margin-top:3px; line-height:1.35}
+
+  .footer-bar{
+    position:fixed; left:0; right:0; bottom:0; z-index:30;
+    padding:12px 24px; background:rgba(13,17,23,.96); backdrop-filter:blur(12px);
+    border-top:1px solid var(--brd);
+  }
+  .fwrap{max-width:1180px; margin:0 auto; display:flex; align-items:center; gap:12px; flex-wrap:wrap}
+  .fwrap .stat{font-size:12px; color:var(--t2)}
+  .fwrap .stat b{color:var(--ok-t)}
+  .fwrap .spacer{margin-left:auto}
+
+  .out{
+    max-width:1180px; margin:0 auto; padding:0 24px;
+  }
+  .out textarea{
+    width:100%; min-height:180px; font-family:ui-monospace,SFMono-Regular,Consolas,monospace;
+    font-size:11px; line-height:1.5; margin-top:10px;
+  }
+  .out.hidden{display:none}
+
+  .toast{
+    position:fixed; left:50%; bottom:78px; transform:translateX(-50%) translateY(20px);
+    padding:10px 18px; border-radius:9px; font-size:12.5px; font-weight:600;
+    background:var(--ok); color:#fff; opacity:0; pointer-events:none;
+    transition:opacity .2s, transform .2s; z-index:50;
+  }
+  .toast.show{opacity:1; transform:translateX(-50%) translateY(0)}
+  .toast.err{background:var(--red)}
+
+  @media (max-width:900px){
+    thead{display:none}
+    tbody tr{display:block; padding:10px 12px; border-bottom:1px solid var(--brd)}
+    tbody td{display:block; padding:4px 0; border:0}
+    tbody td::before{
+      content:attr(data-l); display:block; font-size:9px; font-weight:700;
+      letter-spacing:.08em; text-transform:uppercase; color:var(--t3); margin-bottom:3px;
+    }
+    header, main, .footer-bar{padding-left:14px; padding-right:14px}
+    .out{padding:0 14px}
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="hwrap">
+    <div>
+      <h1>Нормы Асгард-Сервис — заполнение</h1>
+      <div class="sub">Реальные данные с объектов. Пустая клетка честнее выдуманной.</div>
+    </div>
+    <div class="bar">
+      <div class="progress">Заполнено: <b id="pCount">0</b> из <span id="pTotal">0</span></div>
+      <button class="btn btn-ghost" id="btnCollapse">Свернуть всё</button>
+      <button class="btn btn-primary" id="btnSave">Сохранить</button>
+    </div>
+  </div>
+</header>
+
+<main>
+  <div class="intro">
+    <p><b>Что это.</b> Сейчас в справочнике 87 норм, из них нормативных — 7. Остальные собраны из интернета или оценены. Поэтому нужны ваши цифры с объектов: они станут опорой, на которую Мимир будет опираться первыми.</p>
+    <p><b>Как заполнять.</b> Пишите только то, что знаете. Не знаете — оставьте пусто, это нормально и полезно: пустое поле показывает, где у нас дырка.</p>
+    <p><b>Что важно.</b> Не «сколько должно быть по нормативу», а сколько <b>реально ушло</b> — с вашей бригадой, на вашем объекте, с вашими отложениями.</p>
+    <p>Всё сохраняется в браузере сразу. Кнопка «Сохранить» — выгрузка файла, который вы пришлёте мне.</p>
+    <span class="rule">Если норматив врёт на вашем объекте — так и напишите в поле «что идёт не так»</span>
+  </div>
+
+  <div id="cats"></div>
+
+  <div class="out hidden" id="outBox">
+    <p style="color:var(--t2); font-size:12.5px; margin:18px 0 0">
+      Файл сформирован. Скопируйте текст и пришлите мне, либо нажмите «Скачать файл».
+    </p>
+    <textarea id="outText" readonly></textarea>
+    <div style="margin-top:10px; display:flex; gap:10px; flex-wrap:wrap">
+      <button class="btn btn-primary" id="btnCopy">Скопировать</button>
+      <button class="btn" id="btnDownload">Скачать файл</button>
+    </div>
+  </div>
+</main>
+
+<div class="footer-bar">
+  <div class="fwrap">
+    <div class="stat">Норм в форме: <b id="fTotal">0</b> · заполнено полностью: <b id="fDone">0</b></div>
+    <div class="spacer"></div>
+    <button class="btn" id="btnClear">Очистить всё</button>
+    <button class="btn btn-primary" id="btnExport">Выгрузить ответы</button>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+(function () {
+  'use strict';
+
+  var STORE_KEY = 'asgard_norm_form_v1';
+
+  // Категории и методы — ровно как в work_norm_categories.
+  var CATS = [
+    { code:'vessels', title:'Ёмкости и резервуары', methods:[
+      { code:'clean', label:'Зачистка', unit:'м³',
+        q:'Внутренняя зачистка резервуара/бака/бункера от отложений' }
+    ]},
+    { code:'tubes', title:'Трубные пучки теплообменников', methods:[
+      { code:'gdo', label:'ГДО (гидромеханическая)', unit:'трубки', q:'Гидромеханическая очистка трубок без разборки пучка' },
+      { code:'gmo', label:'ГМО (шарошки)', unit:'трубки', q:'Очистка шарошками через трубную доску' },
+      { code:'chem', label:'Химциркуляция', unit:'трубки', q:'Химическая циркуляция по трубному пучку' }
+    ]},
+    { code:'plates', title:'Пластинчатые теплообменники', methods:[
+      { code:'hydro_dis', label:'Разборная ГДО', unit:'м²', q:'Разборка, чистка пластин, сборка, опрессовка' },
+      { code:'chem_cip', label:'Безразборная химия (CIP)', unit:'циклы', q:'Промывка без разборки по контуру' }
+    ]},
+    { code:'boilers', title:'Котлы', methods:[
+      { code:'chem', label:'Химическая промывка', unit:'циклы', q:'Промывка контура котла реагентами' },
+      { code:'hydro', label:'Гидроочистка', unit:'м²', q:'Гидроструйная очистка поверхностей нагрева' },
+      { code:'mech', label:'Механическая', unit:'м²', q:'Механическая очистка поверхностей' },
+      { code:'complex', label:'Комплекс', unit:'м²', q:'Комбинированная очистка' }
+    ]},
+    { code:'avo', title:'Аппараты воздушного охлаждения', methods:[
+      { code:'outer', label:'Наружная очистка', unit:'м²', q:'Очистка оребрения снаружи' },
+      { code:'tubes', label:'Трубки секции', unit:'трубки', q:'Очистка трубок секции АВО' }
+    ]},
+    { code:'pipelines', title:'Трубопроводы', methods:[
+      { code:'chem_ops', label:'Химпромывка эксплуатационная', unit:'м', q:'Промывка трубопровода реагентами' },
+      { code:'pickle', label:'Протравка / предпусковая', unit:'м', q:'Кислотная протравка перед пуском' },
+      { code:'aspo', label:'АСПО / нефть', unit:'м', q:'Очистка от асфальтосмолопарафиновых отложений' },
+      { code:'hydro', label:'Гидроструй', unit:'м', q:'Гидроструйная очистка внутренней поверхности' },
+      { code:'hydrotest', label:'Опрессовка', unit:'контур', q:'Гидроиспытание на прочность и плотность' }
+    ]},
+    { code:'chem_circuits', title:'Химконтуры и системы', methods:[
+      { code:'cip', label:'CIP-контур', unit:'циклы', q:'Безразборная промывка контура системы' }
+    ]},
+    { code:'towers_hvac', title:'Градирни и инженерные системы', methods:[
+      { code:'tower', label:'Градирня', unit:'м²', q:'Очистка оросителя и бассейна градирни' },
+      { code:'heating', label:'Отопление / ГВС / холодоснабжение', unit:'м³', q:'Промывка системы отопления' },
+      { code:'itp', label:'ИТП / ЦТП', unit:'м³', q:'Промывка теплообменного узла ИТП' },
+      { code:'pneumo', label:'Пневмоимпульс', unit:'м', q:'Пневмоимпульсная очистка' }
+    ]},
+    { code:'vent_sewer', title:'Вентиляция и канализация', methods:[
+      { code:'vent', label:'Воздуховоды', unit:'м', q:'Очистка воздуховода' },
+      { code:'disinfect', label:'Дезинфекция', unit:'м²', q:'Обработка поверхностей' },
+      { code:'sewer', label:'Канализация / приямки', unit:'м', q:'Прочистка канализации и приямков' }
+    ]},
+    { code:'repair_weld', title:'Ремонт и сварка', methods:[
+      { code:'weld', label:'Сварка', unit:'стык', q:'Сварка стыка трубопровода/аппарата' },
+      { code:'cutting', label:'Резка / демонтаж металла', unit:'м', q:'Резка металла' },
+      { code:'plates_pack', label:'Пакет пластин', unit:'пластин', q:'Замена пакета пластин (ремонт)' },
+      { code:'compabloc', label:'Компаблок', unit:'м²', q:'Обслуживание сварного теплообменника' },
+      { code:'fire_works', label:'Огневые работы', unit:'точка', q:'Огневые работы на точке' }
+    ]},
+    { code:'mount', title:'Монтаж и такелаж', methods:[
+      { code:'mount', label:'Монтаж', unit:'шт', q:'Монтаж аппарата' },
+      { code:'dismount', label:'Демонтаж', unit:'шт', q:'Демонтаж аппарата' },
+      { code:'rigging', label:'Такелаж', unit:'операция', q:'Подъём и перемещение' },
+      { code:'flange', label:'Фланцы / прокладки', unit:'стык', q:'Разболтовка, замена прокладки, сборка фланца' }
+    ]},
+    { code:'insulation', title:'Теплоизоляция', methods:[
+      { code:'insul', label:'Изоляция', unit:'м²', q:'Монтаж теплоизоляции' }
+    ]}
+  ];
+
+  var MEASURE_UNITS = ['м³','м²','м','т','шт','трубки','пластины','стык','цикл','операция','контур','точка','кг','литр','мм','дюйм'];
+  var FOULING = [
+    { v:'', t:'—' },
+    { v:'light', t:'лёгкие' },
+    { v:'medium', t:'средние' },
+    { v:'heavy', t:'тяжёлые' }
+  ];
+  var METHODS_COUNT = ['', '1', '2', '3', '4', '5'];
+
+  function esc(s){
+    return String(s == null ? '' : s)
+      .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  // Данные храним в localStorage между сессиями.
+  var data = {};
+  try { data = JSON.parse(localStorage.getItem(STORE_KEY) || '{}') || {}; } catch(e){ data = {}; }
+
+  function rowKey(cat, m){ return cat + '.' + m; }
+  function getRow(k){
+    if (!data[k]) data[k] = {};
+    return data[k];
+  }
+  function isFilled(k){
+    var r = data[k] || {};
+    // Заполнено, если указано хотя бы количество и время.
+    return !!(String(r.qty||'').trim() && String(r.days||'').trim());
+  }
+
+  function save(){
+    try { localStorage.setItem(STORE_KEY, JSON.stringify(data)); } catch(e){ /* место кончилось */ }
+    updateCounters();
+  }
+
+  function updateCounters(){
+    var total = 0, filled = 0;
+    CATS.forEach(function(c){
+      c.methods.forEach(function(m){
+        total++;
+        if (isFilled(rowKey(c.code, m.code))) filled++;
+      });
+    });
+    document.getElementById('pTotal').textContent = total;
+    document.getElementById('pCount').textContent = filled;
+    document.getElementById('fTotal').textContent = total;
+    document.getElementById('fDone').textContent = filled;
+  }
+
+  // ── Построение формы ──────────────────────────────────────────────────────
+  var root = document.getElementById('cats');
+
+  CATS.forEach(function(cat){
+    var wrap = document.createElement('section');
+    wrap.className = 'cat';
+
+    var head = document.createElement('div');
+    head.className = 'cat-head';
+    head.innerHTML =
+      '<span class="chev">▼</span>' +
+      '<h2>' + esc(cat.title) + '</h2>' +
+      '<span class="code">' + esc(cat.code) + '</span>' +
+      '<span class="cnt">' + cat.methods.length + ' метод(ов)</span>';
+    head.addEventListener('click', function(){ wrap.classList.toggle('is-collapsed'); });
+    wrap.appendChild(head);
+
+    var body = document.createElement('div');
+    body.className = 'cat-body';
+
+    var table = document.createElement('table');
+    table.innerHTML =
+      '<thead><tr>' +
+      '<th style="width:24%">Работа</th>' +
+      '<th style="width:16%">Объём и единица</th>' +
+      '<th style="width:15%">Бригада</th>' +
+      '<th style="width:14%">Срок</th>' +
+      '<th style="width:13%">Отложения</th>' +
+      '<th style="width:18%">Что идёт не так</th>' +
+      '</tr></thead>';
+
+    var tbody = document.createElement('tbody');
+
+    cat.methods.forEach(function(m){
+      var k = rowKey(cat.code, m.code);
+      var r = getRow(k);
+
+      var tr = document.createElement('tr');
+      tr.setAttribute('data-key', k);
+      if (isFilled(k)) tr.classList.add('is-filled');
+
+      // 1. Работа
+      var td1 = document.createElement('td');
+      td1.setAttribute('data-l', 'Работа');
+      td1.innerHTML =
+        '<div class="m-name">' + esc(m.label) + '</div>' +
+        '<div class="m-code">' + esc(m.code) + '</div>' +
+        '<div class="m-unit">' + esc(m.unit) + '</div>' +
+        '<div class="hint">' + esc(m.q) + '</div>';
+      tr.appendChild(td1);
+
+      // 2. Объём + единица
+      var td2 = document.createElement('td');
+      td2.setAttribute('data-l', 'Объём и единица');
+      var inpQty = document.createElement('input');
+      inpQty.type = 'text';
+      inpQty.placeholder = 'сколько';
+      inpQty.value = r.qty || '';
+      inpQty.setAttribute('data-f', 'qty');
+      var selUnit = document.createElement('select');
+      selUnit.setAttribute('data-f', 'unit');
+      var opts = [''].concat(MEASURE_UNITS);
+      if (m.unit && MEASURE_UNITS.indexOf(m.unit) < 0) opts.push(m.unit);
+      opts.forEach(function(u){
+        var o = document.createElement('option');
+        o.value = u;
+        o.textContent = u || 'ед.';
+        if ((r.unit || '') === u || (!r.unit && u === m.unit)) o.selected = true;
+        selUnit.appendChild(o);
+      });
+      var pair = document.createElement('div');
+      pair.className = 'pair';
+      pair.appendChild(inpQty);
+      pair.appendChild(selUnit);
+      td2.appendChild(pair);
+      var h2 = document.createElement('div');
+      h2.className = 'hint';
+      h2.textContent = 'норма считает в ' + m.unit;
+      td2.appendChild(h2);
+      tr.appendChild(td2);
+
+      // 3. Бригада
+      var td3 = document.createElement('td');
+      td3.setAttribute('data-l', 'Бригада');
+      var inpCrew = document.createElement('input');
+      inpCrew.type = 'text';
+      inpCrew.placeholder = 'напр. 1м+4сл';
+      inpCrew.value = r.crew || '';
+      inpCrew.setAttribute('data-f', 'crew');
+      td3.appendChild(inpCrew);
+      var h3 = document.createElement('div');
+      h3.className = 'hint';
+      h3.textContent = 'кто и сколько';
+      td3.appendChild(h3);
+      tr.appendChild(td3);
+
+      // 4. Срок
+      var td4 = document.createElement('td');
+      td4.setAttribute('data-l', 'Срок');
+      var inpDays = document.createElement('input');
+      inpDays.type = 'text';
+      inpDays.placeholder = 'суток / смен';
+      inpDays.value = r.days || '';
+      inpDays.setAttribute('data-f', 'days');
+      td4.appendChild(inpDays);
+      var h4 = document.createElement('div');
+      h4.className = 'hint';
+      h4.textContent = 'фактически ушло';
+      td4.appendChild(h4);
+      tr.appendChild(td4);
+
+      // 5. Отложения
+      var td5 = document.createElement('td');
+      td5.setAttribute('data-l', 'Отложения');
+      var selF = document.createElement('select');
+      selF.setAttribute('data-f', 'fouling');
+      FOULING.forEach(function(f){
+        var o = document.createElement('option');
+        o.value = f.v;
+        o.textContent = f.t;
+        if ((r.fouling || '') === f.v) o.selected = true;
+        selF.appendChild(o);
+      });
+      td5.appendChild(selF);
+      var h5 = document.createElement('div');
+      h5.className = 'hint';
+      h5.textContent = 'толщина, мм';
+      td5.appendChild(h5);
+      var inpTh = document.createElement('input');
+      inpTh.type = 'text';
+      inpTh.placeholder = 'напр. 5';
+      inpTh.value = r.thickness_mm || '';
+      inpTh.setAttribute('data-f', 'thickness_mm');
+      inpTh.style.marginTop = '4px';
+      td5.appendChild(inpTh);
+      tr.appendChild(td5);
+
+      // 6. Что идёт не так
+      var td6 = document.createElement('td');
+      td6.setAttribute('data-l', 'Что идёт не так');
+      var ta = document.createElement('textarea');
+      ta.placeholder = 'доступ, наряд-допуск, тяжёлые отложения…';
+      ta.value = r.note || '';
+      ta.setAttribute('data-f', 'note');
+      td6.appendChild(ta);
+      tr.appendChild(td6);
+
+      // Сохранение по вводу.
+      tr.querySelectorAll('[data-f]').forEach(function(el){
+        var ev = el.tagName === 'SELECT' ? 'change' : 'input';
+        el.addEventListener(ev, function(){
+          var f = el.getAttribute('data-f');
+          data[k] = data[k] || {};
+          data[k][f] = el.value;
+          tr.classList.toggle('is-filled', isFilled(k));
+          save();
+        });
+      });
+
+      tbody.appendChild(tr);
+    });
+
+    table.appendChild(tbody);
+    body.appendChild(table);
+    wrap.appendChild(body);
+    root.appendChild(wrap);
+  });
+
+  // ── Выгрузка ──────────────────────────────────────────────────────────────
+  function buildPayload(){
+    var out = [];
+    CATS.forEach(function(cat){
+      cat.methods.forEach(function(m){
+        var k = rowKey(cat.code, m.code);
+        var r = data[k] || {};
+        var empty = !String(r.qty||'').trim() && !String(r.days||'').trim()
+          && !String(r.crew||'').trim() && !String(r.note||'').trim();
+        if (empty) return; // пустые не отправляем — это и есть сигнал «здесь дырка»
+        out.push({
+          category_code: cat.code,
+          category_title: cat.title,
+          method_code: m.code,
+          method_label: m.label,
+          norm_unit: m.unit,
+          measured_qty: String(r.qty||'').trim() || null,
+          measured_unit: String(r.unit||'').trim() || m.unit,
+          crew: String(r.crew||'').trim() || null,
+          actual_days: String(r.days||'').trim() || null,
+          fouling: String(r.fouling||'').trim() || null,
+          thickness_mm: String(r.thickness_mm||'').trim() || null,
+          note: String(r.note||'').trim() || null,
+          basis: 'field'
+        });
+      });
+    });
+    return { filled_at: new Date().toISOString(), source: 'asgard_norm_form_v1', rows: out };
+  }
+
+  function toast(msg, isErr){
+    var t = document.getElementById('toast');
+    t.textContent = msg;
+    t.className = 'toast show' + (isErr ? ' err' : '');
+    setTimeout(function(){ t.className = 'toast'; }, 2400);
+  }
+
+  document.getElementById('btnExport').addEventListener('click', function(){
+    var p = buildPayload();
+    if (!p.rows.length) { toast('Ничего не заполнено', true); return; }
+    var box = document.getElementById('outBox');
+    document.getElementById('outText').value = JSON.stringify(p, null, 2);
+    box.classList.remove('hidden');
+    box.scrollIntoView({ behavior:'smooth', block:'start' });
+    toast('Готово: ' + p.rows.length + ' норм');
+  });
+
+  document.getElementById('btnSave').addEventListener('click', function(){
+    save();
+    toast('Сохранено в браузере');
+  });
+
+  document.getElementById('btnCopy').addEventListener('click', function(){
+    var ta = document.getElementById('outText');
+    ta.select();
+    try {
+      document.execCommand('copy');
+      toast('Скопировано');
+    } catch(e){
+      try { navigator.clipboard.writeText(ta.value); toast('Скопировано'); }
+      catch(e2){ toast('Не удалось, выделите вручную', true); }
+    }
+  });
+
+  document.getElementById('btnDownload').addEventListener('click', function(){
+    var ta = document.getElementById('outText');
+    if (!ta.value) { toast('Сначала выгрузите', true); return; }
+    var blob = new Blob([ta.value], { type:'application/json;charset=utf-8' });
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'asgard-norms-field-' + new Date().toISOString().slice(0,10) + '.json';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    toast('Файл скачан');
+  });
+
+  document.getElementById('btnClear').addEventListener('click', function(){
+    if (!confirm('Очистить все ответы? Это нельзя отменить.')) return;
+    data = {};
+    save();
+    location.reload();
+  });
+
+  var collapsed = false;
+  document.getElementById('btnCollapse').addEventListener('click', function(){
+    collapsed = !collapsed;
+    document.querySelectorAll('.cat').forEach(function(c){
+      c.classList.toggle('is-collapsed', collapsed);
+    });
+    this.textContent = collapsed ? 'Развернуть всё' : 'Свернуть всё';
+  });
+
+  updateCounters();
+})();
+</script>
+</body>
+</html>
