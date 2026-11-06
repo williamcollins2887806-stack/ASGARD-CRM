@@ -242,12 +242,14 @@ function physicalInputError(category, method, rateCode, kind, inputs) {
   }
   if (category === 'tubes' && method === 'gdo') {
     if (!(resolveTubes(inputs) > 0)) return 'Укажите число трубок';
-    if (!(Number(inputs.diameter_mm) > 0)) return 'Укажите Ø, мм';
+    // Ø НЕ обязателен: без него норма берёт базовую ставку мин/трубку
+    // (см. расчёт ниже: «Ø не указан — базовая мин/труб без калибровки»).
+    // Требовать Ø жёстко — значит выбрасывать в «эксперт» все тендеры,
+    // где в ВОР дана только длина трубки, как в 2131 (30 позиций).
     if (!(Number(inputs.length_m) > 0)) return 'Укажите длину трубки, м';
   }
   if (category === 'tubes' && method === 'gmo') {
     if (!(resolveTubes(inputs) > 0)) return 'Укажите число трубок';
-    if (!(Number(inputs.diameter_mm) > 0)) return 'Укажите Ø, мм';
   }
   if (category === 'tubes' && method === 'chem') {
     if (!(resolveTubes(inputs) > 0)) return 'Укажите число трубок';

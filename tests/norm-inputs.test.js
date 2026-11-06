@@ -200,12 +200,32 @@ check('единицы распознаются', () => {
   assert.strictEqual(classifyUnit('м3').isM3, true);
   assert.strictEqual(classifyUnit('м²').isM2, true);
   assert.strictEqual(classifyUnit('трубки').isTube, true);
-  assert.strictEqual(classifyUnit('п.м').isRunM, true);
-  assert.strictEqual(classifyUnit('пм').isRunM, true);
   assert.strictEqual(classifyUnit('стык').isJoint, true);
   // Ключевое: м³ не должен считаться погонным метром.
   assert.strictEqual(classifyUnit('м³').isRunM, false);
   assert.strictEqual(classifyUnit('м²').isRunM, false);
+});
+
+check('погонный метр распознаётся во всех написаниях', () => {
+  // Дефект 06.11 (тендер 2127): «450 п.м.» с точкой на конце не распознавалось,
+  // и каналы уходили пустыми.
+  for (const u of ['п.м.', 'п.м', 'п. м.', 'пм', 'пог.м', 'пог. м', 'м.п.', 'мп', 'м', 'метр']) {
+    assert.strictEqual(classifyUnit(u).isRunM, true, `«${u}» не распознан как погонный метр`);
+  }
+  assert.strictEqual(classifyUnit('м³').isRunM, false);
+});
+
+check('тонны и литры распознаются', () => {
+  assert.strictEqual(classifyUnit('т').isTon, true);
+  assert.strictEqual(classifyUnit('тонн').isTon, true);
+  assert.strictEqual(classifyUnit('л').isLitre, true);
+  assert.strictEqual(classifyUnit('м³').isTon, false);
+});
+
+check('погонные метры уходят в длину, даже с точкой', () => {
+  const out = inputsForPosition(
+    { category_code: 'vent_sewer', method_code: 'sewer', volume: 450, unit: 'п.м.' }, catalog);
+  assert.strictEqual(out.length_m, 450, 'длина потеряна: ' + JSON.stringify(out));
 });
 
 check('пустая позиция не падает', () => {
@@ -223,24 +243,21 @@ check('нулевой объём не даёт surface_m2: 0', () => {
   assert.strictEqual(out.surface_m2, undefined);
 });
 
-check('тонны уходят в движок пересчёта, а не теряются', () => {
-  // Тендер 2127: объём в тоннах, норма ёмкостей ждёт м³.
-  // Плотность может быть в ДВ — тогда пересчёт, иначе честный запрос.
+check('тонны с плотностью пересчитываются в м³', () => {
+  // Тендер 2127: 1353 т шлака, плотность 1.3 т/м³ → 1040.77 м³.
   const out = inputsForPosition({
     category_code: 'vessels', method_code: 'clean', volume: 1353, unit: 'т',
     conversion_params: { density_t_m3: 1.3 }
   }, catalog);
-  assert.strictEqual(out._measured_value, 1353, 'значение потеряно');
-  assert.strictEqual(out._measured_unit, 'т', 'единица потеряна');
-  assert.strictEqual(out.density_t_m3, 1.3, 'плотность из ДВ потеряна');
-  // Объём ещё не посчитан — это сделает unit-convert, а не мы.
-  assert.strictEqual(out.volume_m3, undefined);
+  assert.strictEqual(out.volume_m3, 1040.77, 'пересчёт неверен: ' + JSON.stringify(out));
+  assert.strictEqual(out.density_t_m3, 1.3);
 });
 
-check('тонны без плотности — тоже уходят, норма попросит плотность', () => {
+check('тонны без плотности — уходят в пересчёт, норма попросит плотность', () => {
   const out = inputsForPosition(
     { category_code: 'vessels', method_code: 'clean', volume: 500, unit: 'т' }, catalog);
   assert.strictEqual(out._measured_value, 500);
+  assert.strictEqual(out.volume_m3, undefined, 'объём посчитан без плотности');
   assert.strictEqual(out.density_t_m3, undefined, 'плотность выдумана');
 });
 

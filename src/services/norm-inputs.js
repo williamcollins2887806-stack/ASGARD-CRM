@@ -36,20 +36,32 @@ function posNum(x) {
 
 /** Что за единица измерения пришла из ВОР. */
 function classifyUnit(unit) {
-  const u = String(unit || '').toLowerCase().replace(/\s+/g, '');
+  // Нормализация: убираем пробелы и точки, которые ставят в ВОР по-разному
+  // («п.м.», «п. м.», «м.п.», «п.м»). Без этого «п.м.» не распознавалось
+  // как погонный метр и уходило пустым (тендер 2127, каналы 450 п.м.).
+  const raw = String(unit || '').trim();
+  const u = raw.toLowerCase()
+    .replace(/\s+/g, '')
+    .replace(/\./g, '')
+    .replace(/\/$/, '');
+
   const isM3 = u.includes('м³') || u.includes('м3') || u.includes('куб');
   const isM2 = u.includes('м²') || u.includes('м2') || u.includes('кв');
+  // Тонны: объём задан массой, пересчитывается в м³ через плотность.
+  // Без этого признака позиция «1353 т» уходила пустой (тендер 2127, шлак).
+  const isTon = /^(т|тн|тонн|тонна|тонны)$/.test(u);
+  const isLitre = /^(л|литр|литров|литры)$/.test(u);
   const isTube = u.includes('труб');
   const isJoint = u.includes('стык') || u.includes('шов');
   const isPlate = u.includes('пластин');
   const isSection = u.includes('секц');
-  const isPiece = /шт|компл/.test(u);
-  // Погонный метр: «п.м», «пм», «пог.м», «м.п.», «мп», просто «м».
+  const isPiece = /шт|компл|аппарат/.test(u);
+  // Погонный метр: «пм», «погм», «мп», просто «м», а также «метр/метров».
   // ВАЖНО: проверяем ПОСЛЕ м²/м³ — иначе объём уедет в длину.
   const isRunM = !isM3 && !isM2 && (
-    /^(п\.?м|пм|пог\.?м|п\.?п\.?м|м\.?п\.?|мп)$/.test(u) || u === 'м'
+    /^(пм|погм|ппм|мп|м|метр|метров|метра)$/.test(u)
   );
-  return { raw: u, isM3, isM2, isTube, isJoint, isPlate, isSection, isPiece, isRunM };
+  return { raw, isM3, isM2, isTon, isLitre, isTube, isJoint, isPlate, isSection, isPiece, isRunM };
 }
 
 /**
@@ -105,8 +117,15 @@ function inputsForPosition(pos, catalog) {
     if (k === 'density_t_m3') return realDensity;
 
     // ── Объёмные ───────────────────────────────────────────────────────────
-    if (k === 'volume_m3') return unit.isM3 ? v : null;
-    if (k === 'circuit_m3') return unit.isM3 ? v : null;
+    // Тонны и литры приводим к м³, если в ДВ есть плотность. Без плотности
+    // поле остаётся пустым: норма попросит параметр, а не посчитает наугад.
+    // Это НЕ выдумка — плотность пришла из ДВ (conversion_params).
+    if (k === 'volume_m3' || k === 'circuit_m3') {
+      if (unit.isM3) return v;
+      if (unit.isTon && realDensity) return Math.round((v / realDensity) * 100) / 100;
+      if (unit.isLitre) return Math.round((v / 1000) * 100) / 100;
+      return null;
+    }
     if (k === 'surface_m2') return unit.isM2 ? v : null;
 
     // ── Счётные из ВОР ─────────────────────────────────────────────────────
