@@ -321,6 +321,92 @@ async function pendingMappings(db) {
   });
 }
 
+/**
+ * Люди из СКУД без сотрудника CRM (skip / ещё не привязаны) — часы за период.
+ * Считаем теми же collapseState+buildIntervals, что и импорт.
+ *
+ * @returns {Promise<Array<{raw_name:string, days:Array, month:{office_minutes:number,office_hours:number}}>>}
+ */
+async function loadExtrasMonth(db, fromIso, toIso, mergeGapMin) {
+  const skudXls = require('./skud-xls');
+  const { rows } = await db.query(
+    `SELECT sp.raw_person,
+            sp.date::text AS date,
+            to_char(sp.ts, 'YYYY-MM-DD HH24:MI:SS') AS ts_wall,
+            LOWER(sp.direction) AS direction,
+            sp.event,
+            sp.device
+       FROM skud_punches sp
+       JOIN skud_imports si ON si.id = sp.import_id AND si.deleted_at IS NULL
+      WHERE sp.date >= $1::date AND sp.date <= $2::date
+        AND NOT EXISTS (
+              SELECT 1 FROM skud_person_map m
+               WHERE m.raw_name = sp.raw_person
+                 AND m.staff_id IS NOT NULL
+                 AND m.matched_by <> 'skip'
+            )
+      ORDER BY sp.raw_person, sp.ts`,
+    [fromIso, toIso]
+  );
+  if (!rows.length) return [];
+
+  const byPerson = new Map();
+  for (const r of rows) {
+    const name = r.raw_person;
+    if (!byPerson.has(name)) byPerson.set(name, new Map());
+    const byDate = byPerson.get(name);
+    const day = String(r.date).slice(0, 10);
+    if (!byDate.has(day)) byDate.set(day, []);
+    const m = /^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2}):(\d{2})$/.exec(String(r.ts_wall || ''));
+    if (!m) continue;
+    const ts = Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +m[6]);
+    const dir = r.direction === 'вход' || r.direction === 'выход' ? r.direction : null;
+    if (!dir) continue;
+    byDate.get(day).push({
+      ts,
+      direction: dir,
+      time: `${m[4]}:${m[5]}:${m[6]}`,
+      event: r.event || '',
+      device: r.device || '',
+      technical: skudXls.TECHNICAL_EVENTS.has(String(r.event || '').trim().toLowerCase())
+    });
+  }
+
+  const gap = mergeGapMin == null ? 60 : Number(mergeGapMin);
+  const extras = [];
+  for (const [rawName, byDate] of byPerson) {
+    const days = [];
+    let monthMin = 0;
+    for (const [date, evs] of [...byDate.entries()].sort((a, b) => (a[0] < b[0] ? -1 : 1))) {
+      const clean = evs.filter((e) => !e.technical).sort((a, b) => a.ts - b.ts);
+      const collapsed = skudXls.collapseState(clean);
+      const { segments, openEnded } = skudXls.buildIntervals(collapsed, gap);
+      const minutes = segments.reduce((s, x) => s + x.minutes, 0);
+      const firstIn = collapsed.find((e) => e.direction === 'вход');
+      const lastOut = [...collapsed].reverse().find((e) => e.direction === 'выход');
+      monthMin += minutes;
+      days.push({
+        date,
+        office_minutes: minutes,
+        open_ended: !!openEnded,
+        first_in: firstIn ? `${date} ${firstIn.time}` : null,
+        last_out: lastOut ? `${date} ${lastOut.time}` : null,
+        segments
+      });
+    }
+    extras.push({
+      raw_name: rawName,
+      days,
+      month: {
+        office_minutes: monthMin,
+        office_hours: Math.round(monthMin / 6) / 10
+      }
+    });
+  }
+  extras.sort((a, b) => a.raw_name.localeCompare(b.raw_name, 'ru'));
+  return extras;
+}
+
 module.exports = {
   normalizeName,
   splitFio,
@@ -330,5 +416,6 @@ module.exports = {
   ensureStaffRows,
   upsertMapping,
   resolveMappings,
-  pendingMappings
+  pendingMappings,
+  loadExtrasMonth
 };

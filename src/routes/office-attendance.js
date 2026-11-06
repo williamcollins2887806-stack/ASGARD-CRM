@@ -289,7 +289,8 @@ module.exports = async function (fastify, options) {
     const settings = await officeHours.loadSettings(db);
     const calendar = await officeHours.loadCalendar(db, range.from, range.to);
 
-    // Кто в графике офиса
+    // Кто в графике офиса. «ТЕСТ ТЕСТ» и битые staff без users — наружу не пускаем
+    // (регистр важен: LOWER('ТЕСТ…') = 'тест…', startsWith на фронте раньше не ловил).
     const { rows: staffAll } = await db.query(`
       SELECT s.id AS staff_id, s.user_id,
              COALESCE(NULLIF(btrim(u.name), ''), s.name) AS name,
@@ -297,13 +298,17 @@ module.exports = async function (fastify, options) {
         FROM staff s
         LEFT JOIN users u ON u.id = s.user_id
        WHERE COALESCE(s.is_active, true) = true
-         AND (u.id IS NULL OR (
-               COALESCE(u.is_active, true) = true
-               AND COALESCE(u.role, '') NOT IN ('BOT', 'ADMIN', 'FIELD_WORKER')
-               AND LOWER(u.login) NOT LIKE 'test_%'
-               AND LOWER(COALESCE(u.name, '')) NOT LIKE 'test %'
-               AND LOWER(COALESCE(u.name, '')) NOT LIKE 'тест %'
-         ))
+         AND LOWER(COALESCE(NULLIF(btrim(u.name), ''), s.name, '')) NOT LIKE 'тест%'
+         AND LOWER(COALESCE(NULLIF(btrim(u.name), ''), s.name, '')) NOT LIKE 'test%'
+         AND LOWER(COALESCE(u.login, '')) NOT LIKE 'test_%'
+         AND (
+               u.id IS NULL
+               OR (
+                 COALESCE(u.is_active, true) = true
+                 AND COALESCE(u.role, '') NOT IN ('BOT', 'ADMIN', 'FIELD_WORKER')
+               )
+             )
+         AND NOT (s.user_id IS NOT NULL AND u.id IS NULL)
        ORDER BY COALESCE(NULLIF(btrim(u.name), ''), s.name)`);
     let staffRows = staffAll;
     if (!fullAccess) {
@@ -572,7 +577,11 @@ module.exports = async function (fastify, options) {
         ...company,
         ...packHours(company)
       },
-      people
+      people,
+      // ФИО из СКУД без сотрудника CRM (skip / непривязанные) — витрина «прочие».
+      extras: fullAccess
+        ? await skudPeople.loadExtrasMonth(db, range.from, range.to, settings.merge_gap_min)
+        : []
     };
   });
 

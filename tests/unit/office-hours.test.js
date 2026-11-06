@@ -170,6 +170,39 @@ describe('office-hours: зачёт офис + СРМ вне офиса', () => {
     expect(r.source).toBe('no_data');
     expect(r.counts_in_norm).toBe(false);
   });
+
+  test('сессия СРМ 1 минута — шум, в зачёт не идёт (иначе в ячейке 0:01)', () => {
+    const r = oh.creditDay({
+      ...base,
+      date: '2026-11-04',
+      statusCode: 'уд',
+      officeMinutes: 0,
+      crmMinutes: 1,
+      crmSessions: [{ from: '18:54', to: '18:54', minutes: 1, hits: 1 }],
+      crmHasData: true,
+      skudMissing: true,
+      normMinutes: 480
+    });
+    expect(r.crm_minutes).toBe(1);          // сырой факт сохраняем
+    expect(r.credited_minutes).toBe(0);
+    expect(r.source).toBe('no_crm_data');
+  });
+
+  test('сессия СРМ ≥5 минут идёт в зачёт удалёнки', () => {
+    const r = oh.creditDay({
+      ...base,
+      date: '2026-11-05',
+      statusCode: 'уд',
+      officeMinutes: 0,
+      crmMinutes: 12,
+      crmSessions: [{ from: '10:00', to: '10:11', minutes: 12, hits: 4 }],
+      crmHasData: true,
+      skudMissing: true,
+      normMinutes: 480
+    });
+    expect(r.credited_minutes).toBe(12);
+    expect(r.source).toBe('crm');
+  });
 });
 
 describe('office-hours: свод и недоработка', () => {

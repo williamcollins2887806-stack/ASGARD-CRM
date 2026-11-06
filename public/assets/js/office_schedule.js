@@ -214,24 +214,32 @@ window.AsgardOfficeSchedulePage=(function(){
     return colors;
   }
 
+  function isTestLikeName(name){
+    const nm = String(name || '').trim().toLowerCase().replace(/ё/g, 'е');
+    if(!nm) return false;
+    return nm === 'тест' || nm === 'test'
+      || nm.startsWith('тест ') || nm.startsWith('test ');
+  }
+
   function isSkippedOfficeUser(u){
     if(!u || !u.is_active) return true;
     if(u.role === 'BOT' || u.role === 'ADMIN' || u.role === 'FIELD_WORKER') return true;
-    const login = String(u.login || '');
+    const login = String(u.login || '').toLowerCase();
     if(login.startsWith('test_') || login === 'mimir_bot') return true;
-    const name = String(u.name || '').trim();
-    if(name.startsWith('Test ') || name.startsWith('Тест ')) return true;
+    if(isTestLikeName(u.name)) return true;
     return false;
   }
 
   async function loadDisplayStaff(){
     const staff = await AsgardDB.all("staff") || [];
     const users = await AsgardDB.all("users") || [];
+    const userById = new Map(users.map(u => [u.id, u]));
     const skipUserIds = new Set(users.filter(isSkippedOfficeUser).map(u => u.id));
     return staff.filter(s => {
+      if(isTestLikeName(s.name)) return false;
       if(s.user_id && skipUserIds.has(s.user_id)) return false;
-      const nm = String(s.name || '').trim();
-      if(nm.startsWith('Test ') || nm.startsWith('Тест ')) return false;
+      // Битая ссылка staff.user_id → несуществующий users (как «ТЕСТ ТЕСТ»)
+      if(s.user_id && !userById.has(s.user_id)) return false;
       return true;
     });
   }
@@ -378,7 +386,7 @@ window.AsgardOfficeSchedulePage=(function(){
       (j.people||[]).forEach(p=>byStaff.set(p.staff_id, p));
       const flagMap = new Map();
       (j.people||[]).forEach(p=>{ if(p.flags && p.flags.open) flagMap.set(p.staff_id, p.flags.open); });
-      monthData = { raw: j, byStaff, flagMap };
+      monthData = { raw: j, byStaff, flagMap, extras: j.extras || [] };
     }
 
     /* Дашборд: сначала ВСЕГДА «Мои часы», у админа/директора ещё блок «Вся компания».
@@ -666,9 +674,58 @@ window.AsgardOfficeSchedulePage=(function(){
         </div>`;
       }).join("");
 
+      // Прочие: ФИО из СКУД без сотрудника CRM (уборка, айти-подрядчики и т.п.)
+      const extras = (monthData && monthData.extras) || [];
+      let extrasHtml = '';
+      if(extras.length){
+        const sep = `<div class="sched-row sched-row--sep">
+          <div class="sched-name sched-name--sep">Прочие сотрудники</div>
+          <div class="sched-cells"><div class="sched-sep-line" title="Есть в отчётах СКУД, нет в CRM">${extras.length} чел. · только часы прохода</div></div>
+        </div>`;
+        const extraRows = extras.map(ex=>{
+          const byDate = new Map((ex.days||[]).map(d=>[d.date, d]));
+          const cells = dayDates.map((dt)=>{
+            const iso = ymd(dt);
+            const nonWorking = isNonWorking(dt, iso);
+            const info = dayInfo(iso);
+            const isHoliday = !!(info && info.kind === 'holiday');
+            const isToday = iso === todayIso;
+            const dd = byDate.get(iso);
+            const mins = dd ? Number(dd.office_minutes||0) : 0;
+            const hoursTxt = mins > 0 ? hm(mins) : '';
+            const cellCls = ['sched-cell','sched-cell--extra'];
+            if(isHoliday) cellCls.push('holiday-empty');
+            else if(nonWorking) cellCls.push('weekend');
+            if(isToday) cellCls.push('today');
+            if(hoursTxt) cellCls.push('has-hours');
+            const tip = [fmtDM(iso), ex.raw_name];
+            if(mins>0){
+              tip.push(`в офисе ${hm(mins)}`);
+              if(dd && dd.first_in) tip.push(`вход ${String(dd.first_in).slice(11,16)}`);
+              if(dd && dd.last_out) tip.push(`выход ${String(dd.last_out).slice(11,16)}`);
+              if(dd && dd.open_ended) tip.push('выход не закрыт');
+            }
+            return `<button class="${cellCls.join(' ')}" type="button" data-extra="1"
+              data-extra-name="${esc(ex.raw_name)}" data-date="${esc(iso)}"
+              title="${esc(tip.join(' · '))}">${
+                hoursTxt ? `<span class="sched-hours">${esc(hoursTxt)}</span>` : ''
+              }${dd && dd.open_ended ? '<span class="sched-warn is-bad">!</span>' : ''}</button>`;
+          }).join('');
+          const monH = Number(ex.month && ex.month.office_hours || 0);
+          return `<div class="sched-row sched-row--extra">
+            <div class="sched-name sched-name--extra" title="${esc(ex.raw_name)} · нет в CRM · за месяц ${monH.toFixed(1)} ч">
+              <span class="sched-name__txt">${esc(ex.raw_name)}</span>
+              <span class="sched-extra-tag">прочие</span>
+            </div>
+            <div class="sched-cells">${cells}</div>
+          </div>`;
+        }).join('');
+        extrasHtml = sep + extraRows;
+      }
+
       return {
         days,
-        bodyRows,
+        bodyRows: bodyRows + extrasHtml,
         planMap,
         dash: buildDashHtml(monthData),
         holidays: holidaysRibbonHtml(),
@@ -808,6 +865,11 @@ window.AsgardOfficeSchedulePage=(function(){
         btn.addEventListener("click", async (ev)=>{
           if(btn.dataset.vac==="1"){
             toast("Отпуск","День в отпуске — ставится только в «Графике отпусков»","warn");
+            return;
+          }
+          if(btn.dataset.extra==="1"){
+            const tip = btn.getAttribute('title') || btn.dataset.extraName || 'Прочие';
+            toast("Прочие · СКУД", tip, "ok");
             return;
           }
           const staffId = Number(btn.dataset.staff||0);

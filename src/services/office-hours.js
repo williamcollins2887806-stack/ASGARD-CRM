@@ -29,6 +29,12 @@ const OFFICE_STATUS = 'оф';
 const UNCONFIRMED_STATUS = 'нп';
 /** Статусы, доступные для ответа на гейт (всё, кроме оф/нп). */
 const DISPUTE_ALLOWED = ['уд', 'об', 'км', 'пг', 'уч', 'ск', 'бн', 'сс', 'вх'];
+/**
+ * Сессии СРМ короче порога — шум (открыл вкладку и закрыл). В зачёт не идут.
+ * Иначе в ячейке светится «0:01», а люди читают это как «0.01 ч» и думают, что баг.
+ * В модалке дня сырые сессии по-прежнему видны.
+ */
+const MIN_CRM_SESSION_MIN = 5;
 
 const DEFAULTS = {
   merge_gap_min: 60,
@@ -224,6 +230,10 @@ function crmMinutesOutsideOffice(sessions, segments) {
  * @param {boolean} p.skudMissing
  * @param {number} p.normMinutes
  */
+function meaningfulCrmSessions(sessions) {
+  return (sessions || []).filter((s) => Number(s.minutes) >= MIN_CRM_SESSION_MIN);
+}
+
 function creditDay(p) {
   // Нормализуем код: невидимые символы, регистр и пробелы не должны менять
   // поведение — «ОФ», « оф », «оф\u200B» обязаны вести себя как «оф».
@@ -235,13 +245,24 @@ function creditDay(p) {
         .trim()
         .toLowerCase() || null;
   const office = Math.max(0, Math.round(Number(p.officeMinutes) || 0));
-  const crm = Math.max(0, Math.round(Number(p.crmMinutes) || 0));
+  const crmRaw = Math.max(0, Math.round(Number(p.crmMinutes) || 0));
   const norm = Math.max(0, Math.round(Number(p.normMinutes) || 0));
+  // Для зачёта — только сессии ≥ порога; сырой объём оставляем в crm_minutes.
+  const sessionsCredit = Array.isArray(p.crmSessions) && p.crmSessions.length
+    ? meaningfulCrmSessions(p.crmSessions)
+    : null;
+  let crm;
+  if (sessionsCredit) {
+    crm = sessionsCredit.reduce((s, x) => s + Math.max(0, Math.round(Number(x.minutes) || 0)), 0);
+  } else {
+    crm = crmRaw >= MIN_CRM_SESSION_MIN ? crmRaw : 0;
+  }
 
   let remoteCrm;
   if (p.crmRemoteMinutes != null) {
-    remoteCrm = Math.max(0, Math.round(Number(p.crmRemoteMinutes) || 0));
-  } else if (Array.isArray(p.crmSessions) && p.crmSessions.length) {
+    const rawRemote = Math.max(0, Math.round(Number(p.crmRemoteMinutes) || 0));
+    remoteCrm = rawRemote >= MIN_CRM_SESSION_MIN ? rawRemote : 0;
+  } else if (sessionsCredit && sessionsCredit.length) {
     // Окна СКУД нужны, чтобы вычесть время, проведённое в офисе. Если часов
     // офиса есть, а окон нет (ручная правка офис-менеджера через /adjust,
     // импорт СКУД за день отсутствует) — пересечение не вычислить. Прибавлять
@@ -250,7 +271,10 @@ function creditDay(p) {
     const segs = Array.isArray(p.officeSegments) ? p.officeSegments : [];
     remoteCrm = (office > 0 && !segs.length)
       ? 0
-      : crmMinutesOutsideOffice(p.crmSessions, p.officeSegments);
+      : crmMinutesOutsideOffice(sessionsCredit, p.officeSegments);
+  } else if (Array.isArray(p.crmSessions) && p.crmSessions.length) {
+    // Были только шумные сессии короче порога — в зачёт 0.
+    remoteCrm = 0;
   } else if (office > 0) {
     // Есть офис, но нет сессий СРМ с временем — пересечение не посчитать.
     // Не прибавляем «голый» crm: иначе двойной учёт за работу в офисе.
@@ -264,7 +288,7 @@ function creditDay(p) {
     status,
     norm_minutes: norm,
     office_minutes: office,
-    crm_minutes: crm,
+    crm_minutes: crmRaw,
     crm_remote_minutes: remoteCrm,
     credited_minutes: 0,
     source: 'none',
@@ -326,7 +350,9 @@ function creditDay(p) {
   }
 
   if (CRM_STATUSES.has(status)) {
-    if (!p.crmHasData && !crm && !office) {
+    // Шум < порога не считается «есть данные СРМ» — иначе «уд» с 1 минутой
+    // открытой вкладки получал зачёт 0:01 и выглядел как баг.
+    if (!crm && !office) {
       out.source = 'no_crm_data';
       out.counts_in_norm = false;
       out.warn = 'no_crm_data';
@@ -660,5 +686,7 @@ module.exports = {
   OFFICE_STATUS,
   UNCONFIRMED_STATUS,
   DISPUTE_ALLOWED,
+  MIN_CRM_SESSION_MIN,
+  meaningfulCrmSessions,
   DEFAULTS
 };
