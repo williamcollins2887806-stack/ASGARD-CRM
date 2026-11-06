@@ -127,6 +127,26 @@ async function routes(fastify) {
   const db = fastify.db;
   const { broadcast } = require('./sse');
 
+  // GET /registry/loss-reasons — справочник кодов (V462), fallback на константу
+  fastify.get('/registry/loss-reasons', {
+    preHandler: [fastify.authenticate]
+  }, async () => {
+    try {
+      const r = await db.query(
+        `SELECT code, label, sort_order FROM tender_loss_reasons
+          WHERE is_active = true ORDER BY sort_order, code`
+      );
+      if (r.rows.length) return { reasons: r.rows };
+    } catch (_) { /* таблица ещё не мигрирована */ }
+    return {
+      reasons: Object.entries(LOSS_REASON_LABELS).map(([code, label], i) => ({
+        code,
+        label,
+        sort_order: (i + 1) * 10
+      }))
+    };
+  });
+
   function baseWhere(subtab) {
     const parts = ['t.deleted_at IS NULL'];
     if (subtab === 'archive') {
@@ -624,11 +644,13 @@ async function routes(fastify) {
       if (!Array.isArray(lossReasons) || !lossReasons.length) {
         return reply.code(400).send({ error: 'Укажите хотя бы одну причину проигрыша', code: 'loss_reasons_required' });
       }
+      const { buildLossAnalyticsFields, upsertTenderCompetitors } = require('../services/tender-loss-analytics');
+      const analytics = buildLossAnalyticsFields(body, cur.rows[0]);
       const reasonLabels = lossReasons.map((k) => LOSS_REASON_LABELS[k] || String(k));
       const rejectReason = reasonLabels.join('; ');
       const tender_status = syncTenderStatus(registry_status);
-      const winnerPrice = body.winner_price != null && body.winner_price !== ''
-        ? Number(body.winner_price) : null;
+      const winnerPrice = analytics.loss_winner_price;
+      const lossReportJson = analytics.loss_report != null ? JSON.stringify(analytics.loss_report) : null;
       const r = await db.query(`
         UPDATE tenders SET
           registry_status = $1,
@@ -638,27 +660,71 @@ async function routes(fastify) {
           winner_name = COALESCE($5, winner_name),
           loss_winner_price = $6,
           loss_reasons = $7::jsonb,
+          our_price_no_vat = COALESCE($8, our_price_no_vat),
+          our_price_with_vat = COALESCE($9, our_price_with_vat),
+          nmck_snapshot = COALESCE($10, nmck_snapshot),
+          winner_inn = COALESCE($11, winner_inn),
+          winner_price_no_vat = COALESCE($12, winner_price_no_vat),
+          winner_price_with_vat = COALESCE($13, winner_price_with_vat),
+          loss_place = COALESCE($14, loss_place),
+          participants_count = COALESCE($15, participants_count),
+          loss_price_gap_pct = COALESCE($16, loss_price_gap_pct),
+          loss_report = COALESCE($17::jsonb, loss_report),
+          loss_reason_code = COALESCE($18, loss_reason_code),
+          result_protocol_url = COALESCE($19, result_protocol_url),
+          result_at = COALESCE($20, result_at),
           lost_at = NOW(),
-          lost_by_user_id = $8,
+          lost_by_user_id = $21,
           updated_at = NOW()
-        WHERE id = $9 RETURNING *
+        WHERE id = $22 RETURNING *
       `, [
         registry_status,
         tender_status,
         rejectReason,
-        body.comment || null,
+        body.comment || (analytics.loss_report && analytics.loss_report.text) || null,
         body.winner_name || null,
-        Number.isFinite(winnerPrice) ? winnerPrice : null,
+        winnerPrice,
         JSON.stringify(lossReasons),
+        analytics.our_price_no_vat,
+        analytics.our_price_with_vat,
+        analytics.nmck_snapshot,
+        analytics.winner_inn,
+        analytics.winner_price_no_vat,
+        analytics.winner_price_with_vat,
+        analytics.loss_place,
+        analytics.participants_count,
+        analytics.loss_price_gap_pct,
+        lossReportJson,
+        analytics.loss_reason_code || lossReasons[0] || null,
+        analytics.result_protocol_url,
+        analytics.result_at,
         request.user.id,
         id
       ]);
+
+      try {
+        await upsertTenderCompetitors(db, parseInt(id, 10), body.competitors, { source: 'registry' });
+      } catch (e) {
+        request.log.warn({ err: e }, 'tender_competitors upsert skipped');
+      }
+
+      try {
+        const { learnFromTenderOutcome } = require('../services/mimir-conductor/reference-learner');
+        await learnFromTenderOutcome(db, parseInt(id, 10), { source: 'registry_lost', createdBy: request.user.id });
+      } catch (e) {
+        request.log.warn({ err: e }, 'learnFromTenderOutcome skipped');
+      }
 
       await writeRegistryAudit(db, {
         actorUserId: request.user.id, tenderId: id,
         action: 'registry_lost',
         before: cur.rows[0].registry_status,
-        after: { registry_status, loss_reasons: lossReasons, winner_price: winnerPrice }
+        after: {
+          registry_status,
+          loss_reasons: lossReasons,
+          winner_price: winnerPrice,
+          loss_reason_code: analytics.loss_reason_code || lossReasons[0]
+        }
       });
 
       broadcast('tender:registry:changed', { id: parseInt(id, 10) });
@@ -1040,6 +1106,12 @@ async function routes(fastify) {
     `, [request.user.id, id]);
 
     const tender = winRes.rows[0];
+    try {
+      const { learnFromTenderOutcome } = require('../services/mimir-conductor/reference-learner');
+      await learnFromTenderOutcome(db, parseInt(id, 10), { source: 'registry_win', createdBy: request.user.id });
+    } catch (e) {
+      request.log.warn({ err: e }, 'learnFromTenderOutcome win skipped');
+    }
     const { createNotification } = require('../services/notify');
     const estimate = await db.query(`
       SELECT price_tkp FROM estimates WHERE tender_id = $1 AND status = 'approved' ORDER BY id DESC LIMIT 1
@@ -1202,6 +1274,113 @@ async function routes(fastify) {
         return reply.code(409).send({ error: 'TenderGuru API выключен. ADMIN может force=true', result });
       }
       broadcast('tender:registry:changed', { source: 'tenderguru' });
+      return { result };
+    } catch (e) {
+      return reply.code(500).send({ error: e.message });
+    }
+  });
+
+  const { enrichTenderOutcome, enrichLostTenders, resolveOutcomeMatchQueue } = require('../services/tender-outcome-enrich');
+
+  fastify.get('/registry/outcome-match-queue', {
+    preHandler: [fastify.requireRoles(ALLOWED_ROLES)]
+  }, async () => {
+    const r = await db.query(`
+      SELECT q.id, q.tender_id, q.status, q.match_candidates, q.notes, q.created_at,
+             t.customer_name, t.tender_title, t.registry_no, t.registry_status
+      FROM tender_outcome_match_queue q
+      JOIN tenders t ON t.id = q.tender_id AND t.deleted_at IS NULL
+      WHERE q.status = 'pending'
+      ORDER BY q.created_at DESC
+      LIMIT 50
+    `);
+    return { items: r.rows };
+  });
+
+  fastify.post('/registry/outcome-match-queue/:id/accept', {
+    preHandler: [fastify.requireRoles(ALLOWED_ROLES)]
+  }, async (request, reply) => {
+    const queueId = parseInt(request.params.id, 10);
+    if (!Number.isFinite(queueId)) return reply.code(400).send({ error: 'Некорректный id очереди' });
+    const candidateId = request.body?.candidate_id ?? request.body?.contract_id ?? null;
+    try {
+      const result = await resolveOutcomeMatchQueue(db, queueId, request.user.id, {
+        accept: true,
+        candidateId
+      });
+      if (result.reason === 'not_found') return reply.code(404).send({ error: 'Запись очереди не найдена' });
+      if (result.reason === 'not_pending') {
+        return reply.code(409).send({ error: 'Запись уже обработана', status: result.status });
+      }
+      if (!result.ok) return reply.code(400).send({ error: result.reason || 'accept_failed', result });
+      if (result.tender_id) {
+        broadcast('tender:registry:changed', { id: result.tender_id, source: 'outcome_queue_accept' });
+      }
+      return { ok: true, result };
+    } catch (e) {
+      return reply.code(500).send({ error: e.message });
+    }
+  });
+
+  fastify.post('/registry/outcome-match-queue/:id/reject', {
+    preHandler: [fastify.requireRoles(ALLOWED_ROLES)]
+  }, async (request, reply) => {
+    const queueId = parseInt(request.params.id, 10);
+    if (!Number.isFinite(queueId)) return reply.code(400).send({ error: 'Некорректный id очереди' });
+    try {
+      const result = await resolveOutcomeMatchQueue(db, queueId, request.user.id, { accept: false });
+      if (result.reason === 'not_found') return reply.code(404).send({ error: 'Запись очереди не найдена' });
+      if (result.reason === 'not_pending') {
+        return reply.code(409).send({ error: 'Запись уже обработана', status: result.status });
+      }
+      return { ok: true, result };
+    } catch (e) {
+      return reply.code(500).send({ error: e.message });
+    }
+  });
+
+  fastify.post('/registry/:id/enrich-outcome', {
+    preHandler: [fastify.requireRoles(ALLOWED_ROLES)]
+  }, async (request, reply) => {
+    if (!process.env.TENDERGURU_API_KEY) {
+      return reply.code(400).send({
+        error: 'TENDERGURU_API_KEY не задан на сервере',
+        code: 'no_api_key'
+      });
+    }
+    const force = request.body?.force === true;
+    try {
+      const result = await enrichTenderOutcome(db, request.params.id, {
+        apiKey: process.env.TENDERGURU_API_KEY,
+        force
+      });
+      if (result.reason === 'not_found') return reply.code(404).send({ error: 'Тендер не найден' });
+      if (result.matched) {
+        broadcast('tender:registry:changed', { id: parseInt(request.params.id, 10), source: 'tenderguru_outcome' });
+      }
+      return { ok: result.ok !== false, result };
+    } catch (e) {
+      return reply.code(500).send({ error: e.message });
+    }
+  });
+
+  fastify.post('/registry/enrich-outcome-batch', {
+    preHandler: [fastify.requireRoles(['ADMIN', 'HEAD_TO'])]
+  }, async (request, reply) => {
+    if (!process.env.TENDERGURU_API_KEY) {
+      return reply.code(400).send({
+        error: 'TENDERGURU_API_KEY не задан на сервере',
+        code: 'no_api_key'
+      });
+    }
+    const limit = request.body?.limit != null ? Number(request.body.limit) : 50;
+    try {
+      const result = await enrichLostTenders(db, fastify.log, {
+        apiKey: process.env.TENDERGURU_API_KEY,
+        limit: Number.isFinite(limit) ? limit : 50,
+        force: request.body?.force === true
+      });
+      broadcast('tender:registry:changed', { source: 'tenderguru_outcome_batch' });
       return { result };
     } catch (e) {
       return reply.code(500).send({ error: e.message });

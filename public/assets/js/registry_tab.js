@@ -1302,9 +1302,14 @@ window.AsgardRegistryTab = (function () {
       offer = typeof AsgardTkpAi.canOffer === 'function' && AsgardTkpAi.canOffer(row);
       open = typeof AsgardTkpAi.canOpen === 'function' && AsgardTkpAi.canOpen(row);
     } catch (_) { offer = false; open = false; }
-    if (open && row.tkp_id) {
+    // open достаточно: id может добраться openExisting по tender_id,
+    // если API ещё не отдал tkp_id (на проде так и пропала кнопка).
+    if (open) {
+      const tidAttr = row.tkp_id
+        ? (' data-tkp-id="' + Number(row.tkp_id) + '"')
+        : '';
       return '<button type="button" class="btn mini reg-tkp-open" data-id="' + row.id + '"'
-        + ' data-tkp-id="' + Number(row.tkp_id) + '"'
+        + tidAttr
         + ' title="ТКП уже создано — открыть для правки и скачивания Word/PDF"'
         + ' style="margin-top:6px">📄 ТКП создано</button>';
     }

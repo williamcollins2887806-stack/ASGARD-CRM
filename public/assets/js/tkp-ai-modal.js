@@ -837,15 +837,33 @@ window.AsgardTkpAi = (function () {
   /**
    * ТКП уже есть — реестр показывает «ТКП создано» и открывает существующее.
    * Не запускает новый ai-draft.
+   * Важно: на проде бывало tkp_exists=true без tkp_id (API ещё не отдавал id) —
+   * кнопку всё равно показываем, id добираем запросом.
    */
   function canOpen(row) {
     if (!row || !canCreate()) return false;
     const id = Number(row.tkp_id);
-    return Number.isFinite(id) && id > 0;
+    if (Number.isFinite(id) && id > 0) return true;
+    return !!(row.tkp_exists);
   }
 
-  function openExisting(row) {
-    const id = Number(row && row.tkp_id);
+  async function openExisting(row) {
+    let id = Number(row && row.tkp_id);
+    if (!Number.isFinite(id) || id <= 0) {
+      try {
+        const tenderId = Number(row && (row.id || row.tender_id));
+        if (!tenderId) throw new Error('нет tender_id');
+        const res = await apiJson('/api/tkp?tender_id=' + tenderId + '&limit=5', { method: 'GET' });
+        const items = (res && res.items) || (res && res.data && res.data.items) || [];
+        const hit = items.find(function (t) {
+          return String(t.status || '') !== 'rejected';
+        }) || items[0];
+        id = hit && hit.id ? Number(hit.id) : 0;
+      } catch (err) {
+        toast('ТКП', 'Не удалось найти сохранённое ТКП: ' + (err.message || ''), 'err');
+        return;
+      }
+    }
     if (!Number.isFinite(id) || id <= 0) {
       toast('ТКП', 'Не найден id существующего ТКП', 'err');
       return;

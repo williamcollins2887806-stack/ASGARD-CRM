@@ -56,11 +56,38 @@ check('canOpen + openExisting экспортированы', () => {
   assert.ok(/openExisting:\s*openExisting/.test(modalSrc));
 });
 
-check('реестр рисует «ТКП создано» и вешает .reg-tkp-open', () => {
+check('canOpen работает при tkp_exists без tkp_id', () => {
+  assert.ok(/return !!\(row\.tkp_exists\)/.test(modalSrc),
+    'canOpen не учитывает tkp_exists без id');
+  assert.ok(/\/api\/tkp\?tender_id=/.test(modalSrc),
+    'openExisting не добирает id по tender_id');
+});
+
+check('реестр рисует «ТКП создано» даже без row.tkp_id', () => {
   assert.ok(/ТКП создано/.test(regSrc), 'нет текста кнопки');
   assert.ok(/reg-tkp-open/.test(regSrc), 'нет класса reg-tkp-open');
-  assert.ok(/AsgardTkpAi\.openExisting|\.reg-tkp-open/.test(regSrc));
+  assert.ok(/if \(open\)/.test(regSrc) && !/if \(open && row\.tkp_id\)/.test(regSrc),
+    'кнопка всё ещё требует row.tkp_id — пропадёт на проде без API tkp_id');
   assert.ok(/canOpen/.test(regSrc), 'реестр не зовёт canOpen');
+});
+
+check('attach_pdf_only рендерит PDF с печатью и подписью', () => {
+  const tkpSrc = fs.readFileSync(
+    path.join(__dirname, '..', 'src', 'routes', 'tkp.js'), 'utf8'
+  );
+  const m = tkpSrc.match(/async function _finishAttachPdfOnly[\s\S]*?_renderTkpPdfBuffer\(fastify, tkp, \{[\s\S]*?\}\)/);
+  assert.ok(m, '_finishAttachPdfOnly не найден');
+  assert.ok(/signature:\s*true/.test(m[0]) && /stamp:\s*true/.test(m[0]),
+    'attach PDF без stamp/signature');
+});
+
+check('ai-draft не берёт ФИО ТО как подписанта', () => {
+  const draftSrc = fs.readFileSync(
+    path.join(__dirname, '..', 'src', 'services', 'tkp-ai-draft.js'), 'utf8'
+  );
+  assert.ok(/resolveCompanyDirector/.test(draftSrc), 'нет resolveCompanyDirector');
+  assert.ok(!/authorName = \(p && p\.user && p\.user\.name\)/.test(draftSrc),
+    'всё ещё берёт p.user.name');
 });
 
 check('API реестра отдаёт tkp_id', () => {

@@ -210,8 +210,10 @@ async function generateTkpPdf(tkpId, opts) {
   const paymentTerms = cj.payment_terms || '';
 
   // Author
-  const authorName = cj.author_name || company.director_name || '';
-  const authorPos = cj.author_position || company.director_title || 'Генеральный директор';
+  // Подписант — директор компании. cj.author_name раньше тащил ФИО ТО
+  // (Газретов) при сохранении «ТКП через ИИ».
+  const authorName = company.director_name || 'Кудряшов О.С.';
+  const authorPos = company.director_title || 'Генеральный директор';
 
   // Validity date
   let validityDate = '';
@@ -281,14 +283,14 @@ ${BASE_CSS}
 .cond-list li::before { content: '•'; position: absolute; left: 0; color: #1E4D8C; font-weight: 700; }
 
 /* ── Signature ── */
-.sign-block { margin-top: 8px; border-top: 1px solid #E5E7EB; padding-top: 8px; position: relative; }
-.sign-row { display: flex; align-items: flex-end; gap: 20px; }
-.sign-pos { font-size: 10pt; font-weight: 600; width: 180px; }
-.sign-line { flex: 1; border-bottom: 1px solid #000; height: 1px; margin-bottom: 4px; position: relative; }
-.sign-name { font-size: 10pt; font-weight: 600; text-align: right; width: 200px; }
-.sign-images { position: relative; height: 120px; overflow: hidden; margin: -50px 0 0; }
-.sign-signature { position: absolute; left: 180px; top: 0; height: 140px; }
-.sign-stamp { position: absolute; left: 136px; top: 0; height: 176px; opacity: 0.85; }
+.sign-block { margin-top: 16px; border-top: 1px solid #E5E7EB; padding-top: 12px; position: relative; }
+.sign-row { display: flex; align-items: flex-end; gap: 16px; position: relative; z-index: 2; }
+.sign-pos { font-size: 10pt; font-weight: 600; width: 180px; flex-shrink: 0; }
+.sign-line { flex: 1; border-bottom: 1px solid #000; height: 18px; margin-bottom: 0; }
+.sign-name { font-size: 10pt; font-weight: 600; text-align: right; width: 200px; flex-shrink: 0; }
+.sign-images { position: relative; height: 100px; margin: -72px 0 8px 160px; z-index: 1; }
+.sign-signature { position: absolute; left: 24px; top: 0; height: 90px; }
+.sign-stamp { position: absolute; left: -40px; top: 8px; height: 110px; opacity: 0.88; }
 
 /* ── Sum in words ── */
 .sum-words { font-size: 11pt; font-style: italic; color: #374151; margin: 18px 0 12px; }

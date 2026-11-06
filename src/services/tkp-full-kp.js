@@ -259,7 +259,7 @@ function buildFullKpHtml(tkp, opts = {}) {
     </tr>`).join('');
 
   const authorPos = full.author_position || 'Генеральный директор';
-  const authorName = full.author_name || company.director_name || '';
+  const authorName = company.director_name || full.author_name || '';
 
   return `<!DOCTYPE html>
 <html lang="ru"><head><meta charset="UTF-8"><style>
@@ -508,10 +508,12 @@ function buildFullKpTemplateData(tkp, company = {}) {
 function _signerName(full, company) {
   const c = company || {};
   const pick = (v) => String(v == null ? '' : v).trim();
-  const name = pick(full && full.author_name)
-    || pick(c.director_name)
+  // В клиентском КП подписывает директор, а не автор записи ТКП (ТО).
+  // author_name из items раньше подставлял «Газретов…» при source=ai_tender.
+  const name = pick(c.director_name)
     || pick(c.director_full_name)
     || pick(c.director)
+    || pick(full && full.author_name)
     || '';
   if (!name) return '________________';
   return name.toUpperCase();

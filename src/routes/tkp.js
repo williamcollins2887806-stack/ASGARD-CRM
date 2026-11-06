@@ -1511,28 +1511,28 @@ async function generateTkpPdfKit(tkp, db, opts) {
   doc.moveTo(mL, doc.y).lineTo(mL + contentW, doc.y).strokeColor('#E5E7EB').lineWidth(0.5).stroke();
   doc.moveDown(0.6);
 
-  const authorName = cj.author_name || company.director_name || 'Кудряшов О.С.';
-  const authorPos = cj.author_position || company.director_title || 'Генеральный директор';
+  // Подпись в клиентском PDF — директор компании, не автор_id ТО.
+  const authorName = company.director_name || 'Кудряшов О.С.';
+  const authorPos = company.director_title || 'Генеральный директор';
 
   const signY = doc.y;
+  // Сначала картинки (под линией), затем текст строки — чтобы ФИО/должность
+  // не «уезжали» относительно печати и подписи.
+  const imgDir = path.join(__dirname, '..', '..', 'public', 'assets', 'img');
+  const sigPath = path.join(imgDir, 'signature.png');
+  const stampPath = path.join(imgDir, 'stamp.png');
+  if (opts.stamp && fs.existsSync(stampPath)) {
+    doc.image(stampPath, mL + 95, signY - 10, { height: 85 });
+  }
+  if (opts.signature && fs.existsSync(sigPath)) {
+    doc.image(sigPath, mL + 175, signY - 35, { height: 70 });
+  }
   doc.font(FB).fontSize(9.5).fillColor('#374151')
      .text(authorPos, mL, signY, { width: 170 });
   doc.font(F).fontSize(9.5).fillColor('#9CA3AF')
      .text('_________________', mL + 180, signY, { width: 110, align: 'center' });
   doc.font(FB).fontSize(9.5).fillColor('#374151')
      .text(authorName, mL + 310, signY, { width: contentW - 310, align: 'right' });
-
-  // Signature & stamp images
-  const imgDir = path.join(__dirname, '..', '..', 'public', 'assets', 'img');
-  const sigPath = path.join(imgDir, 'signature.png');
-  const stampPath = path.join(imgDir, 'stamp.png');
-
-  if (opts.signature && fs.existsSync(sigPath)) {
-    doc.image(sigPath, mL + 180, signY - 30, { height: 80 });
-  }
-  if (opts.stamp && fs.existsSync(stampPath)) {
-    doc.image(stampPath, mL + 130, signY - 15, { height: 90 });
-  }
 
   doc.x = mL;
   doc.y = signY + (opts.stamp || opts.signature ? 55 : 14);
@@ -4289,7 +4289,12 @@ async function _finishAttachPdfOnly(fastify, reply, tkp, isNew) {
       });
     }
 
-    const pdfResp = await _renderTkpPdfBuffer(fastify, tkp, {});
+    // К карточке тендера кладём PDF С печатью и подписью директора —
+    // иначе ТО скачивает «голый» файл без штампа (жалоба 06.11.2026).
+    const pdfResp = await _renderTkpPdfBuffer(fastify, tkp, {
+      signature: true,
+      stamp: true
+    });
     const expected = _expectedAmountsFromTkp(tkp);
     const gate = await svc.assertPdfClean(pdfResp.buffer, {
       expectedNumbers: expected,

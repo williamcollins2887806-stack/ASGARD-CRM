@@ -1145,6 +1145,38 @@ function buildFullPayload(pricing, items, texts) {
 }
 
 /**
+ * ФИО и должность директора для подписи в клиентском КП.
+ * Источник — settings.company_profile; fallback — канон компании.
+ */
+async function resolveCompanyDirector() {
+  const fallback = {
+    name: 'Кудряшов О.С.',
+    title: 'Генеральный директор'
+  };
+  try {
+    const { rows } = await db.query(
+      "SELECT value_json FROM settings WHERE key = 'company_profile' LIMIT 1"
+    );
+    const raw = rows[0] && rows[0].value_json;
+    const cj = typeof raw === 'string' ? JSON.parse(raw || '{}') : (raw || {});
+    const full = String(cj.director_name || cj.director_full_name || cj.director || '').trim();
+    const title = String(cj.director_title || cj.position || '').trim() || fallback.title;
+    if (!full) return { name: fallback.name, title };
+    const parts = full.split(/\s+/).filter(Boolean);
+    let name = full;
+    if (parts.length >= 3) {
+      name = parts[0] + ' ' + parts[1].charAt(0).toUpperCase() + '.'
+        + parts[2].charAt(0).toUpperCase() + '.';
+    } else if (parts.length === 2 && parts[1].length > 2) {
+      name = parts[0] + ' ' + parts[1].charAt(0).toUpperCase() + '.';
+    }
+    return { name, title };
+  } catch (_) {
+    return fallback;
+  }
+}
+
+/**
  * Проверить, что просчёт готов к формированию ТКП.
  * Вынесено отдельной функцией: её можно тестировать без БД и без подмены
  * внутренних вызовов (подмена экспорта не работает — внутри модуля вызов
@@ -1228,9 +1260,12 @@ async function buildAiDraft(p) {
     : buildClientItems(pricing, { summaryName });
   const allowedNumbers = collectAllowedNumbers(ctx, pricing);
 
-  // ── текстовые поля: ИИ → валидация → шаблон
-  const authorName = (p && p.user && p.user.name) || (tender.creator_name || '');
-  const authorPosition = 'Генеральный директор';
+  // Подписант КП — всегда директор компании, НЕ сотрудник ТО, который
+  // нажал «Сохранить». Раньше брали p.user.name → у Гаджи в PDF стояло
+  // «Газретов… / Генеральный директор».
+  const director = await resolveCompanyDirector();
+  const authorName = director.name;
+  const authorPosition = director.title;
 
   const subject = validateTextField(aiData.subject, {
     maxLen: 180, fallback: defaultSubject(tender), allowedNumbers, field: 'subject'
@@ -1476,6 +1511,7 @@ module.exports = {
   assertReviewReady,
   assertPdfClean,
   sanitizeManualDraft,
+  resolveCompanyDirector,
   // для тестов и переиспользования
   readPricing,
   normalizeVatPct,
