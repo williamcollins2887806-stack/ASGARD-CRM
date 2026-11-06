@@ -896,11 +896,25 @@ async function loadStage(db, sessionUid) {
     throw err;
   }
   const r = rows[0];
+  const state = normalizeState(r.stage_state);
+
+  // Дозаполнение доказательства объёма для сессий, сохранённых ДО 07.11.2026:
+  // тогда полей volume_source/volume_proof ещё не было, и РП видел цифру
+  // без указания источника. Пересчитываем на чтении — перегонять анализ
+  // всех тендеров ради этого не нужно.
+  if (Array.isArray(state.positions)) {
+    for (const p of state.positions) {
+      if (p.volume_source == null) p.volume_source = normalizeVolumeSource(p);
+      if (p.volume_proof == null) p.volume_proof = buildVolumeProof(p);
+      if (p.confidence == null && p.conf_legacy != null) p.confidence = normalizeConfidence(p.conf_legacy);
+    }
+  }
+
   return {
     session_uid: r.session_uid,
     tender_id: r.tender_id,
     stage: r.stage || 'intake',
-    state: normalizeState(r.stage_state),
+    state,
     version: Number(r.stage_version) || 0
   };
 }
