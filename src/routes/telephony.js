@@ -236,6 +236,77 @@ module.exports = async function telephonyRoutes(fastify, opts) {
     }
   }
 
+  /** Служебный from у GSM-плеча на мобильный оператора (Mango summary). */
+  function isServiceFromNumber(num) {
+    const raw = String(num || '').trim();
+    if (!raw) return false;
+    if (raw === '92.242.61.184') return true;
+    if (/mangosip\.ru|bitrix24|^sip:/i.test(raw)) return true;
+    return false;
+  }
+
+  async function resolveUserIdByPhone(num) {
+    if (!num || String(num).startsWith('sip:')) return null;
+    const digits = normalizePhone(num).replace(/\D/g, '').slice(-10);
+    if (digits.length < 10) return null;
+    try {
+      const byOp = await db.query(
+        `SELECT user_id FROM pbx_operators
+          WHERE right(regexp_replace(COALESCE(mobile_phone, ''), '\\D', '', 'g'), 10) = $1
+          LIMIT 1`,
+        [digits]
+      );
+      if (byOp.rows[0]?.user_id) return byOp.rows[0].user_id;
+      const byStatus = await db.query(
+        `SELECT user_id FROM user_call_status
+          WHERE right(regexp_replace(COALESCE(fallback_mobile, ''), '\\D', '', 'g'), 10) = $1
+          LIMIT 1`,
+        [digits]
+      );
+      if (byStatus.rows[0]?.user_id) return byStatus.rows[0].user_id;
+      const byUser = await db.query(
+        `SELECT id FROM users
+          WHERE is_active = true
+            AND right(regexp_replace(COALESCE(phone, ''), '\\D', '', 'g'), 10) = $1
+          LIMIT 1`,
+        [digits]
+      );
+      return byUser.rows[0]?.id || null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /**
+   * Головной входящий рядом по времени (GSM-плечо Mango не несёт pbx_uid).
+   * Окно ±3 мин — create_time плеча обычно совпадает со started_at входящего.
+   */
+  async function findInboundParentForShoulder({ createTime, lineNumber }) {
+    try {
+      const r = await db.query(
+        `SELECT id, user_id, answered_by, duration_seconds
+           FROM call_history
+          WHERE parent_call_id IS NULL
+            AND COALESCE(direction, call_type) = 'inbound'
+            AND source = 'pbx'
+            AND started_at > COALESCE($1::timestamptz, NOW()) - interval '3 minutes'
+            AND started_at < COALESCE($1::timestamptz, NOW()) + interval '3 minutes'
+            AND (
+              $2::text IS NULL OR $2 = ''
+              OR line_number = $2
+              OR right(regexp_replace(COALESCE(to_number, ''), '\\D', '', 'g'), 10)
+                 = right(regexp_replace($2, '\\D', '', 'g'), 10)
+            )
+          ORDER BY ABS(EXTRACT(EPOCH FROM (started_at - COALESCE($1::timestamptz, NOW())))) ASC
+          LIMIT 1`,
+        [createTime || null, lineNumber || null]
+      );
+      return r.rows[0] || null;
+    } catch (_) {
+      return null;
+    }
+  }
+
   async function recordingIdFromLog(entryId) {
     const aliases = entryIdAliases(entryId);
     if (!aliases.length) return null;
@@ -501,6 +572,92 @@ module.exports = async function telephonyRoutes(fastify, opts) {
       } catch (e) { /* non-critical */ }
     }
 
+    // GSM-плечо на мобильный оператора (receive_mode=mobile):
+    // Mango шлёт отдельный summary outbound from=IP сервера → to=мобильный.
+    // Без свёртки это «Неизвестный» в отчёте + дубль к реальному входящему
+    // (инцидент 05.11.2026: 3 клиента → 6 строк, 5 «Неизвестный»).
+    const shoulderOpUserId = (direction === 'outbound' && isServiceFromNumber(fromNum))
+      ? (await resolveUserIdByPhone(toNum))
+      : null;
+    if (shoulderOpUserId) {
+      if (!userId) userId = shoulderOpUserId;
+      const parent = await findInboundParentForShoulder({ createTime, lineNumber });
+      if (parent) {
+        await db.query(
+          `UPDATE call_history SET
+             answered_by = COALESCE(answered_by, $1),
+             user_id = COALESCE(user_id, $1),
+             duration_seconds = COALESCE(NULLIF(duration_seconds, 0), $2),
+             duration = COALESCE(NULLIF(duration, 0), $2),
+             ended_at = COALESCE(ended_at, $3),
+             status = CASE
+               WHEN $2 > 0 AND status IN ('ringing', 'missed') THEN 'answered'
+               ELSE status
+             END,
+             outcome = CASE
+               WHEN $2 > 0 AND (outcome IS NULL OR outcome IN ('no_answer', 'ringing'))
+                 THEN 'answered'
+               ELSE outcome
+             END,
+             updated_at = NOW()
+           WHERE id = $4`,
+          [shoulderOpUserId, talkTime || 0, endTime || null, parent.id]
+        ).catch((e) => console.warn('[Telephony] shoulder→parent attr:', e.message));
+
+        let existingShoulder = await findCallByEntryId(entryId);
+        if (existingShoulder) {
+          await db.query(
+            `UPDATE call_history SET
+               parent_call_id = COALESCE(parent_call_id, $1),
+               user_id = COALESCE(user_id, $2),
+               answered_by = COALESCE(answered_by, $2),
+               duration_seconds = COALESCE(NULLIF(duration_seconds, 0), $3),
+               duration = COALESCE(NULLIF(duration, 0), $3),
+               webhook_payload = $4,
+               updated_at = NOW()
+             WHERE id = $5`,
+            [parent.id, shoulderOpUserId, talkTime || 0, JSON.stringify(event), existingShoulder.id]
+          ).catch(() => {});
+        } else {
+          const callIdStr = entryId || ('shoulder_' + Date.now());
+          await db.query(
+            `INSERT INTO call_history (
+               call_id, mango_entry_id, direction, call_type, status,
+               from_number, to_number, caller_number, called_number,
+               duration, duration_seconds, started_at, ended_at, timestamp,
+               user_id, answered_by, parent_call_id, line_number,
+               disconnect_reason, webhook_payload, created_at, updated_at
+             ) VALUES (
+               $1,$2,'outbound','outbound','completed',
+               $3,$4,$3,$4,
+               $5,$5,$6,$7,$6,
+               $8,$8,$9,$10,
+               $11,$12,NOW(),NOW()
+             )
+             ON CONFLICT (call_id) DO UPDATE SET
+               parent_call_id = COALESCE(call_history.parent_call_id, EXCLUDED.parent_call_id),
+               user_id = COALESCE(call_history.user_id, EXCLUDED.user_id),
+               answered_by = COALESCE(call_history.answered_by, EXCLUDED.answered_by),
+               updated_at = NOW()`,
+            [
+              callIdStr, entryId, fromNum, toNum,
+              talkTime || 0, createTime, endTime,
+              shoulderOpUserId, parent.id, lineNumber,
+              disconnectReason, JSON.stringify(event),
+            ]
+          ).catch((e) => console.warn('[Telephony] shoulder insert:', e.message));
+        }
+
+        if (userId) {
+          await db.query(
+            'UPDATE user_call_status SET last_call_at = NOW(), updated_at = NOW() WHERE user_id = $1',
+            [userId]
+          ).catch(() => {});
+        }
+        console.log(`[Telephony] GSM shoulder folded into inbound #${parent.id} (op=#${shoulderOpUserId})`);
+        return reply.send({ status: 'ok', folded_into: parent.id });
+      }
+    }
 
     // Ищем клиента
     const clientNumber = direction === 'inbound' ? fromNum : toNum;
@@ -849,6 +1006,14 @@ module.exports = async function telephonyRoutes(fastify, opts) {
     // выглядели двумя исходящими на номер Асгарда). В карточке звонка перевод
     // по-прежнему виден — он берётся из pbx_call_legs.
     conditions.push('ch.parent_call_id IS NULL');
+    // Сиротские GSM-плечи (from=IP/sip → мобильный) до свёртки — не в журнале.
+    conditions.push(`NOT (
+      COALESCE(ch.direction, ch.call_type) = 'outbound'
+      AND (
+        ch.from_number = '92.242.61.184'
+        OR ch.from_number ~* 'mangosip\\.ru|bitrix24|^sip:'
+      )
+    )`);
 
     if (date_from) { conditions.push(`ch.created_at >= $${paramIdx++}`); params.push(date_from); }
     if (date_to) { conditions.push(`ch.created_at <= $${paramIdx++}`); params.push(date_to + 'T23:59:59'); }
@@ -1436,7 +1601,14 @@ module.exports = async function telephonyRoutes(fastify, opts) {
     const cached = getCachedStats(cacheKey);
     if (cached) return reply.send(cached);
 
-    // Общие метрики
+    // Общие метрики (без GSM-плеч и parent-строк — как в ежедневном отчёте)
+    const statsHeadFilter = `
+      created_at >= $1 AND created_at <= $2::date + interval '1 day'
+      AND parent_call_id IS NULL
+      AND NOT (
+        COALESCE(direction, call_type) = 'outbound'
+        AND (from_number = '92.242.61.184' OR from_number ~* 'mangosip\\.ru|bitrix24|^sip:')
+      )`;
     const totals = await db.query(
       `SELECT
         COUNT(*) as total,
@@ -1445,9 +1617,9 @@ module.exports = async function telephonyRoutes(fastify, opts) {
         COUNT(*) FILTER (WHERE call_type = 'missed') as missed,
         ROUND(AVG(duration_seconds) FILTER (WHERE duration_seconds > 0)) as avg_duration,
         COUNT(*) FILTER (WHERE ai_is_target = true) as target_calls,
-        COUNT(*) FILTER (WHERE lead_id IS NOT NULL) as converted_to_leads
+        COUNT(*) FILTER (WHERE lead_id IS NOT NULL OR pre_tender_id IS NOT NULL) as converted_to_leads
       FROM call_history
-      WHERE created_at >= $1 AND created_at <= $2::date + interval '1 day'`,
+      WHERE ${statsHeadFilter}`,
       [from, to]
     );
 
@@ -1461,6 +1633,11 @@ module.exports = async function telephonyRoutes(fastify, opts) {
         COUNT(*) FILTER (WHERE call_type = 'missed') as missed
       FROM call_history
       WHERE created_at >= $1 AND created_at <= $2::date + interval '1 day'
+        AND parent_call_id IS NULL
+        AND NOT (
+          COALESCE(direction, call_type) = 'outbound'
+          AND (from_number = '92.242.61.184' OR from_number ~* 'mangosip\\.ru|bitrix24|^sip:')
+        )
       GROUP BY period ORDER BY period`,
       [from, to, dateFormat]
     );
@@ -1494,10 +1671,15 @@ module.exports = async function telephonyRoutes(fastify, opts) {
         COUNT(*) FILTER (WHERE ch.call_type = 'outbound') as outbound,
         COUNT(*) FILTER (WHERE ch.call_type = 'missed') as missed,
         ROUND(AVG(ch.duration_seconds) FILTER (WHERE ch.duration_seconds > 0)) as avg_duration,
-        COUNT(*) FILTER (WHERE ch.lead_id IS NOT NULL) as converted
+        COUNT(*) FILTER (WHERE ch.lead_id IS NOT NULL OR ch.pre_tender_id IS NOT NULL) as converted
       FROM call_history ch
-      JOIN users u ON u.id = ch.user_id
+      JOIN users u ON u.id = COALESCE(ch.user_id, ch.answered_by)
       WHERE ch.created_at >= $1 AND ch.created_at <= $2::date + interval '1 day'
+        AND ch.parent_call_id IS NULL
+        AND NOT (
+          COALESCE(ch.direction, ch.call_type) = 'outbound'
+          AND (ch.from_number = '92.242.61.184' OR ch.from_number ~* 'mangosip\\.ru|bitrix24|^sip:')
+        )
       GROUP BY u.id, u.name
       ORDER BY total_calls DESC`,
       [from, to]

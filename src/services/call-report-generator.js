@@ -41,6 +41,24 @@ class CallReportGenerator {
     // не пуст) — это часть того же разговора, который уже посчитан головным
     // звонком. Без фильтра отчёт за 28.10 показывал 11 звонков вместо 10:
     // перевод Хосе (167 с) шёл отдельной строкой к тому же клиенту.
+    // HEAD_CALLS: головные звонки. Исключаем:
+    //  • parent_call_id — плечи перевода / GSM (свёртка 05.11.2026);
+    //  • outbound с from=IP сервера / sip — сиротские GSM-дубли до свёртки
+    //    (иначе «Неизвестный» раздувает отчёт).
+    function headCallsSql(alias) {
+      const p = alias ? alias + '.' : '';
+      return `
+      ${p}created_at >= $1::date AND ${p}created_at < ($2::date + INTERVAL '1 day')
+      AND ${p}parent_call_id IS NULL
+      AND NOT (
+        COALESCE(${p}direction, ${p}call_type) = 'outbound'
+        AND (
+          ${p}from_number = '92.242.61.184'
+          OR ${p}from_number ~* 'mangosip\\.ru|bitrix24|^sip:'
+        )
+      )`;
+    }
+
     const totalsRes = await db.query(`
       SELECT
         COUNT(*) as total_calls,
@@ -49,11 +67,10 @@ class CallReportGenerator {
         COUNT(*) FILTER (WHERE call_type = 'missed' AND COALESCE(missed_acknowledged, false) = false AND missed_callback_at IS NULL) as lost_calls,
         ROUND(AVG(COALESCE(ai_quality_score, (ai_lead_data->>'quality_score')::int))
           FILTER (WHERE ai_quality_score IS NOT NULL OR ai_lead_data->>'quality_score' IS NOT NULL), 1) as avg_quality,
-        COUNT(*) FILTER (WHERE lead_id IS NOT NULL) as leads_created,
+        COUNT(*) FILTER (WHERE lead_id IS NOT NULL OR pre_tender_id IS NOT NULL) as leads_created,
         AVG(duration_seconds) FILTER (WHERE duration_seconds > 0) as avg_duration
       FROM call_history
-      WHERE created_at >= $1::date AND created_at < ($2::date + INTERVAL '1 day')
-        AND parent_call_id IS NULL
+      WHERE ${headCallsSql('')}
     `, [dateFrom, dateTo]);
     const totals = totalsRes.rows[0];
 
@@ -75,8 +92,7 @@ class CallReportGenerator {
         AVG(ch.duration_seconds) FILTER (WHERE ch.duration_seconds > 0) as avg_duration
       FROM call_history ch
       LEFT JOIN users u ON u.id = COALESCE(ch.user_id, ch.answered_by)
-      WHERE ch.created_at >= $1::date AND ch.created_at < ($2::date + INTERVAL '1 day')
-        AND ch.parent_call_id IS NULL
+      WHERE ${headCallsSql('ch')}
       GROUP BY COALESCE(u.name, 'Неизвестный')
       ORDER BY total DESC
       LIMIT 20
@@ -86,7 +102,7 @@ class CallReportGenerator {
     const byTypeRes = await db.query(`
       SELECT call_type, COUNT(*) as count
       FROM call_history
-      WHERE created_at >= $1::date AND created_at < ($2::date + INTERVAL '1 day')
+      WHERE ${headCallsSql('')}
       GROUP BY call_type
     `, [dateFrom, dateTo]);
 
@@ -96,7 +112,7 @@ class CallReportGenerator {
         COALESCE(ai_lead_data->>'company_name', from_number) as company,
         COUNT(*) as calls
       FROM call_history
-      WHERE created_at >= $1::date AND created_at < ($2::date + INTERVAL '1 day')
+      WHERE ${headCallsSql('')}
         AND ai_is_target = true
       GROUP BY COALESCE(ai_lead_data->>'company_name', from_number)
       ORDER BY calls DESC
