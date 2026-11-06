@@ -51,6 +51,22 @@ if (failed === 0) {
   const hugVer = (hug.match(/var VER = '[0-9.]+'/) || [''])[0];
   check('/h/ использует сторож var VER', !!hugVer, hugVer || 'не найден');
   check('/ имеет ASGARD_SHELL_VERSION', !!mainVer, mainVer || 'не найден');
+
+  // D-352: сторож /h/ обязан иметь защёлку в sessionStorage. Без неё
+  // рассогласование версий (VER ≠ /api/version) даёт вечный цикл перезагрузки,
+  // а не баннер: 06.11.2026 клиент перезагрузился 4093 раза за 13 минут.
+  // Защёлка на сервере в этом файле, поэтому проверяем её наличие локально —
+  // иначе «фикс» уедет на прод только в одном из двух мест.
+  check('/h/ имеет защёлку перезагрузки (D-352)', /_hg_shell_reload_/.test(hug),
+    /_hg_shell_reload_/.test(hug) ? 'найдена' : 'НЕТ — сторож без ограничителя');
+  // Защёлка может быть реализована под разными именами: старая пара
+  // alreadyTried/rememberTry или новая triedThisVersion (проверяет, что запись
+  // реально сохранилась — на случай приватного режима Safari). Требуем
+  // ЛЮБУЮ из реализаций, иначе сторож ложно падает на улучшенной версии.
+  const latchOld = /alreadyTried\s*\(/.test(hug) && /rememberTry\s*\(/.test(hug);
+  const latchNew = /triedThisVersion\s*\(/.test(hug);
+  check('/h/ не перезагружается без проверки защёлки', latchOld || latchNew,
+    `alreadyTried: ${/alreadyTried\s*\(/.test(hug) ? 'есть' : 'нет'}, rememberTry: ${/rememberTry\s*\(/.test(hug) ? 'есть' : 'нет'}, triedThisVersion: ${latchNew ? 'есть' : 'нет'}`);
 }
 
 console.log(failed ? `\nИТОГ: FAIL — ${failed} проверок` : '\nИТОГ: OK — оболочки / и /h/ различаются');
