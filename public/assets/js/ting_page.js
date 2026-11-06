@@ -1398,6 +1398,12 @@
     if (name === 'NotReadableError' || name === 'TrackStartError' || /NotReadable|Device in use|Could not start/i.test(raw)) {
       return 'Камера занята другим приложением. Закройте Zoom, Teams, связь Windows и попробуйте снова.';
     }
+    /* AbortError драйвера: камера есть и разрешена, но кадры не идут.
+       Chromium после такого отказа держит media-сервис в плохом состоянии —
+       помогает только полный перезапуск приложения, не F5. */
+    if (name === 'AbortError') {
+      return 'Камера не отдаёт кадры. Полностью закройте приложение CRM (все окна) и откройте снова — затем включите камеру.';
+    }
     if (name === 'OverconstrainedError') {
       return 'Камера не поддерживает выбранное разрешение. Пробуем ещё раз в базовом режиме.';
     }
@@ -1490,22 +1496,28 @@
     return out;
   }
 
-  /** Прогрессивный список constraints: хорошая камера → любая → базовый режим. */
+  /** Прогрессивный список constraints: от самого мягкого к строгому.
+   *  Порядок важен: жёсткий `deviceId: exact` + 720p заставляет Chromium
+   *  ждать кадры от конкретного драйвера и падать AbortError
+   *  «Timeout starting video source». Начинаем с `video: true` — браузер
+   *  сам выбирает рабочую конфигурацию, и только потом уточняем. */
   async function cameraConstraintsList() {
     const cams = await rankCameras();
     const usable = cams.filter((c) => c.score > -50);
     const list = [];
-    const hd = { width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 } };
+    /* 1. Самый мягкий запрос — никаких ограничений. */
+    list.push(true);
+    /* 2. Только fps: часть драйверов Windows не стартует без явного frameRate. */
+    list.push({ frameRate: { ideal: 30 } });
+    /* 3. Низкое разрешение — драйвер может не тянуть 720p на старте. */
+    list.push({ width: { ideal: 640 }, height: { ideal: 480 } });
+    /* 4. HD. */
+    list.push({ width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 } });
+    /* 5. Только теперь — привязка к устройству (если их несколько). */
     usable.forEach((c) => {
       if (!c.deviceId) return;
-      list.push(Object.assign({ deviceId: { exact: c.deviceId } }, hd));
       list.push({ deviceId: { exact: c.deviceId } });
     });
-    /* Без привязки к устройству — браузер выберет сам. frameRate смягчает
-       AbortError: часть драйверов не стартует без явного fps. */
-    list.push(hd);
-    list.push({ frameRate: { ideal: 30 } });
-    list.push(true);
     return list;
   }
 
@@ -1535,9 +1547,50 @@
         const name = String((e && e.name) || '');
         /* Разрешение/устройство повтором не лечатся — дальше нет смысла. */
         if (name === 'NotAllowedError' || name === 'NotFoundError' || name === 'SecurityError') break;
+        /* Между попытками даём драйверу Windows освободиться. */
+        await new Promise((r) => setTimeout(r, 350 + i * 250));
       }
     }
     throw (lastErr || new Error('Камера не включилась'));
+  }
+
+  /**
+   * Проверка, что камера реально даёт кадры.
+   * AbortError у Chromium означает «устройство открылось, но видео не пошло».
+   * Ловим это отдельно, чтобы не публиковать мёртвый трек и не врать «вкл».
+   */
+  async function assertCameraFrames(stream, ms) {
+    const vt = stream && stream.getVideoTracks && stream.getVideoTracks()[0];
+    if (!vt) {
+      const e = new Error('Камера не отдала видеопоток');
+      e.name = 'NotFoundError';
+      throw e;
+    }
+    /* readyState=ended — драйвер отвалился сразу после open. */
+    if (vt.readyState === 'ended') {
+      const e = new Error('Камера отключилась сразу после запуска');
+      e.name = 'AbortError';
+      throw e;
+    }
+    const settings = (() => { try { return vt.getSettings ? vt.getSettings() : {}; } catch (_) { return {}; } })();
+    console.info('[Ting] camera track', {
+      label: vt.label, readyState: vt.readyState, muted: vt.muted, settings
+    });
+    /* muted=true у свежего трека при живом драйвере — норма первые ~1с.
+       Если остаётся muted дольше, кадров нет: ждём и проверяем. */
+    const limit = typeof ms === 'number' ? ms : 2500;
+    const start = Date.now();
+    while (Date.now() - start < limit) {
+      if (!vt.muted && vt.readyState === 'live') return true;
+      await new Promise((r) => setTimeout(r, 150));
+    }
+    if (vt.muted || vt.readyState !== 'live') {
+      try { stream.getTracks().forEach((t) => t.stop()); } catch (_) { /* */ }
+      const e = new Error('Камера открылась, но кадры не идут');
+      e.name = 'AbortError';
+      throw e;
+    }
+    return true;
   }
 
   /**
@@ -1560,6 +1613,7 @@
     await logCameraEnvironment();
 
     const stream = await openCameraStream({ audio: false });
+    await assertCameraFrames(stream, 2500);
 
     const mst = stream.getVideoTracks()[0];
     if (!mst) {
@@ -3486,6 +3540,7 @@
                  «Timeout starting video source»). Берём только видео и
                  подмешиваем уже открытую дорожку микрофона. */
               const videoOnly = await openCameraStream({ audio: false });
+              await assertCameraFrames(videoOnly, 2500);
               const merged = new MediaStream();
               videoOnly.getVideoTracks().forEach((t) => merged.addTrack(t));
               const oldAudio = state.previewStream && state.previewStream.getAudioTracks
