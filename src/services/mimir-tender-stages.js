@@ -226,6 +226,82 @@ function waiveGap(state, gapId) {
 
 // ── ДВ: позиции ─────────────────────────────────────────────────────────────
 
+/**
+ * Определяет категорию и метод по названию позиции и единице измерения.
+ *
+ * Зачем: модель нестабильна — в одном прогоне ставит категорию всем 11
+ * позициям, в другом ни одной (проверено на проде 06.11). Позиция без
+ * категории не получает норму и не попадает в смету, поэтому нужен
+ * детерминированный запасной путь.
+ *
+ * Правила намеренно узкие: лучше оставить пусто (РП разберётся), чем
+ * приписать неверную норму.
+ */
+function guessCategory(p) {
+  const name = String((p && p.name) || '').toLowerCase();
+  const tech = String((p && (p.tech_equip || p.technology)) || '').toLowerCase();
+  const unit = String((p && p.unit) || '').toLowerCase();
+  const t = name + ' ' + tech;
+  const isM2 = /м²|м2|кв\.?\s*м/.test(unit);
+  const isM3 = /м³|м3|куб/.test(unit);
+
+  const has = (re) => re.test(t);
+
+  // Сварка и ремонт — раньше металла: «заварка течи на баке» это сварка.
+  if (has(/сварк|заварк|наплавк|сварочн|стык\s+труб|шов/)) {
+    return { category_code: 'repair_weld', method_code: 'weld' };
+  }
+  // Теплоизоляция.
+  if (has(/изоляц|изолиров|теплоизоляц|минват|скорлуп/)) {
+    return { category_code: 'insulation', method_code: 'pipe' };
+  }
+  // Трубопроводы (по длине).
+  if (has(/трубопровод|труба\s+ду|dn\s*\d|гидроиспытан|опрессов|пассивац\s+труб/) && !has(/трубн\w*\s+пуч|трубк/)) {
+    return { category_code: 'pipelines', method_code: 'hydro' };
+  }
+  // Градирни и инженерные системы.
+  if (has(/градирн|драйкулер|сухая\s+градирн|вентиляторн\s+градирн|чиллер/)) {
+    return { category_code: 'towers_hvac', method_code: isM2 ? 'tower' : 'heating' };
+  }
+  // Вентиляция и канализация.
+  if (has(/вентиляц|воздуховод|канализац|канал|приямок|колодец|жироуловител/)) {
+    return { category_code: 'vent_sewer', method_code: 'sewer' };
+  }
+  // Котлы.
+  if (has(/котёл|котел|котлоагрегат|квгм|дквр|пп-\d|птвм|утилизатор|экономайзер/)) {
+    if (has(/хим|кислот|щелоч|реагент|промыв/)) return { category_code: 'boilers', method_code: 'chem' };
+    if (has(/гидроиспыт|опрессов|гидравлич/)) return { category_code: 'boilers', method_code: 'hydro' };
+    return { category_code: 'boilers', method_code: 'mech' };
+  }
+  // Пластинчатые теплообменники.
+  if (has(/пластин|разборн\w*\s+теплообмен|паяльн\w*\s+теплообмен/)) {
+    if (has(/хим|cip|безразборн|промыв/)) return { category_code: 'plates', method_code: 'chem_cip' };
+    return { category_code: 'plates', method_code: 'hydro_dis' };
+  }
+  // Трубные пучки и конденсаторы.
+  if (has(/трубн[а-яё]*\s+пуч|трубк|конденсатор|подогревател|маслоохладител|теплообменник/)) {
+    // ГМО (шарошки) проверяем ДО «трубки»: иначе общая ветка съедает ГМО.
+    if (has(/гмо|шарошк/)) return { category_code: 'tubes', method_code: 'gmo' };
+    if (has(/хим|кислот|промыв/)) return { category_code: 'tubes', method_code: 'chem' };
+    return { category_code: 'tubes', method_code: 'gdo' };
+  }
+  // АВО.
+  if (has(/аво|аппарат\w*\s+воздушн\w*\s+охлажд|оребрен/)) {
+    return { category_code: 'avo', method_code: isM2 ? 'outer' : 'tubes' };
+  }
+  // Ёмкости, резервуары, бункеры, баки.
+  if (has(/резервуар|ёмкост|емкост|бак\b|бункер|бпмф|бпво|бо[вв]|рвс|цистерн|отстойник|мерник/)) {
+    return { category_code: 'vessels', method_code: 'clean' };
+  }
+  // Химконтуры и CIP.
+  if (has(/химконтур|cip|циркуляц\w*\s+контур|промывк\w*\s+контур/)) {
+    return { category_code: 'chem_circuits', method_code: 'cip' };
+  }
+  // По единице: м³ без текста — ёмкость, м² — поверхность нагрева.
+  if (isM3) return { category_code: 'vessels', method_code: 'clean' };
+  return null;
+}
+
 function isFinitePositive(v) {
   const n = Number(v);
   return Number.isFinite(n) && n > 0;
@@ -256,8 +332,16 @@ function normalizeDv(ai, catalog) {
   };
 
   const positions = list.map((p, i) => {
-    const cat = p.category_code || p.category || null;
-    const method = p.method_code || p.method || null;
+    // Категория: берём у модели, но если она её не поставила (модель
+    // нестабильна — проверено 06.11: 11/11 в одном прогоне и 0/11 в другом),
+    // определяем по названию и единице. Пустая категория = позиция без нормы
+    // и без денег, поэтому детерминированный подбор обязателен.
+    let cat = p.category_code || p.category || null;
+    let method = p.method_code || p.method || null;
+    if (!cat) {
+      const guess = guessCategory(p);
+      if (guess) { cat = guess.category_code; method = method || guess.method_code; }
+    }
     // Человеческие названия: код видит только РП в справочнике, в таблице
     // должно быть «Химическая промывка», а не `vessels.clean`.
     const catRow = cat ? cats.find((c) => c.code === cat) : null;

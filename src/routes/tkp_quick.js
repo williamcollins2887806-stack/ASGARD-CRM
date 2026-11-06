@@ -656,6 +656,15 @@ async function routes(fastify, options) {
       const scheduleSvc = require('../services/schedule-extract');
       const allText = tzText + '\n' + documents.map((d) => d.text || '').join('\n');
       const sched = scheduleSvc.extractSchedule(allText);
+      if (process.env.DBG_SCHED) {
+        request.log.info({
+          docs: documents.length,
+          text_len: allText.length,
+          found: sched.found,
+          days: sched.days,
+          raw: sched.raw
+        }, 'распознавание срока');
+      }
 
       // 2. Preflight: не зовём модель, если данных заведомо нет.
       const pf = stageSvc.preflight({
@@ -782,6 +791,8 @@ async function routes(fastify, options) {
         }),
         contact: stageSvc.extractContact(tzText + '\n' + documents.map((d) => d.text || '').join('\n')),
         blocked: gen.dv.blocked,
+        // Срок и режим работ: РП видит, что нашлось в ТЗ и документах.
+        schedule: sched,
         documents: documents.map((d) => ({ original_name: d.original_name, text_len: String(d.text || '').length })),
         model: gen.model
       };
