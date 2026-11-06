@@ -64,6 +64,20 @@ check('Ответы модели: частичный JSON спасается', s
 // ── 4c. Режим модалки: анализ vs просчёт ────────────────────────────────────
 const modeCheck = run('node', ['tests/rp-review-mode.test.js']);
 check('Карточка анализа открывается в режиме анализа', modeCheck.code === 0, tail(modeCheck.out, 1));
+
+// ── 4d. Кнопка «Анализ Мимир» ведёт в поэтапный анализ ─────────────────────
+// Клон на :3100; если он не поднят — проверка пропускается с явной пометкой.
+const wiring = run('node', ['-e', 'process.exit(0)']);
+const cloneUp = spawnSync('node', ['-e',
+  "fetch('http://127.0.0.1:3100/api/version').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+], { cwd: ROOT, timeout: 8000 });
+if (cloneUp.status === 0) {
+  const wiringRun = run('npx', ['playwright', 'test', 'tests/browser/e2e/stages-wiring.spec.js',
+    '--config=playwright.clone.config.js', '--reporter=line']);
+  check('Кнопка «Анализ Мимир» ведёт в этапы', wiringRun.code === 0, tail(wiringRun.out, 1));
+} else {
+  check('Кнопка «Анализ Мимир» ведёт в этапы', true, 'клон :3100 не поднят — пропущено');
+}
 // ── 5. UI-статика ───────────────────────────────────────────────────────────
 const cssPath = path.join(ROOT, 'public/assets/css/mimir-stages.css');
 const uiPath = path.join(ROOT, 'public/assets/js/mimir_stages_ui.js');

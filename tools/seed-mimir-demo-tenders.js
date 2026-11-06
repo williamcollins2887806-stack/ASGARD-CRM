@@ -172,14 +172,15 @@ function docText(a) {
   const created = [];
   for (const a of ARCHETYPES) {
     const title = `${PREFIX} ${a.title}`;
-    const { rows: [t] } = await c.query(
+  const inserted = await c.query(
       `INSERT INTO tenders (
          tender_title, customer_name, tender_region, tender_description,
-         tender_status, status, created_by, docs_deadline
-       ) VALUES ($1,$2,$3,$4,$5,$5,$6, NOW() + INTERVAL '14 days')
+         tender_status, status, registry_status, created_by, docs_deadline
+       ) VALUES ($1,$2,$3,$4,$5,$5,'рассмотрение',$6, NOW() + INTERVAL '14 days')
        RETURNING id`,
       [title, a.customer, a.region, a.description, status, author.id]
     );
+    const t = inserted.rows[0];
 
     // ТЗ текстом всегда: так видно разницу «есть текст» / «нет документов».
     if (a.docs) {

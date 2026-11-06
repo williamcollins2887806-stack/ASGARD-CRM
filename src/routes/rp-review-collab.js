@@ -30,6 +30,74 @@ const PM_ROLES = ['ADMIN', 'PM', 'HEAD_PM', 'TO', 'HEAD_TO', 'DIRECTOR_GEN', 'DI
 /** Write override: не включать TO — иначе ТО случайно становится хозяином финала. */
 const WIDE_WRITE_ROLES = ['ADMIN', 'HEAD_TO', 'HEAD_PM'];
 
+/**
+ * Обучение справочника после применения просчёта Мимира.
+ *
+ * Два случая (требование 05.11.2026):
+ *   1) норма была → `from-smeta-edit` двигает её по фактическим срокам;
+ *   2) нормы не было (фолбэк) → создаём её, чтобы следующий расчёт шёл по справочнику.
+ *
+ * Никогда не бросает: применение отчёта важнее обучения.
+ */
+async function learnNormFromAppliedEstimate(db, { phase, estimate, fieldPatch, user, tenderId }) {
+  if (phase !== 'calc') return { ok: false, skipped: 'analysis_phase' };
+  const workNorms = require('../services/work-norms');
+  const trace = (estimate && estimate.meta && estimate.meta.norm_trace)
+    || (estimate && estimate.norm_trace)
+    || (fieldPatch && fieldPatch.norm_trace)
+    || null;
+  const workDays = Number(
+    (trace && trace.work_days)
+    || (estimate && estimate.work_days)
+    || (estimate && estimate.meta && estimate.meta.work_days)
+  );
+  if (!(workDays > 0)) return { ok: false, skipped: 'no_work_days' };
+
+  const category = trace && trace.category;
+  const method = trace && trace.method;
+  const inputs = (trace && trace.inputs && (trace.inputs.inputs || trace.inputs)) || null;
+  if (!category || !inputs || !Object.keys(inputs).length) {
+    return { ok: false, skipped: 'no_norm_inputs' };
+  }
+
+  const crew = {
+    master: (trace.crew && (trace.crew.masters_per_shift || trace.crew.master)) || undefined,
+    exec: (trace.crew && (trace.crew.workers_per_shift || trace.crew.exec)) || undefined
+  };
+  const comment = `Просчёт Мимира по тендеру #${tenderId}: ${workDays} сут`;
+
+  if (trace.rate_code) {
+    // Норма была — калибруем.
+    const res = await workNorms.applyNormPatchFromSmetaEdit(db, {
+      rate_code: trace.rate_code,
+      category_code: category,
+      inputs,
+      work_days: workDays,
+      workers_per_shift: crew.exec,
+      masters_per_shift: crew.master,
+      mode: 'average',
+      comment
+    }, user);
+    return { ok: true, kind: 'updated', rate_code: trace.rate_code, message: res.message };
+  }
+
+  // Нормы не было — создаём, чтобы закрыть дырку в справочнике.
+  const res = await workNorms.createRateFromEstimate(db, {
+    category_code: category,
+    method_code: method,
+    inputs,
+    work_days: workDays,
+    crew,
+    comment
+  }, user);
+  return {
+    ok: true,
+    kind: res.created ? 'created' : 'updated',
+    rate_code: res.rate && res.rate.code,
+    message: res.created ? 'Норма создана в справочнике' : 'Норма обновлена'
+  };
+}
+
 async function isCollaborator(db, tenderId, userId) {
   const r = await db.query(`
     SELECT 1 FROM tender_rp_review_collaborators c
@@ -264,12 +332,19 @@ function registerRpReviewCollabRoutes(fastify) {
     const tenderId = Number(request.params.id);
     const userId = request.user.id;
     const access = await canTouchReview(db, tenderId, request.user);
-    if (!access.ok) return reply.code(403).send({ error: 'Нет доступа' });
+    // Дежурный РП ведёт анализ по определению: в его очереди лежат тендеры,
+    // которые он ещё не «трогал», поэтому одна лишь проверка авторства/коллаба
+    // давала ему 403 на первом же клике «Анализ Мимир».
+    const isDuty = !!(access.isDuty || access.ok);
+    if (!access.ok && !isDuty) return reply.code(403).send({ error: 'Нет доступа' });
 
     let review = await ensureReview(db, tenderId, userId);
     review = await ensureAnalysisOwner(db, review, userId, access.duty?.pm_user_id, { allowActorFallback: true });
     const b = request.body || {};
     const phase = b.phase === 'calc' || review.analysis_finalized_at ? 'calc' : 'analysis';
+    if (phase === 'analysis' && b.purpose === 'rp_review_calc') {
+      return reply.code(400).send({ error: 'В фазе анализа доступен только rp_review_analysis' });
+    }
     const purpose = purposeForPhase(phase);
     const fresh = !!b.fresh;
 
@@ -399,6 +474,9 @@ function registerRpReviewCollabRoutes(fastify) {
     if (!sessionUid) return reply.code(400).send({ error: 'session_uid обязателен' });
 
     const phase = b.phase === 'calc' || review.analysis_finalized_at ? 'calc' : 'analysis';
+    if (phase === 'analysis' && b.purpose === 'rp_review_calc') {
+      return reply.code(400).send({ error: 'В фазе анализа доступен только rp_review_analysis' });
+    }
     const { ownerUserId } = await resolveFinalOwner(db, review, access.tender, access.duty?.pm_user_id);
     const isOwner = (ownerUserId && Number(ownerUserId) === userId) || access.isWide;
     const target = b.target === 'final' && isOwner ? 'final' : 'draft';
@@ -427,7 +505,11 @@ function registerRpReviewCollabRoutes(fastify) {
 
     let estimateFile = null;
     let reportFile = null;
+    const skipSmetaDocs = phase === 'analysis'
+      || estimate.template === 'mimir_analysis_v1'
+      || estimate.analysis_only;
     try {
+      if (!skipSmetaDocs) {
       const mimirTkpQuick = require('../services/mimir-tkp-quick');
       const { xlsxBuf, docxBuf } = await mimirTkpQuick.generatePreviewBuffers({
         estimate_draft: estimate,
@@ -449,6 +531,7 @@ function registerRpReviewCollabRoutes(fastify) {
         mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
         docType: 'rp_report', subdir: 'rp_reports'
       });
+      }
     } catch (e) {
       request.log.warn({ err: e }, 'mimir-apply: doc generation failed — fields only');
     }
@@ -497,6 +580,21 @@ function registerRpReviewCollabRoutes(fastify) {
         fields: Object.keys(fieldPatch)
       }
     });
+
+    // Обучение справочника после успешного просчёта (требование 05.11.2026):
+    // если норма была (norm_trace.rate_code) — применяем from-smeta-edit;
+    // если нормы не было (fallback) — создаём её, чтобы следующий расчёт шёл
+    // уже по справочнику. Никогда не роняем применение отчёта из-за этого.
+    let normLearning = null;
+    try {
+      normLearning = await learnNormFromAppliedEstimate(db, {
+        phase, estimate, fieldPatch, user: request.user, tenderId
+      });
+    } catch (e) {
+      request.log.warn({ err: e }, 'mimir-apply: norm learning skipped');
+      normLearning = { ok: false, error: e.message };
+    }
+
     broadcast('tender:registry:changed', { id: tenderId });
 
     return {
@@ -506,6 +604,7 @@ function registerRpReviewCollabRoutes(fastify) {
       work_price: workPrice ?? null,
       estimate_file: estimateFile,
       report_file: reportFile,
+      norm_learning: normLearning,
       draft: await enrichDraft(db, draft),
       review: target === 'final' ? (await ensureReview(db, tenderId, userId)) : undefined
     };

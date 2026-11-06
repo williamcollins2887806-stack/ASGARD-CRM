@@ -1494,7 +1494,67 @@ window.AsgardRpReviewModal = (function () {
           onSaved && onSaved();
         }).catch((e) => toast('Ошибка', e.message || 'Не удалось', 'err'));
       });
-      document.getElementById('rpOpenMimir')?.addEventListener('click', () => {
+      document.getElementById('rpOpenMimir')?.addEventListener('click', async () => {
+        // В ФАЗЕ АНАЛИЗА открываем поэтапный Мимир (объёмы → технология →
+        // решение → звонок), а не старый мастер со сметой: в анализе сметы нет.
+        // Просчёт (mode='calc') остаётся на прежнем мастере Quick.
+        if (mode === 'analysis' && window.AsgardMimirStages) {
+          try {
+            const started = await API.startRpQuick(tender.id, { phase: 'analysis' });
+            const uid = started && started.session_uid;
+            if (!uid) throw new Error('Не удалось создать сессию анализа');
+            const checklist = await API.loadAnalysisChecklist(tender.id).catch(() => null);
+            window.AsgardMimirStages.open({
+              sessionUid: uid,
+              tenderId: tender.id,
+              phase: 'analysis',
+              title: 'Анализ тендера · ' + (tender.customer_name || ('#' + tender.id)),
+              subtitle: (tender.tender_title || '').slice(0, 120),
+              tzText: [tender.tender_title, tender.tender_description].filter(Boolean).join('\n\n'),
+              attachments: started.tender_attachments || [],
+              checklist: checklist ? {
+                items: (checklist.template || []).map((t) => ({
+                  id: t.id, text: t.text, required: t.required !== false,
+                  answer: ((checklist.checklist && checklist.checklist.answers) || {})[t.id] || ''
+                })),
+                answered: Object.keys((checklist.checklist && checklist.checklist.answers) || {}).length,
+                total: (checklist.template || []).length
+              } : null,
+              onAnalyze: async (payload) => {
+                const r = await fetch(
+                  `/api/tkp-quick/sessions/${encodeURIComponent(uid)}/stage/analyze`,
+                  {
+                    method: 'POST',
+                    headers: {
+                      'Content-Type': 'application/json',
+                      Authorization: 'Bearer ' + (window.AsgardRegistryApi?._token?.() || localStorage.getItem('asgard_token') || '')
+                    },
+                    body: JSON.stringify({ tz_text: payload.tz_text })
+                  }
+                );
+                const d = await r.json().catch(() => ({}));
+                if (!r.ok || !d.ok) throw new Error(d.error || 'Анализ не удался');
+                return d;
+              },
+              onDecide: async (res) => {
+                // Записываем решение в карточку: оно и закрывает анализ.
+                decision = res.go ? 'submit' : 'reject';
+                reportJson.decision_recommend = res.go ? 'go' : 'no_go';
+                if (res.reason) reportJson.reject_reason = res.reason;
+                if (res.answers) {
+                  await API.saveAnalysisChecklist(tender.id, { answers: res.answers }).catch(() => {});
+                }
+                rerender();
+              },
+              onClose: () => { onSaved && onSaved(); }
+            });
+            return;
+          } catch (e) {
+            toast('Мимир', e.message || 'Не удалось открыть анализ', 'err');
+            return;
+          }
+        }
+
         if (!window.AsgardMimirQuick || typeof AsgardMimirQuick.openForRpReview !== 'function') {
           toast('Мимир', 'Модуль ещё не загружен — обновите страницу', 'err');
           return;
