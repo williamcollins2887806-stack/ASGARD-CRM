@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none" role="img" aria-label=""8=3">
+  <!-- 5@5:;048=0 T -->
+  <rect x="9" y="7" width="46" height="9" rx="4.5" fill="currentColor"/>
+  <!-- !B>9:0 T, ?5@5E>4OI0O 2 :>@?CA >1J5:B820 -->
+  <rect x="28.5" y="13" width="7" height="9" fill="currentColor"/>
+  <!-- >@?CA >1J5:B820 -->
+  <circle cx="32" cy="38" r="17.5" stroke="currentColor" stroke-width="6"/>
+  <!-- 5?5AB:8 480D@03<K -->
+  <g stroke="currentColor" stroke-width="4" stroke-linecap="round">
+    <path d="M32 27.5 L32 33.5"/>
+    <path d="M40.6 32 L35.4 35"/>
+    <path d="M37.3 43.5 L33.4 39.7"/>
+    <path d="M26.7 43.5 L30.6 39.7"/>
+    <path d="M23.4 32 L28.6 35"/>
+  </g>
+  <!-- ">G:0 «2 MD8@5» -->
+  <circle cx="32" cy="38" r="3.6" fill="currentColor"/>
+</svg>
