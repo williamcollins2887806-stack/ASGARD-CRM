@@ -405,16 +405,12 @@ body.ting-guest {
   width: 100%; height: 100%;
   object-fit: cover; display: block;
 }
-/* Знак в шапке и карточке: вектор, цвет из токена. Никакого блика —
-   раньше PNG с полупрозрачными краями на 26–34px уходил в серый. */
+/* Знак без рамки и без подложки: прозрачный вырез марки.
+   object-fit: contain, никаких border-radius — знак держит форму сам. */
 .ting-logo-glyph {
   flex: 0 0 auto;
   display: block;
-  color: var(--ting-gold);
-}
-html[data-theme="light"] .ting-logo-glyph {
-  /* На белом золото должно быть темнее, иначе «бликует» и теряет контур */
-  color: #a8821f;
+  object-fit: contain;
 }
 .ting-logo-text { display: flex; flex-direction: column; gap: 2px; }
 .ting-logo-text strong {
@@ -481,11 +477,7 @@ html[data-theme="light"] .ting-logo-glyph {
   place-items: center;
 }
 .ting-hub-card.primary .ico .ting-logo-glyph {
-  width: 34px; height: 34px;
-  color: var(--ting-gold);
-}
-html[data-theme="light"] .ting-hub-card.primary .ico .ting-logo-glyph {
-  color: #a8821f;
+  width: 32px; height: 32px;
 }
 .ting-hub-card .ico svg { width: 21px; height: 21px; }
 .ting-hub-card strong { display: block; font-size: 16px; font-weight: 800; margin-bottom: 4px; letter-spacing: -.01em; }

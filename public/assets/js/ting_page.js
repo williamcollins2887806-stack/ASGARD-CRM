@@ -299,27 +299,15 @@
   }
 
   /**
-   * Знак Тинга в векторе: цвет задаётся CSS (currentColor), поэтому
-   * на светлой теме он золотой, на тёмной — тоже, и никогда не «серый».
-   * PNG-вырез на 26–34px размывался полупрозрачными краями: золото уходило
-   * в грязно-серый (баг 06.11.2026).
+   * Знак Тинга — марка от Gemini без фона (вырез по золоту с жёстким порогом).
+   * Никакой плитки и рамки: на светлой теме PNG с тёмным фоном давал
+   * «серый квадрат», а скругление выглядело как посторонняя плашка.
    */
   function logoGlyph(size) {
     const s = size || 28;
-    return `<svg class="ting-logo-glyph" width="${s}" height="${s}" viewBox="0 0 64 64"`
-      + ` fill="none" aria-hidden="true">`
-      + `<rect x="9" y="7" width="46" height="9" rx="4.5" fill="currentColor"/>`
-      + `<rect x="28.5" y="13" width="7" height="9" fill="currentColor"/>`
-      + `<circle cx="32" cy="38" r="17.5" stroke="currentColor" stroke-width="6"/>`
-      + `<g stroke="currentColor" stroke-width="4" stroke-linecap="round">`
-      + `<path d="M32 27.5 L32 33.5"/>`
-      + `<path d="M40.6 32 L35.4 35"/>`
-      + `<path d="M37.3 43.5 L33.4 39.7"/>`
-      + `<path d="M26.7 43.5 L30.6 39.7"/>`
-      + `<path d="M23.4 32 L28.6 35"/>`
-      + `</g>`
-      + `<circle cx="32" cy="38" r="3.6" fill="currentColor"/>`
-      + `</svg>`;
+    return `<img class="ting-logo-glyph" src="/assets/img/ting-brand/ting-mark-clean-256.png"`
+      + ` alt="" width="${s}" height="${s}"`
+      + ` style="width:${s}px;height:${s}px" aria-hidden="true" />`;
   }
   function brand(chip) {
     return `<div class="ting-brand-row">
@@ -328,7 +316,8 @@
       </div>
       ${chip ? `<span class="ting-chip gold">${esc(chip)}</span>` : ''}
     </div>`;
-  }  function svgMic(off) { return (window.TingIcons && TingIcons.mic(off)) || ''; }
+  }
+  function svgMic(off) { return (window.TingIcons && TingIcons.mic(off)) || ''; }
   function svgCam(off) { return (window.TingIcons && TingIcons.cam(off)) || ''; }
   function svgScreen() { return (window.TingIcons && TingIcons.screen()) || ''; }
   function svgPeople() { return (window.TingIcons && TingIcons.people()) || ''; }
