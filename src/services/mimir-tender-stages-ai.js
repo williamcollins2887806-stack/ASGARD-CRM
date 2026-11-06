@@ -17,6 +17,11 @@
 
 const promptLoader = require('./prompt-loader');
 const stages = require('./mimir-tender-stages');
+const docRole = require('./doc-role');
+
+// Что ушло в промпт на последнем вызове — для журнала анализа.
+// module-level: вызовы последовательные, гонки нет.
+let lastSelection = null;
 
 /** Каталог категорий и методов в компактном виде для промпта. */
 function catalogForPrompt(catalog) {
@@ -176,28 +181,23 @@ function salvagePartialDv(body) {
 function docsToText(documents, limit = 400000) {
   const list = Array.isArray(documents) ? documents : [];
 
-  // Важность документа для разбора объёмов.
-  // ВАЖНО: «вор» надо искать как отдельное слово, иначе «договОр» тоже
-  // попадает в эту группу и получает высший приоритет (поймано тестом).
-  function priority(name) {
-    const n = String(name || '').toLowerCase();
-    if (/(^|[^а-яё])(вор|ведомость|ведомости|дефектная|дефектов|перечень работ)([^а-яё]|$)/.test(n)) return 0;
-    if (/объ[её]м|объ[её]мов/.test(n)) return 0;
-    if (/(^|[^а-яё])(тз|техническое задание|задание|приложение)([^а-яё]|$)/.test(n)) return 1;
-    if (/техническ/.test(n)) return 1;
-    if (/(^|[^а-яё])(смета|сметы|расч[её]т|форма|калькуляция)([^а-яё]|$)/.test(n)) return 2;
-    if (/договор|контракт/.test(n)) return 4;
-    return 3;
-  }
-
-  const items = list
+  // ── Отсев мусора и копий (замечание РП 06.11.2026) ─────────────────────────
+  // Раньше в промпт шли договоры, наши ТКП, шаблоны и по 5 копий одного ТЗ
+  // из разных архивов: 1,3 млн символов, из них 60–70 % без объёмов.
+  // Теперь назначение определяется по имени (doc-role.js), копии схлопываются
+  // по отпечатку содержимого, а в промпт остаются только источники объёмов.
+  const picked = docRole.selectForPrompt(list);
+  lastSelection = picked;
+  const items = picked.selected
     .map((d) => ({
       name: d.original_name || d.filename || d.name || 'документ',
-      text: String(d.text || d.ocr_text || d.content || '').trim()
+      text: String(d.text || '').trim(),
+      pr: d.doc_weight,
+      role: d.doc_role,
+      roleTitle: d.doc_role_title
     }))
     .filter((d) => d.text)
-    .map((d) => Object.assign({}, d, { pr: priority(d.name) }))
-    .sort((a, b) => a.pr - b.pr || b.text.length - a.text.length);
+    .sort((a, b) => b.pr - a.pr || b.text.length - a.text.length);
 
   if (!items.length) return '';
 
@@ -205,16 +205,15 @@ function docsToText(documents, limit = 400000) {
   // (ВОР, ведомость) должен получить больше места, чем договор на 200 страниц.
   // Дефект 06.11: ВОР на 19 тыс. символов резался вместе со всеми, и модель
   // честно отвечала «перечень оборудования обрезан, объёмы не выводимы».
-  const WEIGHTS = { 0: 5, 1: 3, 2: 2, 3: 1, 4: 1 };
-
-  const totalWeight = items.reduce((s, it) => s + (WEIGHTS[it.pr] || 1), 0);
+  // Веса теперь приходят из doc-role.js (5 — ВОР, 4 — ТЗ, 0 — мусор).
+  const totalWeight = items.reduce((s, it) => s + (it.pr || 1), 0);
   const minPer = 1500;
   const budget = Math.max(limit, items.length * minPer);
 
   const parts = [];
   for (const it of items) {
-    const head = `=== ${it.name} ===\n`;
-    const quota = Math.max(minPer, Math.floor((budget * (WEIGHTS[it.pr] || 1)) / totalWeight));
+    const head = `=== ${it.name}${it.roleTitle ? ` [${it.roleTitle}]` : ''} ===\n`;
+    const quota = Math.max(minPer, Math.floor((budget * (it.pr || 1)) / totalWeight));
     const room = Math.max(800, quota - head.length);
 
     if (it.text.length <= room) {
@@ -416,6 +415,7 @@ module.exports = {
   buildCalibrationPreview,
   catalogForPrompt,
   docsToText,
+  lastSelection: () => lastSelection,
   safeJson,
   volumeKeyFor
 };

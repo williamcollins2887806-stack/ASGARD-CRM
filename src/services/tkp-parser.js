@@ -289,7 +289,16 @@ async function _extractText(buf, originalName, opts = {}) {  const ext = path.ex
     return { text: '', usedOcr: false };
   }
 
-  if (ext === '.txt' || ext === '.csv' || ext === '.rtf') {
+  if (ext === '.rtf') {
+    // Дефект 06.11.2026 (тендер 2158): .rtf читался как обычный текст, и в БД
+    // легло 100 тыс. символов сырой разметки (11 538 команд, 0 слов).
+    // Теперь распаковываем по-настоящему.
+    const { rtfToText } = require('./rtf-text');
+    const text = String(rtfToText(buf) || '').trim();
+    return { text, usedOcr: false };
+  }
+
+  if (ext === '.txt' || ext === '.csv') {
     return { text: buf.toString('utf-8'), usedOcr: false };
   }
 
