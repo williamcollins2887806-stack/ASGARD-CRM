@@ -42,6 +42,24 @@ check('срок ПОДАЧИ заявки не путается со сроко�
   assert.strictEqual(r.found, false, 'приняли срок подачи заявки за срок работ: ' + JSON.stringify(r));
 });
 
+// Найдено на реальных ТЗ прода 06.11: извлекатель ловил срок ГАРАНТИИ
+// (12 месяцев → 360 суток) и считал его сроком работ.
+check('срок гарантии не считается сроком работ', () => {
+  const r = extractSchedule('Срок гарантии результата работ устанавливается продолжительностью 12 месяцев.');
+  assert.strictEqual(r.found, false, 'взяли срок гарантии: ' + JSON.stringify(r));
+});
+
+check('срок сдачи отчёта не считается сроком работ', () => {
+  const r = extractSchedule('В течение 3 дней после окончания работ Подрядчик обязан предоставить технический отчет.');
+  assert.strictEqual(r.found, false, 'взяли срок сдачи отчёта: ' + JSON.stringify(r));
+});
+
+check('срок годности и оплаты не считаются сроком работ', () => {
+  assert.strictEqual(extractSchedule('Срок годности материалов — 12 месяцев.').found, false);
+  assert.strictEqual(extractSchedule('Оплата в течение 30 календарных дней.').found, false);
+  assert.strictEqual(extractSchedule('Уведомление в течение 3 дней.').found, false);
+});
+
 check('график диапазоном дат считается', () => {
   const r = extractSchedule('График работ: 01.06.2026 - 30.06.2026. Объект — котельная.');
   assert.strictEqual(r.found, true);

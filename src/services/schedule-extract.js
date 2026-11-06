@@ -79,6 +79,16 @@ function extractSchedule(text) {
     if (numStr == null) continue;
     const days = toDays(numStr.replace(',', '.'), unitStr || '');
     if (!(days > 0)) continue;
+
+    // Отсекаем НЕ срок работ. Проверено на реальных ТЗ прода 06.11:
+    // «срок гарантии 12 месяцев» давал 360 суток, «в течение 3 дней»
+    // (уведомление) — 3 суток, срок подачи заявки — тоже ловился.
+    const win = normalized.slice(Math.max(0, m.index - 90), m.index + m[0].length + 220).toLowerCase();
+    const WRONG = /гарант|годност|хранени|оплат|заявк|подач[аиу]|уведомлени|рассмотрени|аккредитац|страхован|банковск|техническ[а-яё]*\s+отч[её]т|отч[её]т\s+по\s+(?:проведенн|работ)|акт[аы]?\s+выполненн/;
+    if (WRONG.test(win)) continue;
+
+    // Сумма/цена рядом — тоже не срок.
+    if (/(руб|₽|ндс|стоимост|цен[аы]|бюджет)/.test(win)) continue;
     // Отсекаем срок подачи заявки: рядом «заявк»/«подач» — это не срок работ.
     const around = normalized.slice(Math.max(0, m.index - 70), m.index + m[0].length + 50).toLowerCase();
     if (/заявк|подач[аиу]|прием[ае]?\s+заявок|приём[ае]?\s+заявок/.test(around)) continue;
@@ -92,8 +102,7 @@ function extractSchedule(text) {
   }
 
   // Явный график: «график работ: 01.06–30.06.2026».
-  const range = /(\d{2}[.\-/]\d{2}[.\-/]\d{4})\s*(?:[-–—]|по|до)\s*(\d{2}[.\-/]\d{2}[.\-/]\d{4})/.exec(t);
-  if (range) {
+  const range = /(\d{2}[.\-/]\d{2}[.\-/]\d{4})\s*(?:[-–—]|по|до)\s*(\d{2}[.\-/]\d{2}[.\-/]\d{4})/.exec(t);  if (range) {
     const a = parseRuDate(range[1]);
     const b = parseRuDate(range[2]);
     if (a && b && b > a) {
