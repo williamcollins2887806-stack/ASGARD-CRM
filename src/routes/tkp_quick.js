@@ -745,16 +745,54 @@ async function routes(fastify, options) {
   });
 
   /** Ключи объёма под calc_kind метода (для норма-превью по позиции ДВ). */
+  /**
+   * Переводит объём позиции ДВ в ключи, которые ждёт норма метода.
+   *
+   * Дефект 06.11: на все категории подавалась одна схема (`circuit_m3` для
+   * любого «м³»), а `vessels.clean` ждёт `volume_m3`. Итог — у 41 позиции
+   * тендера 2131 норма не нашлась, и весь план посчитан «экспертом».
+   * Здесь ключи разложены по категориям и методам, как в input_schema_json.
+   */
   function inputsForPosition(pos) {
     const u = String(pos.unit || '').toLowerCase();
     const v = Number(pos.volume) || 0;
-    if (u.includes('м³') || u.includes('м3')) return { circuit_m3: v, cycles: 2 };
-    if (u.includes('м²') || u.includes('м2')) return { surface_m2: v };
-    if (u.includes('труб')) return { tubes: v, diameter_mm: 25, length_m: 6 };
-    if (u.includes('стык')) return { joints: v, dn_mm: 159 };
-    if (u.includes('цикл')) return { cycles: v };
-    if (u.includes('м')) return { length_m: v, dn_mm: 159 };
-    return { qty: v };
+    const cat = String(pos.category_code || '');
+    const isM3 = u.includes('м³') || u.includes('м3');
+    const isM2 = u.includes('м²') || u.includes('м2');
+
+    // Объёмы и площади — одинаковые имена во многих схемах.
+    const base = {};
+    if (isM3) base.circuit_m3 = v;
+    if (isM3) base.volume_m3 = v;
+    if (isM2) base.surface_m2 = v;
+
+    // Трубки: нужны Ø и длина, иначе норма не считает.
+    if (u.includes('труб')) {
+      return Object.assign({}, base, { tubes: v, diameter_mm: 25, length_m: 6 });
+    }
+    // Стыки, метры, циклы.
+    if (u.includes('стык')) return Object.assign({}, base, { joints: v, dn_mm: 159 });
+    if (u.includes('цикл')) return Object.assign({}, base, { cycles: v || 2 });
+    if (u.includes('м')) return Object.assign({}, base, { length_m: v, dn_mm: 159 });
+
+    // Дополняем обязательные поля, которых нет в ДВ, разумными значениями:
+    // без них норма отвечает «укажите…» и позиция уходит в «эксперт».
+    if (cat === 'boilers') {
+      return Object.assign({}, base, { cycles: 2, boilers: 1 });
+    }
+    if (cat === 'plates') {
+      return Object.assign({}, base, { cycles: 2, apparatus: 1 });
+    }
+    if (cat === 'chem_circuits' || (cat === 'towers_hvac' && !isM2)) {
+      return Object.assign({}, base, { cycles: 2, apparatus_count: 1, points: 1, objects: 1 });
+    }
+    if (cat === 'vessels') {
+      return Object.assign({}, base, { deposit_cm: null, manways: 2 });
+    }
+    if (cat === 'towers_hvac') {
+      return Object.assign({}, base, { cells: 1, biofouling: 'medium' });
+    }
+    return Object.assign({}, base, { qty: v });
   }
 
   /**
@@ -796,12 +834,29 @@ async function routes(fastify, options) {
         }
       }
 
+      // Окно дат: из тела запроса, а если не передали — из срока подачи тендера
+      // минус сегодня. Без него нельзя посчитать, сколько нужно бригад,
+      // чтобы уложиться в график заказчика.
+      let dateWindow = request.body && request.body.date_window != null
+        ? Number(request.body.date_window) : null;
+      if (!(dateWindow > 0) && session.tender_id) {
+        const t = await db.query(
+          'SELECT deadline FROM tenders WHERE id = $1 AND deleted_at IS NULL',
+          [session.tender_id]
+        ).catch(() => ({ rows: [] }));
+        const dl = t.rows[0] && t.rows[0].deadline;
+        if (dl) {
+          const days = Math.ceil((new Date(dl).getTime() - Date.now()) / 86400000);
+          if (days > 0) dateWindow = days;
+        }
+      }
+
       const gen = await stagesAi.generateCalcPlan({
         aiProvider,
         positions,
         normPreviewMd: normLines.join('\n') || '(нормативов нет)',
         workersMd: request.body && request.body.workers_md ? String(request.body.workers_md) : '',
-        dateWindow: request.body && request.body.date_window != null ? Number(request.body.date_window) : null,
+        dateWindow,
         maxParallelPosts: maxPosts
       });
 

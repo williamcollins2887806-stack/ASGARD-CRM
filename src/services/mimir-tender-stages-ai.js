@@ -268,7 +268,11 @@ async function generateCalcPlan(p) {
     };
   }
 
-  const plan = stages.normalizeCalcPlan(parsed, { max_parallel_posts: o.maxParallelPosts });
+  const plan = stages.normalizeCalcPlan(parsed, {
+    max_parallel_posts: o.maxParallelPosts,
+    // Окно дат нужно, чтобы подобрать число бригад под график заказчика.
+    window_days: o.dateWindow
+  });
   return {
     ok: true,
     plan,

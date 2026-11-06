@@ -138,7 +138,11 @@ function check(name, fn) {
         { id: 'c', people: 2, days: 1, parallel_group: '2', source: 'expert', explain: 'по практике прошлых объектов' }
       ]
     });
-    check('план: work_days = сумма максимумов групп (4)', () => assert.strictEqual(plan.work_days, 4));
+    check('план: срок = трудозатраты / число бригад (6 бр.-сут → 6 при одной)', () => {
+      assert.strictEqual(plan.total_crew_days, 6);
+      assert.strictEqual(plan.crews, 1);
+      assert.strictEqual(plan.work_days, 6);
+    });
     check('план: у всех строк есть источник', () => {
       assert.ok(plan.positions.every((p) => p.source));
     });

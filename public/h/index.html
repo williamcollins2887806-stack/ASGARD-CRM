@@ -10,10 +10,10 @@
   <link rel="manifest" href="/h/manifest.webmanifest"/>
   <link rel="apple-touch-icon" href="/assets/img/apple-touch-icon.png"/>
   <title>Хугинн</title>
-  <link rel="stylesheet" href="/assets/css/design-tokens.css?v=20.28.407"/>
-  <link rel="stylesheet" href="/assets/css/huginn_dock.css?v=20.28.407"/>
+  <link rel="stylesheet" href="/assets/css/design-tokens.css?v=20.28.408"/>
+  <link rel="stylesheet" href="/assets/css/huginn_dock.css?v=20.28.408"/>
   <!-- Звонки (PBX-панель) на /h/: те же файлы, что на десктопе. -->
-  <link rel="stylesheet" href="/assets/css/phone.css?v=20.28.407"/>
+  <link rel="stylesheet" href="/assets/css/phone.css?v=20.28.408"/>
   <style>
     html, body {
       margin: 0; height: 100%;
@@ -219,18 +219,18 @@
   <div id="app"></div>
   <!-- ?v= обязателен: /assets/* отдаётся с Cache-Control: immutable, max-age=30д.
        Без версии в URL телефон держал старый JS/CSS месяцами и «не видел» деплой. -->
-  <script src="/assets/js/huginn_icons.js?v=20.28.407"></script>
-  <script src="/assets/js/phone_mask.js?v=20.28.407"></script>
-  <script src="/assets/js/huginn_sse.js?v=20.28.407"></script>
+  <script src="/assets/js/huginn_icons.js?v=20.28.408"></script>
+  <script src="/assets/js/phone_mask.js?v=20.28.408"></script>
+  <script src="/assets/js/huginn_sse.js?v=20.28.408"></script>
   <!-- TingSound: рингтон звонка (startRing/stopRing). Обязателен ДО модуля
        звонков: без него звонок в /h/ был молчаливым (методы не находились). -->
-  <script src="/assets/js/ting_common.js?v=20.28.407"></script>
-  <script src="/assets/js/huginn_calls.js?v=20.28.407"></script>
-  <script src="/assets/js/huginn_dock.js?v=20.28.407"></script>
-  <script src="/assets/vendor/jssip.min.js?v=20.28.407"></script>
-  <script src="/assets/js/phone_core.js?v=20.28.407"></script>
-  <script src="/assets/js/phone_ui.js?v=20.28.407"></script>
-  <script src="/h/app.js?v=20.28.407"></script>
+  <script src="/assets/js/ting_common.js?v=20.28.408"></script>
+  <script src="/assets/js/huginn_calls.js?v=20.28.408"></script>
+  <script src="/assets/js/huginn_dock.js?v=20.28.408"></script>
+  <script src="/assets/vendor/jssip.min.js?v=20.28.408"></script>
+  <script src="/assets/js/phone_core.js?v=20.28.408"></script>
+  <script src="/assets/js/phone_ui.js?v=20.28.408"></script>
+  <script src="/h/app.js?v=20.28.408"></script>
   <script>
     (function () {
       var saved = localStorage.getItem('asgard_theme') || localStorage.getItem('hg_theme');
@@ -266,15 +266,61 @@
     // Раньше bump его не видел: сторож отставал на версию, /api/version (новый)
     // ≠ сторож (старый) → бесконечная перезагрузка у клиента.
     // Не переименовывать переменную VER — на неё завязан bump.
+    //
+    // D-352 (06.11.2026): перезагрузка НЕ должна быть безлимитной. Инцидент:
+    // на / отдавалась копия /h/ версии 20.28.406, а /api/version уже 20.28.407 —
+    // условие не сходилось никогда, клиент перезагружался 360 раз в минуту
+    // 13 минут (4093 полных загрузки). `_busy` умирает вместе со страницей,
+    // поэтому от цикла не защищал. Защёлка в sessionStorage переживает
+    // перезагрузку: одна попытка на версию, дальше — баннер «Перезагрузить».
     (function () {
-      var VER = '20.28.407';
+      var VER = '20.28.408';
       var _busy = false;
+      var LOCK_KEY = '_hg_shell_reload_'; // + версия сервера
+      function lockKey(v) { return LOCK_KEY + v; }
+      function alreadyTried(v) {
+        try { return sessionStorage.getItem(lockKey(v)) === '1'; } catch (_) { return false; }
+      }
+      function rememberTry(v) {
+        try { sessionStorage.setItem(lockKey(v), '1'); } catch (_) {}
+      }
+      // Одна версия не перезагружается дважды: вторая попытка = цикл.
+      // Вместо неё — видимая кнопка, чтобы человек сам решил, когда обновляться.
+      function showReloadNotice(serverVer) {
+        if (document.getElementById('hgShellNotice')) return;
+        var bar = document.createElement('div');
+        bar.id = 'hgShellNotice';
+        bar.setAttribute('role', 'status');
+        bar.style.cssText = 'position:fixed;left:0;right:0;bottom:0;z-index:2147483000;'
+          + 'display:flex;align-items:center;gap:10px;padding:12px 14px calc(12px + env(safe-area-inset-bottom,0px));'
+          + 'background:#23324a;color:#eaf2ff;font:500 14px/1.35 system-ui,-apple-system,sans-serif;'
+          + 'box-shadow:0 -6px 24px rgba(0,0,0,.35)';
+        var txt = document.createElement('span');
+        txt.style.cssText = 'flex:1 1 auto';
+        txt.textContent = 'Вышло обновление ' + serverVer + '. Перезагрузка не удалась — нажмите кнопку.';
+        var btn = document.createElement('button');
+        btn.type = 'button';
+        btn.textContent = 'Перезагрузить';
+        btn.style.cssText = 'flex:0 0 auto;border:0;border-radius:10px;padding:9px 14px;'
+          + 'background:#4A90D9;color:#fff;font:600 14px system-ui,-apple-system,sans-serif;cursor:pointer';
+        btn.onclick = function () {
+          // Ручное действие снимает защёлку: человек осознанно просит ещё раз.
+          try { sessionStorage.removeItem(lockKey(serverVer)); } catch (_) {}
+          try { location.replace('/h/?_v=' + Date.now() + (location.hash || '')); }
+          catch (_) { location.reload(); }
+        };
+        bar.appendChild(txt);
+        bar.appendChild(btn);
+        document.body.appendChild(bar);
+      }
       function check() {
         if (_busy) return;
         fetch('/api/version', { cache: 'no-store' })
           .then(function (r) { return r.ok ? r.json() : null; })
           .then(function (j) {
             if (!j || !j.version || j.version === VER) return;
+            if (alreadyTried(j.version)) { showReloadNotice(j.version); return; }
+            rememberTry(j.version);
             _busy = true;
             var cleared = ('caches' in window)
               ? caches.keys().then(function (ns) { return Promise.all(ns.map(function (n) { return caches.delete(n); })); }).catch(function () {})

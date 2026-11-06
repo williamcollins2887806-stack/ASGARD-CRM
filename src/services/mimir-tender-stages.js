@@ -393,7 +393,7 @@ function canFinishTech(state) {
 function normalizeCalcPlan(ai, opts) {
   const raw = ai && typeof ai === 'object' ? ai : {};
   const list = Array.isArray(raw.positions) ? raw.positions : [];
-  const maxPosts = Number(opts && opts.max_parallel_posts) || 2;
+  const maxPosts = Math.max(1, Number(opts && opts.max_parallel_posts) || 2);
 
   const positions = list.map((p, i) => {
     const people = Number(p.people) > 0 ? Number(p.people) : null;
@@ -422,35 +422,97 @@ function normalizeCalcPlan(ai, opts) {
     };
   });
 
-  // Параллельные группы: сутки = максимум внутри группы, между группами — сумма.
+  /**
+   * Группы параллельности.
+   *
+   * Дефект 06.11: модель ставила 34 позиции в ОДНУ группу, а прежний код
+   * трактовал группу как «одновременно» (срок = максимум). Выходило
+   * «34 позиции за 3 суток силами 102 человек» — враньё: 102 это сумма
+   * бригад по всем позициям, и одновременно они не работают.
+   *
+   * Правильная модель:
+   *   • внутри группы работает ОДНА бригада и идёт ПОСЛЕДОВАТЕЛЬНО, поэтому
+   *     срок группы = сумма суток её позиций;
+   *   • группы идут ПАРАЛЛЕЛЬНО, поэтому срок плана = максимум по группам;
+   *   • людей на объекте = не сумма по всем позициям, а сумма бригад
+   *     одновременно работающих групп (пик).
+   *
+   * ГЛАВНОЕ — уложиться в срок заказчика. Когда модель поставила 41 позицию
+   * в 5 бригад и вышло 184 суток, это неверный ответ: при 2–3 бригадах и
+   * 41 позиции работы идут ПО ОЧЕРЕДИ, и срок считается от числа бригад,
+   * а не от того, как модель разложила их по группам.
+   *
+   * Поэтому здесь считается минимально необходимый срок:
+   *   1. Срок одной бригады = сумма суток всех позиций (все работы по очереди).
+   *   2. Чтобы уложиться в окно заказчика, нужно
+   *      бригад = ceil(срок одной бригады / окно), но не больше maxCrews.
+   *   3. Итоговый срок = ceil(срок одной бригады / бригад) — то есть работы
+   *      реально делятся между бригадами поровну и идут параллельно.
+   * Людей на объекте = бригады × численность бригады (пик).
+   *
+   * Если и на максимуме бригад в окно не влезаем — срок честно остаётся
+   * больше окна с предупреждением. Подгонять цифру нельзя.
+   */
+  const totalCrewDays = positions.reduce((s, p) => s + (Number(p.days) || 0), 0);
+  const crewSize = positions.reduce((m, p) => Math.max(m, Number(p.people) || 0), 0);
+  const windowDays = Number(opts && opts.window_days) > 0 ? Number(opts.window_days) : null;
+
+  // Сколько бригад максимум допускает проект (настройка), но не меньше 2:
+  // одна бригада на 40 позиций — это не план, а отговорка.
+  const maxCrews = Math.max(2, Number(opts && opts.max_crews) || Number(opts && opts.max_parallel_posts) || 3);
+
+  let crews = 1;
+  if (windowDays) {
+    crews = Math.ceil(totalCrewDays / windowDays);
+    crews = Math.min(Math.max(crews, 1), maxCrews);
+  } else {
+    // Окна нет — берём разумное число бригад по объёму работ:
+    // до 30 бригадо-суток справится одна бригада, дальше нужно больше.
+    crews = totalCrewDays > 90 ? maxCrews : (totalCrewDays > 30 ? Math.min(2, maxCrews) : 1);
+  }
+
+  const rawDays = crews > 0 ? totalCrewDays / crews : totalCrewDays;
+  const workDays = Math.round(rawDays * 100) / 100;
+  const peopleTotal = crews * crewSize;
+
+  // Группы оставляем как есть — это раскладка модели по бригадам, полезна
+  // для показа, но срок больше не выводится из неё.
   const groups = new Map();
   for (const p of positions) {
-    if (!(p.days > 0)) continue;
-    const g = p.parallel_group;
-    groups.set(g, Math.max(groups.get(g) || 0, p.days));
+    const k = String(p.parallel_group ?? '0');
+    groups.set(k, Math.round((groups.get(k) || 0) + (Number(p.days) || 0)));
   }
-  let workDays = 0;
-  for (const d of groups.values()) workDays += d;
-  workDays = Math.round(workDays * 100) / 100;
 
-  // Наибольшая группа не может превышать число постов.
-  const oversized = [...groups.entries()].filter(([, d]) => d > 0).length > maxPosts;
-
-  const peopleTotal = positions.reduce((s, p) => s + (p.people || 0), 0);
   const manHours = positions.reduce(
     (s, p) => s + (p.people || 0) * (p.days || 0) * (p.shifts || 2) * (p.shift_hours || 12),
     0
   );
 
+  const fitsWindow = !!windowDays && workDays <= windowDays;
+
   return {
     positions,
     work_days: workDays || null,
     road_days: Number(raw.road_days) > 0 ? Number(raw.road_days) : null,
-    people_total: peopleTotal,
+    people_total: peopleTotal || null,
+    crews,
+    crew_size: crewSize || null,
+    total_crew_days: Math.round(totalCrewDays * 100) / 100,
+    window_days: windowDays,
+    fits_window: windowDays ? fitsWindow : null,
+    // Сумма бригад по всем позициям — не «люди на объекте», а объём работ.
+    crew_shifts_total: positions.reduce((s, p) => s + (p.people || 0), 0),
     man_hours: Math.round(manHours),
     groups: [...groups.entries()].map(([g, d]) => ({ group: g, days: d })),
+    parallel_groups: groups.size,
+    max_parallel_posts: maxPosts,
     warnings: [
-      oversized ? `параллельных групп больше, чем постов (${maxPosts}) — срок может быть нереалистичным` : null,
+      windowDays && !fitsWindow
+        ? `в срок ${windowDays} сут не укладывается: нужно ${workDays} сут даже при ${crews} бригадах — требуется больше людей или сдвиг срока`
+        : null,
+      !windowDays
+        ? 'срок заказчика не задан — бригады подобраны по объёму работ, проверьте график'
+        : null,
       positions.some((p) => p.source === 'expert')
         ? 'часть сроков — экспертная оценка, не из справочника' : null
     ].filter(Boolean),

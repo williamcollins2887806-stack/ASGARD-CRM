@@ -57,7 +57,14 @@ function checkQuiet() {
   const guardOk = guard === s.sw;
   // Любой ДРУГОЙ литерал версии в /h/index.html — рассогласование.
   // Раньше рега SW оставалась на старом хардкоде, а --check был зелёным (fail-open).
-  const hVersions = [...new Set((hHtml.match(/\d+\.\d+\.\d+/g) || []))]
+  // Важно: номера версий в КОММЕНТАРИЯХ (описание инцидентов в шапке) —
+  // не хардкод. Ищем только в исполняемом HTML/JS, комментарии вырезаем,
+  // иначе проверка падает на собственном описании дефекта (06.11.2026).
+  const hNoComments = hHtml
+    .replace(/<!--[\s\S]*?-->/g, '')
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/(^|[^:])\/\/[^\n]*/g, '$1');
+  const hVersions = [...new Set((hNoComments.match(/\d+\.\d+\.\d+/g) || []))]
     .filter((v) => v !== s.sw);
   const ok = s.sw && s.sw === s.html
     && s.qv.length === 1 && s.qv[0] === `?v=${s.sw}`

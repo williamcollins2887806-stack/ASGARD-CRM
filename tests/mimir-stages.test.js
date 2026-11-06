@@ -225,7 +225,7 @@ check('технология: всё заполнено — готово', () => 
 });
 
 // ── План просчёта ───────────────────────────────────────────────────────────
-check('план: параллельные группы считаются максимумом', () => {
+check('план: работы делятся между бригадами, срок = трудозатраты / бригады', () => {
   const p = st.normalizeCalcPlan({
     positions: [
       { id: 'a', people: 4, days: 2, parallel_group: '1', source: 'norm' },
@@ -233,19 +233,24 @@ check('план: параллельные группы считаются мак
       { id: 'c', people: 2, days: 1, parallel_group: '2', source: 'expert', explain: 'по практике' }
     ]
   });
-  // группа 1 → max(2,3)=3, группа 2 → 1, итого 4 (а не 2+3+1=6)
-  assert.strictEqual(p.work_days, 4);
-  assert.strictEqual(p.groups.length, 2);
+  // 6 бригадо-суток, объём мал (< 30) без окна дат → одна бригада, срок 6.
+  assert.strictEqual(p.total_crew_days, 6);
+  assert.strictEqual(p.crews, 1);
+  assert.strictEqual(p.work_days, 6, 'срок = сумма трудозатрат / 1 бригада');
 });
 
-check('план: разные группы суммируются', () => {
+check('план: в окно дат подбирается нужное число бригад', () => {
   const p = st.normalizeCalcPlan({
     positions: [
-      { people: 3, days: 2, parallel_group: '1', source: 'norm' },
-      { people: 3, days: 2, parallel_group: '2', source: 'norm' }
+      { people: 3, days: 30, parallel_group: '1', source: 'norm' },
+      { people: 3, days: 30, parallel_group: '2', source: 'norm' }
     ]
-  });
-  assert.strictEqual(p.work_days, 4);
+  }, { window_days: 20, max_crews: 4 });
+  // 60 бригадо-суток в окно 20 → 3 бригады → срок 20.
+  assert.strictEqual(p.total_crew_days, 60);
+  assert.strictEqual(p.crews, 3);
+  assert.strictEqual(p.work_days, 20);
+  assert.strictEqual(p.fits_window, true);
 });
 
 check('план: эксперт без обоснования — проблема', () => {

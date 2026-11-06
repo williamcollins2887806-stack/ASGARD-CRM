@@ -794,7 +794,7 @@ window.AsgardRpCalcModal = (function () {
 
     const foulingMap = { light: 'лёгкие', medium: 'средние', heavy: 'тяжёлые' };
     const foulingCls = { light: 'is-light', medium: 'is-medium', heavy: 'is-heavy' };
-    const srcMap = { norm: 'норма', expert: 'эксперт', analog: 'аналог', history: 'история' };
+    const srcMap = { norm: 'справочник', expert: 'оценка', analog: 'аналог', history: 'история' };
     const plan = rj.calc_plan || {};
     const hasPlan = Array.isArray(calc) && calc.length > 0;
 
@@ -852,15 +852,27 @@ window.AsgardRpCalcModal = (function () {
       '</div>' +
       (hasPlan
         ? '<div class="rp-calc-dv-summary">' +
+            (plan.crews ? '<span>Бригад: <b>' + esc(String(plan.crews)) + '</b></span>' : '') +
             (plan.work_days != null ? '<span>Срок: <b>' + esc(String(plan.work_days)) + ' сут</b></span>' : '') +
-            (plan.man_hours ? '<span>Человеко-часы: <b>' + esc(String(plan.man_hours)) + '</b></span>' : '') +
-            (plan.people_total ? '<span>Людей: <b>' + esc(String(plan.people_total)) + '</b></span>' : '') +
-          '</div>'
+            (plan.window_days
+              ? '<span>Срок заказчика: <b>' + esc(String(plan.window_days)) + ' сут</b>' +
+                (plan.fits_window === true
+                  ? ' <i class="rp-plan-fit is-ok">укладываемся</i>'
+                  : ' <i class="rp-plan-fit is-bad">не укладываемся</i>') + '</span>'
+              : '') +
+            (plan.people_total ? '<span>Людей на объекте: <b>' + esc(String(plan.people_total)) + '</b></span>' : '') +
+            (plan.total_crew_days ? '<span>Трудозатрат: <b>' + esc(String(plan.total_crew_days)) + '</b> бр.-сут</span>' : '') +
+          '</div>' +
+          (Array.isArray(plan.warnings) && plan.warnings.length
+            ? '<ul class="rp-calc-dv-warn">' +
+              plan.warnings.map((w) => '<li>' + esc(w) + '</li>').join('') + '</ul>'
+            : '')
         : '<p class="rp-calc-dv-empty">План ещё не считан. Нажмите «Рассчитать людей и сроки» — ' +
           'Мимир подберёт бригаду и срок по каждой позиции и покажет, откуда взял цифру.</p>') +
       '<div class="rp-calc-dv-cards">' + cards + '</div>' +
-      '<p class="rp-calc-hint">Источник «норма» — из справочника. ' +
-        '«эксперт» — оценка Мимира, при сохранении она уйдёт в калибровку.</p>' +
+      '<p class="rp-calc-hint">Источник <b>«справочник»</b> — из наших норм (код показан рядом, ' +
+        'это официальная цифра). <b>«оценка»</b> — Мимир прикинул сам, цифра уйдёт в калибровку ' +
+        'после сохранения.</p>' +
       '</div></div>';
   }
 

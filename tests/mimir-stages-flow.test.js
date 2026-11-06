@@ -143,8 +143,12 @@ function fakeProvider(dvResponse, planResponse) {
       maxParallelPosts: 2
     });
     check('план сгенерирован', () => assert.strictEqual(planGen.ok, true));
-    check('план: параллельная группа = максимум (1.5, а не 2.5)', () => {
-      assert.strictEqual(planGen.plan.work_days, 1.5);
+    check('план: 2.5 бр.-сут, объём мал → одна бригада', () => {
+      // 1.5 + 1 = 2.5 бригадо-суток; без окна дат и при малом объёме
+      // достаточно одной бригады — срок равен трудозатратам.
+      assert.strictEqual(planGen.plan.total_crew_days, 2.5);
+      assert.strictEqual(planGen.plan.crews, 1);
+      assert.strictEqual(planGen.plan.work_days, 2.5);
     });
     check('план: у всех источники', () => {
       assert.ok(planGen.plan.positions.every((p) => p.source && p.source_ref));
