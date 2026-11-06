@@ -28,6 +28,18 @@
 const fs = require('fs');
 const path = require('path');
 
+// Сторож оболочек: / и /h/ — разные приложения. Деплой 06.11 затёр Хугинн
+// копией основного index.html и это никто не заметил (см. tools/guard_shells.js).
+{
+  const { execFileSync } = require('child_process');
+  try {
+    execFileSync(process.execPath, [path.join(__dirname, 'guard_shells.js')], { stdio: 'inherit' });
+  } catch (_) {
+    console.log('ИТОГ: FAIL — оболочки / и /h/ не различаются');
+    process.exit(1);
+  }
+}
+
 const ROOT = path.resolve(__dirname, '..');
 const PUBLIC = path.join(ROOT, 'public');
 const JS_DIR = path.join(PUBLIC, 'assets', 'js');
