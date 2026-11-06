@@ -1597,11 +1597,30 @@
   }
 
   /**
+   * Сериализация переключений камеры.
+   * Гонка «waiting for pending publication promise timed out»: пользователь
+   * быстро жмёт камеру (или connect + клик), два потока одновременно зовут
+   * publishTrack / setCameraEnabled. LiveKit держит pendingPublishing по
+   * source и второй вызов отваливается по таймауту, оставляя трек
+   * неопубликованным — «камера вкл», картинки нет.
+   */
+  let cameraOpChain = Promise.resolve();
+  function runCameraOp(fn) {
+    const next = cameraOpChain.then(fn, fn);
+    cameraOpChain = next.catch(() => {});
+    return next;
+  }
+
+  /**
    * Камера: getUserMedia ПЕРВЫМ, публикация готового трека.
    * Корень отказа в PWA на Windows: getUserMedia висит, пока не нажмут
    * в диалоге разрешения, а диалог уходит за окно приложения.
    */
   async function enableLocalCamera(room) {
+    return runCameraOp(() => enableLocalCameraInner(room));
+  }
+
+  async function enableLocalCameraInner(room) {
     const LK = window.LivekitClient;
     console.info('[Ting] enableLocalCamera: start');
     /* Отпускаем только video из preview, mic preview не трогаем — mic уже в LiveKit. */
@@ -2802,7 +2821,7 @@
           }
         } else {
           stopPreview();
-          await room.localParticipant.setCameraEnabled(false);
+          await runCameraOp(() => room.localParticipant.setCameraEnabled(false));
         }
         if (!parkedAway && state.lkRoom === room) {
           paintTiles();
@@ -3635,8 +3654,10 @@
             await enableLocalCamera(state.lkRoom);
             state.camOn = true;
           } else {
-            await state.lkRoom.localParticipant.setCameraEnabled(false);
-            await unpublishLocalCamera(state.lkRoom);
+            await runCameraOp(async () => {
+              await state.lkRoom.localParticipant.setCameraEnabled(false);
+              await unpublishLocalCamera(state.lkRoom);
+            });
             state.camOn = false;
           }
         } catch (e) {
