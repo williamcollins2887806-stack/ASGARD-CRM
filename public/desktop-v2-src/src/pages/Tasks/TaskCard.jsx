@@ -9,6 +9,40 @@ import {
 } from './api';
 import { TaskCreateModal } from './TaskCreateModal';
 
+function parseTags(task) {
+  let tags = task?.tags;
+  if (typeof tags === 'string') {
+    try { tags = JSON.parse(tags); } catch (_) { tags = []; }
+  }
+  return Array.isArray(tags) ? tags.map(String) : [];
+}
+
+function TaskSourceBadges({ task }) {
+  const tags = parseTags(task);
+  const badges = [];
+  if (tags.includes('пропущенный') || tags.includes('перезвонить')) {
+    badges.push({ key: 'missed', label: 'Пропущенный', cls: 'task-badge--missed' });
+  } else if (tags.includes('звонок')) {
+    badges.push({ key: 'call', label: 'Звонок', cls: 'task-badge--call' });
+  }
+  if (task.task_kind === 'help') {
+    badges.push({ key: 'help', label: 'Помощь', cls: 'task-badge--help' });
+  } else if (!badges.length) {
+    badges.push({ key: 'dir', label: 'Поручение', cls: '' });
+  }
+  if (tags.includes('нужен_исполнитель')) {
+    badges.push({ key: 'assignee', label: 'Нужен исполнитель', cls: 'task-badge--assignee' });
+  }
+  if (!badges.length) return null;
+  return (
+    <div className="task-source-badges">
+      {badges.map((b) => (
+        <span key={b.key} className={'task-badge ' + (b.cls || '')}>{b.label}</span>
+      ))}
+    </div>
+  );
+}
+
 /**
  * Карточка задачи в левом списке. Кликом — раскрывается с подробностями и кнопками.
  * Если пользователь — создатель/директор, доступны Редактировать/Удалить.
@@ -113,10 +147,11 @@ export function TaskCard({ task, currentUser, onChanged, defaultExpanded = false
             )}
             {task.deadline && (
               <span className={'sep ' + (overdue ? 'overdue' : '')}>
-                Срок: {formatDate(task.deadline)}{overdue ? ' ⚠️' : ''}
+                Срок: {formatDate(task.deadline)}{overdue ? ' !' : ''}
               </span>
             )}
           </div>
+          <TaskSourceBadges task={task} />
         </div>
         <span className={'task-card-status ' + stCls}>{stLabel}</span>
       </div>

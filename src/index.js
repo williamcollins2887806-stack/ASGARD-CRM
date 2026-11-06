@@ -1115,10 +1115,14 @@ try {
   const recordingFetcher = new RecordingFetcher(db, fastify.log);
   recordingFetcher.setJobQueue(jobQueue);
 
+  const TelephonyAiSweep = require('./services/telephony-ai-sweep');
+  const telephonyAiSweep = new TelephonyAiSweep(db, jobQueue, fastify.log);
+
   // Make queue and escalation available to routes (единый pipeline — D-253d)
   fastify.decorate('telephonyQueue', jobQueue);
   fastify.decorate('escalationChecker', escalationChecker);
   fastify.decorate('telephonyPipeline', pipeline);
+  fastify.decorate('telephonyAiSweep', telephonyAiSweep);
 
   // D-253e: на клоне / non-prod не гоняем платные API и Mango recording fetcher
   const telephonyWorkersEnabled = process.env.TELEPHONY_WORKERS === '1'
@@ -1133,13 +1137,15 @@ try {
     jobQueue.start();
     escalationChecker.start();
     recordingFetcher.start();
-    fastify.log.info('[Telephony] Job queue, escalation checker and recording fetcher started');
+    telephonyAiSweep.start();
+    fastify.log.info('[Telephony] Job queue, escalation, recording fetcher and AI sweep started');
   });
 
   fastify.addHook('onClose', async () => {
     jobQueue.stop();
     escalationChecker.stop();
     recordingFetcher.stop();
+    telephonyAiSweep.stop();
   });
 } catch (telErr) {
   fastify.log.warn('[Telephony] Job queue/escalation init skipped: ' + telErr.message);

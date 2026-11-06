@@ -51,6 +51,60 @@ window.AsgardTasksPage = (function() {
   let expandedTaskId = null;
   let currentFilter = '';
   let isDirector = false;
+  let _escapeHandler = null;
+  let highlightTaskId = null;
+
+  function parseTags(t) {
+    let tags = t && t.tags;
+    if (typeof tags === 'string') {
+      try { tags = JSON.parse(tags); } catch (_) { tags = []; }
+    }
+    return Array.isArray(tags) ? tags.map(String) : [];
+  }
+
+  function sourceBadgesHtml(t) {
+    const tags = parseTags(t);
+    const badges = [];
+    if (tags.includes('пропущенный') || tags.includes('перезвонить')) {
+      badges.push('<span class="task-badge task-badge--missed">Пропущенный</span>');
+    } else if (tags.includes('звонок')) {
+      badges.push('<span class="task-badge task-badge--call">Звонок</span>');
+    }
+    if (t.task_kind === 'help') {
+      badges.push('<span class="task-badge task-badge--help">Помощь</span>');
+    } else if (!badges.length) {
+      badges.push('<span class="task-badge">Поручение</span>');
+    }
+    if (tags.includes('нужен_исполнитель')) {
+      badges.push('<span class="task-badge task-badge--assignee">Нужен исполнитель</span>');
+    }
+    return badges.length
+      ? `<div class="task-source-badges">${badges.join('')}</div>`
+      : '';
+  }
+
+  function openModal(el) {
+    if (!el) return;
+    el.classList.add('is-open');
+    el.style.display = 'flex';
+    const focusable = el.querySelector('input, textarea, button, select');
+    if (focusable) setTimeout(() => focusable.focus(), 0);
+    if (!_escapeHandler) {
+      _escapeHandler = (e) => {
+        if (e.key === 'Escape') {
+          closeCreateModal();
+          closeCompleteModal();
+        }
+      };
+      document.addEventListener('keydown', _escapeHandler);
+    }
+  }
+
+  function closeModalEl(el) {
+    if (!el) return;
+    el.classList.remove('is-open');
+    el.style.display = 'none';
+  }
 
   // ─────────────────────────────────────────────────────────────────
   // API HELPERS
@@ -96,16 +150,26 @@ window.AsgardTasksPage = (function() {
     const role = auth?.user?.role || '';
     isDirector = ['ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV'].includes(role);
 
+    // Deep-link: #/tasks?id=123 или ?id= в query
+    try {
+      const hash = String(location.hash || '');
+      const q = hash.includes('?') ? hash.slice(hash.indexOf('?') + 1) : (location.search || '').replace(/^\?/, '');
+      const idParam = new URLSearchParams(q).get('id');
+      if (idParam) {
+        highlightTaskId = parseInt(idParam, 10) || null;
+        if (highlightTaskId) expandedTaskId = highlightTaskId;
+      }
+    } catch (_) { /* ignore */ }
+
     container.innerHTML = `
-      <div class="tasks-page" style="display:grid; grid-template-columns:1fr 350px; gap:20px; min-height:60vh">
-        <!-- Левая панель: Задачи от руководства -->
+      <div class="tasks-page">
         <div>
-          <div class="card" style="background:var(--bg-card);border:none;border-radius:var(--radius-md);padding:16px">
-            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:15px">
-              <h3 style="margin:0">📋 Задачи от руководства</h3>
+          <div class="tasks-panel">
+            <div class="tasks-panel-head">
+              <h3>Задачи от руководства</h3>
               <div style="display:flex; gap:10px; align-items:center">
                 <div id="crselect-taskFilter"></div>
-                ${isDirector ? '<button class="btn" onclick="AsgardTasksPage.showCreateModal()">📋 Создать задачу</button>' : ''}
+                ${isDirector ? '<button class="btn" type="button" onclick="AsgardTasksPage.showCreateModal()">Создать задачу</button>' : ''}
               </div>
             </div>
             <div id="tasksList">
@@ -114,8 +178,8 @@ window.AsgardTasksPage = (function() {
           </div>
 
           ${isDirector ? `
-          <div class="card" style="margin-top:20px;background:var(--bg-card);border:none;border-radius:var(--radius-md);padding:16px">
-            <h3>📤 Мои поручения</h3>
+          <div class="tasks-panel" style="margin-top:20px">
+            <h3 style="margin:0 0 12px">Мои поручения</h3>
             <div id="createdTasksList">
               <div style="text-align:center; padding:20px"><div class="spinner-border"></div></div>
             </div>
@@ -123,28 +187,27 @@ window.AsgardTasksPage = (function() {
           ` : ''}
         </div>
 
-        <!-- Правая панель: Todo-список -->
         <div>
-          <div class="card" style="position:sticky; top:20px;background:var(--bg-card);border:none;border-radius:var(--radius-md);padding:16px">
-            <h3 style="margin-bottom:15px">📝 Мои дела <span id="todoCounter" style="font-size:0.8em; color:var(--dim)"></span></h3>
-            <div style="display:flex; gap:8px; margin-bottom:15px">
+          <div class="todo-panel">
+            <h3 style="margin-bottom:15px">Мои дела <span id="todoCounter" style="font-size:0.8em; color:var(--dim)"></span></h3>
+            <div class="todo-add">
               <input type="text" id="todoInput" class="inp" placeholder="Что нужно сделать..." style="flex:1"
                 onkeydown="if(event.key==='Enter') AsgardTasksPage.addTodo()"/>
-              <button class="btn" onclick="AsgardTasksPage.addTodo()">+</button>
+              <button class="btn" type="button" onclick="AsgardTasksPage.addTodo()">+</button>
             </div>
-            <div id="todoList" style="max-height:60vh; overflow-y:auto">
+            <div id="todoList" class="todo-list">
               <div style="text-align:center; padding:20px"><div class="spinner-border"></div></div>
             </div>
           </div>
         </div>
       </div>
 
-      <!-- Модалка создания задачи -->
-      <div class="modal-overlay" id="createTaskModal" style="display:none">
-        <div class="modal" style="max-width:500px">
+      <div class="tasks-modal-overlay" id="createTaskModal" style="display:none" role="dialog" aria-modal="true"
+           onclick="if(event.target===this) AsgardTasksPage.closeCreateModal()">
+        <div class="modal" onclick="event.stopPropagation()">
           <div class="modal-header">
             <h3>Создать задачу</h3>
-            <button class="btn ghost" onclick="AsgardTasksPage.closeCreateModal()">&times;</button>
+            <button class="btn ghost" type="button" onclick="AsgardTasksPage.closeCreateModal()" aria-label="Закрыть">&times;</button>
           </div>
           <div class="modal-body">
             <form id="createTaskForm">
@@ -177,18 +240,18 @@ window.AsgardTasksPage = (function() {
             </form>
           </div>
           <div class="modal-footer">
-            <button class="btn ghost" onclick="AsgardTasksPage.closeCreateModal()">Отмена</button>
-            <button class="btn" onclick="AsgardTasksPage.submitCreateTask()">Создать</button>
+            <button class="btn ghost" type="button" onclick="AsgardTasksPage.closeCreateModal()">Отмена</button>
+            <button class="btn" type="button" onclick="AsgardTasksPage.submitCreateTask()">Создать</button>
           </div>
         </div>
       </div>
 
-      <!-- Модалка завершения задачи -->
-      <div class="modal-overlay" id="completeTaskModal" style="display:none">
-        <div class="modal" style="max-width:400px">
+      <div class="tasks-modal-overlay" id="completeTaskModal" style="display:none" role="dialog" aria-modal="true"
+           onclick="if(event.target===this) AsgardTasksPage.closeCompleteModal()">
+        <div class="modal" style="max-width:400px" onclick="event.stopPropagation()">
           <div class="modal-header">
             <h3>Завершить задачу</h3>
-            <button class="btn ghost" onclick="AsgardTasksPage.closeCompleteModal()">&times;</button>
+            <button class="btn ghost" type="button" onclick="AsgardTasksPage.closeCompleteModal()" aria-label="Закрыть">&times;</button>
           </div>
           <div class="modal-body">
             <div class="field">
@@ -197,8 +260,8 @@ window.AsgardTasksPage = (function() {
             </div>
           </div>
           <div class="modal-footer">
-            <button class="btn ghost" onclick="AsgardTasksPage.closeCompleteModal()">Отмена</button>
-            <button class="btn" onclick="AsgardTasksPage.submitComplete()">✅ Завершить</button>
+            <button class="btn ghost" type="button" onclick="AsgardTasksPage.closeCompleteModal()">Отмена</button>
+            <button class="btn" type="button" onclick="AsgardTasksPage.submitComplete()">Завершить</button>
           </div>
         </div>
       </div>
@@ -233,8 +296,14 @@ window.AsgardTasksPage = (function() {
       ],
     }));
 
-    // Загружаем данные
     await Promise.all([loadTasks(), loadTodo(), loadUsers()]);
+
+    if (highlightTaskId) {
+      setTimeout(() => {
+        const el = document.querySelector('.task-card[data-task-id="' + highlightTaskId + '"]');
+        if (el && el.scrollIntoView) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }, 50);
+    }
   }
 
   // ─────────────────────────────────────────────────────────────────
@@ -275,7 +344,11 @@ window.AsgardTasksPage = (function() {
     // Выходим тихо: рендерить в никуда нечего, страница не на экране.
     if (!container) return;
     if (!currentTasks.length) {
-      container.innerHTML = '<div style="color:var(--dim); padding:20px; text-align:center">Нет задач</div>';
+      container.innerHTML = `
+        <div class="tasks-empty">
+          <strong>Пока пусто</strong>
+          Здесь появятся поручения от руководства и задачи из звонков
+        </div>`;
       return;
     }
 
@@ -283,24 +356,24 @@ window.AsgardTasksPage = (function() {
   }
 
   function renderTaskCard(t) {
-    const priorityColor = PRIORITY_COLORS[t.priority] || PRIORITY_COLORS.normal;
-    const statusColor = STATUS_COLORS[t.status] || 'var(--t2)';
     const statusLabel = STATUS_LABELS[t.status] || t.status;
     const deadlineOverdue = t.status !== 'done' && isOverdue(t.deadline);
     const isExpanded = expandedTaskId === t.id;
+    const pClass = 'priority-' + (PRIORITY_LABELS[t.priority] ? t.priority : 'normal');
+    const hiClass = (highlightTaskId === t.id) ? ' is-highlight' : '';
 
     let actionsHtml = '';
     if (t.status === 'new') {
       actionsHtml = `
-        <button class="btn mini" onclick="AsgardTasksPage.acceptTask(${t.id})">👍 Принять</button>
-        <button class="btn mini ghost" onclick="AsgardTasksPage.startTask(${t.id})">▶ Начать</button>
+        <button class="btn mini" type="button" onclick="AsgardTasksPage.acceptTask(${t.id})">Принять</button>
+        <button class="btn mini ghost" type="button" onclick="AsgardTasksPage.startTask(${t.id})">Начать</button>
       `;
     } else if (t.status === 'accepted') {
-      actionsHtml = `<button class="btn mini" onclick="AsgardTasksPage.startTask(${t.id})">▶ Начать работу</button>`;
+      actionsHtml = `<button class="btn mini" type="button" onclick="AsgardTasksPage.startTask(${t.id})">Начать работу</button>`;
     } else if (t.status === 'in_progress' || t.status === 'overdue') {
-      actionsHtml = `<button class="btn mini" onclick="AsgardTasksPage.showCompleteModal(${t.id})">✅ Завершить</button>`;
+      actionsHtml = `<button class="btn mini" type="button" onclick="AsgardTasksPage.showCompleteModal(${t.id})">Завершить</button>`;
     } else if (t.status === 'done') {
-      actionsHtml = `<div style="color:var(--green)">✅ Выполнено ${formatDateTime(t.completed_at)}</div>`;
+      actionsHtml = `<div style="color:var(--ok-t, var(--green))">Выполнено ${formatDateTime(t.completed_at)}</div>`;
       if (t.assignee_comment) {
         actionsHtml += `<div style="margin-top:6px; font-style:italic; color:var(--dim)">"${escapeHtml(t.assignee_comment)}"</div>`;
       }
@@ -312,26 +385,27 @@ window.AsgardTasksPage = (function() {
       ).join('')}</div>` : '';
 
     return `
-      <div class="task-card" style="border-left:4px solid ${priorityColor}; background:var(--bg-card); padding:12px 15px; border-radius:var(--radius-md); margin-bottom:10px; cursor:pointer"
+      <div class="task-card ${pClass}${hiClass}" data-task-id="${t.id}"
            onclick="AsgardTasksPage.toggleTask(${t.id})">
-        <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:10px">
+        <div class="task-card-top">
           <div style="flex:1">
-            <div style="font-weight:600; font-size:1em">${escapeHtml(t.title)}</div>
-            <div style="font-size:0.85em; color:var(--dim); margin-top:4px">
+            <div class="task-card-title">${escapeHtml(t.title)}</div>
+            <div class="task-card-meta">
               От: ${escapeHtml(t.creator_name || '?')}
-              ${t.deadline ? ` · Срок: <span style="color:${deadlineOverdue ? 'var(--red)' : 'inherit'}">${formatDate(t.deadline)}${deadlineOverdue ? ' ⚠️' : ''}</span>` : ''}
+              ${t.deadline ? ` · Срок: <span style="color:${deadlineOverdue ? 'var(--err-t)' : 'inherit'}">${formatDate(t.deadline)}${deadlineOverdue ? ' !' : ''}</span>` : ''}
             </div>
+            ${sourceBadgesHtml(t)}
           </div>
           <div>
             <span class="status-badge ${getStatusClass(t.status)}">${statusLabel}</span>
           </div>
         </div>
         ${isExpanded ? `
-          <div style="margin-top:12px; padding-top:12px; border-top:1px solid var(--border)" onclick="event.stopPropagation()">
+          <div class="task-card-body" onclick="event.stopPropagation()">
             ${t.description ? `<div style="margin-bottom:10px; white-space:pre-wrap">${escapeHtml(t.description)}</div>` : ''}
-            ${t.creator_comment ? `<div style="margin-bottom:10px; font-style:italic; color:var(--dim)">💬 ${escapeHtml(t.creator_comment)}</div>` : ''}
+            ${t.creator_comment ? `<div style="margin-bottom:10px; font-style:italic; color:var(--dim)">${escapeHtml(t.creator_comment)}</div>` : ''}
             ${filesHtml}
-            <div style="display:flex; gap:10px; margin-top:12px; flex-wrap:wrap">
+            <div class="task-card-actions">
               ${actionsHtml}
             </div>
           </div>
@@ -410,13 +484,14 @@ window.AsgardTasksPage = (function() {
 
   function showCompleteModal(id) {
     completeTaskId = id;
-    document.getElementById('completeComment').value = '';
-    document.getElementById('completeTaskModal').style.display = 'flex';
+    const c = document.getElementById('completeComment');
+    if (c) c.value = '';
+    openModal(document.getElementById('completeTaskModal'));
   }
 
   function closeCompleteModal() {
     completeTaskId = null;
-    document.getElementById('completeTaskModal').style.display = 'none';
+    closeModalEl(document.getElementById('completeTaskModal'));
   }
 
   async function submitComplete() {
@@ -464,14 +539,14 @@ window.AsgardTasksPage = (function() {
   }
 
   function showCreateModal() {
-    document.getElementById('createTaskForm').reset();
+    document.getElementById('createTaskForm')?.reset();
     CRSelect.setValue('taskAssignee', '');
     CRSelect.setValue('taskPriority', 'normal');
-    document.getElementById('createTaskModal').style.display = 'flex';
+    openModal(document.getElementById('createTaskModal'));
   }
 
   function closeCreateModal() {
-    document.getElementById('createTaskModal').style.display = 'none';
+    closeModalEl(document.getElementById('createTaskModal'));
   }
 
   async function submitCreateTask() {
@@ -571,12 +646,12 @@ window.AsgardTasksPage = (function() {
 
     container.innerHTML = currentTodo.map(item => {
       const remaining = getRemainingTime(item);
-      const timerHtml = remaining ? `<span style="font-size:0.75em; color:var(--amber); margin-left:8px" title="До автоудаления">⏳ ${remaining}</span>` : '';
+      const timerHtml = remaining ? `<span style="font-size:0.75em; color:var(--amber); margin-left:8px" title="До автоудаления">${remaining}</span>` : '';
       return `
-        <div class="todo-item" style="display:flex; align-items:center; gap:10px; padding:8px 0; border-bottom:1px solid var(--border); ${item.done ? 'opacity:0.6' : ''}">
+        <div class="todo-item${item.done ? ' is-done' : ''}">
           <input type="checkbox" ${item.done ? 'checked' : ''} onchange="AsgardTasksPage.toggleTodo(${item.id})" style="cursor:pointer"/>
           <span ondblclick="AsgardTasksPage.editTodo(${item.id})" style="flex:1; cursor:pointer; ${item.done ? 'text-decoration:line-through; color:var(--dim)' : ''}">${escapeHtml(item.text)}${timerHtml}</span>
-          <button class="btn ghost mini" onclick="AsgardTasksPage.deleteTodo(${item.id})" style="padding:2px 6px; opacity:0.5" title="Удалить">×</button>
+          <button class="btn ghost mini" type="button" onclick="AsgardTasksPage.deleteTodo(${item.id})" style="padding:2px 6px; opacity:0.5" title="Удалить">×</button>
         </div>
       `;
     }).join('');

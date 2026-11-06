@@ -1293,7 +1293,14 @@ module.exports = async function telephonyRoutes(fastify, opts) {
     const call = (await db.query('SELECT id,transcript,transcript_status FROM call_history WHERE id=$1', [callId])).rows[0];
     if (!call) return reply.code(404).send({ error: 'Call not found' });
     if (!call.transcript || call.transcript_status !== 'done') return reply.code(400).send({ error: 'Транскрипт не готов' });
-    await db.query("UPDATE call_history SET ai_summary=NULL,ai_is_target=NULL,ai_lead_data=NULL,ai_sentiment=NULL,updated_at=NOW() WHERE id=$1", [callId]);
+    await db.query(
+      `UPDATE call_history SET
+         ai_summary=NULL, ai_is_target=NULL, ai_lead_data=NULL, ai_sentiment=NULL,
+         ai_analysis_status='pending', ai_last_error=NULL, ai_last_error_at=NULL,
+         updated_at=NOW()
+       WHERE id=$1`,
+      [callId]
+    );
     const p = getPipeline();
     if (p) setImmediate(() => p.processCall(callId).catch(e => console.error('[Telephony] Analyze err:',e.message)));
     return reply.send({ status: 'queued', message: 'ИИ-анализ запущен' });
@@ -1316,15 +1323,16 @@ module.exports = async function telephonyRoutes(fastify, opts) {
     const analysis = call.ai_lead_data ? (typeof call.ai_lead_data === 'string' ? JSON.parse(call.ai_lead_data) : call.ai_lead_data) : {};
     const overrides = request.body || {};
 
-    // Мержим ИИ-данные с пользовательскими правками
+    // Мержим ИИ-данные с пользовательскими правками; ручная кнопка всегда lead
     const merged = { ...analysis, ...overrides };
     merged.is_target = true;
+    merged.outcome_kind = 'lead';
 
     const p = getPipeline();
     if (p) {
       const ptId = await p.analyzer.createDraftLead(merged, parseInt(id), request.user.id);
       if (ptId) {
-        return reply.send({ pre_tender_id: ptId, lead_id: ptId });
+        return reply.send({ pre_tender_id: ptId, lead_id: ptId, task_id: call.task_id || null });
       }
     }
     reply.code(500).send({ error: 'Failed to create lead' });
@@ -2486,6 +2494,11 @@ module.exports = async function telephonyRoutes(fastify, opts) {
         processing: parseInt(row.processing || "0", 10),
         failed: parseInt(row.failed || "0", 10)
       };
+      try {
+        if (fastify.telephonyAiSweep && typeof fastify.telephonyAiSweep.stuckCount === 'function') {
+          checks.job_queue.stuck_over_24h = await fastify.telephonyAiSweep.stuckCount();
+        }
+      } catch (_) { /* optional */ }
     } catch (err) {
       checks.job_queue = { status: "error", pending: 0, processing: 0, failed: 0 };
     }

@@ -86,20 +86,29 @@ async function ensurePersonalCardForPreTender(client, ownerUserId, ptId, movedBy
 
 // Wave A+ fix BLOCKER#1 + MED#4: проверка владельца pre_tender'а.
 // Возвращает {ok:true, row} или {ok:false, code, error}. Не бросает.
-async function checkPreTenderAccess(user, ptId) {
+// allowUnassignedRead: PM/HEAD_PM/TO могут ЧИТАТЬ свободные claimable (как ?unassigned=1 в списке).
+async function checkPreTenderAccess(user, ptId, { allowUnassignedRead = false } = {}) {
   if (!user) return { ok: false, code: 401, error: 'unauthorized' };
   if (DIRECTOR_LIKE_ROLES.includes(user.role)) {
-    const r = await db.query('SELECT id, assigned_to, email_id FROM pre_tender_requests WHERE id=$1 LIMIT 1', [ptId]);
+    const r = await db.query('SELECT id, assigned_to, email_id, status FROM pre_tender_requests WHERE id=$1 LIMIT 1', [ptId]);
     if (!r.rows.length) return { ok: false, code: 404, error: 'pre_tender_not_found' };
     return { ok: true, row: r.rows[0] };
   }
-  // PM/TO — только свои (assigned_to или created_by)
+  // PM/TO — свои (assigned_to или created_by); опционально чтение unassigned claimable
   const r = await db.query(
-    'SELECT id, assigned_to, created_by, email_id FROM pre_tender_requests WHERE id=$1 LIMIT 1',
+    'SELECT id, assigned_to, created_by, email_id, status FROM pre_tender_requests WHERE id=$1 LIMIT 1',
     [ptId]);
   if (!r.rows.length) return { ok: false, code: 404, error: 'pre_tender_not_found' };
   const row = r.rows[0];
   if (row.assigned_to === user.id || row.created_by === user.id) return { ok: true, row };
+  if (
+    allowUnassignedRead
+    && row.assigned_to == null
+    && MARKETPLACE_CLAIMABLE_STATUSES.includes(row.status)
+    && ['PM', 'HEAD_PM', 'TO'].includes(user.role)
+  ) {
+    return { ok: true, row, claimable: true };
+  }
   return { ok: false, code: 403, error: 'forbidden' };
 }
 
@@ -1045,7 +1054,7 @@ module.exports = async function (fastify) {
     const { id } = request.params;
 
     // Wave A+ fix BLOCKER#1: PM/TO имеют доступ только к своим (assigned_to/created_by).
-    const acc = await checkPreTenderAccess(request.user, id);
+    const acc = await checkPreTenderAccess(request.user, id, { allowUnassignedRead: true });
     if (!acc.ok) return reply.code(acc.code).send({ error: acc.error });
 
     const res = await db.query(`

@@ -2,6 +2,8 @@
 
 const { getCallAnalysisPrompt } = require('../prompts/call-analysis-prompt');
 
+const OUTCOME_KINDS = new Set(['lead', 'task', 'none']);
+
 class CallAnalyzer {
   constructor(aiProvider, db) {
     this.aiProvider = aiProvider;
@@ -10,7 +12,15 @@ class CallAnalyzer {
 
   async analyze(transcript, callData) {
     if (!transcript || transcript.trim().length < 20) {
-      return { is_target: false, summary: 'Слишком короткий разговор для анализа', sentiment: 'neutral', classification: 'wrong_number', quality_score: null, _skipped: true };
+      return {
+        is_target: false,
+        outcome_kind: 'none',
+        summary: 'Слишком короткий разговор для анализа',
+        sentiment: 'neutral',
+        classification: 'wrong_number',
+        quality_score: null,
+        _skipped: true
+      };
     }
     const systemPrompt = getCallAnalysisPrompt({
       callerNumber: callData.from_number || callData.caller_number,
@@ -28,19 +38,40 @@ class CallAnalyzer {
         messages: [{ role: 'user', content: transcript }],
         maxTokens: 3000,
         temperature: 0.1,
-        // D-253 / план: сводка звонков — yandex-pro
         model: process.env.CALL_ANALYSIS_MODEL || 'yandex-pro',
       });
       const text = typeof response === 'string' ? response : (response.text || response.content || '');
       return this._parseResponse(text);
     } catch (err) {
-      console.error('[CallAnalyzer] AI analysis failed:', err.message);
-      return { is_target: null, summary: 'Ошибка ИИ-анализа: ' + err.message, sentiment: 'neutral', classification: null, quality_score: null, _error: true };
+      // Infra/provider errors must bubble to pipeline → retryable status, NOT fake ai_summary.
+      const code = err && (err.code || err.status);
+      const retryable = this._isRetryableError(err);
+      const wrapped = new Error(err.message || 'AI analysis failed');
+      wrapped.code = typeof code === 'string' ? code : (retryable ? 'provider_error' : 'unknown');
+      wrapped.retryable = retryable;
+      wrapped.cause = err;
+      throw wrapped;
     }
   }
+
+  _isRetryableError(err) {
+    if (!err) return true;
+    const code = String(err.code || '').toLowerCase();
+    if (['insufficient_funds', 'rate_limit', 'timeout', 'network', 'provider_error', 'upstream_error', 'empty_response'].includes(code)) {
+      return true;
+    }
+    if (err.status === 402 || err.status === 429 || (err.status >= 500 && err.status < 600)) return true;
+    const msg = String(err.message || '');
+    if (/недостаточно средств|insufficient|rate.?limit|timeout|ECONN|ETIMEDOUT|socket hang up|fetch failed|50[0-4]\b/i.test(msg)) {
+      return true;
+    }
+    if (/auth|unauthorized|401|403|bad_request/i.test(code + ' ' + msg)) return false;
+    return true; // unknown → safer to retry
+  }
+
   _parseResponse(text) {
     let cleaned = text.trim();
-    const BT3 = String.fromCharCode(96,96,96);
+    const BT3 = String.fromCharCode(96, 96, 96);
     if (cleaned.startsWith(BT3 + 'json')) cleaned = cleaned.slice(BT3.length + 4);
     else if (cleaned.startsWith(BT3)) cleaned = cleaned.slice(3);
     if (cleaned.endsWith(BT3)) cleaned = cleaned.slice(0, -3);
@@ -48,20 +79,52 @@ class CallAnalyzer {
     const jsonStart = cleaned.indexOf('{');
     const jsonEnd = cleaned.lastIndexOf('}');
     if (jsonStart !== -1 && jsonEnd > jsonStart) cleaned = cleaned.slice(jsonStart, jsonEnd + 1);
-    try { return this._normalizeFields(JSON.parse(cleaned)); }
-    catch (err) {
-      console.error('[CallAnalyzer] Parse failed:', err.message);
-      return { is_target: null, summary: cleaned.slice(0, 500), sentiment: 'neutral', classification: null, quality_score: null, _parseError: true };
+    try {
+      return this._normalizeFields(JSON.parse(cleaned));
+    } catch (err) {
+      const parseErr = new Error('AI JSON parse failed: ' + err.message);
+      parseErr.code = 'json_parse_error';
+      parseErr.retryable = true; // 1–2 retries then pipeline may mark error_final
+      parseErr.raw = cleaned.slice(0, 500);
+      throw parseErr;
     }
   }
 
+  _inferOutcomeKind(data) {
+    const raw = String(data.outcome_kind || '').trim().toLowerCase();
+    if (OUTCOME_KINDS.has(raw)) return raw;
+
+    const cls = String(data.classification || '').toLowerCase();
+    const next = Array.isArray(data.next_steps) ? data.next_steps.join(' ').toLowerCase() : '';
+    const summary = String(data.summary || '').toLowerCase();
+    const blob = next + ' ' + summary;
+
+    if (cls === 'spam' || cls === 'wrong_number' || cls === 'supplier_offer') return 'none';
+    if (data.is_target === false) return 'none';
+
+    const wantsKp = /кп\b|коммерческ|цен[аыу]|стоимость|промывк|расчёт|расчет|выезд|заказ/.test(blob)
+      || cls === 'new_inquiry' || cls === 'repeat_order';
+    const followUp = /перезвон|узнаю|уточн|скажу|подскажу|выясн|передам|спроси/.test(blob);
+
+    if (wantsKp) return 'lead'; // mixed KP+callback → lead
+    if (data.is_target === true && followUp) return 'task';
+    if (data.is_target === true) return 'task'; // safer than junk lead
+    return 'none';
+  }
+
   _normalizeFields(data) {
-    const VS = ['positive','neutral','negative','aggressive'];
-    const VU = ['critical','high','medium','low'];
-    const VC = ['new_inquiry','repeat_order','complaint','warranty_claim','information_request','partnership_proposal','supplier_offer','spam','wrong_number'];
-    const VW = ['chemical_cleaning','hydro_cleaning','hvac_maintenance','hvac_repair','hvac_installation','industrial_service','consultation','other'];
-    const VE = ['heat_exchanger','boiler','pipeline','chiller','ahu','cooling_tower','pump','valve','other'];
-    const VSRC = ['website','referral','repeat_client','advertisement','search','exhibition','cold_call'];
+    const VS = ['positive', 'neutral', 'negative', 'aggressive'];
+    const VU = ['critical', 'high', 'medium', 'low'];
+    const VC = ['new_inquiry', 'repeat_order', 'complaint', 'warranty_claim', 'information_request', 'partnership_proposal', 'supplier_offer', 'spam', 'wrong_number'];
+    const VW = ['chemical_cleaning', 'hydro_cleaning', 'hvac_maintenance', 'hvac_repair', 'hvac_installation', 'industrial_service', 'consultation', 'other'];
+    const VE = ['heat_exchanger', 'boiler', 'pipeline', 'chiller', 'ahu', 'cooling_tower', 'pump', 'valve', 'other'];
+    const VSRC = ['website', 'referral', 'repeat_client', 'advertisement', 'search', 'exhibition', 'cold_call'];
+
+    const outcome_kind = this._inferOutcomeKind(data);
+    let is_target = typeof data.is_target === 'boolean' ? data.is_target : null;
+    if (outcome_kind === 'lead' || outcome_kind === 'task') is_target = true;
+    if (outcome_kind === 'none' && is_target == null) is_target = false;
+
     return {
       company_name: this._str(data.company_name), contact_person: this._str(data.contact_person),
       contact_phone: this._str(data.contact_phone), contact_email: this._str(data.contact_email),
@@ -74,7 +137,11 @@ class CallAnalyzer {
       summary: this._str(data.summary) || 'Резюме не сформировано',
       key_requirements: Array.isArray(data.key_requirements) ? data.key_requirements.map(String) : [],
       sentiment: this._enum(data.sentiment, VS) || 'neutral',
-      is_target: typeof data.is_target === 'boolean' ? data.is_target : null,
+      is_target,
+      outcome_kind,
+      suggested_assignee_name: this._str(data.suggested_assignee_name),
+      task_title: this._str(data.task_title),
+      task_due_hint: this._str(data.task_due_hint),
       classification: this._enum(data.classification, VC),
       next_steps: Array.isArray(data.next_steps) ? data.next_steps.map(String) : [],
       quality_score: this._clamp(data.quality_score, 1, 10), quality_notes: this._str(data.quality_notes),
@@ -94,10 +161,64 @@ class CallAnalyzer {
     return m[wt] || null;
   }
 
+  _urgencyToPriority(urgency) {
+    if (urgency === 'critical' || urgency === 'high') return 'high';
+    if (urgency === 'low') return 'low';
+    return 'normal';
+  }
+
+  /**
+   * Найти активного пользователя по имени (частичное совпадение).
+   */
+  async resolveAssigneeByName(name) {
+    const q = String(name || '').trim();
+    if (!q || q.length < 2) return null;
+    try {
+      const r = await this.db.query(
+        `SELECT id, name FROM users
+          WHERE is_active = true
+            AND (
+              LOWER(name) = LOWER($1)
+              OR LOWER(name) LIKE LOWER($2)
+              OR LOWER(split_part(name, ' ', 1)) = LOWER($3)
+            )
+          ORDER BY CASE WHEN LOWER(name) = LOWER($1) THEN 0 ELSE 1 END, id
+          LIMIT 1`,
+        [q, '%' + q + '%', q.split(/\s+/)[0]]
+      );
+      return r.rows[0] ? r.rows[0].id : null;
+    } catch (err) {
+      console.warn('[CallAnalyzer] resolveAssigneeByName failed:', err.message);
+      return null;
+    }
+  }
+
+  async _fallbackAssigneeId(preferredUserId) {
+    if (preferredUserId) return preferredUserId;
+    try {
+      const { getCurrentDuty } = require('./tender-registry-helpers');
+      const duty = await getCurrentDuty(this.db);
+      if (duty?.pm_user_id) return duty.pm_user_id;
+    } catch (_) { /* ignore */ }
+    try {
+      const duty = await this.db.query(
+        'SELECT user_id FROM user_call_status WHERE is_duty = true AND accepting = true LIMIT 1'
+      );
+      if (duty.rows.length) return duty.rows[0].user_id;
+    } catch (_) { /* ignore */ }
+    try {
+      const dir = await this.db.query(
+        `SELECT id FROM users
+          WHERE role IN ('ADMIN','DIRECTOR_GEN','DIRECTOR_COMM') AND is_active = true
+          ORDER BY id LIMIT 1`
+      );
+      if (dir.rows.length) return dir.rows[0].id;
+    } catch (_) { /* ignore */ }
+    return null;
+  }
+
   /**
    * Найти «живую» заявку того же клиента за windowDays.
-   * Один клиент = одна заявка: 10 звонков не должны давать 10 карточек.
-   * Матч по нормализованному телефону, ИНН или названию компании.
    */
   async findOpenPreTenderForClient({ phone, inn, company, windowDays = 30 }) {
     const digits = String(phone || '').replace(/\D/g, '').slice(-10);
@@ -120,7 +241,7 @@ class CallAnalyzer {
     params.push(Number(windowDays) || 30);
     try {
       const r = await this.db.query(
-        `SELECT id, work_title, work_description, status, created_at
+        `SELECT id, work_title, work_description, status, created_at, assigned_to
            FROM pre_tender_requests
           WHERE COALESCE(status, '') NOT IN ('rejected', 'expired')
             AND created_tender_id IS NULL
@@ -137,7 +258,6 @@ class CallAnalyzer {
     }
   }
 
-  /** Дописать звонок в историю существующей заявки. */
   async appendCallToPreTender(ptId, { summary, at }) {
     if (!ptId) return false;
     const when = at ? new Date(at) : new Date();
@@ -165,7 +285,8 @@ class CallAnalyzer {
   }
 
   async createDraftLead(ar, callId, managerId) {
-    if (!ar.is_target) return null;
+    const kind = ar.outcome_kind || (ar.is_target ? 'lead' : 'none');
+    if (kind !== 'lead' && !ar.is_target) return null;
     const db = this.db;
     const cn = ar.company_name || (ar.company && ar.company.name) || null;
     const ctn = ar.contact_person || (ar.contact && ar.contact.name) || null;
@@ -185,17 +306,17 @@ class CallAnalyzer {
       ar.key_requirements && ar.key_requirements.length > 0 ? 'Требования: ' + ar.key_requirements.join('; ') : null
     ].filter(Boolean).join('. ') || null;
 
-    // Дедуп: второй/десятый звонок клиента — это та же заявка, не новая.
     let callMeta = null;
     try {
       const c = await db.query(
-        'SELECT from_number, caller_number, client_number, direction FROM call_history WHERE id = $1',
+        'SELECT from_number, to_number, caller_number, client_number, call_type, direction FROM call_history WHERE id = $1',
         [callId]
       );
       callMeta = c.rows[0] || null;
     } catch (_) { /* не критично */ }
+    const direction = callMeta && (callMeta.direction || callMeta.call_type);
     const callerPhone = (callMeta && (callMeta.client_number
-      || (callMeta.direction === 'outbound' ? callMeta.to_number : callMeta.from_number)
+      || (direction === 'outbound' ? callMeta.to_number : callMeta.from_number)
       || callMeta.caller_number)) || ctp;
 
     try {
@@ -219,7 +340,6 @@ class CallAnalyzer {
     }
 
     try {
-      // Маркетплейс (director-inbox), не сага tenders.
       const r = await db.query(
         `INSERT INTO pre_tender_requests (
            source_type, customer_name, customer_email, customer_inn,
@@ -262,6 +382,110 @@ class CallAnalyzer {
       return ptId;
     } catch (err) {
       console.error('[CallAnalyzer] Failed to create pre-tender from call:', err.message);
+      return null;
+    }
+  }
+
+  /**
+   * Поручение в «Мои задачи» после звонка (outcome_kind=task).
+   */
+  async createFollowupTask(ar, callId, managerId) {
+    const db = this.db;
+    let callMeta = null;
+    try {
+      const c = await db.query(
+        `SELECT id, from_number, to_number, caller_number, client_number, call_type,
+                user_id, created_at, task_id, pre_tender_id
+           FROM call_history WHERE id = $1`,
+        [callId]
+      );
+      callMeta = c.rows[0] || null;
+    } catch (_) { /* ignore */ }
+    if (callMeta && callMeta.task_id) {
+      return { taskId: callMeta.task_id, assigneeId: managerId || (callMeta && callMeta.user_id) || null, needsAssigneeTag: false };
+    }
+
+    const byName = await this.resolveAssigneeByName(ar.suggested_assignee_name);
+    // A4: если есть живая заявка клиента — предпочитаем её assigned_to
+    let ptAssignee = null;
+    try {
+      const phoneHint = (callMeta && (callMeta.client_number || callMeta.from_number || callMeta.caller_number)) || ar.contact_phone;
+      const existing = await this.findOpenPreTenderForClient({
+        phone: phoneHint,
+        inn: ar.customer_inn || (ar.company && ar.company.inn) || null,
+        company: ar.company_name || (ar.company && ar.company.name) || null,
+        windowDays: 30
+      });
+      if (existing && existing.assigned_to) ptAssignee = existing.assigned_to;
+    } catch (_) { /* ignore */ }
+
+    const preferred = byName || ptAssignee || managerId || (callMeta && callMeta.user_id);
+    let assigneeId = await this._fallbackAssigneeId(preferred);
+    const needsAssigneeTag = !byName && !ptAssignee && !(managerId || (callMeta && callMeta.user_id));
+
+    if (!assigneeId) {
+      console.warn('[CallAnalyzer] No assignee for follow-up task, call #' + callId);
+      return null;
+    }
+
+    const phone = (callMeta && (callMeta.client_number || callMeta.from_number || callMeta.caller_number)) || ar.contact_phone || '';
+    const company = ar.company_name || '';
+    const title = (ar.task_title
+      || (ar.summary ? String(ar.summary).slice(0, 120) : null)
+      || ('Поручение после звонка' + (company ? ': ' + company : ''))).slice(0, 200);
+
+    const nextSteps = Array.isArray(ar.next_steps) && ar.next_steps.length
+      ? ar.next_steps.map((s) => '• ' + s).join('\n')
+      : '';
+    const description = [
+      ar.summary || null,
+      phone ? 'Телефон: ' + phone : null,
+      company ? 'Клиент: ' + company : null,
+      ar.contact_person ? 'Контакт: ' + ar.contact_person : null,
+      nextSteps || null,
+      'Звонок #' + callId,
+      'Ссылка: #/telephony?call=' + callId
+    ].filter(Boolean).join('\n');
+
+    let deadline = null;
+    if (ar.task_due_hint && /час|сегодня|срочно/i.test(ar.task_due_hint)) {
+      deadline = new Date(Date.now() + 4 * 60 * 60 * 1000);
+    } else if (ar.urgency === 'critical' || ar.urgency === 'high') {
+      deadline = new Date(Date.now() + 24 * 60 * 60 * 1000);
+    } else {
+      deadline = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000);
+    }
+
+    const tags = ['звонок'];
+    if (needsAssigneeTag) tags.push('нужен_исполнитель');
+
+    const priority = this._urgencyToPriority(ar.urgency);
+
+    try {
+      const task = await db.query(
+        `INSERT INTO tasks (
+           title, description, assignee_id, creator_id, deadline, priority, status, tags, task_kind, created_at, updated_at
+         ) VALUES ($1, $2, $3, $4, $5, $6, 'new', $7, 'directive', NOW(), NOW())
+         RETURNING id`,
+        [
+          title,
+          description,
+          assigneeId,
+          managerId || assigneeId,
+          deadline,
+          priority,
+          JSON.stringify(tags)
+        ]
+      );
+      const taskId = task.rows[0].id;
+      await db.query(
+        'UPDATE call_history SET task_id = $1, updated_at = NOW() WHERE id = $2',
+        [taskId, callId]
+      );
+      console.log('[CallAnalyzer] Follow-up task #' + taskId + ' from call #' + callId + ' → user ' + assigneeId);
+      return { taskId, assigneeId, needsAssigneeTag };
+    } catch (err) {
+      console.error('[CallAnalyzer] Failed to create follow-up task:', err.message);
       return null;
     }
   }

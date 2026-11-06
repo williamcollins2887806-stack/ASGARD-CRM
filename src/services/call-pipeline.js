@@ -42,10 +42,9 @@ class CallPipeline {
     jobQueue.register('download_recording', async (job) => {
       const { rows } = await self.db.query('SELECT * FROM call_history WHERE id = $1', [job.call_id]);
       if (!rows.length) return;
-      await self._downloadRecording(rows[0]);
-      // Chain: enqueue transcription after download
+      await self._downloadRecording(rows[0], { throwOnError: true });
       const updated = (await self.db.query('SELECT * FROM call_history WHERE id = $1', [job.call_id])).rows[0];
-      if (updated && updated.record_path && updated.transcript_status === 'none') {
+      if (updated && updated.record_path && (updated.transcript_status === 'none' || updated.transcript_status === 'error')) {
         await jobQueue.enqueue('transcribe', job.call_id);
       }
     });
@@ -53,10 +52,9 @@ class CallPipeline {
     jobQueue.register('transcribe', async (job) => {
       const { rows } = await self.db.query('SELECT * FROM call_history WHERE id = $1', [job.call_id]);
       if (!rows.length) return;
-      await self._transcribe(rows[0]);
-      // Chain: enqueue analysis after transcription
+      await self._transcribe(rows[0], { throwOnError: true });
       const updated = (await self.db.query('SELECT * FROM call_history WHERE id = $1', [job.call_id])).rows[0];
-      if (updated && updated.transcript && updated.transcript_status === 'done' && !updated.ai_summary) {
+      if (updated && updated.transcript && updated.transcript_status === 'done' && self._needsAnalyze(updated)) {
         await jobQueue.enqueue('analyze', job.call_id);
       }
     });
@@ -64,8 +62,20 @@ class CallPipeline {
     jobQueue.register('analyze', async (job) => {
       const { rows } = await self.db.query('SELECT * FROM call_history WHERE id = $1', [job.call_id]);
       if (!rows.length) return;
-      await self._aiAnalyze(rows[0]);
+      await self._aiAnalyze(rows[0], { throwOnError: true });
     });
+  }
+
+  /** Нужен ли AI-анализ: нет валидного результата или помечен retryable. */
+  _needsAnalyze(call) {
+    if (!call) return false;
+    const st = call.ai_analysis_status;
+    if (st === 'done' || st === 'skipped' || st === 'error_final') return false;
+    if (st === 'pending' || st === 'error_retryable') return true;
+    // legacy: пустой summary или старая запись ошибки
+    if (!call.ai_summary) return true;
+    if (/^Ошибка ИИ-анализа:/i.test(String(call.ai_summary))) return true;
+    return false;
   }
 
   /**
@@ -83,34 +93,31 @@ class CallPipeline {
     if (this.jobQueue) {
       if (call.recording_id && !call.record_path) {
         await this.jobQueue.enqueue('download_recording', callHistoryId, { recording_id: call.recording_id });
-      } else if (call.record_path && call.transcript_status === 'none') {
+      } else if (call.record_path && (call.transcript_status === 'none' || call.transcript_status === 'error')) {
         await this.jobQueue.enqueue('transcribe', callHistoryId);
-      } else if (call.transcript && call.transcript_status === 'done' && !call.ai_summary) {
+      } else if (call.transcript && call.transcript_status === 'done' && this._needsAnalyze(call)) {
         await this.jobQueue.enqueue('analyze', callHistoryId);
       }
       return;
     }
 
     // Fallback: direct processing (original behavior)
-    // Шаг 1: Скачиваем запись
     if (call.recording_id && !call.record_path) {
       await this._downloadRecording(call);
     }
 
-    // Шаг 2: Транскрибируем
     const updatedCall = (await this.db.query('SELECT * FROM call_history WHERE id = $1', [callHistoryId])).rows[0];
-    if (updatedCall.record_path && updatedCall.transcript_status === 'none') {
+    if (updatedCall.record_path && (updatedCall.transcript_status === 'none' || updatedCall.transcript_status === 'error')) {
       await this._transcribe(updatedCall);
     }
 
-    // Шаг 3: ИИ-анализ
     const finalCall = (await this.db.query('SELECT * FROM call_history WHERE id = $1', [callHistoryId])).rows[0];
-    if (finalCall.transcript && finalCall.transcript_status === 'done' && !finalCall.ai_summary) {
+    if (finalCall.transcript && finalCall.transcript_status === 'done' && this._needsAnalyze(finalCall)) {
       await this._aiAnalyze(finalCall);
     }
   }
 
-  async _downloadRecording(call) {
+  async _downloadRecording(call, opts = {}) {
     if (!this.mango.isConfigured()) return;
 
     try {
@@ -118,7 +125,6 @@ class CallPipeline {
 
       const { buffer, contentType } = await this.mango.downloadRecording(call.recording_id);
 
-      // Определяем расширение
       const ext = contentType.includes('mp3') ? 'mp3' : contentType.includes('wav') ? 'wav' : 'mp3';
       const dateDir = new Date(call.created_at).toISOString().slice(0, 7);
       const dir = path.resolve(this.recordStorage, dateDir);
@@ -136,10 +142,11 @@ class CallPipeline {
       console.log(`[CallPipeline] Recording saved: ${filePath} (${buffer.length} bytes)`);
     } catch (err) {
       console.error(`[CallPipeline] Recording download failed for ${call.recording_id}:`, err.message);
+      if (opts.throwOnError) throw err;
     }
   }
 
-  async _transcribe(call) {
+  async _transcribe(call, opts = {}) {
     // Emulation gate: skip paid SpeechKit, inject stub transcript
     if (process.env.TELEPHONY_EMU_MOCK === '1') {
       const stubText =
@@ -219,9 +226,14 @@ class CallPipeline {
     } catch (err) {
       console.error(`[CallPipeline] Transcription failed for call #${call.id}:`, err.message);
       await this.db.query(
-        'UPDATE call_history SET transcript_status = $1, updated_at = NOW() WHERE id = $2',
-        ['error', call.id]
+        'UPDATE call_history SET transcript_status = $1, ai_last_error = $2, ai_last_error_at = NOW(), updated_at = NOW() WHERE id = $3',
+        ['error', String(err.message || 'transcribe_failed').slice(0, 2000), call.id]
       );
+      if (opts.throwOnError) {
+        err.retryable = true;
+        err.code = err.code || 'provider_error';
+        throw err;
+      }
     }
   }
 
@@ -321,18 +333,24 @@ class CallPipeline {
     }
   }
 
-  async _aiAnalyze(call) {
+  async _aiAnalyze(call, opts = {}) {
     try {
       console.log(`[CallPipeline] AI analyzing call #${call.id}...`);
 
-      // Получаем имя менеджера
+      await this.db.query(
+        `UPDATE call_history SET
+           ai_analysis_status = 'pending',
+           updated_at = NOW()
+         WHERE id = $1`,
+        [call.id]
+      );
+
       let managerName = null;
       if (call.user_id) {
         const mgr = await this.db.query('SELECT name FROM users WHERE id = $1', [call.user_id]);
         if (mgr.rows.length) managerName = mgr.rows[0].name;
       }
 
-      // История обращений клиента: чтобы второй звонок не выглядел новой заявкой.
       const clientHistory = await this._clientHistoryForCall(call);
 
       const analysis = await this.analyzer.analyze(call.transcript, {
@@ -344,8 +362,8 @@ class CallPipeline {
         client_history: clientHistory
       });
 
-      // Сохраняем результат анализа
       const qualityScore = analysis.quality_score != null ? analysis.quality_score : null;
+      const status = analysis._skipped ? 'skipped' : 'done';
 
       await this.db.query(
         `UPDATE call_history SET
@@ -354,38 +372,99 @@ class CallPipeline {
           ai_lead_data = $3,
           ai_sentiment = $4,
           ai_quality_score = $5,
+          ai_analysis_status = $6,
+          ai_last_error = NULL,
+          ai_last_error_at = NULL,
           updated_at = NOW()
-        WHERE id = $6`,
+        WHERE id = $7`,
         [
           analysis.summary,
           analysis.is_target,
           JSON.stringify(analysis),
           analysis.sentiment,
           qualityScore,
+          status,
           call.id
         ]
       );
 
-      console.log(`[CallPipeline] AI analysis done: target=${analysis.is_target}, sentiment=${analysis.sentiment}, quality=${qualityScore}`);
+      const outcome = analysis.outcome_kind || 'none';
+      console.log(`[CallPipeline] AI analysis done: outcome=${outcome}, target=${analysis.is_target}, quality=${qualityScore}`);
 
-      // Черновик в маркетплейс (pre_tender), не в сагу tenders.
-      if (analysis.is_target && !call.pre_tender_id && !call.lead_id) {
-        const settings = await this._getSettings();
-        if (settings.ai_enabled && settings.auto_analyze) {
-          const ptId = await this.analyzer.createDraftLead(analysis, call.id, call.user_id);
-          if (ptId && this.notify && call.user_id) {
-            await this.notify(this.db, {
-              user_id: call.user_id,
-              title: 'Звонок обработан',
-              message: `Заявка #${ptId} из звонка в маркетплейсе. Проверьте данные.`,
-              type: 'telephony',
-              link: `#/director-inbox?id=${ptId}`
-            });
+      if (analysis._skipped) return;
+
+      const settings = await this._getSettings();
+      const autoOk = settings.ai_enabled !== false && settings.auto_analyze !== false;
+      // Уже есть заявка/задача — только summary (канон §B11)
+      const alreadyLinked = !!(call.pre_tender_id || call.lead_id || call.task_id);
+
+      if (!autoOk || alreadyLinked) return;
+
+      if (outcome === 'lead') {
+        const ptId = await this.analyzer.createDraftLead(analysis, call.id, call.user_id);
+        if (ptId && this.notify && call.user_id) {
+          await this.notify(this.db, {
+            user_id: call.user_id,
+            title: 'Звонок обработан',
+            message: `Заявка #${ptId} из звонка в маркетплейсе. Проверьте данные.`,
+            type: 'telephony',
+            link: `#/director-inbox?id=${ptId}`
+          });
+        }
+      } else if (outcome === 'task') {
+        const created = await this.analyzer.createFollowupTask(analysis, call.id, call.user_id);
+        if (created && created.taskId && this.notify) {
+          await this.notify(this.db, {
+            user_id: created.assigneeId,
+            title: 'Поручение из звонка',
+            message: (analysis.task_title || analysis.summary || 'Новая задача').slice(0, 200),
+            type: 'telephony',
+            link: `#/tasks?id=${created.taskId}`
+          });
+          if (created.needsAssigneeTag) {
+            const directors = await this.db.query(
+              "SELECT id FROM users WHERE role IN ('ADMIN','DIRECTOR_GEN','DIRECTOR_COMM') AND is_active = true"
+            );
+            for (const d of directors.rows) {
+              await this.notify(this.db, {
+                user_id: d.id,
+                title: 'Задача из звонка без ясного исполнителя',
+                message: `Задача #${created.taskId} по звонку #${call.id} — нужен исполнитель.`,
+                type: 'telephony',
+                link: `#/tasks?id=${created.taskId}`
+              });
+            }
           }
         }
       }
     } catch (err) {
       console.error(`[CallPipeline] AI analysis failed for call #${call.id}:`, err.message);
+      const retryable = err.retryable !== false && err.code !== 'auth' && err.code !== 'bad_request';
+      const contentFail = err.code === 'json_parse_error';
+      let attempts = Number(call.ai_attempts || 0);
+      if (contentFail) attempts += 1;
+      let status = 'error_retryable';
+      if (!retryable) status = 'error_final';
+      else if (contentFail && attempts >= 3) status = 'error_final';
+
+      try {
+        await this.db.query(
+          `UPDATE call_history SET
+             ai_analysis_status = $1,
+             ai_last_error = $2,
+             ai_last_error_at = NOW(),
+             ai_attempts = $3,
+             updated_at = NOW()
+           WHERE id = $4`,
+          [status, String(err.message || 'ai_failed').slice(0, 2000), attempts, call.id]
+        );
+      } catch (_) { /* ignore */ }
+
+      if (opts.throwOnError || retryable) {
+        err.retryable = retryable && status === 'error_retryable';
+        err.code = err.code || 'provider_error';
+        throw err;
+      }
     }
   }
 
@@ -410,23 +489,21 @@ class CallPipeline {
 
     console.log(`[CallPipeline] Processing local recording for call #${callHistoryId}: ${call.record_path}`);
 
-    // If jobQueue is available, enqueue transcription step
     if (this.jobQueue) {
-      if (call.transcript_status === 'none' || !call.transcript_status) {
+      if (call.transcript_status === 'none' || !call.transcript_status || call.transcript_status === 'error') {
         await this.jobQueue.enqueue('transcribe', callHistoryId);
+      } else if (call.transcript && call.transcript_status === 'done' && this._needsAnalyze(call)) {
+        await this.jobQueue.enqueue('analyze', callHistoryId);
       }
       return;
     }
 
-    // Fallback: direct processing
-    // Шаг 1: Транскрипция
-    if (call.transcript_status === 'none' || !call.transcript_status) {
+    if (call.transcript_status === 'none' || !call.transcript_status || call.transcript_status === 'error') {
       await this._transcribe(call);
     }
 
-    // Шаг 2: AI-анализ
     const updated = (await this.db.query('SELECT * FROM call_history WHERE id = $1', [callHistoryId])).rows[0];
-    if (updated && updated.transcript && updated.transcript_status === 'done' && !updated.ai_summary) {
+    if (updated && updated.transcript && updated.transcript_status === 'done' && this._needsAnalyze(updated)) {
       await this._aiAnalyze(updated);
     }
   }

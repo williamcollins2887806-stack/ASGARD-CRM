@@ -61,9 +61,10 @@ function getCallAnalysisPrompt(callData) {
 ${lines}
 
 Клиент уже в работе. Если текущий разговор — уточнение, продолжение или вопрос
-по этой же заявке, то is_target=true, но classification должен быть repeat_order,
+по этой же заявке, то is_target=true, classification=repeat_order,
 и в summary НЕ описывай объект заново: начни с «Продолжение обращения #${hist[0].id}:».
-Новой заявки по этому клиенту не создаётся — звонок дописывается в существующую.`;
+Если продолжают коммерцию / детали объекта — outcome_kind="lead" (CRM допишет в ту же заявку).
+Если «узнаю и скажу» по уже открытой заявке — outcome_kind="task".`;
   }
 
   return `
@@ -124,33 +125,37 @@ ${knownClientBlock}${historyBlock}
 никакого текста до или после JSON. Только валидный JSON-объект.
 
 ================================================================================
-СТРУКТУРА ОТВЕТА — 23 ПОЛЯ
+СТРУКТУРА ОТВЕТА — 27 ПОЛЕЙ
 ================================================================================
 
 {
-  "company_name":       "string | null",
-  "contact_person":     "string | null",
-  "contact_phone":      "string | null",
-  "contact_email":      "string | null",
-  "object_description": "string | null",
-  "work_type":          "string (enum) | null",
-  "equipment_type":     "string (enum) | null",
-  "equipment_count":    "number | null",
-  "urgency":            "string (enum) | null",
-  "estimated_volume":   "string | null",
-  "location":           "string | null",
-  "access_conditions":  "string | null",
-  "desired_timeline":   "string | null",
-  "budget_mentioned":   "boolean",
-  "source":             "string (enum) | null",
-  "summary":            "string",
-  "key_requirements":   "string[] | []",
-  "sentiment":          "string (enum)",
-  "is_target":          "boolean",
-  "classification":     "string (enum)",
-  "next_steps":         "string[]",
-  "quality_score":      "number (1-10)",
-  "quality_notes":      "string"
+  "company_name":              "string | null",
+  "contact_person":            "string | null",
+  "contact_phone":             "string | null",
+  "contact_email":             "string | null",
+  "object_description":        "string | null",
+  "work_type":                 "string (enum) | null",
+  "equipment_type":            "string (enum) | null",
+  "equipment_count":           "number | null",
+  "urgency":                   "string (enum) | null",
+  "estimated_volume":          "string | null",
+  "location":                  "string | null",
+  "access_conditions":         "string | null",
+  "desired_timeline":          "string | null",
+  "budget_mentioned":          "boolean",
+  "source":                    "string (enum) | null",
+  "summary":                   "string",
+  "key_requirements":          "string[] | []",
+  "sentiment":                 "string (enum)",
+  "is_target":                 "boolean",
+  "classification":            "string (enum)",
+  "next_steps":                "string[]",
+  "quality_score":             "number (1-10)",
+  "quality_notes":             "string",
+  "outcome_kind":              "lead | task | none",
+  "suggested_assignee_name":   "string | null",
+  "task_title":                "string | null",
+  "task_due_hint":             "string | null"
 }
 ================================================================================
 ПОДРОБНОЕ ОПИСАНИЕ КАЖДОГО ПОЛЯ
@@ -315,6 +320,9 @@ ${knownClientBlock}${historyBlock}
 
 19. is_target (boolean)
     Является ли звонок целевым — реальным деловым обращением.
+    Согласованность с outcome_kind:
+    - outcome_kind = "lead" или "task" → is_target = true
+    - outcome_kind = "none" → is_target = false
 
     ЦЕЛЕВЫЕ звонки (is_target = true):
     - Клиент интересуется услугами компании
@@ -331,6 +339,44 @@ ${knownClientBlock}${historyBlock}
     - Личные звонки сотрудникам
     - Предложение услуг, не связанных с деятельностью компании
     - Автоматические обзвоны, роботы
+
+19a. outcome_kind (enum) — ОБЯЗАТЕЛЬНОЕ поле, куда CRM положит результат
+    Допустимые значения: "lead" | "task" | "none"
+
+    "lead" — ЗАЯВКА В МАРКЕТПЛЕЙС (коммерция):
+    - Клиент назвал компанию и просит цену / КП / объём работ
+    - «Нужна промывка трубы», «пришлите коммерческое», «сколько стоит выезд»
+    - Жалоба/гарантия, если просят выезд, работы или КП
+    - СМЕШАННЫЙ кейс: просят КП/цену И обещали «перезвоним с цифрой» → всё равно "lead"
+      (перезвон — работа по заявке, отдельную задачу НЕ создаём)
+
+    "task" — ПОРУЧЕНИЕ В «МОИ ЗАДАЧИ» (вопрос в звонке НЕ закрыт):
+    - «Узнаю и перезвоню», «уточню у склада и скажу», «подскажу позже»
+    - Нужно что-то выяснить / передать коллеге / перезвонить с ответом
+    - Информационный запрос, где следующее действие — у нас, без новой коммерции
+    - Жалоба/гарантия, если «разберёмся и ответим», без запроса КП/выезда
+
+    "none" — ничего не создавать (только summary):
+    - Нецелевой звонок (spam, wrong_number, supplier_offer без интереса)
+    - Вопрос полностью закрыт в разговоре, действий после звонка нет
+    - Короткий/пустой разговор
+
+    Если клиент уже есть в ИСТОРИИ ОБРАЩЕНИЙ и звонок — уточнение по той же заявке:
+    - продолжение коммерции / новые детали по объекту → outcome_kind="lead"
+      (дедуп в CRM допишет в существующую заявку)
+    - «узнаю и скажу» по уже открытой заявке → outcome_kind="task"
+
+19b. suggested_assignee_name (string | null)
+    Кого попросили сделать действие / кому передать поручение (имя как в разговоре).
+    Заполняй при outcome_kind="task". Если не назвали — null (CRM возьмёт ответившего менеджера).
+
+19c. task_title (string | null)
+    Короткий заголовок поручения на русском (до 120 символов) при outcome_kind="task".
+    Пример: «Уточнить у склада срок поставки реагента и перезвонить Козлову».
+    При lead/none — null.
+
+19d. task_due_hint (string | null)
+    Когда сделать (как сказано): «сегодня», «до пятницы», «в течение часа». Иначе null.
 
 20. classification (enum)
     Классификация звонка. Допустимые значения:
@@ -476,7 +522,11 @@ ${knownClientBlock}${historyBlock}
   "classification": "spam",
   "next_steps": ["Добавить номер в чёрный список"],
   "quality_score": 6,
-  "quality_notes": "Менеджер корректно и быстро завершил нецелевой разговор."
+  "quality_notes": "Менеджер корректно и быстро завершил нецелевой разговор.",
+  "outcome_kind": "none",
+  "suggested_assignee_name": null,
+  "task_title": null,
+  "task_due_hint": null
 }
 
 ================================================================================
@@ -524,7 +574,11 @@ ${knownClientBlock}${historyBlock}
     "Запросить заказ пропуска на инженера у клиента"
   ],
   "quality_score": 9,
-  "quality_notes": "Отлично: менеджер представился, назвал компанию, задал уточняющие вопросы о мощности и сроках осмотра, договорился о конкретных следующих шагах (КП сегодня, инженер на следующей неделе). Единственный минус: не уточнил, как клиент узнал о компании."
+  "quality_notes": "Отлично: менеджер представился, назвал компанию, задал уточняющие вопросы о мощности и сроках осмотра, договорился о конкретных следующих шагах (КП сегодня, инженер на следующей неделе). Единственный минус: не уточнил, как клиент узнал о компании.",
+  "outcome_kind": "lead",
+  "suggested_assignee_name": null,
+  "task_title": null,
+  "task_due_hint": null
 }
 
 ================================================================================
@@ -532,13 +586,14 @@ ${knownClientBlock}${historyBlock}
 ================================================================================
 
 - Возвращай ТОЛЬКО JSON. Никакого текста вне JSON.
-- Все 23 поля обязательны в ответе. Не пропускай ни одного.
+- Все 27 полей обязательны в ответе. Не пропускай ни одного.
 - Enum-значения пиши точно как указано (маленькими латинскими буквами).
 - Массивы (key_requirements, next_steps) — всегда массивы, даже если пустые [].
 - budget_mentioned и is_target — строго boolean (true/false).
+- outcome_kind — строго "lead" | "task" | "none".
 - quality_score — целое число от 1 до 10.
 - Если транскрипт пустой или содержит только тишину/шум — классифицируй как
-  wrong_number с is_target=false и минимально заполненными полями.
+  wrong_number с is_target=false, outcome_kind="none" и минимально заполненными полями.
 `.trim();
 }
 

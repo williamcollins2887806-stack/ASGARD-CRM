@@ -89,6 +89,30 @@
   font-weight: 700;
 }
 
+.task-source-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.task-badge {
+  display: inline-flex;
+  align-items: center;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: var(--r-pill, 999px);
+  background: var(--inner-bg);
+  color: var(--t-3);
+  border: 1px solid var(--brd-2);
+}
+
+.task-badge--call { color: var(--info); }
+.task-badge--missed { color: var(--orange); }
+.task-badge--help { color: var(--ok, var(--info)); }
+.task-badge--assignee { color: var(--amber, var(--orange)); }
+
 .task-card-body {
   margin-top: 12px;
   padding-top: 12px;

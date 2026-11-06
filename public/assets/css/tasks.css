@@ -1,0 +1,269 @@
+/* ASGARD — страница «Мои задачи» */
+.tasks-page {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 360px);
+  gap: 20px;
+  min-height: 60vh;
+  align-items: start;
+}
+
+@media (max-width: 960px) {
+  .tasks-page {
+    grid-template-columns: 1fr;
+  }
+}
+
+.tasks-page .tasks-panel,
+.tasks-page .todo-panel {
+  background: var(--bg-card);
+  border: 1px solid var(--border, var(--line));
+  border-radius: var(--radius-lg, 14px);
+  padding: 18px 18px 16px;
+  box-shadow: var(--shadow-sm, 0 1px 2px rgba(0, 0, 0, 0.04));
+}
+
+.tasks-page .tasks-panel-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.tasks-page .tasks-panel-head h3,
+.tasks-page .todo-panel h3 {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  color: var(--t1);
+}
+
+.tasks-page .tasks-empty {
+  text-align: center;
+  padding: 36px 16px;
+  color: var(--dim, var(--t2));
+  border: 1px dashed var(--border, var(--line));
+  border-radius: var(--radius-md, 10px);
+  background: var(--bg-muted, transparent);
+}
+
+.tasks-page .tasks-empty strong {
+  display: block;
+  color: var(--t1);
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+
+.tasks-page .task-card {
+  border-left: 3px solid var(--info);
+  background: var(--bg-elevated, var(--bg-card));
+  padding: 14px 15px;
+  border-radius: var(--radius-md, 10px);
+  margin-bottom: 10px;
+  cursor: pointer;
+  border: 1px solid var(--border, var(--line));
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.12s ease;
+}
+
+.tasks-page .task-card:hover {
+  border-color: var(--border-strong, var(--info));
+  box-shadow: var(--shadow-sm, 0 4px 14px rgba(0, 0, 0, 0.06));
+  transform: translateY(-1px);
+}
+
+.tasks-page .task-card.priority-urgent { border-left-color: var(--err-t, var(--err)); }
+.tasks-page .task-card.priority-high { border-left-color: var(--orange); }
+.tasks-page .task-card.priority-normal { border-left-color: var(--info); }
+.tasks-page .task-card.priority-low { border-left-color: var(--t2, var(--dim)); }
+
+.tasks-page .task-card-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.tasks-page .task-card-title {
+  font-weight: 650;
+  font-size: 0.98rem;
+  line-height: 1.35;
+  color: var(--t1);
+}
+
+.tasks-page .task-card-meta {
+  font-size: 0.82rem;
+  color: var(--dim, var(--t2));
+  margin-top: 5px;
+  line-height: 1.4;
+}
+
+.tasks-page .task-card-body {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border, var(--line));
+  color: var(--t2, var(--t1));
+  font-size: 0.92rem;
+  line-height: 1.5;
+}
+
+.tasks-page .task-card-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+  flex-wrap: wrap;
+}
+
+.tasks-page .task-source-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.tasks-page .task-badge {
+  display: inline-flex;
+  align-items: center;
+  font-size: 0.7rem;
+  font-weight: 650;
+  letter-spacing: 0.02em;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: rgba(127, 127, 127, 0.1);
+  color: var(--t2);
+  border: 1px solid var(--border, var(--line));
+}
+
+.tasks-page .task-badge--call {
+  color: var(--info);
+  background: rgba(59, 130, 246, 0.1);
+  border-color: rgba(59, 130, 246, 0.28);
+}
+
+.tasks-page .task-badge--missed {
+  color: var(--orange);
+  background: rgba(249, 115, 22, 0.1);
+  border-color: rgba(249, 115, 22, 0.28);
+}
+
+.tasks-page .task-badge--help {
+  color: var(--ok-t, var(--green));
+  background: rgba(34, 197, 94, 0.1);
+  border-color: rgba(34, 197, 94, 0.28);
+}
+
+.tasks-page .task-badge--assignee {
+  color: var(--amber, #d97706);
+  background: rgba(245, 158, 11, 0.12);
+  border-color: rgba(245, 158, 11, 0.3);
+}
+
+.tasks-page .todo-panel {
+  position: sticky;
+  top: 20px;
+}
+
+.tasks-page .todo-add {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.tasks-page .todo-list {
+  max-height: 60vh;
+  overflow-y: auto;
+  padding-right: 2px;
+}
+
+.tasks-page .todo-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 2px;
+  border-bottom: 1px solid var(--border, var(--line));
+}
+
+.tasks-page .todo-item:last-child {
+  border-bottom: none;
+}
+
+.tasks-page .todo-item.is-done {
+  opacity: 0.55;
+}
+
+.tasks-page .todo-item span {
+  font-size: 0.92rem;
+  line-height: 1.35;
+}
+
+/* Модалки */
+.tasks-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: rgba(8, 12, 20, 0.48);
+  backdrop-filter: blur(2px);
+}
+
+.tasks-modal-overlay.is-open {
+  display: flex;
+}
+
+.tasks-modal-overlay .modal {
+  max-width: 520px;
+  width: 100%;
+  max-height: min(90vh, 720px);
+  overflow: auto;
+  background: var(--bg-card);
+  border-radius: var(--radius-lg, 14px);
+  border: 1px solid var(--border, var(--line));
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.28);
+}
+
+.tasks-modal-overlay .modal-header,
+.tasks-modal-overlay .modal-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 18px;
+}
+
+.tasks-modal-overlay .modal-footer {
+  justify-content: flex-end;
+  border-top: 1px solid var(--border, var(--line));
+}
+
+.tasks-modal-overlay .modal-header {
+  border-bottom: 1px solid var(--border, var(--line));
+}
+
+.tasks-modal-overlay .modal-header h3 {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 650;
+  color: var(--t1);
+}
+
+.tasks-modal-overlay .modal-body {
+  padding: 16px 18px;
+}
+
+.tasks-modal-overlay .field label {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 0.82rem;
+  color: var(--dim, var(--t2));
+  font-weight: 550;
+}
+
+.tasks-page .task-card.is-highlight {
+  outline: 2px solid var(--info);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.12);
+}

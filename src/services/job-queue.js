@@ -7,42 +7,61 @@
 
 class TelephonyJobQueue {
   constructor(db, logger) {
-    this.db = db;        // fastify.db (pg pool wrapper)
+    this.db = db;
     this.logger = logger || console;
     this._running = false;
     this._pollInterval = null;
-    this._pollMs = 5000; // poll every 5 seconds
+    this._pollMs = 5000;
     this._handlers = {};
   }
 
-  // Register a handler for a job type
   register(jobType, handler) {
     this._handlers[jobType] = handler;
   }
 
-  // Add a job to the queue
   async enqueue(jobType, callId, payload = {}, scheduledAt = null) {
-    const result = await this.db.query(
-      `INSERT INTO telephony_jobs (job_type, call_id, payload, scheduled_at)
-       VALUES ($1, $2, $3, COALESCE($4, NOW()))
-       RETURNING id`,
-      [jobType, callId, JSON.stringify(payload), scheduledAt]
-    );
-    this.logger.info(`[JobQueue] Enqueued ${jobType} for call ${callId}, job #${result.rows[0].id}`);
-    return result.rows[0].id;
+    try {
+      // Не плодим второй активный job того же типа на звонок (uq_telephony_jobs_active_per_call_type).
+      if (callId != null) {
+        const existing = await this.db.query(
+          `SELECT id FROM telephony_jobs
+            WHERE call_id = $1 AND job_type = $2
+              AND status IN ('pending', 'processing', 'retry')
+            LIMIT 1`,
+          [callId, jobType]
+        );
+        if (existing.rows.length) {
+          this.logger.info(`[JobQueue] Skip enqueue ${jobType} for call ${callId}: already active #${existing.rows[0].id}`);
+          return existing.rows[0].id;
+        }
+      }
+
+      const result = await this.db.query(
+        `INSERT INTO telephony_jobs (job_type, call_id, payload, scheduled_at)
+         VALUES ($1, $2, $3, COALESCE($4, NOW()))
+         RETURNING id`,
+        [jobType, callId, JSON.stringify(payload), scheduledAt]
+      );
+      this.logger.info(`[JobQueue] Enqueued ${jobType} for call ${callId}, job #${result.rows[0].id}`);
+      return result.rows[0].id;
+    } catch (err) {
+      // unique violation — другой воркер успел вставить
+      if (err && (err.code === '23505' || /unique/i.test(err.message || ''))) {
+        this.logger.info(`[JobQueue] Enqueue race for ${jobType} call ${callId}: ${err.message}`);
+        return null;
+      }
+      throw err;
+    }
   }
 
-  // Start the worker loop
   start() {
     if (this._running) return;
     this._running = true;
     this.logger.info('[JobQueue] Worker started');
     this._pollInterval = setInterval(() => this._processNext(), this._pollMs);
-    // Process immediately on start
     this._processNext();
   }
 
-  // Stop the worker
   stop() {
     this._running = false;
     if (this._pollInterval) {
@@ -52,11 +71,37 @@ class TelephonyJobQueue {
     this.logger.info('[JobQueue] Worker stopped');
   }
 
-  // Process next pending job
+  _retryDelaySeconds(job, err) {
+    const code = String((err && err.code) || '').toLowerCase();
+    const msg = String((err && err.message) || '');
+    if (code === 'insufficient_funds' || /недостаточно средств|insufficient.*(funds|balance|credit)/i.test(msg)) {
+      // Деньги кончились — не жечь attempts каждые 10с; ждём 15–60 мин
+      const n = Math.min(Number(job.attempts) || 1, 4);
+      return [900, 1800, 2700, 3600][n - 1] || 3600;
+    }
+    if (code === 'rate_limit' || /rate.?limit/i.test(msg)) {
+      return Math.min(Math.pow(2, job.attempts) * 30, 600);
+    }
+    // default exponential: 10s, 20s, 40s…
+    return Math.pow(2, job.attempts) * 10;
+  }
+
+  _shouldCountAttempt(err) {
+    // Infra (нет денег / сеть) — не сжигать max_attempts как content
+    const code = String((err && err.code) || '').toLowerCase();
+    if (['insufficient_funds', 'rate_limit', 'timeout', 'network', 'provider_error', 'upstream_error', 'empty_response'].includes(code)) {
+      return false;
+    }
+    const msg = String((err && err.message) || '');
+    if (/недостаточно средств|insufficient|rate.?limit|timeout|ECONN|ETIMEDOUT|socket hang up/i.test(msg)) {
+      return false;
+    }
+    return true;
+  }
+
   async _processNext() {
     if (!this._running) return;
     try {
-      // Claim a job atomically (SELECT FOR UPDATE SKIP LOCKED)
       const result = await this.db.query(
         `UPDATE telephony_jobs
          SET status = 'processing', started_at = NOW(), attempts = attempts + 1
@@ -72,7 +117,7 @@ class TelephonyJobQueue {
          RETURNING *`
       );
 
-      if (!result.rows.length) return; // no jobs
+      if (!result.rows.length) return;
 
       const job = result.rows[0];
       const handler = this._handlers[job.job_type];
@@ -90,25 +135,40 @@ class TelephonyJobQueue {
         );
         this.logger.info(`[JobQueue] Job #${job.id} (${job.job_type}) completed`);
       } catch (err) {
-        const shouldRetry = job.attempts < job.max_attempts;
-        const newStatus = shouldRetry ? 'retry' : 'failed';
-        const retryDelay = Math.pow(2, job.attempts) * 10; // exponential backoff: 10s, 20s, 40s
+        const countAttempt = this._shouldCountAttempt(err);
+        if (!countAttempt) {
+          // откатить счётчик попыток за infra — ждём деньги/сеть
+          await this.db.query(
+            `UPDATE telephony_jobs SET attempts = GREATEST(attempts - 1, 0) WHERE id = $1`,
+            [job.id]
+          );
+          job.attempts = Math.max((job.attempts || 1) - 1, 0);
+        }
+
+        const effectiveAttempts = countAttempt ? job.attempts : job.attempts;
+        const shouldRetry = (countAttempt ? effectiveAttempts < job.max_attempts : true)
+          && err.retryable !== false;
+        // Потолок ожидания infra: 7 суток от создания job
+        let infraExpired = false;
+        if (!countAttempt && job.created_at) {
+          const ageH = (Date.now() - new Date(job.created_at).getTime()) / 3600000;
+          if (ageH > 168) infraExpired = true;
+        }
+        const newStatus = (!shouldRetry || infraExpired) ? 'failed' : 'retry';
+        const retryDelay = this._retryDelaySeconds(job, err);
 
         await this.db.query(
-          // D-308: $1 связан (SET status=$1 и CASE WHEN $1='retry'), поэтому без
-          // каста Postgres не может вывести тип: 42P08 «inconsistent types deduced
-          // for parameter $1» (text vs varchar). Задача молча не обновлялась.
           `UPDATE telephony_jobs
            SET status = $1::varchar, error = $2,
-               scheduled_at = CASE WHEN $1::text = 'retry' THEN NOW() + ($3 || ' seconds')::interval ELSE scheduled_at END
+               scheduled_at = CASE WHEN $1::text = 'retry' THEN NOW() + ($3 || ' seconds')::interval ELSE scheduled_at END,
+               completed_at = CASE WHEN $1::text = 'failed' THEN NOW() ELSE completed_at END
            WHERE id = $4`,
-          [newStatus, err.message, retryDelay, job.id]
+          [newStatus, err.message, String(retryDelay), job.id]
         );
 
         this.logger.error(`[JobQueue] Job #${job.id} (${job.job_type}) ${newStatus}: ${err.message}`);
       }
 
-      // Try to process more jobs immediately
       if (this._running) setImmediate(() => this._processNext());
     } catch (err) {
       this.logger.error('[JobQueue] Worker error: ' + err.message);
@@ -122,7 +182,6 @@ class TelephonyJobQueue {
     );
   }
 
-  // Get queue stats (for monitoring)
   async getStats() {
     const result = await this.db.query(
       `SELECT status, COUNT(*) as count FROM telephony_jobs GROUP BY status`
