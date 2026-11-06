@@ -800,6 +800,28 @@ window.AsgardRpCalcModal = (function () {
     const foulingMap = { light: 'лёгкие', medium: 'средние', heavy: 'тяжёлые' };
     const foulingCls = { light: 'is-light', medium: 'is-medium', heavy: 'is-heavy' };
     const srcMap = { norm: 'справочник', expert: 'оценка', analog: 'аналог', history: 'история' };
+
+    // Откуда взят ОБЪЁМ работ (требование РП 07.11.2026): РП должен видеть
+    // доказательство — из ведомости заказчика цифра, из ТЗ, по паспорту
+    // оборудования или досчитана по геометрии.
+    const volSrcMap = {
+      vor: 'из ВОР',
+      tz: 'из ТЗ',
+      passport: 'по паспорту',
+      'passport-web': 'паспорт из сети',
+      history: 'из истории',
+      geometry: 'по геометрии',
+      rp: 'введено РП'
+    };
+    const volSrcCls = {
+      vor: ' is-vor',
+      tz: ' is-tz',
+      passport: ' is-passport',
+      'passport-web': ' is-passport',
+      history: ' is-history',
+      geometry: ' is-geometry',
+      rp: ' is-rp'
+    };
     const hasPlan = calc.length > 0;
 
     // Позиции — карточками, как в анализе: на 9 колонок в модалке не читается.
@@ -829,6 +851,19 @@ window.AsgardRpCalcModal = (function () {
           (src ? '<span class="rp-dv-source' + srcCls + '" title="' + esc(c.explain || '') + '">' +
             esc(src) + '</span>' : '') +
         '</div>' +
+        // Откуда взят объём — отдельной строкой с доказательством.
+        (p.volume_source && p.volume_source !== 'none'
+          ? '<div class="rp-dv-volsrc' + (volSrcCls[p.volume_source] || '') + '">' +
+              '<span class="rp-dv-volsrc__badge">' +
+                esc(volSrcMap[p.volume_source] || p.volume_source) + '</span>' +
+              (p.volume_proof
+                ? '<span class="rp-dv-volsrc__proof">' + esc(p.volume_proof) + '</span>'
+                : '') +
+            '</div>'
+          : (p.confidence === 'low'
+            ? '<div class="rp-dv-volsrc is-low"><span class="rp-dv-volsrc__badge">объём не подтверждён</span>' +
+              '<span class="rp-dv-volsrc__proof">источник не указан — проверьте перед просчётом</span></div>'
+            : '')) +
         '<dl class="rp-calc-dv-card__grid">' +
           '<div><dt>Метод</dt><dd>' + esc(method || '—') + '</dd></div>' +
           '<div><dt>Отложения</dt><dd><span class="rp-dv-foul ' +

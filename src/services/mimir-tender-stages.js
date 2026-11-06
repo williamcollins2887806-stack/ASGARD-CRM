@@ -308,6 +308,113 @@ function isFinitePositive(v) {
 }
 
 /**
+ * Откуда взят объём позиции — доказательство для РП.
+ *
+ * Требование 07.11.2026: пользователь должен видеть, откуда цифра —
+ * из ВОР, из ТЗ, из паспорта оборудования или введена руками.
+ */
+const VOLUME_SOURCES = {
+  vor: 'Ведомость объёмов заказчика',
+  tz: 'Техническое задание',
+  passport: 'Паспорт оборудования',
+  'passport-web': 'Паспорт из открытых источников',
+  history: 'История по заказчику',
+  geometry: 'Досчёт по геометрии аппарата',
+  rp: 'Введено РП',
+  none: 'Источник не определён'
+};
+
+function normalizeVolumeSource(p) {
+  const o = p || {};
+  const explicit = String(o.volume_source || o.source || '').trim().toLowerCase();
+  if (VOLUME_SOURCES[explicit]) return explicit;
+
+  // Паспортное обогащение ставит passport — оно важнее догадок модели.
+  if (o.passport && o.passport.brand) {
+    return o.passport.source === 'web' ? 'passport-web' : 'passport';
+  }
+
+  // Модель указала документ — определяем по его имени.
+  const doc = String((o.source_ref && (o.source_ref.document || o.source_ref)) || '');
+  if (doc) {
+    const d = doc.toLowerCase();
+    if (/ведомост|дефектн|вор\b|объ[её]м/.test(d)) return 'vor';
+    if (/техническ|тех.?зада|тз\b|задан/.test(d)) return 'tz';
+    if (/истори|прошл|архив/.test(d)) return 'history';
+  }
+
+  // Есть фрагмент цитаты — значит взято из документа, но из какого не ясно.
+  if (o.source_ref && o.source_ref.fragment) return 'tz';
+
+  // Объём введён РП (позиция помечена как правленая).
+  if (o.tech_status === 'rp') return 'rp';
+
+  return 'none';
+}
+
+/**
+ * Человеческое доказательство: что именно подтверждает объём.
+ * Это то, что РП читает в карточке, а не сырой JSON.
+ */
+function buildVolumeProof(p) {
+  const o = p || {};
+  const src = normalizeVolumeSource(o);
+  const parts = [];
+
+  if (src === 'passport' || src === 'passport-web') {
+    const brand = (o.passport && o.passport.brand) || (o.conversion_params && o.conversion_params.brand);
+    const note = (o.passport && o.passport.note) || '';
+    if (brand) parts.push(`марка ${brand}`);
+    if (note) parts.push(note);
+    if (o.passport && o.passport.source === 'web') parts.push('источник: открытые данные');
+  }
+
+  if (o.source_ref) {
+    const doc = o.source_ref.document;
+    const frag = o.source_ref.fragment;
+    if (doc) parts.push(`документ: ${String(doc).slice(0, 80)}`);
+    if (frag) parts.push(`цитата: «${String(frag).slice(0, 160)}»`);
+  }
+
+  // Параметры пересчёта — тоже доказательство: по ним считался объём.
+  // Модель присылает их как в корне позиции, так и в conversion_params,
+  // поэтому смотрим оба места (иначе доказательство теряло толщину).
+  const cp = Object.assign({}, o, o.conversion_params || {});
+  const conv = [];
+  if (cp.thickness_mm) conv.push(`толщина ${cp.thickness_mm} мм`);
+  if (cp.density_t_m3) conv.push(`плотность ${cp.density_t_m3} т/м³`);
+  if (cp.dn_mm) conv.push(`Ø${cp.dn_mm} мм`);
+  if (cp.length_m) conv.push(`длина ${cp.length_m} м`);
+  if (cp.area_per_plate_m2) conv.push(`площадь пластины ${cp.area_per_plate_m2} м²`);
+  if (conv.length) parts.push('пересчёт: ' + conv.join(', '));
+
+  if (o.measured_unit && o.measured_value) {
+    parts.push(`в документах: ${o.measured_value} ${o.measured_unit}`);
+  }
+
+  if (o.problem) parts.push(String(o.problem).slice(0, 200));
+
+  return parts.length ? parts.join(' · ') : null;
+}
+
+/** confidence: слово или число → слово. */
+function normalizeConfidence(v) {
+  if (v == null) return null;
+  const s = String(v).trim().toLowerCase();
+  if (['high', 'medium', 'low'].includes(s)) return s;
+  if (['высокая', 'высокий'].includes(s)) return 'high';
+  if (['средняя', 'средний'].includes(s)) return 'medium';
+  if (['низкая', 'низкий'].includes(s)) return 'low';
+  const n = Number(v);
+  if (Number.isFinite(n)) {
+    if (n >= 0.75) return 'high';
+    if (n >= 0.45) return 'medium';
+    return 'low';
+  }
+  return null;
+}
+
+/**
  * Нормализует позиции ДВ из ответа модели.
  * Правила:
  *   • объём > 0 и единица — обязательны, иначе позиция уходит в needs_input;
@@ -408,7 +515,24 @@ function normalizeDv(ai, catalog) {
       source_ref: p.source_ref && typeof p.source_ref === 'object'
         ? { document: p.source_ref.document || null, fragment: p.source_ref.fragment || null }
         : (p.source_ref ? { document: String(p.source_ref), fragment: null } : null),
-      confidence: Number.isFinite(Number(p.confidence)) ? Number(p.confidence) : null,
+
+      // ── Откуда взят объём (требование РП 07.11.2026) ───────────────────
+      // РП должен видеть доказательство: объём из ВОР, из ТЗ, по паспорту
+      // оборудования или досчитан самим РП. Без этого цифра не проверяема.
+      //   vor      — ведомость объёмов / дефектная ведомость заказчика;
+      //   tz       — объём прямо написан в техническом задании;
+      //   passport — паспортные данные марки (справочник или веб-поиск);
+      //   history  — из истории по этому заказчику;
+      //   geometry — досчёт по геометрии аппарата (S/(π·d·L));
+      //   rp       — ввёл РП вручную;
+      //   none     — источник не определён, требует проверки.
+      volume_source: normalizeVolumeSource(p),
+      volume_proof: buildVolumeProof(p),
+
+      // confidence приходит словом ('high'|'medium'|'low') или числом.
+      // Раньше строковое значение отбрасывалось в null, и РП не видел,
+      // что позиция посчитана по паспорту, а не по ВОР.
+      confidence: normalizeConfidence(p.confidence),
       approved: !!p.approved,
       rp_note: p.rp_note || null,
       needs_classification: problems.length > 0,

@@ -1033,6 +1033,44 @@ html[data-theme='light'] .rp-calc-approve-toggle input[type='checkbox']:checked 
   margin: 3px 0 0; font-size: 11.5px; line-height: 1.45; color: var(--t2);
 }
 .rp-calc-dv-card__ref { margin-top: 7px; font-size: 10.5px; color: var(--t3); }
+
+/* ── Откуда взят объём работ (требование РП 07.11.2026) ─────────────────────
+   РП должен видеть доказательство объёма: из ВОР заказчика, из ТЗ,
+   по паспорту оборудования или досчитан по геометрии.
+   Цветовая логика: зелёный — документ заказчика (надёжно),
+   синий — паспорт (проверить марку), жёлтый — досчёт (проверить обязательно). */
+.rp-dv-volsrc {
+  display: flex; align-items: baseline; gap: 7px; flex-wrap: wrap;
+  margin-top: 7px; padding: 5px 9px; border-radius: 8px;
+  background: rgba(255, 255, 255, 0.03);
+  border-left: 2px solid var(--t3);
+}
+.rp-dv-volsrc__badge {
+  font-size: 10px; font-weight: 700; letter-spacing: 0.02em;
+  text-transform: uppercase; white-space: nowrap;
+  color: var(--t3);
+}
+.rp-dv-volsrc__proof {
+  font-size: 10.5px; line-height: 1.45; color: var(--t3);
+  overflow-wrap: anywhere;
+}
+/* Документ заказчика — самый надёжный источник. */
+.rp-dv-volsrc.is-vor { border-left-color: #4ade80; }
+.rp-dv-volsrc.is-vor .rp-dv-volsrc__badge { color: #4ade80; }
+.rp-dv-volsrc.is-tz { border-left-color: #60a5fa; }
+.rp-dv-volsrc.is-tz .rp-dv-volsrc__badge { color: #60a5fa; }
+/* Паспорт: цифра верная, но требует подтверждения марки. */
+.rp-dv-volsrc.is-passport { border-left-color: var(--gold, #d4af37); }
+.rp-dv-volsrc.is-passport .rp-dv-volsrc__badge { color: var(--gold, #d4af37); }
+.rp-dv-volsrc.is-history { border-left-color: #a78bfa; }
+.rp-dv-volsrc.is-history .rp-dv-volsrc__badge { color: #a78bfa; }
+/* Досчёт по геометрии — проверить обязательно. */
+.rp-dv-volsrc.is-geometry,
+.rp-dv-volsrc.is-low { border-left-color: #fbbf24; }
+.rp-dv-volsrc.is-geometry .rp-dv-volsrc__badge,
+.rp-dv-volsrc.is-low .rp-dv-volsrc__badge { color: #fbbf24; }
+.rp-dv-volsrc.is-rp { border-left-color: #38bdf8; }
+.rp-dv-volsrc.is-rp .rp-dv-volsrc__badge { color: #38bdf8; }
 .rp-dv-source {
   display: inline-block; padding: 2px 8px; border-radius: 999px;
   font-size: 10px; font-weight: 700; flex: 0 0 auto;

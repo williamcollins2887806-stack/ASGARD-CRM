@@ -185,6 +185,9 @@ async function enrichPosition(pos, opts) {
     const out = Object.assign({}, o, {
       conversion_params: Object.assign({}, o.conversion_params || {}),
       confidence: 'low',
+      // Источник объёма — паспорт. По этому полю РП видит, что цифра
+      // не из ведомости заказчика, а выведена из марки аппарата.
+      volume_source: eq.source === 'web' ? 'passport-web' : 'passport',
       passport: { brand: eq.brand, source: eq.source, note: eq.note }
     });
 
