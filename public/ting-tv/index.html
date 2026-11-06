@@ -370,13 +370,20 @@
         if (LK && typeof LK.createLocalVideoTrack === 'function') {
           var opts = {};
           if (state.camDeviceId) opts.deviceId = state.camDeviceId;
+          try {
+            if (LK.VideoPresets && LK.VideoPresets.h720) opts.resolution = LK.VideoPresets.h720.resolution;
+          } catch (_) { /* */ }
           var track = await withTimeout(LK.createLocalVideoTrack(opts), 12000, 'Timeout starting video source');
           var pubOpts = {};
           try { if (LK.Track && LK.Track.Source) pubOpts.source = LK.Track.Source.Camera; } catch (_) { /* */ }
           await withTimeout(lkRoom.localParticipant.publishTrack(track, pubOpts), 15000, 'Timeout starting video source');
           return true;
         }
-        await withTimeout(lkRoom.localParticipant.setCameraEnabled(true), 15000, 'Timeout starting video source');
+        var camOpts = {};
+        try {
+          if (LK && LK.VideoPresets && LK.VideoPresets.h720) camOpts.resolution = LK.VideoPresets.h720.resolution;
+        } catch (_) { /* */ }
+        await withTimeout(lkRoom.localParticipant.setCameraEnabled(true, camOpts), 15000, 'Timeout starting video source');
         return true;
       } catch (e) {
         lastErr = e;
@@ -687,7 +694,20 @@
     startTimer();
     paintIcons();
 
-    var next = new LK.Room({ adaptiveStream: true, dynacast: true });
+    /* ТВ: большой экран → denser adaptive; publish h720 чтобы ноут мог взять HIGH-слой. */
+    var roomOpts = { adaptiveStream: { pixelDensity: 2 }, dynacast: true };
+    try {
+      if (LK.VideoPresets) {
+        var layers = [];
+        if (LK.VideoPresets.h180) layers.push(LK.VideoPresets.h180);
+        if (LK.VideoPresets.h360) layers.push(LK.VideoPresets.h360);
+        roomOpts.publishDefaults = {
+          videoSimulcastLayers: layers,
+          videoEncoding: (LK.VideoPresets.h720 && LK.VideoPresets.h720.encoding) || undefined
+        };
+      }
+    } catch (_) { /* */ }
+    var next = new LK.Room(roomOpts);
     state.room = next;
     var bump = function () { syncRemoteAudio(next); paintAll(); };
     next.on(LK.RoomEvent.TrackSubscribed, function (track) {

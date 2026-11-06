@@ -308,17 +308,22 @@ html, body.ting-tv {
 }
 .ttv-msg.ok { color: #8dffb0; }
 
-/* Room — full bleed, video is the hero */
+/* Room — video is the hero, but inset from TV overscan (3–5% edges get clipped) */
 .ttv-room {
-  position: fixed; inset: 0;
+  position: fixed;
+  top: max(20px, 2.2vh, env(safe-area-inset-top, 0px));
+  right: max(28px, 2.8vw, env(safe-area-inset-right, 0px));
+  bottom: max(28px, 3.2vh, env(safe-area-inset-bottom, 0px));
+  left: max(28px, 2.8vw, env(safe-area-inset-left, 0px));
   display: grid;
   grid-template-rows: auto 1fr auto;
   background: #050608;
+  border-radius: 8px;
+  overflow: hidden;
 }
 .ttv-room-top {
   display: flex; align-items: center; justify-content: space-between;
-  /* overscan: отступы от края, чтобы таймер/название не резались на ТВ */
-  padding: calc(16px + env(safe-area-inset-top, 0px)) calc(28px + env(safe-area-inset-right, 0px)) 8px calc(28px + env(safe-area-inset-left, 0px));
+  padding: 14px 20px 8px;
   z-index: 5;
 }
 .ttv-room-title { display: flex; align-items: center; gap: 14px; }
@@ -327,7 +332,7 @@ html, body.ting-tv {
 .ttv-stage-wrap {
   position: relative;
   min-height: 0;
-  padding: 8px 28px 12px;
+  padding: 6px 16px 8px;
 }
 .ttv-stage {
   height: 100%;
@@ -391,7 +396,8 @@ html, body.ting-tv {
 
 .ttv-dock {
   display: flex; justify-content: center;
-  padding: 10px 20px calc(clamp(20px, 3vh, 36px) + env(safe-area-inset-bottom, 0px));
+  /* низ панели часто режется overscan'ом ТВ — запас больше, чем сверху */
+  padding: 12px 20px max(36px, 4.2vh);
   z-index: 6;
 }
 .ttv-dock-inner {

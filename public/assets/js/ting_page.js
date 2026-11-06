@@ -95,6 +95,7 @@
     hideRemoteVideo: false,
     unreadChat: 0,
     myIdentity: null,
+    myRole: null,
     activeSpeakerId: null,
     swapPrimary: false,
     pinnedId: null,
@@ -375,8 +376,16 @@
     return d.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
   }
   function statusLabel(st) {
-    const m = { live: 'Идёт сейчас', scheduled: 'Запланирован', ended: 'Завершён', cancelled: 'Отменён' };
-    return m[st] || st || '—';
+    const m = {
+      open: 'Открыт',
+      live: 'Идёт сейчас',
+      scheduled: 'Запланирован',
+      ended: 'Завершён',
+      cancelled: 'Отменён',
+      draft: 'Черновик',
+      waiting: 'Ожидание'
+    };
+    return m[st] || 'Завершён';
   }
 
   function renderHub() {
@@ -411,7 +420,7 @@
             <span class="${missed ? 'missed' : ''}">${esc(statusLabel(st))}${metaBits ? ' · ' + esc(metaBits) : ''}</span>
           </div>
           <span class="ting-chip ${st === 'live' ? 'gold' : ''}">${st === 'live' || st === 'ended' || !r.thing_room_id && state.tab === 'ting' ? 'Тинг' : 'CRM'}</span>
-          ${slug ? `<button type="button" class="ting-btn ting-btn-primary ting-btn-compact" data-act="join" data-slug="${esc(slug)}">Войти</button>` : `<span class="ting-call-time">${esc(timeHm(when))}</span>`}
+          ${slug ? `<button type="button" class="ting-btn ${st === 'live' ? 'ting-btn-primary' : 'ting-btn-ghost'} ting-btn-compact" data-act="join" data-slug="${esc(slug)}">Войти</button>` : `<span class="ting-call-time">${esc(timeHm(when))}</span>`}
         </div>`;
       }).join('');
     });
@@ -779,11 +788,16 @@
     if (!state.peopleOpen) return '';
     const wait = (state.waiting || []).map(p =>
       `<div class="ting-list-item ting-people-row">
-        <span class="ting-people-av">${esc(initials(p.display_name || p.guest_name))}</span>
-        <span class="ting-people-meta"><strong>${esc(p.display_name || p.guest_name || 'Гость')}</strong>
-        <em class="ting-muted">зал ожидания</em></span>
-      <span class="ting-list-actions"><button type="button" class="ting-btn ting-btn-primary" data-act="admit" data-id="${p.id}">${esc(COPY.admit)}</button>
-      <button type="button" class="ting-btn ting-btn-ghost" data-act="reject" data-id="${p.id}">${esc(COPY.reject)}</button></span></div>`
+        <div class="ting-people-row-top">
+          <span class="ting-people-av">${esc(initials(p.display_name || p.guest_name))}</span>
+          <span class="ting-people-meta"><strong>${esc(p.display_name || p.guest_name || 'Гость')}</strong>
+          <em class="ting-muted">зал ожидания</em></span>
+        </div>
+        <span class="ting-list-actions">
+          <button type="button" class="ting-btn ting-btn-primary" data-act="admit" data-id="${p.id}">${esc(COPY.admit)}</button>
+          <button type="button" class="ting-btn ting-btn-ghost" data-act="reject" data-id="${p.id}">${esc(COPY.reject)}</button>
+        </span>
+      </div>`
     ).join('') || `<div class="ting-muted">${esc(COPY.waitingNone)}</div>`;
     const parts = (state.participants || []).map(p => {
       const label = p.label || p.display_name || p.identity || 'Участник';
@@ -803,27 +817,34 @@
         return x.isMuted !== true;
       }) : false;
       const handUp = !!(state.raisedHands && state.raisedHands[p.identity]);
-      return `<div class="ting-list-item ting-people-row${handUp ? ' hand-up' : ''}">
-        <span class="ting-people-av">${esc(initials(label))}</span>
-        <span class="ting-people-meta">
-          <strong>${esc(label)}${handUp ? ' ✋' : ''}</strong>
-          ${host ? '<span class="ting-host-chip">хост</span>' : ''}
-          ${p.job_title && !String(label).includes(p.job_title) ? `<em class="ting-muted">${esc(p.job_title)}</em>` : ''}
-        </span>
-        <span class="ting-people-status" title="Мик / камера">
-          <span class="${micOff ? 'off' : ''}">${svgMic(!!micOff)}</span>
-          <span class="${camOff ? 'off' : ''}">${svgCam(!!camOff)}</span>
-        </span>
-        ${p.role !== 'host' && state.isHost ? `<span class="ting-list-actions">
+      const actions = (p.role !== 'host' && state.isHost) ? `<span class="ting-list-actions">
           <button type="button" class="ting-icon-btn ting-icon-sm" data-act="mute-mic-one" data-id="${esc(p.identity)}" title="Выключить микрофон" aria-label="Выключить микрофон">${svgMic(false)}</button>
           <button type="button" class="ting-icon-btn ting-icon-sm" data-act="mute-cam-one" data-id="${esc(p.identity)}" title="Выключить камеру" aria-label="Выключить камеру">${svgCam(false)}</button>
           ${handUp ? `<button type="button" class="ting-icon-btn ting-icon-sm" data-act="lower-hand-one" data-id="${esc(p.identity)}" title="Опустить руку" aria-label="Опустить руку">✋↓</button>` : ''}
           ${p.role === 'member' ? `<button type="button" class="ting-icon-btn ting-icon-sm" data-act="make-cohost" data-id="${esc(p.identity)}" data-role="co_host" title="Назначить соорганизатором" aria-label="Назначить соорганизатором">★</button>` : ''}
-          <button type="button" class="ting-btn ting-btn-ghost" data-act="remove" data-id="${esc(p.identity)}">${esc(COPY.remove)}</button>
-        </span>` : ''}
+          <button type="button" class="ting-icon-btn ting-icon-sm" data-act="remove" data-id="${esc(p.identity)}" title="${esc(COPY.remove)}" aria-label="${esc(COPY.remove)}">✕</button>
+        </span>` : '';
+      return `<div class="ting-list-item ting-people-row${handUp ? ' hand-up' : ''}">
+        <div class="ting-people-row-top">
+          <span class="ting-people-av">${esc(initials(label))}</span>
+          <span class="ting-people-meta">
+            <strong>${esc(label)}${handUp ? ' ✋' : ''}</strong>
+            ${host ? '<span class="ting-host-chip">хост</span>' : ''}
+            ${p.job_title && !String(label).includes(p.job_title) ? `<em class="ting-muted">${esc(p.job_title)}</em>` : ''}
+          </span>
+          <span class="ting-people-status" title="Мик / камера">
+            <span class="${micOff ? 'off' : ''}">${svgMic(!!micOff)}</span>
+            <span class="${camOff ? 'off' : ''}">${svgCam(!!camOff)}</span>
+          </span>
+        </div>
+        ${actions}
       </div>`;
     }).join('');
-    const count = (state.participants || []).length;
+    /* В звонке счётчик = LiveKit без EG_* (бот записи). */
+    const count = state.lkRoom
+      ? Math.max(1, 1 + Array.from((state.lkRoom.remoteParticipants || new Map()).keys())
+        .filter((id) => id && !/^EG_/i.test(String(id))).length)
+      : (state.participants || []).length;
     return `<div class="ting-people-drawer" id="ting-people">
       <div class="ting-drawer-head">
         <strong>${esc(COPY.people)} · ${count}</strong>
@@ -949,9 +970,10 @@
     if (r.forced_layout && state.layout !== r.forced_layout) {
       state.layout = r.forced_layout;
     }
-    /* Счётчик: при живом SFU — факт LiveKit (без ghost из БД). */
+    /* Счётчик: LiveKit без EG_* (бот записи). */
     const n = state.lkRoom
-      ? Math.max(1, 1 + (state.lkRoom.remoteParticipants ? state.lkRoom.remoteParticipants.size : 0))
+      ? Math.max(1, 1 + Array.from((state.lkRoom.remoteParticipants || new Map()).keys())
+        .filter((id) => id && !/^EG_/i.test(String(id))).length)
       : Math.max(1, (state.participants || []).length || 1);
     const peopleOpen = !!state.peopleOpen;
     const chatOpen = !!(state.chatOpen || state.chatOpenMobile);
@@ -1179,8 +1201,17 @@
         state.previewStream = null;
       }
       let stream = null;
+      /* Windows PWA: если лобби держит video-трек, после stop() драйвер часто
+         не отдаёт камеру LiveKit → timeout «Камера не успела включиться».
+         На десктопе в лобби берём только микрофон; камеру откроет connect. */
+      const desktopNoPrevCam = typeof window !== 'undefined' && window.innerWidth > 820
+        && /Windows|Win32/i.test(navigator.userAgent || '');
       try {
-        stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+        if (desktopNoPrevCam) {
+          stream = await navigator.mediaDevices.getUserMedia({ video: false, audio: true });
+        } else {
+          stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+        }
       } catch (_) {
         /* Камера занята/запрещена — всё равно берём микрофон для эквалайзера */
         stream = await navigator.mediaDevices.getUserMedia({ video: false, audio: true });
@@ -1191,14 +1222,17 @@
       }
       state.previewStream = stream;
       state.micOn = true;
-      state.camOn = stream.getVideoTracks().length > 0;
+      const hasPrevVideo = stream.getVideoTracks().length > 0;
+      /* Desktop Windows: video в лобби намеренно не берём — camOn не сбрасываем в false. */
+      if (hasPrevVideo) state.camOn = true;
+      else if (!desktopNoPrevCam) state.camOn = false;
       const v = qs('#ting-prev-v');
       const av = qs('#ting-av');
-      if (state.camOn && v) {
+      if (hasPrevVideo && v) {
         v.srcObject = stream; v.hidden = false; v.style.display = 'block';
         if (av) av.style.display = 'none';
       } else {
-        if (v) { v.hidden = true; v.style.display = 'none'; }
+        if (v) { v.hidden = true; v.style.display = 'none'; v.srcObject = null; }
         if (av) av.style.display = 'grid';
       }
       const micB = qs('#ting-lob-mic');
@@ -1329,61 +1363,145 @@
     } catch (_) { /* */ }
   }
 
+  /** Точная причина отказа камеры по DOMException.name — не «timeout». */
+  function cameraErrorMessage(err) {
+    const name = String((err && err.name) || '');
+    const raw = String((err && err.message) || err || '');
+    if (name === 'NotAllowedError' || /Permission|denied/i.test(raw)) {
+      return 'Браузер не даёт камеру. Разрешите её в настройках сайта (замок в адресной строке → Камера → Разрешить).';
+    }
+    if (name === 'NotFoundError' || /Requested device not found|DevicesNotFound/i.test(raw)) {
+      return 'Камера не найдена. Проверьте, что она подключена и не отключена в диспетчере устройств.';
+    }
+    if (name === 'NotReadableError' || name === 'TrackStartError' || /NotReadable|Device in use|Could not start/i.test(raw)) {
+      return 'Камера занята другим приложением. Закройте Zoom, Teams, связь Windows и попробуйте снова.';
+    }
+    if (name === 'OverconstrainedError') {
+      return 'Камера не поддерживает выбранное разрешение. Пробуем ещё раз в базовом режиме.';
+    }
+    if (/Timeout starting video|Timed out|timeout/i.test(raw)) {
+      return 'Камера не успела включиться. Закройте другие приложения с камерой и попробуйте снова.';
+    }
+    return 'Камера не включилась' + (raw ? ': ' + raw : '.');
+  }
+
   /**
-   * Камера: НЕ переиспользуем preview MediaStreamTrack.
-   * На Windows publishTrack(preview) часто зависает →
-   * «waiting for pending publication promise timed out», камера «вкл» без картинки.
-   * Полностью отпускаем устройство → createLocalVideoTrack → publish.
+   * Камера: getUserMedia ПЕРВЫМ, публикация готового трека.
+   * Почему не setCameraEnabled: если первая попытка LiveKit ушла в таймаут,
+   * он держит незавершённую публикацию — и все повторы в ЭТОЙ комнате падают
+   * так же (третий деплой «не помогает», а в обычном браузере работает).
+   * getUserMedia даёт точную ошибку устройства до всякой сети.
    */
   async function enableLocalCamera(room) {
     const LK = window.LivekitClient;
-    const busyRe = /NotReadable|Device in use|Could not start|AbortError|Permission|Timeout starting video|Timed out|Overconstrained|publication promise/i;
+    /* Отпускаем только video из preview, mic preview не трогаем — mic уже в LiveKit. */
+    if (state.previewStream) {
+      state.previewStream.getVideoTracks().forEach((t) => { try { t.stop(); } catch (_) { /* */ } });
+    }
     stopPreview();
     await unpublishLocalCamera(room);
-    await new Promise((r) => setTimeout(r, 350));
+    await new Promise((r) => setTimeout(r, 150));
 
+    const constraintsList = [];
+    const base = {};
+    if (state.videoDeviceId) base.deviceId = { ideal: state.videoDeviceId };
+    constraintsList.push(Object.assign({}, base, { width: { ideal: 1280 }, height: { ideal: 720 } }));
+    constraintsList.push(Object.assign({}, base));
+    constraintsList.push({}); /* без привязки к протухшему deviceId */
+
+    let stream = null;
     let lastErr = null;
-    for (let i = 0; i < 3; i++) {
+    for (let i = 0; i < constraintsList.length; i++) {
       try {
-        if (LK && typeof LK.createLocalVideoTrack === 'function') {
-          const opts = {};
-          if (state.videoDeviceId) opts.deviceId = state.videoDeviceId;
-          try {
-            if (LK.VideoPresets && LK.VideoPresets.h720) opts.resolution = LK.VideoPresets.h720.resolution;
-          } catch (_) { /* */ }
-          const track = await withTimeout(
-            LK.createLocalVideoTrack(opts),
-            12000,
-            'Timeout starting video source'
-          );
-          const pubOpts = {};
-          try {
-            if (LK.Track && LK.Track.Source) pubOpts.source = LK.Track.Source.Camera;
-          } catch (_) { /* */ }
-          await withTimeout(
-            room.localParticipant.publishTrack(track, pubOpts),
-            15000,
-            'Timeout starting video source'
-          );
-          return true;
-        }
-        await withTimeout(
-          room.localParticipant.setCameraEnabled(true),
-          15000,
+        stream = await withTimeout(
+          navigator.mediaDevices.getUserMedia({ video: constraintsList[i], audio: false }),
+          8000,
           'Timeout starting video source'
         );
-        return true;
+        break;
       } catch (e) {
         lastErr = e;
-        console.warn('[Ting] enableLocalCamera try', i, e);
-        await unpublishLocalCamera(room);
-        const msg = String((e && e.message) || e || '');
-        if (!busyRe.test(msg) && i === 0) { /* still retry once */ }
-        await new Promise((r) => setTimeout(r, 450 + i * 350));
+        console.warn('[Ting] getUserMedia video try', i, e && e.name, e && e.message);
+        const name = String((e && e.name) || '');
+        /* Разрешение/устройство не лечатся повтором с другими constraints. */
+        if (name === 'NotAllowedError' || name === 'NotFoundError' || name === 'SecurityError') break;
       }
     }
-    if (lastErr) throw lastErr;
-    return false;
+    if (!stream) {
+      const err = lastErr || new Error('Камера не включилась');
+      throw err;
+    }
+
+    const mst = stream.getVideoTracks()[0];
+    if (!mst) {
+      try { stream.getTracks().forEach((t) => t.stop()); } catch (_) { /* */ }
+      throw new Error('Камера не отдала видеопоток');
+    }
+    try { mst.enabled = true; } catch (_) { /* */ }
+
+    try {
+      let track = null;
+      if (LK && typeof LK.LocalVideoTrack === 'function') {
+        track = new LK.LocalVideoTrack(mst, undefined, true);
+      } else if (LK && typeof LK.createLocalVideoTrack === 'function') {
+        try { mst.stop(); } catch (_) { /* */ }
+        track = await withTimeout(
+          LK.createLocalVideoTrack(state.videoDeviceId ? { deviceId: state.videoDeviceId } : {}),
+          12000,
+          'Timeout starting video source'
+        );
+      }
+      if (!track) throw new Error('Видеоклиент не умеет публиковать камеру');
+      const pubOpts = {};
+      try {
+        if (LK.Track && LK.Track.Source) pubOpts.source = LK.Track.Source.Camera;
+      } catch (_) { /* */ }
+      await withTimeout(
+        room.localParticipant.publishTrack(track, pubOpts),
+        15000,
+        'Timeout starting video source'
+      );
+      return true;
+    } catch (e) {
+      try { if (mst && mst.stop) mst.stop(); } catch (_) { /* */ }
+      console.warn('[Ting] publish camera failed', e && e.name, e && e.message);
+      await unpublishLocalCamera(room);
+      throw e;
+    }
+  }
+
+  /** Обновить правую панель «Люди» без пересборки стейджа (иначе видео «прыгает»). */
+  function syncPeopleDrawer(opts) {
+    const quiet = !!(opts && opts.quiet);
+    const main = qs('.ting-room-main');
+    const shell = qs('.ting-room-shell');
+    const wrap = qs('.ting-stage-wrap');
+    if (!main || !wrap) {
+      if (state.view === 'room') render();
+      return;
+    }
+    main.classList.toggle('has-people', !!state.peopleOpen);
+    if (shell) shell.classList.toggle('has-people-col', !!state.peopleOpen);
+    const existing = qs('#ting-people');
+    if (!state.peopleOpen) {
+      if (existing) existing.remove();
+    } else {
+      const html = peopleDrawerHtml();
+      if (html) {
+        const box = document.createElement('div');
+        box.innerHTML = html;
+        const next = box.firstElementChild;
+        if (next) {
+          if (quiet || existing) next.style.animation = 'none';
+          if (existing) existing.replaceWith(next);
+          else wrap.appendChild(next);
+        }
+      }
+    }
+    document.querySelectorAll('[data-act="toggle-people"]').forEach((el) => {
+      el.classList.toggle('active', !!state.peopleOpen);
+      el.setAttribute('aria-pressed', state.peopleOpen ? 'true' : 'false');
+    });
   }
 
   function ensureAudioSink() {
@@ -1932,6 +2050,7 @@
       });
       if (hidden > 0) stage.appendChild(makeOverflowTile(hidden));
     }
+    bumpRemoteVideoQuality(room);
   }
 
   /** Плитка «+N»: остальные участники не теряются, а видны счётчиком. */
@@ -1980,21 +2099,12 @@
         const countEl = qs('.ting-count-chip');
         if (countEl) {
           const n = state.lkRoom
-            ? Math.max(1, 1 + state.lkRoom.remoteParticipants.size)
+            ? Math.max(1, 1 + Array.from(state.lkRoom.remoteParticipants.keys())
+              .filter((id) => id && !/^EG_/i.test(String(id))).length)
             : Math.max(1, (state.participants || []).length || 1);
           countEl.textContent = n + ' в комнате';
         }
-        if (state.peopleOpen) {
-          const pe = qs('#ting-people');
-          if (pe) {
-            const html = peopleDrawerHtml();
-            if (html) {
-              const wrap = document.createElement('div');
-              wrap.innerHTML = html;
-              if (wrap.firstElementChild) pe.replaceWith(wrap.firstElementChild);
-            }
-          }
-        }
+        if (state.peopleOpen) syncPeopleDrawer({ quiet: true });
       } finally {
         inflight = false;
       }
@@ -2154,17 +2264,69 @@
     }
   }
 
+  /**
+   * На ноуте adaptiveStream часто залипает на low-слое (тайл 0×0 при paint → пиксели),
+   * хотя канал быстрый и на ТВ картинка отличная. Десктоп — без adaptive, явный HIGH.
+   */
+  function livekitRoomOptions() {
+    const LK = window.LivekitClient;
+    const narrow = typeof window !== 'undefined' && window.innerWidth <= 820;
+    const opts = { dynacast: true };
+    if (narrow) {
+      opts.adaptiveStream = { pixelDensity: 2 };
+    } else {
+      opts.adaptiveStream = false;
+    }
+    try {
+      if (LK && LK.VideoPresets) {
+        const layers = [];
+        if (LK.VideoPresets.h180) layers.push(LK.VideoPresets.h180);
+        if (LK.VideoPresets.h360) layers.push(LK.VideoPresets.h360);
+        opts.publishDefaults = {
+          videoSimulcastLayers: layers,
+          videoEncoding: (LK.VideoPresets.h720 && LK.VideoPresets.h720.encoding) || undefined
+        };
+      }
+    } catch (_) { /* */ }
+    return opts;
+  }
+
+  function bumpRemoteVideoQuality(room) {
+    const LK = window.LivekitClient;
+    if (!room || !LK || !LK.VideoQuality) return;
+    try {
+      room.remoteParticipants.forEach((p) => {
+        Array.from(p.videoTrackPublications.values()).forEach((pub) => {
+          if (!pub || (pub.kind && pub.kind !== 'video')) return;
+          try {
+            if (typeof pub.setVideoQuality === 'function') {
+              pub.setVideoQuality(LK.VideoQuality.HIGH);
+            }
+          } catch (_) { /* */ }
+        });
+      });
+    } catch (_) { /* */ }
+  }
+
   async function connectRoomWithCreds(slug, tok) {
     let room = null;
     let speakerTimer = null;
     try {
       const LK = await loadLk();
-      room = new LK.Room({ adaptiveStream: true, dynacast: true });
+      room = new LK.Room(livekitRoomOptions());
       state.myIdentity = tok.identity || state.myIdentity || null;
+      /* Роль из токена — единственный надёжный признак хоста ДО refreshPeople. */
+      state.myRole = tok.role || state.myRole || null;
+      if (tok.room) state.room = unwrapRoom(tok);
       if (tok.join_token) state.joinToken = tok.join_token;
       const bump = () => { syncRemoteAudio(room); paintTiles(); refreshPeople(slug); };
-      room.on(LK.RoomEvent.TrackSubscribed, (track) => {
+      room.on(LK.RoomEvent.TrackSubscribed, (track, pub) => {
         if (track && track.kind === 'audio') syncRemoteAudio(room);
+        try {
+          if (pub && track && track.kind === 'video' && typeof pub.setVideoQuality === 'function' && LK.VideoQuality) {
+            pub.setVideoQuality(LK.VideoQuality.HIGH);
+          }
+        } catch (_) { /* */ }
         bump();
       });
       room.on(LK.RoomEvent.TrackUnsubscribed, bump);
@@ -2243,7 +2405,7 @@
               state.handRaised = false;
               toast('Организатор опустил вашу руку');
             }
-            if (state.view === 'room' && state.peopleOpen) render();
+            if (state.view === 'room' && state.peopleOpen) syncPeopleDrawer();
             else {
               const badge = qs('#ting-hand-badge');
               if (badge) badge.textContent = String(Object.keys(state.raisedHands).length || '');
@@ -2396,11 +2558,7 @@
           try {
             await enableLocalCamera(room);
           } catch (camErr) {
-            const msg = String((camErr && camErr.message) || camErr || '');
-            const busy = /NotReadable|Device in use|Could not start|AbortError|Permission|Timeout starting video|Timed out/i.test(msg);
-            toast(busy
-              ? 'Камера занята или не успела включиться. Закройте Zoom/Teams/другие вкладки и нажмите «Камера» снова.'
-              : friendlyErrorMessage(camErr, 'Камера не включилась'), false);
+            toast(cameraErrorMessage(camErr), false);
             state.camOn = false;
             stopPreview();
           }
@@ -2452,6 +2610,7 @@
       const byId = new Set(parts.map(p => p.identity).filter(Boolean));
       (j.live || []).forEach((lp) => {
         if (!lp.identity || byId.has(lp.identity)) return;
+        if (/^EG_/i.test(String(lp.identity))) return; /* бот записи */
         parts = parts.concat([{
           identity: lp.identity,
           display_name: lp.name || lp.identity,
@@ -2461,6 +2620,38 @@
         }]);
         byId.add(lp.identity);
       });
+      /* В живом SFU — только люди из LiveKit; EG_* (запись) и кикнутые DB-ghost — вон. */
+      if (state.lkRoom && state.lkRoom.localParticipant) {
+        const liveIds = new Set();
+        try {
+          liveIds.add(state.lkRoom.localParticipant.identity);
+          state.lkRoom.remoteParticipants.forEach((_, id) => {
+            if (id && !/^EG_/i.test(String(id))) liveIds.add(id);
+          });
+        } catch (_) { /* */ }
+        const dbById = new Map(parts.filter(p => p.identity).map(p => [p.identity, p]));
+        const liveParts = [];
+        liveIds.forEach((id) => {
+          if (dbById.has(id)) {
+            liveParts.push(dbById.get(id));
+            return;
+          }
+          let lp = null;
+          try {
+            lp = id === state.lkRoom.localParticipant.identity
+              ? state.lkRoom.localParticipant
+              : state.lkRoom.remoteParticipants.get(id);
+          } catch (_) { /* */ }
+          liveParts.push({
+            identity: id,
+            display_name: (lp && lp.name) || id,
+            role: id === state.myIdentity ? 'host' : 'member',
+            lobby_status: 'admitted',
+            live: true
+          });
+        });
+        parts = liveParts;
+      }
       state.participants = parts;
       if (typeof j.is_host === 'boolean') state.isHost = j.is_host;
       state.peopleError = null;
@@ -2751,11 +2942,24 @@
     }
   }
 
+  /**
+   * Хост ли я — по host_user_id, не по state.isHost.
+   * state.isHost заполняется только после refreshPeople; на входе он ещё false,
+   * и хост получал модалку согласия на СВОЮ запись → блокирующий оверлей.
+   */
+  function amIRoomHost() {
+    if (state.myRole === 'host' || state.isHost === true) return true;
+    const meId = window.ASGARD_USER && ASGARD_USER.id;
+    const hostId = state.room && state.room.host_user_id;
+    if (meId == null || hostId == null) return false;
+    return String(meId) === String(hostId);
+  }
+
   /** Q09/R01: согласие на запись — по факту старта, не по конфигу комнаты. */
   function askRecordingConsent(slug) {
     if (state.consentAsked || !slug) return;
     /* Хост сам включает запись — модалку не показываем (иначе glass поверх комнаты). */
-    if (state.isHost) {
+    if (amIRoomHost()) {
       state.consentAsked = true;
       return;
     }
@@ -3120,11 +3324,12 @@
             state.camOn = true;
           } else {
             await state.lkRoom.localParticipant.setCameraEnabled(false);
+            await unpublishLocalCamera(state.lkRoom);
             state.camOn = false;
           }
         } catch (e) {
           state.camOn = false;
-          toast(friendlyErrorMessage(e, 'Камера не включилась'), false);
+          toast(cameraErrorMessage(e), false);
         }
         updateDockMedia();
         paintTiles();
@@ -3173,9 +3378,14 @@
           state.chatOpen = false;
           state.chatOpenMobile = false;
           state.moreOpen = false;
+          const more = qs('#ting-more');
+          if (more) more.remove();
+          const chat = qs('.ting-chat');
+          if (chat) chat.classList.remove('open');
           await refreshPeople(slug);
         }
-        render();
+        /* Не render()+paintTiles — иначе видео собеседника «прыгает» на первый план. */
+        syncPeopleDrawer();
         return;
       }
       if (act === 'toggle-more') {
@@ -3247,19 +3457,23 @@
       }
       if (act === 'admit') {
         await api(`/api/thing/rooms/${encodeURIComponent(slug)}/lobby/${btn.dataset.id}/admit`, { method: 'POST', body: '{}' });
-        await refreshPeople(slug); render();
+        await refreshPeople(slug);
+        syncPeopleDrawer({ quiet: true });
         return;
       }
       if (act === 'reject') {
         await api(`/api/thing/rooms/${encodeURIComponent(slug)}/lobby/${btn.dataset.id}/reject`, { method: 'POST', body: '{}' });
-        await refreshPeople(slug); render();
+        await refreshPeople(slug);
+        syncPeopleDrawer({ quiet: true });
         return;
       }
       if (act === 'remove') {
         await api(`/api/thing/rooms/${encodeURIComponent(slug)}/participants/${encodeURIComponent(btn.dataset.id)}/remove`, {
           method: 'POST', body: '{}'
         });
-        await refreshPeople(slug); render();
+        await refreshPeople(slug);
+        syncPeopleDrawer();
+        paintTiles();
         return;
       }
       /* Фаза 2: точечная модерация — мик, камера, шаринг экрана. */
@@ -3271,7 +3485,8 @@
             { method: 'POST', body: JSON.stringify({ kind }) }
           );
           toast(kind === 'audio' ? 'Микрофон выключен' : (kind === 'video' ? 'Камера выключена' : 'Демонстрация остановлена'));
-          await refreshPeople(slug); render();
+          await refreshPeople(slug);
+          syncPeopleDrawer({ quiet: true });
         } catch (e) {
           toast(friendlyErrorMessage(e, 'Не удалось применить'), false);
         }
@@ -3288,7 +3503,7 @@
           await publishTingData({ type: 'hand_force_lower', identity: id });
           delete state.raisedHands[id];
           toast('Рука опущена');
-          render();
+          syncPeopleDrawer({ quiet: true });
         } catch (e) {
           toast(friendlyErrorMessage(e, 'Не удалось опустить руку'), false);
         }
@@ -3301,7 +3516,8 @@
             body: JSON.stringify({ identity: btn.dataset.id, role: btn.dataset.role || 'co_host' })
           });
           toast('Роль назначена');
-          await refreshPeople(slug); render();
+          await refreshPeople(slug);
+          syncPeopleDrawer({ quiet: true });
         } catch (e) {
           toast(friendlyErrorMessage(e, 'Не удалось назначить роль'), false);
         }

@@ -90,10 +90,8 @@ html[data-theme="light"] {
 html[data-theme="light"] .ting-page,
 html[data-theme="light"] body.ting-guest {
   background:
-    radial-gradient(1100px 560px at 18% -12%, rgba(224,165,38,.10) 0%, transparent 55%),
-    radial-gradient(900px 520px at 88% 8%, rgba(29,78,216,.07) 0%, transparent 50%),
-    radial-gradient(700px 420px at 50% 100%, rgba(15,23,42,.06) 0%, transparent 55%),
-    linear-gradient(165deg, #FFFFFF 0%, #F4F6F8 42%, #E9EEF5 100%);
+    radial-gradient(900px 460px at 22% -14%, rgba(224,165,38,.06) 0%, transparent 58%),
+    linear-gradient(168deg, #FFFFFF 0%, #F6F8FB 46%, #EDF1F7 100%);
   color: var(--ting-t1);
 }
 
@@ -111,15 +109,15 @@ main:has(.ting-page) {
   min-height: calc(100vh - 80px);
 }
 
-.ting-page .ting-btn,
+/* Радиусы — точечно, а не «всем по 14px»: прежний общий override срезал
+   задуманные 22px до 14 и давал ощущение «острых»/кустарных карточек. */
+.ting-page .ting-btn { border-radius: 12px; }
 .ting-page .ting-card,
-.ting-page .ting-modal,
-.ting-page .ting-tile,
-.ting-page .ting-dock,
-.ting-page .ting-chat,
-.ting-page .ting-preview {
-  border-radius: max(var(--ting-radius-min), var(--ting-radius-sm));
-}
+.ting-page .ting-modal { border-radius: 20px; }
+.ting-page .ting-preview { border-radius: 16px; }
+.ting-page .ting-tile { border-radius: 18px; }
+.ting-page .ting-dock { border-radius: 28px; }
+.ting-page .ting-chat { border-radius: 0; }
 
 /* Guest SPA + CRM share the same controls ? box-sizing must be global for Ting */
 .ting-card, .ting-card *, .ting-field, .ting-btn, .ting-preview,
@@ -396,14 +394,15 @@ body.ting-guest {
   align-items: center;
   gap: 12px;
 }
+/* Логотип: сам PNG full-bleed, поэтому фон/тень контейнера не нужны —
+   раньше золотой градиент торчал по углам и на light выглядел как «серая плитка». */
 .ting-logo-mark {
   width: 44px; height: 44px; flex: 0 0 auto;
   border-radius: 14px;
-  background: linear-gradient(145deg, var(--ting-gold-l), var(--ting-gold) 55%, #b8862e);
-  color: #141414;
+  background: transparent;
   display: grid; place-items: center;
-  box-shadow: 0 8px 24px rgba(212,168,67,.28);
   position: relative;
+  overflow: hidden;
 }
 .ting-logo-mark svg { width: 26px; height: 26px; display: block; }
 .ting-logo-text { display: flex; flex-direction: column; gap: 2px; }
@@ -475,7 +474,8 @@ body.ting-guest {
   border: 0; background: transparent;
   width: 100%; color: inherit; font: inherit; text-align: left;
 }
-.ting-call-row:hover { background: rgba(255,255,255,.04); }
+.ting-call-row:hover { background: rgba(255,255,255,.045); }
+html[data-theme="light"] .ting-call-row:hover { background: rgba(15,23,42,.045); }
 /* g2 matrix defined below with premium fixed columns (not auto-fit). */
 .ting-avatar {
   width: 48px; height: 48px; border-radius: 50%; flex: 0 0 auto;
@@ -1100,7 +1100,7 @@ body.ting-guest .ting-card,
   border-top: 1px solid rgba(255, 255, 255, 0.08);
 }
 .ting-room-settings .ting-more-label { margin-top: 8px; }
-.ting-people-row .ting-list-actions { display: inline-flex; gap: 4px; align-items: center; }
+/* actions layout: см. .ting-people-row ниже (wrap, без гориз. скролла) */
 
 /* Фаза 3: pre-call эквалайзер микрофона (T25) — вне превью, не под аватаром */
 .ting-mic-eq {
@@ -1561,24 +1561,30 @@ body.ting-guest .ting-card,
   box-shadow: none;
 }
 
-/* People drawer — same right slot as chat (mutually exclusive in JS) */
+/* People drawer — overlays stage (no stage reflow / no video «jump» to front) */
 .ting-room-main.has-people .ting-stage-wrap {
   padding-right: 0;
 }
 .ting-people-drawer {
   position: absolute; top: 0; right: 0; bottom: 0;
   width: min(360px, calc(100vw - 24px));
+  max-width: 100%;
   max-height: none;
   background: var(--ting-drawer-bg); color: var(--ting-on-media);
   border-left: 1px solid rgba(255,255,255,.12);
-  border-radius: 0; padding: 14px 14px 18px; overflow: auto; z-index: 8;
+  border-radius: 0; padding: 14px 14px 18px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  z-index: 12;
   box-shadow: -12px 0 40px rgba(0,0,0,.45);
   backdrop-filter: blur(22px) saturate(1.2);
   -webkit-backdrop-filter: blur(22px) saturate(1.2);
-  animation: ting-drawer-in .28s cubic-bezier(.22,.61,.36,1);
+  animation: ting-drawer-in .22s cubic-bezier(.22,.61,.36,1);
+  box-sizing: border-box;
 }
 @keyframes ting-drawer-in {
-  from { transform: translateX(24px); opacity: .6; }
+  from { transform: translateX(16px); opacity: .75; }
   to { transform: translateX(0); opacity: 1; }
 }
 .ting-people-drawer .ting-btn-ghost,
@@ -1588,9 +1594,23 @@ body.ting-guest .ting-card,
   border: 1px solid rgba(255,255,255,.18);
   background: rgba(255,255,255,.08);
 }
+.ting-people-drawer .ting-cta-row {
+  flex-wrap: wrap;
+}
+.ting-people-drawer .ting-cta-row .ting-btn {
+  min-width: 0;
+  flex: 1 1 calc(50% - 6px);
+}
 .ting-people-drawer .ting-list-actions .ting-btn {
   opacity: 1;
   white-space: nowrap;
+  min-width: 0;
+}
+.ting-people-drawer .ting-room-settings,
+.ting-people-drawer .ting-field,
+.ting-people-drawer select {
+  max-width: 100%;
+  box-sizing: border-box;
 }
 .ting-people-meta {
   min-width: 0;
@@ -1616,10 +1636,28 @@ body.ting-guest .ting-card,
 .ting-list-item .ting-btn { min-height: 36px; padding: 6px 10px; font-size: 12px; }
 .ting-list-item:last-child { border-bottom: 0; }
 .ting-people-row {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+  min-width: 0;
+  max-width: 100%;
+}
+.ting-people-row-top {
   display: grid;
-  grid-template-columns: 40px minmax(0, 1fr) auto auto;
+  grid-template-columns: 40px minmax(0, 1fr) auto;
   align-items: center;
   gap: 10px;
+  min-width: 0;
+  width: 100%;
+}
+.ting-people-row .ting-list-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  flex: 0 1 auto;
 }
 .ting-people-av {
   width: 40px; height: 40px; border-radius: 50%;
@@ -1648,11 +1686,12 @@ body.ting-guest .ting-card,
 .ting-people-status .off { opacity: .35; }
 .ting-people-status svg { width: 14px; height: 14px; }
 
+/* ВАЖНО: без backdrop-filter. При opacity:0 у .ting-modal оставалась
+   размытая плёнка на весь экран с перехватом кликов (баг зала 05–06.11.2026):
+   «весь экран заблюрен и ничего не работает». Затемняем плотно и всё. */
 .ting-modal-backdrop {
   position: fixed; inset: 0; z-index: 13000;
-  background: rgba(0,0,0,.48);
-  backdrop-filter: blur(4px);
-  -webkit-backdrop-filter: blur(4px);
+  background: rgba(6,8,12,.78);
   display: flex; align-items: center; justify-content: center; padding: 16px;
   animation: ting-fade-in .18s ease;
   /* Modal mounts on document.body (outside .ting-page) ? own ink, ignore CRM h2/body color */
@@ -1663,7 +1702,8 @@ body.ting-guest .ting-card,
   width: min(420px, 100%); background: var(--ting-bg2); border: 1px solid var(--ting-line);
   border-radius: var(--ting-radius); padding: 24px; text-align: center;
   box-shadow: 0 28px 80px rgba(0,0,0,.55), 0 0 0 1px rgba(255,255,255,.04);
-  transform: scale(.95); opacity: 0;
+  /* Видна сразу: анимация только «подъезжает», opacity не держим в 0. */
+  transform: none;
   color: var(--ting-t1);
 }
 .ting-modal-backdrop .ting-modal h2,
@@ -1684,8 +1724,8 @@ body.ting-guest .ting-card,
   to { opacity: 1; }
 }
 @keyframes ting-modal-in {
-  from { opacity: 0; transform: scale(.95); }
-  to { opacity: 1; transform: scale(1); }
+  from { transform: scale(.965); }
+  to { transform: scale(1); }
 }
 .ting-steps { text-align: left; margin: 16px 0; padding-left: 18px; }
 .ting-steps li { margin: 8px 0; color: var(--ting-t2); }

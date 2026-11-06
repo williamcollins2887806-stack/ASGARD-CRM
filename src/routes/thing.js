@@ -1355,9 +1355,17 @@ module.exports = async function thingRoutes(fastify) {
         crm_role: r.crm_role || null
       };
     });
+    /* EG_* = Room Composite Egress (запись). Не человек — иначе «3 участника». */
+    const livePeople = (live || []).filter((p) => {
+      const id = String((p && p.identity) || '');
+      if (!id || /^EG_/i.test(id)) return false;
+      const kind = String((p && (p.kind || p.participantKind || '')) || '').toLowerCase();
+      if (kind === 'egress' || kind === '4') return false;
+      return true;
+    });
     return {
       participants,
-      live: live.map((p) => ({
+      live: livePeople.map((p) => ({
         identity: p.identity,
         name: p.name || p.identity,
         state: p.state,

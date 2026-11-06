@@ -159,7 +159,21 @@
         try { await room.disconnect(); } catch (_) {}
         room = null;
       }
-      const next = new LK.Room({ adaptiveStream: true, dynacast: true });
+      /* Десктоп: adaptiveStream выкл — иначе low-слой и пиксели при нормальном канале. */
+      const narrow = typeof window !== 'undefined' && window.innerWidth <= 820;
+      const roomOpts = { dynacast: true, adaptiveStream: narrow ? { pixelDensity: 2 } : false };
+      try {
+        if (LK.VideoPresets) {
+          const layers = [];
+          if (LK.VideoPresets.h180) layers.push(LK.VideoPresets.h180);
+          if (LK.VideoPresets.h360) layers.push(LK.VideoPresets.h360);
+          roomOpts.publishDefaults = {
+            videoSimulcastLayers: layers,
+            videoEncoding: (LK.VideoPresets.h720 && LK.VideoPresets.h720.encoding) || undefined
+          };
+        }
+      } catch (_) { /* */ }
+      const next = new LK.Room(roomOpts);
       await next.connect(opts.url, opts.token);
       if (seq !== connectSeq) {
         try { await next.disconnect(); } catch (_) {}
