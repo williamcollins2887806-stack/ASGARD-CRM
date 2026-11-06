@@ -60,6 +60,10 @@ check('Этапы: сквозной конвейер', flow.code === 0, tail(flo
 // ── 4b. Спасение обрезанного ответа модели ──────────────────────────────────
 const salvage = run('node', ['tests/mimir-dv-salvage.test.js']);
 check('Ответы модели: частичный JSON спасается', salvage.code === 0, tail(salvage.out, 1));
+
+// ── 4c. Режим модалки: анализ vs просчёт ────────────────────────────────────
+const modeCheck = run('node', ['tests/rp-review-mode.test.js']);
+check('Карточка анализа открывается в режиме анализа', modeCheck.code === 0, tail(modeCheck.out, 1));
 // ── 5. UI-статика ───────────────────────────────────────────────────────────
 const cssPath = path.join(ROOT, 'public/assets/css/mimir-stages.css');
 const uiPath = path.join(ROOT, 'public/assets/js/mimir_stages_ui.js');

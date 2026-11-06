@@ -41,6 +41,8 @@ window.AsgardRegistryTab = (function () {
   let clickBound = false;
   let deepLinkHandled = false;
   let dutyInfo = null;
+  let outcomeQueueItems = [];
+  let outcomeQueueExpanded = false;
   const STALE_MS = 62 * 24 * 60 * 60 * 1000;
 
   const DUTY_VIEW_ROLES = ['TO', 'HEAD_TO', 'ADMIN', 'PM', 'HEAD_PM', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV'];
@@ -68,6 +70,109 @@ window.AsgardRegistryTab = (function () {
 
   function canEditDutyRoster() {
     return userCanDuty(DUTY_ASSIGN_ROLES);
+  }
+
+  function renderOutcomeQueueBar() {
+    if (!outcomeQueueItems.length) return '';
+    const rows = outcomeQueueItems.map((item) => {
+      let candidates = item.match_candidates;
+      if (typeof candidates === 'string') {
+        try { candidates = JSON.parse(candidates); } catch (_) { candidates = []; }
+      }
+      if (!Array.isArray(candidates)) candidates = [];
+      const candHtml = candidates.slice(0, 3).map((c) =>
+        '<div class="reg-outcome-cand" style="display:flex;gap:8px;align-items:center;margin-top:6px;flex-wrap:wrap">' +
+        '<span class="muted" style="font-size:12px">' + esc(c.supplier_name || c.title || 'Контракт #' + c.id) +
+        (c.price != null ? ' · ' + esc(String(c.price)) + ' ₽' : '') + '</span>' +
+        '<button type="button" class="btn mini reg-outcome-accept" data-qid="' + item.id + '" data-cid="' + esc(String(c.id)) + '">Подтвердить</button>' +
+        '</div>'
+      ).join('');
+      return '<div class="reg-outcome-item" style="padding:10px 0;border-bottom:1px solid var(--line,var(--brd))">' +
+        '<strong>#' + esc(String(item.tender_id)) + '</strong> ' + esc(item.customer_name || '') +
+        '<div class="muted" style="font-size:12px;margin-top:2px">' + esc(item.tender_title || '') + '</div>' +
+        candHtml +
+        '<button type="button" class="btn mini ghost reg-outcome-reject" data-qid="' + item.id + '" style="margin-top:6px">Отклонить все</button>' +
+        '</div>';
+    }).join('');
+    return '<div class="reg-outcome-queue" style="margin:0 0 12px;padding:12px;border:1px solid #ca8a04;border-radius:8px;background:rgba(66,32,6,0.35)">' +
+      '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">' +
+      '<span style="font-weight:600">TenderGuru: неоднозначные матчи (' + outcomeQueueItems.length + ')</span>' +
+      '<button type="button" class="btn mini ghost" id="regOutcomeQueueToggle">' + (outcomeQueueExpanded ? 'Свернуть' : 'Развернуть') + '</button>' +
+      '</div>' +
+      (outcomeQueueExpanded ? rows : '<p class="muted" style="margin:0;font-size:12px">Подтвердите победителя или отклоните ложные совпадения.</p>') +
+      '</div>';
+  }
+
+  function bindOutcomeQueueHandlers() {
+    document.getElementById('regOutcomeQueueToggle')?.addEventListener('click', () => {
+      outcomeQueueExpanded = !outcomeQueueExpanded;
+      rerenderOutcomeQueueOnly();
+    });
+    mountEl.querySelectorAll('.reg-outcome-accept').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        const qid = btn.dataset.qid;
+        const cid = btn.dataset.cid;
+        try {
+          await API.acceptOutcomeMatchQueue(qid, cid);
+          toast('Победитель записан', 'ok');
+          await loadOutcomeQueue();
+          refresh();
+        } catch (e) {
+          toast(e.message || 'Ошибка', 'err');
+        }
+      });
+    });
+    mountEl.querySelectorAll('.reg-outcome-reject').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        const qid = btn.dataset.qid;
+        if (!confirm('Отклонить все варианты для этого тендера?')) return;
+        try {
+          await API.rejectOutcomeMatchQueue(qid);
+          toast('Отклонено', 'ok');
+          await loadOutcomeQueue();
+          rerenderOutcomeQueueOnly();
+        } catch (e) {
+          toast(e.message || 'Ошибка', 'err');
+        }
+      });
+    });
+  }
+
+  async function loadOutcomeQueue() {
+    if (!userCanDuty(['TO', 'HEAD_TO', 'ADMIN', 'PM', 'HEAD_PM'])) {
+      outcomeQueueItems = [];
+      return;
+    }
+    try {
+      const d = await API.loadOutcomeMatchQueue();
+      outcomeQueueItems = d.items || [];
+    } catch (_) {
+      outcomeQueueItems = [];
+    }
+  }
+
+  function rerenderOutcomeQueueOnly() {
+    if (!mountEl) return;
+    const existing = mountEl.querySelector('.reg-outcome-queue');
+    const html = renderOutcomeQueueBar();
+    if (existing && existing.parentNode) {
+      if (html) {
+        const wrap = document.createElement('div');
+        wrap.innerHTML = html;
+        existing.parentNode.replaceChild(wrap.firstChild, existing);
+        bindOutcomeQueueHandlers();
+      } else {
+        existing.remove();
+      }
+    } else if (html) {
+      const duty = mountEl.querySelector('.reg-duty-bar');
+      const wrap = document.createElement('div');
+      wrap.innerHTML = html;
+      const node = wrap.firstChild;
+      if (duty && duty.nextSibling) duty.parentNode.insertBefore(node, duty.nextSibling);
+      else mountEl.insertBefore(node, mountEl.firstChild);
+      bindOutcomeQueueHandlers();
+    }
   }
 
   function renderDutyBar() {
@@ -152,23 +257,26 @@ window.AsgardRegistryTab = (function () {
     const isTo = role === 'TO' || role === 'HEAD_TO' || role === 'ADMIN';
     const isDirector = DIRECTOR_ROLES.includes(role);
     const final = !!row.rp_review?.is_final;
+    // Дефолт режима — по фазе: незакрытый анализ всегда «analysis».
+    // Раньше здесь стоял 'calc', и роль/просмотр навязывали просчёт в анализе.
+    const phaseMode = (row.analysis_finalized_at || row.rp_review?.analysis_finalized_at) ? 'calc' : 'analysis';
     if (isDirector) {
-      opts = Object.assign({ role: 'viewer', readOnly: true, mode: 'calc' }, opts);
+      opts = Object.assign({ role: 'viewer', readOnly: true, mode: phaseMode }, opts);
     } else if (role === 'HEAD_TO' && !opts.forceEdit) {
       opts = Object.assign({
         role: opts.viewAsTo !== false ? 'to' : 'viewer',
         readOnly: true,
-        mode: opts.mode || 'calc'
+        mode: opts.mode || phaseMode
       }, opts);
       if (ownsAnalysis) { opts.readOnly = false; opts.role = ''; }
     } else if (isTo && opts.viewAsTo !== false && !opts.forceEdit) {
       // ТО обычно смотрит как ТО (readOnly), даже до финала — иначе UI коллаба.
       // Исключение: ТО, который сам ведёт открытый анализ (D-203/B).
       if (!ownsAnalysis) {
-        opts = Object.assign({ role: 'to', readOnly: true, mode: opts.mode || 'calc' }, opts);
+        opts = Object.assign({ role: 'to', readOnly: true, mode: opts.mode || phaseMode }, opts);
       }
     }
-    const mode = opts.mode || (row.analysis_finalized_at || final ? 'calc' : 'analysis');
+    const mode = opts.mode || phaseMode;
     opts.mode = mode;
     if (mode === 'calc' && window.AsgardRpCalcModal) {
       AsgardRpCalcModal.open(row, pmsCache, refresh, opts);
@@ -1846,13 +1954,12 @@ window.AsgardRegistryTab = (function () {
         // или дежурный) обязан попасть в редактируемую модалку — иначе он не сможет
         // вести анализ и заполнить обязательный чек-лист.
         const readOnly = isView && !ownsOpenAnalysis(row);
-        let mode = 'calc';
-        if (!row.rp_review?.analysis_finalized_at) {
-          const rj = row.rp_review?.report_json;
-          try {
-            const parsed = typeof rj === 'string' ? JSON.parse(rj || '{}') : (rj || {});
-            mode = parsed.mode === 'analysis' ? 'analysis' : 'calc';
-          } catch (_) { /* ignore */ }
+        // Режим определяет ФАЗА, а не report_json.mode: у нового тендера
+        // report_json ещё пуст (mode = null), и старый код падал в 'calc' —
+        // поэтому в незакрытом анализе открывался «Просчёт Мимир».
+        let mode = 'analysis';
+        if (row.analysis_finalized_at || row.rp_review?.analysis_finalized_at) {
+          mode = 'calc';
         }
         openRpReviewModal(row, { readOnly, mode, viewAsTo: isView && readOnly });
       });
@@ -1979,8 +2086,12 @@ window.AsgardRegistryTab = (function () {
       const rows = d.items || [];
       rowsCache = rows;
       state.totalCount = d.total != null ? d.total : rows.length;
+      await loadOutcomeQueue();
+      if (typeof window !== 'undefined' && window.location.hash.indexOf('outcome_queue=1') >= 0) {
+        outcomeQueueExpanded = true;
+      }
       const actionCount = countActionRows(filterRows(rows));
-      mountEl.innerHTML = renderDutyBar() + renderToolbar(state.totalCount, periodOptions, actionCount) +
+      mountEl.innerHTML = renderDutyBar() + renderOutcomeQueueBar() + renderToolbar(state.totalCount, periodOptions, actionCount) +
         renderLegend() + renderTable(rows);
       bindDetailDelegation();
       bindTable(rows);
@@ -1988,6 +2099,7 @@ window.AsgardRegistryTab = (function () {
       bindColFilterHandlers();
       bindToolbarHandlers(periodOptions);
       bindLegendHandlers();
+      bindOutcomeQueueHandlers();
       handleDeepLink(rows);
     } catch (e) {
       mountEl.innerHTML = '<p class="err">Ошибка загрузки: ' + esc(e.message) + '</p>';
@@ -2020,6 +2132,13 @@ window.AsgardRegistryTab = (function () {
       onRefreshCb = opts.onRefresh;
       onOpenWinCb = opts.onOpenWin;
       onClearBurnCb = opts.onClearBurn;
+      if (!window.__regOutcomeQueueEv) {
+        window.__regOutcomeQueueEv = true;
+        window.addEventListener('asgard:registry:show-outcome-queue', () => {
+          outcomeQueueExpanded = true;
+          loadOutcomeQueue().then(() => rerenderOutcomeQueueOnly());
+        });
+      }
       Promise.all([
         API.loadUsers('PM,HEAD_PM'),
         API.loadUsers('TO,HEAD_TO')

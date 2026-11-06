@@ -60,6 +60,9 @@ window.AsgardRpReviewModal = (function () {
       summary: '', scope: '', risks: '', recommendation: '',
       questions_for_customer: [], missing_info: [],
       feasibility: '', competition: '',
+      volume_summary: '', history_block: '',
+      decision_recommend: '',
+      norm_hint: null,
       price_range_min: null, price_range_max: null,
       cost_without_vat: null,
       duration_days: null, resources: '',
@@ -73,13 +76,14 @@ window.AsgardRpReviewModal = (function () {
       try { r = JSON.parse(r || '{}'); } catch (_) { r = {}; }
     }
     if (!r || typeof r !== 'object') r = {};
-    const resolvedMode = mode != null ? mode : (r.mode || 'calc');
+    // Дефолт 'analysis': незакрытый анализ не должен открываться как просчёт.
+    const resolvedMode = mode != null ? mode : (r.mode || 'analysis');
     return Object.assign(defaultRj(resolvedMode), r, { mode: resolvedMode });
   }
 
   function getAnalysisSnapshot(reportJson, review, apiSnapshot) {
     if (apiSnapshot && typeof apiSnapshot === 'object') return apiSnapshot;
-    const rj = parseRj(reportJson, 'calc');
+    const rj = parseRj(reportJson, 'analysis');
     if (rj.analysis_snapshot) return rj.analysis_snapshot;
     if (review?.analysis_finalized_at) {
       return {
@@ -110,7 +114,7 @@ window.AsgardRpReviewModal = (function () {
     let h = '<div class="rp-review-analysis-ref">';
     h += '<div class="rp-review-analysis-ref-head"><strong>Анализ дежурного РП</strong>';
     h += '<span class="muted">' + esc(who) + (when ? ' · ' + esc(when) : '') + '</span></div>';
-    h += '<div class="rp-review-summary-card ' + cls + '" style="margin:0 0 10px"><strong>' + esc(label) + '</strong>';
+    h += '<div class="rp-review-summary-card rp-review-ref-decision ' + cls + '"><strong>' + esc(label) + '</strong>';
     const pr = priceRangeLabel(snap, null);
     if (dec === 'submit' && pr !== '—') h += ' · ' + esc(pr);
     h += '</div>';
@@ -131,33 +135,43 @@ window.AsgardRpReviewModal = (function () {
     return (AsgardUI.moneyRub || AsgardMoney.formatMoney)(v);
   }
 
-  /**
-   * Предварительный расчёт Мимира в фазе анализа: итоги структурной сметы
-   * (`report_json.asgard_smeta`), которую собрал `mimir-apply`.
-   * Просчёт берёт ровно эту смету — блок нужен, чтобы дежурный видел, что переносится.
-   */
-  function renderAnalysisSmetaBlock(rj, opts) {
-    const est = rj && rj.asgard_smeta;
-    const t = est && est.totals;
-    const isRich = !!(t && (t.price_no_vat != null || t.cost != null));
-    if (!isRich) {
-      if (opts && opts.locked) return '';
-      return '<div class="rp-review-smeta-block"><p class="muted" style="font-size:12px;margin:0 0 8px">' +
-        'Предварительная смета не рассчитана. Нажмите «Просчёт Мимир» — расчёт попадёт в просчёт готовой сметой.</p></div>';
+  function analysisDecisionBadge(dec) {
+    const d = String(dec || '').toLowerCase();
+    if (d === 'go') return { cls: 'submit', label: 'Рекомендация: подаём' };
+    if (d === 'no_go') return { cls: 'reject', label: 'Рекомендация: не подаём' };
+    if (d === 'need_info') return { cls: 'need-info', label: 'Нужны данные' };
+    return { cls: '', label: '' };
+  }
+
+  /** Карточка отчёта Мимира в фазе анализа (без сметы и сумм). */
+  function renderAnalysisReportCard(rj) {
+    rj = rj || {};
+    const badge = analysisDecisionBadge(rj.decision_recommend);
+    let h = '<div class="rp-review-analysis-report rp-review-analysis-ref">';
+    h += '<div class="rp-review-analysis-ref-head"><strong>Отчёт Мимира</strong>' +
+      '<span class="muted">go/no-go · объём и риски · без сметы</span></div>';
+    if (badge.label) {
+      h += '<div class="rp-review-mimir-decision rp-review-summary-card ' + badge.cls + '"><strong>' +
+        esc(badge.label) + '</strong></div>';
     }
-    const n = (v) => (v == null ? '—' : fmtMoney(v));
-    let h = '<div class="rp-review-smeta-block">';
-    h += '<div class="rp-review-analysis-ref-head"><strong>Предварительный расчёт</strong>' +
-      '<span class="muted">Мимир · переносится в просчёт</span></div>';
-    h += '<div class="rp-review-smeta-kpi">' +
-      '<div class="kpi"><span>Себестоимость</span><b>' + esc(n(t.cost)) + '</b></div>' +
-      '<div class="kpi"><span>Без НДС</span><b>' + esc(n(t.price_no_vat)) + '</b></div>' +
-      '<div class="kpi is-gold"><span>С НДС</span><b>' + esc(n(t.price_with_vat)) + '</b></div>' +
-      (t.net_profit != null
-        ? '<div class="kpi is-profit"><span>Чистая прибыль</span><b>' + esc(n(t.net_profit)) + '</b></div>'
-        : '') +
-      '</div>';
-    return h + '</div>';
+    h += '<div class="rp-review-report-body">';
+    h += renderRo('Суть для ТО', rj.summary);
+    h += renderRo('Объём', rj.volume_summary);
+    h += renderRo('Выполнимость', feasibilityLabel(rj.feasibility));
+    h += renderRo('Конкуренция', competitionLabel(rj.competition));
+    h += renderRo('Риски', rj.risks);
+    if (rj.norm_hint && rj.norm_hint.days != null) {
+      h += renderRo('Ориентир по срокам (нормы)', rj.norm_hint.days + ' дн.');
+    }
+    h += renderRo('История заказчика', rj.history_block);
+    if (Array.isArray(rj.questions_for_customer) && rj.questions_for_customer.length) {
+      h += '<div class="rp-review-ro"><div class="lbl">Вопросы заказчику</div>' +
+        '<ul class="rp-review-q-list">';
+      rj.questions_for_customer.forEach((q) => { h += '<li>' + esc(q) + '</li>'; });
+      h += '</ul></div>';
+    }
+    h += '</div></div>';
+    return h;
   }
 
   /**
@@ -313,19 +327,25 @@ window.AsgardRpReviewModal = (function () {
   function renderHeaderBadges(review, mode, isLocked) {
     let h = '';
     if (review?.director_review_status === 'pending') {
-      h += '<span class="rp-review-badge" style="background:#7c2d12;color:#fdba74">Согласование директора</span>';
+      h += '<span class="rp-review-badge director-pending">Согласование директора</span>';
     } else if (review?.director_review_status === 'approved') {
-      h += '<span class="rp-review-badge" style="background:var(--ok-bg);color:var(--ok-t)">Цена согласована</span>';
+      h += '<span class="rp-review-badge director-approved">Цена согласована</span>';
     } else if (review?.director_review_status === 'rejected') {
       h += '<span class="rp-review-badge reject">Отклонено директором</span>';
     }
     if (review?.is_final) h += '<span class="rp-review-badge final">Готов</span>';
-    else if (review?.analysis_finalized_at && mode === 'calc') {
-      h += '<span class="rp-review-badge" style="background:#1e3a5f;color:#93c5fd">Анализ закрыт</span>';
+    else if (review?.analysis_finalized_at && mode === 'calc' && !review?.is_final) {
+      const wp = Number(review.work_price);
+      const needsCalc = !(Number.isFinite(wp) && wp > 0) && !review.estimate_file_id;
+      if (needsCalc) {
+        h += '<span class="rp-review-badge need-calc">Нужен просчёт</span>';
+      } else {
+        h += '<span class="rp-review-badge analysis-done">Анализ закрыт</span>';
+      }
     }
     else if (!isLocked) h += '<span class="rp-review-badge draft">Черновик</span>';
     h += '<span class="rp-review-badge mode-' + (mode === 'calc' ? 'calc' : 'analysis') + '">' +
-      (mode === 'calc' ? 'Полный просчёт' : 'Быстрый анализ') + '</span>';
+      (mode === 'calc' ? 'Полный просчёт' : 'Анализ тендера') + '</span>';
     return h;
   }
 
@@ -469,7 +489,9 @@ window.AsgardRpReviewModal = (function () {
     const isDirector = role === 'director';
     const isViewer = role === 'viewer';
     let isLocked = !!opts.readOnly || isViewer;
-    let mode = opts.mode || 'calc';
+    // Дефолт — по фазе, а не жёстко 'calc': незакрытый анализ открывается
+    // как анализ, иначе в карточке появляется «Просчёт Мимир» (прод 06.11).
+    let mode = opts.mode || 'analysis';
     const contextMode = opts.mode || null;
     let tab = opts.initialTab || 'report';
     let review = null;
@@ -552,8 +574,48 @@ window.AsgardRpReviewModal = (function () {
       return 'Отчёт РП · #' + tender.id;
     }
 
+    async function showAnalysisBridgeModal() {
+      const dec = (review && review.decision) || decision
+        || (reportJson && reportJson.decision_recommend);
+      const isReject = dec === 'reject' || dec === 'no_go';
+      const bodyHtml = isReject
+        ? 'Анализ закрыт с решением <b>не подаём</b>. Просчёт не обязателен — при необходимости его можно открыть из очереди.'
+        : 'Анализ закрыт. <b>Следующий шаг — просчёт</b>: смета, цена работ и материалы для ТО.';
+      const okText = isReject ? 'Понятно' : 'Открыть просчёт';
+      const cancelText = isReject ? 'Всё же открыть просчёт' : 'Пока останусь в анализе';
+      const openCalc = () => {
+        hideModal();
+        if (typeof opts.onOpenCalc === 'function') opts.onOpenCalc(tender);
+      };
+      let ok = true;
+      if (window.AsgardConfirm && typeof AsgardConfirm.open === 'function') {
+        ok = await AsgardConfirm.open({
+          title: 'Анализ закрыт',
+          body: bodyHtml,
+          okText,
+          cancelText,
+          danger: false
+        });
+      }
+      if (isReject) {
+        if (ok) hideModal();
+        else openCalc();
+      } else if (ok) openCalc();
+      else hideModal();
+    }
+
+    function maybeToastAnalysisClosed() {
+      if (mode !== 'analysis' || !review || !review.analysis_finalized_at) return;
+      const key = 'rp_analysis_toast_' + tender.id;
+      try {
+        if (sessionStorage.getItem(key)) return;
+        sessionStorage.setItem(key, '1');
+      } catch (_) { return; }
+      toast('Анализ', 'Анализ уже закрыт. Остался просчёт.', 'info');
+    }
+
     function badgesHtml() {
-      return '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px">' + renderHeaderBadges(review, mode, isLocked) + '</div>';
+      return '<div class="rp-review-badges-row">' + renderHeaderBadges(review, mode, isLocked) + '</div>';
     }
 
     function decodeEntities(s) {
@@ -579,7 +641,11 @@ window.AsgardRpReviewModal = (function () {
       const c = decodeEntities(tender.customer_name || '');
       const t = decodeEntities(tender.tender_title || '');
       const short = t.length > 90 ? t.slice(0, 90) + '…' : t;
-      return c + (c && short ? ' · ' : '') + short;
+      let base = c + (c && short ? ' · ' : '') + short;
+      if (mode === 'analysis') {
+        base += (base ? ' · ' : '') + 'Решение go/no-go без сметы — цену считаем в просчёте';
+      }
+      return base;
     }
 
     /** Для вставки в HTML body. */
@@ -701,8 +767,8 @@ window.AsgardRpReviewModal = (function () {
           const dec = analysisSnapshot.decision || decision;
           const cls = dec === 'submit' ? 'submit' : (dec === 'reject' ? 'reject' : '');
           const label = dec === 'submit' ? '✓ Подаём' : (dec === 'reject' ? '✕ Не подаём' : '—');
-          h += '<div class="rp-review-summary-card ' + cls + '" style="margin-bottom:10px"><strong>' + esc(label) + '</strong>';
-          h += '<p class="muted" style="margin:6px 0 0;font-size:12px">Решение из анализа дежурного РП</p></div>';
+          h += '<div class="rp-review-summary-card rp-review-ref-decision ' + cls + '"><strong>' + esc(label) + '</strong>';
+          h += '<p class="rp-review-ref-hint muted">Решение из анализа дежурного РП</p></div>';
           decision = dec === 'reject' ? 'reject' : 'submit';
           reportKind = decision === 'reject' ? 'reject' : 'work';
         }
@@ -715,12 +781,25 @@ window.AsgardRpReviewModal = (function () {
         h += '<div class="rp-review-progress">Заполнено ' + pr.done + '/' + pr.total + ' разделов<bar><i style="width:' + pr.pct + '%"></i></bar></div>';
       }
 
-      // Фаза анализа: предварительный расчёт Мимира (структурная смета), который просчёт подхватит как есть.
       if (mode === 'analysis') {
-        h += renderAnalysisSmetaBlock(reportJson, { locked: isLocked });
-        // Техплан — сразу под сметой: сроки, сколько кого, перечень МТР.
-        // ТО решает по нему, хватает ли ресурсов, ещё до просчёта.
+        const hasMimirAnalysis = !!(reportJson.decision_recommend || reportJson.volume_summary
+          || (reportJson.summary && reportJson.decision_recommend));
+        if (hasMimirAnalysis || reportJson.summary || reportJson.risks) {
+          h += renderAnalysisReportCard(reportJson);
+        } else if (!isLocked) {
+          h += '<p class="muted" style="font-size:12px;margin:0 0 10px">Нажмите «Анализ Мимир» — в отчёт попадут рекомендация, объём и риски без сметы.</p>';
+        }
         h += renderTechPlanBlock(reportJson);
+      }
+
+      if (mode === 'calc' && review && review.analysis_finalized_at && !review.is_final) {
+        const wp = Number(review.work_price);
+        const needsCalc = !(Number.isFinite(wp) && wp > 0) && !review.estimate_file_id;
+        h += '<div class="rp-review-calc-banner' + (needsCalc ? ' is-urgent' : '') + '">' +
+          (needsCalc
+            ? '<strong>Нужен просчёт</strong> — заполните смету и цену работ (без НДС).'
+            : 'Анализ закрыт. Следующий шаг — <strong>просчёт</strong>: смета и цена для ТО.') +
+          '</div>';
       }
 
       if (decision === 'reject' && mode !== 'calc') {
@@ -901,9 +980,13 @@ window.AsgardRpReviewModal = (function () {
           ' · вкладка «Команда»</div>';
       }
       if (!isLocked) {
+        const mimirLabel = mode === 'analysis' ? '🚀 Анализ Мимир' : '🚀 Просчёт Мимир';
+        const mimirTitle = mode === 'analysis'
+          ? 'ИИ-анализ тендера без сметы'
+          : 'Просчёт через Мимир-Quick';
         h += '<div style="display:flex;gap:8px;flex-wrap:wrap;margin:0 0 12px">' +
-          '<button type="button" class="btn mini" id="rpOpenMimir" title="Опциональный просчёт через Мимир-Quick">🚀 Просчёт Мимир</button>' +
-          '</div>';
+          '<button type="button" class="btn mini" id="rpOpenMimir" title="' + esc(mimirTitle) + '">' +
+          esc(mimirLabel) + '</button></div>';
       }
       return h;
     }
@@ -1424,6 +1507,9 @@ window.AsgardRpReviewModal = (function () {
           onApplied: (result) => {
             if (result.field_patch) {
               Object.assign(reportJson, result.field_patch);
+              const dr = result.field_patch.decision_recommend;
+              if (dr === 'no_go') decision = 'reject';
+              else if (dr === 'go') decision = 'submit';
             }
             if (result.work_price != null && !editingParticipantDraft) {
               workPrice = result.work_price;
@@ -1486,7 +1572,11 @@ window.AsgardRpReviewModal = (function () {
         const isAnalysis = mode === 'analysis';
         const confirmTitle = isAnalysis ? 'Закрыть анализ?' : 'Закрыть отчёт?';
         const confirmBody = isAnalysis
-          ? 'После закрытия вы <b>больше не сможете править</b> анализ — его получит ТО.<br><br>Чтобы просто выйти со страницы — нажмите крестик (анализ при этом не закроется). Черновик сохраняйте кнопкой «Сохранить».'
+          ? 'После закрытия анализ нельзя править — его получит ТО.<br><br>' +
+            'Закрытие анализа — это не просчёт и не закрытие тендера.<br>' +
+            'Смету и цену вы посчитаете на следующем шаге — в просчёте.<br><br>' +
+            'Чтобы просто выйти без закрытия — нажмите крестик.<br>' +
+            'Черновик сохраняйте кнопкой «Сохранить».'
           : 'После закрытия вы <b>больше не сможете править</b> отчёт.<br><br>Чтобы просто выйти — нажмите крестик (отчёт при этом не закроется).';
         const confirmOk = isAnalysis ? 'Закрыть анализ' : 'Закрыть отчёт';
         let ok = true;
@@ -1501,7 +1591,11 @@ window.AsgardRpReviewModal = (function () {
         } else {
           ok = window.confirm(
             (isAnalysis
-              ? 'Закрыть анализ? После закрытия вы больше не сможете его править. ТО получит анализ на проверку.\n\nЧтобы просто выйти — нажмите крестик, не эту кнопку.'
+              ? 'Закрыть анализ? После закрытия анализ нельзя править — его получит ТО.\n\n' +
+                'Закрытие анализа — это не просчёт и не закрытие тендера.\n' +
+                'Смету и цену вы посчитаете на следующем шаге — в просчёте.\n\n' +
+                'Чтобы просто выйти без закрытия — нажмите крестик.\n' +
+                'Черновик сохраняйте кнопкой «Сохранить».'
               : 'Закрыть отчёт? После закрытия вы больше не сможете его править.\n\nЧтобы просто выйти — нажмите крестик, не эту кнопку.')
           );
         }
@@ -1533,7 +1627,8 @@ window.AsgardRpReviewModal = (function () {
           if (d && d.review) review = d.review;
           toast('Анализ', mode === 'analysis' ? 'Анализ закрыт' : 'Отчёт закрыт', 'ok');
           onSaved && onSaved();
-          hideModal();
+          if (mode === 'analysis') void showAnalysisBridgeModal();
+          else hideModal();
         }).catch((e) => handleSaveConflict(e));
       });
 
@@ -1896,7 +1991,15 @@ window.AsgardRpReviewModal = (function () {
             decision = analysisSnapshot.decision === 'reject' ? 'reject' : 'submit';
           }
           reportKind = review?.report_kind || (decision === 'reject' ? 'reject' : 'work');
-          mode = contextMode != null ? contextMode : (parseRj(review?.report_json, 'calc').mode || 'calc');
+          // Режим НЕ перезаписываем из report_json.mode: у нового тендера он пуст,
+          // и дефолт 'calc' превращал анализ в просчёт. Фаза берётся из карточки:
+          // анализ закрыт (analysis_finalized_at) → просчёт, иначе анализ.
+          if (contextMode != null) {
+            mode = contextMode;
+          } else {
+            const finalized = !!(review?.analysis_finalized_at);
+            mode = finalized ? 'calc' : 'analysis';
+          }
           reportJson = parseRj(review?.report_json, mode);
           workPrice = reviewWorkPrice(review).exVat ?? '';
           missingFlags = Array.isArray(review?.missing_info_flags) ? [...review.missing_info_flags] : [];
@@ -1925,6 +2028,7 @@ window.AsgardRpReviewModal = (function () {
           if (isTo && analysisSnapshot && review?.analysis_finalized_at && !review?.is_final) {
             // keep form from snapshot for read of analysis; calc not yet
           }
+          maybeToastAnalysisClosed();
           const openTab = tab;
           if (openTab === 'thread') {
             loadThreadMessages().then(() => rerender());
