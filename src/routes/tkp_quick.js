@@ -763,7 +763,7 @@ async function routes(fastify, options) {
               norm_inputs: {
                 category_code: pos.category_code,
                 method_code: pos.method_code,
-                inputs: inputsForPosition(pos),
+                inputs: inputsForPosition(pos, catalog),
                 fouling: pos.fouling || 'medium'
               }
             });
@@ -837,75 +837,9 @@ async function routes(fastify, options) {
     }
   });
 
-  /** Ключи объёма под calc_kind метода (для норма-превью по позиции ДВ). */
-  /**
-   * Переводит объём позиции ДВ в ключи, которые ждёт норма метода.
-   *
-   * Дефект 06.11: на все категории подавалась одна схема (`circuit_m3` для
-   * любого «м³»), а `vessels.clean` ждёт `volume_m3`. Итог — у 41 позиции
-   * тендера 2131 норма не нашлась, и весь план посчитан «экспертом».
-   * Здесь ключи разложены по категориям и методам, как в input_schema_json.
-   */
-  function inputsForPosition(pos) {
-    const u = String(pos.unit || '').toLowerCase();
-    const v = Number(pos.volume) || 0;
-    const cat = String(pos.category_code || '');
-    const isM3 = u.includes('м³') || u.includes('м3');
-    const isM2 = u.includes('м²') || u.includes('м2');
-
-    // Параметры пересчёта из ДВ: диаметр, длина трубки, толщина слоя.
-    // Дефект 06.11: здесь стояли выдуманные diameter_mm: 25, length_m: 6,
-    // dn_mm: 159 для ВСЕХ позиций. Модель уже отдаёт реальные параметры,
-    // их надо брать, а не подставлять «средние по отрасли».
-    const cp = pos.conversion_params || {};
-    const realDn = Number(cp.dn_mm) > 0 ? Number(cp.dn_mm) : null;
-    const realLen = Number(cp.length_m) > 0 ? Number(cp.length_m) : null;
-    const realThick = Number(cp.thickness_mm) > 0 ? Number(cp.thickness_mm) : null;
-
-    // Объёмы и площади — одинаковые имена во многих схемах.
-    const base = {};
-    if (isM3) base.circuit_m3 = v;
-    if (isM3) base.volume_m3 = v;
-    if (isM2) base.surface_m2 = v;
-    if (realThick) base.thickness_mm = realThick;
-
-    // Трубки: нужны Ø и длина. Берём реальные из ДВ; если их нет — норма
-    // сама скажет «укажите длину», а не посчитает по выдуманным 6 метрам.
-    if (u.includes('труб')) {
-      return Object.assign({}, base, {
-        tubes: v,
-        diameter_mm: realDn,
-        length_m: realLen
-      });
-    }
-    if (u.includes('стык')) return Object.assign({}, base, { joints: v, dn_mm: realDn });
-    // ВАЖНО: «м³»/«м²» проверяем ДО общей «м». Иначе объём совпадает с «м»
-    // и уходит как длина — из-за этого у 41 позиции тендера 2131 норма
-    // не находилась и весь план считался «экспертом» (06.11).
-    if (!isM3 && !isM2) {
-      if (u.includes('цикл')) return Object.assign({}, base, { cycles: v || 2 });
-      if (u.includes('м')) return Object.assign({}, base, { length_m: v, dn_mm: realDn });
-    }
-
-    // Дополняем обязательные поля, которых нет в ДВ, разумными значениями:
-    // без них норма отвечает «укажите…» и позиция уходит в «эксперт».
-    if (cat === 'boilers') {
-      return Object.assign({}, base, { cycles: 2, boilers: 1 });
-    }
-    if (cat === 'plates') {
-      return Object.assign({}, base, { cycles: 2, apparatus: 1 });
-    }
-    if (cat === 'chem_circuits' || (cat === 'towers_hvac' && !isM2)) {
-      return Object.assign({}, base, { cycles: 2, apparatus_count: 1, points: 1, objects: 1 });
-    }
-    if (cat === 'vessels') {
-      return Object.assign({}, base, { deposit_cm: null, manways: 2 });
-    }
-    if (cat === 'towers_hvac') {
-      return Object.assign({}, base, { cells: 1, biofouling: 'medium' });
-    }
-    return Object.assign({}, base, { qty: v });
-  }
+  // Перевод объёма ДВ в входы нормы вынесен в сервис: там источником
+  // правды служит input_schema_json категории, без выдуманных значений.
+  const { inputsForPosition } = require('../services/norm-inputs');
 
   /**
    * POST /sessions/:uid/stage/calc-plan — сгенерировать план (люди, сроки, оборудование).
