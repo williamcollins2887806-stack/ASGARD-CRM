@@ -825,7 +825,25 @@ async function routes(fastify, options) {
 
       const state = stageSvc.normalizeState({
         gaps: pf.gaps.map((g) => ({ ...g, resolved: true })),
-        positions
+        positions,
+        // Суть, объём, выполнимость, конкуренция и риски — это результат
+        // анализа, и он должен ЖИТЬ в состоянии, а не только в ответе API.
+        // Дефект 07.11: поля возвращались в response, но не сохранялись,
+        // и после перезагрузки модалки оказывались пустыми. Из-за этого
+        // анализ нельзя было финализировать (эндпоинт требует summary
+        // и feasibility), и очередь стояла в черновиках.
+        summary: gen.dv.summary || null,
+        volume_summary: gen.dv.volume_summary || null,
+        feasibility: gen.dv.feasibility || null,
+        feasibility_note: gen.dv.feasibility_note || null,
+        competition: gen.dv.competition || null,
+        risks: gen.dv.risks || null,
+        decision_recommend: gen.dv.decision_recommend || null,
+        questions_for_customer: Array.isArray(gen.dv.questions_for_customer)
+          ? gen.dv.questions_for_customer : [],
+        // Срок и режим работ — тоже часть анализа, нужны перед просчётом.
+        schedule: sched || null,
+        schedule_days: (sched && sched.days) || null
       });
       const saved = await stageSvc.saveStage(db, request.params.uid, {
         stage: 'dv', state, expectedVersion: b.expected_version
