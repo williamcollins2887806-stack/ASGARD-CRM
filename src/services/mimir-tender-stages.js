@@ -351,11 +351,19 @@ function normalizeDv(ai, catalog) {
     const methodName = (methodRow && (methodRow.label || methodRow.name || methodRow.title)) || null;
     const volume = Number(p.volume);
     const unit = String(p.unit || '').trim();
+
+    // Защита от подмены: модель иногда кладёт в volume ТРУДОЁМКОСТЬ,
+    // а не объём («50 чел·ч» вместо «50 м³», тендер 2143 Hi Pro).
+    // Трудоёмкость в поле объёма ломает весь расчёт, поэтому отсекаем.
+    const unitLooksLikeLabor = /чел[·.\-]?\s*ч|чел[·.\-]?\s*см|чел[·.\-]?\s*дн|нормо[·.\-]?час|ч\/|час/i.test(unit);
+    const volumeIsLabor = unitLooksLikeLabor && !/^(м|м2|м²|м3|м³|т|шт|труб|пластин|стык|цикл|п\.?м)$/i.test(unit);
     const knownCategory = !cat || cats.some((c) => c.code === cat);
     const knownMethod = !cat ? false : methodExists(cat, method);
 
     const problems = [];
     if (!isFinitePositive(volume)) problems.push('объём не указан');
+    // Единица «чел·ч» в объёме — это трудоёмкость, а не объём работ.
+    if (unitLooksLikeLabor) problems.push('в объёме указана трудоёмкость, а не объём — нужен объём работ');
     if (!unit) problems.push('единица не указана');
     if (!cat) problems.push('категория не определена');
     else if (!knownCategory) problems.push(`категории «${cat}» нет в справочнике`);
@@ -377,14 +385,14 @@ function normalizeDv(ai, catalog) {
       method_code: method,
       category_name: catName,
       method_name: methodName,
-      volume: isFinitePositive(volume) ? volume : null,
+      volume: isFinitePositive(volume) && !unitLooksLikeLabor ? volume : null,
       unit,
       // ── Альтернативные единицы (V472) ────────────────────────────────────
       // Как объём задан в ВОР на самом деле: «1750 м²», «1353 т», «12 дюймов».
       // Норма считает в своей единице, поэтому храним и измеренное, и параметры
       // пересчёта (толщина, плотность), чтобы РП мог их поправить.
       measured_unit: unit || null,
-      measured_value: isFinitePositive(volume) ? volume : null,
+      measured_value: isFinitePositive(volume) && !unitLooksLikeLabor ? volume : null,
       conversion_params: {
         thickness_mm: Number(p.thickness_mm) > 0 ? Number(p.thickness_mm) : null,
         density_t_m3: Number(p.density_t_m3) > 0 ? Number(p.density_t_m3) : null,

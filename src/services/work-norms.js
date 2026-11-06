@@ -1045,6 +1045,37 @@ async function previewCalc(db, body) {
     // работаем как раньше — с исходными полями.
   }
 
+  // ── Проверка единицы против нормы (06.11) ────────────────────────────────
+  // Норма tubes.gdo считает ШТУКИ трубок, а ВОР часто даёт погонные метры.
+  // Без этой проверки «102 516 п.м» считалось как 102 516 трубок и давало
+  // срок 739 855 суток. Пересчитываем через длину трубки либо отказываем.
+  try {
+    const unitCheck = sanityCheck.checkUnitMatchesNorm({
+      category, method,
+      unit: inputs._measured_unit || inputs.measured_unit || inputs.unit,
+      value: Number(inputs._measured_value || inputs.measured_value) || 0,
+      params: {
+        length_m: Number(inputs.length_m) || null,
+        diameter_mm: Number(inputs.diameter_mm) || null,
+        wall_mm: Number(inputs.wall_mm) || null
+      }
+    });
+    if (!unitCheck.ok) {
+      return {
+        error: `Нужно уточнить: ${unitCheck.note}`,
+        needs_input: true,
+        missing: unitCheck.missing || [],
+        rate: rateRow,
+        trace: normTrace
+      };
+    }
+    if (unitCheck.converted) {
+      const field = expectedInputField(category, method, rateRow.code, rateRow.calc_kind);
+      if (field) inputs[field] = unitCheck.value;
+      normTrace.push('единица: ' + unitCheck.note);
+    }
+  } catch (_) { /* проверка не должна ломать расчёт */ }
+
   const physErr = physicalInputError(category, method, rateRow.code, rateRow.calc_kind, inputs);
   if (physErr) {
     return { error: physErr, rate: rateRow, trace: normTrace };

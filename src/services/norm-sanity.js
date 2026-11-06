@@ -114,4 +114,73 @@ function round2(n) {
   return Math.round(Number(n) * 100) / 100;
 }
 
-module.exports = { checkSane, checkApplicability, RATIO_LIMIT };
+/**
+ * Проверка соответствия ЕДИНИЦЫ объёма той, что ждёт норма.
+ *
+ * Дефект 06.11 (тендер 2131): в ВОР объёмы трубок заданы в погонных метрах
+ * («102 516 п.м»), а норма tubes.gdo считает ШТУКИ трубок. Модель подставила
+ * число как штуки — расчёт дал срок 739 855 суток (2000 лет). Проверка
+ * на абсурд это не поймала: объём и срок согласованы между собой.
+ *
+ * Возвращает { ok, converted, value, note } либо отказ со списком missing.
+ *
+ * @param {object} p
+ * @param {string} p.category
+ * @param {string} p.method
+ * @param {string} p.unit        единица из ВОР
+ * @param {number} p.value
+ * @param {object} p.params      { length_m, diameter_mm, wall_mm }
+ */
+function checkUnitMatchesNorm(p) {
+  const o = p || {};
+  const u = String(o.unit || '').trim().toLowerCase().replace(/\s+/g, '');
+  const v = Number(o.value);
+  const cat = String(o.category || '');
+  const method = String(o.method || '');
+
+  if (!(v > 0) || !u) return { ok: true, note: null };
+
+  // ВАЖНО: \w в JS не покрывает кириллицу — используем явный класс.
+  const isRunM = /^(п\.?\s?м|пм|пог\.?\s?м|погонн[а-яё]*\s*метр[а-яё]*|м\.?\s?п\.?|rm)$/.test(u) || u === 'пм';
+
+  // Трубные пучки: норма считает трубки, а ВОР часто даёт погонные метры.
+  if (cat === 'tubes' || (cat === 'avo' && method === 'tubes')) {
+    if (isRunM) {
+      const len = Number(o.params && o.params.length_m);
+      if (!(len > 0)) {
+        return {
+          ok: false,
+          missing: ['length_m'],
+          note: `объём задан в погонных метрах (${v}), а норма считает трубки — нужна длина одной трубки`
+        };
+      }
+      const n = Math.round(v / len);
+      return {
+        ok: true,
+        converted: true,
+        value: n,
+        note: `${v} п.м / ${len} м на трубку = ${n} трубок`
+      };
+    }
+    // Штуки, трубки — норма то, что нужно.
+    if (/^(шт|труб|трубк)/.test(u)) return { ok: true, note: null };
+    // Площадь — переводится отдельным правилом.
+    if (/^(м2|м²|квм)/.test(u)) return { ok: true, note: null };
+  }
+
+  // Ёмкости: норма ждёт м³, а ВОР может дать м² или тонны — это уже
+  // обрабатывает unit-convert. Здесь ловим только явные несоответствия.
+  if (cat === 'vessels') {
+    if (/^(шт|компл)$/.test(u)) {
+      return {
+        ok: false,
+        missing: ['volume_m3'],
+        note: `для ёмкости нужен объём в м³, а пришло «${o.unit}»`
+      };
+    }
+  }
+
+  return { ok: true, note: null };
+}
+
+module.exports = { checkSane, checkApplicability, checkUnitMatchesNorm, RATIO_LIMIT };
