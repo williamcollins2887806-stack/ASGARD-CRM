@@ -106,7 +106,11 @@ let OPENAI_API_KEY = process.env.OPENAI_API_KEY || '';
 // RouterAI: дефолт deepseek/deepseek-v4.1-flash (1M, дешёвый JSON; reasoning-модель —
 // для коротких сводок звать с reasoning:{enabled:false}, см. ai-models.js).
 let OPENAI_MODEL = process.env.OPENAI_MODEL || MODEL_DEFAULT;
-const AI_MAX_TOKENS = parseInt(process.env.AI_MAX_TOKENS || '8000', 10);
+// Потолок ответа по умолчанию. Было 8000 — этого не хватало на разбор
+// больших тендеров: ответ обрывался на середине массива позиций
+// (тендер 2133, 553 тыс. символов документов). Провайдер принимает
+// и больше; явный maxTokens в вызове всё равно главнее.
+const AI_MAX_TOKENS = parseInt(process.env.AI_MAX_TOKENS || '32000', 10);
 const AI_TEMPERATURE = parseFloat(process.env.AI_TEMPERATURE || '0.6');
 const AI_TIMEOUT_MS = parseInt(process.env.AI_TIMEOUT_MS || '600000', 10); // 600 sec = 10 мин. Sonnet 4.6 с 1M контекстом и большим thinking может думать долго на сложных просчётах.
 

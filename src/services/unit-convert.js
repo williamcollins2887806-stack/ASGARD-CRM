@@ -44,44 +44,61 @@ function normUnit(u) {
 }
 
 /**
- * Таблица DN ↔ дюймы ↔ наружный диаметр (ГОСТ 3262-75, 8732-78).
- * Нужна для пересчёта «труба 2 дюйма» в миллиметры.
+ * DN ↔ дюймы ↔ наружный диаметр.
+ *
+ * ВАЖНО: при одном и том же DN наружный диаметр РАЗНЫЙ в двух сортаментах.
+ * Смешивать нельзя — это даёт ошибку в длине шва до 6%, а на 100 стыках
+ * это уже метры шва и часы работы (проверено исследованием 06.11.2026).
+ *
+ *   eu   — EN/DIN 2448 (импорт, европейская арматура)
+ *   gost — ГОСТ 8732 (бесшовные) / 3262 (ВГП)
+ *
+ * Значения сверены с таблицей Ду/DN/NPS/OD.
+ * По умолчанию используется eu — для нестандартизованных «труба 2 дюйма».
+ * Для «Ду100 ГОСТ 8732» надо явно просить gost.
  */
 const INCH_TO_MM = {
-  '1/4': { dn: 8, od: 13.5 },
-  '3/8': { dn: 10, od: 17.0 },
-  '1/2': { dn: 15, od: 21.3 },
-  '3/4': { dn: 20, od: 26.8 },
-  '1': { dn: 25, od: 33.5 },
-  '1 1/4': { dn: 32, od: 42.3 },
-  '1 1/2': { dn: 40, od: 48.0 },
-  '2': { dn: 50, od: 60.3 },
-  '2 1/2': { dn: 65, od: 73.0 },
-  '3': { dn: 80, od: 88.5 },
-  '3 1/2': { dn: 90, od: 101.3 },
-  '4': { dn: 100, od: 114.3 },
-  '5': { dn: 125, od: 140.0 },
-  '6': { dn: 150, od: 165.0 },
-  '8': { dn: 200, od: 219.0 },
-  '10': { dn: 250, od: 273.0 },
-  '12': { dn: 300, od: 325.0 },
-  '14': { dn: 350, od: 377.0 },
-  '16': { dn: 400, od: 426.0 },
-  '20': { dn: 500, od: 530.0 }
+  '1/4': { dn: 8, eu: 13.5, gost: 13.5 },
+  '3/8': { dn: 10, eu: 17.2, gost: 17.0 },
+  '1/2': { dn: 15, eu: 21.3, gost: 21.3 },
+  '3/4': { dn: 20, eu: 26.9, gost: 26.8 },
+  '1': { dn: 25, eu: 33.7, gost: 33.5 },
+  '1 1/4': { dn: 32, eu: 42.4, gost: 42.3 },
+  '1 1/2': { dn: 40, eu: 48.3, gost: 48.0 },
+  '2': { dn: 50, eu: 60.3, gost: 57.0 },
+  '2 1/2': { dn: 65, eu: 76.1, gost: 76.0 },
+  '3': { dn: 80, eu: 88.9, gost: 89.0 },
+  '3 1/2': { dn: 90, eu: 101.6, gost: 102.0 },
+  '4': { dn: 100, eu: 114.3, gost: 108.0 },
+  '5': { dn: 125, eu: 139.7, gost: 133.0 },
+  '6': { dn: 150, eu: 168.3, gost: 159.0 },
+  '8': { dn: 200, eu: 219.1, gost: 219.0 },
+  '10': { dn: 250, eu: 273.0, gost: 273.0 },
+  '12': { dn: 300, eu: 323.9, gost: 325.0 },
+  '14': { dn: 350, eu: 355.6, gost: 377.0 },
+  '16': { dn: 400, eu: 406.4, gost: 426.0 },
+  '20': { dn: 500, eu: 508.0, gost: 530.0 }
 };
 
-/** Дюймы → { dn_mm, od_mm } либо null. */
-function inchToMm(value) {
+/**
+ * Дюймы → { dn_mm, od_mm, standard }.
+ *
+ * @param {string|number} value  «2», «1 1/2», «4»
+ * @param {string} standard      'eu' (по умолчанию) либо 'gost'
+ */
+function inchToMm(value, standard) {
   const v = String(value == null ? '' : value).replace(',', '.').trim();
+  const std = String(standard || 'eu').toLowerCase() === 'gost' ? 'gost' : 'eu';
   const row = INCH_TO_MM[v];
-  if (row) return { dn_mm: row.dn, od_mm: row.od };
+  if (row) {
+    return { dn_mm: row.dn, od_mm: row[std], standard: std };
+  }
   const n = Number(v);
   if (!Number.isFinite(n) || n <= 0) return null;
   // Ближайший табличный размер.
-  const keys = Object.keys(INCH_TO_MM);
   let best = null;
   let bestDiff = Infinity;
-  for (const k of keys) {
+  for (const k of Object.keys(INCH_TO_MM)) {
     const frac = k.split(' ').reduce((acc, part) => {
       if (part.includes('/')) {
         const [a, b] = part.split('/').map(Number);
@@ -92,7 +109,9 @@ function inchToMm(value) {
     const d = Math.abs(frac - n);
     if (d < bestDiff) { bestDiff = d; best = k; }
   }
-  return best ? { dn_mm: INCH_TO_MM[best].dn, od_mm: INCH_TO_MM[best].od, approximated: true } : null;
+  return best
+    ? { dn_mm: INCH_TO_MM[best].dn, od_mm: INCH_TO_MM[best][std], standard: std, approximated: true }
+    : null;
 }
 
 /**
@@ -124,7 +143,13 @@ function weldLengthPerJoint(dnMm) {
   return Math.round((Math.PI * d / 1000) * 10000) / 10000;
 }
 
-/** Площадь одной трубки, м². По умолчанию — по внутреннему диаметру. */
+/**
+ * Площадь одной трубки, м². По умолчанию — по внутреннему диаметру.
+ *
+ * ГОСТ даёт площадь по НАРУЖНОМУ диаметру, а чистят внутреннюю поверхность.
+ * Разница 11–19% (проверено исследованием 06.11.2026): для 25×2 внутренний
+ * меньше наружного на 19%. Поэтому по умолчанию считаем по внутреннему.
+ */
 function tubeAreaM2(diameterMm, lengthM, opts) {
   const d = Number(diameterMm);
   const l = Number(lengthM);
@@ -134,6 +159,32 @@ function tubeAreaM2(diameterMm, lengthM, opts) {
   const wall = Number(opts && opts.wallMm) > 0 ? Number(opts.wallMm) : 1;
   const dEff = inner ? Math.max(1, d - 2 * wall) : d;
   return Math.round((Math.PI * dEff / 1000 * l) * 10000) / 10000;
+}
+
+/**
+ * Длина шва одного стыка с поправкой на толщину стенки.
+ *
+ * Номинал — по наружному диаметру: L = π·D.
+ * Корневой проход идёт по внутреннему: L_корня = π·(D − 2S).
+ * Для тонких стенок (S/D < 0.1) разницей пренебрегают, для толстых — нет:
+ * D114×S6 даёт 0,358 → 0,320 м (−11%).
+ *
+ * @returns {{ outer: number, root: number, diffPct: number, useRoot: boolean }}
+ */
+function weldLengthDetailed(dnMm, wallMm) {
+  const d = Number(dnMm);
+  if (!(d > 0)) return null;
+  const outer = Math.round((Math.PI * d / 1000) * 10000) / 10000;
+  const s = Number(wallMm) > 0 ? Number(wallMm) : 0;
+  if (!(s > 0)) {
+    return { outer, root: outer, diffPct: 0, useRoot: false };
+  }
+  const dRoot = Math.max(1, d - 2 * s);
+  const root = Math.round((Math.PI * dRoot / 1000) * 10000) / 10000;
+  const diffPct = Math.round(((outer - root) / outer) * 1000) / 10;
+  // Поправка существенна при S/D > 0.1 (толстостенные трубы).
+  const useRoot = s / d > 0.1;
+  return { outer, root, diffPct, useRoot };
 }
 
 /**
@@ -263,10 +314,12 @@ function convert(p) {
       trace.push(`${value} стыков × ${perJoint} м = ${round3(result)} м шва`);
     }
   } else if (kind === 'dn_from_inch') {
-    const r = inchToMm(value);
+    const std = o.standard || (params.wall_mm ? null : null) || 'eu';
+    const r = inchToMm(value, o.standard);
     if (!r) return fail(['dn_mm'], 'не удалось перевести дюймы', trace);
     result = r.od_mm;
-    trace.push(`${value}″ → Ду ${r.dn_mm} мм, наружный ${r.od_mm} мм${r.approximated ? ' (ближайший типоразмер)' : ''}`);
+    trace.push(`${value}″ → Ду ${r.dn_mm} мм, наружный ${r.od_mm} мм ` +
+      `(${r.standard === 'gost' ? 'ГОСТ' : 'EN/DIN'})${r.approximated ? ' — ближайший типоразмер' : ''}`);
   } else if (kind === 'sum_area') {
     // Пересчёт между трубками и площадью поверхности: S = π·d·L·N
     const dn = param('diameter_mm');
@@ -331,6 +384,7 @@ module.exports = {
   cylinderSurfaceM2,
   cylinderVolumeM3,
   weldLengthPerJoint,
+  weldLengthDetailed,
   tubeAreaM2,
   INCH_TO_MM
 };

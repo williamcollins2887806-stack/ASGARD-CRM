@@ -161,18 +161,78 @@ function salvagePartialDv(body) {
   };
 }
 
-function docsToText(documents, limit = 60000) {
+/**
+ * Склеивает текст документов для промпта.
+ *
+ * Дефект 06.11: при 553 тыс. символов в 22 документах (тендер 2133) промпт
+ * обрезался до 60 тыс., и обрезанным оказывался именно ВОР с объёмами —
+ * модель честно отвечала «перечень оборудования обрезан, объёмы не выводимы»
+ * и возвращала 0 позиций.
+ *
+ * Проверено на провайдере: вход до 300 тыс. символов проходит без ошибки,
+ * поэтому лимит поднят до 400 тыс. Порядок и доли сохранены: документы
+ * с объёмами (ВОР, ведомость) идут первыми и получают больше места.
+ */
+function docsToText(documents, limit = 400000) {
   const list = Array.isArray(documents) ? documents : [];
-  const parts = list
-    .map((d) => {
-      const name = d.original_name || d.filename || d.name || 'документ';
-      const text = String(d.text || d.ocr_text || d.content || '').trim();
-      if (!text) return null;
-      return `=== ${name} ===\n${text}`;
-    })
-    .filter(Boolean);
-  const out = parts.join('\n\n');
-  return out.length > limit ? out.slice(0, limit) + '\n… (обрезано)' : out;
+
+  // Важность документа для разбора объёмов.
+  // ВАЖНО: «вор» надо искать как отдельное слово, иначе «договОр» тоже
+  // попадает в эту группу и получает высший приоритет (поймано тестом).
+  function priority(name) {
+    const n = String(name || '').toLowerCase();
+    if (/(^|[^а-яё])(вор|ведомость|ведомости|дефектная|дефектов|перечень работ)([^а-яё]|$)/.test(n)) return 0;
+    if (/объ[её]м|объ[её]мов/.test(n)) return 0;
+    if (/(^|[^а-яё])(тз|техническое задание|задание|приложение)([^а-яё]|$)/.test(n)) return 1;
+    if (/техническ/.test(n)) return 1;
+    if (/(^|[^а-яё])(смета|сметы|расч[её]т|форма|калькуляция)([^а-яё]|$)/.test(n)) return 2;
+    if (/договор|контракт/.test(n)) return 4;
+    return 3;
+  }
+
+  const items = list
+    .map((d) => ({
+      name: d.original_name || d.filename || d.name || 'документ',
+      text: String(d.text || d.ocr_text || d.content || '').trim()
+    }))
+    .filter((d) => d.text)
+    .map((d) => Object.assign({}, d, { pr: priority(d.name) }))
+    .sort((a, b) => a.pr - b.pr || b.text.length - a.text.length);
+
+  if (!items.length) return '';
+
+  // Приоритет — не только порядок, но и ДОЛЯ лимита: документ с объёмами
+  // (ВОР, ведомость) должен получить больше места, чем договор на 200 страниц.
+  // Дефект 06.11: ВОР на 19 тыс. символов резался вместе со всеми, и модель
+  // честно отвечала «перечень оборудования обрезан, объёмы не выводимы».
+  const WEIGHTS = { 0: 5, 1: 3, 2: 2, 3: 1, 4: 1 };
+
+  const totalWeight = items.reduce((s, it) => s + (WEIGHTS[it.pr] || 1), 0);
+  const minPer = 1500;
+  const budget = Math.max(limit, items.length * minPer);
+
+  const parts = [];
+  for (const it of items) {
+    const head = `=== ${it.name} ===\n`;
+    const quota = Math.max(minPer, Math.floor((budget * (WEIGHTS[it.pr] || 1)) / totalWeight));
+    const room = Math.max(800, quota - head.length);
+
+    if (it.text.length <= room) {
+      parts.push(head + it.text);
+    } else {
+      // Берём начало и конец: в ВОР таблица идёт с первых строк,
+      // а итоги и примечания — в конце.
+      const headPart = Math.floor(room * 0.75);
+      const tailPart = room - headPart - 70;
+      parts.push(
+        head + it.text.slice(0, headPart) +
+        `\n… (середина опущена, всего ${it.text.length} симв.) …\n` +
+        (tailPart > 200 ? it.text.slice(-tailPart) : '')
+      );
+    }
+  }
+
+  return parts.join('\n\n');
 }
 
 /**
@@ -190,10 +250,13 @@ function docsToText(documents, limit = 60000) {
 async function generateDv(p) {
   const o = p || {};
   const catalog = o.catalog || { categories: [], rates: [] };
+
+  const tzText = String(o.tz_text || '(ТЗ текстом не задано)').slice(0, 40000);
+  const docsText = docsToText(o.documents) || '(документов с текстом нет)';
   const system = promptLoader.buildPrompt('PROMPT-dv-v1.md', {
     catalog: catalogForPrompt(catalog),
-    tz_text: String(o.tz_text || '(ТЗ текстом не задано)').slice(0, 40000),
-    documents_text: docsToText(o.documents) || '(документов с текстом нет)',
+    tz_text: tzText,
+    documents_text: docsText,
     history_block: o.history_block || '(истории нет)'
   });
 
@@ -204,10 +267,13 @@ async function generateDv(p) {
     // response_format json_object + отключённый reasoning: иначе DeepSeek
     // уходит в 8000 токенов рассуждений и возвращает пустой content
     // (finish_reason=length). Проверено на проде 06.11.2026.
+    //
+    // maxTokens поднят до 32000: на тендере 2133 было 553 тыс. символов
+    // документов, и при 12000 ответ обрывался на середине массива позиций.
     res = await o.aiProvider.complete({
       system,
       messages: [{ role: 'user', content: user }],
-      maxTokens: 12000,
+      maxTokens: 32000,
       temperature: 0.15,
       responseFormat: { type: 'json_object' },
       reasoning: { enabled: false }
