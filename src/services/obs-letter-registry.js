@@ -202,9 +202,19 @@ async function saveObsLetter(db, docId, payload, opts = {}) {
       throw httpError(400, 'Сумма счёта должна быть больше нуля', { field: 'amount_gross' });
     }
 
-    const subcontractId = p.subcontract_id !== undefined && p.subcontract_id !== null && p.subcontract_id !== ''
-      ? Number(p.subcontract_id)
-      : (doc.subcontract_id || null);
+    // Договор, по которому пишется письмо. Человек без права менять договор
+    // (не BUH) не может подставить произвольный: берём тот, что уже стоит в
+    // карточке. Иначе получалось, что письмо ссылается на один договор, а
+    // лимит расходуется по другому — и «недостача лимита» считалась бы не по
+    // тому основанию.
+    const canSetContourEarly = opts.canSetContour === true;
+    let subcontractId;
+    if (p.subcontract_id !== undefined && p.subcontract_id !== null && p.subcontract_id !== ''
+        && canSetContourEarly) {
+      subcontractId = Number(p.subcontract_id);
+    } else {
+      subcontractId = doc.subcontract_id || null;
+    }
 
     const obsAccountId = p.obs_account_id !== undefined && p.obs_account_id !== null && p.obs_account_id !== ''
       ? Number(p.obs_account_id)
@@ -374,6 +384,15 @@ async function saveObsLetter(db, docId, payload, opts = {}) {
     // договора его не видит. Это не ручное переключение (оно у бухгалтерии),
     // а следствие самого факта письма: без него состояние противоречиво.
     const setObs = canSetContour || opts.forceObsContour === true;
+
+    // D-397c (FAIL третьего верификатора 07.11.2026): ДОГОВОР — отдельный флаг.
+    // Раньше `subcontract_id` гейтился тем же `$6`, что и контур, а контур
+    // теперь выставляется и без права (см. `setObs`). В итоге PM с грантом,
+    // создав письмо, подставлял ЛЮБОЙ `subcontract_id` из payload в обход
+    // `PATCH /:id/subcontract` (только BUH). Лимит существенности — условие
+    // договора, а не свойство письма: менять его может только бухгалтерия.
+    const setSubcontract = canSetContour;
+
     await client.query(
       `UPDATE doc_registry
           SET payment_source = CASE WHEN $6 THEN 'obs' ELSE payment_source END,
@@ -381,11 +400,11 @@ async function saveObsLetter(db, docId, payload, opts = {}) {
               obs_letter_doc_id=$2,
               obs_letter_error=NULL,
               obs_account_id=$3,
-              subcontract_id = CASE WHEN $6 THEN $4 ELSE subcontract_id END,
+              subcontract_id = CASE WHEN $7 THEN $4 ELSE subcontract_id END,
               updated_by=$5,
               updated_at=NOW()
         WHERE id=$1`,
-      [docId, letterDocId, obsAccountId, subcontractId, userId, setObs]);
+      [docId, letterDocId, obsAccountId, subcontractId, userId, setObs, setSubcontract]);
 
     // ── Номер и дата счёта в карточке: если человек их поправил в модалке —
     // сохраняем, чтобы письмо и карточка не расходились. Пустые значения не

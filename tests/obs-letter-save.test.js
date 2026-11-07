@@ -260,8 +260,10 @@ test('D-397/3: контур оплаты не меняется без права
   assert.ok(/canSetContour/.test(src), 'сервис различает право на контур');
   assert.ok(/CASE WHEN \$6 THEN 'obs' ELSE payment_source END/.test(src),
     'payment_source меняется только при праве (CASE WHEN)');
-  assert.ok(/subcontract_id = CASE WHEN \$6 THEN \$4 ELSE subcontract_id END/.test(src),
-    'subcontract_id меняется только при праве');
+  // Договор — отдельный флаг $7 (D-397c): контур может перевести и само письмо
+  // ОБС, а договор — только бухгалтерия.
+  assert.ok(/subcontract_id = CASE WHEN \$7 THEN \$4 ELSE subcontract_id END/.test(src),
+    'subcontract_id меняется только при праве на договор ($7)');
 
   const route = fs.readFileSync(require.resolve('../src/routes/doc-registry'), 'utf8');
   assert.ok(/const canSetContour = req\.user\.role === 'ADMIN' \|\| OBS_ROLES\.includes/.test(route),
@@ -336,6 +338,27 @@ test('D-397b/3: предпросмотр не сбрасывает флаг не
   assert.ok(!/state\.dirty = false/.test(code),
     'doPreview больше не сбрасывает dirty (это делает только save)');
   assert.ok(/state\.dirty = false/.test(src), 'save по-прежнему сбрасывает dirty');
+});
+
+test('D-397c: договор меняет только бухгалтерия (отдельный флаг от контура)', () => {
+  // FAIL третьего верификатора 07.11.2026: `subcontract_id` гейтился тем же
+  // флагом, что и контур. А контур теперь выставляется и без права (письмо
+  // ОБС обязано перевести счёт). В итоге PM с грантом подставлял ЛЮБОЙ
+  // договор из payload в обход PATCH /:id/subcontract (только BUH) — и лимит
+  // расходовался не по тому основанию.
+  const fs = require('fs');
+  const src = fs.readFileSync(require.resolve('../src/services/obs-letter-registry'), 'utf8');
+
+  assert.ok(/const setSubcontract = canSetContour/.test(src),
+    'договор гейтится своим флагом canSetContour, а не setObs');
+  assert.ok(/subcontract_id = CASE WHEN \$7 THEN \$4/.test(src),
+    'subcontract_id использует $7 (право на договор), а не $6 (контур)');
+  assert.ok(/canSetContourEarly/.test(src),
+    'выбор договора до INSERT тоже ограничен правом: иначе лимит считается не по тому договору');
+
+  // И контур по-прежнему переводится сам при создании письма ОБС.
+  assert.ok(/const setObs = canSetContour \|\| opts\.forceObsContour === true/.test(src),
+    'контур переводится при праве или при письме ОБС');
 });
 
 
