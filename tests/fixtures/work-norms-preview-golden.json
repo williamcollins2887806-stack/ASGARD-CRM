@@ -1,0 +1,71 @@
+{
+  "note": "Golden cases for previewCalc math. Full previewCalc with DB is optional; metric mapping and fitRateFromPoints are unit-tested in work-norms-phase0.test.js.",
+  "cases": [
+    {
+      "id": "plates_per_shift_metric",
+      "category": "repair_weld",
+      "method": "plates_pack",
+      "metric": "plates_per_shift",
+      "expected_calc_kind": "per_unit_shift"
+    },
+    {
+      "id": "min_per_tube",
+      "category": "tubes",
+      "method": "gdo",
+      "metric": "min_per_tube",
+      "expected_calc_kind": "min_per_unit"
+    },
+    {
+      "id": "m2_per_shift",
+      "category": "avo",
+      "method": "outer",
+      "metric": "m2_per_shift",
+      "expected_calc_kind": "per_unit_shift"
+    },
+    {
+      "id": "hours_per_cycle",
+      "category": "plates",
+      "method": "chem_cip",
+      "metric": "hours_per_cycle",
+      "expected_calc_kind": "hours_per_cycle"
+    },
+    {
+      "id": "days_per_section",
+      "category": "avo",
+      "method": "outer",
+      "metric": "days_per_section",
+      "expected_calc_kind": "days_per_unit"
+    },
+    {
+      "id": "nonlinear_setup_flow",
+      "inputs": { "qty": 100 },
+      "params": { "setup_days": 2, "productivity": 25 },
+      "expected_work_days": 6,
+      "formula": "ceil(2 + 100/25)"
+    },
+    {
+      "id": "fit_two_points",
+      "points": [
+        { "qty": 10, "days": 3 },
+        { "qty": 30, "days": 5 }
+      ],
+      "expected_setup_days": 2,
+      "expected_productivity": 10
+    },
+    {
+      "id": "joints_per_shift",
+      "metric": "joints_per_shift",
+      "expected_calc_kind": "per_unit_shift"
+    },
+    {
+      "id": "mh_per_m3",
+      "metric": "mh_per_m3",
+      "expected_calc_kind": "mh_per_unit"
+    },
+    {
+      "id": "kg_per_m",
+      "metric": "kg_per_m",
+      "expected_calc_kind": "kg_per_m"
+    }
+  ]
+}
