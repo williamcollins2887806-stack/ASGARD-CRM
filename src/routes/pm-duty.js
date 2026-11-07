@@ -1777,7 +1777,32 @@ async function reviewRoutes(fastify) {
       try { report_json = JSON.parse(report_json); } catch (_) { report_json = {}; }
     }
     const rj = parseReportJson(report_json);
-    const mode = rj.mode || 'calc';
+    // Режим берём из тела, если он там явно указан, иначе из сохранённого
+    // отчёта. Дефект 07.11: после первой неудачной попытки в report_json
+    // оставался mode='calc', и закрыть АНАЛИЗ было уже невозможно —
+    // эндпоинт требовал цену и смету («Для финализации «подаём» нужна
+    // цена или смета»), хотя РП закрывал именно анализ.
+    const mode = (b.mode === 'analysis' || b.mode === 'calc') ? b.mode : (rj.mode || 'calc');
+
+    // Суть, выполнимость и объёмы анализ сохраняет в состоянии этапа
+    // (tkp_quick_sessions.stage_state), а не в report_json. Дефект 07.11:
+    // проверка финализации читала только rj и отвечала «укажите суть»,
+    // хотя суть уже была сформирована Мимиром и лежала в состоянии.
+    try {
+      const stageRow = await db.query(
+        `SELECT stage_state FROM tkp_quick_sessions
+          WHERE tender_id = $1 AND stage_state IS NOT NULL
+          ORDER BY id DESC LIMIT 1`, [request.params.id]);
+      const st = (stageRow.rows[0] && stageRow.rows[0].stage_state) || {};
+      for (const k of ['summary', 'volume_summary', 'feasibility', 'feasibility_note',
+        'competition', 'risks', 'decision_recommend', 'questions_for_customer', 'schedule']) {
+        const v = st[k];
+        const empty = rj[k] == null || (typeof rj[k] === 'string' && !rj[k].trim());
+        if (empty && v != null && v !== '') rj[k] = v;
+      }
+    } catch (e) {
+      request.log.warn({ err: e }, 'не удалось подтянуть суть анализа из состояния этапа');
+    }
     const decision = b.decision || review.decision;
 
     if (review.analysis_finalized_at && mode === 'calc') {

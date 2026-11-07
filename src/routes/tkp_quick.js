@@ -886,6 +886,26 @@ async function routes(fastify, options) {
         stage: 'dv', state, expectedVersion: b.expected_version
       });
 
+      // Чек-лист анализа: заполняем то, на что Мимир может ответить по
+      // документам (плановость, отклонения по объёмам, допуски, доступ).
+      // Дефект 07.11: у всех 14 тендеров чек-лист был пуст, а без него
+      // анализ нельзя финализировать — фаза calc не наступала, и обучение
+      // справочника не пополнялось. Вопросы для звонка заказчику Мимир
+      // не выдумывает: пустое остаётся РП.
+      let checklistFill = null;
+      if (session.tender_id) {
+        try {
+          const { prefillChecklist } = require('../services/checklist-autofill');
+          checklistFill = await prefillChecklist(db, session.tender_id, {
+            dv: gen.dv,
+            text: (tzText || '') + '\n' + documents.map((d) => d.text || '').join('\n'),
+            schedule: sched
+          });
+        } catch (e) {
+          request.log.warn({ err: e }, 'чек-лист не предзаполнен');
+        }
+      }
+
       // ТЗ дописываем в сессию, чтобы следующий заход не спрашивал то же самое.
       if (tzText && tzText !== session.tz_text) {
         await db.query(
@@ -919,6 +939,8 @@ async function routes(fastify, options) {
         // Сколько позиций получили объём по паспорту оборудования
         // (когда ведомости объёмов в тендере нет).
         passport_enriched: passportEnriched,
+        // Сколько вопросов чек-листа заполнено по документам (остальное — РП).
+        checklist_filled: checklistFill ? checklistFill.filled : 0,
         // Сколько раундов заняла генерация: на больших ведомостях модель
         // отвечает порциями, и РП должен видеть, что разбор шёл частями.
         generation_rounds: gen.rounds || 1,
