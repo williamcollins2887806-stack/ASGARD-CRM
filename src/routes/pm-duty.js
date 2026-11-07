@@ -132,6 +132,151 @@ function buildAnalysisSnapshot(rj, decision, userId, userName) {
   };
 }
 
+/**
+ * Собирает структурную смету `asgard_v1` из плана просчёта.
+ *
+ * Зачем: при закрытии анализа в `report_json` попадал mode='calc', но без
+ * `asgard_smeta` — модалка просчёта показывала «Смета не рассчитана»,
+ * хотя позиции и сроки уже были. `asgard_smeta` собирался только в
+ * mimir-apply, а этот путь идёт другим эндпоинтом.
+ *
+ * Что берём:
+ *   • позиции плана (calc.positions) — название, объём, сутки, люди;
+ *   • параметры расчёта из настроек (ставки, налоги, наценка);
+ *   • часы = люди × смены × часы × сутки.
+ *
+ * Возвращает null, если позиций нет — пустую смету писать нельзя,
+ * иначе модалка покажет выдуманные итоги.
+ */
+async function buildSmetaFromStage(db, tenderId, rj) {
+  if (!tenderId) return null;
+
+  const { rows } = await db.query(
+    `SELECT stage_state FROM tkp_quick_sessions
+      WHERE tender_id = $1 AND stage_state IS NOT NULL
+      ORDER BY id DESC LIMIT 1`, [tenderId]);
+  const st = (rows[0] && rows[0].stage_state) || {};
+  const calc = (st.calc && st.calc.positions) || [];
+  const dvPositions = Array.isArray(st.positions) ? st.positions : [];
+  if (!calc.length) return null;
+
+  const asgardSmeta = require('../services/asgard-smeta');
+
+  // Параметры — из настроек компании, чтобы смета совпадала с ручным расчётом.
+  let params = {};
+  try {
+    const workNorms = require('../services/work-norms');
+    const globals = await workNorms.loadGlobals(db);
+    params = workNorms.globalsToCalcSettings(globals.map) || {};
+  } catch (_) { /* дефолты asgard-smeta подставятся сами */ }
+
+  // ── Как строится смета ────────────────────────────────────────────────────
+  // recalcAsgardSmeta НЕ принимает произвольные строки работ: он работает по
+  // своему скелету (секции A–H) и заполняет его из crew/mtr/schedule + params.
+  // Дефект 07.11: я передавал позиции как rows — смета разворачивала скелет
+  // с дефолтными ставками, и итоги не имели отношения к тендеру.
+  //
+  // Правильный вход:
+  //   crew     — состав бригады из плана (мастер, слесари, ИТР, наблюдающий);
+  //   schedule — срок и число смен из плана;
+  //   params   — ставки и налоги из настроек;
+  //   rows     — оставляем пустым, чтобы asgard-smeta взял СВОЙ скелет.
+  const planCrew = Array.isArray(st.calc && st.calc.crew) ? st.calc.crew : [];
+  const workDays = Number((st.calc && st.calc.work_days) || 0) || null;
+  const crews = Number((st.calc && st.calc.crews) || 0) || 1;
+
+  // Переводим состав плана в роли сметы.
+  // ВАЖНО: asgard-smeta читает поле `role` (ЧЕЛОВЕЧЕСКОЕ название), а `code`
+  // должен быть из фиксированного списка CREW_ROLES — иначе строка бригады
+  // отбрасывается и смета считает по пустому составу, давая одну и ту же
+  // сумму 2 818 085 ₽ у всех тендеров (ровно тот дефект, что был раньше).
+  const CREW_LABEL = {
+    itr: 'ИТР (РП)',
+    master: 'Мастер / бригадир',
+    worker: 'Слесарь',
+    observer: 'Наблюдающий',
+    chemist: 'Химик',
+    pto: 'ПТО / приёмка'
+  };
+  const crew = [];
+  for (const c of planCrew) {
+    const code = String(c.role_code || '').toLowerCase();
+    if (!CREW_LABEL[code]) continue;
+    const cnt = Number(c.count) || 0;
+    if (!(cnt > 0)) continue;
+    crew.push({
+      code,
+      role: CREW_LABEL[code],
+      count: cnt,
+      shifts_per_day: Number(params.shifts_per_day) || 2,
+      hours_per_shift: Number(params.shift_hours) || 12
+    });
+  }
+
+  // Без состава бригады смета не считается: движок развернёт скелет с
+  // дефолтными ставками и выдаст выдуманный ФОТ 710 000 ₽. РП должен задать
+  // состав, иначе цифры в карточке — не про этот тендер.
+  // (Правило движка не меняем: он используют и ручной расчёт, где дефолты
+  // допустимы. Отказ делаем здесь, на входе из анализа.)
+  if (!crew.length) return null;
+
+  // ── Параметры: срок и смены ───────────────────────────────────────────────
+  // КЛЮЧЕВОЕ: applyTechPlanRows считает чел·смены как
+  //   count × смены × p.work_days
+  // то есть срок берётся из ПАРАМЕТРОВ (p.work_days), а не из schedule.
+  // Дефект 07.11: срок передавался в schedule.duration_days и
+  // meta.work_duration_days, поэтому 5 и 20 суток давали ОДНУ цену —
+  // стоимость не зависела от длительности работ.
+  // workDays объявлен выше (там же, где planCrew) — не дублируем.
+  if (workDays) params.work_days = Math.max(1, Math.round(workDays));
+  if (!params.shifts_per_day) params.shifts_per_day = 2;
+  if (!params.shift_hours) params.shift_hours = 12;
+
+  const meta = {
+    template: 'asgard_v1',
+    // rows не задаём: asgard-smeta возьмёт свой скелет и заполнит его
+    // ценами из params + техпланом (crew) — это канон, а не самодельные строки.
+    params,
+    crew,
+    mtr: [],
+    schedule: {
+      duration_days: workDays,
+      crews: Number((st.calc && st.calc.crews) || 0) || 1,
+      shifts_per_day: params.shifts_per_day,
+      shift_hours: params.shift_hours
+    },
+    meta: {
+      work_duration_days: workDays,
+      crews
+    },
+    filled_by: 'mimir_analysis',
+    updated_at: new Date().toISOString()
+  };
+
+  try {
+    const sm = asgardSmeta.recalcAsgardSmeta(meta);
+    // Позиции ДВ кладём отдельным блоком перечня — чтобы РП видел состав работ,
+    // но в суммы они не лезут (kind:'info' по канону блока F).
+    if (sm) {
+      sm.works = calc.map((c) => {
+        const dv = byId.get(String(c.position_id)) || {};
+        return {
+          name: String(c.name || dv.name || 'Работа').slice(0, 200),
+          volume: Number(dv.volume) || null,
+          unit: dv.unit || null,
+          people: Number(c.people) || null,
+          days: Number(c.days) || null,
+          volume_source: dv.volume_source || null,
+          norm_code: (dv.norm && dv.norm.code) || null
+        };
+      });
+    }
+    return sm;
+  } catch (_) {
+    return null;
+  }
+}
+
 function enrichReviewRow(review, userMap) {
   if (!review) return review;
   const rj = parseReportJson(review.report_json);
@@ -1942,7 +2087,22 @@ async function reviewRoutes(fastify) {
           resources: rj.resources || '',
           questions_for_customer: rj.questions_for_customer || []
         };
-        if (rj.asgard_smeta) report_json.asgard_smeta = rj.asgard_smeta;
+        // Смета из анализа: если Мимир её уже собрал — берём как есть.
+        // Если нет — собираем здесь из плана просчёта (calc.positions).
+        // Дефект 07.11: asgard_smeta создавался ТОЛЬКО в mimir-apply, а
+        // закрытие анализа шло другим путём. В итоге в report_json лежал
+        // mode='calc' без asgard_smeta, и модалка просчёта писала
+        // «Смета не рассчитана. В карточке нет расчёта из анализа» —
+        // при том что анализ был закрыт и позиции посчитаны.
+        let smeta = rj.asgard_smeta || null;
+        if (!smeta) {
+          try {
+            smeta = await buildSmetaFromStage(db, tenderId, rj);
+          } catch (e) {
+            request.log.warn({ err: e.message }, 'смета из анализа не собрана');
+          }
+        }
+        if (smeta) report_json.asgard_smeta = smeta;
         setFinal = false;
         analysisFinalizedAt = new Date();
         analysisFinalizedBy = userId;
