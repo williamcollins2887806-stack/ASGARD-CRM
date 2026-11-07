@@ -76,5 +76,26 @@ check('пустая позиция не падает', () => {
   assert.ok(typeof dupKey(null) === 'string');
 });
 
+check('normalizeDv схлопывает дубли внутри одного ответа', () => {
+  // Дефект 07.11 (тендер 2138): модель повторяла позицию 39 раз.
+  const stages = require('../src/services/mimir-tender-stages');
+  const catalog = { categories: [{ code: 'tubes', methods_json: [{ code: 'gdo' }] }] };
+  const p = { name: 'Чистка теплообменника 2104L', volume: 5474.91, unit: 'п.м', category_code: 'tubes', method_code: 'gdo' };
+  const dv = stages.normalizeDv({ positions: [p, { ...p }, { ...p }] }, catalog);
+  assert.strictEqual(dv.positions.length, 1, 'дубли не схлопнуты: ' + dv.positions.length);
+});
+
+check('нормализация различает разные аппараты с равным объёмом', () => {
+  const stages = require('../src/services/mimir-tender-stages');
+  const catalog = { categories: [{ code: 'tubes', methods_json: [{ code: 'gdo' }] }] };
+  const dv = stages.normalizeDv({
+    positions: [
+      { name: 'Чистка конденсатора 3/13', volume: 9666, unit: 'п.м', category_code: 'tubes', method_code: 'gdo' },
+      { name: 'Чистка конденсатора 3/14', volume: 9666, unit: 'п.м', category_code: 'tubes', method_code: 'gdo' }
+    ]
+  }, catalog);
+  assert.strictEqual(dv.positions.length, 2, 'разные аппараты схлопнуты');
+});
+
 console.log(`\nитог: ${pass} PASS, ${fail} FAIL`);
 process.exitCode = fail ? 1 : 0;

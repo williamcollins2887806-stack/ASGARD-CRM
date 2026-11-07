@@ -478,9 +478,46 @@ function estimateExpectedPositions(documents) {
  * @param {object} ai — ответ модели ({ positions, objects, decision_recommend })
  * @param {object} catalog — { categories: [{ code, methods_json }] }
  */
+/**
+ * Отпечаток позиции для дедупликации.
+ *
+ * Дефект 07.11 (тендер 2138): модель отдаёт одну и ту же позицию повторами —
+ * «теплообменник 2104L» встречался 39 раз, всего 224 дубля из 364 позиций.
+ * Ключ включает название, объём и единицу: разные аппараты с одинаковым
+ * объёмом различаются названием, а настоящий повтор совпадает целиком.
+ */
+function dupKey(p) {
+  const o = p || {};
+  const name = String(o.name || '')
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .replace(/[«»"'`]/g, '')
+    .trim()
+    .slice(0, 160);
+  return `${name}|${o.volume == null ? '—' : o.volume}|${String(o.unit || '').toLowerCase().trim()}`;
+}
+
 function normalizeDv(ai, catalog) {
   const raw = ai && typeof ai === 'object' ? ai : {};
-  const list = Array.isArray(raw.positions) ? raw.positions : [];
+  const listSrc = Array.isArray(raw.positions) ? raw.positions : [];
+
+  // ── Дедупликация ──────────────────────────────────────────────────────────
+  // Дефект 07.11 (тендер 2138): модель отдаёт одну и ту же позицию повторами —
+  // «теплообменник 2104L» встречался 39 раз, всего 224 дубля из 364 позиций.
+  // Дедупликация нужна именно здесь, а не только при доборе: дубли приходят
+  // и внутри одного ответа модели.
+  // Ключ — название + объём + единица: разные аппараты с одинаковым объёмом
+  // различаются названием и не схлопываются.
+  const seenPos = new Set();
+  const list = [];
+  for (const p of listSrc) {
+    if (!p || typeof p !== 'object') continue;
+    const k = dupKey(p);
+    if (seenPos.has(k)) continue;
+    seenPos.add(k);
+    list.push(p);
+  }
+
   const objectsRaw = Array.isArray(raw.objects) ? raw.objects : [];
   const cats = (catalog && Array.isArray(catalog.categories)) ? catalog.categories : [];
 
@@ -1020,6 +1057,7 @@ module.exports = {
   ANALYSIS_STAGES,
   CALC_STAGES,
   estimateExpectedPositions,
+  dupKey,
   canTransition,
   isAnalysisStage,
   isCalcStage,
