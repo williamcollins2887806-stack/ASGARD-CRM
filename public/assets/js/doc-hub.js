@@ -28,6 +28,36 @@ window.AsgardDocHubPage = (function () {
   // Было только СФ/УПД/Акт — не было чека и СЗ, хотя они встречаются.
   // Дублируется справочником settings.doc_closing_kinds (V423) для бэка.
   const CLOSING_KINDS = ['СФ', 'УПД', 'Акт', 'Чек', 'СЗ', 'ТОРГ-12', 'Иное'];
+  // Зеркало src/lib/doc-traffic.hasClosingDoc (06.11.2026): акт/УПД/чек закрывают этап.
+  const CLOSING_KIND_RE = /^(сф|сч[её]т[-\s]?фактур|упд|акт|чек|сз|торг[-\s]?12)$/i;
+  function isClosingKind(kind) {
+    const k = String(kind || '').trim();
+    if (!k) return false;
+    if (CLOSING_KIND_RE.test(k)) return true;
+    return /(упд|акт|чек|сз|торг|сч[её]т[-\s]?фактур|^сф\b)/i.test(k);
+  }
+  function hasClosingDoc(row) {
+    if (!row) return false;
+    if (row.sf_received_at) return true;
+    let arr = row.closing_json;
+    if (typeof arr === 'string') { try { arr = JSON.parse(arr); } catch (_) { arr = null; } }
+    if (!Array.isArray(arr) || !arr.length) return false;
+    const NOISE = /^(нет|не\s*т|запросила?|запрошен|в\s*процессе|ожидаем?|ждём|ждем|позже|потом|—|-|\.*)$/i;
+    return arr.some((it) => {
+      if (it == null) return false;
+      if (typeof it === 'string') {
+        const s = it.trim();
+        return s.length > 1 && !NOISE.test(s);
+      }
+      const no = String(it.no || it.number || '').trim();
+      const kind = String(it.kind || '').trim();
+      if (no && NOISE.test(no)) return false;
+      if (no && /^[А-ЯЁ][а-яё]+\s+[А-ЯЁ]\./.test(no)) return false;
+      if (isClosingKind(kind)) return true;
+      if (no && no.length > 1) return true;
+      return false;
+    });
+  }
   // Selectable VAT rates: null = без НДС, 0 = 0%, 0.05/0.1/0.2/0.22 = ставка
   const VAT_RATES = [
     { label: 'Без НДС', value: null },
@@ -869,6 +899,10 @@ window.AsgardDocHubPage = (function () {
     const letterStatus = String((opt && opt.obs_letter_status) || row.obs_letter_status || 'none');
     const letterDocId = Number((opt && opt.obs_letter_doc_id) || row.obs_letter_doc_id || 0);
     const letterErr = (opt && opt.obs_letter_error) || row.obs_letter_error || '';
+    // V473: право создать письмо считает сервер (can_create_letter): оно шире,
+    // чем право менять контур, — письмо может создать инициатор, ответственный
+    // и любой с полным обзором реестра (Д. Путков).
+    const createAllowed = !!(opt ? opt.can_create_letter : canManageObs());
     const amount = Number((opt && opt.amount_gross) || row.amount_gross || 0);
 
     // Индикатор лимита: сколько денег осталось и сколько процентов уже
@@ -921,6 +955,11 @@ window.AsgardDocHubPage = (function () {
 
     // Письмо: состояния повторяют плашку реестра, но здесь же и кнопки
     // скачивания — заказчик просил «смогут скачать» из карточки.
+    //
+    // V473: создание письма идёт через модалку — там выбирают ОБС-счёт,
+    // договор, правят номер/дату/сумму счёта и смотрят предпросмотр. Раньше
+    // кнопка сразу генерировала PDF, и исправить распознанные неверно поля
+    // было нечем.
     let letterBlock = '';
     if (letterStatus === 'generating') {
       letterBlock = `<div class="dh-obs-state"><span class="dh-spin"></span> Письмо формируется — Word и PDF появятся здесь через несколько секунд.</div>`;
@@ -928,17 +967,20 @@ window.AsgardDocHubPage = (function () {
       // D-391: здесь ОБЯЗАТЕЛЬНЫ data-as-letter="1" — иначе обработчик
       // открывает файл СТРОКИ (счёт поставщика), а не письмо на бланке.
       // Ровно это и было жалобой «нажимаю на Word — скачивается счёт».
-      letterBlock = `<div class="dh-obs-state is-ok">Письмо готово и приложено к карточке.
+      const isoNum = isoNumberText(row.obs_letter_number || (opt && opt.obs_letter_number));
+      letterBlock = `<div class="dh-obs-state is-ok">Письмо готово и приложено к карточке${isoNum ? ` · Исх. № ${esc(isoNum)}` : ''}.
         <div class="dh-att-dl" style="margin-top:6px">
           <button type="button" class="dh-att-dl__btn" data-doc-dl="${letterDocId}" data-fmt="pdf" data-as-letter="1" title="Скачать ПИСЬМО для ОБС в PDF (бланк, подпись, печать)">Письмо PDF</button>
           <button type="button" class="dh-att-dl__btn" data-doc-dl="${letterDocId}" data-fmt="docx" data-as-letter="1" title="Скачать ПИСЬМО для ОБС в Word (редактируемый бланк)">Письмо Word</button>
         </div>
+        ${opt && opt.can_create_letter ? '<div style="margin-top:6px"><button type="button" class="dh-obs-gen" data-obs-gen="' + Number(row.id) + '">Пересоздать письмо</button></div>' : ''}
       </div>`;
-    } else if (letterStatus === 'failed') {      letterBlock = `<div class="dh-obs-state is-bad">Письмо не сформировано${letterErr ? ': ' + esc(String(letterErr).slice(0, 200)) : ''}.
-        ${manage ? '<button type="button" class="dh-obs-gen" data-obs-gen="' + Number(row.id) + '">Повторить</button>' : ''}</div>`;
+    } else if (letterStatus === 'failed') {
+      letterBlock = `<div class="dh-obs-state is-bad">Письмо не сформировано${letterErr ? ': ' + esc(String(letterErr).slice(0, 200)) : ''}.
+        ${createAllowed ? '<button type="button" class="dh-obs-gen" data-obs-gen="' + Number(row.id) + '">Создать</button>' : ''}</div>`;
     } else {
       letterBlock = `<div class="dh-obs-state">Письма нет.
-        ${manage ? '<button type="button" class="dh-obs-gen" data-obs-gen="' + Number(row.id) + '">Сформировать</button>' : ''}</div>`;
+        ${createAllowed ? '<button type="button" class="dh-obs-gen" data-obs-gen="' + Number(row.id) + '">Создать письмо</button>' : ''}</div>`;
     }
 
     return `
@@ -1034,14 +1076,18 @@ window.AsgardDocHubPage = (function () {
 
   function statusLabel(row) {
     if (row.overdue_pay || row.pay_status === 'overdue') return 'Просрочка оплаты';
-    if (row.overdue_sf) return 'Просрочка СФ';
-    if (row.ops_status === 'done' || (row.pay_status === 'paid' && row.closing_json && !row.is_incomplete)) return 'Закрыто';
+    // overdue_sf с бэка уже учитывает hasClosingDoc; на фронте дублируем страховку
+    if (row.overdue_sf && !hasClosingDoc(row)) return 'Просрочка СФ';
+    // 06.11.2026: «Закрыто» только при реальных закрывающих. Раньше
+    // `paid && closing_json` давало true на пустом массиве [] → ложное «Закрыто».
+    if (row.ops_status === 'done' && hasClosingDoc(row)) return 'Закрыто';
+    if (row.pay_status === 'paid' && hasClosingDoc(row) && !row.is_incomplete) return 'Закрыто';
     if (row.wh_status === 'to_office') return 'В пути в офис';
     if (row.wh_status === 'await' || row.ops_status === 'wh_transfer') return 'У склада';
     if (row.is_incomplete) return 'Дозаполнить';
     if (row.dir === 'out' && row.ops_status === 'out_sent') return 'Выставлено';
     if (row.dir === 'out') return 'Черновик исх.';
-    if (row.ops_status === 'wait_sf' || row.ops_status === 'wait_closing') return 'Ждём СФ';
+    if ((row.ops_status === 'wait_sf' || row.ops_status === 'wait_closing') && !hasClosingDoc(row)) return 'Ждём закрывающие';
     if (row.ops_status === 'wait_pay') return row.dir === 'out' ? 'Ждём оплату' : 'К оплате';
     if (row.ops_status === 'paid' || row.pay_status === 'paid') return 'Оплачен';
     const map = Object.fromEntries(OPS_OPTIONS.filter(([k]) => k));
@@ -1069,6 +1115,7 @@ window.AsgardDocHubPage = (function () {
       no_payment_terms: 'не указаны условия оплаты (срок или «не требуется»)',
       no_work: 'нет объекта работ',
       no_work_for_expense: 'расход не попадёт в проект — выберите объект (или отметьте «Собственность АСГАРД» / «Расходники»)',
+      no_other_comment: 'для «Прочее» опишите в комментарии, что это за расход',
       no_amount: 'нет суммы',
       no_vat: 'не указан НДС',
       no_scan: 'нет скана документа',
@@ -1116,8 +1163,8 @@ window.AsgardDocHubPage = (function () {
       return 'Отправьте счёт на согласование кнопкой «В очередь оплаты». '
         + 'Отметка «оплачено» здесь не ставится — платёж проводит бухгалтерия.';
     }
-    if (row.overdue_sf || ['wait_sf', 'wait_closing'].includes(row.ops_status)) {
-      return 'Ждём закрывающие: отметьте СФ/УПД после получения скана или ЭДО.';
+    if (!hasClosingDoc(row) && (row.overdue_sf || ['wait_sf', 'wait_closing'].includes(row.ops_status))) {
+      return 'Ждём закрывающие: отметьте СФ / УПД / акт / чек после получения скана или ЭДО.';
     }
     if (row.wh_status && ['await', 'received', 'to_office'].includes(row.wh_status)) {
       return 'Цепочка склада: следующий шаг — «Склад».';
@@ -1282,7 +1329,7 @@ window.AsgardDocHubPage = (function () {
     else if (row.ops_status === 'done' || label === 'Закрыто') kind = 'ok';
     else if (row.dir === 'out' && row.ops_status === 'out_sent') kind = 'ok';
     else if (row.wh_status === 'to_office' || row.ops_status === 'wh_transfer') kind = 'gold';
-    else if (['wait_sf', 'wait_closing'].includes(row.ops_status)) kind = 'warn';
+    else if (['wait_sf', 'wait_closing'].includes(row.ops_status) && !hasClosingDoc(row)) kind = 'warn';
     else if (row.is_incomplete) kind = 'info';
     else if (row.dir === 'out') kind = 'muted';
     else if (row.wh_status && row.wh_status !== 'none') kind = 'warn';
@@ -1452,29 +1499,33 @@ window.AsgardDocHubPage = (function () {
   }
   function closingCell(row) {
     // D-305: любой закрывающий документ закрывает этап — не только «СФ».
-    // УПД / Акт / Чек / СЗ / ТОРГ-12 считаются такими же, и мусорные заметки
-    // («нет», «запросила», ФИО вместо номера) документом НЕ считаются.
+    // 06.11.2026: УПД / Акт / Чек закрывают этап (в т.ч. без номера).
+    if (!hasClosingDoc(row)) {
+      return '<span class="dh-pill dh-pill--warn">нет СФ/УПД/акта</span>';
+    }
     let arr = row.closing_json;
     if (typeof arr === 'string') { try { arr = JSON.parse(arr); } catch (_) { arr = null; } }
     if (!Array.isArray(arr) || !arr.length) {
-      return row.sf_received_at
-        ? '<span class="dh-pill dh-pill--ok">получено</span>'
-        : '<span class="dh-pill dh-pill--warn">нет СФ/УПД</span>';
+      return '<span class="dh-pill dh-pill--ok">получено</span>';
     }
     const NOISE = /^(нет|не\s*т|запросила?|запрошен|в\s*процессе|ожидаем?|ждём|ждем|позже|потом|—|-|\.*)$/i;
     const real = arr.filter((it) => {
       if (it == null) return false;
-      const no = String((it && (it.no || it.number)) || (typeof it === 'string' ? it : '')).trim();
-      if (!no || no.length < 2) return false;
-      if (NOISE.test(no)) return false;
-      if (/^[А-ЯЁ][а-яё]+\s+[А-ЯЁ]\./.test(no)) return false;
-      return true;
+      if (typeof it === 'string') {
+        const s = it.trim();
+        return s.length > 1 && !NOISE.test(s);
+      }
+      const no = String(it.no || it.number || '').trim();
+      const kind = String(it.kind || '').trim();
+      if (no && NOISE.test(no)) return false;
+      if (no && /^[А-ЯЁ][а-яё]+\s+[А-ЯЁ]\./.test(no)) return false;
+      if (isClosingKind(kind)) return true;
+      return !!(no && no.length > 1);
     });
-    if (!real.length) return '<span class="dh-pill dh-pill--warn">нет СФ/УПД</span>';
-    // Показываем первый реальный + счётчик остальных.
+    if (!real.length) return '<span class="dh-pill dh-pill--ok">получено</span>';
     const c = real[0];
     const kind = String((c && c.kind) || 'СФ');
-    const no = String((c && (c.no || c.number)) || (typeof c === 'string' ? c : 'б/н'));
+    const no = String((c && (c.no || c.number)) || (typeof c === 'string' ? c : '') || 'б/н');
     const extra = real.length > 1 ? ` +${real.length - 1}` : '';
     return `<div class="dh-stack"><span class="a">${esc(kind + ': ' + no + extra)}</span><span class="b">${fmtDate(c && c.date)}</span></div>`;
   }
@@ -1562,6 +1613,17 @@ window.AsgardDocHubPage = (function () {
    * Цвета — только существующие классы .dh-pill--* (gold/muted/ok/err):
    * у них уже прописаны обе темы, новых цветов не вводим.
    */
+  /**
+   * V473: номер исходящего без префикса «Исх.».
+   *
+   * Письмо хранит номер уже с префиксом («Исх. АС-2026-11-42»), а плашки
+   * подписывают его словами «Исх.». Без стрипа получалось «Исх. Исх. …».
+   * Функция одна на все места — чтобы не расходились варианты.
+   */
+  function isoNumberText(v) {
+    return String(v || '').trim().replace(/^Исх\.?\s*№?\s*/i, '').trim();
+  }
+
   function obsBadges(row) {
     const src = String(row.payment_source || 'regular');
     if (src !== 'obs') return '';
@@ -1570,7 +1632,12 @@ window.AsgardDocHubPage = (function () {
     const hasLetter = Number(row.obs_letter_doc_id || 0) > 0;
     const num = esc(row.invoice_number || '');
 
-    const obsPill = `<span class="dh-pill dh-pill--gold dh-obs-pill" title="Оплата через ОБС">ОБС</span>`;
+    // V473: в плашке теперь видно, ЧЕРЕЗ КАКОЙ ОБС-счёт платим — раньше была
+    // только надпись «ОБС», и бухгалтерия не понимала, с какого счёта уйдёт
+    // платёж. Если справочник не заполнен, остаётся нейтральное «ОБС».
+    const obsName = String(row.obs_account_name || '').trim();
+    const obsPill = `<span class="dh-pill dh-pill--gold dh-obs-pill" title="Оплата через ОБС${obsName ? ': ' + esc(obsName) : ''}">`
+      + `ОБС${obsName ? ' «' + esc(obsName.replace(/^ОБС\s*[«"]?|["»]$/gi, '')) + '»' : ''}</span>`;
 
     // D-381: пометка договора — чтобы в реестре было видно, по какому
     // основанию пойдёт письмо. Без договора плашка серая: письмо писать
@@ -1584,16 +1651,28 @@ window.AsgardDocHubPage = (function () {
       letterPill = `<span class="dh-pill dh-pill--muted dh-obs-letter" title="Письмо формируется, подождите">
         <span class="dh-spin"></span>Формируется…</span>`;
     } else if (hasLetter) {
+      // V473: рядом с «Письмо готово» показываем сам исходящий номер. Именно
+      // его спрашивают в банке и в переписке, и раньше его приходилось
+      // открывать в карточке.
+      //
+      // D-397 (MINOR верификатора 07.11.2026): в базе номер письма хранится
+      // уже с префиксом («Исх. АС-2026-11-42»), а плашка добавляла «Исх.»
+      // ещё раз — на экране выходило «Исх. Исх. АС-2026-11-42». Стрипаем.
+      const isoNum = isoNumberText(row.obs_letter_number);
       letterPill = `<button type="button" class="dh-pill dh-pill--ok dh-obs-letter dh-obs-letter--open"
-        data-obs-open="${Number(row.obs_letter_doc_id)}" title="Открыть письмо для ОБС">Письмо готово</button>`;
+        data-obs-open="${Number(row.obs_letter_doc_id)}" title="Открыть письмо для ОБС${isoNum ? ' № ' + esc(isoNum) : ''}">`
+        + `${isoNum ? 'Исх. ' + esc(isoNum) : 'Письмо готово'}</button>`;
     } else {
       const err = row.obs_letter_error
         ? ` title="${esc(String(row.obs_letter_error).slice(0, 200))}"`
         : ' title="Письмо для ОБС ещё не сформировано"';
+      const canCreate = !!row.can_create_obs_letter;
       letterPill = `<span class="dh-obs-letter-wrap">
         <span class="dh-pill dh-pill--err dh-obs-letter"${err}>Письма нет</span>
-        <button type="button" class="dh-obs-gen" data-obs-gen="${Number(row.id)}"
-          title="Сформировать письмо для ОБС по счёту ${num}">Сформировать</button>
+        ${canCreate
+          ? `<button type="button" class="dh-obs-gen" data-obs-gen="${Number(row.id)}"
+              title="Создать письмо для ОБС по счёту ${num}">Создать</button>`
+          : ''}
       </span>`;
     }
 
@@ -2268,6 +2347,10 @@ window.AsgardDocHubPage = (function () {
           <div id="dhWizWork_w" class="dh-crselect-host"></div>
           <div class="dh-help">Список загружается при открытии шага</div>
         </div>
+        <div class="dh-field" id="dhOtherNoteField" ${sk === 'other' ? '' : 'style="display:none"'}>
+          <label>Что это за «прочее» <span style="color:var(--t3)">(обязательно)</span></label>
+          <textarea name="comment_text" id="dhWizOtherNote" rows="2" placeholder="Например: госпошлина, нотариус, страховка…">${esc(sk === 'other' ? (d.comment_text || '') : '')}</textarea>
+        </div>
         <div class="dh-dup" id="dhWizDup" hidden>
           <strong>Похожий расход уже есть на объекте</strong>
           <p>После выбора работы: РП мог внести этот счёт в расходы. Связать или оставить только в реестре?</p>
@@ -2590,7 +2673,14 @@ window.AsgardDocHubPage = (function () {
         if (state.wizDraft) state.wizDraft.spend_kind = v;
         form.querySelectorAll('#dhSpendCards .dh-spend-card').forEach((b) => b.classList.toggle('is-on', b === btn));
         const workField = form.querySelector('#dhWorkField');
+        const otherField = form.querySelector('#dhOtherNoteField');
         if (workField) workField.style.display = v === 'work' ? '' : 'none';
+        if (otherField) otherField.style.display = v === 'other' ? '' : 'none';
+        if (v !== 'work' && window.CRSelect) {
+          try { CRSelect.setValue('dhWizWork', null); } catch (_) {}
+          const wid = form.querySelector('#dhWizWorkId');
+          if (wid) wid.value = '';
+        }
         if (window.CRSelect && typeof CRSelect.setDisabled === 'function') {
           try { CRSelect.setDisabled('dhWizWork', v !== 'work'); } catch (_) {}
         }
@@ -3729,11 +3819,30 @@ window.AsgardDocHubPage = (function () {
       ? fmtDate(it.due_at)
       : '<span class="dh-muted" title="Срок не указан в счёте и в реестре">без срока</span>';
 
+    /**
+     * V473: откуда платим. Для бухгалтерии это не украшение: по этой ячейке
+     * она понимает, нужна ли платёжка в банк по ОБС и какой ИСХ приложить.
+     * Обычный счёт показываем нейтрально — «расчётный», чтобы колонка не
+     * пустовала и было видно, что ОБС тут нет.
+     */
+    const paySourceCell = (it) => {
+      if (String(it.payment_source) !== 'obs') {
+        return '<span class="dh-muted" title="Оплата с расчётного счёта">расчётный</span>';
+      }
+      const obs = String(it.obs_account_name || '').replace(/^ОБС\s*[«"]?|["»]$/gi, '').trim();
+      const num = isoNumberText(it.obs_letter_number);
+      return `<div class="dh-stack">
+        <span class="dh-pill dh-pill--gold dh-obs-pill">ОБС${obs ? ' «' + esc(obs) + '»' : ''}</span>
+        <span class="b dh-muted">${num ? 'Исх. ' + esc(num) : 'письма нет'}</span>
+      </div>`;
+    };
+
     const rowsHtml = items.map((it) => `<tr>
       <td>${dueCell(it)}</td>
       <td><div class="dh-stack"><span class="a">${esc(it.counterparty_name || '—')}</span><span class="b dh-muted">${esc(it.owner_name || 'без ответственного')}</span></div></td>
       <td>${esc(it.invoice_number || 'б/н')}</td>
       <td class="dh-money">${money(it.amount)}</td>
+      <td>${paySourceCell(it)}</td>
       <td>${it.overdue ? '<span class="dh-pill dh-pill--err">просрочено</span>' : statusPill(it)}</td>
       <td class="dh-actions"><button type="button" class="dh-btn dh-btn--sm" data-popen="${it.registry_id || ''}" ${it.registry_id ? '' : 'disabled title="Нет строки реестра"'}>Открыть</button></td>
     </tr>`).join('');
@@ -3745,7 +3854,7 @@ window.AsgardDocHubPage = (function () {
       </div>` : ''}
       <div class="dh-card" style="margin-top:14px"><div class="dh-card__head"><h2>${mode === 'approved' ? 'Согласовано к оплате' : 'Ждут решения директора'}</h2><span>${items.length} шт. · ${money(kpi.total && kpi.total.amount || 0)}</span></div>
         <div class="dh-table-wrap"><table class="dh-table dh-sf__table">
-          <thead><tr><th>Срок</th><th>Контрагент</th><th>Счёт</th><th>Сумма</th><th>Статус</th><th class="dh-actions">Открыть</th></tr></thead>
+          <thead><tr><th>Срок</th><th>Контрагент</th><th>Счёт</th><th>Сумма</th><th>Оплата</th><th>Статус</th><th class="dh-actions">Открыть</th></tr></thead>
           <tbody>${rowsHtml}</tbody>
         </table></div>
       </div>`;
@@ -4190,9 +4299,13 @@ window.AsgardDocHubPage = (function () {
                      и материалом, и офисной закупкой для площадки.
                      Теперь поле видно ВСЕГДА; скрываем только если у строки уже
                      явно «Прочее» без объекта — но и там можно выбрать. -->
-                <div class="dh-field" id="drWorkField">
+                <div class="dh-field" id="drWorkField" ${sk === 'other' ? 'hidden' : ''}>
                   <label>Работа / объект <span class="dh-help">(куда отнести расход)</span></label>
                   <input type="hidden" id="drWorkId" value="${esc(String(row.work_id || ''))}" /><div id="drWork_w" class="dh-crselect-host"></div>
+                </div>
+                <div class="dh-field" id="drOtherNoteField" ${sk === 'other' ? '' : 'hidden'}>
+                  <label>Что это за «прочее» <span class="dh-help">(обязательно вместо объекта)</span></label>
+                  <textarea id="drOtherNote" rows="2" placeholder="Например: госпошлина, нотариус, страховка…">${esc(sk === 'other' ? (row.comment_text || '') : '')}</textarea>
                 </div>
               </div>
             </div>
@@ -4542,14 +4655,25 @@ window.AsgardDocHubPage = (function () {
       })();
 
       // spend_kind cards in drawer
+      const syncSpendUi = (v) => {
+        const workF = d.querySelector('#drWorkField');
+        const otherF = d.querySelector('#drOtherNoteField');
+        if (workF) workF.hidden = v === 'other';
+        if (otherF) otherF.hidden = v !== 'other';
+        if (v === 'other') {
+          // сбрасываем объект — «прочее» без работы
+          const wid = d.querySelector('#drWorkId');
+          if (wid) wid.value = '';
+          try { if (window.CRSelect) CRSelect.setValue('drWork', null); } catch (_) {}
+        }
+      };
+      syncSpendUi(sk);
       d.querySelectorAll('#drSpendCards [data-spend]').forEach((btn) => {
         btn.onclick = () => {
           const v = btn.getAttribute('data-spend');
           d.querySelector('#drSpendKind').value = v;
           d.querySelectorAll('#drSpendCards .dh-spend-card').forEach((b) => b.classList.toggle('is-on', b === btn));
-          // D-331: блок объекта больше НЕ скрываем — расход по объекту бывает
-          // и материалом, и офисной закупкой для площадки. Поле остаётся
-          // доступным при любом виде расхода.
+          syncSpendUi(v);
         };
       });
 
@@ -4585,7 +4709,10 @@ window.AsgardDocHubPage = (function () {
           no: row2.querySelector('[data-k="no"]')?.value || '',
           date: row2.querySelector('[data-k="date"]')?.value || null,
           sum: moneyParse(row2.querySelector('[data-k="sum"]')?.value)
-        })).filter((cl) => cl.no || cl.date);
+        })).filter((cl) => cl.kind || cl.no || cl.date);
+        const spendKindNow = d.querySelector('#drSpendKind')?.value || 'other';
+        const otherNote = (d.querySelector('#drOtherNote')?.value || '').trim();
+        const commentBase = d.querySelector('#drComment')?.value || '';
         const patch = {
           counterparty_name: d.querySelector('#drCpName')?.value || '',
           counterparty_inn: d.querySelector('#drCpInn')?.value || null,
@@ -4601,8 +4728,10 @@ window.AsgardDocHubPage = (function () {
           contract_date: d.querySelector('#drContractDate')?.value || null,
           contract_has_scan: !!d.querySelector('#drHasScan')?.checked,
           contract_has_original: !!d.querySelector('#drHasOriginal')?.checked,
-          spend_kind: d.querySelector('#drSpendKind')?.value || 'other',
-          work_id: parseInt((window.CRSelect ? CRSelect.getValue('drWork') : null) || d.querySelector('#drWorkId')?.value) || null,
+          spend_kind: spendKindNow,
+          work_id: spendKindNow === 'other'
+            ? null
+            : (parseInt((window.CRSelect ? CRSelect.getValue('drWork') : null) || d.querySelector('#drWorkId')?.value) || null),
           receive_channel: d.querySelector('#drReceive')?.value || null,
           purpose_customer: !!d.querySelector('#drPurpCust')?.checked,
           purpose_asgard: !!d.querySelector('#drPurpAsg')?.checked,
@@ -4623,9 +4752,12 @@ window.AsgardDocHubPage = (function () {
           doc_owner_note: (d.querySelector('#drDocOwnerNote')?.value || '').trim() || null,
           pm_id: parseInt((window.CRSelect ? CRSelect.getValue('drPm') : null) || d.querySelector('#drPmId')?.value) || null,
           onec_id: d.querySelector('#drOnecId')?.value || null,
-          comment_text: d.querySelector('#drComment')?.value || ''
+          // «Прочее» — комментарий из спец-поля (что это за расход)
+          comment_text: spendKindNow === 'other'
+            ? (otherNote || commentBase)
+            : commentBase
         };
-        if (closingRows.length) patch.closing_json = closingRows;
+        patch.closing_json = closingRows;
         try {
           // D-306: «во время сохранения экран мутнеет как будто глючит».
           // Помимо оверлея (см. openDrawer) карточка перерисовывается целиком —
@@ -4701,20 +4833,21 @@ window.AsgardDocHubPage = (function () {
         }
       });
 
-      // Формирование письма прямо из карточки. Тело обязано быть JSON-строкой:
-      // объект fetch отправит как «[object Object]», и Fastify ответит 400.
-      d.querySelector('[data-obs-gen]')?.addEventListener('click', async (ev) => {
-        const btn = ev.currentTarget;
-        btn.disabled = true;
-        btn.textContent = 'Формируется…';
-        try {
-          await api(`/${id}/obs-letter`, { method: 'POST', body: JSON.stringify({}) });
-          toast('Письмо формируется', 'Word и PDF появятся в карточке через несколько секунд', 'ok');
-          pollObsLetter(id, null, () => reloadObs());
-        } catch (e) {
-          btn.disabled = false;
-          btn.textContent = 'Сформировать';
-          toast('Не удалось', e.message || 'письмо не сформировано', 'err');
+      // Создание/пересоздание письма из карточки.
+      //
+      // D-397 (MINOR верификатора 07.11.2026): здесь остался СТАРЫЙ путь —
+      // мгновенный POST `{}` и опрос статуса. В таблице тот же атрибут
+      // `data-obs-gen` уже открывает модалку, и получалось два разных
+      // поведения на один атрибут: из карточки нельзя было ни выбрать ОБС-счёт,
+      // ни поправить номер/дату/сумму. Теперь везде модалка.
+      d.querySelector('[data-obs-gen]')?.addEventListener('click', (ev) => {
+        ev.preventDefault();
+        if (window.AsgardObsLetterModal) {
+          window.AsgardObsLetterModal.open(id, {
+            onSaved: async () => { await reloadObs(); await refresh(); },
+          });
+        } else {
+          toast('Не удалось открыть', 'Модуль письма не загружен — обновите страницу', 'err');
         }
       });
 
@@ -5287,22 +5420,14 @@ window.AsgardDocHubPage = (function () {
         e.preventDefault();
         e.stopPropagation();
         const docId = Number(obsGen.getAttribute('data-obs-gen'));
-        obsGen.disabled = true;
-        const prevText = obsGen.textContent;
-        obsGen.textContent = 'Формируется…';
-        // D-385: `body: {}` в fetch превращается в строку «[object Object]» —
-        // это невалидный JSON, и Fastify отвечал 400 ещё до роута. Кнопка
-        // «Сформировать» не работала ни разу. Тело надо сериализовать.
-        api(`/${docId}/obs-letter`, { method: 'POST', body: JSON.stringify({}) })
-          .then(() => {
-            toast('Письмо формируется', 'Плашка станет зелёной, когда PDF будет готов', 'ok');
-            pollObsLetter(docId, tr);
-          })
-          .catch((err) => {
-            obsGen.disabled = false;
-            obsGen.textContent = prevText;
-            toast('Не удалось', err.message || 'письмо не сформировано', 'err');
-          });
+        // V473: вместо мгновенной генерации (она тратила исходящий номер и
+        // не давала поправить номер/дату/сумму счёта) открываем модалку.
+        // Номер выдаётся только по кнопке «Сохранить» в этом окне.
+        if (window.AsgardObsLetterModal) {
+          window.AsgardObsLetterModal.open(docId, { onSaved: () => refresh() });
+        } else {
+          toast('Не удалось открыть', 'Модуль письма не загружен — обновите страницу', 'err');
+        }
         return;
       }
       const obsOpen = e.target.closest('[data-obs-open]');

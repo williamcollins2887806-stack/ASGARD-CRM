@@ -15,6 +15,8 @@ const { visibilitySql, assertDocVisible, canUseScopeAll } = require('../lib/doc-
 const traffic = require('../lib/doc-traffic');
 const { isTrafficLightEnabled } = require('../lib/feature-flags');
 const reconSvc = require('../services/doc-reconciliation');
+const { ensureSupplier } = require('../services/supplier-resolve');
+const { validCounterpartyInn, digitsInn } = require('../services/counterparty-inn');
 
 let normalizeUploadUrl = (p) => p;
 try { ({ normalizeUploadUrl } = require('../utils/upload-url')); } catch (_) { /* optional */ }
@@ -28,7 +30,7 @@ const WH_CHAIN = ['none', 'await', 'received', 'to_office', 'buh_ok'];
 const JSON_COLS = new Set(['attachments', 'parsed_json', 'closing_json', 'onec_payload', 'payment_schedule']);
 const WRITE_COLS = [
   'dir', 'package_type', 'ops_status', 'invoice_number', 'invoice_date',
-  'counterparty_name', 'counterparty_email', 'counterparty_phone',
+  'counterparty_name', 'counterparty_inn', 'counterparty_email', 'counterparty_phone',
   'supplier_id', 'customer_id', 'work_id', 'contract_id', 'contract_mode', 'contract_label',
   'contract_date', 'contract_has_scan', 'contract_has_original',
   'amount_gross', 'amount_net', 'vat_amount', 'vat_rate', 'has_vat',
@@ -45,7 +47,10 @@ const WRITE_COLS = [
   'sf_requested_at', 'sf_received_at', 'recon_requested_at', 'recon_received_at', 'recon_due_at',
   'currency', 'amount_currency',
   // D-306: свободная подпись «чьими руками внесено» внутри общего аккаунта.
-  'doc_owner_note'
+  'doc_owner_note',
+  // V473: способ оплаты и ОБС-счёт. Нужны, чтобы тест и человек могли завести
+  // счёт сразу как ОБС (без переключения контура бухгалтерией).
+  'payment_source', 'obs_account_id', 'subcontract_id'
 ];
 
 // D-306c: автор подписи НЕ принимается из тела запроса — только из сессии.
@@ -64,15 +69,47 @@ const JOIN_SQL = `SELECT d.*,
   pi.status AS payment_invoice_status,
   pi.payment_status AS payment_invoice_pay_status,
   pi.amount AS payment_invoice_amount,
-  pi.due_date AS payment_invoice_due
+  pi.due_date AS payment_invoice_due,
+  -- V473: что именно показать в плашке ОБС. Название ОБС-счёта («ОБС «АГПЗ»»)
+  -- и номер исходящего спрашивают в банке и в переписке; раньше их надо было
+  -- открывать в карточке по одному.
+  oa.name AS obs_account_name,
+  ol.invoice_number AS obs_letter_number
  FROM doc_registry d
  LEFT JOIN works w ON w.id = d.work_id
  LEFT JOIN users uo ON uo.id = d.doc_owner_id
  LEFT JOIN users up ON up.id = d.pm_id
+ LEFT JOIN obs_accounts oa ON oa.id = d.obs_account_id
+ LEFT JOIN doc_registry ol ON ol.id = d.obs_letter_doc_id AND ol.deleted_at IS NULL
  LEFT JOIN payment_invoices pi ON pi.id = d.payment_invoice_id AND COALESCE(pi.status,'') <> 'rejected'`;
 
 function num(v) { const n = parseFloat(v); return Number.isFinite(n) ? n : 0; }
 function today() { return new Date().toISOString().slice(0, 10); }
+
+/** При валидном ИНН — ensureSupplier + зеркало customers + supplier_id на строке. */
+async function linkCounterpartySupplier(db, docRow, userId) {
+  if (!docRow || !docRow.id) return docRow;
+  const inn = digitsInn(docRow.counterparty_inn);
+  const name = String(docRow.counterparty_name || '').trim();
+  if (!validCounterpartyInn(inn) || !name) return docRow;
+  if (docRow.supplier_id) return docRow;
+  try {
+    const r = await ensureSupplier(db, {
+      inn,
+      counterparty_name: name,
+      kpp: null
+    }, { createdBy: userId });
+    if (r && r.id) {
+      await db.query(
+        `UPDATE doc_registry SET supplier_id=$2, counterparty_inn=$3, updated_at=NOW() WHERE id=$1`,
+        [docRow.id, r.id, inn]
+      );
+      docRow.supplier_id = r.id;
+      docRow.counterparty_inn = inn;
+    }
+  } catch (_) { /* non-fatal */ }
+  return docRow;
+}
 
 // V394 (план, S6): контроль «есть срок оплаты ИЛИ галочка оплачено» включается
 // настройкой и применяется ТОЛЬКО к строкам, созданным не раньше указанной даты —
@@ -177,9 +214,19 @@ function calcIncomplete(row) {
   // Условие: есть привязанная заявка (значит счёт реально идёт в оплату) и
   // расход по объекту ожидается.
   if (row.dir === 'in' && !row.work_id && row.payment_invoice_id) {
+    // 06.11.2026: объект нужен только для «работы». Офис / склад / прочее —
+    // в общий реестр без work_id (как в batch UI и computeInvoiceReasons).
+    const sk2 = String(row.spend_kind || '');
     const exempt = row.purpose_asgard || row.purpose_consumables
-      || String(row.spend_kind || '') === 'office';
+      || sk2 === 'office' || sk2 === 'warehouse' || sk2 === 'other';
     if (!exempt && !r.includes('no_work')) r.push('no_work_for_expense');
+  }
+  // «Прочее» — обязателен комментарий, что это за расход (вместо выбора работы).
+  // Только у платежей: иначе синеет весь архивный импорт без комментария.
+  if (row.dir === 'in' && String(row.spend_kind || '') === 'other'
+      && row.payment_invoice_id
+      && !String(row.comment_text || '').trim()) {
+    r.push('no_other_comment');
   }
   return { is_incomplete: r.length > 0, incomplete_reasons: r };
 }
@@ -293,7 +340,7 @@ function pickBody(b) {
   return out;
 }
 
-function decorate(row, viewerId) {
+function decorate(row, viewerId, extra) {
   if (!row) return row;
   const t = today();
   const payDue = row.payment_due_at ? String(row.payment_due_at).slice(0, 10) : null;
@@ -305,7 +352,10 @@ function decorate(row, viewerId) {
     ...row,
     original_path_url: normPath(row.original_path_url),
     overdue_pay: !!(payDue && payDue < t && traffic.payDeadlineActive(row)),
-    overdue_sf: !!(sfDue && sfDue < t && !row.sf_received_at && ['wait_sf', 'wait_closing'].includes(row.ops_status)),
+    // D-305 / 06.11.2026: просрочка СФ снимается любым закрывающим (УПД/акт/чек),
+    // а не только sf_received_at — иначе баннер «нужна СФ» горит после УПД.
+    overdue_sf: !!(sfDue && sfDue < t && !traffic.hasClosingDoc(row)
+      && ['wait_sf', 'wait_closing'].includes(row.ops_status)),
     traffic: trafficInfo.color,
     traffic_reason: trafficInfo.reason
   };
@@ -320,6 +370,12 @@ function decorate(row, viewerId) {
     out.doc_owner_note_mine = mine;
   }
   delete out.doc_owner_note_by;
+  // V473: может ли СМОТРЯЩИЙ создать письмо для ОБС по этой строке. Решает
+  // сервер, а не роль в localStorage: инициатор и ответственный видят кнопку
+  // на своих счетах, Путков — на всех (у него полный обзор реестра).
+  if (extra && extra.canCreateObsLetter !== undefined) {
+    out.can_create_obs_letter = !!extra.canCreateObsLetter;
+  }
   return out;
 }
 
@@ -596,7 +652,7 @@ function buildFilters(q, userId, role) {
   }
   const kpi = (q.kpi || '').toLowerCase();
   if (kpi === 'pay') where += ` AND ${payOver}`;
-  else if (kpi === 'sf') where += ` AND (d.ops_status IN ('wait_sf','wait_closing') OR (${sfOver}))`;
+  else if (kpi === 'sf') where += ` AND ((d.ops_status IN ('wait_sf','wait_closing') AND NOT ${traffic.closingDocSql('d')}) OR (${sfOver}))`;
   else if (kpi === 'wh') where += ` AND d.wh_status IN ('await','received','to_office')`;
   else if (kpi === 'out') where += ` AND d.dir='out'`;
   else if (kpi === '1c' || kpi === 'no_1c') where += ` AND (d.onec_id IS NULL OR trim(d.onec_id)='')`;
@@ -846,7 +902,27 @@ module.exports = async function docRegistryRoutes(fastify) {
     // План §12: флаг отдаётся фронту, чтобы UI показывал светофор/корректировки
     // только когда фича включена. Данные (traffic) приходят всегда — их не жалко.
     const enabled = await isTrafficLightEnabled(db);
-    return { items: list.rows.map((r) => decorate(r, req.user.id)), total: cnt.rows[0].n, page, limit, sort, traffic_light: enabled };
+    // V473: право на письмо для ОБС — считаем один раз на список.
+    // Глобальное право (бухгалтерия/админ/офис/полный обзор) даёт кнопку на
+    // всех строках; иначе — только на своих (created_by/doc_owner_id/pm_id).
+    const obsGlobal = await (async () => {
+      const rr = String(req.user.role || '').toUpperCase();
+      if (['ADMIN', 'BUH', 'OFFICE_MANAGER'].includes(rr)) return true;
+      try {
+        const f = await db.query('SELECT doc_full_view FROM users WHERE id=$1', [req.user.id]);
+        return !!(f.rows[0] && f.rows[0].doc_full_view);
+      } catch (_) { return false; }
+    })();
+    const myself = Number(req.user.id) || 0;
+    const canCreate = (r) => obsGlobal
+      || Number(r.created_by) === myself
+      || Number(r.doc_owner_id) === myself
+      || Number(r.pm_id) === myself;
+
+    return {
+      items: list.rows.map((r) => decorate(r, req.user.id, { canCreateObsLetter: canCreate(r) })),
+      total: cnt.rows[0].n, page, limit, sort, traffic_light: enabled,
+    };
   });
 
   fastify.get('/kpi', auth, async (req) => {
@@ -861,11 +937,15 @@ module.exports = async function docRegistryRoutes(fastify) {
       `SELECT COUNT(*)::int AS "all",
         COUNT(*) FILTER (WHERE d.payment_due_at IS NOT NULL AND d.payment_due_at::date < ${ti}::date
           AND COALESCE(d.pay_status,'none') NOT IN ('paid','n_a'))::int AS pay,
-        COUNT(*) FILTER (WHERE d.ops_status IN ('wait_sf','wait_closing')
-          OR (d.sf_due_at IS NOT NULL AND d.sf_due_at::date < ${ti}::date
-              AND d.ops_status IN ('wait_sf','wait_closing')))::int AS sf,
+        COUNT(*) FILTER (WHERE (
+            (d.ops_status IN ('wait_sf','wait_closing') AND NOT ${traffic.closingDocSql('d')})
+            OR (d.sf_due_at IS NOT NULL AND d.sf_due_at::date < ${ti}::date
+                AND d.ops_status IN ('wait_sf','wait_closing')
+                AND NOT ${traffic.closingDocSql('d')})
+          ))::int AS sf,
         COUNT(*) FILTER (WHERE d.sf_due_at IS NOT NULL AND d.sf_due_at::date < ${ti}::date
-          AND d.ops_status IN ('wait_sf','wait_closing'))::int AS sf_overdue,
+          AND d.ops_status IN ('wait_sf','wait_closing')
+          AND NOT ${traffic.closingDocSql('d')})::int AS sf_overdue,
         COUNT(*) FILTER (WHERE d.wh_status IN ('await','received','to_office'))::int AS wh,
         COUNT(*) FILTER (WHERE d.dir='out')::int AS out,
         COUNT(*) FILTER (WHERE d.onec_id IS NULL OR trim(d.onec_id)='')::int AS no_1c,
@@ -1151,9 +1231,18 @@ module.exports = async function docRegistryRoutes(fastify) {
               pi.due_date, pi.supplier_name, pi.pay_timing,
               pi.doc_registry_id, pi.created_by,
               d.payment_due_at AS reg_due, d.payment_kind, d.payment_schedule,
+              d.payment_source,
+              -- V473: название ОБС-счёта и номер исходящего берём ИЗ СВЯЗАННЫХ
+              -- таблиц, а не из колонок doc_registry: таких колонок нет.
+              -- Прямая ссылка на d.obs_letter_number/d.obs_account_name давала
+              -- 42703 undefined_column и 500 на всём графике оплат.
+              oa.name AS obs_account_name,
+              ol.invoice_number AS obs_letter_number,
               u.name AS owner_name
          FROM payment_invoices pi
          LEFT JOIN doc_registry d ON d.id = pi.doc_registry_id AND d.deleted_at IS NULL
+         LEFT JOIN obs_accounts oa ON oa.id = d.obs_account_id
+         LEFT JOIN doc_registry ol ON ol.id = d.obs_letter_doc_id AND ol.deleted_at IS NULL
          LEFT JOIN users u ON u.id = COALESCE(d.doc_owner_id, pi.created_by)
         WHERE pi.status = ANY($${pStatuses}::text[])
           AND COALESCE(pi.payment_status,'') <> 'rejected'
@@ -1195,7 +1284,13 @@ module.exports = async function docRegistryRoutes(fastify) {
         payment_kind: r.payment_kind || null,
         status: r.status,
         pay_status: r.payment_status || null,
-        approved: r.status === 'pending_payment' || r.status === 'paid'
+        approved: r.status === 'pending_payment' || r.status === 'paid',
+        // V473: в графике оплат должно быть видно, что платим через ОБС и по
+        // какому исходящему — бухгалтерия готовит платёжку и письмо в банк
+        // именно по этим двум реквизитам.
+        payment_source: r.payment_source || 'regular',
+        obs_account_name: r.obs_account_name || null,
+        obs_letter_number: r.obs_letter_number || null,
       };
     });
 
@@ -1859,6 +1954,7 @@ module.exports = async function docRegistryRoutes(fastify) {
         vals
       );
       await audit(db, rows[0].id, req.user.id, 'create', { id: rows[0].id });
+      await linkCounterpartySupplier(db, rows[0], req.user.id);
       maybeScheduleParse(fastify, db, rows[0], req.user.id);
       return decorate(rows[0], req.user.id);
     } catch (e) {
@@ -1906,6 +2002,20 @@ module.exports = async function docRegistryRoutes(fastify) {
         patch[OWNER_NOTE_AUTHOR_COL] = nextNote ? req.user.id : null;
       }
     }
+    // 06.11.2026: сохранение закрывающих (УПД/акт/чек) закрывает этап —
+    // раньше PUT только писал closing_json, а ops_status оставался wait_sf.
+    if (patch.closing_json !== undefined) {
+      const trial = { ...cur.rows[0], ...patch, closing_json: patch.closing_json };
+      if (traffic.hasClosingDoc(trial)) {
+        if (['wait_sf', 'wait_closing'].includes(String(cur.rows[0].ops_status || ''))) {
+          patch.ops_status = 'done';
+        }
+        patch.sf_due_at = null;
+        if (!cur.rows[0].sf_received_at) patch.sf_received_at = today();
+      } else if (String(cur.rows[0].ops_status || '') === 'done' && !cur.rows[0].sf_received_at) {
+        patch.ops_status = 'wait_closing';
+      }
+    }
     const keys = Object.keys(patch);
     if (!keys.length) return decorate(cur.rows[0], req.user.id);
     const vals = keys.map((k) => bindVal(k, patch[k]));
@@ -1917,6 +2027,7 @@ module.exports = async function docRegistryRoutes(fastify) {
         vals
       );
       await audit(db, id, req.user.id, 'update', { keys });
+      await linkCounterpartySupplier(db, rows[0], req.user.id);
       maybeScheduleParse(fastify, db, rows[0], req.user.id);
 
       // D-334 (заказчик 21.10.2026): «если объект подставит пользователь —
@@ -2334,14 +2445,22 @@ module.exports = async function docRegistryRoutes(fastify) {
       // в проект не создастся (autoWorkExpense молча возвращал null). Поэтому
       // требуем объект — либо явную отметку, что это не проектный расход.
       {
-        const exemptKind = String(doc.spend_kind || '') === 'office';
+        const skPay = String(doc.spend_kind || '');
+        const exemptKind = skPay === 'office' || skPay === 'warehouse' || skPay === 'other';
         const exemptFlag = doc.purpose_asgard === true || doc.purpose_consumables === true;
         if (!doc.work_id && !exemptKind && !exemptFlag) {
           return reply.code(409).send({
             error: 'no_work',
             message: 'Укажите объект (работу) — иначе расход не попадёт в проект',
-            hint: 'В карточке документа выберите «Работа / объект». Если расход не проектный — отметьте «Собственность АСГАРД» или «Расходники».',
+            hint: 'В карточке документа выберите «Работа / объект». Если расход не проектный — вид «Офис / Склад / Прочее» или отметки «Собственность АСГАРД» / «Расходники».',
             code: 'no_work_for_expense'
+          });
+        }
+        if (skPay === 'other' && !String(doc.comment_text || '').trim()) {
+          return reply.code(409).send({
+            error: 'no_other_comment',
+            message: 'Для вида «Прочее» укажите в комментарии, что это за расход',
+            code: 'no_other_comment'
           });
         }
       }
@@ -2470,17 +2589,27 @@ module.exports = async function docRegistryRoutes(fastify) {
     if (b.action === 'mark_paid') {
       // Ручная отметка «оплачено» — без вложения и без очереди согласования
       // (для старых оплат, где цепочка не нужна).
+      // 06.11.2026: оплата ≠ закрывающие. Раньше mark_paid сразу ставил ops=done
+      // → после импорта/ручной оплаты горело «Закрыто» без акта/УПД/чека.
       const allowed = ['ADMIN', 'BUH', 'TO', 'HEAD_TO', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV', 'DIRECTOR'];
       if (!allowed.includes(req.user.role)) {
         return reply.code(403).send({ error: 'Отметить оплату может бухгалтерия, администратор или директор' });
       }
+      const closed = traffic.hasClosingDoc(doc);
+      let nextOps = doc.ops_status;
+      if (['wait_pay', 'draft'].includes(String(doc.ops_status || ''))) {
+        nextOps = closed ? 'done' : 'wait_sf';
+      } else if (['wait_sf', 'wait_closing'].includes(String(doc.ops_status || ''))) {
+        nextOps = closed ? 'done' : doc.ops_status;
+      } else if (String(doc.ops_status || '') === 'done' && !closed) {
+        nextOps = 'wait_sf';
+      }
       const { rows } = await db.query(
-        `UPDATE doc_registry SET pay_status='paid', ops_status=CASE
-           WHEN ops_status IN ('wait_pay','wait_sf','wait_closing','draft') THEN 'done' ELSE ops_status END,
+        `UPDATE doc_registry SET pay_status='paid', ops_status=$3,
            updated_by=$2, updated_at=NOW() WHERE id=$1 RETURNING *`,
-        [id, req.user.id]
+        [id, req.user.id, nextOps]
       );
-      await audit(db, id, req.user.id, 'quick_mark_paid', { manual: true, note: 'отмечено вручную, без согласования' });
+      await audit(db, id, req.user.id, 'quick_mark_paid', { manual: true, note: 'отмечено вручную, без согласования', ops: nextOps, closed });
       return decorate(rows[0], req.user.id);
     }
 
@@ -3072,6 +3201,192 @@ module.exports = async function docRegistryRoutes(fastify) {
   // (OBS_ROLES объявлен выше, в блоке D-381 — он нужен и там.)
 
   /**
+   * V473: право создавать письмо для ОБС.
+   *
+   * Решение заказчика 07.11.2026: кнопка нужна не только бухгалтерии, но и
+   * тому, кто ведёт счёт (инициатор/ответственный/РП), и Д. Путкову — у него
+   * персональный полный обзор реестра (`users.doc_full_view`), поэтому он
+   * видит любой счёт и может написать по нему письмо.
+   *
+   * Правило считается по ФАКТУ видимости строки, а не по роли в localStorage:
+   * если человек эту строку видит и она его (или у него полный обзор), письмо
+   * он создать может. Врать клиенту нечем — проверка только на сервере.
+   */
+  const OBS_LETTER_ROLES = ['ADMIN', 'BUH', 'OFFICE_MANAGER'];
+  async function canCreateObsLetter(user, doc) {
+    if (!user || !doc) return false;
+    const role = String(user.role || '').toUpperCase();
+    if (OBS_LETTER_ROLES.includes(role)) return true;
+    const uid = Number(user.id) || 0;
+    if (!uid) return false;
+    if (Number(doc.created_by) === uid) return true;
+    if (Number(doc.doc_owner_id) === uid) return true;
+    if (Number(doc.pm_id) === uid) return true;
+    // Персональный полный обзор (D-382): флаг читаем из БД.
+    try {
+      const r = await db.query('SELECT doc_full_view FROM users WHERE id=$1', [uid]);
+      if (r.rows[0] && r.rows[0].doc_full_view) return true;
+    } catch (_) { /* нет колонки/БД — считаем, что нет */ }
+    return false;
+  }
+
+  /**
+   * GET /obs-accounts — справочник ОБС-счетов для модалки.
+   * PATCH/POST/DELETE — только ADMIN: это реквизиты, а не операция.
+   */
+  fastify.get('/obs-accounts', auth, async () => {
+    const { rows } = await db.query(
+      `SELECT a.*, w.object_name
+         FROM obs_accounts a
+         LEFT JOIN works w ON w.id = a.work_id
+        WHERE a.is_active
+        ORDER BY a.name`);
+    return { items: rows };
+  });
+
+  fastify.post('/obs-accounts', {
+    preHandler: [fastify.requireRoles(SUBCONTRACT_ADMIN_ROLES)],
+  }, async (req, reply) => {
+    const b = req.body || {};
+    const name = String(b.name || '').trim();
+    if (!name) return reply.code(400).send({ error: 'Название ОБС обязательно' });
+    try {
+      const { rows } = await db.query(
+        `INSERT INTO obs_accounts
+           (name, customer_name, inn, kpp, bank_name, bank_account, bank_corr_account, bank_bik, work_id, note)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
+        [name, b.customer_name || null, b.inn || null, b.kpp || null,
+          b.bank_name || null, b.bank_account || null, b.bank_corr_account || null,
+          b.bank_bik || null, b.work_id || null, b.note || null]);
+      return { ok: true, item: rows[0] };
+    } catch (e) {
+      if (String(e.message).includes('uq_obs_accounts_name')) {
+        return reply.code(409).send({ error: 'ОБС с таким названием уже есть' });
+      }
+      throw e;
+    }
+  });
+
+  fastify.patch('/obs-accounts/:aid', {
+    preHandler: [fastify.requireRoles(SUBCONTRACT_ADMIN_ROLES)],
+  }, async (req, reply) => {
+    const aid = parseInt(req.params.aid, 10);
+    if (!Number.isInteger(aid)) return reply.code(400).send({ error: 'Неверный ID' });
+    const b = req.body || {};
+    const fields = ['name', 'customer_name', 'inn', 'kpp', 'bank_name',
+      'bank_account', 'bank_corr_account', 'bank_bik', 'work_id', 'note', 'is_active'];
+    const sets = [];
+    const vals = [aid];
+    for (const f of fields) {
+      if (b[f] !== undefined) {
+        vals.push(b[f]);
+        sets.push(`${f}=$${vals.length}`);
+      }
+    }
+    if (!sets.length) return reply.code(400).send({ error: 'Нет полей для изменения' });
+    const { rows } = await db.query(
+      `UPDATE obs_accounts SET ${sets.join(', ')}, updated_at=NOW()
+        WHERE id=$1 RETURNING *`, vals);
+    if (!rows[0]) return reply.code(404).send({ error: 'ОБС не найден' });
+    return { ok: true, item: rows[0] };
+  });
+
+  fastify.delete('/obs-accounts/:aid', {
+    preHandler: [fastify.requireRoles(SUBCONTRACT_ADMIN_ROLES)],
+  }, async (req, reply) => {
+    const aid = parseInt(req.params.aid, 10);
+    if (!Number.isInteger(aid)) return reply.code(400).send({ error: 'Неверный ID' });
+    // Мягкое отключение: на исторические письма ссылка должна остаться.
+    const { rows } = await db.query(
+      `UPDATE obs_accounts SET is_active=false, updated_at=NOW()
+        WHERE id=$1 RETURNING id`, [aid]);
+    if (!rows[0]) return reply.code(404).send({ error: 'ОБС не найден' });
+    return { ok: true };
+  });
+
+  /**
+   * POST /:id/obs-letter/preview — предпросмотр письма БЕЗ записи в БД.
+   *
+   * Главное правило: предпросмотр не тратит исходящий номер и не создаёт
+   * строк. Иначе каждое «посмотреть, как выйдет» съедало бы номер, а письмо
+   * могло так и не понадобиться.
+   *
+   * `?format=pdf|docx` — формат отдачи (по умолчанию PDF).
+   */
+  fastify.post('/:id/obs-letter/preview', auth, async (req, reply) => {
+    const id = parseInt(req.params.id, 10);
+    if (!Number.isFinite(id)) return reply.code(400).send({ error: 'Неверный ID' });
+
+    if (!(await assertDocVisible(db, { role: req.user.role, userId: req.user.id }, id))) {
+      return reply.code(404).send({ error: 'Не найдено' });
+    }
+    const row = await db.query(
+      `SELECT id, created_by, doc_owner_id, pm_id FROM doc_registry
+        WHERE id=$1 AND deleted_at IS NULL`, [id]);
+    if (!row.rows[0]) return reply.code(404).send({ error: 'Не найдено' });
+    if (!(await canCreateObsLetter(req.user, row.rows[0]))) {
+      return reply.code(403).send({ error: 'Нет права создавать письмо по этому счёту' });
+    }
+
+    const payload = req.body || {};
+    const format = String(req.query.format || 'pdf').toLowerCase();
+    try {
+      if (format === 'docx') {
+        const buf = await require('../services/obs-letter').renderObsLetterDocx(db, id, payload);
+        reply.header('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+        reply.header('Content-Disposition', 'inline; filename="obs-letter-preview.docx"');
+        return reply.send(buf);
+      }
+      const res = await require('../services/obs-letter').renderObsLetterPdf(db, id, payload);
+      reply.header('Content-Type', 'application/pdf');
+      reply.header('Content-Disposition', 'inline; filename="obs-letter-preview.pdf"');
+      return reply.send(res.buffer);
+    } catch (e) {
+      req.log.error({ err: e, docId: id }, '[obs-letter] preview failed');
+      return reply.code(500).send({
+        error: 'Не удалось собрать предпросмотр',
+        detail: String(e.message || e).slice(0, 300),
+      });
+    }
+  });
+
+  /**
+   * V473: POST /:id/obs-letter/recreate — новая редакция письма.
+   * Старое письмо мягко удаляется из реестра, но остаётся в переписке
+   * неактуальной редакцией (is_current=false) — история не теряется.
+   */
+  fastify.post('/:id/obs-letter/recreate', {
+    // D-397 (FAIL верификатора 07.11.2026): право на пересоздание должно
+    // совпадать с правом на создание, иначе PM с полным обзором создаёт
+    // письмо, но не может его исправить. Проверка — canCreateObsLetter ниже.
+    preHandler: [fastify.requireRoles(ALLOWED)],
+    schema: { body: { type: 'object', additionalProperties: true, nullable: true } },
+  }, async (req, reply) => {
+    const id = parseInt(req.params.id, 10);
+    if (!Number.isFinite(id)) return reply.code(400).send({ error: 'Неверный ID' });
+    if (!(await assertDocVisible(db, { role: req.user.role, userId: req.user.id }, id))) {
+      return reply.code(404).send({ error: 'Не найдено' });
+    }
+    const own = await db.query(
+      `SELECT id, created_by, doc_owner_id, pm_id FROM doc_registry
+        WHERE id=$1 AND deleted_at IS NULL`, [id]);
+    if (!own.rows[0]) return reply.code(404).send({ error: 'Не найдено' });
+    if (!(await canCreateObsLetter(req.user, own.rows[0]))) {
+      return reply.code(403).send({ error: 'Нет права пересоздавать письмо по этому счёту' });
+    }
+    try {
+      const canSetContour = req.user.role === 'ADMIN' || OBS_ROLES.includes(req.user.role);
+      const res = await require('../services/obs-letter-registry')
+        .recreateObsLetter(db, id, req.body || {}, { userId: req.user.id, canSetContour });
+      return { ok: true, ...res };
+    } catch (e) {
+      if (e.statusCode) return reply.code(e.statusCode).send({ error: e.message, ...e });
+      req.log.error({ err: e, docId: id }, '[obs-letter] recreate failed');
+      return reply.code(500).send({ error: 'Не удалось пересобрать письмо' });
+    }
+  });
+
+  /**
    * GET /:id/letter-file — отдать PDF письма для ОБС.
    *
    * D-378 (дефект от верификатора 25.10.2026): фронт открывал
@@ -3262,8 +3577,11 @@ module.exports = async function docRegistryRoutes(fastify) {
     }
 
     const found = await db.query(
-      `SELECT id, work_id, amount_gross, payment_source, subcontract_id,
-              obs_letter_status, obs_letter_doc_id, obs_letter_error, invoice_number
+      `SELECT id, work_id, amount_gross, amount_net, vat_amount, vat_rate,
+              payment_source, subcontract_id, obs_account_id,
+              obs_letter_status, obs_letter_doc_id, obs_letter_error,
+              invoice_number, invoice_date, counterparty_name, comment_text,
+              created_by, doc_owner_id, pm_id
          FROM doc_registry WHERE id=$1 AND deleted_at IS NULL`, [id]);
     const doc = found.rows[0];
     if (!doc) return reply.code(404).send({ error: 'Не найдено' });
@@ -3309,20 +3627,60 @@ module.exports = async function docRegistryRoutes(fastify) {
       };
     });
 
+    // ОБС-счета из справочника: какие доступны для выбора в письме.
+    // Отдаём все активные — привязка к объекту подсказкой, а не запретом:
+    // бухгалтерия иногда платит по объекту с чужого ОБС.
+    let obsAccounts = [];
+    try {
+      const oa = await db.query(
+        `SELECT a.id, a.name, a.customer_name, a.bank_name, a.bank_account,
+                a.bank_bik, a.work_id, w.object_name
+           FROM obs_accounts a
+           LEFT JOIN works w ON w.id = a.work_id
+          WHERE a.is_active
+          ORDER BY (a.work_id = $1) DESC NULLS LAST, a.name`, [doc.work_id || null]);
+      obsAccounts = oa.rows;
+    } catch (_) { obsAccounts = []; }
+
+    // Позиции счёта для подстановки в перечень письма.
+    let defaultItems = [];
+    try {
+      const items = await require('../services/obs-letter')
+        .buildLetterDataFromPayload(db, id, {});
+      defaultItems = items.items || [];
+    } catch (_) { defaultItems = []; }
+
     return {
       doc_id: id,
       invoice_number: doc.invoice_number,
       amount_gross: amount,
       payment_source: doc.payment_source || 'regular',
       subcontract_id: doc.subcontract_id || null,
+      obs_account_id: doc.obs_account_id || null,
       obs_letter_status: doc.obs_letter_status || 'none',
       obs_letter_doc_id: doc.obs_letter_doc_id || null,
       obs_letter_error: doc.obs_letter_error || null,
       // Права: переключать контур и договор может только бухгалтерия
       // (ADMIN проходит всегда). Инициатор и директор видят блок, но
-      // не меняют.
+      // не меняют. Отдельно — право создать письмо (шире, см. V473).
       can_manage: canManageObs(req.user.role),
+      can_create_letter: await canCreateObsLetter(req.user, doc),
+      can_manage_obs_accounts: req.user.role === 'ADMIN',
       subcontracts: items,
+      obs_accounts: obsAccounts,
+      // Значения по умолчанию для модалки: человек правит их, а не вводит с нуля.
+      defaults: {
+        invoice_number: doc.invoice_number || '',
+        invoice_date: doc.invoice_date ? String(doc.invoice_date).slice(0, 10) : '',
+        amount_gross: amount,
+        amount_net: Number(doc.amount_net) || 0,
+        vat_amount: Number(doc.vat_amount) || 0,
+        vat_rate: Number(doc.vat_rate) || 0,
+        counterparty_name: doc.counterparty_name || '',
+        comment_text: doc.comment_text || '',
+        items: defaultItems,
+        letter_date: new Date().toISOString().slice(0, 10),
+      },
     };
   });
 
@@ -3342,8 +3700,19 @@ module.exports = async function docRegistryRoutes(fastify) {
   // обязан слать хотя бы «{}» (см. doc-hub.js: api(..., { method:'POST' })
   // без body → шлём {}). Здесь оставляем схему-«разрешение» на случай,
   // если клиент придёт без тела вовсе.
+  // V473: одноэтапное сохранение письма.
+  //
+  // Раньше здесь был «фоновый» захват статуса `generating` и генерация в
+  // setImmediate: UI должен был опрашивать строку, пока письмо не появится.
+  // Теперь рендер быстрый и предсказуемый (PDF + DOCX внутри транзакции),
+  // поэтому отвечаем синхронно результатом — фронт сразу показывает номер и
+  // ссылки. Если рендер упал, транзакция откатывается целиком: ни письма, ни
+  // съеденного номера, ни ссылки в счёте.
+  //
+  // Права: не только бухгалтерия (см. canCreateObsLetter) — инициатор,
+  // ответственный и Путков с полным обзором реестра тоже создают письмо.
   fastify.post('/:id/obs-letter', {
-    preHandler: [fastify.requireRoles(OBS_ROLES)],
+    preHandler: [fastify.requireRoles(ALLOWED)],
     schema: { body: { type: 'object', additionalProperties: true, nullable: true } },
   }, async (req, reply) => {
     const id = parseInt(req.params.id, 10);
@@ -3354,135 +3723,82 @@ module.exports = async function docRegistryRoutes(fastify) {
     }
 
     const found = await db.query(
-      `SELECT id, invoice_number, payment_source, obs_letter_status, obs_letter_doc_id, subcontract_id
+      `SELECT id, invoice_number, payment_source, obs_letter_status,
+              obs_letter_doc_id, subcontract_id, obs_account_id,
+              created_by, doc_owner_id, pm_id
          FROM doc_registry WHERE id=$1 AND deleted_at IS NULL`, [id]);
     const doc = found.rows[0];
     if (!doc) return reply.code(404).send({ error: 'Не найдено' });
 
-    if (doc.obs_letter_status === 'generating') {
-      return { status: 'generating', already: true };
+    if (!(await canCreateObsLetter(req.user, doc))) {
+      return reply.code(403).send({ error: 'Нет права создавать письмо по этому счёту' });
     }
 
-    // Обычный счёт: письмо не требуется. Не запускаем генерацию молча —
-    // говорим прямо, чтобы пользователь не ждал плашку, которой не будет.
-    if (doc.payment_source !== 'obs') {
+    const payload = req.body || {};
+
+    // Контур оплаты. Модалка разрешает создавать письмо и без предварительного
+    // переключения: если человек явно выбрал ОБС-счёт, он уже принял решение.
+    // Но если в payload ничего про ОБС нет, а счёт на расчётном — честно
+    // говорим, что письмо не требуется.
+    const wantsObs = payload.obs_account_id
+      || (payload.payment_source && String(payload.payment_source).toLowerCase() === 'obs');
+    if (doc.payment_source !== 'obs' && !wantsObs) {
       return reply.code(409).send({
         error: 'Счёт оплачивается с расчётного счёта — письмо ОБС не требуется',
-        hint: "Сначала переключите способ оплаты на 'obs'",
+        hint: "Выберите ОБС-счёт в письме или переключите способ оплаты на 'obs'",
       });
     }
 
-    // D-381: лимит существенности. Если договор выбран и лимит выработан —
-    // ОБС запрещён, письмо не формируем. Проверяем ДО захвата, чтобы не
-    // оставить документ в статусе «Формируется…» навсегда.
-    if (doc.subcontract_id) {
-      const lim = await db.query(
-        `SELECT s.exhausted, s.remaining, a.number, a.limit_amount, s.spent_amount
-           FROM subcontract_agreements a, subcontract_limit_state(a.id) s
-          WHERE a.id = $1`, [doc.subcontract_id]);
-      const L = lim.rows[0];
-      if (L && L.exhausted) {
-        return reply.code(409).send({
-          error: `Лимит существенности по договору ${L.number} выработан`,
-          detail: `Лимит ${L.limit_amount} руб., использовано ${L.spent_amount} руб. ОБС недоступен.`,
-          exhausted: true,
+    try {
+      // D-397 (FAIL верификатора 07.11.2026): контур (`payment_source`) и
+      // договор меняет ТОЛЬКО бухгалтерия/админ. Письмо при этом может писать
+      // и инициатор, и ответственный, и Путков с полным обзором — но их
+      // сохранение НЕ должно молча переводить счёт на ОБС в обход
+      // PATCH /payment-source. Поэтому право на контур считаем здесь и
+      // передаём флагом: сервис не знает роли и не должен её угадывать.
+      const canSetContour = req.user.role === 'ADMIN' || OBS_ROLES.includes(req.user.role);
+
+      // D-397b (замечание верификатора 07.11.2026): нельзя оставлять письмо
+      // ОБС на счёте с контуром «расчётный». Иначе получается противоречивое
+      // состояние: `obs_letter_status='ready'` и `obs_account_id` есть, а
+      // `payment_source='regular'` — и лимит существенности такой расход НЕ
+      // учитывает (функция считает только ОБС-счета), то есть договор
+      // «недобирает» использованную сумму.
+      //
+      // Правило простое: письмо ОБС существует ⇒ счёт оплачивается через ОБС.
+      // Если прав на контур нет, контур выставит сама генерация (сервис
+      // сделает это атомарно с письмом) — но только для этого перехода,
+      // ручное переключение остаётся у бухгалтерии.
+      const forceObsContour = wantsObs && doc.payment_source !== 'obs';
+
+      const res = await require('../services/obs-letter-registry').saveObsLetter(
+        db, id, payload, {
+          userId: req.user.id,
+          onAudit: audit,
+          canSetContour,
+          // Письмо по ОБС-счёту обязано перевести контур: без этого документ
+          // и учёт расходятся.
+          forceObsContour,
+        });
+      return { ok: true, status: 'ready', ...res };
+    } catch (e) {
+      if (e.statusCode) {
+        return reply.code(e.statusCode).send({
+          error: e.message,
+          field: e.field || null,
+          limit: e.limit || null,
         });
       }
-    }
-
-    // D-378 (P2 от верификатора 25.10.2026): здесь был SELECT → UPDATE без
-    // условия. Два одновременных клика «Сформировать» оба проходили проверку
-    // и запускали ДВА Chrome, плодя письма-дубли. Теперь захват — атомарный:
-    // статус переводится в 'generating' ТОЛЬКО если письма ещё нет и
-    // генерация не идёт. Если строка не обновилась — второй вызов уходит.
-    //
-    // D-378 (второй раунд, P2 от третьего верификатора): условие
-    // `obs_letter_doc_id = 0` блокировало пересборку НАВСЕГДА, если ссылка
-    // осталась на удалённое письмо (soft-delete). Пользователь видел вечное
-    // «Формируется…», второе нажатие возвращало already:true, выхода через
-    // интерфейс не было. Теперь мёртвая ссылка (письмо удалено/не существует)
-    // считается отсутствующей — пересборка разрешена.
-    const claim = await db.query(
-      `UPDATE doc_registry
-          SET obs_letter_status='generating', obs_letter_error=NULL,
-              updated_by=$2, updated_at=NOW()
-        WHERE id=$1
-          AND COALESCE(obs_letter_status, 'none') <> 'generating'
-          AND (
-                COALESCE(obs_letter_doc_id, 0) = 0
-                OR NOT EXISTS (
-                     SELECT 1 FROM doc_registry l
-                      WHERE l.id = doc_registry.obs_letter_doc_id
-                        AND l.deleted_at IS NULL
-                   )
-              )
-        RETURNING id`, [id, req.user.id]);
-
-    if (!claim.rowCount) {
-      return { status: 'generating', already: true };
-    }
-
-    await audit(db, id, req.user.id, 'obs_letter_start', {});
-    const obsLetter = require('../services/obs-letter');
-    const fastifyRef = fastify;
-    const docId = id;
-    const userId = req.user.id;
-
-    // Запускаем в фоне и НЕ ждём: ответ уже ушёл в UI.
-    setImmediate(async () => {
+      req.log.error({ err: e, docId: id }, '[obs-letter] save failed');
       try {
-        const res = await obsLetter.generateObsLetterPdf(fastifyRef.db || fastifyRef.pg, docId);
-
-        // Письмо живёт в том же реестре отдельной строкой (dir='out'),
-        // чтобы попасть в карточку вложением и в общую нумерацию исходящих.
-        const ins = await fastifyRef.db.query(
-          `INSERT INTO doc_registry
-             (dir, package_type, ops_status, pay_status, counterparty_name,
-              amount_gross, amount_net, vat_amount, vat_rate, has_vat,
-              spend_kind, created_by, updated_by, receive_channel, comment_text,
-              invoice_number, invoice_date, attachments)
-           VALUES
-             ('out','letter','done','n_a',$1,
-              0,0,0,0,false,
-              'work',$2,$2,'manual',$3,
-              $4,$5,$6)
-           RETURNING id`,
-          [
-            'Для ОБС по счёту № ' + (doc.invoice_number || docId),
-            userId,
-            'Письмо для оплаты через ОБС по счёту № ' + (doc.invoice_number || docId),
-            'Исх. ' + res.number,
-            new Date(),
-            // D-378: в attachments — ПУБЛИЧНЫЙ url (/uploads/...), а не
-            // абсолютный путь на диске. Абсолютный путь nginx не раздаёт,
-            // поэтому клик по письму открывал SPA-заглушку вместо PDF.
-            JSON.stringify([{ name: res.fileName, url: res.url, kind: 'obs_letter' }]),
-          ]
-        );
-        const letterDocId = ins.rows[0] && ins.rows[0].id;
-
-        await fastifyRef.db.query(
-          `UPDATE doc_registry
-              SET obs_letter_status='ready', obs_letter_doc_id=$2, obs_letter_error=NULL, updated_at=NOW()
-            WHERE id=$1`, [docId, letterDocId || null]);
-
-        await audit(fastifyRef.db, docId, userId, 'obs_letter_ready',
-          { letter_doc_id: letterDocId, number: res.number, url: res.url });
-        fastifyRef.log.info(`[obs-letter] готово: doc=${docId} письмо=${letterDocId} №${res.number}`);
-      } catch (e) {
-        const msg = String(e && e.message || e).slice(0, 500);
-        fastifyRef.log.error(`[obs-letter] сбой doc=${docId}: ${msg}`);
-        try {
-          await fastifyRef.db.query(
-            `UPDATE doc_registry SET obs_letter_status='failed', obs_letter_error=$2, updated_at=NOW()
-              WHERE id=$1`, [docId, msg]);
-          await audit(fastifyRef.db, docId, userId, 'obs_letter_failed', { error: msg });
-        } catch (e2) {
-          fastifyRef.log.error(`[obs-letter] не смог записать статус сбоя: ${e2.message}`);
-        }
-      }
-    });
-
-    return { status: 'generating', id };
+        await db.query(
+          `UPDATE doc_registry SET obs_letter_status='failed', obs_letter_error=$2, updated_at=NOW()
+            WHERE id=$1`, [id, String(e && e.message || e).slice(0, 500)]);
+      } catch (_) { /* статус не критичен */ }
+      return reply.code(500).send({
+        error: 'Не удалось сформировать письмо',
+        detail: String(e && e.message || e).slice(0, 300),
+      });
+    }
   });
 };

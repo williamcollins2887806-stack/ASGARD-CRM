@@ -19,8 +19,11 @@ module.exports = defineConfig({
     screenshot: 'only-on-failure',
     locale: 'ru-RU',
     viewport: { width: 1440, height: 900 },
-    actionTimeout: 15000,
-    navigationTimeout: 20000,
+    actionTimeout: 20000,
+    // Клон может стоять на удалённом сервере, и полная загрузка страницы
+    // (сотни ассетов) по сети занимает десятки секунд. Ждём 'commit':
+    // DOM приходит сразу, дальше тест сам ждёт нужные селекторы.
+    navigationTimeout: 60000,
   },
   projects: [
     { name: 'clone-chromium', use: { browserName: 'chromium' } },

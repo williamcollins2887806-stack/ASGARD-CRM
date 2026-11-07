@@ -1,7 +1,14 @@
 // Playwright test helpers for ASGARD CRM
 const { expect } = require('@playwright/test');
 
-const BASE_URL = 'https://asgard-crm.ru';
+// Адрес стенда. По умолчанию — прод (так исторически гоняли UI-аудиты), но
+// его можно переопределить, чтобы прогонять те же сценарии на КЛОНЕ:
+//
+//   CLONE_URL=http://127.0.0.1:3200 npx playwright test ... --config=playwright.clone.config.js
+//
+// Без этого хелперы всегда ходили на прод, и проверка новых экранов на клоне
+// была невозможна: тест открывал боевые данные.
+const BASE_URL = process.env.CLONE_URL || process.env.BASE_URL || 'https://asgard-crm.ru';
 
 const ACCOUNTS = {
   ADMIN:          { login: 'admin',              password: 'admin123',    pin: '1234' },
@@ -60,9 +67,11 @@ async function loginAs(page, role) {
     });
   }).catch(() => {});
 
-  await page.goto(BASE_URL + '/#/welcome');
+  // waitUntil: 'commit' — не ждём загрузку всех ассетов (на удалённом клоне
+  // это десятки секунд). Дальше ждём конкретный интерактивный селектор.
+  await page.goto(BASE_URL + '/#/welcome', { waitUntil: 'commit', timeout: 60000 });
   // Wait for welcome page to be fully interactive (button visible, not just DOM loaded)
-  await page.waitForSelector('#btnShowLogin', { state: 'visible', timeout: 15000 }).catch(() => {});
+  await page.waitForSelector('#btnShowLogin', { state: 'visible', timeout: 45000 }).catch(() => {});
   await page.waitForTimeout(500);
 
   // Click #btnShowLogin to reveal the login form (NOT #btnLoginGo which navigates away)
@@ -118,7 +127,10 @@ async function loginAs(page, role) {
  * Navigate to a CRM page by hash
  */
 async function navigateTo(page, pageName) {
-  await page.goto(BASE_URL + '/#/' + pageName);
+  // waitUntil: 'commit' — на удалённом клоне полная загрузка всех ассетов
+  // занимает десятки секунд, и 'load' приводит к таймауту навигации.
+  // DOM приходит сразу; дальше ждём появления контента явным селектором.
+  await page.goto(BASE_URL + '/#/' + pageName, { waitUntil: 'commit', timeout: 60000 });
   await page.waitForTimeout(1500);
   // Wait for content
   await page.waitForSelector('#mainContent, .page-content, .panel, [data-page], #app', { timeout: 10000 }).catch(() => {});

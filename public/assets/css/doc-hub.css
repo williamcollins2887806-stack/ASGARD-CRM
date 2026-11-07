@@ -3181,3 +3181,106 @@ html[data-theme="light"] .dh-cp-badge { color: #24503B; background: rgba(45,106,
 .dh-pday__n { font-size: 10px; color: var(--t3); }
 .dh-pday.is-overdue .dh-pday__sum { color: var(--err-t, #f87171); }
 .dh-paysched { display: flex; flex-direction: column; gap: 12px; }
+
+/* ═══ V473: модалка письма для ОБС ══════════════════════════════════════
+   Окно двухколоночное: слева форма, справа предпросмотр PDF. На узких
+   экранах предпросмотр уезжает под форму. Цвета — только токены темы. */
+.dh-obs-modal { z-index: 12100; }
+.dh-obs-card {
+  max-width: 1180px;
+  width: min(1180px, 96vw);
+  max-height: 92vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.dh-obs-head { align-items: flex-start; }
+.dh-obs-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 18px;
+  overflow: hidden;
+  min-height: 0;
+}
+.dh-obs-form {
+  overflow-y: auto;
+  max-height: 62vh;
+  padding-right: 6px;
+}
+.dh-obs-sec {
+  border: 1px solid var(--brd);
+  border-radius: 12px;
+  padding: 12px 14px;
+  margin-bottom: 12px;
+  background: color-mix(in srgb, var(--bg2) 60%, transparent);
+}
+.dh-obs-sec__h {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  font-weight: 700;
+  font-size: 12.5px;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+  color: var(--t3);
+  margin-bottom: 10px;
+}
+.dh-obs-check { display: flex; align-items: center; gap: 8px; font-size: 13px; cursor: pointer; }
+.dh-obs-hint { font-size: 11.5px; color: var(--t3); margin-top: 6px; line-height: 1.4; }
+.dh-obs-bad { color: var(--err-t, #f87171); font-weight: 600; }
+.dh-obs-ok { color: var(--ok-t, #22c55e); font-weight: 700; }
+.dh-obs-warn {
+  margin-top: 8px; padding: 8px 10px; border-radius: 8px;
+  background: color-mix(in srgb, var(--amber) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--amber) 40%, transparent);
+  font-size: 12px;
+}
+.dh-obs-row { display: flex; gap: 8px; align-items: stretch; }
+.dh-obs-row select { flex: 1 1 auto; min-width: 0; }
+.dh-obs-add { white-space: nowrap; }
+.dh-obs-mini { height: 24px; padding: 0 10px; font-size: 11px; text-transform: none; letter-spacing: 0; }
+.dh-obs-grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.dh-obs-preview {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.dh-obs-frame {
+  width: 100%;
+  height: 62vh;
+  border: 1px solid var(--brd);
+  border-radius: 12px;
+  /* PDF рисуется на белом листе — это свойство документа, а не темы,
+     поэтому белый здесь уместен. */
+  background: #fff;
+}
+.dh-obs-preview__empty {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 8px; height: 62vh; border: 1px dashed var(--brd); border-radius: 12px;
+  color: var(--t3); font-size: 13px; text-align: center; padding: 20px;
+}
+.dh-obs-preview__ico {
+  width: 46px; height: 46px; border-radius: 12px;
+  display: flex; align-items: center; justify-content: center;
+  border: 1px solid var(--brd); font-weight: 800; font-size: 12px; color: var(--gold);
+}
+.dh-obs-preview__stale {
+  margin-top: 8px; font-size: 12px; font-weight: 600;
+  color: var(--amber);
+}
+.dh-obs-foot { flex-wrap: wrap; gap: 10px; align-items: center; }
+.dh-obs-foot__left { flex: 1 1 240px; font-size: 12px; }
+.dh-obs-foot__right { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+
+@media (max-width: 980px) {
+  .dh-obs-body { grid-template-columns: 1fr; overflow-y: auto; }
+  .dh-obs-form { max-height: none; overflow: visible; }
+  .dh-obs-preview__empty, .dh-obs-frame { height: 52vh; }
+}
+@media (max-width: 620px) {
+  .dh-obs-grid2 { grid-template-columns: 1fr; }
+  .dh-obs-foot__right { width: 100%; justify-content: stretch; }
+}
+

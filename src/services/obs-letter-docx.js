@@ -112,13 +112,20 @@ function _buildImageOpts(withSignature, withStamp) {
 async function generateObsLetterDocx(db, docId, opts = {}) {
   // Данные и текст берём из того же модуля, что и PDF — один источник правды.
   const obs = require('./obs-letter');
-  const data = await obs.loadLetterData(db, docId);
+  // V473: если пришёл payload из модалки (номер/дата/сумма/перечень), собираем
+  // данные по нему. Иначе — как раньше, из строки реестра.
+  const data = opts.payload
+    ? await obs.buildLetterDataFromPayload(db, docId, opts.payload)
+    : await obs.loadLetterData(db, docId);
   const { doc, company, gendir, subcontract } = data;
 
   // Номер и дату: если письмо уже сформировано в PDF — используем тот же
   // номер, чтобы Word и PDF не разъезжались.
   let number = opts.number || null;
-  let dateText = opts.dateText || _shared.formatRuDate(new Date());
+  const dateText = opts.dateText
+    || (opts.payload && opts.payload.letter_date
+      ? _shared.formatRuDate(opts.payload.letter_date)
+      : _shared.formatRuDate(new Date()));
   if (!number) {
     try {
       const cur = await db.query(
@@ -129,7 +136,10 @@ async function generateObsLetterDocx(db, docId, opts = {}) {
       if (inv) number = String(inv).replace(/^Исх\.\s*/i, '');
     } catch (_) { /* нет письма — выдадим новый номер */ }
   }
-  if (!number) number = await obs.nextOutgoingNumber(db, new Date());
+  // V473: предпросмотр НЕ расходует исходящий номер. Раньше здесь стояла
+  // безусловная выдача — и каждое нажатие «Предпросмотр» съедало номер из
+  // счётчика, хотя письмо могло так и не понадобиться.
+  if (!number && !opts.payload) number = await obs.nextOutgoingNumber(db, new Date());
 
   // D-392: текст письма раскладывается по СМЫСЛОВЫМ блокам, как в эталонном
   // письме заказчика. Раньше всё уходило одним массивом body_paragraphs, и
@@ -194,7 +204,11 @@ async function generateObsLetterDocx(db, docId, opts = {}) {
     items: asParas(blocks.items),
     invoice_paragraphs: asParas(blocks.invoice),
     outro_paragraphs: asParas(blocks.outro),
-    request_paragraphs: asParas(blocks.request),
+    // D-397 (FAIL верификатора 07.11.2026): строка «Оплату просим провести с
+    // ОБС …» идёт после «Просим оплатить» и раньше никуда не попадала — Word
+    // выходил без реквизита оплаты. Приклеиваем её к блоку просьбы: в образце
+    // это продолжение той же мысли, отдельный абзац в шаблоне не нужен.
+    request_paragraphs: asParas((blocks.request || []).concat(blocks.post || [])),
 
     procurement_intro: [],
     procurement_lot: [],

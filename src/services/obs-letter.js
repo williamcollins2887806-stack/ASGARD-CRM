@@ -367,6 +367,117 @@ async function loadLetterData(db, docId) {
   };
 }
 
+/**
+ * Данные письма из payload модалки.
+ *
+ * Зачем отдельно от `loadLetterData`. До модалки письмо собиралось ТОЛЬКО из
+ * строки реестра: номер, дата и сумма счёта брались как есть, а если парсер их
+ * не распознал — в письме стояло «б/н» и неверная дата, переписать было нечем.
+ * Теперь человек в модалке видит эти поля и может их поправить, не меняя
+ * строку реестра (у бухгалтерии счёт уже проведён, трогать его нельзя).
+ *
+ * Что переопределяет payload:
+ *   • invoice_number / invoice_date — номер и дата счёта;
+ *   • amount_gross / vat_amount / vat_rate — суммы (НДС считается от gross,
+ *     если ставка задана, а сумма НДС нет);
+ *   • items — перечень строк (если пусто, остаются позиции из счёта);
+ *   • subcontract_id — договор субподряда;
+ *   • obs_account_id — ОБС-счёт, с которого платим;
+ *   • counterparty_name — если контрагент распознан неверно и человек исправил.
+ *
+ * Всё остальное (объект, бланк, подпись, печать) — из базы, как раньше.
+ *
+ * @param {object} db
+ * @param {number} docId
+ * @param {object} payload
+ * @returns {Promise<object>} те же поля, что у loadLetterData
+ */
+async function buildLetterDataFromPayload(db, docId, payload) {
+  const base = await loadLetterData(db, docId);
+  const p = payload || {};
+  const doc = Object.assign({}, base.doc);
+
+  if (p.counterparty_name !== undefined) {
+    const nm = String(p.counterparty_name || '').trim();
+    if (nm) doc.counterparty_name = nm;
+  }
+  if (p.invoice_number !== undefined) {
+    doc.invoice_number = String(p.invoice_number || '').trim() || null;
+  }
+  if (p.invoice_date !== undefined && p.invoice_date !== null && p.invoice_date !== '') {
+    doc.invoice_date = p.invoice_date;
+  }
+
+  // Суммы. gross — сумма с НДС («в том числе НДС»), поэтому НДС из ставки
+  // считается как gross * rate / (100 + rate), а не gross * rate / 100.
+  const hasGross = p.amount_gross !== undefined && p.amount_gross !== null && p.amount_gross !== '';
+  if (hasGross) {
+    const gross = Number(p.amount_gross);
+    if (Number.isFinite(gross) && gross >= 0) doc.amount_gross = gross;
+  }
+  const grossNum = Number(doc.amount_gross) || 0;
+
+  let rate = null;
+  if (p.vat_rate !== undefined && p.vat_rate !== null && p.vat_rate !== '') {
+    rate = Number(p.vat_rate);
+    if (!Number.isFinite(rate) || rate < 0) rate = null;
+    if (rate !== null) doc.vat_rate = rate > 1 ? rate : rate * 100;
+  }
+  if (p.vat_amount !== undefined && p.vat_amount !== null && p.vat_amount !== '') {
+    const vat = Number(p.vat_amount);
+    if (Number.isFinite(vat) && vat >= 0) doc.vat_amount = vat;
+  } else if (hasGross && rate !== null) {
+    doc.vat_amount = Math.round(grossNum * rate / (100 + rate) * 100) / 100;
+  }
+  doc.amount_gross = grossNum;
+  if (doc.amount_net === undefined || hasGross) {
+    doc.amount_net = Math.round((grossNum - (Number(doc.vat_amount) || 0)) * 100) / 100;
+  }
+
+  // Перечень: строки из модалки главнее распознанных позиций.
+  let items = base.items;
+  if (Array.isArray(p.items)) {
+    const clean = p.items.map((v) => String(v == null ? '' : v).trim()).filter(Boolean);
+    if (clean.length) items = clean;
+  }
+
+  // Договор: если человек выбрал другой — перечитываем остаток лимита.
+  let subcontract = base.subcontract;
+  let contractLabel = base.contractLabel;
+  let contractDate = base.contractDate;
+  if (p.subcontract_id !== undefined) {
+    if (p.subcontract_id === null || p.subcontract_id === '') {
+      subcontract = null;
+      contractLabel = '';
+      contractDate = '';
+    } else {
+      const sc = await db.query(
+        `SELECT a.*, s.spent_amount, s.remaining, s.used_pct, s.exhausted
+           FROM subcontract_agreements a, subcontract_limit_state(a.id, $2) s
+          WHERE a.id = $1`, [Number(p.subcontract_id), docId]);
+      if (sc.rows[0]) {
+        subcontract = sc.rows[0];
+        contractLabel = subcontract.number;
+        contractDate = subcontract.agreement_date
+          ? _shared.formatRuDate(subcontract.agreement_date) : '';
+      }
+    }
+  }
+
+  // ОБС-счёт: нужен только для строки «куда платить» в просьбе об оплате.
+  let obsAccount = null;
+  if (p.obs_account_id) {
+    const oa = await db.query(
+      'SELECT id, name, bank_name, bank_account FROM obs_accounts WHERE id=$1 AND is_active',
+      [Number(p.obs_account_id)]);
+    obsAccount = oa.rows[0] || null;
+  }
+
+  return Object.assign({}, base, {
+    doc, subcontract, contractLabel, contractDate, items, obsAccount,
+  });
+}
+
 // ─── HTML письма ──────────────────────────────────────────────────────────
 function buildHtml(data, opts) {
   const o = opts || {};
@@ -471,6 +582,17 @@ function buildHtml(data, opts) {
   const vatTail = hasVat
     ? `, в том числе НДС ${ratePct ? String(Math.round(ratePct)) + '%' : ''} — ${money(vat)} руб.`
     : '. НДС не облагается';
+
+  // V473: куда платить. В письме для ОБС обязательно должен быть виден счёт
+  // ОБС — раньше его не было вовсе, и получатель не знал, куда перечислять.
+  // Если реквизиты в справочнике не заполнены, печатаем только название:
+  // пустой номер счёта хуже, чем его отсутствие.
+  const obsAccount = data.obsAccount || null;
+  const obsPayLine = obsAccount
+    ? `<p style="font-size:10.5pt;color:#444">Оплату просим провести с ${esc(obsAccount.name)}`
+      + `${obsAccount.bank_name ? ` (${esc(obsAccount.bank_name)})` : ''}`
+      + `${obsAccount.bank_account ? `, р/с ${esc(obsAccount.bank_account)}` : ''}.</p>`
+    : '';
 
   return `<!doctype html>
 <html lang="ru"><head>
@@ -698,6 +820,7 @@ function buildHtml(data, opts) {
        без этих документов работы на объекте Заказчика выполнять нельзя.</p>
     <p class="request">Просим оплатить счёт (100% суммы) в размере <strong>${money(gross)} руб.</strong>
        (${esc(amountInWords(gross))})${esc(vatTail)}</p>
+    ${obsPayLine}
   </div>
 
   <div class="signature-block">
@@ -729,7 +852,11 @@ function buildHtml(data, opts) {
 // такой путь не раздаёт, и клик «Письмо готово» получал SPA-заглушку вместо
 // файла. Теперь письма лежат в `uploads/doc-hub/obs-letters/` — в том же
 // защищённом каталоге, откуда реестр отдаёт остальные документы ACL-роутом.
-const UPLOAD_ROOT = path.join(process.cwd(), process.env.UPLOAD_DIR || 'uploads');
+//
+// V473: `path.resolve`, а не `path.join`. Если `UPLOAD_DIR` задан абсолютным
+// (так делают тестовые стенды и клон на :3100), `path.join(cwd, '/abs/path')`
+// даёт `/cwd/abs/path` — файл пишется не туда, и письмо «теряется».
+const UPLOAD_ROOT = path.resolve(process.cwd(), process.env.UPLOAD_DIR || 'uploads');
 const STORAGE_DIR = path.join(UPLOAD_ROOT, 'doc-hub', 'obs-letters');
 /** Публичный URL-префикс для записи в attachments (раздаётся ACL-роутом). */
 const URL_PREFIX = '/uploads/doc-hub/obs-letters';
@@ -845,6 +972,88 @@ async function generateObsLetterPdf(db, docId) {
   return { pdfPath, htmlPath: null, url: `${URL_PREFIX}/${encodeURIComponent(`${base}.pdf`)}`, number, dateText, docId: doc.id, fileName: `${base}.pdf` };
 }
 
+// ─── Рендер по payload без записи в БД (V473: предпросмотр) ────────────────
+/**
+ * Собрать PDF письма по данным из модалки, НИЧЕГО не записывая в БД.
+ *
+ * Зачем отдельно от `generateObsLetterPdf`. Предпросмотр — это черновик:
+ * человек меняет номер счёта, дату, сумму, перечень и смотрит, что получится.
+ * Если гонять его через обычную генерацию, каждый «Предпросмотр» расходовал бы
+ * исходящий номер и оставлял строки в реестре — нумерация «съедалась» бы ещё
+ * до того, как письмо кому-то понадобилось.
+ *
+ * Номер здесь — только для шапки («Исх. № …»), и он НЕ выдаётся: приходит из
+ * payload (`previewNumber`, обычно «АС-2026-11-00») либо печатается «б/н».
+ *
+ * @param {object} db
+ * @param {number} docId
+ * @param {object} payload
+ * @param {{format?:'pdf'|'docx'}} [opts]
+ * @returns {Promise<{buffer:Buffer, contentType:string, fileName:string}>}
+ */
+async function renderObsLetterPdf(db, docId, payload, opts = {}) {
+  const data = await buildLetterDataFromPayload(db, docId, payload);
+  const doc = data.doc;
+
+  const p = payload || {};
+  const number = String(p.preview_number || '').trim();
+  const dateText = p.letter_date
+    ? _shared.formatRuDate(p.letter_date)
+    : _shared.formatRuDate(new Date());
+
+  const safeNo = String(doc.invoice_number || doc.id).replace(/[^\p{L}\p{N}-]+/gu, '_').slice(0, 40);
+  const base = `ОБС_${safeNo}_предпросмотр`;
+
+  const browser = await _getBrowser();
+  const page = await browser.newPage();
+  let buf = null;
+  try {
+    for (const compact of COMPACT_STEPS) {
+      const html = buildHtml(data, { number, dateText, compact });
+      await page.setContent(html, { waitUntil: 'networkidle0' });
+      buf = await page.pdf({
+        format: 'A4',
+        printBackground: true,
+        margin: { top: '0', bottom: '0', left: '0', right: '0' },
+        displayHeaderFooter: false,
+      });
+      if (await _pageCount(buf) <= 1) break;
+    }
+  } finally {
+    try { await page.close(); } catch (_) { /* */ }
+  }
+
+  return {
+    buffer: buf,
+    contentType: 'application/pdf',
+    fileName: `${base}.pdf`,
+    number,
+    dateText,
+  };
+}
+
+/**
+ * DOCX того же письма по payload — без записи в БД.
+ *
+ * Word собирается тем же генератором, что и «настоящее» письмо, но с
+ * подменёнными полями. Это важно: предпросмотр обязан совпадать с тем, что
+ * сохранится, иначе бухгалтерия распечатает одно, а получит другое.
+ */
+async function renderObsLetterDocx(db, docId, payload, opts = {}) {
+  const { generateObsLetterDocx } = require('./obs-letter-docx');
+  const p = payload || {};
+  return generateObsLetterDocx(db, docId, Object.assign({}, opts, {
+    payload: p,
+    // D-397b (замечание верификатора 07.11.2026): раньше при незаданном номере
+    // передавался `undefined`, и Word печатал «Исх. №» с пустотой, тогда как
+    // PDF подставлял «б/н». Один и тот же предпросмотр не должен выглядеть
+    // по-разному в двух форматах.
+    number: String(p.preview_number || '').trim()
+      || opts.number
+      || (opts.placeholder_number === false ? undefined : 'б/н'),
+  }));
+}
+
 /**
  * D-384: абзацы письма как ПЛОСКИЙ текст — один источник для PDF и Word.
  *
@@ -957,6 +1166,15 @@ function buildLetterParagraphs(data, opts = {}) {
   out.push(`Просим оплатить счёт (100% суммы) в размере ${money(gross)} руб. `
     + `(${amountInWords(gross)})${vatTail}`);
 
+  // 9. V473: куда платить — ОБС-счёт из справочника. Строка после просьбы,
+  // чтобы Word и PDF совпадали по тексту (проверяется тестом).
+  if (data.obsAccount) {
+    const oa = data.obsAccount;
+    out.push(`Оплату просим провести с ${oa.name}`
+      + `${oa.bank_name ? ` (${oa.bank_name})` : ''}`
+      + `${oa.bank_account ? `, р/с ${oa.bank_account}` : ''}.`);
+  }
+
   return out;
 }
 
@@ -995,7 +1213,8 @@ function buildLetterBlocks(data, opts = {}) {
   // «Просим оплатить …» — тоже жирный.
   const request = all.filter((t) => /^Просим оплатить/i.test(t));
 
-  // Всё остальное делим на «до перечня» (intro) и «после счёта» (outro).
+  // Всё остальное делим на «до перечня» (intro), «после счёта» (outro) и
+  // «после просьбы» (post — куда платить).
   const startItems = all.findIndex((t) => t.startsWith('— '));
   const invoiceIdx = all.findIndex((t) => /получило сч[её]т на оплату/i.test(t));
   const requestIdx = all.findIndex((t) => /^Просим оплатить/i.test(t));
@@ -1009,17 +1228,27 @@ function buildLetterBlocks(data, opts = {}) {
     // лимит существенности остаётся в общем потоке — это справочная строка
     .filter((t) => !/^Просим оплатить/i.test(t));
 
+  // D-397 (FAIL верификатора 07.11.2026): строка «Оплату просим провести с…»
+  // идёт ПОСЛЕ «Просим оплатить», а прежний outro заканчивался на requestIdx —
+  // то есть она не попадала ни в один блок и в Word-письме её не было, хотя
+  // в PDF она есть. Это главный реквизит документа (куда платить), поэтому
+  // нарушать инвариант «PDF = Word» нельзя.
+  const post = requestIdx >= 0 ? all.slice(requestIdx + 1) : [];
+
   // Инвариант: сумма строк блоков должна совпадать с плоским списком,
   // иначе текст PDF и Word разойдётся (это проверяется тестом).
-  return { intro, items, invoice, outro, request, all };
+  return { intro, items, invoice, outro, request, post, all };
 }
 
 module.exports = {
   generateObsLetterPdf,
+  renderObsLetterPdf,
+  renderObsLetterDocx,
   buildHtml,
   buildLetterParagraphs,
   buildLetterBlocks,
   loadLetterData,
+  buildLetterDataFromPayload,
   buildItems,
   selectLetterItems,
   amountInWords,
