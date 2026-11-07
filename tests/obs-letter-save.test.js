@@ -361,4 +361,49 @@ test('D-397c: договор меняет только бухгалтерия (�
     'контур переводится при праве или при письме ОБС');
 });
 
+test('D-397d: договор валидируется — несуществующий и неактивный отклоняются', async () => {
+  // MAJOR верификатора 07.11.2026: `checkLimit` возвращал null, если строки
+  // договора нет, — письмо записывалось на несуществующий договор, а лимит
+  // не считался вовсе. В отличие от PATCH /:id/subcontract, где проверки есть.
+  const registry = require('../src/services/obs-letter-registry');
+
+  // Несуществующий договор.
+  const dbMissing = { query: async () => ({ rows: [] }) };
+  let threw = null;
+  try { await registry.checkLimit(dbMissing, 999, 1, 100); } catch (e) { threw = e; }
+  assert.ok(threw, 'отсутствующий договор — исключение, а не тихий null');
+  assert.strictEqual(threw.statusCode, 400);
+  assert.ok(/не найден/i.test(threw.message));
+
+  // Неактивный договор.
+  const dbInactive = {
+    query: async () => ({
+      rows: [{ number: 'КР-старый', limit_amount: 1000, is_active: false, spent_amount: 0, remaining: 1000, exhausted: false }],
+    }),
+  };
+  threw = null;
+  try { await registry.checkLimit(dbInactive, 5, 1, 100); } catch (e) { threw = e; }
+  assert.ok(threw, 'деактивированный договор — исключение');
+  assert.ok(/деактивирован/i.test(threw.message));
+
+  // Живой договор с достатком — молча пропускает.
+  const dbOk = {
+    query: async () => ({
+      rows: [{ number: 'КР-433п26', limit_amount: 3000000, is_active: true, spent_amount: 0, remaining: 3000000, exhausted: false }],
+    }),
+  };
+  assert.strictEqual(await registry.checkLimit(dbOk, 2, 1, 1000), null);
+});
+
+test('D-397e: правки после сохранения не теряются молча', () => {
+  // MINOR верификатора 07.11.2026: после save `state.saved` оставался, и
+  // последующие правки при закрытии окна исчезали без подтверждения.
+  const fs = require('fs');
+  const src = fs.readFileSync(require.resolve('../public/assets/js/obs-letter-modal'), 'utf8');
+  const runner = src.slice(src.indexOf('function markDirty'));
+  const body = runner.slice(0, runner.indexOf('function collectPayload'));
+  assert.ok(/state\.saved = null/.test(body),
+    'markDirty сбрасывает saved — новая правка отменяет прошлое сохранение');
+});
+
 

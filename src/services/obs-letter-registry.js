@@ -62,11 +62,23 @@ function money(n) {
 async function checkLimit(client, subcontractId, docId, amount) {
   if (!subcontractId) return null;
   const r = await client.query(
-    `SELECT a.number, a.limit_amount, s.spent_amount, s.remaining, s.exhausted
+    `SELECT a.number, a.limit_amount, a.is_active,
+            s.spent_amount, s.remaining, s.exhausted
        FROM subcontract_agreements a, subcontract_limit_state(a.id, $2) s
       WHERE a.id = $1`, [subcontractId, docId]);
   const row = r.rows[0];
-  if (!row) return null;
+  // Договор указан, но такого нет. Раньше здесь молча возвращался null —
+  // и письмо записывалось на несуществующий договор, а лимит не считался
+  // вовсе (FAIL верификатора 07.11.2026). Молчать нельзя: это основание
+  // платежа, проверяемое получателем ОБС.
+  if (!row) {
+    throw httpError(400, 'Договор субподряда не найден', { field: 'subcontract_id' });
+  }
+  // Неактивный договор — как в PATCH /:id/subcontract: писать по нему нельзя.
+  if (row.is_active === false) {
+    throw httpError(400, `Договор ${row.number} деактивирован — выберите действующий`,
+      { field: 'subcontract_id' });
+  }
   const remaining = Number(row.remaining) || 0;
   const limit = Number(row.limit_amount) || 0;
   if (remaining >= amount) return null;

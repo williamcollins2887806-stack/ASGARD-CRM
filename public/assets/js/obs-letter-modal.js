@@ -340,6 +340,11 @@ window.AsgardObsLetterModal = (function () {
     if (!state) return;
     state.dirty = true;
     state.previewed = false;
+    // FAIL верификатора 07.11.2026: после успешного save мы оставляли
+    // `state.saved = res`, и правки, сделанные ПОСЛЕ сохранения, при закрытии
+    // терялись молча: `close()` видел `saved` и не спрашивал подтверждения.
+    // Новая правка означает, что сохранённое состояние устарело.
+    state.saved = null;
     const stale = el('dhObsStale');
     if (stale) stale.hidden = !el('dhObsPreviewFrame') || el('dhObsPreviewFrame').hidden;
     const save = el('dhObsSave');
