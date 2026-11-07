@@ -37,10 +37,12 @@ check('отправка в оплату без объекта блокирует
   assert.ok(/409/.test(block[0]), 'нет статуса 409');
 });
 
-check('офис/АХО не требует объекта', () => {
+check('офис/склад/прочее не требуют объекта', () => {
   const block = REG.match(/const exemptKind = [^\n]+/);
-  assert.ok(block, 'нет проверки office');
+  assert.ok(block, 'нет проверки exemptKind');
   assert.ok(/'office'/.test(block[0]));
+  assert.ok(/'warehouse'/.test(block[0]), 'warehouse должен быть exempt');
+  assert.ok(/'other'/.test(block[0]), 'other должен быть exempt');
 });
 
 check('«Собственность АСГАРД» и «Расходники» — исключения', () => {

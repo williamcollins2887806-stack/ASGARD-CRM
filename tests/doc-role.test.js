@@ -145,6 +145,27 @@ check('одинаковый текст под разными именами — 
   assert.strictEqual(out.selected.length, 1);
 });
 
+check('копии с расхождениями OCR схлопываются', () => {
+  const base = ('Ведомость объёмов работ по зачистке теплообменников. ' +
+    'Позиция 1: аппарат 31Т-01, поверхность 340 м2. '.repeat(6));
+  const variant = base.replace('340 м2', '34O м2').replace('31Т-01', '31T-O1');
+  const out = role.selectForPrompt([
+    { original_name: 'ТЗ.pdf', text: base },
+    { original_name: 'ТЗ (2).pdf', text: variant }
+  ]);
+  assert.strictEqual(out.selected.length, 1, 'копия не схлопнулась');
+  assert.strictEqual(out.duplicates[0].match, 'распознано иначе');
+});
+
+check('разные документы с общим началом не схлопываются', () => {
+  const head = 'Ведомость объёмов работ. Зачистка оборудования. '.repeat(4);
+  const out = role.selectForPrompt([
+    { original_name: 'ВОР часть 1.xlsx', text: head + 'Аппарат А: 120 м3. Аппарат Б: 340 м3. Ёмкость В: 56 м3.' },
+    { original_name: 'ВОР часть 2.xlsx', text: head + 'Котёл Г: 900 м3. Резервуар Д: 5000 м3. Бункер Е: 12 м3.' }
+  ]);
+  assert.strictEqual(out.selected.length, 2, 'разные части ВОР схлопнулись');
+});
+
 // ── 3. Отсев мусора ──────────────────────────────────────────────────────────
 check('договоры, ТКП и шаблоны не идут в промпт', () => {
   const out = role.selectForPrompt([
