@@ -15,7 +15,7 @@
  *   • реестр — со статусом «дозаполнить» (is_incomplete = true там, где нужно).
  */
 
-const { extractInvoice, extractInvoiceLines } = require('./invoice-extract');
+  const { extractInvoice, extractInvoiceLines, extractInvoiceDateFromHint } = require('./invoice-extract');
 const { classifyDocument } = require('./doc-classifier');
 const { parsePaymentIntent, parseDeliveryHint } = require('./payment-intent');
 const { matchContract, matchWork } = require('./contract-match');
@@ -338,6 +338,16 @@ async function intakeOne(db, { email, attachment, text, userId = null, dryRun = 
   if (!parsed.work_hint && emailSubject) {
     const hint = extractWorkHintFromSubject(emailSubject);
     if (hint) parsed.work_hint = hint;
+  }
+  // Дата из темы/тела письма, если PDF/ИИ её не дали (Ситилинк 05.11.2026:
+  // «Офис: Счет ООО Ситилинк от 05.11.2026» — номер есть, даты в реестре нет).
+  if (!parsed.invoice_date) {
+    const fromSubject = extractInvoiceDateFromHint(emailSubject)
+      || extractInvoiceDateFromHint(String(emailBody || '').slice(0, 500));
+    if (fromSubject) {
+      parsed.invoice_date = fromSubject;
+      parsed._ai_warnings = (parsed._ai_warnings || []).concat(['invoice_date_from_subject']);
+    }
   }
   const confMin = await confidenceMin(db);
 

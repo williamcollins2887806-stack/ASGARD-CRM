@@ -860,3 +860,14 @@ export function syncTenderGuruNow({ force = false } = {}) {
     body: force ? { force: true } : {}
   });
 }
+
+export function loadLossReasons() {
+  return api('/api/tenders/registry/loss-reasons').then((d) => d.reasons || []);
+}
+
+export function enrichOutcomeFromTenderGuru(tenderId, { force = false } = {}) {
+  return api(`/api/tenders/registry/${tenderId}/enrich-outcome`, {
+    method: 'POST',
+    body: force ? { force: true } : {}
+  });
+}

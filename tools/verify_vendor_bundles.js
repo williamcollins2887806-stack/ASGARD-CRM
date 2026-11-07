@@ -102,14 +102,41 @@ function main() {
       const fffd = (src.match(/\uFFFD/g) || []).length;
       if (fffd > 0) problems.push(`потеря глифов U+FFFD: ${fffd}`);
 
-      // Главная проверка: файл должен парситься как скрипт.
+      // Главная проверка: файл должен парситься.
+      // ESM (*.esm.js, `export`/`import`) парсится как модуль, а не как скрипт:
+      // `new Function` на модуле всегда даёт «Cannot use import statement
+      // outside a module» — это ложный FAIL (livekit-track-processors.esm.js
+      // подключается через `await import()`, см. ting_page.js:1666).
+      const isEsm = /\.esm\.js$/i.test(f) || /^\s*(export|import)\s/m.test(src);
       let parses = true;
       try {
-        // eslint-disable-next-line no-new-func
-        new Function(src);
+        if (isEsm) {
+          // `new Function` на модуле не работает: import/export там — SyntaxError,
+          // а обёртка `return import("data:...")` НЕ парсит содержимое (проверено:
+          // пропускает заведомо битый ESM). Поэтому синтаксис модуля проверяет
+          // сам Node: `node --check` на временной копии с расширением .mjs.
+          const tmp = path.join(
+            require('os').tmpdir(),
+            `asgard-esm-check-${process.pid}-${Date.now()}.mjs`
+          );
+          fs.writeFileSync(tmp, src, 'utf8');
+          try {
+            require('child_process').execFileSync(process.execPath, ['--check', tmp], {
+              stdio: 'pipe',
+              timeout: 20000,
+            });
+          } finally {
+            try { fs.unlinkSync(tmp); } catch (_) {}
+          }
+        } else {
+          // eslint-disable-next-line no-new-func
+          new Function(src);
+        }
       } catch (e) {
         parses = false;
-        problems.push(`SyntaxError при парсинге: ${e.message}`);
+        // execFileSync кладёт вывод в stderr (в message попадает не всё).
+        const detail = String((e && (e.stderr || e.message)) || '').trim().split('\n').slice(0, 2).join(' ');
+        problems.push(`SyntaxError при парсинге: ${detail || 'невалидный ' + (isEsm ? 'ESM' : 'скрипт')}`);
       }
 
       const exp = EXPECTED_GLOBALS[f];

@@ -211,6 +211,26 @@ async function run() {
     ok ? pass++ : fail++;
   }
 
+  console.log('\n--- 5.10b НЕ ДУБЛЬ: Манго 5000 ₽ без номера → не клеить к старому с номером ---');
+  {
+    // Инцидент 06.11.2026: ИИ не вытащил номер нового счёта Манго, дедуп по
+    // ИНН+сумме приклеил его к закрытому #753 (ММС#506027325 от 26.06.2025).
+    const existing = [{
+      id: 753, invoice_number: 'ММС#506027325', invoice_date: '2025-06-26',
+      counterparty_name: 'ООО "МАНГО ТЕЛЕКОМ"', counterparty_inn: '7709501144',
+      amount_gross: '5000.00', dir: 'in', payment_invoice_id: null
+    }];
+    const found = await d.findDuplicate(mockDb(existing), {
+      invoice_number: null, amount_gross: 5000, invoice_date: '2026-11-06',
+      counterparty_inn: '7709501144',
+      counterparty_name: 'Общество с ограниченной ответственностью «Манго Телеком»',
+      ownInn: OWN
+    });
+    const ok = found === null;
+    console.log(`${ok ? 'PASS' : 'FAIL'}   новый Манго без номера + другая дата НЕ склеивается со старым (${found ? 'склеило с #' + found.id : 'верно'})`);
+    ok ? pass++ : fail++;
+  }
+
   console.log('\n--- 5.11 ДУБЛЬ: номер+сумма+дата, лицо не подтверждается (случай #1597) ---');
   {
     const existing = [{

@@ -181,6 +181,44 @@ function extractInvoiceLines(text) {
   return out;
 }
 
+const MONTHS_RU = {
+  января: 1, февраля: 2, марта: 3, апреля: 4, мая: 5, июня: 6,
+  июля: 7, августа: 8, сентября: 9, октября: 10, ноября: 11, декабря: 12
+};
+
+/**
+ * Дата счёта из короткой подсказки (тема письма, первая строка).
+ * Инцидент Ситилинк 05–06.11.2026: PDF с битым текстовым слоем → OCR/repair
+ * вытащил номер и сумму, но не дату; в теме было «Счет … от 05.11.2026».
+ * Без даты строка улетала в конец реестра (sort invoice_date NULLS LAST).
+ *
+ * @param {string} hint
+ * @returns {string|null} YYYY-MM-DD
+ */
+function extractInvoiceDateFromHint(hint) {
+  const s = String(hint || '').trim();
+  if (!s) return null;
+  // «от 05.11.2026», «от 5/11/26», «от 05-11-2026»
+  const dmNum = s.match(/от\s*(\d{1,2})[.\-/](\d{1,2})[.\-/](\d{2,4})\b/i);
+  if (dmNum) {
+    const dd = dmNum[1].padStart(2, '0');
+    const mm = dmNum[2].padStart(2, '0');
+    const yy = dmNum[3].length === 2 ? `20${dmNum[3]}` : dmNum[3];
+    const mi = Number(mm), di = Number(dd);
+    if (mi >= 1 && mi <= 12 && di >= 1 && di <= 31) return `${yy}-${mm}-${dd}`;
+  }
+  // «от 5 ноября 2026», «от 13 октября 2026 г.»
+  const dmText = s.match(/от\s*(\d{1,2})\s+([а-яё]+)\s+(\d{4})/i);
+  if (dmText) {
+    const mm = MONTHS_RU[String(dmText[2] || '').toLowerCase()];
+    const di = Number(dmText[1]);
+    if (mm && di >= 1 && di <= 31) {
+      return `${dmText[3]}-${String(mm).padStart(2, '0')}-${String(di).padStart(2, '0')}`;
+    }
+  }
+  return null;
+}
+
 /**
  * Извлечь реквизиты из текста счёта.
  * @param {string} text
@@ -327,8 +365,7 @@ function extractInvoice(text, opts) {
         }
         raw = raw.slice(0, raw.indexOf(dmNum[0]));
       } else if (dmText) {
-        const MONTHS = { января: 1, февраля: 2, марта: 3, апреля: 4, мая: 5, июня: 6, июля: 7, августа: 8, сентября: 9, октября: 10, ноября: 11, декабря: 12 };
-        const mm = MONTHS[dmText[2].toLowerCase()];
+        const mm = MONTHS_RU[dmText[2].toLowerCase()];
         if (mm) {
           out.invoice_date = `${dmText[3]}-${String(mm).padStart(2, '0')}-${String(dmText[1]).padStart(2, '0')}`;
         }
@@ -544,4 +581,7 @@ function extractInvoice(text, opts) {
   out.confidence = Math.min(1, Math.round((score / 9) * 1000) / 1000);
   return out;
 }
-module.exports = { extractInvoice, extractInvoiceLines, validInn, validKpp, validBik, validAccount, parseSum };
+module.exports = {
+  extractInvoice, extractInvoiceLines, extractInvoiceDateFromHint,
+  validInn, validKpp, validBik, validAccount, parseSum
+};

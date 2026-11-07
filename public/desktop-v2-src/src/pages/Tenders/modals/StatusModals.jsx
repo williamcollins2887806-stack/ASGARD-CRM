@@ -124,15 +124,15 @@ export function WonModal({ tender }) {
 /* ─── Проигрыш ─── */
 /* Источник: vanilla tenders.js → openLostModal (~3944..4004) + POST /api/tenders/:id/lose.
    Поля payload: reject_reason, cover_letter (анализ для команды, мин. 20 символов), winner_name. */
+/** Коды V462 (tender_loss_reasons), не free-text. */
 const LOST_REASONS = [
-  { value: 'Цена выше конкурента',           label: 'Цена выше конкурента' },
-  { value: 'Сроки не подошли заказчику',     label: 'Сроки не подошли заказчику' },
-  { value: 'Выбрали другого подрядчика',     label: 'Выбрали другого подрядчика' },
-  { value: 'Не прошли квалификацию',         label: 'Не прошли квалификацию' },
-  { value: 'Отказались от выполнения',       label: 'Отказались от выполнения' },
-  { value: 'Технические требования',         label: 'Технические требования' },
-  { value: 'Конкурент с админ. ресурсом',    label: 'Конкурент с админ. ресурсом' },
-  { value: 'Другое',                         label: 'Другое' }
+  { value: 'price', label: 'Цена выше конкурентов' },
+  { value: 'deadline', label: 'Сроки / график не устроили' },
+  { value: 'qual', label: 'Не прошли квалификацию / допуск' },
+  { value: 'docs', label: 'Ошибка или неполнота документов' },
+  { value: 'lobby', label: 'Предпочтение другому подрядчику' },
+  { value: 'cancel', label: 'Закупка отменена / не состоялась' },
+  { value: 'nobid', label: 'Не подали заявку' }
 ];
 
 export function LostModal({ tender }) {
@@ -153,6 +153,8 @@ export function LostModal({ tender }) {
         method: 'POST',
         body: {
           reject_reason: rejectReason,
+          loss_reasons: [rejectReason],
+          loss_reason_code: rejectReason,
           cover_letter: coverLetter.trim(),
           winner_name: winnerName.trim()
         }
