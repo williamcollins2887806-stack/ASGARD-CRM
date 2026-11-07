@@ -415,6 +415,50 @@ function normalizeConfidence(v) {
 }
 
 /**
+ * Нижняя оценка числа позиций по документам.
+ *
+ * Нужна как признак «модель явно недобрала»: в ведомости на 673 строки
+ * ответ из 5 укрупнённых позиций — это провал разбора, а не полный ответ.
+ * Считаем строки таблиц, похожие на позиции работ: начинаются с номера
+ * или содержат единицу измерения с числом.
+ */
+function estimateExpectedPositions(documents) {
+  const list = Array.isArray(documents) ? documents : [];
+  let lines = 0;
+
+  for (const d of list) {
+    const name = String((d && (d.original_name || d.name)) || '');
+    // Только документы, где реально бывают перечни работ.
+    if (!/ведомост|дефектн|вор\b|объ[её]м|перечень|спецификац|тз\b|техническ/i.test(name)) continue;
+
+    const text = String((d && (d.text || d.ocr_text)) || '');
+    if (text.length < 200) continue;
+
+    for (const rawLine of text.split(/\r?\n/)) {
+      const line = rawLine.trim();
+      if (line.length < 12 || line.length > 400) continue;
+      // Строка таблицы. Два случая:
+      //   • «340 м2» — число и единица рядом (текст, CSV);
+      //   • «| 1 | Очистка трубок | м2 | 340 |» — колонки разделены,
+      //     единица и значение в разных ячейках (реальные ведомости Excel).
+      const hasUnitNear = /\d+(?:[.,]\d+)?\s*(?:м2|м3|м²|м³|т\b|шт|труб|п\.?м|кг)/i.test(line);
+      const cells = line.split('|').map((s) => s.trim()).filter(Boolean);
+      const cellsUnit = cells.some((s) => /^(м2|м3|м²|м³|шт|т|труб|трубки|п\.?м|кг)$/i.test(s))
+        && cells.some((s) => /^\d{1,6}(?:[.,]\d+)?$/.test(s));
+      const startsNumbered = /^\|?\s*\d{1,3}[.)|]/.test(line);
+      if (hasUnitNear || cellsUnit || startsNumbered) lines += 1;
+    }
+  }
+
+  // Одна позиция ВОР обычно занимает 1–2 строки таблицы. Берём половину,
+  // чтобы не требовать от модели лишнего на каждую строку-примечание.
+  const est = Math.floor(lines / 2);
+  // Ниже 8 позиций досчитывать смысла нет — мелкие ведомости модель
+  // покрывает целиком с первого раза.
+  return est >= 8 ? est : 0;
+}
+
+/**
  * Нормализует позиции ДВ из ответа модели.
  * Правила:
  *   • объём > 0 и единица — обязательны, иначе позиция уходит в needs_input;
@@ -961,6 +1005,7 @@ module.exports = {
   STAGES,
   ANALYSIS_STAGES,
   CALC_STAGES,
+  estimateExpectedPositions,
   isAnalysisStage,
   isCalcStage,
   STAGE_LABELS,
