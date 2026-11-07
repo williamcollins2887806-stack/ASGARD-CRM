@@ -1049,20 +1049,59 @@ async function routes(fastify, options) {
           delta_pct: 0 // предпросмотр без записи: дельту даст сервер при сохранении
         }));
 
-      const state = stageSvc.normalizeState(Object.assign({}, cur.state, { calc: gen.plan }));
-      // План считаем всегда, когда есть позиции. Перевод этапа — только если он
-      // разрешён: из просчёта карточку открывают и на середине анализа, и
-      // падать из-за порядка этапов там нельзя (цифры нужны уже сейчас).
+      // План кладём в calc, СОХРАНЯЯ поля плана. normalizeState приводит
+      // calc к схеме { positions: [] }, и если передать только этот объект,
+      // work_days/crews/people_total выживают, но positions из плана
+      // затираются пустым массивом.
+      const planForSave = Object.assign({}, gen.plan || {}, {
+        positions: Array.isArray(gen.plan && gen.plan.positions) ? gen.plan.positions : []
+      });
+      const mergedState = stageSvc.normalizeState(
+        Object.assign({}, cur.state, { calc: planForSave }));
+
+      // ── Обучение справочника ────────────────────────────────────────────
+      // Просчёт — это и есть факт: посчитали по норме X, получили Y суток.
+      // Каждый такой расчёт уточняет норму. Раньше это происходило только
+      // вручную через mimir-apply, и журнал норм не пополнялся с июля.
+      //
+      // Правила те же, что в createRateFromEstimate: только при work_days>0,
+      // только по позициям, где норма была (иначе нечего калибровать),
+      // с комментарием и записью в work_norm_change_log.
+      let normLearned = { updated: 0, created: 0, skipped: 0 };
+      try {
+        const { calibrateNormsFromCalc } = require('../services/norm-calibrate');
+        normLearned = await calibrateNormsFromCalc(db, {
+          positions: mergedState.positions,
+          calcPositions: planForSave.positions,
+          tenderId: session.tender_id,
+          user: request.user
+        });
+      } catch (e) {
+        request.log.warn({ err: e.message }, 'калибровка норм по просчёту не выполнена');
+      }
+      mergedState.norm_learned = normLearned;
+
+      // Сохраняем напрямую в БД, минуя проверку переходов этапа.
+      // Дефект 07.11: saveStage отказывал в переходе dv → calc_plan, план
+      // терялся, и РП не видел ни сроков, ни суток по позициям. План — это
+      // данные, а не этап: его надо записать независимо от порядка этапов.
       let saved = { stage: cur.stage, version: cur.version };
       let stageAdvanced = false;
       try {
-        saved = await stageSvc.saveStage(db, request.params.uid, {
-          stage: 'calc_plan', state, expectedVersion: request.body && request.body.expected_version
-        });
-        stageAdvanced = true;
+        const direct = await db.query(
+          `UPDATE tkp_quick_sessions
+              SET stage_state = $2::jsonb,
+                  stage = CASE WHEN $3::text IS NULL THEN stage ELSE $3::text END,
+                  stage_version = COALESCE(stage_version, 0) + 1,
+                  updated_at = NOW()
+            WHERE session_uid = $1
+            RETURNING stage, stage_version`,
+          [request.params.uid, JSON.stringify(mergedState),
+            stageSvc.canTransition(cur.stage, 'calc_plan') ? 'calc_plan' : null]);
+        saved = { stage: direct.rows[0].stage, version: direct.rows[0].stage_version };
+        stageAdvanced = saved.stage === 'calc_plan';
       } catch (e) {
-        const soft = await stageSvc.loadStage(db, request.params.uid).catch(() => null);
-        if (soft) saved = { stage: soft.stage, version: soft.version };
+        request.log.error({ err: e.message }, 'план не сохранён');
       }
 
       return {
@@ -1072,6 +1111,9 @@ async function routes(fastify, options) {
         plan: gen.plan,
         date_window: windowCheck,
         calibration,
+        // Сколько норм уточнено по этому просчёту — РП видит, что справочник
+        // учится, а не стоит на месте.
+        norm_learned: normLearned,
         model: gen.model,
         version: saved.version
       };

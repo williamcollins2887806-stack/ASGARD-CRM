@@ -990,7 +990,11 @@ async function saveStage(db, sessionUid, { stage, state, expectedVersion } = {})
     err.statusCode = 400;
     throw err;
   }
-  if (!canTransition(cur.stage, nextStage)) {
+  // Сохранение БЕЗ смены этапа разрешено всегда: это не переход, а запись
+  // состояния (например плана просчёта, когда порядок этапов ещё не пройден).
+  // Дефект 07.11: canTransition('dv','dv') возвращал false, saveStage падал,
+  // и план просчёта молча терялся — в БД оставалось calc:{positions:[]}.
+  if (nextStage !== cur.stage && !canTransition(cur.stage, nextStage)) {
     const err = new Error(`Нельзя перейти с «${cur.stage}» на «${nextStage}»`);
     err.statusCode = 400;
     throw err;
@@ -1016,6 +1020,7 @@ module.exports = {
   ANALYSIS_STAGES,
   CALC_STAGES,
   estimateExpectedPositions,
+  canTransition,
   isAnalysisStage,
   isCalcStage,
   STAGE_LABELS,
