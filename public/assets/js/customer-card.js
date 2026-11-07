@@ -1,14 +1,17 @@
-// ASGARD CRM — Карточка-светофор контрагента
-// Универсальный компонент: AsgardCustomerCard.mount(container, inn, opts)
-// Монтируется в любой DOM-контейнер. Не зависит от страницы.
+// ASGARD CRM — компактный виджет контрагента (embed в тендеры/ТКП)
+// AsgardCustomerCard.mount(container, inn, opts) — те же .cp-* токены, без emoji.
 window.AsgardCustomerCard = (function () {
   'use strict';
 
-  const COLORS = { green: '#2E7D32', yellow: '#E65100', red: '#B71C1C', gray: '#757575' };
-  const EMOJI  = { green: '🟢', yellow: '🟡', red: '🔴', gray: '⚪' };
+  const RISK_CLS = {
+    green: 'cp-chip--risk-ok',
+    yellow: 'cp-chip--risk-warn',
+    red: 'cp-chip--risk-err',
+    gray: 'cp-chip--risk-gray'
+  };
 
   function esc(s) {
-    return String(s || '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+    return String(s || '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
   }
 
   function fmt(n) {
@@ -18,11 +21,11 @@ window.AsgardCustomerCard = (function () {
     return v.toLocaleString('ru-RU');
   }
 
-  function kpi(icon, label, val, sub) {
-    return `<div class="cc-kpi">
-      <div class="cc-kpi-label">${icon} ${esc(label)}</div>
-      <div class="cc-kpi-val">${val == null ? '—' : esc(String(val))}</div>
-      ${sub ? `<div class="cc-kpi-sub">${esc(String(sub))}</div>` : ''}
+  function kpiItem(label, val, sub) {
+    return `<div class="cp-kpi__item">
+      <b>${val == null ? '—' : esc(String(val))}</b>
+      <span>${esc(label)}</span>
+      ${sub ? `<div class="help" style="margin-top:2px;font-size:11px">${esc(String(sub))}</div>` : ''}
     </div>`;
   }
 
@@ -34,9 +37,8 @@ window.AsgardCustomerCard = (function () {
     const w  = d.works       || {};
     const f  = d.finance     || {};
     const p  = d.profile     || {};
-
+    const kpi = d.kpi || {};
     const col = tl.color || 'gray';
-    const accentColor = COLORS[col];
 
     const convStr = t.conversion_pct != null
       ? t.won + ' выигр · ' + t.conversion_pct + '%'
@@ -46,161 +48,113 @@ window.AsgardCustomerCard = (function () {
       ? new Date(d.last_contact).toLocaleDateString('ru-RU', { day: '2-digit', month: 'short', year: '2-digit' })
       : '—';
 
-    const statusRows = (t.by_status || []).slice(0, 6).map(s =>
+    const statusRows = (t.by_status || []).slice(0, 6).map((s) =>
       `<tr>
-        <td style="padding:2px 6px">${esc(s.tender_status)}</td>
-        <td style="text-align:right;padding:2px 6px">${s.cnt}</td>
-        <td style="text-align:right;padding:2px 6px;color:var(--t3)">${fmt(s.sum)} ₽</td>
+        <td>${esc(s.tender_status)}</td>
+        <td>${s.cnt}</td>
+        <td>${fmt(s.sum)} ₽</td>
       </tr>`
     ).join('');
 
     return `
-      <style>
-        .cc-wrap{font-size:12px;line-height:1.4;font-family:inherit}
-        .cc-head{display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:10px}
-        .cc-name{font-weight:700;font-size:14px;color:var(--text)}
-        .cc-inn{font-size:10px;color:var(--t3);margin-top:2px}
-        .cc-badge{text-align:right;flex-shrink:0}
-        .cc-badge-pill{display:inline-block;padding:3px 10px;border-radius:12px;font-weight:600;font-size:11px}
-        .cc-badge-reason{font-size:10px;color:var(--t3);margin-top:3px;max-width:180px;line-height:1.2}
-        .cc-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:8px}
-        .cc-grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:8px}
-        .cc-kpi{background:var(--bg3,#f5f7fa);padding:7px 8px;border-radius:8px}
-        .cc-kpi-label{font-size:9px;color:var(--t3);text-transform:uppercase;letter-spacing:.3px}
-        .cc-kpi-val{font-weight:700;font-size:13px;color:var(--text);margin-top:2px}
-        .cc-kpi-sub{font-size:9px;color:var(--t3);margin-top:1px}
-        .cc-details summary{cursor:pointer;color:var(--t2);font-size:10px;padding:2px 0;user-select:none}
-        .cc-details table{width:100%;border-collapse:collapse;margin-top:4px;font-size:10px}
-        .cc-details tr:nth-child(even){background:var(--bg3,#f5f7fa)}
-        @media(max-width:500px){.cc-grid{grid-template-columns:repeat(2,1fr)}.cc-grid3{grid-template-columns:repeat(2,1fr)}}
-      </style>
-      <div class="cc-wrap">
-        <div class="cc-head">
-          <div>
-            <div class="cc-name">${esc(p.name || p.full_name || 'Контрагент')}</div>
-            <div class="cc-inn">ИНН ${esc(p.inn || '')}${p.kpp ? ' · КПП ' + esc(p.kpp) : ''}</div>
+      <div class="cp-page" style="padding:0;max-width:none">
+        <section class="cp-hero" style="padding:16px 18px;margin-bottom:10px">
+          <p class="cp-hero__kicker">Контрагент</p>
+          <h2 class="cp-hero__title" style="font-size:18px">${esc(p.name || p.full_name || 'Контрагент')}</h2>
+          <p class="cp-hero__sub">ИНН ${esc(p.inn || '')}${p.kpp ? ' · КПП ' + esc(p.kpp) : ''}</p>
+          <div class="cp-hero__chips">
+            <span class="cp-chip ${RISK_CLS[col] || RISK_CLS.gray}">${esc(tl.label || col)}</span>
+            ${d.roles ? `<span class="cp-chip">${esc(d.roles === 'both' ? 'Покупатель · Поставщик' : d.roles === 'supplier' ? 'Поставщик' : 'Покупатель')}</span>` : ''}
           </div>
-          <div class="cc-badge">
-            <div class="cc-badge-pill" style="background:${accentColor}22;color:${accentColor}">
-              ${EMOJI[col]} ${esc(tl.label || col)}
-            </div>
-            ${tl.reason ? `<div class="cc-badge-reason">${esc(tl.reason)}</div>` : ''}
-          </div>
+          ${tl.reason ? `<p class="help" style="margin:8px 0 0">${esc(tl.reason)}</p>` : ''}
+        </section>
+
+        <div class="cp-kpi" style="margin-bottom:10px">
+          ${kpiItem('Договоры', kpi.contracts != null ? kpi.contracts : '—')}
+          ${kpiItem('Тендеры', t.total || 0, convStr)}
+          ${kpiItem('Работы', w.total || 0, (w.active || 0) + ' активн')}
+          ${kpiItem('Счета', kpi.docs != null ? kpi.docs : ((d.docs && d.docs.incoming) || 0))}
+          ${kpiItem('Выиграно', fmt(t.won_sum) + ' ₽')}
+          ${kpiItem('Задолженность', fmt(f.invoices_outstanding) + ' ₽', (f.overdue_invoices_cnt || 0) + ' просроч.')}
         </div>
 
-        <div class="cc-grid">
-          ${kpi('🎯', 'Тендеры', t.total || 0, convStr)}
-          ${kpi('💰', 'Выиграно', fmt(t.won_sum) + ' ₽', 'в работе ' + fmt(t.in_work_sum) + ' ₽')}
-          ${kpi('📩', 'Заявки', pt.total || 0, (pt.accepted || 0) + ' прин · ' + (pt.rejected || 0) + ' отказ')}
-          ${kpi('📑', 'ТКП', k.total || 0, (k.accepted || 0) + '✓ · ' + (k.rejected || 0) + '✗ · ' + (k.awaiting || 0) + '⏳')}
-        </div>
-
-        <div class="cc-grid3">
-          ${kpi('🛠', 'Работы', w.total || 0, (w.active || 0) + ' активн · ' + fmt(w.active_value) + ' ₽')}
-          ${kpi('🧾', 'Задолженность', fmt(f.invoices_outstanding) + ' ₽', (f.overdue_invoices_cnt || 0) + ' просроч.')}
-          ${kpi('📅', 'Контакт', lastContact, '')}
+        <div class="cp-kpi" style="margin-bottom:10px">
+          ${kpiItem('Заявки', pt.total || 0)}
+          ${kpiItem('ТКП', k.total || 0)}
+          ${kpiItem('Контакт', lastContact)}
         </div>
 
         ${statusRows ? `
-          <details class="cc-details">
-            <summary>📊 Разбивка по статусам тендеров</summary>
-            <table>${statusRows}</table>
-          </details>` : ''}
+          <div class="cp-panel" style="padding:12px;margin-bottom:8px">
+            <div class="help" style="margin-bottom:8px;font-weight:700">Статусы тендеров</div>
+            <table class="cp-table"><thead><tr><th>Статус</th><th>Кол-во</th><th>Сумма</th></tr></thead>
+            <tbody>${statusRows}</tbody></table>
+          </div>` : ''}
 
-        <details class="cc-details" id="ccChecklistsBlock">
-          <summary>📞 Чек-листы анализа (звонки)</summary>
-          <div id="ccChecklists" style="padding-top:4px"><div style="color:var(--t3);font-size:10px">Загрузка…</div></div>
-        </details>
+        <div class="cp-panel" style="padding:12px" id="ccChecklistsBlock">
+          <div class="help" style="margin-bottom:8px;font-weight:700">Чек-листы анализа</div>
+          <div id="ccChecklists"><div class="help">Загрузка…</div></div>
+        </div>
       </div>`;
   }
 
-  /** История чек-листов анализа по контрагенту (D-203). */
   function checklistsHtml(items) {
     if (!items || !items.length) {
-      return '<div style="color:var(--t3);font-size:10px">Чек-листов по этому контрагенту пока нет.</div>';
+      return '<div class="help">Чек-листов по этому контрагенту пока нет.</div>';
     }
-    return items.map((c) => {
-      const tpl = Array.isArray(c.template_snapshot) ? c.template_snapshot : [];
-      const answers = (c.answers && typeof c.answers === 'object') ? c.answers : {};
-      const free = Array.isArray(c.free_answers) ? c.free_answers : [];
-      const date = c.updated_at || c.created_at
-        ? new Date(c.updated_at || c.created_at).toLocaleDateString('ru-RU', { day: '2-digit', month: 'short', year: '2-digit' })
-        : '—';
-      const rows = tpl.filter(q => q && q.kind !== 'free').map((q) => {
-        const a = answers[q.id];
-        return `<tr>
-          <td style="padding:2px 6px;vertical-align:top">${esc(q.text)}</td>
-          <td style="padding:2px 6px;vertical-align:top;color:var(--t2)">${a ? esc(String(a)) : '<span style="color:var(--t3)">— не заполнено —</span>'}</td>
-        </tr>`;
-      }).join('');
-      const freeRows = free.filter(f => (f && (f.text || f.answer)))
-        .map(f => `<tr>
-          <td style="padding:2px 6px;vertical-align:top">${esc(f.text || '—')}</td>
-          <td style="padding:2px 6px;vertical-align:top;color:var(--t2)">${f.answer ? esc(String(f.answer)) : '<span style="color:var(--t3)">—</span>'}</td>
-        </tr>`).join('');
-      return `<details class="cc-details" style="margin-bottom:4px">
-        <summary>${esc(c.work_title || 'Работа без названия')} · ${date}${c.author_name ? ' · ' + esc(c.author_name) : ''}</summary>
-        <table>${rows}${freeRows}</table>
-      </details>`;
-    }).join('');
+    return '<table class="cp-table"><thead><tr><th>Дата</th><th>Объект</th><th>Статус</th></tr></thead><tbody>' +
+      items.slice(0, 20).map((x) =>
+        `<tr><td>${esc(String(x.created_at || x.updated_at || '').slice(0, 10))}</td>
+         <td>${esc(x.tender_title || x.work_title || x.title || '—')}</td>
+         <td>${esc(x.status || '')}</td></tr>`
+      ).join('') + '</tbody></table>';
   }
 
-  /**
-   * Монтировать карточку контрагента в DOM-контейнер.
-   * @param {Element} container  Куда рендерить
-   * @param {string}  inn        ИНН контрагента
-   * @param {object}  [opts]     Доп. опции (пока не используются)
-   */
+  async function loadChecklists(inn, root) {
+    const box = root.querySelector('#ccChecklists');
+    if (!box) return;
+    try {
+      const auth = await AsgardAuth.getAuth();
+      const r = await fetch('/api/customers/' + encodeURIComponent(inn) + '/analysis-checklists', {
+        headers: { Authorization: 'Bearer ' + (auth && auth.token ? auth.token : '') }
+      });
+      const data = await r.json().catch(() => ({}));
+      const items = data.items || data.checklists || data.rows || [];
+      box.innerHTML = checklistsHtml(items);
+    } catch (_) {
+      box.innerHTML = '<div class="help">История недоступна.</div>';
+    }
+  }
+
   async function mount(container, inn, opts) {
     if (!container) return;
     const cleanInn = String(inn || '').replace(/\D/g, '');
     if (cleanInn.length !== 10 && cleanInn.length !== 12) {
-      container.innerHTML = '';
+      container.innerHTML = '<div class="help">Некорректный ИНН</div>';
       return;
     }
-
-    container.innerHTML = '<div style="color:var(--t3);font-size:12px;padding:8px">Загрузка данных контрагента…</div>';
-
+    container.innerHTML = '<div class="help">Загрузка карточки…</div>';
     try {
-      const auth = window.AsgardAuth ? await AsgardAuth.getAuth() : {};
-      const token = auth.token || localStorage.getItem('asgard_token') || '';
-      const r = await fetch('/api/customers/' + cleanInn + '/dashboard', {
-        headers: { 'Authorization': 'Bearer ' + token }
+      const auth = await AsgardAuth.getAuth();
+      const r = await fetch('/api/customers/' + encodeURIComponent(cleanInn) + '/dashboard', {
+        headers: { Authorization: 'Bearer ' + (auth && auth.token ? auth.token : '') }
       });
       if (!r.ok) throw new Error('HTTP ' + r.status);
       const d = await r.json();
       container.innerHTML = renderHtml(d);
-      loadChecklists(container, cleanInn);
+      loadChecklists(cleanInn, container);
+      if (opts && typeof opts.onLoaded === 'function') opts.onLoaded(d);
     } catch (e) {
-      container.innerHTML = '<div style="color:var(--t3);font-size:11px;padding:8px">Не удалось загрузить данные контрагента</div>';
+      container.innerHTML = '<div class="help">Не удалось загрузить: ' + esc(e.message || e) + '</div>';
     }
   }
 
-  /** Догружает историю чек-листов анализа в уже отрисованную карточку. */
-  async function loadChecklists(container, inn) {
-    const host = container.querySelector('#ccChecklists');
-    if (!host) return;
-    try {
-      const token = localStorage.getItem('asgard_token') || '';
-      const r = await fetch('/api/customers/' + inn + '/analysis-checklists', {
-        headers: { 'Authorization': 'Bearer ' + token }
-      });
-      if (!r.ok) throw new Error('HTTP ' + r.status);
-      const d = await r.json();
-      host.innerHTML = checklistsHtml(d.items || []);
-    } catch (e) {
-      host.innerHTML = '<div style="color:var(--t3);font-size:10px">Чек-листы недоступны</div>';
-    }
-  }
-
-  /**
-   * Рендеринг из уже загруженных данных (без HTTP-запроса).
-   * Используется когда данные уже есть (e.g. из tkp-quick сессии).
-   */
   function mountFromData(container, data) {
     if (!container || !data) return;
     container.innerHTML = renderHtml(data);
+    const inn = data.profile && data.profile.inn;
+    if (inn) loadChecklists(inn, container);
   }
 
-  return { mount, mountFromData };
+  return { mount, mountFromData, renderHtml };
 })();

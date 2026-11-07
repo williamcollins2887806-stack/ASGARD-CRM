@@ -4,6 +4,19 @@
 const { searchTenders, enrichTenderFromApi } = require('./tenderguru-client');
 const { loadTenderGuruSettings, recordSyncResult } = require('./tenderguru-settings');
 const { writeTenderGuruEnrichAudit } = require('./tender-registry-helpers');
+const { enrichLostTenders } = require('./tender-outcome-enrich');
+
+let candidateColumnsCache = null;
+
+async function loadCandidateInsertShape(db) {
+  if (candidateColumnsCache) return candidateColumnsCache;
+  const r = await db.query(`
+    SELECT column_name FROM information_schema.columns
+    WHERE table_schema = 'public' AND table_name = 'tenderguru_candidates'
+  `);
+  candidateColumnsCache = new Set(r.rows.map((row) => row.column_name));
+  return candidateColumnsCache;
+}
 
 async function acquireLock(db, lockKey, ttlMinutes = 30) {
   const r = await db.query(`
@@ -110,22 +123,51 @@ async function runTenderGuruSync(db, log = console, opts = {}) {
     if (dup.rows.length) continue;
 
     const exists = await db.query(
-      'SELECT id FROM tenderguru_candidates WHERE external_id = $1 AND status = $2',
-      [external_id, 'new']
+      'SELECT id FROM tenderguru_candidates WHERE external_id = $1 LIMIT 1',
+      [external_id]
     );
     if (exists.rows.length) continue;
 
-    await db.query(`
-      INSERT INTO tenderguru_candidates (external_id, title, customer_name, customer_inn, nmc, deadline, purchase_url, raw_json)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
-    `, [
-      external_id, title, it.customer_name, null,
-      it.nmc, it.deadline, url, JSON.stringify(it.raw || it)
-    ]);
+    const rawPayload = { ...(it.raw || it) };
+    if (it.region && !rawPayload.Region) rawPayload.Region = it.region;
+    const customerInn = it.customer_inn
+      || (it.raw && (it.raw.CustomerINN ?? it.raw.customer_inn ?? it.raw.zorg_inn))
+      || null;
+    const innNorm = customerInn != null ? String(customerInn).replace(/\D/g, '') || null : null;
+
+    const cols = await loadCandidateInsertShape(db);
+    if (cols.has('region') && it.region) {
+      await db.query(`
+        INSERT INTO tenderguru_candidates (external_id, title, customer_name, customer_inn, nmc, deadline, purchase_url, region, raw_json)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+      `, [
+        external_id, title, it.customer_name, innNorm,
+        it.nmc, it.deadline, url, it.region, JSON.stringify(rawPayload)
+      ]);
+    } else {
+      await db.query(`
+        INSERT INTO tenderguru_candidates (external_id, title, customer_name, customer_inn, nmc, deadline, purchase_url, raw_json)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+      `, [
+        external_id, title, it.customer_name, innNorm,
+        it.nmc, it.deadline, url, JSON.stringify(rawPayload)
+      ]);
+    }
     candidates++;
   }
 
-  const result = { enriched, candidates, total, enabled: settings.enabled };
+  let outcome = { skipped: true, reason: 'after_candidates' };
+  try {
+    outcome = await enrichLostTenders(db, log, {
+      apiKey,
+      limit: settings.outcome_enrich_limit || 40
+    });
+  } catch (e) {
+    log.warn('[TenderGuruCron] outcome enrich', e.message);
+    outcome = { error: e.message };
+  }
+
+  const result = { enriched, candidates, total, outcome, enabled: settings.enabled };
   await recordSyncResult(db, result);
   return result;
 }

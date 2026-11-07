@@ -263,9 +263,16 @@ function buildSmetaFromMimir(estimate) {
       // (`src/services/mimir-tkp-quick.js` `_xlsxFromEstimateDraft`): ai = { estimate: ai_meta.estimate },
       // recomputed = { calculation, totals, settings }. Иначе `composeFromRecomputed` читает
       // `ai.estimate` и берёт дефолты → смета разъезжается с расчётом Мимира.
+      const settingsFromMeta = (aiMeta.settings && typeof aiMeta.settings === 'object' && Object.keys(aiMeta.settings).length)
+        ? aiMeta.settings
+        : null;
       const composed = asgardSmeta.composeFromRecomputed(
         { estimate: aiMeta.estimate || estimate, customer_name: '' },
-        { settings: {}, calculation: aiMeta.calculation || {}, totals: aiMeta.totals || {} }
+        {
+          settings: settingsFromMeta || {},
+          calculation: aiMeta.calculation || {},
+          totals: aiMeta.totals || {}
+        }
       );
       return asgardSmeta.recalcAsgardSmeta(composed);
     }
@@ -275,9 +282,69 @@ function buildSmetaFromMimir(estimate) {
   return null;
 }
 
+function mapAnalysisEstimateToReport(estimate) {
+  const e = estimate && typeof estimate === 'object' ? estimate : {};
+  const patch = {};
+  const dec = String(e.decision_recommend || '').toLowerCase();
+  if (dec === 'no_go') patch.decision_recommend = 'no_go';
+  else if (dec === 'go') patch.decision_recommend = 'go';
+  else if (dec === 'need_info') patch.decision_recommend = 'need_info';
+
+  if (e.feasibility) patch.feasibility = e.feasibility;
+  if (e.competition) patch.competition = e.competition;
+  if (e.volume_summary) patch.volume_summary = String(e.volume_summary).slice(0, 2000);
+  if (e.risks) patch.risks = String(e.risks).slice(0, 2000);
+  if (e.summary) patch.summary = String(e.summary).slice(0, 2000);
+  if (e.history_block) patch.history_block = String(e.history_block).slice(0, 2000);
+  if (Array.isArray(e.questions_for_customer) && e.questions_for_customer.length) {
+    patch.questions_for_customer = e.questions_for_customer.map(String).slice(0, 20);
+  }
+  if (e.norm_hint && e.norm_hint.days != null && Number.isFinite(Number(e.norm_hint.days))) {
+    patch.norm_hint = { days: Math.round(Number(e.norm_hint.days)) };
+    patch.duration_days = patch.norm_hint.days;
+  }
+  if (dec === 'go') patch.recommendation = patch.recommendation || 'Рекомендуем подачу (анализ Мимира)';
+  else if (dec === 'no_go') patch.recommendation = patch.recommendation || 'Не рекомендуем подачу (анализ Мимира)';
+  else if (dec === 'need_info') patch.recommendation = patch.recommendation || 'Нужны уточнения до решения (анализ Мимира)';
+  return patch;
+}
+
 /** Best-effort field mapping from Mimor estimate + chat markdown into report fields. */
 function mapMimirToReportFields(phase, estimate, chatMd) {
   const patch = {};
+  const isAnalysisEstimate = estimate && (
+    estimate.template === 'mimir_analysis_v1'
+    || estimate.analysis_only
+    || (estimate.ai_meta && estimate.ai_meta.analysis_only)
+  );
+
+  if (phase === 'analysis' || isAnalysisEstimate) {
+    Object.assign(patch, mapAnalysisEstimateToReport(estimate));
+    const md = String(chatMd || '').trim();
+    if (md && !patch.summary) {
+      const plain = md.replace(/\*\*/g, '').replace(/^#+\s*/gm, '').trim();
+      const paras = plain.split(/\n\s*\n/).map((p) => p.trim()).filter(Boolean);
+      if (paras[0] && paras[0].length > 20) patch.summary = paras[0].slice(0, 2000);
+    }
+    // Техплан без сметы: только если в ответе есть несметные подсказки (crew/schedule в ai_meta.raw)
+    let techPlan = null;
+    try {
+      const techSvc = require('./rp-tech-plan');
+      techPlan = techSvc.buildTechPlan({
+        estimate: { ai_meta: estimate.ai_meta || {}, schedule: estimate.schedule, crew: estimate.crew },
+        smeta: {},
+        stock: null,
+        ctx: {},
+        filledBy: 'mimir'
+      });
+      if (techPlan && !techSvc.hasContent(techPlan)) techPlan = null;
+    } catch (_) {
+      techPlan = null;
+    }
+    if (techPlan) patch.tech_json = techPlan;
+    return patch;
+  }
+
   const totals = estimate || {};
   const withVat = totals.total_with_vat != null ? Number(totals.total_with_vat)
     : (totals.totals && totals.totals.total_with_vat != null ? Number(totals.totals.total_with_vat) : null);
@@ -291,22 +358,11 @@ function mapMimirToReportFields(phase, estimate, chatMd) {
       }, 0)
     : null;
 
-  if (phase === 'analysis') {
-    if (Number.isFinite(noVat) && noVat > 0) {
-      patch.price_range_min = Math.round(noVat * 0.9);
-      patch.price_range_max = Math.round(noVat * 1.1);
-    } else if (Number.isFinite(withVat) && withVat > 0) {
-      const ex = Math.round(withVat / 1.22);
-      patch.price_range_min = Math.round(ex * 0.9);
-      patch.price_range_max = Math.round(ex * 1.1);
-    }
-  } else {
-    // Канон: work_price — цена БЕЗ НДС (см. src/services/work-price.js).
-    if (Number.isFinite(noVat) && noVat > 0) patch.work_price = Math.round(noVat);
-    else if (Number.isFinite(withVat) && withVat > 0) patch.work_price = Math.round(withVat / 1.22);
-    if (Number.isFinite(cost) && cost > 0) patch.cost_without_vat = Math.round(cost);
-    else if (Number.isFinite(noVat) && noVat > 0) patch.cost_without_vat = Math.round(noVat);
-  }
+  // Канон: work_price — цена БЕЗ НДС (см. src/services/work-price.js).
+  if (Number.isFinite(noVat) && noVat > 0) patch.work_price = Math.round(noVat);
+  else if (Number.isFinite(withVat) && withVat > 0) patch.work_price = Math.round(withVat / 1.22);
+  if (Number.isFinite(cost) && cost > 0) patch.cost_without_vat = Math.round(cost);
+  else if (Number.isFinite(noVat) && noVat > 0) patch.cost_without_vat = Math.round(noVat);
 
   const md = String(chatMd || '').trim();
   if (md) {
@@ -325,6 +381,20 @@ function mapMimirToReportFields(phase, estimate, chatMd) {
   // Структурная смета (asgard_v1) — чтобы просчёт не начинался с чужого скелета.
   const smetaBase = buildSmetaFromMimir(estimate);
 
+  // GAP-5: buildCrew/buildMtr читают ключи верхнего уровня ai_meta, а не весь draft.
+  const aiForTech = (estimate && estimate.ai_meta && typeof estimate.ai_meta === 'object')
+    ? Object.assign({}, estimate.ai_meta, {
+      analysis: estimate.ai_meta.analysis || estimate.analysis,
+      purchases_needed: estimate.ai_meta.purchases_needed
+        || (estimate.ai_meta.analysis && estimate.ai_meta.analysis.purchases_needed)
+        || estimate.purchases_needed,
+      equipment_needed: estimate.ai_meta.equipment_needed || estimate.equipment_needed,
+      equipment_status: estimate.ai_meta.equipment_status || estimate.equipment_status,
+      tech_plan: estimate.ai_meta.tech_plan || estimate.tech_plan,
+      warehouse: estimate.warehouse
+    })
+    : estimate;
+
   // Техплан (сроки/бригада/МТР). Раньше бригада и оборудование Мимира жили
   // только в ai_meta и терялись при переносе в отчёт: РП видел «Рабочий
   // (исполнитель)», а не «слесарь 5, сварщик 2». Собираем и пишем в отчёт.
@@ -332,7 +402,7 @@ function mapMimirToReportFields(phase, estimate, chatMd) {
   try {
     const techSvc = require('./rp-tech-plan');
     techPlan = techSvc.buildTechPlan({
-      estimate,
+      estimate: aiForTech,
       smeta: smetaBase || {},
       stock: (estimate && Array.isArray(estimate.warehouse)) ? estimate.warehouse : null,
       ctx: { work_start_plan: (estimate && (estimate.start_plan || estimate.work_start_plan)) || null },

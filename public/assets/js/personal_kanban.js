@@ -8421,9 +8421,17 @@ window.AsgardPKv3Modals = (function () {
       // Кнопка «🔄 С нуля» — общая для всех шагов, рядом с закрытием.
       const resetBtn = `<button class="pk3-btn pk3-ghost" data-act="reset" title="Полный пересчёт с нуля" ${disabled}>🔄 С нуля</button>`;
       if (s === 0) return `<button class="pk3-btn pk3-ghost" data-act="close">Отмена</button>${resetBtn}<div style="flex:1"></div><button class="pk3-btn pk3-gold" data-act="upload" ${disabled}>▶ Запустить</button>`;
-      if (s === 1) return `<button class="pk3-btn pk3-ghost" data-act="close">Закрыть</button>${resetBtn}<div style="flex:1"></div><button class="pk3-btn" data-act="calc" ${disabled}>🧠 Запросить расчёт у AI</button>`;
+      if (s === 1) {
+        const aiBtn = (isRp && opts.phase === 'analysis')
+          ? '🧠 Запросить анализ у AI'
+          : '🧠 Запросить расчёт у AI';
+        return `<button class="pk3-btn pk3-ghost" data-act="close">Закрыть</button>${resetBtn}<div style="flex:1"></div><button class="pk3-btn" data-act="calc" ${disabled}>${esc(aiBtn)}</button>`;
+      }
       if (s === 2) return `<button class="pk3-btn pk3-ghost" data-act="back">← Назад</button>${resetBtn}<div style="flex:1"></div><button class="pk3-btn" data-act="send-reply" ${disabled}>💬 Отправить AI</button><button class="pk3-btn pk3-gold" data-act="to-smeta" ${disabled}>📊 К смете →</button>`;
-      if (s === 3) return `<button class="pk3-btn pk3-ghost" data-act="back" title="Вернуться в диалог с AI">← К диалогу</button>${resetBtn}<div style="flex:1"></div><button class="pk3-btn" data-act="ai-again" ${disabled}>🔁 Уточнить AI заново</button><button class="pk3-btn pk3-gold" data-act="to-final" ${disabled}>→ Финал</button>`;
+      if (s === 3) {
+        const toFinal = (isRp && opts.phase === 'analysis') ? '→ К отчёту' : '→ Финал';
+        return `<button class="pk3-btn pk3-ghost" data-act="back" title="Вернуться в диалог с AI">← К диалогу</button>${resetBtn}<div style="flex:1"></div><button class="pk3-btn" data-act="ai-again" ${disabled}>🔁 Уточнить AI заново</button><button class="pk3-btn pk3-gold" data-act="to-final" ${disabled}>${esc(toFinal)}</button>`;
+      }
       /* s === 4 */
       if (isRp) {
         return `<button class="pk3-btn pk3-ghost" data-act="back">← Назад</button>${resetBtn}<div style="flex:1"></div><button class="pk3-btn pk3-ok" data-act="apply-to-report" ${disabled}>✅ Применить к отчёту</button>`;

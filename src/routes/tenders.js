@@ -1927,7 +1927,13 @@ const { computeAnalysisDeadline } = require('../lib/business-days');
   }, async (request, reply) => {
     const id = parseInt(request.params.id);
     const user = request.user;
-    const { reject_reason, cover_letter, winner_name } = request.body || {};
+    const body = request.body || {};
+    const {
+      reject_reason,
+      cover_letter,
+      winner_name,
+      loss_reasons: lossReasonsRaw
+    } = body;
 
     if (!reject_reason || !String(reject_reason).trim()) {
       return reply.code(400).send({ error: 'Укажите причину проигрыша' });
@@ -1945,22 +1951,98 @@ const { computeAnalysisDeadline } = require('../lib/business-days');
       return reply.code(409).send({ error: 'Работа по тендеру уже назначена — финальный статус изменять нельзя' });
     }
 
+    const {
+      buildLossAnalyticsFields,
+      upsertTenderCompetitors,
+      normalizeLossReasonCode,
+      LOSS_REASON_LABELS
+    } = require('../services/tender-loss-analytics');
+    const analytics = buildLossAnalyticsFields(body, tender);
+    const primaryCode = normalizeLossReasonCode(reject_reason)
+      || (Array.isArray(lossReasonsRaw) && lossReasonsRaw.length
+        ? normalizeLossReasonCode(lossReasonsRaw[0]) : null);
+    const lossReasons = Array.isArray(lossReasonsRaw) && lossReasonsRaw.length
+      ? lossReasonsRaw.map((x) => normalizeLossReasonCode(x) || String(x).trim()).filter(Boolean)
+      : (primaryCode ? [primaryCode] : []);
+    if (!lossReasons.length) {
+      return reply.code(400).send({ error: 'Укажите причину проигрыша (код V462)' });
+    }
+    const rejectReasonStored = primaryCode && LOSS_REASON_LABELS[primaryCode]
+      ? LOSS_REASON_LABELS[primaryCode]
+      : String(reject_reason).trim();
+    const lossReportJson = analytics.loss_report != null ? JSON.stringify(analytics.loss_report) : null;
+
     await db.query(`
       UPDATE tenders SET
         tender_status = 'Проиграли',
+        registry_status = 'проиграли',
         reject_reason = $2,
         lose_cover_letter = $3,
-        winner_name = $4,
+        winner_name = COALESCE($4, winner_name),
+        loss_winner_price = COALESCE($5, loss_winner_price),
+        loss_reasons = COALESCE($6::jsonb, loss_reasons),
+        our_price_no_vat = COALESCE($7, our_price_no_vat),
+        our_price_with_vat = COALESCE($8, our_price_with_vat),
+        nmck_snapshot = COALESCE($9, nmck_snapshot),
+        winner_inn = COALESCE($10, winner_inn),
+        winner_price_no_vat = COALESCE($11, winner_price_no_vat),
+        winner_price_with_vat = COALESCE($12, winner_price_with_vat),
+        loss_place = COALESCE($13, loss_place),
+        participants_count = COALESCE($14, participants_count),
+        loss_price_gap_pct = COALESCE($15, loss_price_gap_pct),
+        loss_report = COALESCE($16::jsonb, loss_report),
+        loss_reason_code = COALESCE($17, loss_reason_code),
+        result_protocol_url = COALESCE($18, result_protocol_url),
+        result_at = COALESCE($19, result_at),
         lost_at = NOW(),
-        lost_by_user_id = $5,
+        lost_by_user_id = $20,
         updated_at = NOW()
       WHERE id = $1
-    `, [id, String(reject_reason).trim(), String(cover_letter).trim(), winner_name || null, user.id]);
+    `, [
+      id,
+      rejectReasonStored,
+      String(cover_letter).trim(),
+      winner_name || null,
+      analytics.loss_winner_price,
+      JSON.stringify(lossReasons),
+      analytics.our_price_no_vat,
+      analytics.our_price_with_vat,
+      analytics.nmck_snapshot,
+      analytics.winner_inn,
+      analytics.winner_price_no_vat,
+      analytics.winner_price_with_vat,
+      analytics.loss_place,
+      analytics.participants_count,
+      analytics.loss_price_gap_pct,
+      lossReportJson,
+      analytics.loss_reason_code || lossReasons[0] || null,
+      analytics.result_protocol_url,
+      analytics.result_at,
+      user.id
+    ]);
+
+    try {
+      await upsertTenderCompetitors(db, id, body.competitors, { source: 'tenders_lose' });
+    } catch (e) {
+      request.log.warn({ err: e }, 'tender_competitors upsert skipped');
+    }
+
+    try {
+      const { learnFromTenderOutcome } = require('../services/mimir-conductor/reference-learner');
+      await learnFromTenderOutcome(db, id, { source: 'tenders_lose', createdBy: user.id });
+    } catch (e) {
+      request.log.warn({ err: e }, 'learnFromTenderOutcome skipped');
+    }
 
     await db.query(
       `INSERT INTO audit_log (actor_user_id, entity_type, entity_id, action, payload_json, created_at)
        VALUES ($1, 'tender', $2, 'lose', $3, NOW())`,
-      [user.id, id, JSON.stringify({ from_status: tender.tender_status, reason: reject_reason, winner: winner_name || null })]
+      [user.id, id, JSON.stringify({
+        from_status: tender.tender_status,
+        reason: reject_reason,
+        winner: winner_name || null,
+        loss_reasons: lossReasons
+      })]
     );
 
     broadcast('tender:updated', { id, tender_status: 'Проиграли', old_status: tender.tender_status });

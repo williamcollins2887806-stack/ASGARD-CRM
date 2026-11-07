@@ -1,6 +1,9 @@
 const { logError } = require('../lib/log-error');
 const { toDigitsRu } = require('../lib/phone');
 const { visibilitySql } = require('../lib/doc-visibility');
+const { validCounterpartyInn, digitsInn } = require('../services/counterparty-inn');
+const { mirrorSupplierIdToCustomer } = require('../services/customer-from-supplier');
+const { listDirectory, statsForInn } = require('../services/customer-directory');
 /**
  * Customers Routes
  */
@@ -11,6 +14,9 @@ const ALLOWED_COLS = new Set([
   'email', 'contact_person', 'contacts', 'bank_account', 'bank_name', 'bik',
   'notes', 'category', 'is_active', 'created_at', 'updated_at'
 ]);
+
+const WRITE_ROLES = ['ADMIN', 'PM', 'HEAD_PM', 'TO', 'HEAD_TO', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'OFFICE_MANAGER'];
+const PUT_ROLES = [...WRITE_ROLES, 'BUH'];
 
 // Нормализация массива contacts: чистим строки, фильтруем пустые,
 // гарантируем единственный is_primary (если несколько true — оставляем первый;
@@ -265,6 +271,20 @@ async function routes(fastify, options) {
     }
   });
 
+  // Единый реестр: покупатели + поставщики, роли, «работаем», счётчики
+  fastify.get('/directory', { preHandler: [fastify.authenticate] }, async (request, reply) => {
+    try {
+      return await listDirectory(db, request.query || {});
+    } catch (e) {
+      // Если миграция V469 ещё не накатана — мягкий фолбэк без meta
+      if (e && /customer_dadata_meta/i.test(String(e.message || ''))) {
+        logError(fastify, 'directory: meta table missing', e, request);
+        return reply.code(503).send({ error: 'Нужна миграция V469 (customer_dadata_meta)' });
+      }
+      throw e;
+    }
+  });
+
   fastify.get('/', { preHandler: [fastify.authenticate] }, async (request) => {
     const { search, limit = 100, offset = 0 } = request.query;
     let sql = 'SELECT * FROM customers WHERE 1=1';
@@ -282,28 +302,45 @@ async function routes(fastify, options) {
   });
 
   fastify.get('/:inn', { preHandler: [fastify.authenticate] }, async (request, reply) => {
-    const result = await db.query('SELECT * FROM customers WHERE inn = $1', [request.params.inn]);
+    const inn = digitsInn(request.params.inn);
+    let result = await db.query('SELECT * FROM customers WHERE inn = $1', [inn]);
+    if (!result.rows[0] && validCounterpartyInn(inn)) {
+      // Автосоздание карточки из поставщика (deep-link из счетов)
+      const sup = await db.query(
+        `SELECT * FROM suppliers
+          WHERE deleted_at IS NULL
+            AND regexp_replace(COALESCE(inn,''), '\\D', '', 'g') = $1
+          ORDER BY id LIMIT 1`, [inn]);
+      if (sup.rows[0]) {
+        try {
+          await mirrorSupplierIdToCustomer(db, sup.rows[0].id);
+          result = await db.query('SELECT * FROM customers WHERE inn = $1', [inn]);
+        } catch (e) {
+          logError(fastify, 'auto-ensure customer from supplier', e, request);
+        }
+      }
+    }
     if (!result.rows[0]) return reply.code(404).send({ error: 'Контрагент не найден' });
-    const tenders = await db.query('SELECT * FROM tenders WHERE customer_inn = $1 ORDER BY created_at DESC LIMIT 10', [request.params.inn]);
-    return { customer: result.rows[0], tenders: tenders.rows };
+    const tenders = await db.query('SELECT * FROM tenders WHERE customer_inn = $1 ORDER BY created_at DESC LIMIT 10', [inn]);
+    const dirMeta = await statsForInn(db, inn).catch(() => null);
+    return { customer: result.rows[0], tenders: tenders.rows, directory: dirMeta };
   });
 
-  // SECURITY B3: Role-based access
-  fastify.post('/', { preHandler: [fastify.requireRoles(['ADMIN', 'PM', 'HEAD_PM', 'TO', 'HEAD_TO', 'DIRECTOR_GEN', 'DIRECTOR_COMM'])] }, async (request, reply) => {
-    const { inn, name, ...rest } = request.body;
+  // SECURITY B3: Role-based access (+ OFFICE_MANAGER для Карты / Doc Hub)
+  fastify.post('/', { preHandler: [fastify.requireRoles(WRITE_ROLES)] }, async (request, reply) => {
+    const { inn, name, ...rest } = request.body || {};
     if (!inn || !name) return reply.code(400).send({ error: 'ИНН и наименование обязательны' });
 
-    // Validate INN format: must be 10 or 12 digits
-    const cleanInn = String(inn).replace(/\D/g, '');
-    if (cleanInn.length !== 10 && cleanInn.length !== 12) {
-      return reply.code(400).send({ error: 'ИНН должен содержать 10 или 12 цифр' });
+    const cleanInn = digitsInn(inn);
+    if (!validCounterpartyInn(cleanInn)) {
+      return reply.code(400).send({ error: 'ИНН некорректен (контрольная сумма или мусорный паттерн)' });
     }
 
     // Метки времени — через NOW() в SQL, а не new Date().toISOString().
     // Верификатор 03.11.2026, D-5: колонки timestamp без зоны, и в одну
     // таблицу писались два формата (UTC из этого места и локальное время
     // из generic CRUD) — разрыв 3 часа внутри customers.
-    const data = filterData({ inn, name, ...rest });
+    const data = filterData({ inn: cleanInn, name, ...rest });
     const keys = Object.keys(data);
     const values = Object.values(data);
 
@@ -346,7 +383,7 @@ async function routes(fastify, options) {
 
   // G-12 F8 SECURITY: PUT /:inn — добавлен ролевой гейт (выровнен с POST).
   // Раньше любой залогиненный (включая WAREHOUSE, OFFICE_MANAGER) мог менять реквизиты заказчика.
-  fastify.put('/:inn', { preHandler: [fastify.requireRoles(['ADMIN', 'PM', 'HEAD_PM', 'TO', 'HEAD_TO', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'BUH'])] }, async (request, reply) => {
+  fastify.put('/:inn', { preHandler: [fastify.requireRoles(PUT_ROLES)] }, async (request, reply) => {
     const { inn } = request.params;
     const data = filterData(request.body);
     const updates = [];
@@ -498,9 +535,60 @@ async function routes(fastify, options) {
       traffic_reason = `Конверсия ${conversion_pct !== null ? conversion_pct + '%' : '—'}${overdueCnt > 0 ? ', есть просрочка' : ''}`;
     }
 
+    const dirMeta = await statsForInn(db, inn).catch(() => null);
+    const docsInRes = await db.query(
+      `SELECT COUNT(*)::int AS n FROM doc_registry d
+        WHERE d.deleted_at IS NULL AND d.dir = 'in'
+          AND (
+            regexp_replace(COALESCE(d.counterparty_inn,''), '\\D', '', 'g') = $1
+            OR d.supplier_id IN (
+              SELECT id FROM suppliers
+               WHERE deleted_at IS NULL
+                 AND regexp_replace(COALESCE(inn,''), '\\D', '', 'g') = $1
+            )
+          )`, [inn]
+    ).catch(() => ({ rows: [{ n: 0 }] }));
+
+    const contractsRes = await db.query(
+      `SELECT COUNT(*)::int AS n FROM contracts ct
+        WHERE COALESCE(TRIM(ct.counterparty_name), '') <> ''
+          AND (
+            EXISTS (
+              SELECT 1 FROM customers c WHERE c.inn = $1
+                AND lower(TRIM(c.name)) = lower(TRIM(ct.counterparty_name))
+            )
+            OR EXISTS (
+              SELECT 1 FROM suppliers s
+               WHERE s.deleted_at IS NULL
+                 AND regexp_replace(COALESCE(s.inn,''), '\\D', '', 'g') = $1
+                 AND lower(TRIM(s.name)) = lower(TRIM(ct.counterparty_name))
+            )
+          )`, [inn]
+    ).catch(() => ({ rows: [{ n: 0 }] }));
+
+    const docsIn = +(docsInRes.rows[0] && docsInRes.rows[0].n) || 0;
+    const contractsCnt = +(contractsRes.rows[0] && contractsRes.rows[0].n) || 0;
+    const invoicesOut = await db.query(
+      `SELECT COUNT(*)::int AS n FROM invoices WHERE customer_inn = $1`, [inn]
+    ).catch(() => ({ rows: [{ n: 0 }] }));
+    const invOut = +(invoicesOut.rows[0] && invoicesOut.rows[0].n) || 0;
+
     return {
       profile: profileRes.rows[0] || null,
       traffic_light: { color: traffic_color, label: traffic_label, reason: traffic_reason },
+      roles: (dirMeta && dirMeta.roles) || null,
+      relation_status: (dirMeta && dirMeta.relation_status) || null,
+      is_active_relation: !!(dirMeta && dirMeta.is_active_relation),
+      supplier_id: (dirMeta && dirMeta.supplier_id) || null,
+      dadata_status: (dirMeta && dirMeta.dadata_status) || 'unchecked',
+      kpi: {
+        contracts: contractsCnt,
+        tenders: +t.total,
+        works: +w.total,
+        docs: docsIn + invOut,
+        docs_in: docsIn,
+        invoices_out: invOut
+      },
       tenders: {
         total:        +t.total,
         won:          +t.won,
@@ -540,6 +628,8 @@ async function routes(fastify, options) {
         invoices_outstanding:+f.invoices_outstanding,
         overdue_invoices_cnt: overdueCnt
       },
+      docs: { incoming: docsIn, outgoing_invoices: invOut },
+      contracts: { total: contractsCnt },
       last_contact: t.last_tender_at || null
     };
   });

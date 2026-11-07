@@ -14,6 +14,9 @@ const { toDigitsRu } = require('../lib/phone');
  * ═══════════════════════════════════════════════════════════════════════════
  */
 
+const { validCounterpartyInn, digitsInn } = require('../services/counterparty-inn');
+const { mirrorSupplierIdToCustomer } = require('../services/customer-from-supplier');
+
 const PROC_ROLES = ['PROC', 'ADMIN'];
 const READ_ROLES = ['PROC', 'ADMIN', 'PM', 'HEAD_PM', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV', 'BUH', 'WAREHOUSE'];
 const SUPPLIER_CATEGORIES = ['materials', 'equipment_rental', 'services', 'other'];
@@ -65,18 +68,32 @@ async function routes(fastify) {
     if (!name || !name.trim()) return bad(reply, 'Название обязательно');
     const cat = category || 'materials';
     if (!SUPPLIER_CATEGORIES.includes(cat)) return bad(reply, 'Неверная категория поставщика');
+    const innDigits = digitsInn(inn);
+    if (innDigits && !validCounterpartyInn(innDigits)) {
+      return bad(reply, 'ИНН некорректен (контрольная сумма или мусорный паттерн)');
+    }
     const phoneNorm = phone ? (toDigitsRu(phone) || phone) : null;
     const { rows } = await db.query(
       `INSERT INTO suppliers(name,inn,kpp,ogrn,phone,email,website,address,category,rating,notes,created_by)
        VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *`,
-      [name.trim(), inn || null, kpp || null, ogrn || null, phoneNorm, email || null,
+      [name.trim(), innDigits || null, kpp || null, ogrn || null, phoneNorm, email || null,
        website || null, address || null, cat, rating || null, notes || null, req.user.id]);
+    if (innDigits) {
+      try { await mirrorSupplierIdToCustomer(db, rows[0].id); } catch (_) { /* non-fatal */ }
+    }
     return { item: rows[0] };
   });
 
   fastify.put('/suppliers/:id', { preHandler: [fastify.requireRoles(PROC_ROLES)] }, async (req, reply) => {
     const id = parseInt(req.params.id); if (isNaN(id)) return bad(reply, 'Неверный ID');
     if (req.body.category !== undefined && !SUPPLIER_CATEGORIES.includes(req.body.category)) return bad(reply, 'Неверная категория');
+    if (req.body.inn !== undefined && req.body.inn !== null && String(req.body.inn).trim() !== '') {
+      const innDigits = digitsInn(req.body.inn);
+      if (!validCounterpartyInn(innDigits)) {
+        return bad(reply, 'ИНН некорректен (контрольная сумма или мусорный паттерн)');
+      }
+      req.body.inn = innDigits;
+    }
     const allowed = ['name', 'inn', 'kpp', 'ogrn', 'phone', 'email', 'website', 'address', 'category', 'rating', 'notes', 'is_active'];
     const upd = [], vals = []; let i = 1;
     for (const k of allowed) if (req.body[k] !== undefined) {
@@ -88,6 +105,9 @@ async function routes(fastify) {
     upd.push('updated_at=NOW()'); vals.push(id);
     const { rows } = await db.query(`UPDATE suppliers SET ${upd.join(',')} WHERE id=$${i} AND deleted_at IS NULL RETURNING *`, vals);
     if (!rows[0]) return bad(reply, 'Не найден', 404);
+    if (validCounterpartyInn(rows[0].inn)) {
+      try { await mirrorSupplierIdToCustomer(db, rows[0].id); } catch (_) { /* non-fatal */ }
+    }
     return { item: rows[0] };
   });
 

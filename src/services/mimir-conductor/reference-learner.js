@@ -274,4 +274,167 @@ async function learnFromEstimate(estimateId, opts = {}) {
   }
 }
 
-module.exports = { learnFromConductorRun, learnFromEstimate };
+/**
+ * Обучение эталонов по итогу тендера (выиграли / проиграли) — A6.
+ * Проигрыш: negative price example, без подмены actual=planned как успех.
+ */
+async function learnFromTenderOutcome(dbConn, tenderId, opts = {}) {
+  const q = dbConn.query ? dbConn : db;
+  if (!tenderId) return { ok: false, reason: 'no_tender_id' };
+  try {
+    const tRes = await q.query('SELECT * FROM tenders WHERE id = $1', [tenderId]);
+    const t = tRes.rows[0];
+    if (!t) return { ok: false, reason: 'tender_not_found' };
+
+    const registry = t.registry_status || '';
+    const status = t.tender_status || '';
+    let outcome = null;
+    if (registry === 'выиграли' || status === 'Выиграли') outcome = 'won';
+    else if (registry === 'проиграли' || status === 'Проиграли') outcome = 'lost';
+    else if (registry === 'отмена') outcome = 'cancelled';
+    else return { ok: false, reason: 'not_terminal', registry_status: registry };
+
+    const ourNoVat = t.our_price_no_vat != null ? Number(t.our_price_no_vat)
+      : (t.submission_price != null ? Number(t.submission_price) : null);
+    const winnerNoVat = t.winner_price_no_vat != null ? Number(t.winner_price_no_vat)
+      : (t.loss_winner_price != null ? Number(t.loss_winner_price) : null);
+    const lossCode = t.loss_reason_code || null;
+    const participants = t.participants_count != null ? Number(t.participants_count) : null;
+
+    const objectName = t.tender_title || t.customer_name;
+    const notes = outcome === 'lost'
+      ? `Негативный эталон: проигрыш тендера #${tenderId}${lossCode ? ` (${lossCode})` : ''}`
+      : `Исход тендера #${tenderId}: ${outcome}`;
+
+    const insights = {
+      tender_outcome: outcome,
+      loss_reason_code: lossCode,
+      our_price_no_vat: ourNoVat,
+      winner_price_no_vat: winnerNoVat,
+      participants_count: participants,
+      _source: opts.source || 'tender_outcome'
+    };
+
+    const exists = await q.query(
+      'SELECT id FROM mimir_reference_projects WHERE source_tender_id = $1 LIMIT 1',
+      [tenderId]
+    );
+
+    if (outcome === 'lost') {
+      const planned = ourNoVat != null ? ourNoVat * 1.22 : null;
+      if (exists.rows[0]) {
+        await q.query(
+          `UPDATE mimir_reference_projects SET
+             customer_name = COALESCE($1, customer_name),
+             customer_inn = COALESCE($2, customer_inn),
+             object_name = COALESCE($3, object_name),
+             outcome = 'lost',
+             our_price_no_vat = $4,
+             winner_price_no_vat = $5,
+             loss_reason_code = $6,
+             participants_count = $7,
+             contract_value_planned = COALESCE($8, contract_value_planned),
+             contract_value_planned_no_vat = COALESCE($4, contract_value_planned_no_vat),
+             contract_value_actual = NULL,
+             contract_value_actual_no_vat = NULL,
+             quality_score = LEAST(COALESCE(quality_score, 70), 40),
+             insights = COALESCE(insights, '{}'::jsonb) || $9::jsonb,
+             notes = $10,
+             updated_at = NOW()
+           WHERE id = $11`,
+          [
+            t.customer_name, t.customer_inn || null, objectName,
+            ourNoVat, winnerNoVat, lossCode, participants,
+            planned,
+            JSON.stringify(insights),
+            notes,
+            exists.rows[0].id
+          ]
+        );
+        return { ok: true, updated: true, reference_id: exists.rows[0].id, outcome: 'lost' };
+      }
+
+      const ins = await q.query(
+        `INSERT INTO mimir_reference_projects
+           (customer_name, customer_inn, object_name,
+            outcome, our_price_no_vat, winner_price_no_vat, loss_reason_code, participants_count,
+            contract_value_planned, contract_value_planned_no_vat,
+            contract_value_actual, contract_value_actual_no_vat,
+            source_tender_id, quality_score, is_active, insights, notes,
+            created_by, created_at, updated_at)
+         VALUES ($1,$2,$3, 'lost', $4,$5,$6,$7, $8,$4, NULL,NULL, $9, 35, true, $10::jsonb, $11, $12, NOW(), NOW())
+         RETURNING id`,
+        [
+          t.customer_name, t.customer_inn || null, objectName,
+          ourNoVat, winnerNoVat, lossCode, participants,
+          planned,
+          tenderId,
+          JSON.stringify(insights),
+          notes,
+          opts.createdBy || null
+        ]
+      );
+      return { ok: true, created: true, reference_id: ins.rows[0].id, outcome: 'lost' };
+    }
+
+    // won / cancelled — обновляем outcome; для won по возможности actual из submission
+    const actualWithVat = t.submission_price_with_vat != null ? Number(t.submission_price_with_vat)
+      : (ourNoVat != null ? Math.round(ourNoVat * 1.22 * 100) / 100 : null);
+    const actualNoVat = ourNoVat;
+
+    if (exists.rows[0]) {
+      await q.query(
+        `UPDATE mimir_reference_projects SET
+           outcome = $1,
+           our_price_no_vat = COALESCE($2, our_price_no_vat),
+           winner_price_no_vat = COALESCE($3, winner_price_no_vat),
+           loss_reason_code = COALESCE($4, loss_reason_code),
+           participants_count = COALESCE($5, participants_count),
+           contract_value_actual = CASE WHEN $1 = 'won' THEN COALESCE($6, contract_value_actual) ELSE contract_value_actual END,
+           contract_value_actual_no_vat = CASE WHEN $1 = 'won' THEN COALESCE($7, contract_value_actual_no_vat) ELSE contract_value_actual_no_vat END,
+           insights = COALESCE(insights, '{}'::jsonb) || $8::jsonb,
+           notes = COALESCE(notes, '') || E'\\n' || $9,
+           updated_at = NOW()
+         WHERE id = $10`,
+        [
+          outcome,
+          ourNoVat, winnerNoVat, lossCode, participants,
+          actualWithVat, actualNoVat,
+          JSON.stringify(insights),
+          notes,
+          exists.rows[0].id
+        ]
+      );
+      return { ok: true, updated: true, reference_id: exists.rows[0].id, outcome };
+    }
+
+    if (outcome === 'won') {
+      const ins = await q.query(
+        `INSERT INTO mimir_reference_projects
+           (customer_name, customer_inn, object_name,
+            outcome, our_price_no_vat,
+            contract_value_planned, contract_value_actual,
+            contract_value_planned_no_vat, contract_value_actual_no_vat,
+            source_tender_id, quality_score, is_active, insights, notes,
+            created_by, created_at, updated_at)
+         VALUES ($1,$2,$3, 'won', $4, $5,$5, $4,$4, $6, 65, true, $7::jsonb, $8, $9, NOW(), NOW())
+         RETURNING id`,
+        [
+          t.customer_name, t.customer_inn || null, objectName,
+          actualNoVat, actualWithVat,
+          tenderId,
+          JSON.stringify(insights),
+          notes,
+          opts.createdBy || null
+        ]
+      );
+      return { ok: true, created: true, reference_id: ins.rows[0].id, outcome: 'won' };
+    }
+
+    return { ok: true, skipped: true, outcome };
+  } catch (e) {
+    return { ok: false, error: e.message, tender_id: tenderId };
+  }
+}
+
+module.exports = { learnFromConductorRun, learnFromEstimate, learnFromTenderOutcome };

@@ -52,6 +52,17 @@ function payDeadlineActive(r) {
  * где есть РЕАЛЬНЫЙ документ. Мусорные значения отсекаем: «нет», «запросила»,
  * «в процессе», пустой номер, ФИО вместо номера — это не документ.
  */
+/** Типы, которые заказчик считает закрывающими: акт / УПД / чек / СФ (+ СЗ, ТОРГ-12). */
+const CLOSING_KIND_RE = /^(сф|сч[её]т[-\s]?фактур|упд|акт|чек|сз|торг[-\s]?12)$/i;
+
+function isClosingKind(kind) {
+  const k = String(kind || '').trim();
+  if (!k) return false;
+  if (CLOSING_KIND_RE.test(k)) return true;
+  // «Счёт-фактура», «УПД №…» и т.п.
+  return /(упд|акт|чек|сз|торг|сч[её]т[-\s]?фактур|^сф\b)/i.test(k);
+}
+
 function hasClosingDoc(r) {
   if (r.sf_received_at) return true;
   let arr = r.closing_json;
@@ -66,12 +77,17 @@ function hasClosingDoc(r) {
     }
     const no = String(it.no || it.number || '').trim();
     const kind = String(it.kind || '').trim();
-    if (!no && !kind) return false;
-    if (!no) return false;                 // документ без номера — не считаем
-    if (NOISE.test(no)) return false;
+    const date = String(it.date || '').trim();
+    const file = String(it.file || it.path || it.url || '').trim();
+    if (no && NOISE.test(no)) return false;
     // «Климакин Д.В.» вместо номера — это заметка, а не документ.
-    if (/^[А-ЯЁ][а-яё]+\s+[А-ЯЁ]\./.test(no)) return false;
-    return true;
+    if (no && /^[А-ЯЁ][а-яё]+\s+[А-ЯЁ]\./.test(no)) return false;
+    // 06.11.2026: акт/УПД/чек закрывают этап даже без номера — пользователи
+    // прикрепляли документ, а баннер «нужна СФ» продолжал гореть (нужен был no).
+    if (isClosingKind(kind)) return true;
+    if (no && no.length > 1) return true;
+    if (date && file) return true;
+    return false;
   });
 }
 
@@ -234,14 +250,21 @@ function trafficSql(alias = 'd', yellowWorkdays = DEFAULT_YELLOW_WORKDAYS) {
 function closingDocSql(alias = 'd') {
   const a = alias;
   const arr = `CASE WHEN jsonb_typeof(${a}.closing_json)='array' THEN ${a}.closing_json ELSE '[]'::jsonb END`;
+  // Зеркало hasClosingDoc: известный kind (УПД/Акт/Чек/СФ/…) ИЛИ валидный номер.
   return `(
     ${a}.sf_received_at IS NOT NULL
     OR EXISTS (
       SELECT 1 FROM jsonb_array_elements(${arr}) e
-      WHERE COALESCE(trim(e->>'no'), '') <> ''
-        AND length(trim(e->>'no')) > 1
-        AND lower(trim(e->>'no')) !~ '^(нет|не т|запросила?|запрошен|в процессе|ожидаем?|жд[её]м|позже|потом|—|-|\\.*)$'
-        AND trim(e->>'no') !~ '^[А-ЯЁ][а-яё]+\\s+[А-ЯЁ]\\.'
+      WHERE (
+        lower(trim(COALESCE(e->>'kind',''))) ~ '^(сф|сч[её]т[ -]?фактур|упд|акт|чек|сз|торг[ -]?12)$'
+        OR lower(trim(COALESCE(e->>'kind',''))) ~ '(упд|акт|чек|сз|торг|сч[её]т[ -]?фактур)'
+        OR (
+          COALESCE(trim(e->>'no'), '') <> ''
+          AND length(trim(e->>'no')) > 1
+          AND lower(trim(e->>'no')) !~ '^(нет|не т|запросила?|запрошен|в процессе|ожидаем?|жд[её]м|позже|потом|—|-|\\.*)$'
+          AND trim(e->>'no') !~ '^[А-ЯЁ][а-яё]+\\s+[А-ЯЁ]\\.'
+        )
+      )
     )
   )`;
 }
@@ -264,6 +287,7 @@ module.exports = {
   activeDeadlines,
   payDeadlineActive,
   hasClosingDoc,
+  isClosingKind,
   closingDocSql,
   nextScheduleDue,
   workdaysBetween,

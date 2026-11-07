@@ -172,6 +172,61 @@ window.AsgardWorkNormsUi = (function () {
 .wn-table-wrap { overflow-x: auto; border-radius: 8px; border: 1px solid var(--brd-m); }
 .wn-table-wrap .tnd-table { margin: 0; }
 .wn-empty { margin: 24px 0; text-align: center; color: var(--t3); font-size: 13px; }
+.wn-fouling-field > span:first-child {
+  font-size: 12px; font-weight: 600; color: var(--t2);
+}
+.wn-fouling-btns { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 6px; }
+.wn-fouling-btn {
+  flex: 1; min-width: 88px; padding: 9px 12px; border-radius: 8px; border: 1px solid var(--brd);
+  background: var(--bg3); color: var(--t2); cursor: pointer; font: inherit; font-size: 12px; font-weight: 600;
+  text-align: center; transition: border-color .12s, background .12s, color .12s;
+}
+.wn-fouling-btn:hover:not(.is-active) { border-color: var(--brd-m); color: var(--t1); }
+.wn-fouling-btn.is-active {
+  border-color: var(--gold);
+  color: var(--gold);
+  background: color-mix(in srgb, var(--gold) 14%, var(--bg3));
+}
+.wn-fouling-btn.tone-soft.is-active {
+  border-color: color-mix(in srgb, var(--ok, #3cb371) 55%, var(--gold));
+  color: var(--ok, #3cb371);
+  background: color-mix(in srgb, var(--ok, #3cb371) 12%, var(--bg3));
+}
+.wn-fouling-btn.tone-hard.is-active {
+  border-color: color-mix(in srgb, var(--err, #c44) 50%, var(--gold));
+  color: var(--err, #e05252);
+  background: color-mix(in srgb, var(--err, #c44) 10%, var(--bg3));
+}
+.wn-sticky-summary {
+  position: sticky; bottom: 0; z-index: 4; margin-top: 12px; padding: 12px 16px;
+  background: color-mix(in srgb, var(--gold) 12%, var(--bg2));
+  border: 1px solid color-mix(in srgb, var(--gold) 40%, var(--brd));
+  box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.18);
+  border-radius: 10px; display: flex; flex-wrap: wrap; gap: 12px 20px; align-items: stretch;
+  font-size: 13px; color: var(--t1);
+}
+.wn-sticky-summary:empty { display: none; }
+.wn-sticky-summary strong { font-variant-numeric: tabular-nums; font-size: 15px; }
+.wn-sum-part { display: flex; flex-direction: column; gap: 2px; min-width: 72px; }
+.wn-sum-part .lbl {
+  font-size: 10px; font-weight: 700; letter-spacing: .35px; text-transform: uppercase; color: var(--t3);
+}
+.wn-sum-part.is-breakdown { flex: 1 1 100%; flex-direction: row; flex-wrap: wrap; gap: 8px 16px; align-items: center; }
+.wn-sum-part.is-breakdown .lbl { text-transform: none; font-size: 12px; font-weight: 600; letter-spacing: 0; }
+.wn-preview-main { font-size: 14px; line-height: 1.45; }
+.wn-preview-breakdown {
+  display: flex; flex-wrap: wrap; gap: 8px 14px; margin-top: 10px; padding-top: 10px;
+  border-top: 1px solid var(--brd-m); font-size: 12px; color: var(--t2);
+}
+.wn-preview-breakdown span strong { color: var(--t1); font-variant-numeric: tabular-nums; }
+.wn-calc-actions .wn-apply-rp { margin-left: auto; }
+.wn-revert-rate {
+  margin-left: 6px;
+  border-color: color-mix(in srgb, var(--warn, #e6a23c) 45%, var(--brd));
+  color: var(--warn, #e6a23c);
+}
+.wn-revert-rate:hover { background: color-mix(in srgb, var(--warn, #e6a23c) 12%, var(--bg3)); }
+.wn-preview-err { color: var(--err, #e05252); font-size: 13px; }
 `;
 
   function ensureCss() {
@@ -256,6 +311,7 @@ window.AsgardWorkNormsUi = (function () {
     let experiences = [];
     /** Черновик полей калькулятора между re-render */
     let calcDraft = { inputs: {}, fouling: 'medium', posts: 2, coeffs: [] };
+    let previewTimer = null;
 
     async function load() {
       catalog = await api('/api/work-norms/catalog');
@@ -320,7 +376,8 @@ window.AsgardWorkNormsUi = (function () {
       root.querySelectorAll('.wn-coeff:checked').forEach((c) => coeffs.push(c.value));
       calcDraft = {
         inputs,
-        fouling: document.getElementById('wnFouling')?.value || calcDraft.fouling || 'medium',
+        fouling: root.querySelector('.wn-fouling-btn.is-active')?.dataset.fouling ||
+          calcDraft.fouling || 'medium',
         posts: document.getElementById('wnPosts')?.value || calcDraft.posts || 2,
         coeffs
       };
@@ -384,11 +441,16 @@ window.AsgardWorkNormsUi = (function () {
             (f.optional ? ' <span class="muted">опц.</span>' : '') +
             '<input class="inp wn-in" data-key="' + esc(f.key) + '" type="number" step="any" value="' + esc(String(v)) + '"/></label>';
         }).join('') +
-        '<label class="wn-field">Отложения<select class="inp" id="wnFouling">' +
-        '<option value="loose"' + (foul === 'loose' ? ' selected' : '') + '>лёгкие</option>' +
-        '<option value="medium"' + (foul === 'medium' ? ' selected' : '') + '>средние</option>' +
-        '<option value="hard"' + (foul === 'hard' ? ' selected' : '') + '>тяжёлые</option>' +
-        '</select></label>' +
+        '<div class="wn-field wn-fouling-field" style="grid-column:1/-1">' +
+        '<span>Отложения в трубах</span>' +
+        '<div class="wn-fouling-btns" id="wnFoulingBtns" role="group" aria-label="Степень отложений">' +
+        ['loose', 'medium', 'hard'].map((f) => {
+          const lbl = f === 'loose' ? 'Лёгкие' : (f === 'hard' ? 'Тяжёлые' : 'Средние');
+          const tone = f === 'loose' ? ' tone-soft' : (f === 'hard' ? ' tone-hard' : ' tone-mid');
+          return '<button type="button" class="wn-fouling-btn' + tone + (foul === f ? ' is-active' : '') +
+            '" data-fouling="' + f + '">' + lbl + '</button>';
+        }).join('') +
+        '</div></div>' +
         '<label class="wn-field">Постов<input class="inp" id="wnPosts" type="number" min="1" max="6" value="' +
         esc(String(d.posts != null ? d.posts : 2)) + '"/></label>' +
         '</div>' +
@@ -400,8 +462,12 @@ window.AsgardWorkNormsUi = (function () {
                 (on ? ' checked' : '') + '/> ' + esc(c.label) + ' (×' + esc(String(c.multiplier)) + ')</label>';
             }).join('') + '</div>'
           : '') +
-        '<div class="wn-calc-actions"><button type="button" class="btn mini" id="wnCalc">Рассчитать</button></div>' +
+        '<div class="wn-calc-actions">' +
+        '<button type="button" class="btn mini ghost" id="wnCalc">Рассчитать</button>' +
+        '<button type="button" class="btn mini primary wn-apply-rp" id="wnApplyRp" title="Передать сроки в просчёт РП">В просчёт</button>' +
+        '</div>' +
         '<div id="wnPreview" class="wn-preview"></div>' +
+        '<div id="wnStickySummary" class="wn-sticky-summary"></div>' +
         '</div>';
     }
 
@@ -458,20 +524,56 @@ window.AsgardWorkNormsUi = (function () {
 
     function formatPreview(p) {
       if (!p || p.error) {
-        return '<span style="color:var(--danger,#c44)">' + esc((p && p.error) || 'ошибка') + '</span>';
+        return '<span class="wn-preview-err">' + esc((p && p.error) || 'ошибка') + '</span>';
       }
       const r = p.results || {};
       const days = r.work_days;
       let human = '';
+      let breakdown = '';
       if (days != null) {
-        human = 'На объект примерно <strong>' + days + ' календарных суток</strong>';
-        if (r.person_shifts != null) human += ' · ' + r.person_shifts + ' чел·смен';
-        if (r.man_hours != null) human += ' · ' + r.man_hours + ' чел·ч';
-        if (r.reagent_kg != null) human += ' · реагент ' + r.reagent_kg + ' кг';
+        human = '<div class="wn-preview-main">На объект примерно <strong>' + days +
+          ' календарных суток</strong>';
+        const extras = [];
+        if (r.person_shifts != null) extras.push(r.person_shifts + ' чел·смен');
+        if (r.man_hours != null) extras.push(r.man_hours + ' чел·ч');
+        if (r.reagent_kg != null) extras.push('реагент ' + r.reagent_kg + ' кг');
+        if (extras.length) human += ' · ' + esc(extras.join(' · '));
+        human += '</div>';
+        if (r.setup_days != null || r.flow_days != null) {
+          breakdown = '<div class="wn-preview-breakdown">' +
+            '<span>Подготовка: <strong>' + esc(String(r.setup_days ?? '—')) + '</strong> сут</span>' +
+            '<span>Ход работ: <strong>' + esc(String(r.flow_days ?? '—')) + '</strong> сут</span>' +
+            '</div>';
+        }
       }
-      return '<div style="font-size:14px">' + human + '</div>' +
-        '<div class="muted" style="margin-top:6px;font-size:12px">' +
-        (p.trace || []).map((t) => esc(t)).join('<br/>') + '</div>';
+      const trace = (p.trace || []).length
+        ? '<div class="muted" style="margin-top:8px;font-size:12px;line-height:1.4">' +
+          p.trace.map((t) => esc(t)).join('<br/>') + '</div>'
+        : '';
+      return human + breakdown + trace;
+    }
+
+    function formatStickySummary(p) {
+      if (!p || p.error || !p.results) return '';
+      const r = p.results;
+      if (r.work_days == null) return '';
+      let s = '<div class="wn-sum-part"><span class="lbl">Срок</span><strong>' + r.work_days + ' сут</strong></div>';
+      if (r.person_shifts != null) {
+        s += '<div class="wn-sum-part"><span class="lbl">Чел·смен</span><strong>' + r.person_shifts + '</strong></div>';
+      }
+      if (r.setup_days != null || r.flow_days != null) {
+        s += '<div class="wn-sum-part is-breakdown"><span class="lbl">Разбивка:</span>' +
+          '<span>подготовка <strong>' + (r.setup_days ?? '—') + '</strong> + ход <strong>' +
+          (r.flow_days ?? '—') + '</strong> сут</span></div>';
+      }
+      return s;
+    }
+
+    function updatePreviewUi() {
+      const el = document.getElementById('wnPreview');
+      const sticky = document.getElementById('wnStickySummary');
+      if (el) el.innerHTML = formatPreview(preview);
+      if (sticky) sticky.innerHTML = formatStickySummary(preview);
     }
 
     function renderGlobals() {
@@ -526,13 +628,19 @@ window.AsgardWorkNormsUi = (function () {
       return '<p class="wn-section-note">Каждое изменение нормы — с комментарием РП.</p>' +
         '<div class="wn-table-wrap"><table class="tnd-table asg" style="width:100%;font-size:12px"><thead><tr>' +
         '<th>Когда</th><th>Кто</th><th>Что</th><th>Комментарий</th></tr></thead><tbody>' +
-        items.map((it) =>
-          '<tr><td>' + esc(String(it.created_at || '').slice(0, 19).replace('T', ' ')) + '</td>' +
+        items.map((it) => {
+          const canRevert = canWrite && it.entity_type === 'rate' &&
+            ['update', 'import', 'publish'].includes(it.action) && it.entity_id;
+          return '<tr><td>' + esc(String(it.created_at || '').slice(0, 19).replace('T', ' ')) + '</td>' +
           '<td>' + esc(it.user_name || '—') + '</td>' +
           '<td>' + esc(it.action) + ' ' + esc(it.entity_type) +
-          (it.category_code ? ' <code>' + esc(it.category_code) + '</code>' : '') + '</td>' +
-          '<td>' + esc(it.comment) + '</td></tr>'
-        ).join('') +
+          (it.category_code ? ' <code>' + esc(it.category_code) + '</code>' : '') +
+          (canRevert
+            ? ' <button type="button" class="btn mini wn-revert-rate" data-rate-id="' +
+              esc(String(it.entity_id)) + '" title="Вернуть предыдущую версию нормы">↩ Откатить</button>'
+            : '') + '</td>' +
+          '<td>' + esc(it.comment) + '</td></tr>';
+        }).join('') +
         '</tbody></table></div>';
     }
 
@@ -913,9 +1021,7 @@ window.AsgardWorkNormsUi = (function () {
         '<p class="wn-intro">Нормы Асгарда на человеческом языке. Слева — направление, справа — калькулятор и карточки. Опыт с объектов калибрует справочник; Мимир читает те же таблицы.</p>' +
         '<div class="wn-layout">' + renderNav() + '<div class="wn-main">' + body + '</div></div></div>';
 
-      if (preview && document.getElementById('wnPreview')) {
-        document.getElementById('wnPreview').innerHTML = formatPreview(preview);
-      }
+      updatePreviewUi();
       bind();
     }
 
@@ -961,7 +1067,7 @@ window.AsgardWorkNormsUi = (function () {
       bindExport(document.getElementById('wnExport'));
       bindExport(document.getElementById('wnExportTop'));
 
-      document.getElementById('wnCalc')?.addEventListener('click', async () => {
+      async function runPreviewCalc() {
         const cat = currentCategory();
         if (!cat) return;
         snapshotCalc();
@@ -983,16 +1089,79 @@ window.AsgardWorkNormsUi = (function () {
               method_code: method,
               rate_code: primaryRateCode(cat, method) || undefined,
               inputs,
-              fouling: document.getElementById('wnFouling')?.value || 'medium',
+              fouling: root.querySelector('.wn-fouling-btn.is-active')?.dataset.fouling || 'medium',
               posts: Number(document.getElementById('wnPosts')?.value) || 2,
               coeffs
             }
           });
-          const el = document.getElementById('wnPreview');
-          if (el) el.innerHTML = formatPreview(preview);
+          updatePreviewUi();
         } catch (e) {
           toast('Расчёт', e.message || 'Ошибка', 'err');
         }
+      }
+
+      function schedulePreviewCalc() {
+        if (previewTimer) clearTimeout(previewTimer);
+        previewTimer = setTimeout(() => { runPreviewCalc(); }, 300);
+      }
+
+      document.getElementById('wnCalc')?.addEventListener('click', () => { runPreviewCalc(); });
+
+      root.querySelectorAll('.wn-in, .wn-coeff, #wnPosts').forEach((el) => {
+        el.addEventListener('input', schedulePreviewCalc);
+        el.addEventListener('change', schedulePreviewCalc);
+      });
+      root.querySelectorAll('.wn-fouling-btn').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          root.querySelectorAll('.wn-fouling-btn').forEach((b) => b.classList.remove('is-active'));
+          btn.classList.add('is-active');
+          calcDraft.fouling = btn.dataset.fouling || 'medium';
+          schedulePreviewCalc();
+        });
+      });
+
+      document.getElementById('wnApplyRp')?.addEventListener('click', async () => {
+        if (!preview || preview.error) {
+          toast('Просчёт', 'Сначала рассчитайте норму', 'err');
+          return;
+        }
+        const payload = {
+          source: 'work_norms_ui',
+          category_code: preview.category_code,
+          method_code: preview.method_code,
+          rate: preview.rate,
+          results: preview.results,
+          crew: preview.crew,
+          trace: preview.trace
+        };
+        if (window.AsgardRpCalc && typeof window.AsgardRpCalc.applyNormPreview === 'function') {
+          window.AsgardRpCalc.applyNormPreview(payload);
+          toast('Просчёт', 'Данные переданы в просчёт', 'ok');
+          return;
+        }
+        try {
+          await navigator.clipboard.writeText(JSON.stringify(payload, null, 2));
+          toast('Просчёт', 'JSON скопирован в буфер (интеграция РП не подключена)', 'ok');
+        } catch (e) {
+          toast('Просчёт', 'Не удалось скопировать JSON', 'err');
+        }
+      });
+
+      root.querySelectorAll('.wn-revert-rate').forEach((b) => {
+        b.addEventListener('click', async () => {
+          const comment = await askComment('Откат последней правки нормы');
+          if (!comment) return;
+          try {
+            await api('/api/work-norms/rates/' + b.dataset.rateId + '/revert-last', {
+              method: 'POST',
+              body: { comment }
+            });
+            toast('Нормы', 'Откат выполнен', 'ok');
+            await load();
+          } catch (e) {
+            toast('Ошибка', e.message || '', 'err');
+          }
+        });
       });
 
       document.getElementById('wnExpManual')?.addEventListener('click', () => openManualForm());

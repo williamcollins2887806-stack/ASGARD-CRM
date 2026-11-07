@@ -324,6 +324,30 @@ window.AsgardRegistryApi = (function () {
     syncTenderGuruNow(force) {
       return api('/api/tenders/registry/tenderguru/sync', { method: 'POST', body: force ? { force: true } : {} });
     },
+    enrichOutcomeFromTenderGuru(tenderId, opts) {
+      return api('/api/tenders/registry/' + tenderId + '/enrich-outcome', {
+        method: 'POST',
+        body: opts && opts.force ? { force: true } : {}
+      });
+    },
+    enrichOutcomeBatch(limit) {
+      return api('/api/tenders/registry/enrich-outcome-batch', {
+        method: 'POST',
+        body: limit != null ? { limit } : {}
+      });
+    },
+    loadOutcomeMatchQueue() {
+      return api('/api/tenders/registry/outcome-match-queue');
+    },
+    acceptOutcomeMatchQueue(id, candidateId) {
+      return api('/api/tenders/registry/outcome-match-queue/' + id + '/accept', {
+        method: 'POST',
+        body: candidateId != null ? { candidate_id: candidateId } : {}
+      });
+    },
+    rejectOutcomeMatchQueue(id) {
+      return api('/api/tenders/registry/outcome-match-queue/' + id + '/reject', { method: 'POST' });
+    },
     loadPmDutyCurrent() {
       return api('/api/pm-duty/current');
     },

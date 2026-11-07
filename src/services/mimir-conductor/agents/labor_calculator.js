@@ -19,6 +19,7 @@
 'use strict';
 
 const db = require('../../db');
+const workNorms = require('../../work-norms');
 const { formatRub } = require('./_util');
 
 // БЕЗ ХАРДКОДА. Все значения берутся из БД/эталонов/ТЗ.
@@ -310,6 +311,50 @@ async function run({ requiredArtifacts, onThought }) {
 
   const subtotal = personnel.reduce((s, p) => s + p.total, 0);
 
+  let norm_preview = null;
+  const norm_preview_meta = { skipped: false, reason: null, error: null };
+  const ws = requiredArtifacts.work_scope_research || {};
+  const normInputs = requiredArtifacts.norm_inputs
+    || tz.norm_inputs
+    || ws.norm_inputs
+    || null;
+  const workType = ws.work_type || tz.work_type || tz.work_category || null;
+  const tzBlob = [
+    tz.title,
+    tz.subject,
+    tz.object_city,
+    tz.work_scope,
+    ...(Array.isArray(tz.key_requirements) ? tz.key_requirements : [])
+  ].filter(Boolean).join('\n');
+
+  if (normInputs?.category_code || workType || tzBlob.length > 20) {
+    try {
+      const bundle = await workNorms.tryNormPreviewForEstimate(db, {
+        work: {
+          work_title: tz.title || tz.subject || ws.work_title,
+          work_description: tzBlob || ws.summary
+        },
+        tender: { tender_title: tz.tender_title, tender_description: tzBlob },
+        documents: tzBlob ? [{ content: tzBlob }] : [],
+        workType,
+        norm_inputs: normInputs
+      });
+      norm_preview = bundle.preview;
+      Object.assign(norm_preview_meta, bundle.meta || {});
+      if (bundle.meta?.skipped) {
+        norm_preview_meta.norm_preview_skipped = bundle.meta.reason || 'category/method not inferred';
+      }
+    } catch (e) {
+      norm_preview_meta.error = e.message;
+      norm_preview_meta.norm_preview_skipped = e.message;
+    }
+  } else {
+    // Нет category/method/inputs в артефактах conductor — preview только через Mimir Quick/Auto-Estimate.
+    norm_preview_meta.skipped = true;
+    norm_preview_meta.reason = 'no category/method/inputs in conductor artifacts';
+    norm_preview_meta.norm_preview_skipped = norm_preview_meta.reason;
+  }
+
   return {
     summary: `ФОТ (без налога): ${formatRub(subtotal)}, ${workDays} рабочих дней, ${totalCount} чел`,
     key_findings: [
@@ -325,7 +370,9 @@ async function run({ requiredArtifacts, onThought }) {
     road_days: roadDays,
     total_man_days: workersCount * workDays,
     assumptions,
-    clarifications
+    clarifications,
+    norm_preview,
+    norm_preview_meta
   };
 }
 

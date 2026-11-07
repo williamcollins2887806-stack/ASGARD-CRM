@@ -4910,9 +4910,15 @@ window.AsgardTendersPage = (function(){
     // Модалка «❌ Проиграли» — причина + сопроводительное письмо
     // ═══════════════════════════════════════════════════════════════
     async function openLostModal(tid, tender) {
-      const reasons = ['Цена выше конкурента', 'Сроки не подошли заказчику', 'Выбрали другого подрядчика',
-                       'Не прошли квалификацию', 'Отказались от выполнения', 'Технические требования',
-                       'Конкурент с админ. ресурсом', 'Другое'];
+      const reasons = [
+        { value: 'price', label: 'Цена выше конкурентов' },
+        { value: 'deadline', label: 'Сроки / график не устроили' },
+        { value: 'qual', label: 'Не прошли квалификацию / допуск' },
+        { value: 'docs', label: 'Ошибка или неполнота документов' },
+        { value: 'lobby', label: 'Предпочтение другому подрядчику' },
+        { value: 'cancel', label: 'Закупка отменена / не состоялась' },
+        { value: 'nobid', label: 'Не подали заявку' }
+      ];
       const html = `
         <div class="help" style="margin-bottom:14px;background:rgba(231,76,60,.08);padding:10px 14px;border-radius:8px;border-left:3px solid #e74c3c">
           Зафиксируем причину для аналитики и сопроводительное письмо — это поможет команде сделать выводы.
@@ -4939,7 +4945,7 @@ window.AsgardTendersPage = (function(){
         const w = document.getElementById('lost_reason_w');
         w.appendChild(CRSelect.create({
           id: 'lost_reason',
-          options: reasons.map(r => ({ value: r, label: r })),
+          options: reasons.map(r => ({ value: r.value, label: r.label })),
           placeholder: '— выберите —',
           searchable: false
         }));
@@ -4956,7 +4962,13 @@ window.AsgardTendersPage = (function(){
             const resp = await fetch(`/api/tenders/${tid}/lose`, {
               method: 'POST',
               headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
-              body: JSON.stringify({ reject_reason: reason, cover_letter: letter, winner_name: winner })
+              body: JSON.stringify({
+                reject_reason: reason,
+                loss_reasons: [reason],
+                loss_reason_code: reason,
+                cover_letter: letter,
+                winner_name: winner
+              })
             });
             const data = await resp.json();
             if (!resp.ok) { toast('Проигрыш', data.error || 'Ошибка', 'err'); btn.disabled = false; return; }

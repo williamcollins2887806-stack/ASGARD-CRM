@@ -246,9 +246,29 @@ function buildMtr(aiEstimate) {
       : arr(ai.equipment_status && ai.equipment_status.to_purchase);
     needed.forEach((e) => {
       if (!e) return;
-      add(e.item || e.name, e.quantity || e.qty, { purpose: txt(e.purpose) });
+      add(e.item || e.name, e.quantity || e.qty, {
+        purpose: txt(e.purpose),
+        price: e.price != null ? num(e.price) : null,
+        source: ['warehouse', 'purchase', 'rent'].includes(txt(e.source)) ? txt(e.source) : 'purchase'
+      });
     });
   }
+  // GAP-4: purchases_needed из анализа/просчёта Мимира
+  const purchasesNeeded = arr(ai.purchases_needed).length
+    ? arr(ai.purchases_needed)
+    : arr(ai.analysis && ai.analysis.purchases_needed);
+  purchasesNeeded.forEach((e) => {
+    if (!e) return;
+    const name = e.item || e.name;
+    if (!txt(name)) return;
+    if (out.some((m) => normName(m.name) === normName(name))) return;
+    add(name, e.quantity || e.qty, {
+      purpose: txt(e.purpose || e.reason),
+      price: e.price != null ? num(e.price) : (e.cost != null ? num(e.cost) : null),
+      source: ['warehouse', 'purchase', 'rent'].includes(txt(e.source)) ? txt(e.source) : 'purchase',
+      unit: txt(e.unit) || 'шт'
+    });
+  });
   return out;
 }
 
@@ -440,6 +460,18 @@ function applyToSmeta(est, plan) {
   }
   if (p.schedule && num(p.schedule.shift_mode, 0) > 0) {
     src.params = Object.assign({}, src.params || {}, { shifts_per_day: num(p.schedule.shift_mode) });
+  }
+  // GAP-10: даты работ → meta (письмо / Excel / модалка)
+  const start = txt(p.schedule && (p.schedule.start_plan || p.schedule.work_start_plan));
+  if (start) {
+    src.meta = Object.assign({}, src.meta || {}, {
+      work_start_plan: start,
+      work_duration_days: num(p.schedule.work_days, 0) || (src.meta && src.meta.work_duration_days) || null
+    });
+  } else if (p.schedule && num(p.schedule.work_days, 0) > 0) {
+    src.meta = Object.assign({}, src.meta || {}, {
+      work_duration_days: num(p.schedule.work_days)
+    });
   }
   return smeta.recalcAsgardSmeta(src);
 }

@@ -385,6 +385,18 @@ async function routes(fastify, options) {
         link: `#/pm-works?id=${updated.id}`
       });
     }
+    if (
+      data.work_status &&
+      data.work_status !== oldWork.rows[0].work_status
+    ) {
+      try {
+        const workNorms = require('../services/work-norms');
+        if (workNorms.isWorkClosedStatus(data.work_status) &&
+            !workNorms.isWorkClosedStatus(oldWork.rows[0].work_status)) {
+          workNorms.tryAutoExperienceOnWorkClose(db, id, request.user).catch(() => {});
+        }
+      } catch (_) { /* мягкий сбой — закрытие работы не блокируем */ }
+    }
     return { work: updated };
   });
 
@@ -790,6 +802,11 @@ async function routes(fastify, options) {
           console.error('[WorkChat] createCloseoutChat error:', e.message)
         );
       } catch (e) { console.error('[WorkChat] import error:', e.message); }
+
+      try {
+        const workNorms = require('../services/work-norms');
+        workNorms.tryAutoExperienceOnWorkClose(db, id, request.user).catch(() => {});
+      } catch (_) { /* черновик опыта — опционально */ }
 
       return { work: updateRes.rows[0], message: 'Контракт закрыт' };
     } catch (err) {

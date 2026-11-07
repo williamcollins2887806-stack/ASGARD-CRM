@@ -1,5 +1,8 @@
 'use strict';
 
+const { validCounterpartyInn, isStubOrgName, digitsInn } = require('./counterparty-inn');
+const { mirrorSupplierIdToCustomer } = require('./customer-from-supplier');
+
 /**
  * D-322: единая точка «найти или завести поставщика» по распознанным реквизитам.
  * ═══════════════════════════════════════════════════════════════════════════
@@ -81,25 +84,24 @@ async function findSupplier(db, { inn, name }) {
  */
 async function ensureSupplier(db, parsed, opts) {
   const o = opts || {};
-  const own = String(o.ownInn || '').replace(/\D/g, '');
-  const inn = String((parsed && parsed.inn) || '').replace(/\D/g, '');
+  const own = digitsInn(o.ownInn);
+  const innRaw = digitsInn(parsed && parsed.inn);
+  // Невалидный checksum / мусор — не пишем ИНН в карточку (имя можно завести без ИНН).
+  const inn = validCounterpartyInn(innRaw) ? innRaw : '';
   const name = String((parsed && parsed.counterparty_name) || '').trim();
 
   // Наш ИНН поставщиком быть не может — иначе рождается «мы сами себе поставщик».
-  if (own && inn === own) return { id: null, created: false, reason: 'own_inn' };
+  if (own && innRaw && innRaw === own) return { id: null, created: false, reason: 'own_inn' };
   if (!name && !inn) return { id: null, created: false, reason: 'no_data' };
-  // D-370: заглушка потоковой загрузки («Распознаётся…») — НЕ контрагент.
-  // Раньше из неё заводилась настоящая карточка поставщика, и все счета с
-  // неопределённым контрагентом привязывались к ней: в платёжке оказывались
-  // реквизиты чужого поставщика, ИНН/КПП пустые. Ждём распознавания.
-  if (/^распозна[её]тся/i.test(name) || /^ожидает\s+распознавания/i.test(name)) {
+  // D-370 + isStubOrgName: заглушка OCR — НЕ контрагент.
+  if (isStubOrgName(name)) {
     return { id: null, created: false, reason: 'stub_name' };
   }
   // Имя — обязательное поле suppliers.name. Без него карточку не заводим:
   // безымянный поставщик хуже, чем «не сопоставлен».
   if (!name) return { id: null, created: false, reason: 'no_name' };
 
-  const existing = await findSupplier(db, { inn, name });
+  const existing = await findSupplier(db, { inn: inn || innRaw, name });
   if (existing) {
     // Дозаполняем пустые реквизиты: ручные значения НЕ затираем (они точнее OCR).
     const patch = [];
@@ -121,6 +123,9 @@ async function ensureSupplier(db, parsed, opts) {
       vals.push(existing.id);
       await db.query(`UPDATE suppliers SET ${patch.join(', ')}, updated_at=NOW() WHERE id=$${vals.length}`, vals);
     }
+    try {
+      await mirrorSupplierIdToCustomer(db, existing.id, { ownInn: own });
+    } catch (_) { /* зеркало не ломает основной поток */ }
     return { id: existing.id, created: false, filled: patch.length };
   }
 
@@ -131,11 +136,18 @@ async function ensureSupplier(db, parsed, opts) {
        VALUES($1,$2,$3,$4,$5,$6,$7,NOW(),NOW()) RETURNING id`,
       [name.slice(0, 250), inn || null, parsed.kpp || null, parsed.bik || null,
         parsed.rs || null, parsed.ks || null, parsed.bank_name || null]);
-    return { id: ins.rows[0].id, created: true };
+    const newId = ins.rows[0].id;
+    try {
+      await mirrorSupplierIdToCustomer(db, newId, { ownInn: own });
+    } catch (_) { /* ignore */ }
+    return { id: newId, created: true };
   } catch (e) {
     // Уникальность по ИНН/имени могла сработать в гонке — перечитываем.
-    const again = await findSupplier(db, { inn, name }).catch(() => null);
-    if (again) return { id: again.id, created: false, reason: 'race' };
+    const again = await findSupplier(db, { inn: inn || innRaw, name }).catch(() => null);
+    if (again) {
+      try { await mirrorSupplierIdToCustomer(db, again.id, { ownInn: own }); } catch (_) { /* ignore */ }
+      return { id: again.id, created: false, reason: 'race' };
+    }
     return { id: null, created: false, reason: 'insert_failed: ' + (e && e.message) };
   }
 }

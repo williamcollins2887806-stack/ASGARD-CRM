@@ -977,7 +977,7 @@ async function mimirRoutes(fastify, options) {
     }
   });
 
-  // Рекомендация по тендеру
+  // Рекомендация по тендеру (legacy score; см. tender-history-brain для промпта Mimir)
   fastify.get('/tender-recommendation/:id', {
     preHandler: [fastify.authenticate]
   }, async (request) => {
@@ -990,6 +990,11 @@ async function mimirRoutes(fastify, options) {
       }
 
       const t = tender.rows[0];
+      let historyBlock = null;
+      try {
+        const { buildHistoryBlock } = require('../services/tender-history-brain');
+        historyBlock = await buildHistoryBlock(db, t);
+      } catch (_) { /* до V460+ */ }
 
       const history = await db.query(`
         SELECT tender_status, COUNT(*) as cnt
@@ -1022,6 +1027,7 @@ async function mimirRoutes(fastify, options) {
         success: true,
         tender: { id: t.id, customer_name: t.customer_name, tender_title: t.tender_title },
         history: { total: totalCount, won: wonCount, winRate },
+        history_block: historyBlock,
         recommendation,
         score
       };
@@ -2181,6 +2187,64 @@ ${analogsSummary}
       await mimirJobs.del(key);
     }
     return { ok: true };
+  });
+
+  // POST /api/mimir/tender-analysis/:tenderId — принудительный анализ (без сметы)
+  fastify.post('/tender-analysis/:tenderId', {
+    preHandler: [fastify.authenticate]
+  }, async (request, reply) => {
+    const tenderId = parseInt(request.params.tenderId, 10);
+    if (!Number.isFinite(tenderId)) {
+      return reply.code(400).send({ success: false, message: 'tenderId некорректен' });
+    }
+    const body = request.body || {};
+    if (body.purpose === 'rp_review_calc' || body.phase === 'calc') {
+      return reply.code(400).send({
+        success: false,
+        message: 'Эндпоинт только для фазы analysis. Для просчёта используйте Quick/auto-estimate с phase=calc.'
+      });
+    }
+
+    const mimirAutoEstimate = require('../services/mimir-auto-estimate');
+    const mimirTkpQuick = require('../services/mimir-tkp-quick');
+    const aiProvider = require('../services/ai-provider');
+
+    const tRes = await db.query(
+      `SELECT id, customer_name, customer_inn, tender_title, tender_description,
+              tender_region, estimated_sum, docs_deadline, status
+       FROM tenders WHERE id = $1 AND deleted_at IS NULL`,
+      [tenderId]
+    );
+    if (!tRes.rows[0]) return reply.code(404).send({ success: false, message: 'Тендер не найден' });
+
+    const tender = tRes.rows[0];
+    const tzText = [tender.tender_title, tender.tender_description].filter(Boolean).join('\n\n');
+    const settings = await mimirTkpQuick._loadSettings(db);
+    const ctx = await mimirTkpQuick._buildQuickCtx({
+      tz_text: tzText,
+      customer_name: tender.customer_name,
+      tender_id: tenderId,
+      settings,
+      purpose: 'rp_review_analysis',
+      phase: 'analysis',
+      analysisOnly: true
+    }, () => {});
+
+    const userMsg = body.tz_text || tzText || 'Проанализируй тендер по контексту.';
+    const aiCall = await mimirAutoEstimate.callMimirForEstimate(aiProvider, ctx, userMsg);
+    const report = aiCall.analysisReport || mimirAutoEstimate.normalizeAnalysisReport(aiCall.ai);
+
+    return {
+      success: true,
+      tender_id: tenderId,
+      purpose: 'rp_review_analysis',
+      analysis: report,
+      diagnostics: {
+        model: aiCall.model,
+        provider: aiCall.provider,
+        tokens: aiCall.tokens
+      }
+    };
   });
 
   // ═══════════════════════════════════════════════════════════════════════════

@@ -3,6 +3,10 @@
 /**
  * ASGARD CRM — Мимир Prompt Builder (AP6)
  *
+ * @deprecated Используйте файловые промпты `templates/prompts/PROMPT-quick-v4.md` и
+ * `PROMPT-analysis-v1.md` через `src/services/prompt-loader.js` / `mimir-auto-estimate.js`.
+ * Этот модуль оставлен для legacy `POST /api/mimir/auto-estimate` (getSystemPrompt).
+ *
  * v3 (23.05.2026):
  *  - Маржа ≥ 100% жёстко (hard floor на сервере + правило в промпте)
  *  - Двухпроходная проверка ТЗ (анализ ДО расчёта + валидация ПОСЛЕ)

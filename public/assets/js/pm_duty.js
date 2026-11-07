@@ -113,6 +113,7 @@ window.AsgardPmDutyPage = (function () {
 
   function queueStatusLabel(row) {
     if (row.is_final) return 'Отчёт готов';
+    if (row.needs_calc || row.need_calc_label) return 'Нужен просчёт';
     if (row.phase === 'calc' || row.analysis_finalized_at) return 'Анализ закрыт · просчёт';
     if (row.decision === 'submit') return 'Подаём';
     if (row.decision === 'reject') return 'Не подаём';
@@ -585,11 +586,14 @@ window.AsgardPmDutyPage = (function () {
           actionBtn = '<button type="button" class="btn mini ghost duty-report" data-id="' + row.id + '" data-preview="' + (isPreview ? '1' : '0') + '">' +
             (isPreview ? 'Смотреть' : 'Открыть') + '</button>';
         }
-        const pillCls = row.is_final ? ' ok' : (st === 'Черновик' ? ' warn' : '');
+        const pillCls = row.is_final ? ' ok' : ((st === 'Нужен просчёт' || st === 'Черновик') ? ' warn' : '');
+        const needCalcTag = (row.needs_calc || st === 'Нужен просчёт')
+          ? ' <span class="pm-duty-need-calc-tag">Нужен просчёт</span>' : '';
         return '<article class="pm-duty-row ' + tone.cls + (isPreview ? ' is-preview' : '') + '" style="--i:' + idx + '">' +
           '<div class="pm-duty-row-id">#' + row.id + '</div>' +
           '<div class="pm-duty-row-main">' +
             '<div class="pm-duty-row-title">' + esc(row.customer_name || '—') +
+              needCalcTag +
               (isPreview ? ' <span class="pm-duty-preview-tag">просмотр</span>' : '') +
               (row.deadline_hot ? ' <span class="pm-duty-hot-tag">дедлайн ≤2д</span>' : '') +
               (row.stale_idle && !row.deadline_hot ? ' <span class="pm-duty-stale-tag">без движения 24ч+</span>' : '') +
