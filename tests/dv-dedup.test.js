@@ -97,5 +97,39 @@ check('нормализация различает разные аппараты
   assert.strictEqual(dv.positions.length, 2, 'разные аппараты схлопнуты');
 });
 
+check('ЗИА (закалочно-испарительный аппарат) распознаётся как трубный пучок', () => {
+  // Тендер 2148: «Гидроструйная чистка ЗИА BORZIG (24 шт.)» оставалось без
+  // категории — аббревиатуры ЗИА не было в правилах, хотя по конструкции
+  // это кожухотрубный теплообменник.
+  const s = require('../src/services/mimir-tender-stages');
+  const cat = { categories: [{ code: 'tubes', methods_json: [{ code: 'gdo' }] }] };
+  for (const name of [
+    'Гидроструйная чистка ЗИА «BORZIG» (24 шт.)',
+    'Гидроструйная чистка ЗИА «Schmidt\'sche» (8 шт.)',
+    'Чистка закалочно-испарительного аппарата'
+  ]) {
+    const dv = s.normalizeDv({ positions: [{ name, unit: 'м²', volume: 100 }] }, cat);
+    const p = dv.positions[0];
+    assert.strictEqual(p.category_code, 'tubes', `«${name}» → ${p.category_code || 'пусто'}`);
+    assert.strictEqual(p.method_code, 'gdo');
+    assert.strictEqual(p.needs_classification, false, `«${name}» помечена как неклассифицированная`);
+  }
+});
+
+check('«24 апп.» не превращается в 24 трубки', () => {
+  // Число аппаратов ≠ число трубок. Защита обязана отдать это как измеренное
+  // значение, а не как tubes — иначе норма посчитает 24 трубки вместо 24 аппаратов.
+  const { inputsForPosition } = require('../src/services/norm-inputs');
+  const cat = {
+    categories: [{
+      code: 'tubes',
+      input_schema_json: { methods: { gdo: { fields: [{ key: 'tubes' }, { key: 'diameter_mm' }, { key: 'length_m' }] } } }
+    }]
+  };
+  const out = inputsForPosition({ category_code: 'tubes', method_code: 'gdo', volume: 24, unit: 'апп.' }, cat);
+  assert.strictEqual(out.tubes, undefined, 'аппараты подставлены как трубки: ' + JSON.stringify(out));
+  assert.strictEqual(out._measured_value, 24, 'потеряно значение');
+});
+
 console.log(`\nитог: ${pass} PASS, ${fail} FAIL`);
 process.exitCode = fail ? 1 : 0;
