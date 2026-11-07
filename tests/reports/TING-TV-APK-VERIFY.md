@@ -1,6 +1,6 @@
 # TING-TV-APK-VERIFY
 
-at: 2026-11-05T13:40:28.912Z
+at: 2026-11-05T15:30:10.751Z
 result: VERIFIED (12/12)
 
 | ID | PASS | Evidence |

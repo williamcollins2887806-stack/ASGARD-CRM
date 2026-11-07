@@ -87,6 +87,11 @@
       "verdict": "superseded_by_local",
       "acked_at": "2026-10-27",
       "acked_by": "deploy 20.28.312 (размеры СИЗ по Excel: V441 + импорт 179 чел.)"
+    },
+    "public/assets/css/app.css": {
+      "reason": "Prod-only 280 строк — это блоки .sched-* и .skud-* (график стаффа и СКУД), перенесённые в отдельный assets/css/office-schedule.css. В локальном app.css их нет, потому что стили вынесены; на проде они остались дублем.",
+      "evidence": "Проверено построчно: все 280 prod-only непустых строк присутствуют в public/assets/css/office-schedule.css (0 строк не найдено). Селекторы: .sched-header/.sched-cell/.sched-dash__*/.skud-banner__*/.skud-opt. office-schedule.css подключён в public/index.html строкой 69 (?v=20.28.407). Заливка app.css ничего не теряет: дубль заменяется вынесенным файлом.",
+      "verdict": "superseded_by_local"
     }
   }
 }
