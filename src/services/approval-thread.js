@@ -94,6 +94,61 @@ async function handleApprovalReply(db, email) {
         WHERE e.thread_id = $1`, [threadKey]);
     for (const r of q.rows) ids.add(r.id);
   }
+
+  // 2b) D-401 (08.11.2026): ТРЕД РАСПАДАЕТСЯ у ответов с телефона.
+  //
+  // Реальные случаи на проде:
+  //   счёт 5323 «Новошахтинский НПЗ, счет № 2611-482375-46780…»
+  //     → thread 25221793887946@mail.360.yandex.ru
+  //   «Добро» 5327 (ответ Гажилиева) → thread 1672281793890909@b2a204d6-…
+  //   счёт 5368 «НЗНП: Счет ООО Интернет Решения от 06.11.2026»
+  //     → thread 202331793983000@mail.360.yandex.ru
+  //   «Добро» 5371 (ответ Гажилиева) → thread 233251793984107@5633b918-…
+  //
+  // Почтовый клиент на iPhone ставит свой thread_id и НЕ проставляет
+  // in_reply_to исходного письма, поэтому оба штатных способа (references и
+  // thread_id) не находили заявку. Согласие оседало в doc_approval_grant
+  // неapplied, а заявка висела в очереди директора — хотя решение было.
+  //
+  // Матчим по НОМЕРУ СЧЁТА из темы письма: «счет № 2611-482375-46780»,
+  // «Счет ООО Интернет Решения от 06.11.2026» → нормализованный номер счёта.
+  // Это надёжнее контрагента: номер уникален, а «ВсеИнструменты» встречается
+  // в десятках счетов.
+  if (!ids.size) {
+    try {
+      const subj = String(email.subject || '').replace(/^\s*((re|fw|fwd|ответ|пересл)\s*:\s*)+/gi, '');
+      // Кандидаты — номера из темы: 2611-482375-46780, 0212923137-0058, ГЮ-1056…
+      const nums = (subj.match(/[A-Za-zА-Яа-я0-9]+(?:[-/][A-Za-zА-Яа-я0-9]+){1,}/g) || [])
+        .map((s) => s.trim())
+        .filter((s) => s.length >= 6 && /\d/.test(s));
+      if (nums.length) {
+        // Сравниваем нормализованно: без дефисов/пробелов/регистра.
+        const q = await db.query(
+          `SELECT pi.id, d.invoice_number
+             FROM payment_invoices pi
+             JOIN doc_registry d ON d.id = pi.doc_registry_id
+            WHERE pi.status = 'awaiting_dir'
+              AND d.deleted_at IS NULL
+              AND d.invoice_number IS NOT NULL
+              AND pi.created_at >= NOW() - INTERVAL '21 days'`);
+        const norm = (s) => String(s || '').toUpperCase().replace(/[^0-9A-ZА-ЯЁ]/g, '');
+        const hits = q.rows.filter((r) => {
+          const inv = norm(r.invoice_number);
+          return inv && nums.some((n) => norm(n) === inv || inv.includes(norm(n)) || norm(n).includes(inv));
+        });
+        // Привязываем только при ОДНОЗНАЧНОМ совпадении: иначе согласуем чужой счёт.
+        if (hits.length === 1) {
+          ids.add(hits[0].id);
+          console.log(`[approval-thread] «Добро» привязано по номеру счёта из темы: ` +
+            `заявка ${hits[0].id} (счёт ${hits[0].invoice_number})`);
+        } else if (hits.length > 1) {
+          console.warn(`[approval-thread] «Добро»: ${hits.length} заявок с номером из темы — не угадываю`);
+        }
+      }
+    } catch (e) {
+      console.warn('[approval-thread] fallback по номеру счёта: ' + (e && e.message));
+    }
+  }
   // 3) Фолбэк (D-321, заказчик 21.10.2026): «проверь, разве Гажилиев не присылал
   //    добро по этим счетам?». Заявки #9-#13 созданы через ЗАГРУЗКУ ФАЙЛА, а не
   //    из письма → у них НЕТ source_email_id, поэтому поиск по треду их не видит,
@@ -110,24 +165,43 @@ async function handleApprovalReply(db, email) {
         .map((w) => w.trim())
         .filter((w) => w.length >= 4 && !/^(счёт|счет|счета|счёта|счетов|оплата|оплатить|прошу|офис|согласовать|добро|срочно|письмо|входящий|исходящий)$/i.test(w));
       if (tokens.length) {
-        // Кандидаты: awaiting_dir без source_email_id, созданные за последние 14 дней.
-        // Сравнение — по вхождению значимого слова темы в имя контрагента.
+        // Кандидаты: awaiting_dir, созданные за последние 14 дней.
+        //
+        // D-401 (08.11.2026): раньше здесь стояло `source_email_id IS NULL`,
+        // то есть запасной матч работал ТОЛЬКО для заявок, загруженных файлом.
+        // Но счета из почты ВСЕГДА имеют source_email_id — и для них запасной
+        // путь был мёртв. Именно поэтому «Добро» Гажилиева (5327, 5371) не
+        // привязалось: счета пришли почтой. Ограничение снято; защита от
+        // чужого счёта осталась — привязываем, только если кандидат РОВНО один
+        // и сумма в теме (если она есть) совпадает.
         const params = [];
-        let where = `p.status='awaiting_dir' AND p.source_email_id IS NULL
+        let where = `p.status='awaiting_dir'
                      AND p.created_at >= NOW() - INTERVAL '14 days'`;
         const likes = tokens.slice(0, 3).map((t) => {
           params.push('%' + t.toLowerCase() + '%');
           return `lower(p.supplier_name) LIKE $${params.length}`;
         });
         where += ` AND (${likes.join(' OR ')})`;
-        const cand = await db.query(`SELECT p.id FROM payment_invoices p WHERE ${where}`, params);
-        if (cand.rows.length === 1) {
-          ids.add(cand.rows[0].id);
+        const cand = await db.query(`SELECT p.id, p.amount FROM payment_invoices p WHERE ${where}`, params);
+        // Сумма из тела/темы письма — дополнительный фильтр, если она там есть.
+        const moneyInText = (String(email.subject || '') + ' ' + String(body || ''))
+          .match(/(\d[\d\s]{2,})[.,]?(\d{2})?\s*(?:руб|₽)/i);
+        let cands = cand.rows;
+        if (moneyInText && cands.length > 1) {
+          const want = Number(String(moneyInText[1]).replace(/\s/g, '') +
+            (moneyInText[2] ? '.' + moneyInText[2] : ''));
+          if (Number.isFinite(want) && want > 0) {
+            const bySum = cands.filter((c) => Math.abs(Number(c.amount) - want) < 0.01);
+            if (bySum.length) cands = bySum;
+          }
+        }
+        if (cands.length === 1) {
+          ids.add(cands[0].id);
           try {
-            console.log(`[approval-thread] «Добро» привязано по контрагенту к заявке ${cand.rows[0].id} (тема: ${cleaned.slice(0, 60)})`);
+            console.log(`[approval-thread] «Добро» привязано по контрагенту к заявке ${cands[0].id} (тема: ${cleaned.slice(0, 60)})`);
           } catch (_) {}
-        } else if (cand.rows.length > 1) {
-          console.warn(`[approval-thread] «Добро»: ${cand.rows.length} кандидатов по контрагенту — не угадываю`);
+        } else if (cands.length > 1) {
+          console.warn(`[approval-thread] «Добро»: ${cands.length} кандидатов по контрагенту — не угадываю`);
         }
       }
     } catch (e) {

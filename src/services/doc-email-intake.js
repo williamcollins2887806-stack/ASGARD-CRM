@@ -210,12 +210,102 @@ function ids(email, attachment) {
 }
 
 /**
+ * Снять Markdown-разметку из текста, полученного от vision-OCR.
+ *
+ * D-398 (08.11.2026). Модель возвращает реквизиты размеченными:
+ *
+ *   **Тип документа:** Счёт
+ *   **БИК:** 044525593
+ *   | Наименование | Кол-во | Сумма |
+ *   - пункт списка
+ *   ## Заголовок
+ *
+ * Классификатор, экстрактор реквизитов и ИИ ждут обычный текст счёта: их
+ * регулярки (`БИК[\s:№]*\d{9}`, `Р/с …\d{20}`, `Счёт на оплату № …`) двоеточие
+ * после `**` не пропускают. В результате настоящий счёт классифицировался как
+ * `other` / `no_bank` и отклонялся.
+ *
+ * ВАЖНО: функцию вызывают ТОЛЬКО для OCR-текста. Перед снятием проверяем, что
+ * разметка действительно есть — иначе обычный текст счёта, где встречается
+ * дефис в начале строки, мог бы пострадать.
+ *
+ * @param {string} raw
+ * @returns {string}
+ */
+function stripMarkdown(raw) {
+  const s = String(raw || '');
+  if (!s) return '';
+  // Признаки разметки: жирный/курсив, заголовки, таблицы, списки.
+  const hasMarkup = /\*\*[^*\n]+\*\*/.test(s)
+    || /^#{1,6}\s+\S/m.test(s)
+    || /^\s*\|.*\|/m.test(s)
+    || /^\s*[-*]\s+\S/m.test(s);
+  if (!hasMarkup) return s;
+
+  let out = s
+    // `**жирный**`, `__жирный__`, `*курсив*`, `_курсив_`
+    .replace(/\*\*([^*\n]+)\*\*/g, '$1')
+    .replace(/__([^_\n]+)__/g, '$1')
+    .replace(/(^|[\s(])\*([^*\n]+)\*(?=[\s.,:;)]|$)/g, '$1$2')
+    // Заголовки `## …`
+    .replace(/^#{1,6}\s+/gm, '')
+    // Таблицы: убираем разделители, оставляем содержимое ячеек через пробел
+    .replace(/^\s*\|?[\s:|-]+\|[\s:|-]*$/gm, '')
+    .replace(/\s*\|\s*/g, ' ')
+    // Маркеры списков `- `, `* `, `• ` в начале строки
+    .replace(/^\s*[-*•]\s+/gm, '')
+    // Нумерованные списки — сохраняем номер, убираем только точку-разделитель
+    // вида «1. текст» → «1. текст» (не трогаем, это валидный текст счёта)
+    // Код-блоки и инлайн-код
+    .replace(/```[a-z]*\n?/gi, '')
+    .replace(/`([^`\n]+)`/g, '$1')
+    // Горизонтальные линии
+    .replace(/^\s*[-*_]{3,}\s*$/gm, '');
+
+  // Схлопываем тройные пустые строки, появившиеся после чистки.
+  out = out.replace(/\n{3,}/g, '\n\n').trim();
+  return out;
+}
+
+
+/**
  * Обработать одно вложение-счёт.
  * @param {object} db
  * @param {{email:object, attachment:object, text:string, userId?:number, dryRun?:boolean}} opts
  */
 async function intakeOne(db, { email, attachment, text, userId = null, dryRun = false, invoicesInEmail = 1 }) {
   const { emailId, attachmentId } = ids(email, attachment);
+  // ═══════════════════════════════════════════════════════════════════════
+  // D-398 (инцидент 08.11.2026): OCR возвращает текст в MARKDOWN.
+  // ═══════════════════════════════════════════════════════════════════════
+  // Счёт ИП Гомзяковой (письмо #5352, скан без текстового слоя) модель
+  // прочитала верно — 1129 символов, номер 115559, дата 05.11.2026, суммы,
+  // БИК, р/с. Но ответ пришёл размеченным:
+  //
+  //     **Тип документа:** Счёт
+  //     **Банк:** АО "Альфа-Банк" г. Москва
+  //     **Расчётный счёт:** 40702810502260000343
+  //
+  // Классификатор ищет `БИК[\s:№]*\d{9}` и `Р/с …\d{20}` — двоеточие после
+  // `**БИК**` рвёт шаблон (`**БИК:** 044525593`). Признак «это счёт» терялся:
+  // `kind=other, reason=no_bank` → файл отклонялся как НЕ счёт, строка в
+  // реестр не попадала. Проверено на том же тексте:
+  //     raw (markdown) → other / invoice=false (no_bank)
+  //     clean          → invoice / invoice=true (bank+word)
+  //
+  // Снимаем разметку ОДИН раз здесь, до классификатора, парсера и ИИ — чтобы
+  // все три видели одинаковый текст. Это не «костыль под один счёт»: 11 из
+  // записей intake за месяц приходят размеченными, и любая из них ломалась бы
+  // так же.
+  // ═══════════════════════════════════════════════════════════════════════
+  const normalizedText = stripMarkdown(text);
+  const originalLength = String(text || '').length;
+  if (normalizedText !== String(text || '')) {
+    console.log(`[intake] письмо ${emailId}: снята markdown-разметка ` +
+      `(${originalLength} → ${normalizedText.length} символов)`);
+  }
+  text = normalizedText;
+
   // ДЕФЕКТ (заказчик 19.10.2026): строка реестра создавалась БЕЗ ссылки на скан —
   // «счёт не приложен», хотя файл в письме есть. Достаём путь вложения сразу,
   // чтобы записать его в doc_registry.original_path_url.
@@ -532,7 +622,39 @@ async function intakeOne(db, { email, attachment, text, userId = null, dryRun = 
     const outgoingNo = /^\s*Исх\.?\s*№/im.test(String(text || ''));
     const weAreSeller = String(parsed.seller_inn || '') === String(ownInnStr)
       || String(parsed._we_are_seller || '') === 'true';
-    if (outgoingNo || weAreSeller) {
+
+    // D-398 (08.11.2026): OCR иногда ПУТАЕТ продавца и покупателя в сканах.
+    // Счёт ИП Гомзяковой (вода в офис, 500 ₽) модель прочитала так, что наш
+    // ИНН оказался «Поставщиком», а сама Гомзякова — «Покупателем». Из-за
+    // этого счёт считался НАШИМ исходящим документом и отбрасывался —
+    // в реестр не попадал.
+    //
+    // Признак путаницы: документ называется «Счёт на оплату» с фразой
+    // «Просим оплатить»/«Оплата данного счёта означает…», но продавцом
+    // указаны МЫ. По смыслу платят НАМ только в исходящем счёте, который мы
+    // выставляем клиенту, — и тогда в тексте стоит наш исходящий номер.
+    // Если исходящего номера нет, а есть просьба оплатить — роли перепутаны.
+    let rolesConfused = false;
+    if (weAreSeller && !outgoingNo) {
+      const asksToPay = /(просим\s+оплатить|оплата\s+данного\s+сч[её]та|оплатить\s+сч[её]т)/i.test(String(text || ''));
+      const invoiceLike = /(сч[её]т\s+на\s+оплату|сч[её]т\s*(?:№|N|No)\.?\s*[\w\-/]+)/i.test(String(text || ''));
+      if (asksToPay && invoiceLike) {
+        rolesConfused = true;
+        console.warn(`[intake] письмо ${emailId}: OCR перепутал роли — мы указаны поставщиком, ` +
+          `но документ просит оплатить; трактую как ВХОДЯЩИЙ счёт`);
+        parsed._ai_warnings = (parsed._ai_warnings || []).concat(['roles_confused_by_ocr']);
+        // Считаем, что продавец — тот, кого модель назвала покупателем.
+        const altSeller = parsed.payee_name && parsed.payee_name !== parsed.seller_name
+          ? parsed.payee_name : (parsed.counterparty_name || null);
+        if (altSeller) parsed.seller_name = altSeller;
+        // Наш ИНН как «продавец» отбрасываем: лицо контрагента — другая сторона.
+        if (String(parsed.seller_inn || '') === String(ownInnStr)) parsed.seller_inn = null;
+        if (String(parsed.payee_inn || '') === String(ownInnStr)) parsed.payee_inn = null;
+        parsed.inn_is_own = false;
+      }
+    }
+
+    if ((outgoingNo || weAreSeller) && !rolesConfused) {
       ownCompanyLetter = true;
       parsed._ai_warnings = (parsed._ai_warnings || []).concat(['own_company_document']);
       console.warn(`[intake] письмо ${emailId}: НАШ документ (Исх.№=${outgoingNo}, мы продавец=${weAreSeller}) ` +
@@ -647,10 +769,28 @@ async function intakeOne(db, { email, attachment, text, userId = null, dryRun = 
     // читаемые заглушки, чтобы строка всё равно попала в реестр (needs_manual).
     // D-283: чистим название контрагента от OCR-мусора (незакрытые/вложенные
     // кавычки). Кривое имя ломает поиск и связывание с справочником.
-    const cpName = tidyOrgName(parsed.counterparty_name || (parsed.inn ? ('ИНН ' + parsed.inn) : 'Контрагент не распознан'));
+    //
+    // D-398 (08.11.2026): на сканах контрагент часто остаётся пустым —
+    // экстрактор реквизитов ищет «Поставщик:» без разметки, а vision-OCR ставит
+    // двоеточие после `**`. Тогда в реестр попадало НАШЕ имя (из блока
+    // покупателя). Правильный источник — `seller_name`/`payee_name`, которые
+    // заполняет ИИ-разбор: это тот, кому платят.
+    const cpFallback = parsed.counterparty_name
+      || parsed.seller_name
+      || parsed.payee_name
+      || null;
+    const cpName = tidyOrgName(cpFallback || (parsed.inn ? ('ИНН ' + parsed.inn) : 'Контрагент не распознан'));
     const gross = parsed.amount_gross != null ? parsed.amount_gross : 0;
     const net = parsed.amount_net != null ? parsed.amount_net : gross;
     const vat = parsed.vat_amount != null ? parsed.vat_amount : 0;
+    // D-398: пустой `inn` на сканах означает, что ИИ дал реквизиты в
+    // `seller_inn`/`payee_inn`. Подставляем его как ИНН контрагента — иначе
+    // карточка создаётся без ИНН, поставщик не находится, реквизиты для
+    // платёжки не подтягиваются.
+    if (!parsed.inn) {
+      const altInn = String(parsed.seller_inn || parsed.payee_inn || '').replace(/\D/g, '');
+      if (altInn.length === 10 || altInn.length === 12) parsed.inn = altInn;
+    }
     // Ищем поставщика по ИНН — чтобы в заявке/модалке были реквизиты для платёжки.
     let supplierId = null;
     if (parsed.inn) {
@@ -1167,4 +1307,4 @@ async function intakeEmail(db, { email, invoices, userId = null }) {
   return { count: results.length, created, needs_manual: needsManual, already, results };
 }
 
-module.exports = { intakeOne, intakeEmail, confidenceMin, resolveSenderUserId, extractWorkHintFromSubject };
+module.exports = { intakeOne, intakeEmail, confidenceMin, resolveSenderUserId, extractWorkHintFromSubject, stripMarkdown };

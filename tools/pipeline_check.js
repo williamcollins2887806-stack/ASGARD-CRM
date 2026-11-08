@@ -98,6 +98,49 @@ function note(section, name, detail) {
   if (!dupDocs.length) ok('2. Счета', 'дублей по номеру+сумме+дате нет', '0 пар');
   else bad('2. Счета', 'ДУБЛИ счетов', dupDocs.map((d) => `${d.invoice_number}/${d.amount_gross} → ${d.ids.join(',')}`).join('; '));
 
+  // ═══════════════════════════════════════════════════════════════════════
+  // D-399 (08.11.2026): ДУБЛЬ, У КОТОРОГО ОДНА СТРОКА БЕЗ НОМЕРА.
+  // ═══════════════════════════════════════════════════════════════════════
+  // Запрос выше группирует по `invoice_number`, поэтому `NULL` не попадает
+  // ни в одну группу: пара «настоящий счёт + фантом без номера» была невидима.
+  //
+  // Реальный случай на проде: #2197 (ООО «ИНТЕРНЕТ РЕШЕНИЯ», 3346 ₽, номер
+  // 0212923137-0058, владелец Тумаева) и #2199 (та же сумма и дата, БЕЗ номера,
+  // без файла, владелец Яковлев) — создан из ответа в треде. Чек-лист показывал
+  // «дублей нет», хотя в реестре висели две строки на один счёт.
+  //
+  // Ищем пары: одинаковая сумма + одинаковая дата счёта, у одной номер есть,
+  // у другой нет. Номер у «фантома» отсутствует — значит подтвердить, что это
+  // ДРУГОЙ счёт, нечем, а сумма и дата совпадают. Это тревожный сигнал,
+  // а не приговор: показываем пару, решение принимает человек.
+  const dupNoNumber = await q(`
+      SELECT a.id AS phantom_id, b.id AS real_id,
+             a.amount_gross, a.invoice_date,
+             COALESCE(b.invoice_number, '-') AS real_number,
+             a.doc_owner_id AS phantom_owner, b.doc_owner_id AS real_owner,
+             a.payment_invoice_id AS phantom_pi,
+             (a.original_path_url IS NULL
+              AND jsonb_array_length(COALESCE(a.attachments,'[]'::jsonb)) = 0) AS phantom_no_file
+        FROM doc_registry a
+        JOIN doc_registry b
+          ON b.deleted_at IS NULL AND b.dir = 'in' AND b.package_type <> 'letter'
+         AND b.amount_gross = a.amount_gross
+         AND b.invoice_date IS NOT DISTINCT FROM a.invoice_date
+         AND b.id <> a.id
+         AND COALESCE(trim(b.invoice_number), '') <> ''
+       WHERE a.deleted_at IS NULL AND a.dir = 'in' AND a.package_type <> 'letter'
+         AND COALESCE(trim(a.invoice_number), '') = ''
+         AND a.amount_gross > 0
+       ORDER BY a.id DESC
+       LIMIT 10`);
+  if (!dupNoNumber.length) {
+    ok('2. Счета', 'нет пар «счёт без номера ↔ счёт с номером»', 'проверено по сумме и дате');
+  } else {
+    bad('2. Счета', 'ДУБЛЬ: строка без номера при наличии счёта с номером',
+      dupNoNumber.map((d) => `#${d.phantom_id} (б/н${d.phantom_no_file ? ', без файла' : ''}) ↔ ` +
+        `#${d.real_id} (№${d.real_number}) на ${d.amount_gross}`).join('; '));
+  }
+
   const ownAsCp = await one(`SELECT count(*)::int n FROM doc_registry
       WHERE deleted_at IS NULL AND counterparty_inn = $1`, [OWN_INN]);
   if (!ownAsCp.n) ok('2. Счета', 'наш ИНН не фигурирует как контрагент', `0 строк`);
