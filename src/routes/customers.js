@@ -198,9 +198,19 @@ async function routes(fastify, options) {
               WHERE d.deleted_at IS NULL AND d.supplier_id = s.id${vis}
            ) dc ON true
            LEFT JOIN LATERAL (
+             -- D-402 (08.11.2026): договоры считаем ПО ИНН, а не только по имени.
+             -- Имя в договоре и в справочнике расходится на кавычки и регистр
+             -- («ООО "ГАЛА ЮГ"» vs «ООО Гала Юг»), из-за чего счётчик показывал 0,
+             -- хотя договор есть. ИНН — надёжный ключ; сравнение по имени
+             -- оставляем как запасное, для старых записей без customer_inn.
              SELECT count(*) AS contracts FROM contracts c
               WHERE COALESCE(TRIM(c.counterparty_name), '') <> ''
-                AND lower(TRIM(c.counterparty_name)) = lower(TRIM(s.name))
+                AND (
+                  (s.inn IS NOT NULL AND regexp_replace(COALESCE(s.inn,''), '\D', '', 'g') <> ''
+                     AND regexp_replace(COALESCE(c.customer_inn,''), '\D', '', 'g')
+                         = regexp_replace(COALESCE(s.inn,''), '\D', '', 'g'))
+                  OR lower(TRIM(c.counterparty_name)) = lower(TRIM(s.name))
+                )
            ) ct ON true
           WHERE s.deleted_at IS NULL
             AND (s.name ILIKE $1 OR COALESCE(s.inn, '') LIKE $1 OR lower(COALESCE(s.inn, '')) LIKE $1)
@@ -551,23 +561,77 @@ async function routes(fastify, options) {
 
     const contractsRes = await db.query(
       `SELECT COUNT(*)::int AS n FROM contracts ct
-        WHERE COALESCE(TRIM(ct.counterparty_name), '') <> ''
-          AND (
-            EXISTS (
-              SELECT 1 FROM customers c WHERE c.inn = $1
-                AND lower(TRIM(c.name)) = lower(TRIM(ct.counterparty_name))
-            )
-            OR EXISTS (
-              SELECT 1 FROM suppliers s
-               WHERE s.deleted_at IS NULL
-                 AND regexp_replace(COALESCE(s.inn,''), '\\D', '', 'g') = $1
-                 AND lower(TRIM(s.name)) = lower(TRIM(ct.counterparty_name))
+        WHERE (
+            -- D-402 (08.11.2026): главный ключ — ИНН. По имени договор не
+            -- находился, если написание расходилось на кавычки/регистр
+            -- («ООО "ГАЛА ЮГ"» vs «ООО Гала Юг») — карточка показывала 0.
+            regexp_replace(COALESCE(ct.customer_inn, ''), '\\D', '', 'g') = $1
+            -- Запасной путь для старых записей без customer_inn.
+            OR (
+              COALESCE(TRIM(ct.counterparty_name), '') <> ''
+              AND (
+                EXISTS (
+                  SELECT 1 FROM customers c WHERE c.inn = $1
+                    AND lower(TRIM(c.name)) = lower(TRIM(ct.counterparty_name))
+                )
+                OR EXISTS (
+                  SELECT 1 FROM suppliers s
+                   WHERE s.deleted_at IS NULL
+                     AND regexp_replace(COALESCE(s.inn,''), '\\D', '', 'g') = $1
+                     AND lower(TRIM(s.name)) = lower(TRIM(ct.counterparty_name))
+                )
+              )
             )
           )`, [inn]
     ).catch(() => ({ rows: [{ n: 0 }] }));
 
     const docsIn = +(docsInRes.rows[0] && docsInRes.rows[0].n) || 0;
     const contractsCnt = +(contractsRes.rows[0] && contractsRes.rows[0].n) || 0;
+
+    // D-402 (08.11.2026): СПИСОК договоров и счетов контрагента, не только цифры.
+    // Заказчик: «в карточке контрагента видеть все договора и счета по этому
+    // контрагенту». Счётчик без списка не отвечает на вопрос «какие именно» —
+    // приходилось идти в реестр договоров и искать вручную.
+    //
+    // Договоры ищем по ИНН (основной ключ) с запасным путём по имени для
+    // старых записей без customer_inn.
+    const contractListRes = await db.query(
+      `SELECT ct.id, ct.number, ct.type, ct.status, ct.amount, ct.start_date,
+              ct.counterparty_name, ct.customer_inn,
+              (ct.file_path IS NOT NULL OR ct.file_url IS NOT NULL) AS has_scan,
+              (SELECT count(*)::int FROM doc_registry d
+                WHERE d.deleted_at IS NULL AND d.contract_id = ct.id) AS docs_count
+         FROM contracts ct
+        WHERE regexp_replace(COALESCE(ct.customer_inn, ''), '\\D', '', 'g') = $1
+           OR (
+             COALESCE(TRIM(ct.counterparty_name), '') <> ''
+             AND lower(TRIM(ct.counterparty_name)) = lower(TRIM($2))
+           )
+        ORDER BY ct.start_date DESC NULLS LAST, ct.id DESC
+        LIMIT 50`, [inn, (profileRes.rows[0] && profileRes.rows[0].name) || '']
+    ).catch(() => ({ rows: [] }));
+
+    // Счета (входящие) контрагента — по ИНН и через справочник поставщиков.
+    const docListRes = await db.query(
+      `SELECT d.id, d.invoice_number, d.invoice_date, d.amount_gross, d.ops_status,
+              d.pay_status, d.contract_id, d.spend_kind,
+              COALESCE(w.work_number, '') AS work_number,
+              COALESCE(w.object_name, w.work_title, '') AS object_name
+         FROM doc_registry d
+         LEFT JOIN works w ON w.id = d.work_id
+        WHERE d.deleted_at IS NULL AND d.dir = 'in' AND d.package_type <> 'letter'
+          AND (
+            regexp_replace(COALESCE(d.counterparty_inn,''), '\\D', '', 'g') = $1
+            OR d.supplier_id IN (
+              SELECT id FROM suppliers
+               WHERE deleted_at IS NULL
+                 AND regexp_replace(COALESCE(inn,''), '\\D', '', 'g') = $1
+            )
+          )
+        ORDER BY d.invoice_date DESC NULLS LAST, d.id DESC
+        LIMIT 100`, [inn]
+    ).catch(() => ({ rows: [] }));
+
     const invoicesOut = await db.query(
       `SELECT COUNT(*)::int AS n FROM invoices WHERE customer_inn = $1`, [inn]
     ).catch(() => ({ rows: [{ n: 0 }] }));
@@ -589,6 +653,31 @@ async function routes(fastify, options) {
         docs_in: docsIn,
         invoices_out: invOut
       },
+      // D-402: списки для карточки — по ним видно, какие именно договоры и
+      // счета относятся к этому контрагенту. Счётчики выше остаются для KPI.
+      contracts_list: contractListRes.rows.map((r) => ({
+        id: r.id,
+        number: r.number,
+        type: r.type,
+        status: r.status,
+        amount: r.amount != null ? Number(r.amount) : null,
+        date: r.start_date,
+        counterparty_name: r.counterparty_name,
+        has_scan: !!r.has_scan,
+        docs_count: +r.docs_count || 0
+      })),
+      docs_list: docListRes.rows.map((r) => ({
+        id: r.id,
+        invoice_number: r.invoice_number,
+        invoice_date: r.invoice_date,
+        amount: r.amount_gross != null ? Number(r.amount_gross) : null,
+        ops_status: r.ops_status,
+        pay_status: r.pay_status,
+        contract_id: r.contract_id || null,
+        spend_kind: r.spend_kind || null,
+        work_number: r.work_number || null,
+        object_name: r.object_name || null
+      })),
       tenders: {
         total:        +t.total,
         won:          +t.won,

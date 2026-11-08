@@ -91,11 +91,84 @@ window.AsgardCustomerCard = (function () {
             <tbody>${statusRows}</tbody></table>
           </div>` : ''}
 
+        ${contractsHtml(d.contracts_list)}
+
+        ${docsHtml(d.docs_list)}
+
         <div class="cp-panel" style="padding:12px" id="ccChecklistsBlock">
           <div class="help" style="margin-bottom:8px;font-weight:700">Чек-листы анализа</div>
           <div id="ccChecklists"><div class="help">Загрузка…</div></div>
         </div>
       </div>`;
+  }
+
+  /**
+   * D-402 (08.11.2026): список договоров контрагента.
+   *
+   * Заказчик: «в карточке контрагента видеть все договора и счета по этому
+   * контрагенту». Раньше был только счётчик «Договоры: 3» — какие именно,
+   * приходилось искать в реестре договоров вручную.
+   */
+  function contractsHtml(list) {
+    if (!Array.isArray(list) || !list.length) {
+      return `<div class="cp-panel" style="padding:12px;margin-bottom:8px">
+        <div class="help" style="margin-bottom:8px;font-weight:700">Договоры</div>
+        <div class="help">Договоров по этому контрагенту нет.</div>
+      </div>`;
+    }
+    const rows = list.map((c) => {
+      const sum = c.amount != null ? fmt(c.amount) + ' ₽' : '—';
+      const date = c.date ? String(c.date).slice(0, 10).split('-').reverse().join('.') : '—';
+      const scan = c.has_scan ? 'есть' : '—';
+      const linked = c.docs_count > 0 ? c.docs_count : '—';
+      return `<tr>
+        <td>${esc(c.number || '—')}</td>
+        <td>${esc(date)}</td>
+        <td>${esc(sum)}</td>
+        <td>${esc(scan)}</td>
+        <td>${esc(String(linked))}</td>
+        <td>${esc(c.status || '')}</td>
+      </tr>`;
+    }).join('');
+    return `<div class="cp-panel" style="padding:12px;margin-bottom:8px">
+      <div class="help" style="margin-bottom:8px;font-weight:700">Договоры (${list.length})</div>
+      <table class="cp-table">
+        <thead><tr><th>Номер</th><th>Дата</th><th>Сумма</th><th>Скан</th><th>Счетов</th><th>Статус</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>`;
+  }
+
+  /** D-402: список счетов контрагента — с номером договора, если привязан. */
+  function docsHtml(list) {
+    if (!Array.isArray(list) || !list.length) {
+      return `<div class="cp-panel" style="padding:12px;margin-bottom:8px">
+        <div class="help" style="margin-bottom:8px;font-weight:700">Счета</div>
+        <div class="help">Счетов по этому контрагенту нет.</div>
+      </div>`;
+    }
+    const rows = list.slice(0, 40).map((d) => {
+      const sum = d.amount != null ? fmt(d.amount) + ' ₽' : '—';
+      const date = d.invoice_date ? String(d.invoice_date).slice(0, 10).split('-').reverse().join('.') : '—';
+      const obj = d.object_name ? String(d.object_name).slice(0, 40) : (d.work_number || '—');
+      return `<tr>
+        <td>${esc(d.invoice_number || 'б/н')}</td>
+        <td>${esc(date)}</td>
+        <td>${esc(sum)}</td>
+        <td>${esc(obj)}</td>
+        <td>${d.contract_id ? 'да' : '—'}</td>
+        <td>${esc(d.ops_status || '')}</td>
+      </tr>`;
+    }).join('');
+    const more = list.length > 40 ? `<div class="help" style="margin-top:6px">Показаны 40 из ${list.length}.</div>` : '';
+    return `<div class="cp-panel" style="padding:12px;margin-bottom:8px">
+      <div class="help" style="margin-bottom:8px;font-weight:700">Счета (${list.length})</div>
+      <table class="cp-table">
+        <thead><tr><th>Счёт</th><th>Дата</th><th>Сумма</th><th>Объект</th><th>Договор</th><th>Статус</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+      ${more}
+    </div>`;
   }
 
   function checklistsHtml(items) {

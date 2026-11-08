@@ -539,7 +539,52 @@ async function intakeOne(db, { email, attachment, text, userId = null, dryRun = 
     };
   }
 
-  // Не счёт (сертификат/акт/договор/УПД/накладная) — не создаём заявку.
+  // ── D-402 (08.11.2026): ДОГОВОР идёт в РЕЕСТР ДОГОВОРОВ, а не в «не счёт».
+  // ═══════════════════════════════════════════════════════════════════════
+  // Раньше любое вложение с `kind='contract'` отклонялось: файл оставался в
+  // почте, в `contracts` не появлялся, скан терялся. На проде за месяц так
+  // пропали 9 договоров из 12 (проверено: `rejected (not_invoice:contract)`).
+  //
+  // Теперь договор создаёт (или дополняет) запись в реестре договоров —
+  // со сканом, контрагентом и номером. Заявку на оплату при этом НЕ создаём:
+  // договор — не платёжный документ.
+  if (!cls.is_invoice && cls.kind === 'contract') {
+    try {
+      const { ensureContractFromDocument } = require('./contract-from-document');
+      const res = await ensureContractFromDocument(db, {
+        text: text || '',
+        filePath: attachFilePath || null,
+        fileName: attachFileName || null,
+        counterpartyInn: parsed.inn || null,
+        counterpartyName: parsed.counterparty_name || null,
+        ownInn: ownInnStr,
+        userId: senderUserId || null,
+        emailId,
+        attachmentId,
+        log: console,
+        dryRun,
+      });
+      if (emailId && attachmentId && !dryRun) {
+        await db.query(
+          `INSERT INTO doc_email_intake(email_id, attachment_id, status, parse_raw, error)
+           VALUES ($1,$2,'contract',$3::jsonb,$4)
+           ON CONFLICT (email_id, attachment_id) WHERE email_id IS NOT NULL AND attachment_id IS NOT NULL
+           DO NOTHING`,
+          [emailId, attachmentId, JSON.stringify(parsed),
+            `contract_${res.action}:${res.reason}` + (res.contract && res.contract.id ? `#${res.contract.id}` : '')]);
+      }
+      return {
+        status: 'contract', contract_action: res.action,
+        contract_id: res.contract && res.contract.id || null,
+        reason: res.reason, parsed,
+      };
+    } catch (e) {
+      console.warn('[intake] договор из письма: ' + (e && e.message));
+      // Падать не должны: файл всё равно остаётся в почте.
+    }
+  }
+
+  // Не счёт (сертификат/акт/УПД/накладная) — не создаём заявку.
   if (!cls.is_invoice && cls.kind !== 'unknown') {
     if (dryRun) return { status: 'skipped', kind: cls.kind, parsed, dry_run: true };
     // Пишем в журнал как «не счёт» (для отладки), без заявки и реестра.
