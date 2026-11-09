@@ -607,8 +607,89 @@ async function splitClosedStayIfNeeded(db, stay, log) {
 }
 
 /**
+ * Сироты: stay уже закрыт (auto_travel), assignment на МЛСП ещё active.
+ * Снимаем датой съезда stay, если нет открытого stay и нет смен/to_site после.
+ */
+async function closeOrphanMlspAssignments(db, log) {
+  const reason = 'Авто: выезд с МЛСП (backfill: stay закрыт, назначение висело)';
+  const { rows } = await db.query(`
+    WITH last_closed AS (
+      SELECT DISTINCT ON (s.employee_id)
+             s.id AS stay_id, s.employee_id, s.actual_departed_at, s.departed_source
+      FROM mlsp_stays s
+      WHERE s.actual_departed_at IS NOT NULL
+      ORDER BY s.employee_id, s.actual_departed_at DESC, s.id DESC
+    ),
+    orphans AS (
+      SELECT ea.id AS assignment_id, ea.employee_id, ea.work_id,
+             lc.actual_departed_at::date AS stay_departed
+      FROM employee_assignments ea
+      JOIN field_project_settings fps ON fps.work_id = ea.work_id AND fps.site_category = 'mlsp'
+      JOIN last_closed lc ON lc.employee_id = ea.employee_id
+      WHERE COALESCE(ea.is_active, true) = true
+        AND ea.departure_date IS NULL
+        AND lc.departed_source = 'auto_travel'
+        AND NOT EXISTS (
+          SELECT 1 FROM mlsp_stays s2
+          WHERE s2.employee_id = ea.employee_id AND s2.actual_departed_at IS NULL
+        )
+        AND NOT EXISTS (
+          SELECT 1 FROM field_checkins fc
+          WHERE fc.employee_id = ea.employee_id AND fc.work_id = ea.work_id
+            AND fc.status = 'completed' AND fc.shift IN ('day', 'night')
+            AND fc.date > lc.actual_departed_at
+        )
+        AND NOT EXISTS (
+          SELECT 1 FROM field_trip_stages fts
+          WHERE fts.employee_id = ea.employee_id AND fts.work_id = ea.work_id
+            AND fts.direction = 'to_site'
+            AND fts.stage_type IN ('travel', 'ship', 'helicopter')
+            AND COALESCE(fts.status, 'active') NOT IN ('rejected', 'cancelled')
+            AND fts.date_from::date > lc.actual_departed_at
+        )
+    )
+    UPDATE employee_assignments ea
+       SET departure_date = o.stay_departed,
+           departure_reason = COALESCE(ea.departure_reason, $1),
+           is_active = false,
+           inactivity_auto_departed_at = NOW(),
+           updated_at = NOW()
+      FROM orphans o
+     WHERE ea.id = o.assignment_id
+       AND COALESCE(ea.is_active, true) = true
+       AND ea.departure_date IS NULL
+     RETURNING ea.id, ea.employee_id, ea.work_id, ea.departure_date
+  `, [reason]);
+
+  if (!rows.length) return 0;
+
+  const empIds = [...new Set(rows.map((r) => r.employee_id))];
+  try {
+    await db.query(`
+      UPDATE employees
+         SET readiness_status = 'unknown', readiness_updated_at = NOW()
+       WHERE id = ANY($1::int[])
+         AND COALESCE(readiness_status, '') IN ('on_site', '')
+    `, [empIds]);
+  } catch (_) { /* ignore */ }
+
+  for (const r of rows) {
+    try {
+      await db.query(`
+        UPDATE site_crew_removal_requests
+           SET status = 'cancelled', updated_at = NOW()
+         WHERE work_id = $1 AND employee_id = $2 AND status = 'warned'
+      `, [r.work_id, r.employee_id]);
+    } catch (_) { /* ignore */ }
+    log?.info?.(`[mlsp-stay] orphan-assign-close emp#${r.employee_id} work#${r.work_id} dep=${ymd(r.departure_date)}`);
+  }
+  return rows.length;
+}
+
+/**
  * Reconcile: бэкфилл разрезов закрытых вахт; затем цикл
- * «закрыть по from_site → открыть новую по первой смене».
+ * «закрыть по from_site → открыть новую по первой смене»;
+ * затем снять сиротские assignment (stay закрыт, бригада висит).
  */
 async function reconcileStays(db, log) {
   const splitClosed = await backfillClosedStaySplits(db, log);
@@ -621,7 +702,8 @@ async function reconcileStays(db, log) {
     opened += o;
     if (!d && !o) break;
   }
-  return { opened, autoDeparted, splitClosed };
+  const orphansClosed = await closeOrphanMlspAssignments(db, log);
+  return { opened, autoDeparted, splitClosed, orphansClosed };
 }
 
 async function tryAutoDepart(db, stay, log) {
@@ -825,6 +907,7 @@ module.exports = {
   reopenAutoStay,
   closeMlspAssignments,
   reopenMlspAssignments,
+  closeOrphanMlspAssignments,
   reconcileStays,
   tryAutoDepart,
   backfillClosedStaySplits,

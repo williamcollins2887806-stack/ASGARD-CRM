@@ -417,7 +417,7 @@ async function runNotifies(db, log) {
 
 async function run(db, log) {
   const rec = await reconcileStays(db, log);
-  log.info(`[mlsp-stay-cron] reconcile opened=${rec.opened} autoDeparted=${rec.autoDeparted} splitClosed=${rec.splitClosed || 0}`);
+  log.info(`[mlsp-stay-cron] reconcile opened=${rec.opened} autoDeparted=${rec.autoDeparted} splitClosed=${rec.splitClosed || 0} orphansClosed=${rec.orphansClosed || 0}`);
   const n = await runNotifies(db, log);
   return { ...rec, ...n };
 }
