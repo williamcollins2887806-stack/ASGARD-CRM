@@ -454,11 +454,24 @@
 
     let primary = remotes[0] || local;
     let primaryTrack = pickVideoTrack(primary);
-    // Prefer remote with video
-    remotes.forEach((p) => {
-      const t = pickVideoTrack(p);
-      if (t) { primary = p; primaryTrack = t; }
-    });
+    /* D-181: приоритет — активный спикер (как в Телемосте), иначе первый с видео.
+       Раньше PiP навсегда застревал на первом участнике с видео. */
+    const activeId = S && S.getState ? S.getState().activeSpeakerId : null;
+    if (activeId) {
+      if (local && local.identity === activeId) {
+        primary = local;
+        primaryTrack = pickVideoTrack(local);
+      } else {
+        const ap = remotes.find((p) => p.identity === activeId);
+        if (ap) { primary = ap; primaryTrack = pickVideoTrack(ap); }
+      }
+    }
+    if (!primaryTrack) {
+      remotes.forEach((p) => {
+        const t = pickVideoTrack(p);
+        if (t) { primary = p; primaryTrack = t; }
+      });
+    }
 
     el.appendChild(makeTileEl(primary, primaryTrack, {
       primary: true,
@@ -581,6 +594,10 @@
     if (d.type === 'connected' || d.type === 'media' || d.type === 'phone-busy' || d.type === 'phone-free') {
       paintCompact();
       if (pipEl) paintStage(pipEl.querySelector('#hgTingPipVid'));
+    } else if (d.type === 'speaker') {
+      /* D-181: смена говорящего — мини-окно переключается на него. */
+      if (pipEl) paintStage(pipEl.querySelector('#hgTingPipVid'));
+      if (mounted) paintCompact();
     } else if (d.type === 'left') {
       closePip();
       paintIdle();

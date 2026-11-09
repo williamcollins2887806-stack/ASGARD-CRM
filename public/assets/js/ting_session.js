@@ -19,6 +19,7 @@
   let timerId = null;
   let timerSec = 0;
   let videoPaused = false;
+  let activeSpeakerId = null;
 
   function emit(type, detail) {
     const set = listeners.get(type) || listeners.get('*');
@@ -54,7 +55,8 @@
       camOn: camOn,
       timerSec: timerSec,
       videoPaused: videoPaused,
-      phoneForcedMute: phoneForcedMute
+      phoneForcedMute: phoneForcedMute,
+      activeSpeakerId: activeSpeakerId
     };
   }
 
@@ -120,6 +122,23 @@
       lkRoom.on(Ev.ParticipantDisconnected, bump);
       if (Ev.LocalTrackPublished) lkRoom.on(Ev.LocalTrackPublished, bump);
       if (Ev.LocalTrackUnpublished) lkRoom.on(Ev.LocalTrackUnpublished, bump);
+
+      /* D-181: PiP должен показывать того, кто ГОВОРИТ, как в Телемосте.
+         Раньше активный спикер не эмитился в сессию, и мини-окно навсегда
+         застревало на первом участнике с видео — «вижу всех» не работало.
+         Гистерезис как в комнате: не дёргаем PiP на каждый шорох. */
+      if (Ev.ActiveSpeakersChanged) {
+        let spkTimer = null;
+        lkRoom.on(Ev.ActiveSpeakersChanged, (speakers) => {
+          const next = (speakers && speakers[0] && speakers[0].identity) || null;
+          if (spkTimer) clearTimeout(spkTimer);
+          spkTimer = setTimeout(() => {
+            if (activeSpeakerId === next) return;
+            activeSpeakerId = next;
+            emit('speaker', { identity: next });
+          }, activeSpeakerId ? 900 : 400);
+        });
+      }
     } catch (_) { /* */ }
   }
 
@@ -218,6 +237,7 @@
     meta = null;
     phoneForcedMute = false;
     videoPaused = false;
+    activeSpeakerId = null;
     syncChrome();
     document.body.classList.remove('ting-live');
     if (r) {
