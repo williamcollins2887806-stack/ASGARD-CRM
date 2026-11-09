@@ -1650,9 +1650,14 @@ window.AsgardDocHubPage = (function () {
     // письма: модалка сама переводит счёт на ОБС.
     if (src !== 'obs') {
       if (!canCreate) return '';
+      // Не «Через ОБС» — это читалось как статус «уже ОБС». Вопрос + действие:
+      // счёт пока обычный, кнопка предлагает перевести и написать письмо.
       return `<div class="dh-obs-row">
-        <button type="button" class="dh-obs-gen dh-obs-gen--promote" data-obs-gen="${Number(row.id)}"
-          title="Перевести счёт на оплату через ОБС и создать письмо">Через ОБС</button>
+        <button type="button" class="dh-obs-ask" data-obs-gen="${Number(row.id)}"
+          title="Счёт сейчас не через ОБС. Открыть: перевести оплату на ОБС и создать письмо">
+          <span class="dh-obs-ask__mark">ОБС?</span>
+          <span class="dh-obs-ask__go">письмо</span>
+        </button>
       </div>`;
     }
 

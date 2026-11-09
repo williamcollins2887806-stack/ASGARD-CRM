@@ -135,13 +135,19 @@ async function runTenderGuruSync(db, log = console, opts = {}) {
       || null;
     const innNorm = customerInn != null ? String(customerInn).replace(/\D/g, '') || null : null;
 
+    // Названия чистим от эмодзи: внешние площадки присылают «🌐 АО ЦБК»,
+    // и это доезжало до карточек, писем и ТКП (правило — только русский текст).
+    const { cleanName } = require('../lib/clean-name');
+    const cleanCustomer = cleanName(it.customer_name) || it.customer_name;
+    const cleanTitle = cleanName(title) || title;
+
     const cols = await loadCandidateInsertShape(db);
     if (cols.has('region') && it.region) {
       await db.query(`
         INSERT INTO tenderguru_candidates (external_id, title, customer_name, customer_inn, nmc, deadline, purchase_url, region, raw_json)
         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
       `, [
-        external_id, title, it.customer_name, innNorm,
+        external_id, cleanTitle, cleanCustomer, innNorm,
         it.nmc, it.deadline, url, it.region, JSON.stringify(rawPayload)
       ]);
     } else {
@@ -149,7 +155,7 @@ async function runTenderGuruSync(db, log = console, opts = {}) {
         INSERT INTO tenderguru_candidates (external_id, title, customer_name, customer_inn, nmc, deadline, purchase_url, raw_json)
         VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
       `, [
-        external_id, title, it.customer_name, innNorm,
+        external_id, cleanTitle, cleanCustomer, innNorm,
         it.nmc, it.deadline, url, JSON.stringify(rawPayload)
       ]);
     }

@@ -110,6 +110,13 @@ function makeDb(cfg = {}) {
     const cleanup = db.log.find((x) => /просрочено/.test(x.sql));
     assert.ok(cleanup, 'должен быть UPDATE для просроченных');
   });
+  await t('expireStaleGrants гасит без новой заявки (крон)', async () => {
+    const db = makeDb({ expired: [16] });
+    const r = await thr.expireStaleGrants(db, 72);
+    assert.strictEqual(r.expired, 1);
+    assert.deepStrictEqual(r.ids, [16]);
+    assert.ok(db.log.some((x) => /просрочено/.test(x.sql)), 'UPDATE просроченных');
+  });
 
   console.log('\n=== 5. Детектор: «добро» распознаётся, мусор — нет ===');
   const { detectApproval } = require('../src/services/approval-detector');

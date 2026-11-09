@@ -70,21 +70,24 @@ function main() {
 
   const iNumber = find(/^Исх\.\s*№/);
   const iSalute = find(/^Уважаемые\s+Коллеги/i);
-  const iBasis = find(/Настоящим сообщаем|выполняет работы/);
-  const iFirstItem = find(/^обучение|^[\u2022\-—]\s/) || find(/^обучение/);
-  const iInvoice = find(/выставлен счёт/i);
+  const iBasis = find(/Настоящим сообщаем|выполняет работы|выполняет /);
+  // Перечень позиций есть не во всех образцах (бланк «Безопасность Труда»
+  // 09.11.2026 — без буллетов). Без перечня цикл items вставляем перед счётом.
+  let iFirstItem = find(/^обучение|^[\u2022\-—•]\s/);
+  const iInvoice = find(/выставлен счёт|получило счёт|В адрес .*выставлен/i);
   const iRequest = find(/Просим осуществить оплату|Просим оплатить/i);
   const iSigPos = find(/^Генеральный директор|^Директор/);
 
   console.log('найдено: №=', iNumber, 'обращение=', iSalute, 'обоснование=', iBasis,
     'первая позиция=', iFirstItem, 'счёт=', iInvoice, 'просьба=', iRequest, 'подпись=', iSigPos);
 
-  const need = { iNumber, iSalute, iBasis, iFirstItem, iInvoice, iRequest, iSigPos };
+  const need = { iNumber, iSalute, iBasis, iInvoice, iRequest, iSigPos };
   const missing = Object.entries(need).filter(([, v]) => v < 0).map(([k]) => k);
   if (missing.length) {
     console.error('Не найдены обязательные абзацы:', missing.join(', '));
     process.exit(1);
   }
+  const hasItemList = iFirstItem >= 0 && iFirstItem < iInvoice;
 
   // ── Замены ────────────────────────────────────────────────────────────
   // D-392b: выкидываем пустые абзацы-отбивки в шапке. В образце их девять —
@@ -104,32 +107,39 @@ function main() {
   //    заканчивался на iFirstItem-1, но закрытие добавлялось ещё и при
   //    сборке перечня. Получался «Unopened loop». Теперь тело строится
   //    ровно один раз, а перечень вставляется ЗА ним, без повторного close.
-  const bodyBlock = paras.slice(iBasis, iFirstItem).join('');
   const bodyOpen = setParaText(paras[iBasis], '{#intro_paragraphs}');
   const bodyLoop = setParaText(paras[iBasis], '{text}');
   const bodyClose = setParaText(paras[iBasis], '{/intro_paragraphs}')
     .replace(/<w:spacing[^/]*\/>/g, '<w:spacing w:after="0"/>');
 
-  // 4. Перечень позиций: берём абзацы образца и делаем цикл.
-  const itemParas = (() => {
-    let i = iFirstItem;
-    const acc = [];
-    while (i < paras.length && /^обучение|^[\u2022\-—]\s/.test(paraText(paras[i]))) {
-      acc.push(paras[i]); i++;
-    }
-    return acc;
-  })();
-  const itemBlock = itemParas.join('');
-  const itemOpen = setParaText(paras[iFirstItem], '{#items}');
-  const itemLoop = setParaText(paras[iFirstItem], '{text}');
-  const itemClose = setParaText(paras[iFirstItem], '{/items}')
-    .replace(/<w:spacing[^/]*\/>/g, '<w:spacing w:after="0"/>');
-
-  // Заменяем ВЕСЬ участок (тело + перечень) одной сборкой — так закрытие
-  // цикла тела попадает в документ ровно один раз.
-  const blockEnd = itemParas.length ? paras[itemParas.length ? iFirstItem + itemParas.length - 1 : iFirstItem] : paras[iFirstItem - 1];
-  const sectionOfXml = paras.slice(iBasis, iFirstItem + itemParas.length).join('');
-  xml = xml.replace(sectionOfXml, bodyOpen + bodyLoop + bodyClose + itemOpen + itemLoop + itemClose);
+  // 4. Перечень позиций: если в образце есть буллеты — цикл по ним;
+  //    если нет — вставляем пустой цикл items перед счётом (на том же стиле).
+  let itemOpen; let itemLoop; let itemClose; let itemParas = [];
+  if (hasItemList) {
+    itemParas = (() => {
+      let i = iFirstItem;
+      const acc = [];
+      while (i < paras.length && /^обучение|^[\u2022\-—•]\s/.test(paraText(paras[i]))) {
+        acc.push(paras[i]); i++;
+      }
+      return acc;
+    })();
+    itemOpen = setParaText(paras[iFirstItem], '{#items}');
+    itemLoop = setParaText(paras[iFirstItem], '{text}');
+    itemClose = setParaText(paras[iFirstItem], '{/items}')
+      .replace(/<w:spacing[^/]*\/>/g, '<w:spacing w:after="0"/>');
+    const sectionOfXml = paras.slice(iBasis, iFirstItem + itemParas.length).join('');
+    xml = xml.replace(sectionOfXml, bodyOpen + bodyLoop + bodyClose + itemOpen + itemLoop + itemClose);
+  } else {
+    // Образец без перечня: тело = все абзацы от обоснования до счёта.
+    const sectionOfXml = paras.slice(iBasis, iInvoice).join('');
+    itemOpen = setParaText(paras[iBasis], '{#items}');
+    itemLoop = setParaText(paras[iBasis], '{text}');
+    itemClose = setParaText(paras[iBasis], '{/items}')
+      .replace(/<w:spacing[^/]*\/>/g, '<w:spacing w:after="0"/>');
+    xml = xml.replace(sectionOfXml, bodyOpen + bodyLoop + bodyClose + itemOpen + itemLoop + itemClose);
+    console.log('перечень в образце отсутствует — цикл {#items} вставлен перед счётом');
+  }
 
   // 5. Счёт — ключевой абзац, в образце ЖИРНЫЙ. Цикл из одного элемента:
   //    жирность берётся из образца. D-392b: теги обязаны стоять отдельными
@@ -166,8 +176,8 @@ function main() {
     xml = xml.replace(paras[iMp], setParaText(paras[iMp], '{%stamp_img}'));
   }
 
-  // 10. Фамилия директора.
-  const iName = find(/Кудряшов/, iSigPos);
+  // 10. Фамилия директора (в образцах: Кудряшов / Путков Д.В. / …).
+  const iName = find(/Кудряшов|Путков|Гажилиев|[А-ЯЁ][а-яё]+\s+[А-ЯЁ]\.[А-ЯЁ]\./, iSigPos);
   if (iName > 0) {
     xml = xml.replace(paras[iName], setParaText(paras[iName], '{gendir_name}'));
   }

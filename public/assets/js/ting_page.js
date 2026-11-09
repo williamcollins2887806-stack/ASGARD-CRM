@@ -103,6 +103,8 @@
     joinToken: null,
     connQuality: null,
     reconnecting: false,
+    pageBound: false,
+    mediaToggleBusy: false,
     intentionalLeave: false,
     chatOpen: false,
     handRaised: false,
@@ -1526,18 +1528,22 @@
     const cams = await rankCameras();
     const usable = cams.filter((c) => c.score > -50);
     const list = [];
-    /* 1. Самый мягкий запрос — никаких ограничений. */
-    list.push(true);
-    /* 2. Только fps: часть драйверов Windows не стартует без явного frameRate. */
-    list.push({ frameRate: { ideal: 30 } });
-    /* 3. Низкое разрешение — драйвер может не тянуть 720p на старте. */
-    list.push({ width: { ideal: 640 }, height: { ideal: 480 } });
-    /* 4. HD. */
+    const bestId = usable[0] && usable[0].deviceId ? usable[0].deviceId : '';
+    /* HD первым — иначе часто залипаем на VGA при encoding h720 («пиксели»). */
+    if (bestId) {
+      list.push({
+        deviceId: { ideal: bestId },
+        width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 }
+      });
+    }
     list.push({ width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 } });
-    /* 5. Только теперь — привязка к устройству (если их несколько). */
+    list.push({ frameRate: { ideal: 30 } });
+    list.push(true);
+    /* VGA — только fallback. */
+    list.push({ width: { ideal: 640 }, height: { ideal: 480 } });
     usable.forEach((c) => {
-      if (!c.deviceId) return;
-      list.push({ deviceId: { exact: c.deviceId } });
+      if (!c.deviceId || c.deviceId === bestId) return;
+      list.push({ deviceId: { ideal: c.deviceId } });
     });
     return list;
   }
@@ -1753,11 +1759,35 @@
     return sink;
   }
 
+  function hideAudioUnlockBanner() {
+    const el = document.getElementById('ting-audio-unlock');
+    if (el) try { el.remove(); } catch (_) { /* */ }
+  }
+
+  function showAudioUnlockBanner(room) {
+    if (document.getElementById('ting-audio-unlock')) return;
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.id = 'ting-audio-unlock';
+    btn.className = 'ting-btn ting-btn-primary';
+    btn.textContent = 'Включить звук';
+    btn.style.cssText = 'position:fixed;left:50%;bottom:96px;transform:translateX(-50%);z-index:10050;';
+    btn.addEventListener('click', async () => {
+      try {
+        syncRemoteAudio(room || state.lkRoom);
+        if (room && typeof room.startAudio === 'function') await room.startAudio();
+        hideAudioUnlockBanner();
+      } catch (_) { /* */ }
+    });
+    document.body.appendChild(btn);
+  }
+
   /** Без attach удалённого audio участники не слышат друг друга (баг CRM-комнаты). */
   function syncRemoteAudio(room) {
     if (!room) return;
     const sink = ensureAudioSink();
     const want = new Set();
+    const trackBySid = new Map();
     try {
       room.remoteParticipants.forEach((p) => {
         Array.from(p.audioTrackPublications.values()).forEach((pub) => {
@@ -1766,6 +1796,7 @@
           const sid = String(pub.trackSid || (pub.track && pub.track.sid) || '');
           if (!sid) return;
           want.add(sid);
+          trackBySid.set(sid, pub.track);
           let el = sink.querySelector('[data-track-sid="' + sid + '"]');
           if (!el) {
             try {
@@ -1781,12 +1812,32 @@
             el.setAttribute('playsinline', '');
             sink.appendChild(el);
             try { el.play && el.play().catch(() => {}); } catch (_) { /* */ }
+          } else {
+            /* Уже в DOM — будим play после autoplay-block / pause. */
+            try { el.play && el.play().catch(() => {}); } catch (_) { /* */ }
           }
         });
       });
     } catch (_) { /* */ }
     Array.from(sink.querySelectorAll('[data-track-sid]')).forEach((el) => {
-      if (!want.has(el.getAttribute('data-track-sid'))) {
+      const sid = el.getAttribute('data-track-sid');
+      if (!want.has(sid)) {
+        const tr = trackBySid.get(sid);
+        try {
+          if (tr && typeof tr.detach === 'function') tr.detach(el);
+        } catch (_) { /* */ }
+        /* Fallback: найти трек по sid среди pubs, если не в want-map. */
+        if (!tr && room) {
+          try {
+            room.remoteParticipants.forEach((p) => {
+              Array.from(p.audioTrackPublications.values()).forEach((pub) => {
+                if (String(pub.trackSid || '') === sid && pub.track && typeof pub.track.detach === 'function') {
+                  try { pub.track.detach(el); } catch (__) { /* */ }
+                }
+              });
+            });
+          } catch (_) { /* */ }
+        }
         try { el.srcObject = null; } catch (_) { /* */ }
         try { el.remove(); } catch (_) { /* */ }
       }
@@ -1796,7 +1847,20 @@
   function clearRemoteAudio() {
     const sink = document.getElementById('ting-audio-sink');
     if (!sink) return;
+    const room = state.lkRoom;
     Array.from(sink.querySelectorAll('audio')).forEach((el) => {
+      const sid = el.getAttribute('data-track-sid');
+      if (room && sid) {
+        try {
+          room.remoteParticipants.forEach((p) => {
+            Array.from(p.audioTrackPublications.values()).forEach((pub) => {
+              if (String(pub.trackSid || '') === sid && pub.track && typeof pub.track.detach === 'function') {
+                try { pub.track.detach(el); } catch (_) { /* */ }
+              }
+            });
+          });
+        } catch (_) { /* */ }
+      }
       try { el.srcObject = null; } catch (_) { /* */ }
       try { el.remove(); } catch (_) { /* */ }
     });
@@ -1824,9 +1888,11 @@
     stopPreview();
     stopLiveLoop();
     stopCrmLobbyPoll();
+    if (state.timerId) { try { clearInterval(state.timerId); } catch (_) { /* */ } state.timerId = null; }
     setIncall(false);
     document.body.classList.remove('ting-incall');
     document.documentElement.classList.remove('ting-incall');
+    state.pageBound = false;
     state.lkRoom = null;
     if (root) {
       try { root.onclick = null; root.onchange = null; root.innerHTML = ''; } catch (_) { /* */ }
@@ -1836,7 +1902,7 @@
     if (sess && typeof sess.isActive === 'function' && sess.isActive()) {
       try {
         if (window.HuginnTing && typeof HuginnTing.ensurePip === 'function') HuginnTing.ensurePip();
-        if (window.HuginnDock && typeof HuginnDock.open === 'function') HuginnDock.open('ting');
+        /* Вкладки ting в HuginnDock нет — не open('ting'). PiP живёт на body. */
       } catch (_) { /* */ }
       toast('Тинг свёрнут в мини-окно — можно работать в CRM', true);
     }
@@ -1852,30 +1918,29 @@
   }
 
   function detachStageVideos() {
-    /* Только видео: полный track.detach() срывает audio из #ting-audio-sink. */
+    /* Только <video> внутри стейджа/ленты. track.detach() без аргумента
+       срывает PiP/Huginn attach того же video-track. */
+    const roots = [qs('#ting-stage'), qs('#ting-filmstrip')].filter(Boolean);
     const room = state.lkRoom;
-    if (room) {
-      const detachVideoPub = (pub) => {
-        if (!pub || !pub.track || typeof pub.track.detach !== 'function') return;
+    const detachEl = (v) => {
+      if (!v) return;
+      if (room) {
+        const tryDetach = (pub) => {
+          if (!pub || !pub.track || typeof pub.track.detach !== 'function') return;
+          try {
+            if (pub.track.kind && pub.track.kind !== 'video') return;
+          } catch (_) { /* */ }
+          try { pub.track.detach(v); } catch (_) { /* */ }
+        };
         try {
-          if (pub.track.kind && pub.track.kind !== 'video') return;
+          room.localParticipant.videoTrackPublications.forEach(tryDetach);
+          room.remoteParticipants.forEach((p) => p.videoTrackPublications.forEach(tryDetach));
         } catch (_) { /* */ }
-        try {
-          const els = typeof pub.track.detach === 'function' ? pub.track.detach() : [];
-          /* detach() без аргументов отцепляет всё — переattach audio ниже через syncRemoteAudio */
-          void els;
-        } catch (_) { /* */ }
-      };
-      try {
-        room.localParticipant.videoTrackPublications.forEach(detachVideoPub);
-        room.remoteParticipants.forEach((p) => p.videoTrackPublications.forEach(detachVideoPub));
-      } catch (_) { /* */ }
-    }
-    [qs('#ting-stage'), qs('#ting-filmstrip')].forEach((el) => {
-      if (!el) return;
-      el.querySelectorAll('video').forEach((v) => {
-        try { v.srcObject = null; } catch (_) { /* */ }
-      });
+      }
+      try { v.srcObject = null; } catch (_) { /* */ }
+    };
+    roots.forEach((el) => {
+      el.querySelectorAll('video').forEach(detachEl);
     });
   }
 
@@ -2340,6 +2405,64 @@
     apply(strip);
   }
 
+  /** Аватар под video — всегда в DOM, чтобы cam-off не мигал broken-media. */
+  function ensureTileAvatar(tile, identity, name) {
+    if (!tile) return;
+    let ph = tile.querySelector('.ting-tile-ph');
+    if (ph) return ph;
+    const tone = avatarTone(identity || name);
+    ph = document.createElement('div');
+    ph.className = 'ting-tile-ph tone-' + tone;
+    const label = name || identity || 'Участник';
+    ph.innerHTML = `<div class="ting-avatar tone-${tone}">${esc(initials(label))}</div>`;
+    const video = tile.querySelector('video');
+    if (video) tile.insertBefore(ph, video);
+    else tile.insertBefore(ph, tile.firstChild);
+    return ph;
+  }
+
+  /**
+   * Mute mic/cam без paintTiles: иконка + is-cam-off, video DOM не трогаем.
+   */
+  function applyTileMuteState(identity, opts) {
+    if (!identity) return;
+    const roots = [qs('#ting-stage'), qs('#ting-filmstrip')].filter(Boolean);
+    roots.forEach((root) => {
+      root.querySelectorAll('.ting-tile').forEach((tile) => {
+        if ((tile.dataset.id || '') !== identity) return;
+        if (opts && typeof opts.mic === 'boolean') {
+          const mic = tile.querySelector('.lbl .mic');
+          if (mic) {
+            mic.classList.toggle('off', !!opts.mic);
+            mic.innerHTML = svgMic(!!opts.mic);
+          }
+        }
+        if (opts && typeof opts.cam === 'boolean') {
+          ensureTileAvatar(tile, identity, tile.querySelector('.lbl .name') && tile.querySelector('.lbl .name').textContent);
+          const video = tile.querySelector('video');
+          if (video) video.classList.toggle('is-cam-off', !!opts.cam);
+          tile.classList.toggle('cam-off', !!opts.cam);
+        }
+      });
+    });
+  }
+
+  function applyMuteFromPublication(pub, participant) {
+    if (!pub || !participant) return;
+    const id = participant.identity;
+    if (!id) return;
+    let kind = '';
+    try { kind = String(pub.kind || (pub.track && pub.track.kind) || ''); } catch (_) { kind = ''; }
+    const muted = !!(pub.isMuted || (pub.track && pub.track.isMuted));
+    if (kind === 'audio' || /audio/i.test(String(pub.source || ''))) {
+      applyTileMuteState(id, { mic: muted });
+      return;
+    }
+    if (kind === 'video' || /camera|screen/i.test(String(pub.source || ''))) {
+      applyTileMuteState(id, { cam: muted });
+    }
+  }
+
   /** Плитка «+N»: остальные участники не теряются, а видны счётчиком. */
   function makeOverflowTile(hidden) {
     const div = document.createElement('button');
@@ -2429,7 +2552,7 @@
         if (span) span.textContent = layoutLabel;
       }
     }
-    paintTiles();
+    /* Не paintTiles — иначе каждый mic/cam сносит все <video>. */
   }
 
   function stopCrmLobbyPoll() {
@@ -2655,25 +2778,40 @@
       state.myRole = tok.role || state.myRole || null;
       if (tok.room) state.room = unwrapRoom(tok);
       if (tok.join_token) state.joinToken = tok.join_token;
-      const bump = () => { syncRemoteAudio(room); paintTiles(); refreshPeople(slug); };
+      state.pageBound = true;
+      const bumpRoster = () => {
+        if (!state.pageBound || state.lkRoom !== room) return;
+        syncRemoteAudio(room);
+        paintTiles();
+        refreshPeople(slug);
+      };
+      const onMuteChange = (pub, participant) => {
+        if (!state.pageBound || state.lkRoom !== room) return;
+        syncRemoteAudio(room);
+        applyMuteFromPublication(pub, participant);
+      };
       room.on(LK.RoomEvent.TrackSubscribed, (track, pub) => {
-        if (track && track.kind === 'audio') syncRemoteAudio(room);
-        /* Качество поднимаем один раз на публикацию — не в каждом paintTiles. */
+        if (!state.pageBound || state.lkRoom !== room) return;
+        if (track && track.kind === 'audio') {
+          syncRemoteAudio(room);
+          return;
+        }
         bumpPublicationQuality(pub);
-        bump();
+        bumpRoster();
       });
-      room.on(LK.RoomEvent.TrackUnsubscribed, bump);
-      room.on(LK.RoomEvent.TrackMuted, bump);
-      room.on(LK.RoomEvent.TrackUnmuted, bump);
-      room.on(LK.RoomEvent.ParticipantConnected, bump);
-      room.on(LK.RoomEvent.ParticipantDisconnected, bump);
+      room.on(LK.RoomEvent.TrackUnsubscribed, (track) => {
+        if (!state.pageBound || state.lkRoom !== room) return;
+        if (track && track.kind === 'audio') { syncRemoteAudio(room); return; }
+        bumpRoster();
+      });
+      room.on(LK.RoomEvent.TrackMuted, onMuteChange);
+      room.on(LK.RoomEvent.TrackUnmuted, onMuteChange);
+      room.on(LK.RoomEvent.ParticipantConnected, bumpRoster);
+      room.on(LK.RoomEvent.ParticipantDisconnected, bumpRoster);
       // Своя камера/микрофон публикуются ПОСЛЕ connect — без этих событий
       // собственная плитка не перерисовывалась и «себя не видно».
-      if (LK.RoomEvent.LocalTrackPublished) room.on(LK.RoomEvent.LocalTrackPublished, bump);
-      if (LK.RoomEvent.LocalTrackUnpublished) room.on(LK.RoomEvent.LocalTrackUnpublished, bump);
-      if (LK.RoomEvent.LocalTrackPublished) {
-        try { room.localParticipant.on(LK.RoomEvent.LocalTrackPublished, bump); } catch (_) { /* */ }
-      }
+      if (LK.RoomEvent.LocalTrackPublished) room.on(LK.RoomEvent.LocalTrackPublished, bumpRoster);
+      if (LK.RoomEvent.LocalTrackUnpublished) room.on(LK.RoomEvent.LocalTrackUnpublished, bumpRoster);
       if (LK.RoomEvent.ActiveSpeakersChanged) {
         room.on(LK.RoomEvent.ActiveSpeakersChanged, (speakers) => {
           if (harnessDemo()) return;
@@ -2761,14 +2899,18 @@
                   state.micOn = false;
                   toast('Организатор выключил ваш микрофон', false);
                 } else if (kind === 'video') {
-                  await lp2.setCameraEnabled(false);
-                  await unpublishLocalCamera(state.lkRoom);
+                  await runCameraOp(async () => {
+                    await lp2.setCameraEnabled(false);
+                  });
                   state.camOn = false;
                   toast('Организатор выключил вашу камеру', false);
                 }
               } catch (_) { /* */ }
               updateDockMedia();
-              paintTiles();
+              applyTileMuteState(lp2.identity || state.myIdentity, {
+                mic: kind === 'audio',
+                cam: kind === 'video'
+              });
             })();
             return;
           }
@@ -2900,11 +3042,25 @@
         12000,
         'Таймаут подключения к видеосерверу'
       );
-      /* Автоплей-политика браузера: без startAudio удалённый звук молчит. */
+      /* Сначала attach audio в sink, потом startAudio — иначе unlock вхолостую. */
+      syncRemoteAudio(room);
       try {
         if (typeof room.startAudio === 'function') await room.startAudio();
-      } catch (_) { /* */ }
-      syncRemoteAudio(room);
+      } catch (ae) {
+        console.warn('[Ting] startAudio', ae && ae.name, ae && ae.message);
+        showAudioUnlockBanner(room);
+      }
+      if (LK.RoomEvent.AudioPlaybackStatusChanged) {
+        room.on(LK.RoomEvent.AudioPlaybackStatusChanged, () => {
+          try {
+            if (typeof room.canPlaybackAudio === 'boolean' && !room.canPlaybackAudio) {
+              showAudioUnlockBanner(room);
+            } else {
+              hideAudioUnlockBanner();
+            }
+          } catch (_) { /* */ }
+        });
+      }
       scheduleTokenRefresh(slug, tok);
       if (window.TingSession && typeof TingSession.adoptRoom === 'function') {
         try {
@@ -2945,8 +3101,6 @@
         }
         if (!parkedAway && state.lkRoom === room) {
           paintTiles();
-          setTimeout(() => { if (state.lkRoom === room && state.view === 'room') paintTiles(); }, 400);
-          setTimeout(() => { if (state.lkRoom === room && state.view === 'room') paintTiles(); }, 1200);
         }
       } catch (e) {
         console.warn('local media', e);

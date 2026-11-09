@@ -382,33 +382,32 @@ window.AsgardMlspPassesPage = (function () {
 
   async function createAndDownload(opts = {}) {
     if (state.busy) return;
+    if (!state.selected.length) {
+      toast('Добавьте хотя бы одного человека в заявку', 'error');
+      return;
+    }
     state.busy = true;
     try {
       await runValidate();
       const v = state.validation || { ok: true, blocks: [], warnings: [] };
-      if (!v.ok && !opts.force) {
-        toast('Есть блокирующие замечания — исправьте состав', 'error');
-        render();
-        return;
-      }
+      // Допуски/паспорт — только WARN: Excel всегда можно; спросим, если есть замечания
       if ((v.warnings || []).length && !state.form.accept_warnings && !opts.force) {
         const ok = await uiConfirm({
-          title: 'Предупреждения',
-          html: `<p>Есть предупреждения: <b>${v.warnings.length}</b>. Выгрузить Excel всё равно?</p>
-            <ul class="mlsp-confirm__list">${v.warnings.slice(0, 8).map((w) =>
+          title: 'Замечания · скачать всё равно?',
+          html: `<p>Есть замечания: <b>${v.warnings.length}</b>. Бланк всё равно соберём — это не блок.</p>
+            <ul class="mlsp-confirm__list">${v.warnings.slice(0, 10).map((w) =>
               `<li>${w.fio ? `<b>${esc(w.fio)}</b> — ` : ''}${esc(w.message)}</li>`
             ).join('')}</ul>`,
-          okLabel: 'Выгрузить'
+          okLabel: 'Скачать бланк'
         });
         if (!ok) return;
         state.form.accept_warnings = true;
       }
 
-      const created = await api('/applications', { method: 'POST', body: { ...draftBody(), force: !!opts.force } });
+      const created = await api('/applications', { method: 'POST', body: { ...draftBody(), force: true, accept_warnings: true } });
       state.draftApp = created.item;
       const id = created.item.id;
-      const forceQ = (!created.validation?.ok || opts.force) ? '?force=1' : '';
-      const resp = await fetch('/api/mlsp-passes/applications/' + id + '/excel' + forceQ, {
+      const resp = await fetch('/api/mlsp-passes/applications/' + id + '/excel', {
         headers: { Authorization: 'Bearer ' + token() }
       });
       if (!resp.ok) {
@@ -471,23 +470,57 @@ window.AsgardMlspPassesPage = (function () {
   function validationHtml() {
     const v = state.validation;
     if (!v) return '';
-    const blocks = v.blocks || [];
     const warns = v.warnings || [];
-    if (!blocks.length && !warns.length) {
-      return `<div class="mlsp-alert mlsp-alert--ok"><h4>Готово к отправке</h4><div>Блоков нет · предупреждений нет</div></div>`;
+    if (!warns.length) {
+      return `<div class="mlsp-alert mlsp-alert--ok"><h4>Готово к скачиванию</h4><div>Замечаний нет · бланк можно скачать</div></div>`;
     }
-    let html = '';
-    if (blocks.length) {
-      html += `<div class="mlsp-alert mlsp-alert--block"><h4>Блок · ${blocks.length}</h4><ul>${
-        blocks.map((b) => `<li><b>${esc(b.fio || '')}</b> — ${esc(b.message)}</li>`).join('')
-      }</ul></div>`;
-    }
-    if (warns.length) {
-      html += `<div class="mlsp-alert mlsp-alert--warn"><h4>Предупреждения · ${warns.length}</h4><ul>${
-        warns.slice(0, 12).map((b) => `<li>${b.fio ? `<b>${esc(b.fio)}</b> — ` : ''}${esc(b.message)}</li>`).join('')
-      }</ul></div>`;
-    }
-    return html;
+    return `<div class="mlsp-alert mlsp-alert--warn"><h4>Замечания · ${warns.length}</h4>
+      <div class="mlsp-muted" style="margin-bottom:8px">Не мешают скачать бланк. Допуски сверяются с Дружиной.</div>
+      <ul>${warns.slice(0, 16).map((b) =>
+        `<li>${b.fio ? `<b>${esc(b.fio)}</b> — ` : ''}${esc(b.message)}</li>`
+      ).join('')}</ul></div>`;
+  }
+
+  function peopleHitsHtml() {
+    return (state.peopleHits || []).map((p) => {
+      const on = state.selected.some((s) => s.id === p.id);
+      const warns = p.chip_warnings || (p.warnings || []).length || 0;
+      return `<div class="mlsp-person" data-hit-row="${p.id}">
+        <div>
+          <div class="mlsp-person__name">${esc(p.fio)}</div>
+          <div class="mlsp-person__meta">${esc(p.position || '')} · ${esc(p.phone || '')}</div>
+          <div class="mlsp-chips">
+            ${warns ? `<span class="mlsp-chip is-warn">замечаний ${warns}</span>` : '<span class="mlsp-chip is-ok">ок</span>'}
+          </div>
+        </div>
+        <button type="button" class="btn ${on ? 'ghost' : 'primary'} mini" data-add-person="${p.id}">${on ? 'Убрать' : 'В заявку'}</button>
+      </div>`;
+    }).join('') || '<div class="mlsp-muted">Начните ввод ФИО</div>';
+  }
+
+  function selectedHtml() {
+    return `<div class="mlsp-selected__h">В заявке · ${state.selected.length}
+      ${state.selected.length ? '<button type="button" class="btn ghost mini" id="mlsp_clear_people">Очистить</button>' : ''}
+    </div>
+    <div class="mlsp-people mlsp-people--compact">
+      ${state.selected.map((p) => `<div class="mlsp-person">
+        <div>
+          <div class="mlsp-person__name">${esc(p.fio)}</div>
+          <div class="mlsp-person__meta">${esc(p.position || '')}</div>
+        </div>
+        <button type="button" class="btn ghost mini" data-rm-person="${p.id}">Убрать</button>
+      </div>`).join('') || '<div class="mlsp-muted">Пусто — найдите ФИО выше и нажмите «В заявку»</div>'}
+    </div>`;
+  }
+
+  function paintPeoplePanel(root) {
+    const hits = root.querySelector('#mlsp_people_hits');
+    if (hits) hits.innerHTML = peopleHitsHtml();
+    const sel = root.querySelector('#mlsp_selected_box');
+    if (sel) sel.innerHTML = selectedHtml();
+    const val = root.querySelector('#mlsp_validation_box');
+    if (val) val.innerHTML = validationHtml();
+    bindPeopleActions(root);
   }
 
   function sheetPreviewHtml() {
@@ -603,41 +636,18 @@ window.AsgardMlspPassesPage = (function () {
           <textarea id="mlsp_route" rows="2">${esc(state.form.route_text || '')}</textarea>
         </div>
         <div class="mlsp-field"><label>Поиск в Дружине</label>
-          <input class="mlsp-search" id="mlsp_people_q" placeholder="ФИО…" value="${esc(state.peopleQ)}"/>
+          <input class="mlsp-search" id="mlsp_people_q" placeholder="ФИО…" value="${esc(state.peopleQ)}" autocomplete="off"/>
         </div>
-        <div class="mlsp-people" id="mlsp_people_hits">
-          ${(state.peopleHits || []).map((p) => {
-            const on = state.selected.some((s) => s.id === p.id);
-            return `<div class="mlsp-person">
-              <div>
-                <div class="mlsp-person__name">${esc(p.fio)}</div>
-                <div class="mlsp-person__meta">${esc(p.position || '')} · ${esc(p.phone || '')}</div>
-                <div class="mlsp-chips">
-                  ${(p.chip_blocks ? `<span class="mlsp-chip is-err">блок ${p.chip_blocks}</span>` : '<span class="mlsp-chip is-ok">ок</span>')}
-                  ${p.chip_warnings ? `<span class="mlsp-chip is-warn">warn ${p.chip_warnings}</span>` : ''}
-                </div>
-              </div>
-              <button type="button" class="btn ${on ? 'ghost' : 'primary'} mini" data-add-person="${p.id}">${on ? 'Убрать' : 'В заявку'}</button>
-            </div>`;
-          }).join('') || '<div class="mlsp-muted">Начните ввод ФИО</div>'}
-        </div>
-        <div class="mlsp-selected">
-          <div class="mlsp-selected__h">В заявке · ${state.selected.length}</div>
-          <div class="mlsp-people mlsp-people--compact">
-            ${state.selected.map((p) => `<div class="mlsp-person">
-              <div class="mlsp-person__name">${esc(p.fio)}</div>
-              <button type="button" class="btn ghost mini" data-rm-person="${p.id}" aria-label="Убрать">×</button>
-            </div>`).join('') || '<div class="mlsp-muted">Пусто</div>'}
-          </div>
-        </div>
-        ${validationHtml()}
+        <div class="mlsp-people" id="mlsp_people_hits">${peopleHitsHtml()}</div>
+        <div class="mlsp-selected" id="mlsp_selected_box">${selectedHtml()}</div>
+        <div id="mlsp_validation_box">${validationHtml()}</div>
         <div class="mlsp-toolbar">
           <button type="button" class="btn ghost" id="mlsp_validate">Проверить</button>
           <button type="button" class="btn primary" id="mlsp_download" ${state.busy ? 'disabled' : ''}>
             ${state.busy ? 'Собираю…' : 'Скачать бланк (1 лист)'}
           </button>
         </div>
-        <p class="mlsp-muted" style="margin-top:8px">После скачивания предложим отметить «Отправлено». «Пропуск получен» — когда выдали; для МЛСП и ФСБ допуск уйдёт в Дружину.</p>
+        <p class="mlsp-muted" style="margin-top:8px">Замечания по допускам не мешают скачать. После скачивания — «Отправлено» → «Пропуск получен».</p>
       </div>
       <div>${sheetPreviewHtml()}</div>
     </div>`;
@@ -805,25 +815,90 @@ window.AsgardMlspPassesPage = (function () {
   function baseHtml() {
     return `<div class="mlsp-panel">
       <div class="mlsp-section-h"><h2>Контрагенты и договоры ГНШ</h2></div>
-      <p class="mlsp-muted">ИНН сверяются с ЕГРЮЛ через DaData (если задан токен): ГНШ 7725610285 · Снабжение 5501072608 · Аврора 5190087937.</p>
+      <p class="mlsp-muted">ИНН: ГНШ 7725610285 · Снабжение 5501072608 · Аврора 5190087937. Клик по строке — править МВЗ / куратора / <b>дату окончания</b> (нужна для пропуска МЛСП).</p>
       <div class="mlsp-toolbar" style="margin-top:12px">
         <button type="button" class="btn primary" id="mlsp_ensure_cp">Создать / сверить в CRM</button>
       </div>
       <div class="mlsp-table-wrap" style="margin-top:14px">
         <table class="mlsp-table">
-          <thead><tr><th>Договор</th><th>МВЗ</th><th>Куратор</th><th>Куратор корабля</th><th>Окончание</th></tr></thead>
+          <thead><tr><th>Договор</th><th>МВЗ</th><th>Куратор</th><th>Куратор корабля</th><th>Окончание</th><th></th></tr></thead>
           <tbody>
-            ${(state.meta || []).map((m) => `<tr>
+            ${(state.meta || []).map((m) => `<tr data-meta="${m.id}" class="mlsp-row-click">
               <td>${esc(m.contract_number)}</td>
-              <td>${esc(m.mvz || '')}</td>
+              <td>${esc(m.mvz || '—')}</td>
               <td>${esc(m.curator || '')}</td>
               <td>${esc(m.ship_curator || '')}</td>
-              <td>${fmtRu(m.end_date)}</td>
-            </tr>`).join('') || '<tr><td colspan="5" class="mlsp-muted">Нет meta — проверьте миграцию V477</td></tr>'}
+              <td>${m.end_date ? fmtRu(m.end_date) : '<span class="mlsp-chip is-warn">нет даты</span>'}</td>
+              <td><button type="button" class="btn ghost mini" data-meta-edit="${m.id}">Править</button></td>
+            </tr>`).join('') || '<tr><td colspan="6" class="mlsp-muted">Нет meta — проверьте миграцию V477</td></tr>'}
           </tbody>
         </table>
       </div>
     </div>`;
+  }
+
+  function openMetaEditor(row) {
+    if (!window.AsgardUI?.showDrawer) {
+      toast('Drawer недоступен', 'error');
+      return;
+    }
+    const end = (row.end_date || '').toString().slice(0, 10);
+    AsgardUI.showDrawer({
+      title: 'Договор ГНШ',
+      width: 'normal',
+      html: `<div class="mlsp-drawer">
+        <div class="mlsp-drawer__summary">
+          <div>
+            <div class="mlsp-drawer__summary-kicker">Договор</div>
+            <div class="mlsp-drawer__summary-title">${esc(row.contract_number || 'без номера')}</div>
+            <div class="mlsp-drawer__summary-sub">${end ? 'Окончание ' + fmtRu(end) : 'Дата окончания не указана'}</div>
+          </div>
+          <span class="mlsp-chip ${end ? 'is-ok' : 'is-warn'}">${end ? 'дата есть' : 'нет даты'}</span>
+        </div>
+        <div class="mlsp-field"><label>Номер договора</label>
+          <input id="meta_num" value="${esc(row.contract_number || '')}"/></div>
+        <div class="mlsp-drawer__grid">
+          <div class="mlsp-field"><label>МВЗ</label>
+            <input id="meta_mvz" value="${esc(row.mvz || '')}"/></div>
+          <div class="mlsp-field"><label>Окончание</label>
+            <input type="date" id="meta_end" value="${esc(end)}"/></div>
+        </div>
+        <div class="mlsp-drawer__grid">
+          <div class="mlsp-field"><label>Куратор</label>
+            <input id="meta_cur" value="${esc(row.curator || '')}"/></div>
+          <div class="mlsp-field"><label>Куратор корабля</label>
+            <input id="meta_ship" value="${esc(row.ship_curator || '')}"/></div>
+        </div>
+        <div class="mlsp-drawer__hint">Дату окончания ждёт предупреждение в пропуске МЛСП.</div>
+        <div class="mlsp-drawer__foot">
+          <button type="button" class="btn ghost" id="meta_cancel">Отмена</button>
+          <button type="button" class="btn primary" id="meta_save">Сохранить</button>
+        </div>
+      </div>`,
+      onMount: ({ body }) => {
+        body.querySelector('#meta_cancel')?.addEventListener('click', () => AsgardUI.hideDrawer());
+        body.querySelector('#meta_save')?.addEventListener('click', async () => {
+          try {
+            await api('/contracts/meta/' + row.id, {
+              method: 'PATCH',
+              body: {
+                contract_number: body.querySelector('#meta_num')?.value || null,
+                mvz: body.querySelector('#meta_mvz')?.value || null,
+                curator: body.querySelector('#meta_cur')?.value || null,
+                ship_curator: body.querySelector('#meta_ship')?.value || null,
+                end_date: body.querySelector('#meta_end')?.value || null
+              }
+            });
+            AsgardUI.hideDrawer();
+            await loadContracts();
+            render();
+            toast('Договор сохранён', 'success');
+          } catch (e) {
+            toast(e.message, 'error');
+          }
+        });
+      }
+    });
   }
 
   function bodyHtml() {
@@ -844,31 +919,46 @@ window.AsgardMlspPassesPage = (function () {
       toast('Drawer недоступен', 'error');
       return;
     }
+    const sigClass = row.signal === 'breach' ? 'is-err'
+      : (row.signal === 'no_confirm' || row.signal === 'due_soon') ? 'is-warn' : 'is-ok';
     AsgardUI.showDrawer({
       title: 'Строка реестра',
-      width: 'wide',
+      width: 'normal',
       html: `<div class="mlsp-drawer">
-        <div class="mlsp-field"><label>№ заявки у заказчика</label>
-          <input id="dr_req" value="${esc(row.request_no || '')}"/></div>
-        <div class="mlsp-field"><label>Статус</label>
-          <select id="dr_status">${REG_STATUSES.map((s) =>
-            `<option value="${esc(s)}"${s === row.status ? ' selected' : ''}>${esc(s)}</option>`
-          ).join('')}</select>
-          <div class="mlsp-muted" style="margin-top:6px">«Готова» = пропуск получен. Если строка связана с заявкой МЛСП — допуски уйдут в Дружину.</div>
+        <div class="mlsp-drawer__summary">
+          <div>
+            <div class="mlsp-drawer__summary-kicker">Заявка у заказчика</div>
+            <div class="mlsp-drawer__summary-title">№ ${esc(row.request_no || '—')}</div>
+            <div class="mlsp-drawer__summary-sub">${esc(row.curator || 'Куратор не указан')}${row.planned_ready ? ' · план ' + fmtRu(row.planned_ready) : ''}</div>
+          </div>
+          <span class="mlsp-chip ${sigClass}">${esc(row.signal_label || row.status || '')}</span>
         </div>
+        <div class="mlsp-drawer__grid">
+          <div class="mlsp-field"><label>№ заявки</label>
+            <input id="dr_req" value="${esc(row.request_no || '')}"/></div>
+          <div class="mlsp-field"><label>Статус</label>
+            <select id="dr_status">${REG_STATUSES.map((s) =>
+              `<option value="${esc(s)}"${s === row.status ? ' selected' : ''}>${esc(s)}</option>`
+            ).join('')}</select></div>
+        </div>
+        <div class="mlsp-drawer__hint">«Готова» = пропуск получен. Если строка связана с заявкой МЛСП — допуски уйдут в Дружину.</div>
         <div class="mlsp-field"><label>Куратор</label>
           <input id="dr_cur" value="${esc(row.curator || '')}"/></div>
-        <div class="mlsp-field"><label>Дата подтверждения куратора</label>
-          <input type="date" id="dr_conf" value="${esc((row.curator_confirm_date || '').slice(0, 10))}"/></div>
-        <div class="mlsp-field"><label>Дата выдачи</label>
-          <input type="date" id="dr_iss" value="${esc((row.issued_date || '').slice(0, 10))}"/></div>
+        <div class="mlsp-drawer__grid">
+          <div class="mlsp-field"><label>Подтверждение куратора</label>
+            <input type="date" id="dr_conf" value="${esc((row.curator_confirm_date || '').slice(0, 10))}"/></div>
+          <div class="mlsp-field"><label>Дата выдачи</label>
+            <input type="date" id="dr_iss" value="${esc((row.issued_date || '').slice(0, 10))}"/></div>
+        </div>
         <div class="mlsp-field"><label>Комментарий</label>
-          <textarea id="dr_com" rows="3">${esc(row.comment || '')}</textarea></div>
-        <div class="mlsp-confirm__actions">
+          <textarea id="dr_com" rows="4">${esc(row.comment || '')}</textarea></div>
+        <div class="mlsp-drawer__foot">
+          <button type="button" class="btn ghost" id="dr_cancel">Отмена</button>
           <button type="button" class="btn primary" id="dr_save">Сохранить</button>
         </div>
       </div>`,
       onMount: ({ body }) => {
+        body.querySelector('#dr_cancel')?.addEventListener('click', () => AsgardUI.hideDrawer());
         body.querySelector('#dr_save')?.addEventListener('click', async () => {
           try {
             const nextStatus = body.querySelector('#dr_status')?.value;
@@ -1030,53 +1120,60 @@ window.AsgardMlspPassesPage = (function () {
       state.peopleQ = q.value;
       clearTimeout(state.searchTimer);
       state.searchTimer = setTimeout(async () => {
-        if (!state.peopleQ.trim()) {
+        const needle = state.peopleQ.trim();
+        if (!needle) {
           state.peopleHits = [];
-          render();
+          paintPeoplePanel(root);
           return;
         }
         try {
-          const j = await api('/people?q=' + encodeURIComponent(state.peopleQ));
+          const j = await api('/people?q=' + encodeURIComponent(needle));
+          // игнор устаревшего ответа, если уже набрали дальше
+          if (state.peopleQ.trim() !== needle) return;
           state.peopleHits = j.items || [];
-          render();
+          paintPeoplePanel(root);
+          // фокус остаётся в поле — DOM поиска не трогаем целиком
+          const qEl = root.querySelector('#mlsp_people_q');
+          if (qEl && document.activeElement !== qEl) {
+            qEl.focus();
+            try { qEl.setSelectionRange(qEl.value.length, qEl.value.length); } catch (_) { /* ignore */ }
+          }
         } catch (e) {
           toast(e.message, 'error');
         }
-      }, 220);
+      }, 280);
     });
 
-    root.querySelectorAll('[data-add-person]').forEach((btn) => {
-      btn.addEventListener('click', async () => {
-        const id = Number(btn.getAttribute('data-add-person'));
-        const hit = state.peopleHits.find((p) => p.id === id);
-        if (!hit) return;
-        if (state.selected.some((s) => s.id === id)) {
-          state.selected = state.selected.filter((s) => s.id !== id);
-        } else {
-          state.selected = [...state.selected, hit];
-        }
-        await runValidate();
-        await refreshPreview();
-        render();
-      });
-    });
-    root.querySelectorAll('[data-rm-person]').forEach((btn) => {
-      btn.addEventListener('click', async () => {
-        const id = Number(btn.getAttribute('data-rm-person'));
-        state.selected = state.selected.filter((s) => s.id !== id);
-        await runValidate();
-        await refreshPreview();
-        render();
-      });
-    });
+    bindPeopleActions(root);
 
     root.querySelector('#mlsp_validate')?.addEventListener('click', async () => {
       await runValidate();
       await refreshPreview();
-      render();
+      paintPeoplePanel(root);
+      const sheetHost = root.querySelector('.mlsp-sheet')?.parentElement;
+      if (sheetHost) {
+        sheetHost.innerHTML = sheetPreviewHtml();
+        bindPreviewOnly(root);
+      }
     });
     root.querySelector('#mlsp_download')?.addEventListener('click', () => createAndDownload());
     bindPreviewOnly(root);
+
+    root.querySelectorAll('[data-meta-edit]').forEach((btn) => {
+      btn.addEventListener('click', (ev) => {
+        ev.stopPropagation();
+        const id = Number(btn.getAttribute('data-meta-edit'));
+        const row = (state.meta || []).find((x) => x.id === id);
+        if (row) openMetaEditor(row);
+      });
+    });
+    root.querySelectorAll('[data-meta]').forEach((tr) => {
+      tr.addEventListener('click', () => {
+        const id = Number(tr.getAttribute('data-meta'));
+        const row = (state.meta || []).find((x) => x.id === id);
+        if (row) openMetaEditor(row);
+      });
+    });
 
     root.querySelector('#mlsp_ensure_cp')?.addEventListener('click', async () => {
       try {
@@ -1173,10 +1270,70 @@ window.AsgardMlspPassesPage = (function () {
     });
   }
 
+  function bindPeopleActions(root) {
+    root.querySelectorAll('[data-add-person]').forEach((btn) => {
+      btn.addEventListener('click', async (ev) => {
+        ev.preventDefault();
+        ev.stopPropagation();
+        const id = Number(btn.getAttribute('data-add-person'));
+        const hit = state.peopleHits.find((p) => p.id === id);
+        if (!hit) return;
+        if (state.selected.some((s) => s.id === id)) {
+          state.selected = state.selected.filter((s) => s.id !== id);
+        } else {
+          state.selected = [...state.selected, hit];
+        }
+        state.form.accept_warnings = false;
+        await runValidate();
+        paintPeoplePanel(root);
+        await refreshPreview();
+        const sheetHost = root.querySelector('.mlsp-sheet')?.parentElement;
+        if (sheetHost) {
+          sheetHost.innerHTML = sheetPreviewHtml();
+          bindPreviewOnly(root);
+        }
+      });
+    });
+    root.querySelectorAll('[data-rm-person]').forEach((btn) => {
+      btn.addEventListener('click', async (ev) => {
+        ev.preventDefault();
+        const id = Number(btn.getAttribute('data-rm-person'));
+        state.selected = state.selected.filter((s) => s.id !== id);
+        state.form.accept_warnings = false;
+        await runValidate();
+        paintPeoplePanel(root);
+        await refreshPreview();
+        const sheetHost = root.querySelector('.mlsp-sheet')?.parentElement;
+        if (sheetHost) {
+          sheetHost.innerHTML = sheetPreviewHtml();
+          bindPreviewOnly(root);
+        }
+      });
+    });
+    root.querySelector('#mlsp_clear_people')?.addEventListener('click', async () => {
+      state.selected = [];
+      state.validation = null;
+      state.form.accept_warnings = false;
+      paintPeoplePanel(root);
+      state.preview = null;
+      const sheetHost = root.querySelector('.mlsp-sheet')?.parentElement;
+      if (sheetHost) {
+        sheetHost.innerHTML = sheetPreviewHtml();
+        bindPreviewOnly(root);
+      }
+    });
+  }
+
   function bindPreviewOnly(root) {
     root.querySelector('#mlsp_preview_refresh')?.addEventListener('click', async () => {
       await refreshPreview();
-      render();
+      const sheetHost = root.querySelector('.mlsp-sheet')?.parentElement;
+      if (sheetHost) {
+        sheetHost.innerHTML = sheetPreviewHtml();
+        bindPreviewOnly(root);
+      } else {
+        render();
+      }
     });
   }
 

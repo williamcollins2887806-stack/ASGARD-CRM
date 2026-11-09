@@ -11,12 +11,15 @@
     return false;
   }
 
-  /** Prefer live MediaStreamTrack even during brief SFU isMuted races (laptop cam). */
+  /**
+   * Для UI: muted-камера = нет трека → аватар, не пустой <video> (broken-media).
+   * mediaTrackLive — только когда isMuted !== true (краткие SFU-гонки без mute).
+   */
   function trackIsLive(pub) {
     if (!pub || !pub.track) return null;
     try {
-      if (mediaTrackLive(pub.track)) return pub.track;
       if (pub.isMuted === true || pub.track.isMuted === true) return null;
+      if (mediaTrackLive(pub.track)) return pub.track;
     } catch (_) { /* */ }
     return pub.track;
   }

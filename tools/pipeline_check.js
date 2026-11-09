@@ -167,15 +167,23 @@ function note(section, name, detail) {
   else note('3. Позиции', 'заявки без позиций', noItems.map((x) => `#${x.id} (${x.amount})`).join(', '));
 
   // Расхождение суммы позиций и счёта больше 1 копейки.
+  // Важно: OCR часто кладёт в line_items суммы БЕЗ НДС, а pi.amount — С НДС.
+  // Считаем совпадением любой из вариантов: items≈gross ИЛИ items≈net (amount−vat).
+  // Иначе вечный шум по нормальным счетам (напр. 477090 без НДС vs 510486.30 с НДС).
   const itemDrift = await q(`
-      SELECT pi.id, pi.amount,
+      SELECT pi.id, pi.amount, COALESCE(pi.vat_amount,0) AS vat_amount,
              (SELECT COALESCE(SUM((l->>'sum')::numeric),0)
                 FROM jsonb_array_elements(COALESCE(pi.line_items_json,'[]'::jsonb)) l) AS items_sum
         FROM payment_invoices pi
        WHERE pi.status IN ('awaiting_dir','pending_payment')
          AND jsonb_array_length(COALESCE(pi.line_items_json,'[]'::jsonb)) > 0`);
-  const drifted = itemDrift.filter((x) => Math.abs(Number(x.items_sum) - Number(x.amount)) > 0.01);
-  if (!drifted.length) ok('3. Позиции', 'сумма позиций = сумме счёта', `проверено ${itemDrift.length} заявок`);
+  const drifted = itemDrift.filter((x) => {
+    const items = Number(x.items_sum);
+    const gross = Number(x.amount);
+    const net = gross - Number(x.vat_amount || 0);
+    return Math.abs(items - gross) > 0.01 && Math.abs(items - net) > 0.01;
+  });
+  if (!drifted.length) ok('3. Позиции', 'сумма позиций = сумме счёта', `проверено ${itemDrift.length} заявок (gross или net)`);
   else note('3. Позиции', 'сумма позиций ≠ сумме счёта', drifted.map((x) => `#${x.id}: ${x.items_sum} vs ${x.amount}`).join('; '));
 
   // ═══ 4. НДС ════════════════════════════════════════════════════════════
@@ -267,12 +275,14 @@ function note(section, name, detail) {
       FROM work_expenses WHERE COALESCE(status,'') <> 'rejected'`);
   ok('7. Расходы', 'расходы по объектам', `${expTot.n} на ${Number(expTot.s).toLocaleString('ru-RU')} ₽`);
 
+  // Только spend_kind='work': офис/прочее без объекта — норма (не проектный расход).
+  // Раньше в note попадали и other/warehouse → шум из десятков «непроектных» счетов.
   const noWork = await q(`SELECT id, amount_gross FROM doc_registry
        WHERE deleted_at IS NULL AND dir='in' AND payment_invoice_id IS NOT NULL
-         AND work_id IS NULL AND COALESCE(spend_kind,'') <> 'office'
+         AND work_id IS NULL AND COALESCE(spend_kind,'') = 'work'
          AND COALESCE(purpose_asgard,false)=false AND COALESCE(purpose_consumables,false)=false`);
-  if (!noWork.length) ok('7. Расходы', 'у всех счетов в оплате есть объект', '0');
-  else note('7. Расходы', 'счета в оплате без объекта (не упадут в проект)', noWork.map((x) => `#${x.id}`).join(', '));
+  if (!noWork.length) ok('7. Расходы', 'у проектных счетов есть объект', '0');
+  else note('7. Расходы', 'счета spend=work без объекта (не упадут в проект)', noWork.map((x) => `#${x.id}`).join(', '));
 
   // ═══ 8. РОЛИ / КАРТОЧКИ ═════════════════════════════════════════════════
   const incomplete = await q(`

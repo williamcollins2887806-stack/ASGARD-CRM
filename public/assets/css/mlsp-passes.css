@@ -394,44 +394,69 @@ html[data-theme="light"] .mlsp-blank {
   font: inherit;
 }
 
-.mlsp-drawer-backdrop {
-  position: fixed;
-  inset: 0;
-  background: var(--overlay);
-  z-index: calc(var(--z-modal) - 1);
-}
+/* Контент внутри AsgardUI .cr-d — НЕ position:fixed (иначе двоится с доком Хугинна) */
 .mlsp-drawer {
-  position: fixed;
-  top: 0;
-  right: 0;
-  width: min(440px, 100vw);
-  height: 100vh;
-  background: var(--bg2);
-  border-left: 1px solid var(--brd);
-  z-index: var(--z-modal);
   display: flex;
   flex-direction: column;
-  box-shadow: var(--shadow-lg);
+  gap: 14px;
+  min-height: 100%;
+  margin: -4px 0 0;
 }
-.mlsp-drawer__head {
-  padding: 18px 18px 12px;
-  border-bottom: 1px solid var(--brd-m);
+.mlsp-drawer__summary {
   display: flex;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
-  align-items: flex-start;
+  padding: 14px 14px;
+  border-radius: 14px;
+  border: 1px solid var(--brd-m);
+  background: color-mix(in srgb, var(--bg3) 88%, transparent);
 }
-.mlsp-drawer__body {
-  padding: 16px 18px;
-  overflow: auto;
-  flex: 1;
+.mlsp-drawer__summary-kicker {
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--t3);
+  margin-bottom: 4px;
+}
+.mlsp-drawer__summary-title {
+  font-size: 20px;
+  font-weight: 750;
+  color: var(--t1);
+  line-height: 1.2;
+}
+.mlsp-drawer__summary-sub {
+  margin-top: 6px;
+  font-size: 12.5px;
+  color: var(--t3);
+  line-height: 1.4;
+}
+.mlsp-drawer__grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+.mlsp-drawer__hint {
+  margin-top: 6px;
+  font-size: 12.5px;
+  color: var(--t3);
+  line-height: 1.45;
 }
 .mlsp-drawer__foot {
-  padding: 12px 18px;
-  border-top: 1px solid var(--brd-m);
   display: flex;
   gap: 8px;
   justify-content: flex-end;
+  flex-wrap: wrap;
+  margin-top: 6px;
+  padding-top: 14px;
+  border-top: 1px solid var(--brd-m);
+  position: sticky;
+  bottom: 0;
+  background: linear-gradient(180deg, transparent, var(--bg2) 28%);
+  padding-bottom: 2px;
+}
+@media (max-width: 560px) {
+  .mlsp-drawer__grid { grid-template-columns: 1fr; }
 }
 
 /* Плашка заезда/съезда в карточке Дружины */
@@ -636,7 +661,39 @@ html[data-theme="dark"] .mlsp-sheet__paper {
   font-size: 14px;
   color: var(--t1);
 }
-.mlsp-drawer .mlsp-field { margin-bottom: 12px; }
+.mlsp-drawer .mlsp-field { margin-bottom: 0; }
+.mlsp-drawer .mlsp-field label {
+  display: block;
+  font-size: 11px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--t3);
+  margin-bottom: 6px;
+}
+.mlsp-drawer .mlsp-field input,
+.mlsp-drawer .mlsp-field select,
+.mlsp-drawer .mlsp-field textarea {
+  width: 100%;
+  box-sizing: border-box;
+  border-radius: 10px;
+  border: 1px solid var(--brd);
+  background: var(--bg1);
+  color: var(--t1);
+  padding: 10px 12px;
+  font: inherit;
+}
+.mlsp-drawer .mlsp-field textarea {
+  min-height: 96px;
+  resize: vertical;
+  line-height: 1.45;
+}
+.mlsp-drawer .mlsp-field input:focus,
+.mlsp-drawer .mlsp-field select:focus,
+.mlsp-drawer .mlsp-field textarea:focus {
+  outline: none;
+  border-color: color-mix(in srgb, var(--gold) 55%, var(--brd));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--gold) 18%, transparent);
+}
 
 .mlsp-flow {
   display: flex;
@@ -720,6 +777,18 @@ html[data-theme="dark"] .mlsp-sheet__paper {
   gap: 6px;
   flex-wrap: wrap;
   justify-content: flex-end;
+}
+.mlsp-row-click { cursor: pointer; }
+.mlsp-row-click:hover td {
+  background: color-mix(in srgb, var(--blue) 8%, transparent);
+}
+.mlsp-selected__h {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-weight: 700;
+  margin-bottom: 8px;
 }
 
 @keyframes mlsp-in {
