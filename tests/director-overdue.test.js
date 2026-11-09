@@ -43,7 +43,8 @@ check('счётчики считают уникальные тендеры, а �
 });
 
 check('просрочки считаются по DISTINCT t.id', () => {
-  const m = /COUNT\(DISTINCT t\.id\) FILTER \(\s*WHERE t\.registry_status IN \('рассмотрение','готовим','подались'\)[\s\S]{0,200}?docs_deadline::date < CURRENT_DATE\s*\)::int AS overdue_count/.exec(src);
+  // 'подались' — терминальный статус (заявка ушла), в просрочку не входит.
+  const m = /COUNT\(DISTINCT t\.id\) FILTER \(\s*WHERE t\.registry_status IN \('рассмотрение','готовим'\)[\s\S]{0,240}?docs_deadline::date < CURRENT_DATE\s*\)::int AS overdue_count/.exec(src);
   assert.ok(m, 'overdue_count всё ещё считается по COUNT(*), а не по тендерам');
 });
 
@@ -74,7 +75,7 @@ check('просрочка требует активного статуса и з
   const m = /COUNT\(DISTINCT t\.id\) FILTER \([\s\S]{0,300}?\)::int AS overdue_count/.exec(src);
   assert.ok(m, 'не найден блок просрочки');
   const b = m[0];
-  assert.ok(/registry_status IN \('рассмотрение','готовим','подались'\)/.test(b),
+  assert.ok(/registry_status IN \('рассмотрение','готовим'\)/.test(b),
     'нет фильтра по активным статусам: закрытые тендеры не могут быть просрочены');
   assert.ok(/docs_deadline IS NOT NULL/.test(b),
     'нет проверки на заполненный дедлайн');

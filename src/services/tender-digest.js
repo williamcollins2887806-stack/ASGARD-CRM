@@ -223,9 +223,24 @@ function groupEvents(events) {
     { kind: 'stale', title: 'Без движения' },
     { kind: 'reminder', title: 'Напоминания' }
   ];
+  // ── Псевдонимы видов ────────────────────────────────────────────────────
+  // Крон ставит в очередь `analysis_idle` / `analysis_deadline` /
+  // `analysis_overdue`, а разделы описаны как deadline/analysis/calc/stale.
+  // Из-за этого события падали в «ПРОЧЕЕ» — владелец получал письмо, где
+  // вместо понятной группы стояло безымянное «Прочее (1)» (09.11.2026).
+  const ALIAS = {
+    analysis_idle: 'stale',
+    analysis_deadline: 'deadline',
+    analysis_overdue: 'deadline',
+    idle: 'stale',
+    deadline_2d: 'deadline',
+    analysis_finalized: 'analysis',
+    calc_ready: 'calc'
+  };
   const byKind = new Map();
   for (const e of list) {
-    const k = String((e && e.kind) || 'reminder');
+    const raw = String((e && e.kind) || 'reminder');
+    const k = ALIAS[raw] || raw;
     if (!byKind.has(k)) byKind.set(k, []);
     byKind.get(k).push(e);
   }
@@ -279,6 +294,59 @@ function esc(s) {
 }
 
 /**
+ * Дата по-русски: «31.12.2027».
+ *
+ * Раньше в письмо уходил `String(e.deadline)` от объекта Date, и владелец
+ * видел «Fri Dec 31 2027 00:00:00 GMT+0300 (Moscow Standard Time)» — сырой
+ * технический вывод вместо даты (09.11.2026).
+ *
+ * ВАЖНО: считаем в МОСКОВСКОМ времени, а не в UTC. Дата `2027-12-31T00:00+03:00`
+ * в UTC — это ещё 30 декабря; преждевременный переход на UTC сдвигал срок
+ * на день назад.
+ *
+ * @param {string|Date|null} v
+ * @returns {string} '' если даты нет
+ */
+function fmtDateRu(v) {
+  if (!v) return '';
+  const d = v instanceof Date ? v : new Date(v);
+  if (!Number.isFinite(d.getTime())) return '';
+  const msk = new Date(d.getTime() + MSK_OFFSET_MIN * 60 * 1000);
+  const dd = String(msk.getUTCDate()).padStart(2, '0');
+  const mm = String(msk.getUTCMonth() + 1).padStart(2, '0');
+  return `${dd}.${mm}.${msk.getUTCFullYear()}`;
+}
+
+/**
+ * Сколько осталось до срока, словами (в московских сутках).
+ *
+ * @param {string|Date|null} v
+ * @param {Date} [now]
+ * @returns {{text: string, tone: 'over'|'hot'|'ok'|''}}
+ */
+function daysLeft(v, now = new Date()) {
+  if (!v) return { text: '', tone: '' };
+  const d = v instanceof Date ? v : new Date(v);
+  if (!Number.isFinite(d.getTime())) return { text: '', tone: '' };
+  const day = 24 * 3600 * 1000;
+  const off = MSK_OFFSET_MIN * 60 * 1000;
+  // Сутки считаем по московскому календарю: полночь МСК = граница дня.
+  const dm = new Date(d.getTime() + off);
+  const nm = new Date(now.getTime() + off);
+  const left = Math.round((Date.UTC(dm.getUTCFullYear(), dm.getUTCMonth(), dm.getUTCDate())
+    - Date.UTC(nm.getUTCFullYear(), nm.getUTCMonth(), nm.getUTCDate())) / day);
+  if (left < 0) return { text: `просрочен на ${Math.abs(left)} дн.`, tone: 'over' };
+  if (left === 0) return { text: 'срок сегодня', tone: 'hot' };
+  if (left === 1) return { text: 'остался 1 день', tone: 'hot' };
+  if (left <= 4) return { text: `осталось ${left} дня`, tone: 'hot' };
+  if (left <= 30) return { text: `осталось ${left} дн.`, tone: 'ok' };
+  const months = Math.round(left / 30);
+  if (months < 12) return { text: `осталось ~${months} мес.`, tone: 'ok' };
+  const years = (left / 365).toFixed(1).replace('.0', '').replace('.', ',');
+  return { text: `осталось ~${years} г.`, tone: 'ok' };
+}
+
+/**
  * HTML дайджеста.
  *
  * @param {Array<object>} events
@@ -291,35 +359,102 @@ function buildHtml(events, meta) {
   const m = meta || {};
   const windowTitle = m.window === 'evening' ? 'Итоги дня'
     : (m.window === 'urgent' ? 'Срочное уведомление' : 'План на день');
+  const now = m.generatedAt instanceof Date ? m.generatedAt : new Date();
+
+  const TONE = {
+    over: { bg: '#fef2f2', bd: '#fecaca', fg: '#b91c1c' },
+    hot: { bg: '#fff7ed', bd: '#fed7aa', fg: '#c2410c' },
+    ok: { bg: '#f0f9ff', bd: '#bae6fd', fg: '#0369a1' },
+    '': { bg: '#f8fafc', bd: '#e2e8f0', fg: '#64748b' }
+  };
 
   const rows = sections.map((s) => {
     const items = s.items.map((e) => {
-      const urgent = e.urgent
-        ? '<span style="color:#b91c1c;font-weight:700">СРОЧНО </span>'
-        : '';
-      const no = e.registry_no ? `№ ${esc(String(e.registry_no))} · ` : '';
+      const no = e.registry_no ? `№ ${esc(String(e.registry_no))}` : '';
       const title = esc(String(e.title || e.subject || 'Тендер'));
-      const deadline = e.deadline
-        ? `<div style="font-size:12px;color:#6b7280">Срок: ${esc(String(e.deadline))}</div>`
+      const left = daysLeft(e.deadline, now);
+      const tone = TONE[left.tone || ''] || TONE[''];
+
+      // Плашка срока: дата + сколько осталось. Никаких сырых Date.
+      const dateStr = fmtDateRu(e.deadline);
+      const chip = dateStr
+        ? '<span style="display:inline-block;margin-left:8px;padding:2px 8px;border-radius:999px;'
+          + 'background:' + tone.bg + ';border:1px solid ' + tone.bd + ';color:' + tone.fg + ';'
+          + 'font-size:11px;font-weight:600;white-space:nowrap">'
+          + esc(dateStr) + (left.text ? ' · ' + esc(left.text) : '') + '</span>'
         : '';
-      return `<div style="padding:7px 0;border-bottom:1px solid #eef1f6">
-        <div style="font-size:14px">${urgent}${no}<b>${title}</b></div>${deadline}</div>`;
+
+      const urgent = e.urgent
+        ? '<span style="display:inline-block;margin-right:6px;padding:2px 7px;border-radius:5px;'
+          + 'background:#b91c1c;color:#fff;font-size:10px;font-weight:800;letter-spacing:.04em">СРОЧНО</span>'
+        : '';
+
+      return '<tr><td style="padding:11px 0;border-bottom:1px solid #eef1f6">'
+        + '<div style="font-size:14px;line-height:1.45;color:#1a2332">'
+        + urgent
+        + (no ? '<span style="color:#64748b;font-weight:600">' + no + '</span> · ' : '')
+        + '<span style="font-weight:600">' + title + '</span>' + chip + '</div>'
+        + '</td></tr>';
     }).join('');
-    return `<div style="margin:16px 0 6px;font-size:13px;font-weight:800;color:#1b2a4a;letter-spacing:.04em">
-        ${esc(s.title.toUpperCase())} (${s.items.length})
-      </div>${items}`;
+
+    return '<tr><td style="padding:18px 0 0">'
+      + '<div style="font-size:11px;font-weight:800;color:#1b2a4a;letter-spacing:.06em;'
+      + 'padding-bottom:2px">' + esc(String(s.title).toUpperCase())
+      + '<span style="color:#94a3b8;font-weight:600"> · ' + s.items.length + '</span></div>'
+      + '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" '
+      + 'style="border-collapse:collapse">' + items + '</table>'
+      + '</td></tr>';
+  }).join('');
+
+  // Счётчики в шапке: по ним видно масштаб с первого взгляда.
+  const urgentCount = list.filter((e) => e && e.urgent).length;
+  const overdueCount = list.filter((e) => daysLeft(e.deadline, now).tone === 'over').length;
+  const stats = [
+    ['Событий', list.length],
+    ['Срочных', urgentCount],
+    ['Просрочено', overdueCount]
+  ].map(([label, value]) => {
+    const over = label === 'Просрочено' && value > 0;
+    const hot = label === 'Срочных' && value > 0;
+    const fg = over ? '#b91c1c' : (hot ? '#c2410c' : '#1a2332');
+    return '<td style="padding:0 18px 0 0">'
+      + '<div style="font-size:20px;font-weight:800;line-height:1.1;color:' + fg + '">' + value + '</div>'
+      + '<div style="font-size:10.5px;color:#94a3b8;letter-spacing:.04em;text-transform:uppercase">'
+      + esc(label) + '</div></td>';
   }).join('');
 
   return `<!DOCTYPE html><html lang="ru"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Тендеры</title></head>
-<body style="margin:0;padding:20px;background:#f5f7fb;font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif">
-  <div style="max-width:640px;margin:0 auto;background:#fff;border-radius:14px;padding:24px;border:1px solid #e5e9f0">
-    <div style="font-size:11px;color:#6b7280;letter-spacing:.06em;text-transform:uppercase">Асгард-Сервис</div>
-    <div style="font-size:22px;font-weight:800;color:#1b2a4a;margin:6px 0 2px">Тендеры · ${esc(windowTitle)}</div>
-    <div style="font-size:13px;color:#6b7280;margin-bottom:14px">Событий: ${list.length}</div>
-    ${rows || '<div style="font-size:14px;color:#6b7280">Событий нет.</div>'}
-  </div>
+<title>Тендеры · ${esc(windowTitle)}</title></head>
+<body style="margin:0;padding:24px 12px;background:#eef1f6;font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;-webkit-font-smoothing:antialiased">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+   <tr><td align="center">
+  <table role="presentation" width="640" cellpadding="0" cellspacing="0" border="0"
+         style="width:100%;max-width:640px;background:#ffffff;border-radius:16px;overflow:hidden;border:1px solid #e2e8f0">
+    <tr><td style="padding:22px 28px 0;background:#1b2a4a">
+      <div style="font-size:10.5px;color:#93a4c3;letter-spacing:.12em;text-transform:uppercase;font-weight:600">
+        Асгард-Сервис · тендерный отдел</div>
+      <div style="font-size:23px;font-weight:800;color:#ffffff;margin:6px 0 16px;letter-spacing:-.01em">
+        ${esc(windowTitle)}</div>
+      <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="padding-bottom:18px">
+        <tr>${stats}</tr>
+      </table>
+    </td></tr>
+    <tr><td style="padding:4px 28px 24px">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+        ${rows || '<tr><td style="padding:18px 0;font-size:14px;color:#64748b">Событий нет — очередь пуста.</td></tr>'}
+      </table>
+    </td></tr>
+    <tr><td style="padding:14px 28px;background:#f8fafc;border-top:1px solid #e2e8f0">
+      <div style="font-size:11px;color:#94a3b8;line-height:1.6">
+        Письмо собрано автоматически: все события дня в одном месте, отдельные
+        уведомления по тендерам больше не приходят. Открыть очередь —
+        <a href="https://asgard-crm.ru/#/pm-duty" style="color:#2f6fed;text-decoration:none;font-weight:600">Дежурство РП</a>.
+      </div>
+    </td></tr>
+  </table>
+   </td></tr>
+  </table>
 </body></html>`;
 }
 
@@ -327,17 +462,23 @@ function buildHtml(events, meta) {
 function buildText(events, meta) {
   const list = Array.isArray(events) ? events : [];
   const sections = groupEvents(list);
+  const now = (meta && meta.generatedAt instanceof Date) ? meta.generatedAt : new Date();
   const lines = [];
-  lines.push(`Тендеры · ${(meta && meta.window) === 'evening' ? 'итоги дня' : 'план на день'}`);
+  lines.push(`ТЕНДЕРЫ · ${(meta && meta.window) === 'evening' ? 'ИТОГИ ДНЯ' : 'ПЛАН НА ДЕНЬ'}`);
   lines.push(`Событий: ${list.length}`);
   for (const s of sections) {
     lines.push('');
-    lines.push(`${s.title} (${s.items.length})`);
+    lines.push(`${s.title.toUpperCase()} (${s.items.length})`);
     for (const e of s.items) {
       const urgent = e.urgent ? '[СРОЧНО] ' : '';
       const no = e.registry_no ? `№ ${e.registry_no} · ` : '';
       lines.push(`- ${urgent}${no}${e.title || e.subject || 'Тендер'}`);
-      if (e.deadline) lines.push(`  Срок: ${e.deadline}`);
+      // Дата по-русски + сколько осталось (раньше печатался сырой объект Date).
+      const d = fmtDateRu(e.deadline);
+      if (d) {
+        const left = daysLeft(e.deadline, now);
+        lines.push(`  Срок: ${d}${left.text ? ' · ' + left.text : ''}`);
+      }
     }
   }
   return lines.join('\n');
@@ -356,5 +497,9 @@ module.exports = {
   groupEvents,
   buildSubject,
   buildHtml,
-  buildText
+  buildText,
+  // Форматирование срока: русская дата и «осталось N дней».
+  // Вынесено наружу, чтобы тесты ловили возврат сырого объекта Date в письмо.
+  fmtDateRu,
+  daysLeft
 };

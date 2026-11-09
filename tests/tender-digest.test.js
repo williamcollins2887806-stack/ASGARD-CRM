@@ -155,7 +155,7 @@ check('текстовая версия содержит те же позиции
   ], { window: 'evening' });
   assert.ok(text.includes('2158'), 'нет номера');
   assert.ok(text.includes('Гидрочистка'), 'нет названия');
-  assert.ok(text.includes('итоги дня'), 'нет заголовка вечера');
+  assert.ok(/итоги дня/i.test(text), 'нет заголовка вечера');
 });
 
 check('границы окон: 10:00 и 18:00 — уже НЕ окно', () => {
@@ -203,7 +203,63 @@ check('nextWindow принимает дату строкой', () => {
   assert.ok(r.at && r.at.includes('2026-11-09'), 'строка не разобрана: ' + r.at);
 });
 
-const failed = results.filter((r) => !r.ok);
+  check('в письме русская дата, а не сырой объект Date', () => {
+    // Владелец 09.11.2026 получил «Срок: Fri Dec 31 2027 00:00:00 GMT+0300
+    // (Moscow Standard Time)» — в HTML уходил String(Date).
+    const ev = [{
+      kind: 'reminder', tender_id: 1240, registry_no: '457',
+      title: 'Зачистка резервуаров',
+      deadline: new Date('2027-12-31T00:00:00+03:00')
+    }];
+    const html = digest.buildHtml(ev, { window: 'evening' });
+    assert.ok(!/GMT|Moscow Standard|00:00:00/.test(html), 'в HTML попал сырой Date');
+    assert.ok(/31\.12\.2027/.test(html), 'нет русской даты 31.12.2027');
+
+    const text = digest.buildText(ev, { window: 'evening' });
+    assert.ok(!/GMT|Moscow Standard/.test(text), 'в тексте сырой Date');
+    assert.ok(/31\.12\.2027/.test(text), 'нет даты в текстовой версии');
+  });
+
+  check('срок словами: осталось / просрочен', () => {
+    const now = new Date('2026-11-09T12:00:00+03:00');
+    const y = digest.daysLeft(new Date('2027-12-31T00:00:00+03:00'), now);
+    assert.ok(/осталось/.test(y.text), 'нет «осталось» для далёкого срока: ' + y.text);
+    const over = digest.daysLeft(new Date('2026-08-06T00:00:00+03:00'), now);
+    assert.ok(/просрочен/.test(over.text), 'просрочка не распознана: ' + over.text);
+    assert.strictEqual(over.tone, 'over');
+    const today = digest.daysLeft(new Date('2026-11-09T00:00:00+03:00'), now);
+    assert.ok(/сегодня/.test(today.text), 'срок сегодня не распознан: ' + today.text);
+  });
+
+  check('виды крона попадают в понятные разделы, а не в «Прочее»', () => {
+    // Крон ставит analysis_idle / analysis_deadline / analysis_overdue,
+    // а разделы назывались deadline/analysis/calc/stale → всё падало
+    // в безымянное «Прочее».
+    const ev = [
+      { kind: 'analysis_idle', tender_id: 1, title: 'A' },
+      { kind: 'analysis_deadline', tender_id: 2, title: 'B' },
+      { kind: 'analysis_overdue', tender_id: 3, title: 'C' }
+    ];
+    const groups = digest.groupEvents(ev);
+    const titles = groups.map((g) => g.title);
+    assert.ok(!titles.includes('Прочее'), 'события ушли в «Прочее»: ' + titles.join(','));
+    assert.ok(titles.includes('Без движения'), 'analysis_idle не стал «Без движения»');
+    assert.ok(titles.includes('Горят дедлайны'), 'дедлайны не попали в свою группу');
+  });
+
+  check('шапка письма показывает счётчики', () => {
+    const ev = [
+      { kind: 'reminder', tender_id: 1, title: 'A', urgent: true,
+        deadline: new Date('2026-11-09T00:00:00+03:00') },
+      { kind: 'reminder', tender_id: 2, title: 'B',
+        deadline: new Date('2026-08-01T00:00:00+03:00') }
+    ];
+    const html = digest.buildHtml(ev, { window: 'morning', generatedAt: new Date('2026-11-09T12:00:00+03:00') });
+    assert.ok(/Событий/.test(html) && /Срочных/.test(html) && /Просрочено/.test(html),
+      'нет счётчиков в шапке');
+  });
+
+  const failed = results.filter((r) => !r.ok);
 console.log('');
 console.log('итог: ' + (results.length - failed.length) + ' PASS, ' + failed.length + ' FAIL');
 process.exit(failed.length ? 1 : 0);

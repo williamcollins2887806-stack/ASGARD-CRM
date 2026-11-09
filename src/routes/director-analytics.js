@@ -361,6 +361,11 @@ module.exports = async function directorAnalyticsRoutes(fastify) {
       // ── Тендеры ──
       const tParams = [];
       const tPeriod = periodSql('COALESCE(t.docs_deadline::timestamptz, t.created_at)', period, tParams);
+      // Тот же период для подзапроса цены работ: алиас t3, но БЕЗ второго
+      // push параметра — иначе Postgres получает 2 значения при одном $N
+      // («bind message supplies 2 parameters, but prepared statement requires 1»).
+      // Оба условия используют один и тот же период, значит и параметр один.
+      const workPricePeriod = { clause: tPeriod.clause.replace(/\bt\.docs_deadline\b/g, 't3.docs_deadline').replace(/\bt\.created_at\b/g, 't3.created_at') };
       const { rows: [tSum] } = await db.query(`
         SELECT
           COUNT(*)::int AS total,
@@ -374,6 +379,9 @@ module.exports = async function directorAnalyticsRoutes(fastify) {
           COUNT(DISTINCT t.id) FILTER (WHERE t.registry_status IN ('рассмотрение','готовим','подались'))::int AS active,
           COALESCE(SUM(COALESCE(t.submission_price, t.tender_price)), 0)::float AS sum,
           COALESCE(SUM(t.tender_price), 0)::float AS nmck_sum,
+          -- Рабочие (ещё не поданные) — отдельным счётчиком. Директору нужен
+          -- именно он: 'подались' — терминальный статус, работа сделана.
+          COUNT(DISTINCT t.id) FILTER (WHERE t.registry_status IN ('рассмотрение','готовим'))::int AS active_work,
           -- Цена работ — по УНИКАЛЬНЫМ тендерам. Раньше SUM(tr.work_price)
           -- складывал строки джойна: тендер с двумя просчётами учитывался
           -- дважды (та же ошибка, что в счётчиках).
@@ -382,14 +390,23 @@ module.exports = async function directorAnalyticsRoutes(fastify) {
               FROM (
                 SELECT DISTINCT ON (tr2.tender_id) tr2.tender_id, tr2.work_price AS wp
                   FROM tender_rp_reviews tr2
-                 WHERE tr2.tender_id IN (SELECT DISTINCT t3.id FROM tenders t3
-                                          WHERE t3.archived_at IS NULL AND (${tPeriod.clause}))
+                 WHERE tr2.tender_id IN (
+                   SELECT DISTINCT t3.id FROM tenders t3
+                    WHERE t3.archived_at IS NULL
+                      AND (${workPricePeriod.clause})
+                 )
                  ORDER BY tr2.tender_id, tr2.updated_at DESC NULLS LAST
               ) x
           ), 0)::float AS work_price_sum,
           -- Просрочки — по УНИКАЛЬНЫМ тендерам, а не по строкам джойна.
+          --
+          -- И только по РАБОЧИМ статусам: 'подались' — терминальный
+          -- (заявка отправлена, работа сделана, см. TERMINAL_REGISTRY_STATUSES
+          -- в pm-duty.js). Раньше он считался активным, и директор видел
+          -- «просрочки» там, где срок просто прошёл после подачи
+          -- (жалоба 09.11.2026: 4 из 4 «просроченных» — поданные заявки).
           COUNT(DISTINCT t.id) FILTER (
-            WHERE t.registry_status IN ('рассмотрение','готовим','подались')
+            WHERE t.registry_status IN ('рассмотрение','готовим')
               AND t.docs_deadline IS NOT NULL
               AND t.docs_deadline::date < CURRENT_DATE
           )::int AS overdue_count
