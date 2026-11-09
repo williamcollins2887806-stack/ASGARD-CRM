@@ -66,7 +66,7 @@ async function createNotification(db, { user_id, title, message, type, link }) {
     // там важна мгновенность.
     const isTenderDigestEvent = /^tender[_:]/i.test(String(type || ''))
       || type === 'tender_analysis' || type === 'tender_calc' || type === 'tender_deadline';
-    if (!isTenderDigestEvent) {
+    if (isTenderDigestEvent) {
     try {
       // Get unread count for badge
       const countRes = await db.query(

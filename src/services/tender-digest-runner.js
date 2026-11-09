@@ -169,12 +169,107 @@ async function runDigest({ db, log, sendMail, now, recipients, force }) {
       noBcc: true
     });
 
+    // ── Один push на весь дайджест ────────────────────────────────────────
+    // Раньше push уходил на КАЖДОЕ тендерное событие (события больше не шлют
+    // push сами — см. notify.js). Здесь ровно один push на дайджест, без
+    // отдельного tag на событие: ОС схлопывает его в одно уведомление.
+    //
+    // Ошибку не пробрасываем: если подписки нет или push не настроен,
+    // письмо уже ушло, и бизнес-операция завершена.
+    let pushed = 0;
+    try {
+      pushed = await sendDigestPush(db, log, { events, subject, windowKind, urgent: hasUrgent });
+    } catch (e) {
+      log?.warn?.('[TenderDigest] push не отправлен: ' + e.message);
+    }
+
     const marked = await markSent(db, events.map((e) => e.id), to.join(','));
-    log?.info?.(`[TenderDigest] отправлено ${marked} событий в одном письме (окно: ${windowKind})`);
-    return { ok: true, sent: marked, window: windowKind, urgent: hasUrgent };
+    log?.info?.(`[TenderDigest] отправлено ${marked} событий (окно: ${windowKind}), push: ${pushed}`);
+    return { ok: true, sent: marked, window: windowKind, urgent: hasUrgent, pushed };
   } finally {
     try { await db.query('SELECT pg_advisory_unlock($1)', [LOCK_ID]); } catch (_) {}
   }
+}
+
+/**
+ * Один push на весь дайджест.
+ *
+ * События тендеров больше не шлют push сами (notify.js пропускает тип
+ * `tender_*`). Здесь собираем их в ОДНО уведомление: заголовок — сколько
+ * срочных и всего, тело — первые несколько тендеров. Так РП получает один
+ * пуш утром и один вечером вместо десятков.
+ *
+ * Тег постоянный: ОС заменит предыдущий дайджест, а не покажет второй.
+ *
+ * @param {object} db
+ * @param {object} log
+ * @param {{events: Array<object>, subject: string, windowKind: string, urgent: boolean}} p
+ * @returns {Promise<number>} сколько устройств получило
+ */
+async function sendDigestPush(db, log, p) {
+  const o = p || {};
+  const events = Array.isArray(o.events) ? o.events : [];
+  if (!events.length) return 0;
+
+  let webpush;
+  try { webpush = require('web-push'); } catch (_) { return 0; }
+  const publicKey = process.env.VAPID_PUBLIC_KEY;
+  const privateKey = process.env.VAPID_PRIVATE_KEY;
+  if (!publicKey || !privateKey) return 0;
+
+  webpush.setVapidDetails(
+    process.env.VAPID_EMAIL || 'mailto:admin@asgard-crm.ru',
+    publicKey,
+    privateKey
+  );
+
+  const urgentCount = events.filter((e) => e && e.urgent).length;
+  // Заголовок без служебных слов: «Тендеры: 3 (1 срочный)».
+  const title = urgentCount
+    ? `Тендеры: ${events.length} (${urgentCount} срочно)`
+    : `Тендеры: ${events.length}`;
+  // Тело: первые три названия, чтобы было понятно без открытия.
+  const names = events.slice(0, 3)
+    .map((e) => {
+      const no = e.registry_no ? `№ ${e.registry_no} · ` : '';
+      return no + String(e.title || 'тендер').slice(0, 60);
+    });
+  const more = events.length > 3 ? ` и ещё ${events.length - 3}` : '';
+  const body = names.join('; ') + more;
+
+  // Кому: все активные подписки. Дайджест общий для тендерного контура,
+  // поэтому не привязываемся к конкретному userId.
+  const subs = await db.query(
+    'SELECT id, user_id, endpoint, p256dh, auth FROM push_subscriptions'
+  );
+  if (!subs.rows || !subs.rows.length) return 0;
+
+  const payload = JSON.stringify({
+    title,
+    body,
+    url: '/m/',
+    // Постоянный tag: новый дайджест заменяет старый, а не копится.
+    tag: 'tender-digest-' + (o.windowKind || 'day'),
+    urgent: !!o.urgent,
+    icon: './assets/img/icon-192.png'
+  });
+
+  let sent = 0;
+  for (const sub of subs.rows) {
+    try {
+      await webpush.sendNotification({
+        endpoint: sub.endpoint,
+        keys: { p256dh: sub.p256dh, auth: sub.auth }
+      }, payload, { urgency: o.urgent ? 'high' : 'normal', TTL: 6 * 60 * 60 });
+      sent += 1;
+    } catch (err) {
+      // Просроченная подписка — удаляем, чтобы не копить мёртвые.
+      if (err && (err.statusCode === 410 || err.statusCode === 404)) {
+        await db.query('DELETE FROM push_subscriptions WHERE id = $1', [sub.id]);
+      }
+    }
+  }
+  return sent;
 }
 
 /**

@@ -240,6 +240,29 @@ function msk(y, m, d, h, min = 0) {
     assert.ok(!db.rows[0].sent_at, 'неотправленное удалено');
   });
 
+  // ── 6. Push дайджеста ───────────────────────────────────────────────────
+  await check('без VAPID push не отправляется, но письмо уходит', async () => {
+    // Ключей нет в тестах — push должен тихо пропуститься, письмо уйти.
+    const db = makeDb();
+    await runner.enqueueEvent(db, { kind: 'analysis', tender_id: 1, title: 'A' });
+    let mails = 0;
+    const r = await runner.runDigest({
+      db, log: null, sendMail: async () => { mails += 1; },
+      now: msk(2026, 11, 9, 9, 30), recipients: ['a@b.c']
+    });
+    assert.strictEqual(mails, 1, 'письмо не ушло');
+    assert.strictEqual(r.pushed, 0, 'push ушёл без ключей');
+  });
+
+  await check('события тендеров больше не шлют push сами', () => {
+    // notify.js пропускает тип tender_* — иначе push уходил бы на каждое
+    // событие, и дайджест терял бы смысл.
+    const notifySrc = require('fs').readFileSync(
+      path.join(__dirname, '..', 'src', 'services', 'notify.js'), 'utf8'
+    );
+    assert.ok(/isTenderDigestEvent/.test(notifySrc), 'нет фильтра тендерных пущ-событий');
+  });
+
   const failed = results.filter((r) => !r.ok);
   console.log('');
   console.log('итог: ' + (results.length - failed.length) + ' PASS, ' + failed.length + ' FAIL');
