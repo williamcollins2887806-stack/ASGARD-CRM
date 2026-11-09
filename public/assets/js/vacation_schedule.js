@@ -1045,11 +1045,11 @@ window.AsgardVacationSchedulePage = (function () {
   }
 
   function myDrafts() {
-    return periodsOf(S.meEmployeeId || (D && D.meId))
+    return periodsOf(S.myEmployeeId)
       .filter(function (r) { return r.status === 'draft'; });
   }
   function myPending() {
-    return periodsOf(S.meEmployeeId || (D && D.meId))
+    return periodsOf(S.myEmployeeId)
       .filter(function (r) { return r.status === 'pending'; });
   }
 
