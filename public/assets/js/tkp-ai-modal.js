@@ -544,6 +544,11 @@ window.AsgardTkpAi = (function () {
 
     try {
       const body = collectDraftForSave();
+      // Флаги печати и подписи: предпросмотр должен показывать РОВНО то,
+      // что человек скачает. Раньше он рисовал без печати, а файл приходил
+      // с печатью — «предпросмотр врёт».
+      body.with_stamp = true;
+      body.with_signature = true;
       const resp = await fetch('/api/tkp/preview-pdf', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token() },
@@ -556,8 +561,10 @@ window.AsgardTkpAi = (function () {
       }
       const blob = await resp.blob();
       const url = URL.createObjectURL(blob);
-      window.open(url, '_blank');
-      setTimeout(function () { URL.revokeObjectURL(url); }, 60000);
+      // Предпросмотр — не сырой PDF во вкладке, а окно проверки: человек
+      // видит документ ДО скачивания и решает, всё ли на месте.
+      openPreviewWindow(url, body);
+      setTimeout(function () { URL.revokeObjectURL(url); }, 180000);
     } catch (err) {
       if (msg) {
         msg.innerHTML = '<div class="tkpai-hits"><b>Предпросмотр не открылся</b><div style="margin-top:6px">'
@@ -567,6 +574,56 @@ window.AsgardTkpAi = (function () {
       btn.disabled = false;
       btn.textContent = old;
     }
+  }
+
+  /* ───────────── окно предпросмотра ───────────── */
+
+  /**
+   * Предпросмотр перед скачиванием.
+   *
+   * Зачем: человек должен УВИДЕТЬ документ (печать, подпись, суммы) до того,
+   * как отдаст файл заказчику. Раньше «PDF» было слепым скачиванием — и
+   * дефекты вроде двух подписей или печати посреди текста обнаруживались
+   * уже после отправки.
+   *
+   * Окно показывает тот же PDF, что уйдёт в файл, и даёт скачать Word/PDF.
+   */
+  function openPreviewWindow(pdfUrl, draft) {
+    const id = (state && state.savedId) || (draft && draft.id) || '';
+    const qs = token() ? '?token=' + encodeURIComponent(token()) : '';
+    const win = window.open('', '_blank');
+    if (!win) {
+      // Всплывающие окна заблокированы — не молчим, отдаём файл напрямую.
+      window.open(pdfUrl, '_blank');
+      return;
+    }
+    const docxUrl = id ? ('/api/tkp/' + id + '/docx' + (qs ? qs + '&' : '?') + 'stamp=1&signature=1') : '';
+    const pdfUrl2 = id ? ('/api/tkp/' + id + '/pdf' + (qs ? qs + '&' : '?') + 'stamp=1&signature=1') : '';
+
+    win.document.write(
+      '<!DOCTYPE html><html lang="ru"><head><meta charset="utf-8">' +
+      '<title>Предпросмотр ТКП</title>' +
+      '<style>' +
+      '*{box-sizing:border-box}' +
+      'html,body{margin:0;height:100%;background:#0f1419;font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif}' +
+      '.bar{height:56px;display:flex;align-items:center;gap:10px;padding:0 16px;background:#161d26;border-bottom:1px solid #232c38}' +
+      '.bar b{color:#e6edf3;font-size:14px;font-weight:600;margin-right:auto}' +
+      '.bar a,.bar button{height:34px;display:inline-flex;align-items:center;padding:0 14px;border-radius:8px;' +
+      'font-size:13px;font-weight:600;text-decoration:none;border:1px solid #2c3644;background:#1c242e;color:#c9d4e0;cursor:pointer}' +
+      '.bar a.pri{background:#2f6fed;border-color:#2f6fed;color:#fff}' +
+      '.bar a:hover,.bar button:hover{border-color:#3d4b5c}' +
+      '.bar a.pri:hover{background:#3d7bf5}' +
+      'iframe{display:block;width:100%;height:calc(100% - 56px);border:0;background:#fff}' +
+      '.note{position:absolute;left:16px;bottom:12px;font-size:11px;color:#5a6675}' +
+      '</style></head><body>' +
+      '<div class="bar"><b>Предпросмотр коммерческого предложения</b>' +
+      (docxUrl ? '<a href="' + docxUrl + '">Скачать Word</a>' : '') +
+      (pdfUrl2 ? '<a class="pri" href="' + pdfUrl2 + '">Скачать PDF</a>' : '<a class="pri" href="' + pdfUrl + '" download>Скачать PDF</a>') +
+      '<button type="button" onclick="window.close()">Закрыть</button></div>' +
+      '<iframe src="' + pdfUrl + '#toolbar=1&view=FitH"></iframe>' +
+      '</body></html>'
+    );
+    win.document.close();
   }
 
   /* ───────────── сохранение ───────────── */
@@ -612,7 +669,10 @@ window.AsgardTkpAi = (function () {
       const docxBtn = modalEl.querySelector('[data-act="docx"]');
       if (docxBtn) {
         docxBtn.addEventListener('click', function () {
-          window.open('/api/tkp/' + id + '/docx' + authQs(), '_blank');
+          // Печать и подпись обязательны: раньше Word уходил без печати.
+          const t = token();
+          window.open('/api/tkp/' + id + '/docx'
+            + (t ? '?token=' + encodeURIComponent(t) + '&' : '?') + 'stamp=1&signature=1', '_blank');
         });
       }
       const pdfBtn = modalEl.querySelector('[data-act="pdf"]');

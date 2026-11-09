@@ -2198,8 +2198,15 @@ module.exports = async function routesWithExtensions(fastify, options) {
         if (p && typeof p === 'object') company = Object.assign({}, company, p);
       }
     } catch (_) { /* реквизиты выше — рабочий фолбэк, пустой подписи быть не должно */ }
+    // Печать и подпись в Word — те же флаги, что у PDF.
+    //
+    // КОРЕНЬ (09.11.2026): маршрут вообще не смотрел на флаги, поэтому кнопка
+    // «Word» отдавала документ без печати, хотя `applyStampAndSignature`
+    // умел её ставить. Фронт теперь всегда просит stamp=1&signature=1.
+    const wantStamp = request.query.stamp === '1' || request.query.stamp === 'true';
+    const wantSignature = request.query.signature === '1' || request.query.signature === 'true';
     const buf = tkp.kp_variant === 'full'
-      ? fullKp.generateFullKpDocxBuffer(tkp, company)
+      ? fullKp.generateFullKpDocxBuffer(tkp, company, { stamp: wantStamp, signature: wantSignature })
       : fullKp.generateClassicDocxBuffer(tkp, company);
     reply.header('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
     reply.header('Content-Disposition', `attachment; filename="TKP_${tkp.id}.docx"`);

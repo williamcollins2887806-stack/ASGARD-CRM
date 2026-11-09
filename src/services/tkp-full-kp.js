@@ -587,6 +587,7 @@ function applyStampAndSignature(buf, opts) {
   try { api = require('pdf-generator'); } catch (_) { api = pdfGenerator; }
   if (!api) return buf;
   const pick = (fn) => { try { return (api[fn] && api[fn]()) || ''; } catch (_) { return ''; } };
+  // Штатная подпись из настроек — она и есть «подпись директора».
   const sig = opts.signature ? pick('getSignatureBase64') : '';
   const stamp = opts.stamp ? pick('getStampBase64') : '';
   if (!sig && !stamp) return buf;
@@ -636,13 +637,25 @@ function applyStampAndSignature(buf, opts) {
     //
     // Обе координаты — от края СТРАНИЦЫ: колонка подписи в шаблоне узкая
     // (4,6 см), и смещение от неё выносило печать за лист или на текст.
-    const drawing = (id, cx, cy, name, pageX, pageY) =>
+    // ── Привязка картинки ─────────────────────────────────────────────────
+    // КЛЮЧЕВОЕ: раньше обе координаты отсчитывались от края СТРАНИЦЫ
+    // (relativeFrom="page") с жёсткими смещениями 104 pt по вертикали. Это
+    // верхняя треть листа — печать падала в шапку/таблицу, «между текстом»
+    // (жалоба владельца 09.11.2026). Шаблон меняет высоту от содержания,
+    // поэтому координаты от страницы неверны ВСЕГДА.
+    //
+    // Теперь якорь привязан к абзацу подписи:
+    //   • H/V — от абзаца, а не от листа;
+    //   • wrapNone + behindDoc=0 — плавающий слой ПОВЕРХ текста: картинка не
+    //     участвует в потоке и не раздвигает строки. Обтекание (wrapSquare)
+    //     как раз и давало ощущение «вставлено между текстом».
+    const drawing = (id, cx, cy, name, offX, offY) =>
       `<w:r><w:rPr><w:noProof/></w:rPr><w:drawing>` +
       `<wp:anchor distT="0" distB="0" distL="0" distR="0" simplePos="0" relativeHeight="${256000000 + Number(id.replace(/\D/g, ''))}" ` +
-      `behindDoc="0" locked="0" layoutInCell="0" allowOverlap="1">` +
+      `behindDoc="0" locked="0" layoutInCell="1" allowOverlap="1">` +
       `<wp:simplePos x="0" y="0"/>` +
-      `<wp:positionH relativeFrom="page"><wp:posOffset>${pageX}</wp:posOffset></wp:positionH>` +
-      `<wp:positionV relativeFrom="page"><wp:posOffset>${pageY}</wp:posOffset></wp:positionV>` +
+      `<wp:positionH relativeFrom="paragraph"><wp:posOffset>${offX}</wp:posOffset></wp:positionH>` +
+      `<wp:positionV relativeFrom="paragraph"><wp:posOffset>${offY}</wp:posOffset></wp:positionV>` +
       `<wp:extent cx="${cx}" cy="${cy}"/><wp:effectExtent l="0" t="0" r="0" b="0"/>` +
       `<wp:wrapNone/>` +
       `<wp:docPr id="${id.replace(/\D/g, '')}" name="${name}"/>` +
@@ -657,15 +670,59 @@ function applyStampAndSignature(buf, opts) {
       `</wp:anchor></w:drawing></w:r>`;
 
     const PT = 12700; // 1 pt = 12 700 EMU
+    // Смещения — от строки подписи (абзац «____ (ФИО)»), не от верха листа.
+    // Подпись: чуть выше и левее линии, чтобы легла на «____».
+    // Печать: ниже и правее подписи, чтобы не закрывать ФИО, но остаться
+    // в пределах листа (высота шаблона переменная — от координат страницы
+    // это не зависит).
+    const SIG_OFF = { x: 6 * PT, y: -34 * PT };   // подпись
+    const STAMP_OFF = { x: 168 * PT, y: 8 * PT }; // печать
+
     let insert = '';
-    if (sigImg) {
+    // В шаблоне уже есть картинка подписи — плавающий якорь в абзаце ПЕРЕД
+    // строкой «____ (ФИО)» (в самом шаблоне это отдельный абзац с якорем,
+    // а «____» идёт следом). Свою поверх неё не кладём: получалось две
+    // подписи в Word (жалоба владельца 09.11.2026).
+    const tplParas = xml.match(/<w:p\b[^>]*>[\s\S]*?<\/w:p>/g) || [];
+    let sigLineIdx = -1;
+    for (let i = 0; i < tplParas.length; i += 1) {
+      if (/_{5,}/.test(tplParas[i].replace(/<[^>]+>/g, ''))) sigLineIdx = i;
+    }
+    const tplHasSignature = sigLineIdx >= 0 && tplParas
+      .slice(Math.max(0, sigLineIdx - 3), sigLineIdx + 1)
+      .some((p) => /<w:drawing>/.test(p));
+
+    // ── Перестановка подписи из шаблона ───────────────────────────────────
+    // Дефект 09.11.2026: подпись шаблона лежит НА строке «____ (ФИО)» и
+    // закрывает фамилию. В документе подпись должна быть НАД линией, а ФИО
+    // читаться под ней. Правим привязку у существующего якоря, а не ставим
+    // второй: иначе в Word две подписи.
+    if (tplHasSignature) {
+      const p = tplParas[sigLineIdx - 1] || '';
+      if (/<wp:anchor/.test(p)) {
+        const fixed = p
+          .replace(/<wp:positionV relativeFrom="\w+"><wp:posOffset>-?\d+<\/wp:posOffset><\/wp:positionV>/,
+            `<wp:positionV relativeFrom="paragraph"><wp:posOffset>${SIG_OFF.y}</wp:posOffset></wp:positionV>`)
+          .replace(/<wp:positionH relativeFrom="\w+"><wp:posOffset>-?\d+<\/wp:posOffset><\/wp:positionH>/,
+            `<wp:positionH relativeFrom="paragraph"><wp:posOffset>${SIG_OFF.x}</wp:posOffset></wp:positionH>`)
+          // Остаётся плавающим слоем поверх текста (wrapNone) — так подпись
+          // не раздвигает строки и не выглядит «вставленной между текстом».
+          .replace(/<wp:wrapSquare[^/]*\/>/, '<wp:wrapNone/>');
+        if (fixed !== p) {
+          xml = xml.replace(p, fixed);
+          // Перечитываем абзацы: позиции строки подписи могли сдвинуться.
+          const re2 = (xml.match(/<w:p\b[^>]*>[\s\S]*?<\/w:p>/g) || []);
+          xml = xml.replace(re2[sigLineIdx - 1] || p, fixed);
+        }
+      }
+    }
+    if (sigImg && !tplHasSignature) {
       const name = mediaName(sigImg.ext, 'signature');
       zip.file(name, sigImg.buf);
       const id = nextRel();
       addRel(id, name.replace(/^word\//, ''));
       addCt(sigImg.ext);
-      // 88 × 75 pt: подпись ложится на «____» (строка на 89,6…99 pt)
-      insert += drawing(id, 88 * PT, 75 * PT, 'signature.png', 366 * PT, 20 * PT);
+      insert += drawing(id, 88 * PT, 75 * PT, 'signature.png', SIG_OFF.x, SIG_OFF.y);
     }
     if (stampImg) {
       const name = mediaName(stampImg.ext, 'stamp');
@@ -673,8 +730,7 @@ function applyStampAndSignature(buf, opts) {
       const id = nextRel();
       addRel(id, name.replace(/^word\//, ''));
       addCt(stampImg.ext);
-      // 80 × 85 pt: печать справа и НИЖЕ строки подписи, чтобы не закрывать ФИО
-      insert += drawing(id, 80 * PT, 85 * PT, 'stamp.png', 452 * PT, 104 * PT);
+      insert += drawing(id, 80 * PT, 85 * PT, 'stamp.png', STAMP_OFF.x, STAMP_OFF.y);
     }
     if (!insert) return buf;
 
@@ -697,7 +753,10 @@ function applyStampAndSignature(buf, opts) {
     zip.file('word/_rels/document.xml.rels', rels);
     if (ct) zip.file('[Content_Types].xml', ct);
     return zip.generate({ type: 'nodebuffer', compression: 'DEFLATE' });
-  } catch (_) {
+  } catch (e) {
+    // Молчаливый возврат буфера — худший вариант: печать просто исчезает,
+    // и это выглядит как «кнопка не работает». Причина должна быть видна.
+    console.warn('[tkp-full-kp] печать/подпись не вставлены: ' + (e && e.message));
     return buf;
   }
 }

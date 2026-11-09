@@ -6,7 +6,7 @@
  */
 
 const { evaluateApplication, registrySignal, ymd, addDays, fmtRu } = require('../services/mlsp-passes-rules');
-const { buildApplicationExcel, buildPreviewMatrix, filenameFor } = require('../services/mlsp-passes-excel');
+const { buildApplicationExcel, buildPreviewDocument, filenameFor } = require('../services/mlsp-passes-excel');
 const dadata = require('../services/dadata');
 
 const VIEW_ROLES = [
@@ -27,6 +27,121 @@ function parseIds(body) {
   const raw = body?.employee_ids || body?.people_ids || [];
   if (!Array.isArray(raw)) return [];
   return raw.map((x) => Number(x)).filter((n) => Number.isFinite(n) && n > 0);
+}
+
+/** Тип заявки → код допуска в Дружине (permit_types.code) */
+function permitCodeForApp(appType) {
+  if (appType === 'pass_mlsp') return 'MLSP_PASS';
+  if (appType === 'pass_fsb') return 'FSB';
+  return null; // 35СРЗ / ММРП — отдельные бланки, в каталоге Дружины отдельных кодов нет
+}
+
+const APP_STATUS_LABEL = {
+  draft: 'Черновик',
+  exported: 'Скачан бланк',
+  sent: 'Отправлено',
+  received: 'Пропуск получен',
+  cancelled: 'Отменена'
+};
+
+const APP_TYPE_LABEL = {
+  flight: 'Перелёт',
+  ship: 'Корабль',
+  pass_35srz: 'Пропуск 35 СРЗ',
+  pass_mmrp: 'Пропуск ММРП',
+  pass_mlsp: 'Пропуск МЛСП',
+  pass_fsb: 'Пропуск ФСБ'
+};
+
+function enrichApp(row) {
+  if (!row) return row;
+  const people = Array.isArray(row.people) ? row.people : [];
+  return {
+    ...row,
+    status_label: APP_STATUS_LABEL[row.status] || row.status,
+    app_type_label: APP_TYPE_LABEL[row.app_type] || row.app_type,
+    people_count: people.length,
+    next_hint: ({
+      draft: 'Скачайте бланк — один Excel = один лист под печать',
+      exported: 'Отметьте «Отправлено», когда письмо ушло заказчику',
+      sent: 'Когда пропуск выдали — «Пропуск получен» (запись в Дружину)',
+      received: 'Допуск в карточке сотрудника Дружины',
+      cancelled: 'Заявка отменена'
+    })[row.status] || '',
+    can_mark_sent: ['draft', 'exported'].includes(row.status),
+    can_mark_received: ['exported', 'sent'].includes(row.status),
+    writes_druzhina: !!permitCodeForApp(row.app_type)
+  };
+}
+
+async function issuePermitsFromApplication(db, app, opts = {}) {
+  const code = permitCodeForApp(app.app_type);
+  if (!code) {
+    return { issued: [], skipped: 'no_permit_type', code: null };
+  }
+  const { rows: types } = await db.query(
+    `SELECT id, code, name, category FROM permit_types WHERE code = $1 AND COALESCE(is_active, true) = true LIMIT 1`,
+    [code]
+  );
+  if (!types[0]) return { issued: [], skipped: 'permit_type_missing', code };
+
+  const people = Array.isArray(app.people) ? app.people : [];
+  const issueDate = ymd(opts.issue_date) || ymd(new Date());
+  const expiryDate = ymd(opts.expiry_date) || ymd(app.date_to) || null;
+  const docNumber = opts.doc_number || app.outgoing_number || null;
+  const note = opts.notes || `МЛСП · заявка #${app.id} · ${APP_STATUS_LABEL.received}`;
+  const issued = [];
+  const errors = [];
+
+  for (const p of people) {
+    const empId = Number(p.id || p.employee_id);
+    if (!Number.isFinite(empId) || empId <= 0) {
+      errors.push({ fio: p.fio, error: 'нет employee_id' });
+      continue;
+    }
+    try {
+      const { rows: existing } = await db.query(
+        `SELECT id FROM employee_permits
+          WHERE employee_id = $1 AND type_id = $2 AND COALESCE(is_active, true) = true
+          ORDER BY id DESC LIMIT 1`,
+        [empId, types[0].id]
+      );
+      if (existing[0]) {
+        const { rows: upd } = await db.query(
+          `UPDATE employee_permits
+              SET doc_number = COALESCE($1, doc_number),
+                  permit_number = COALESCE($1, permit_number),
+                  issue_date = COALESCE($2::date, issue_date),
+                  expiry_date = COALESCE($3::date, expiry_date),
+                  notes = COALESCE($4, notes),
+                  status = 'active',
+                  is_active = true,
+                  updated_at = NOW()
+            WHERE id = $5
+            RETURNING id, employee_id`,
+          [docNumber, issueDate, expiryDate, note, existing[0].id]
+        );
+        issued.push({ employee_id: empId, fio: p.fio, permit_id: upd[0].id, action: 'updated' });
+      } else {
+        const { rows: ins } = await db.query(
+          `INSERT INTO employee_permits
+             (employee_id, type_id, category, doc_number, permit_number, issue_date, expiry_date,
+              notes, status, is_active, created_by, created_at, updated_at)
+           VALUES ($1,$2,$3,$4,$4,$5::date,$6::date,$7,'active',true,$8,NOW(),NOW())
+           RETURNING id, employee_id`,
+          [
+            empId, types[0].id, types[0].category || 'offshore',
+            docNumber, issueDate, expiryDate, note, opts.user_id || null
+          ]
+        );
+        issued.push({ employee_id: empId, fio: p.fio, permit_id: ins[0].id, action: 'created' });
+      }
+    } catch (e) {
+      console.warn('[mlsp] issue permit', empId, e.message);
+      errors.push({ fio: p.fio, employee_id: empId, error: e.message });
+    }
+  }
+  return { issued, errors, code, type_id: types[0].id, type_name: types[0].name };
 }
 
 async function loadPack(db) {
@@ -53,7 +168,8 @@ async function loadEmployeesRich(db, ids) {
   let permits = [];
   try {
     const r = await db.query(
-      `SELECT ep.employee_id, ep.expiry_date, ep.issue_date, ep.document_number,
+      `SELECT ep.employee_id, ep.expiry_date, ep.issue_date,
+              COALESCE(ep.doc_number, ep.permit_number) AS document_number,
               pt.code, pt.name
          FROM employee_permits ep
          JOIN permit_types pt ON pt.id = ep.type_id
@@ -427,13 +543,22 @@ async function routes(fastify) {
     }
     sql += ` ORDER BY created_at DESC LIMIT 200`;
     const { rows } = await db.query(sql, params);
-    return { items: rows };
+    return {
+      items: rows.map(enrichApp),
+      workflow: [
+        { id: 'draft', label: 'Собрать' },
+        { id: 'exported', label: 'Скачать бланк' },
+        { id: 'sent', label: 'Отправлено' },
+        { id: 'received', label: 'Пропуск получен' }
+      ],
+      note: 'Каждое скачивание — один файл с одним листом бланка (не пачка заявок).'
+    };
   });
 
   fastify.get('/applications/:id', { preHandler: [fastify.requireRoles(VIEW_ROLES)] }, async (request, reply) => {
     const { rows } = await db.query(`SELECT * FROM mlsp_applications WHERE id = $1`, [request.params.id]);
     if (!rows[0]) return reply.code(404).send({ error: 'Не найдено' });
-    return rows[0];
+    return enrichApp(rows[0]);
   });
 
   fastify.post('/applications', { preHandler: [fastify.requireRoles(WRITE_ROLES)] }, async (request, reply) => {
@@ -574,7 +699,7 @@ async function routes(fastify) {
     if (!rows[0]) return reply.code(404).send({ error: 'Не найдено' });
     const app = rows[0];
     const meta = await loadContractMeta(db, app.contract_number);
-    const matrix = await buildPreviewMatrix({
+    const sheet = await buildPreviewDocument({
       ...app,
       people: app.people || [],
       contract_end: meta?.end_date
@@ -589,8 +714,7 @@ async function routes(fastify) {
       people: app.people,
       blocks: app.blocks,
       warnings: app.warnings,
-      fsb_form_draft: app.app_type === 'pass_fsb',
-      sheet: matrix
+      sheet
     };
   });
 
@@ -626,8 +750,8 @@ async function routes(fastify) {
       })),
       payload: body.payload || {}
     };
-    const matrix = await buildPreviewMatrix(app);
-    return { sheet: matrix, people_count: people.length };
+    const sheet = await buildPreviewDocument(app);
+    return { sheet, people_count: people.length };
   });
 
   // Finalize MLSP pass → outgoing registry + pass registry row
@@ -680,17 +804,106 @@ async function routes(fastify) {
         ]
       );
       await client.query(
-        `UPDATE mlsp_applications SET outgoing_number = $1, status = 'sent', updated_at = NOW() WHERE id = $2`,
+        `UPDATE mlsp_applications
+            SET outgoing_number = $1,
+                status = 'sent',
+                sent_at = COALESCE(sent_at, NOW()),
+                updated_at = NOW()
+          WHERE id = $2`,
         [number, app.id]
       );
       await client.query('COMMIT');
-      return { outgoing: number, registry: enrichRegistryRow(reg[0]) };
+      const { rows: fresh } = await db.query(`SELECT * FROM mlsp_applications WHERE id = $1`, [app.id]);
+      return {
+        outgoing: number,
+        registry: enrichRegistryRow(reg[0]),
+        application: enrichApp(fresh[0]),
+        next_hint: 'Когда пропуск выдадут — откройте заявку и нажмите «Пропуск получен». Для МЛСП/ФСБ допуск сразу попадёт в Дружину.'
+      };
     } catch (e) {
       await client.query('ROLLBACK');
       throw e;
     } finally {
       client.release();
     }
+  });
+
+  // Отметить: бланк ушёл заказчику
+  fastify.post('/applications/:id/mark-sent', { preHandler: [fastify.requireRoles(WRITE_ROLES)] }, async (request, reply) => {
+    const { rows } = await db.query(`SELECT * FROM mlsp_applications WHERE id = $1`, [request.params.id]);
+    if (!rows[0]) return reply.code(404).send({ error: 'Не найдено' });
+    const app = rows[0];
+    if (app.status === 'cancelled') return reply.code(400).send({ error: 'Заявка отменена' });
+    if (app.status === 'received') {
+      return { application: enrichApp(app), already: true };
+    }
+    const body = request.body || {};
+    const outgoing = body.outgoing_number || app.outgoing_number || null;
+    const { rows: upd } = await db.query(
+      `UPDATE mlsp_applications
+          SET status = 'sent',
+              sent_at = COALESCE(sent_at, NOW()),
+              outgoing_number = COALESCE($1, outgoing_number),
+              updated_at = NOW()
+        WHERE id = $2
+        RETURNING *`,
+      [outgoing, app.id]
+    );
+    return {
+      application: enrichApp(upd[0]),
+      next_hint: upd[0].app_type === 'pass_mlsp' || upd[0].app_type === 'pass_fsb'
+        ? 'Ждите выдачи. Потом «Пропуск получен» — допуск появится в карточке сотрудника в Дружине.'
+        : 'Ждите выдачи. Потом «Пропуск получен» — статус заявки закроется.'
+    };
+  });
+
+  // Пропуск получен → допуски в Дружину (MLSP_PASS / FSB)
+  fastify.post('/applications/:id/mark-received', { preHandler: [fastify.requireRoles(WRITE_ROLES)] }, async (request, reply) => {
+    const { rows } = await db.query(`SELECT * FROM mlsp_applications WHERE id = $1`, [request.params.id]);
+    if (!rows[0]) return reply.code(404).send({ error: 'Не найдено' });
+    const app = rows[0];
+    if (app.status === 'cancelled') return reply.code(400).send({ error: 'Заявка отменена' });
+    const body = request.body || {};
+
+    const permits = await issuePermitsFromApplication(db, app, {
+      issue_date: body.issue_date,
+      expiry_date: body.expiry_date,
+      doc_number: body.doc_number || app.outgoing_number,
+      user_id: request.user?.id || null
+    });
+
+    const { rows: upd } = await db.query(
+      `UPDATE mlsp_applications
+          SET status = 'received',
+              received_at = COALESCE(received_at, NOW()),
+              sent_at = COALESCE(sent_at, NOW()),
+              updated_at = NOW()
+        WHERE id = $1
+        RETURNING *`,
+      [app.id]
+    );
+
+    // синхрон реестра МЛСП, если строка уже есть
+    if (app.app_type === 'pass_mlsp') {
+      await db.query(
+        `UPDATE mlsp_pass_registry
+            SET status = 'Готова',
+                issued_date = COALESCE(issued_date, COALESCE($1::date, CURRENT_DATE)),
+                updated_at = NOW()
+          WHERE application_id = $2
+            AND status <> 'Сорвана'`,
+        [body.issue_date || null, app.id]
+      );
+    }
+
+    return {
+      application: enrichApp(upd[0]),
+      permits,
+      next_hint: permits.skipped === 'no_permit_type'
+        ? 'Статус «Пропуск получен». Для этого бланка отдельный тип допуска в Дружине не заведён — при необходимости добавьте вручную в карточке.'
+        : `В Дружине обновлено допусков: ${permits.issued.length}` +
+          (permits.errors?.length ? ` · ошибок: ${permits.errors.length}` : '')
+    };
   });
 
   // After transport export — write legs for summary / plaques
@@ -763,7 +976,45 @@ async function routes(fastify) {
       params
     );
     if (!rows[0]) return reply.code(404).send({ error: 'Не найдено' });
-    return enrichRegistryRow(rows[0]);
+
+    let permits = null;
+    let application = null;
+    // «Готова» в реестре = пропуск получен → запись в Дружину по связанной заявке
+    if (body.status === 'Готова' && rows[0].application_id) {
+      const { rows: apps } = await db.query(
+        `SELECT * FROM mlsp_applications WHERE id = $1`,
+        [rows[0].application_id]
+      );
+      if (apps[0]) {
+        permits = await issuePermitsFromApplication(db, apps[0], {
+          issue_date: body.issued_date || rows[0].issued_date,
+          doc_number: rows[0].outgoing_number || apps[0].outgoing_number,
+          user_id: request.user?.id || null
+        });
+        const { rows: updApp } = await db.query(
+          `UPDATE mlsp_applications
+              SET status = 'received',
+                  received_at = COALESCE(received_at, NOW()),
+                  sent_at = COALESCE(sent_at, NOW()),
+                  updated_at = NOW()
+            WHERE id = $1
+            RETURNING *`,
+          [apps[0].id]
+        );
+        application = enrichApp(updApp[0]);
+      }
+    }
+
+    return {
+      ...enrichRegistryRow(rows[0]),
+      permits,
+      application,
+      next_hint: body.status === 'Готова'
+        ? (permits?.issued?.length
+          ? `Пропуск получен · в Дружине: ${permits.issued.length} чел.`
+          : 'Статус «Готова». Если заявка привязана — допуски МЛСП/ФСБ уходят в Дружину.')
+        : undefined
+    };
   });
 
   fastify.post('/registry', { preHandler: [fastify.requireRoles(WRITE_ROLES)] }, async (request) => {
@@ -920,6 +1171,12 @@ async function routes(fastify) {
   // Reglament text for UI
   fastify.get('/reglament', { preHandler: [fastify.requireRoles(VIEW_ROLES)] }, async () => ({
     title: 'Регламент отправки заявок на пропуска (МЛСП)',
+    workflow: [
+      'Собрать людей из Дружины и проверить блоки.',
+      'Скачать бланк: один файл = один лист под печать (не пачка из пяти заявок).',
+      'Отправить заказчику и нажать «Отправлено» (для МЛСП — запись в реестр + исходящий 141603/NN).',
+      'Когда пропуск выдали — «Пропуск получен» или статус реестра «Готова»: для МЛСП и ФСБ допуск сразу появится в карточке сотрудника в Дружине.'
+    ],
     steps: [
       'В письме вместе с заявкой: «Прошу подтвердить получение заявки и сообщить дату её направления на проверку».',
       'Нет ответа на следующий день — звонок куратору + повторный письменный запрос.',
@@ -929,6 +1186,7 @@ async function routes(fastify) {
       'Контроль: 30-й день — статус-чек; 42–45-й — фиксация срыва.'
     ],
     statuses: ['Подана', 'Подтверждена', 'В работе', 'Готова', 'Сорвана'],
+    app_statuses: Object.entries(APP_STATUS_LABEL).map(([id, label]) => ({ id, label })),
     signals: [
       { code: 'issued', label: 'выдан' },
       { code: 'breach', label: 'срыв N дн.' },
