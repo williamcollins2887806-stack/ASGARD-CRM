@@ -224,12 +224,17 @@ window.AsgardToCalcsPage = (function () {
 
     // ── Сроки ────────────────────────────────────────────────────────────
     const days = sch.work_days || sch.duration_days || p.work_days || null;
-    const start = sch.start_date || sch.work_start_plan || null;
+    // Канон сервера — `start_plan` (asgard-smeta.js, rp-tech-plan.js).
+    // `start_date` оставлен для старых черновиков. Раньше читался только он,
+    // и дата начала не отображалась никогда (найдено верификатором).
+    const start = sch.start_plan || sch.start_date || sch.work_start_plan || null;
     let schedHtml = '';
     if (days || start) {
       const parts = [];
       if (days) parts.push('<b>' + Number(days) + ' сут</b>');
-      if (start) parts.push('начало ' + String(start).slice(0, 10));
+      // Экранируем: значение приходит из БД и могло быть введено кем угодно.
+      // Без escHtml срез в 10 символов пропускал сырой тег (XSS-вектор).
+      if (start) parts.push('начало ' + escHtml(String(start).slice(0, 10)));
       if (sch.crews) parts.push('бригад: <b>' + Number(sch.crews) + '</b>');
       schedHtml = '<div style="margin-top:8px;font-size:12px;opacity:.85">Сроки: ' + parts.join(' · ') + '</div>';
     }

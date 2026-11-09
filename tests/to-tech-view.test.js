@@ -19,6 +19,13 @@ const path = require('path');
 const JS = path.join(__dirname, '..', 'public', 'assets', 'js', 'to_calcs.js');
 const src = fs.readFileSync(JS, 'utf8');
 
+// Реальные модули в песочнице: проверяем поведение, а не текст исходника.
+const { loadBrowserModule } = require('./_browser-module');
+let toCalcs = null;
+let rpTechPlanUi = null;
+try { toCalcs = loadBrowserModule('public/assets/js/to_calcs.js', 'AsgardToCalcsPage'); } catch (_) { toCalcs = null; }
+try { rpTechPlanUi = loadBrowserModule('public/assets/js/rp-tech-plan-ui.js', 'AsgardTechPlanUI'); } catch (_) { rpTechPlanUi = null; }
+
 const results = [];
 function check(name, fn) {
   try {
@@ -120,7 +127,53 @@ check('значения экранируются', () => {
   assert.ok(!html.includes('<script>alert'), 'не экранировано');
 });
 
-const failed = results.filter((r) => !r.ok);
+  check('пустой tech_json не скрывает данные сметы', () => {
+    // На проде tech_json = {} у ВСЕХ карточек. `{}` истинно в JS, поэтому
+    // readPlan уходил в ветку техплана и возвращал пустоту — вкладка ТО
+    // выглядела пустой при заполненной смете (верификатор 09.11.2026).
+    const plan = rpTechPlanUi.readPlan({
+      tech_json: {},
+      asgard_smeta: {
+        crew: [{ role: 'Слесарь', count: 4, shifts_per_day: 2 }],
+        mtr: [{ name: 'Реагент', qty: 10, unit: 'л' }],
+        schedule: { work_days: 7 },
+        params: { work_days: 7 }
+      }
+    }, {
+      crew: [{ role: 'Слесарь', count: 4, shifts_per_day: 2 }],
+      mtr: [{ name: 'Реагент', qty: 10, unit: 'л' }],
+      schedule: { work_days: 7 },
+      params: { work_days: 7 },
+      totals: { man_hours: 480 }
+    });
+    assert.ok(Array.isArray(plan.crew) && plan.crew.length > 0, 'бригада потеряна при пустом tech_json');
+    assert.ok(Array.isArray(plan.mtr) && plan.mtr.length > 0, 'МТР потерян при пустом tech_json');
+  });
+
+  /** Тело функции techDetailsHtml (до следующей функции верхнего уровня). */
+  function techDetailsBody() {
+    const s = fs.readFileSync(JS, 'utf8');
+    const start = s.indexOf('function techDetailsHtml');
+    const end = s.indexOf('\n  function ', start + 10);
+    return s.slice(start, end > 0 ? end : start + 4000);
+  }
+
+  check('дата начала читается как start_plan', () => {
+    // Канон сервера — start_plan (asgard-smeta.js:168, rp-tech-plan.js:77).
+    // Раньше карточка ТО читала только start_date и дату начала не показывала
+    // никогда.
+    const body = techDetailsBody();
+    assert.ok(/sch\.start_plan/.test(body),
+      'techDetailsHtml не читает start_plan — дата начала снова пропадёт');
+  });
+
+  check('дата начала экранируется (нет сырого тега)', () => {
+    const body = techDetailsBody();
+    assert.ok(/escHtml\(\s*String\(start\)/.test(body),
+      'значение даты начала не экранируется — сырой тег пройдёт в HTML');
+  });
+
+  const failed = results.filter((r) => !r.ok);
 console.log('');
 console.log('итог: ' + (results.length - failed.length) + ' PASS, ' + failed.length + ' FAIL');
 process.exit(failed.length ? 1 : 0);

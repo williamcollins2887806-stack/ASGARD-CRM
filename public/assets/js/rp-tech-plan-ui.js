@@ -70,7 +70,19 @@
   function readPlan(reportJson, estimate) {
     const rj = reportJson || {};
     const est = estimate || {};
-    const tj = (rj.tech_json && typeof rj.tech_json === 'object') ? rj.tech_json : null;
+    // ── Пустой объект — это НЕ техплан ─────────────────────────────────────
+    // `{}` истинно в JS, поэтому проверка `tj ? … : …` уходила в ветку
+    // техплана и возвращала пустоту даже когда смета с бригадой и МТР есть.
+    // На проде tech_json = {} у ВСЕХ карточек, и вкладка ТО была пустой
+    // (найдено верификатором). Считаем техпланом только объект с данными.
+    const tjRaw = (rj.tech_json && typeof rj.tech_json === 'object') ? rj.tech_json : null;
+    const tjHasData = !!tjRaw && (
+      (Array.isArray(tjRaw.crew) && tjRaw.crew.length > 0)
+      || (Array.isArray(tjRaw.mtr) && tjRaw.mtr.length > 0)
+      || (tjRaw.schedule && (tjRaw.schedule.work_days || tjRaw.schedule.start_plan || tjRaw.schedule.start_date))
+      || tjRaw.man_hours_total != null
+    );
+    const tj = tjHasData ? tjRaw : null;
     const plan = tj ? {
       schedule: tj.schedule || {},
       crew: Array.isArray(tj.crew) ? tj.crew : [],

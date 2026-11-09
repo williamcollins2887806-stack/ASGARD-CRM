@@ -37,6 +37,14 @@ async function findCandidates(db) {
   // ждут действия РП — открытый анализ И владелец не финализирован, и статус
   // из рабочего набора. Плюс требование, чтобы карточка вообще была в очереди
   // (есть владелец-РП или он ещё не назначен — тогда её видит дежурный).
+  // ── LEFT JOIN вместо INNER ────────────────────────────────────────────────
+  // Верификатор замерил: 33 карточки очередь «Анализ» показывает, а крон не
+  // видел их НИКОГДА — у них ещё нет строки в tender_rp_reviews, и INNER JOIN
+  // выкидывал их из выборки. Напоминание по такому тендеру не уходило вовсе,
+  // хотя он висел в очереди.
+  //
+  // Все поля rev берём через COALESCE: при отсутствии строки они NULL, и это
+  // нормальное состояние «карточку ещё не открывали».
   const r = await db.query(`
     SELECT rev.id AS review_id, t.id AS tender_id, t.customer_name, t.tender_title,
            t.docs_deadline::date AS docs_deadline,
@@ -44,28 +52,34 @@ async function findCandidates(db) {
            rev.analysis_owner_user_id,
            t.calculator_user_id,
            GREATEST(
-             COALESCE(rev.updated_at, rev.created_at),
-             COALESCE((SELECT MAX(l.created_at) FROM tender_rp_review_log l WHERE l.review_id = rev.id), rev.created_at),
-             COALESCE((SELECT MAX(d.updated_at) FROM tender_rp_review_participant_drafts d WHERE d.review_id = rev.id), rev.created_at)
+             COALESCE(rev.updated_at, rev.created_at, t.created_at),
+             COALESCE((SELECT MAX(l.created_at) FROM tender_rp_review_log l WHERE l.review_id = rev.id), t.created_at),
+             COALESCE((SELECT MAX(d.updated_at) FROM tender_rp_review_participant_drafts d WHERE d.review_id = rev.id), t.created_at)
            ) AS last_touch
-    FROM tender_rp_reviews rev
-    JOIN tenders t ON t.id = rev.tender_id AND t.deleted_at IS NULL
-    WHERE rev.analysis_finalized_at IS NULL
+    FROM tenders t
+    LEFT JOIN tender_rp_reviews rev ON rev.tender_id = t.id
+    WHERE t.deleted_at IS NULL
+      AND (rev.analysis_finalized_at IS NULL)
       AND (rev.is_final IS NULL OR rev.is_final = false)
       -- Тот же набор статусов, что открывает очередь pm-duty (см. pm-duty.js):
       -- 'рассмотрение' И 'готовим'. Раньше крон брал только 'рассмотрение',
       -- а очередь показывала и 'готовим' — из-за этого тендер 2121 приходил
       -- письмом, но в очереди РП его не было.
       AND t.registry_status IN ('рассмотрение', 'готовим')
+      -- Тот же фильтр, что в analysisQueueSql: ТО-просчёты и звонки на анализ
+      -- дежурному не падают.
       AND COALESCE(t.calculator_kind, '') <> 'to'
-      -- Карточка должна быть «чья-то»: у неё есть владелец анализа либо
-      -- владелец расчёта. Раньше здесь стояло третье условие
-      -- (оба NULL), из-за чего выражение было тавтологией и не фильтровало
-      -- ничего. Бесхозные карточки в очередь не попадают — их некому
-      -- напоминать; их подхватывает handoffToCurrentDuty выше.
+      AND COALESCE(t.source, '') <> 'phone_call'
+      -- Карточка должна быть «чья-то»: есть владелец анализа, владелец
+      -- расчёта, ЛИБО карточку ещё не открывали (rev.id IS NULL) — такую
+      -- видит дежурный и берёт себе, поэтому напоминать есть кому.
+      --
+      -- Раньше третье условие было «оба NULL» без привязки к rev.id, и всё
+      -- выражение становилось тавтологией (истина всегда).
       AND (
         rev.analysis_owner_user_id IS NOT NULL
         OR t.calculator_user_id IS NOT NULL
+        OR rev.id IS NULL
       )
       AND NOT (
         COALESCE(btrim(t.customer_name), '') = ''
@@ -137,19 +151,23 @@ async function findAnalysisDeadlineOverdue(db) {
 /** Повторное письмо по тому же review/tender+kind — не чаще раза в 48 ч. */
 const NOTICE_COOLDOWN = '48 hours';
 
-async function alreadySentReview(db, reviewId, noticeKind) {
-  if (!reviewId) return false;
-  const r = await db.query(`
-    SELECT 1 FROM pm_analysis_stale_notices
-    WHERE review_id = $1 AND notice_kind = $2
-      AND sent_at > NOW() - $3::interval
-    LIMIT 1
-  `, [reviewId, noticeKind, NOTICE_COOLDOWN]).catch(() => ({ rows: [] }));
-  return !!r.rows[0];
+// Карточку могут ещё не открывать (rev.id IS NULL) — тогда дедупликация
+// возможна только по tender_id, иначе письмо уходило бы каждый час.
+async function alreadySentReview(db, reviewId, noticeKind, tenderId) {
+  if (reviewId) {
+    const r = await db.query(`
+      SELECT 1 FROM pm_analysis_stale_notices
+      WHERE review_id = $1 AND notice_kind = $2
+        AND sent_at > NOW() - $3::interval
+      LIMIT 1
+    `, [reviewId, noticeKind, NOTICE_COOLDOWN]).catch(() => ({ rows: [] }));
+    return !!r.rows[0];
+  }
+  return alreadySentTender(db, tenderId, noticeKind);
 }
 
-async function markSentReview(db, reviewId, noticeKind) {
-  if (!reviewId) return;
+async function markSentReview(db, reviewId, noticeKind, tenderId) {
+  if (!reviewId) { await markSentTender(db, tenderId, null, noticeKind); return; }
   // UNIQUE (review_id, notice_kind) — без UPSERT INSERT молча падает и спам идёт каждый час
   await db.query(`
     INSERT INTO pm_analysis_stale_notices (review_id, notice_kind, sent_at)
@@ -279,7 +297,7 @@ async function runOnce(db, log) {
 
   for (const row of rows) {
     try {
-      if (await alreadySentReview(db, row.review_id, row.notice_kind)) continue;
+      if (await alreadySentReview(db, row.review_id, row.notice_kind, row.tender_id)) continue;
 
       const r = await digestRunner.enqueueEvent(db, {
         kind: row.notice_kind === 'deadline_2d' ? 'analysis_deadline' : 'analysis_idle',
@@ -296,7 +314,7 @@ async function runOnce(db, log) {
       if (r && r.queued) queued += 1;
       // Отметку ставим только когда событие реально попало в очередь:
       // иначе дедупликация крона «съест» тендер, не отправив ничего.
-      await markSentReview(db, row.review_id, row.notice_kind);
+      await markSentReview(db, row.review_id, row.notice_kind, row.tender_id);
     } catch (err) {
       log?.error?.({ err, review_id: row.review_id }, '[PmAnalysisStale] enqueue failed');
     }

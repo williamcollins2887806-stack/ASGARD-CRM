@@ -847,10 +847,14 @@ window.AsgardRpCalcModal = (function () {
     calc.forEach((c) => { if (c.position_id) byPos[c.position_id] = c; });
 
     if (!positions.length) {
+      // Из пустой ДВ должен быть ВЫХОД: раньше здесь был тупик — текст без
+      // кнопки добавления, и РП, удаливший все позиции, не мог вернуться.
       return '<div class="rp-calc-panel' + active + '" data-panel="dv">' +
-        '<div class="rp-calc-card"><div class="rp-calc-card__head">Объёмы работ</div>' +
-        '<p class="muted">Ведомости пока нет. Запустите «Анализ Мимир» — он разберёт ТЗ ' +
-        'и выпишет позиции с объёмами, методом и технологией.</p></div></div>';
+        '<div class="rp-calc-card"><div class="rp-calc-card__head">Объёмы работ' +
+        (state.readOnly ? '' : '<button type="button" class="btn mini rp-calc-dv-add" data-act="dv-add">+ Позиция</button>') +
+        '</div>' +
+        '<p class="muted">Ведомостей пока нет. Можно добавить позиции вручную — ' +
+        'или запустить «Анализ Мимир», он разберёт ТЗ и выпишет объёмы.</p></div></div>';
     }
 
     const foulingMap = { light: 'лёгкие', medium: 'средние', heavy: 'тяжёлые' };
