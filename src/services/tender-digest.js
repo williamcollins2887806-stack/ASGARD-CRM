@@ -425,8 +425,13 @@ function buildHtml(events, meta) {
 
   return `<!DOCTYPE html><html lang="ru"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Тендеры · ${esc(windowTitle)}</title></head>
-<body style="margin:0;padding:24px 12px;background:#eef1f6;font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;-webkit-font-smoothing:antialiased">
+<!-- Светлая схема принудительно: в тёмном режиме клиента письмо
+     выцветало и становилось нечитаемым (белое на белом). -->
+<meta name="color-scheme" content="light only">
+<meta name="supported-color-schemes" content="light only">
+<title>Тендеры · ${esc(windowTitle)}</title>
+<style>:root{color-scheme:light only}</style></head>
+<body bgcolor="#eef1f6" style="margin:0;padding:24px 12px;background:#eef1f6;color:#1a2332;font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;-webkit-font-smoothing:antialiased">
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
    <tr><td align="center">
   <table role="presentation" width="640" cellpadding="0" cellspacing="0" border="0"
