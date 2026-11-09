@@ -379,6 +379,42 @@ function splitParas(text) {
   return String(text == null ? '' : text).replace(/\r\n/g, '\n').split(/\n+/).map(s => s.trim()).filter(Boolean);
 }
 
+/**
+ * Вычистить пустые абзацы внутри циклов `{#x}…{/x}` ПОСЛЕ рендера.
+ *
+ * docxtemplater с paragraphLoop дублирует абзац-шаблон на каждый элемент, и
+ * первый (шаблонный) абзац остаётся с пустым `<w:t/>`. В Word это выглядит как
+ * пустой пункт с точкой между содержательными строками — дефект клиентского
+ * документа (ТКП 3071, 08.11.2026).
+ *
+ * Удаляем только абзацы стиля списка, в которых нет текста и нет картинки.
+ */
+function dropEmptyListParagraphs(buf) {
+  let text;
+  try {
+    const zip = new _loadDocxLibs().PizZip(buf);
+    const file = zip.file('word/document.xml');
+    if (!file) return buf;
+    text = file.asText();
+    const before = text;
+    text = text.replace(/<w:p\b[^>]*>[\s\S]*?<\/w:p>/g, (p) => {
+      const hasImg = p.includes('<w:drawing>') || p.includes('<w:pict>');
+      if (hasImg) return p;
+      const body = p.replace(/<w:pPr>[\s\S]*?<\/w:pPr>/, '');
+      const plain = body.replace(/<[^>]+>/g, '').trim();
+      if (plain) return p;
+      // пустышку удаляем только из нумерованных/маркированных списков
+      if (!/w:pStyle w:val="a0?"/.test(p)) return p;
+      return '';
+    });
+    if (text === before) return buf;
+    zip.file('word/document.xml', text);
+    return zip.generate({ type: 'nodebuffer', compression: 'DEFLATE' });
+  } catch (_) {
+    return buf;
+  }
+}
+
 function splitListItems(text) {
   return String(text == null ? '' : text)
     .replace(/\r\n/g, '\n')
@@ -519,7 +555,7 @@ function _signerName(full, company) {
   return name.toUpperCase();
 }
 
-function generateFullKpDocxBuffer(tkp, company = {}) {
+function generateFullKpDocxBuffer(tkp, company = {}, opts = {}) {
   const data = buildFullKpTemplateData(tkp, company);
   const content = fs.readFileSync(FULL_KP_TPL);
   const { Docxtemplater, PizZip } = _loadDocxLibs();
@@ -530,7 +566,140 @@ function generateFullKpDocxBuffer(tkp, company = {}) {
     nullGetter: () => ''
   });
   doc.render(data);
-  return doc.getZip().generate({ type: 'nodebuffer', compression: 'DEFLATE' });
+  let out = doc.getZip().generate({ type: 'nodebuffer', compression: 'DEFLATE' });
+  out = dropEmptyListParagraphs(out);
+  if (opts && (opts.stamp || opts.signature)) {
+    out = applyStampAndSignature(out, opts);
+  }
+  return out;
+}
+
+/**
+ * Вставить печать и подпись в DOCX прямо в авторский блок шаблона.
+ *
+ * Раньше печать/подпись были ТОЛЬКО в HTML-версии PDF: кнопка «Word» отдавала
+ * документ без печати, а «PDF» уходил в HTML-рендерер и выглядел как другой
+ * шаблон (ТКП 3071, 08.11.2026). Теперь источник один — docx-шаблон, а картинки
+ * вставляются в него же.
+ */
+function applyStampAndSignature(buf, opts) {
+  let api = null;
+  try { api = require('pdf-generator'); } catch (_) { api = pdfGenerator; }
+  if (!api) return buf;
+  const pick = (fn) => { try { return (api[fn] && api[fn]()) || ''; } catch (_) { return ''; } };
+  const sig = opts.signature ? pick('getSignatureBase64') : '';
+  const stamp = opts.stamp ? pick('getStampBase64') : '';
+  if (!sig && !stamp) return buf;
+
+  const toBuf = (dataUrl) => {
+    const m = /^data:image\/(\w+);base64,([\s\S]+)$/.exec(String(dataUrl || ''));
+    if (!m) return null;
+    return { ext: m[1].toLowerCase().replace('jpeg', 'jpg'), buf: Buffer.from(m[2], 'base64') };
+  };
+  const sigImg = toBuf(sig);
+  const stampImg = toBuf(stamp);
+
+  try {
+    const { PizZip } = _loadDocxLibs();
+    const zip = new PizZip(buf);
+    const docFile = zip.file('word/document.xml');
+    const relsFile = zip.file('word/_rels/document.xml.rels');
+    const ctFile = zip.file('[Content_Types].xml');
+    if (!docFile || !relsFile) return buf;
+
+    let xml = docFile.asText();
+    let rels = relsFile.asText();
+    let ct = ctFile ? ctFile.asText() : '';
+
+    let relId = 90;
+    const nextRel = () => {
+      while (rels.includes(`Id="rId${relId}"`)) relId += 1;
+      return `rId${relId++}`;
+    };
+    const mediaName = (ext, tag) => {
+      let i = 1;
+      while (zip.file(`word/media/${tag}_${i}.${ext}`)) i += 1;
+      return `word/media/${tag}_${i}.${ext}`;
+    };
+    const addRel = (id, target) => {
+      rels = rels.replace('</Relationships>',
+        `<Relationship Id="${id}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="${target}"/></Relationships>`);
+    };
+    const addCt = (ext) => {
+      if (!ct || ct.includes(`Extension="${ext}"`)) return;
+      ct = ct.replace('</Types>', `<Default Extension="${ext}" ContentType="image/${ext === 'jpg' ? 'jpeg' : ext}"/></Types>`);
+    };
+
+    // Плавающая картинка (wp:anchor + behindDoc=0 + wrapNone): лежит ПОВЕРХ
+    // текста и не участвует в потоке — строка подписи не сдвигается и не
+    // ломается, как было с wp:inline (ТКП 3071, 08.11.2026).
+    //
+    // Обе координаты — от края СТРАНИЦЫ: колонка подписи в шаблоне узкая
+    // (4,6 см), и смещение от неё выносило печать за лист или на текст.
+    const drawing = (id, cx, cy, name, pageX, pageY) =>
+      `<w:r><w:rPr><w:noProof/></w:rPr><w:drawing>` +
+      `<wp:anchor distT="0" distB="0" distL="0" distR="0" simplePos="0" relativeHeight="${256000000 + Number(id.replace(/\D/g, ''))}" ` +
+      `behindDoc="0" locked="0" layoutInCell="0" allowOverlap="1">` +
+      `<wp:simplePos x="0" y="0"/>` +
+      `<wp:positionH relativeFrom="page"><wp:posOffset>${pageX}</wp:posOffset></wp:positionH>` +
+      `<wp:positionV relativeFrom="page"><wp:posOffset>${pageY}</wp:posOffset></wp:positionV>` +
+      `<wp:extent cx="${cx}" cy="${cy}"/><wp:effectExtent l="0" t="0" r="0" b="0"/>` +
+      `<wp:wrapNone/>` +
+      `<wp:docPr id="${id.replace(/\D/g, '')}" name="${name}"/>` +
+      `<wp:cNvGraphicFramePr><a:graphicFrameLocks xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" noChangeAspect="1"/></wp:cNvGraphicFramePr>` +
+      `<a:graphic xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">` +
+      `<a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture">` +
+      `<pic:pic xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture">` +
+      `<pic:nvPicPr><pic:cNvPr id="0" name="${name}"/><pic:cNvPicPr/></pic:nvPicPr>` +
+      `<pic:blipFill><a:blip r:embed="${id}"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill>` +
+      `<pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="${cx}" cy="${cy}"/></a:xfrm>` +
+      `<a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr></pic:pic></a:graphicData></a:graphic>` +
+      `</wp:anchor></w:drawing></w:r>`;
+
+    const PT = 12700; // 1 pt = 12 700 EMU
+    let insert = '';
+    if (sigImg) {
+      const name = mediaName(sigImg.ext, 'signature');
+      zip.file(name, sigImg.buf);
+      const id = nextRel();
+      addRel(id, name.replace(/^word\//, ''));
+      addCt(sigImg.ext);
+      // 88 × 75 pt: подпись ложится на «____» (строка на 89,6…99 pt)
+      insert += drawing(id, 88 * PT, 75 * PT, 'signature.png', 366 * PT, 20 * PT);
+    }
+    if (stampImg) {
+      const name = mediaName(stampImg.ext, 'stamp');
+      zip.file(name, stampImg.buf);
+      const id = nextRel();
+      addRel(id, name.replace(/^word\//, ''));
+      addCt(stampImg.ext);
+      // 80 × 85 pt: печать справа и НИЖЕ строки подписи, чтобы не закрывать ФИО
+      insert += drawing(id, 80 * PT, 85 * PT, 'stamp.png', 452 * PT, 104 * PT);
+    }
+    if (!insert) return buf;
+
+    // Ставим картинки в абзац со строкой подписи (____ (ФИО)) — как в шаблоне.
+    // Раньше regex искал «{author_name}» в уже отрендеренном XML и не находил,
+    // из-за чего печать уезжала отдельным абзацем перед sectPr.
+    const paras = xml.match(/<w:p\b[^>]*>[\s\S]*?<\/w:p>/g) || [];
+    let sigPara = null;
+    for (const p of paras) {
+      const txt = p.replace(/<[^>]+>/g, '');
+      if (/_{5,}/.test(txt)) sigPara = p;
+    }
+    if (sigPara) {
+      xml = xml.replace(sigPara, sigPara.replace(/<\/w:p>$/, '') + insert + '</w:p>');
+    } else {
+      xml = xml.replace('<w:sectPr', `<w:p><w:pPr><w:jc w:val="center"/></w:pPr>${insert}</w:p><w:sectPr`);
+    }
+
+    zip.file('word/document.xml', xml);
+    zip.file('word/_rels/document.xml.rels', rels);
+    if (ct) zip.file('[Content_Types].xml', ct);
+    return zip.generate({ type: 'nodebuffer', compression: 'DEFLATE' });
+  } catch (_) {
+    return buf;
+  }
 }
 
 async function generateFullKpDocx(tkpId) {
@@ -564,43 +733,44 @@ async function htmlToPdf(html) {
 }
 
 /**
- * DOCX → PDF через LibreOffice; при отсутствии LO — HTML fallback.
+ * DOCX → PDF через LibreOffice.
  *
- * Если запрошены печать/подпись — НЕ идём в LibreOffice из «голого» DOCX
- * (там нет картинок stamp/signature). Иначе кнопка «PDF с печатью» врала.
+ * Шаблон ОДИН: и Word, и PDF собираются из full-kp-nika-tpl.docx. Раньше при
+ * запросе печати/подписи функция уходила в HTML-рендерер — и PDF получался
+ * другим документом (другие шрифты, вёрстка, нет логотипа). Владелец сравнил
+ * выгрузки ТКП 3071 08.11.2026: Word по шаблону, PDF — нет.
+ *
+ * Печать и подпись теперь вставляются в DOCX (applyStampAndSignature), поэтому
+ * HTML-путь больше не нужен.
  */
 async function generateFullKpPdfBuffer(tkp, opts = {}) {
   const company = await resolveCompany(opts.company);
-  const wantStamp = !!(opts.stamp || opts.signature);
-
-  if (!wantStamp) {
-    const docxBuf = generateFullKpDocxBuffer(tkp, company);
-    const convert = _getConvertDocxToPdf();
-    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'asgard-full-kp-'));
-    try {
-      const docxPath = path.join(tmpDir, `full-kp-${tkp.id || 'preview'}.docx`);
-      fs.writeFileSync(docxPath, docxBuf);
-      const pdfPath = convert(docxPath, tmpDir);
-      if (pdfPath && fs.existsSync(pdfPath)) {
-        return fs.readFileSync(pdfPath);
-      }
-    } finally {
-      try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch (_) {}
+  const docxBuf = generateFullKpDocxBuffer(tkp, company, {
+    stamp: !!opts.stamp,
+    signature: !!opts.signature
+  });
+  const convert = _getConvertDocxToPdf();
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'asgard-full-kp-'));
+  try {
+    const docxPath = path.join(tmpDir, `full-kp-${tkp.id || 'preview'}.docx`);
+    fs.writeFileSync(docxPath, docxBuf);
+    const pdfPath = convert(docxPath, tmpDir);
+    if (pdfPath && fs.existsSync(pdfPath)) {
+      return fs.readFileSync(pdfPath);
     }
-    console.warn('[tkp-full-kp] LibreOffice недоступен — PDF fallback HTML');
+  } finally {
+    try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch (_) {}
   }
 
+  // LibreOffice недоступен. Отдаём DOCX-совместимый HTML-рендер только как
+  // последний резерв, но помечаем это в логе явно: молчаливая подмена шаблона
+  // уже стоила разбора.
+  console.warn('[tkp-full-kp] LibreOffice недоступен — PDF fallback HTML (шаблон НЕ docx)');
   let logo = '';
-  let signatureImg = '';
-  let stampImg = '';
-  if (pdfGenerator) {
-    try {
-      if (pdfGenerator.getLogoBase64) logo = pdfGenerator.getLogoBase64() || '';
-      if (opts.signature && pdfGenerator.getSignatureBase64) signatureImg = pdfGenerator.getSignatureBase64() || '';
-      if (opts.stamp && pdfGenerator.getStampBase64) stampImg = pdfGenerator.getStampBase64() || '';
-    } catch (_) {}
+  if (pdfGenerator && pdfGenerator.getLogoBase64) {
+    try { logo = pdfGenerator.getLogoBase64() || ''; } catch (_) {}
   }
-  const html = buildFullKpHtml(tkp, { company, logo, signatureImg, stampImg });
+  const html = buildFullKpHtml(tkp, { company, logo, signatureImg: '', stampImg: '' });
   return htmlToPdf(html);
 }
 

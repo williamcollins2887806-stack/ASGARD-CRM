@@ -207,7 +207,11 @@ window.AsgardRpCalcModal = (function () {
     const base = {
       template: 'asgard_v1',
       meta: (seed && seed.meta) || {},
-      params: (seed && seed.params) || (sm.DEFAULT_PARAMS ? { ...sm.DEFAULT_PARAMS } : {}),
+      // ВАЖНО: наценку в params НЕ подставляем. Иначе бэкенд не отличает
+      // «РП задал 1.5 руками» от «пришёл дефолт», и ступенчатая наценка
+      // (1.75 / 1.50 / 1.45 по себестоимости) не включается никогда.
+      // Пустые params → расчёт сам выберет ступень; задаст РП — уважим.
+      params: (seed && seed.params) || {},
       rows: (sm.skeletonRows && sm.skeletonRows()) || []
     };
     return sm.recalcAsgardSmeta(base);
@@ -634,6 +638,57 @@ window.AsgardRpCalcModal = (function () {
     return ui.chipsHtml(plan, { hideEmpty: true });
   }
 
+  /**
+   * Диагностика разбора ведомости — баннер над вкладками.
+   *
+   * ── Зачем ────────────────────────────────────────────────────────────────
+   * Бэкенд считает, полно ли разобрана ведомость: сколько позиций нашлось,
+   * сколько ожидалось, был ли ответ модели обрезан. Но в модалке этих данных
+   * не было — РП видел позиции и не знал, что половина ведомости потерялась.
+   *
+   * Показываем ТОЛЬКО когда есть что сказать: полный разбор баннером
+   * не украшаем. Три состояния:
+   *   • разбор неполный — красный, с числами и подсказкой что делать;
+   *   • нужна сверка — жёлтый, числа для сверки с ведомостью;
+   *   • всё хорошо — баннера нет.
+   */
+  function renderParseDiagnostics(state) {
+    const rj = parseReportJson(state.review && state.review.report_json) || {};
+    const incomplete = !!rj.incomplete;
+    const reviewHint = rj.review_hint ? String(rj.review_hint) : '';
+    if (!incomplete && !reviewHint) return '';
+
+    const expected = Number(rj.expected_rows) || 0;
+    const found = Number(rj.found_positions) || 0;
+    const valid = Number(rj.valid_positions) || 0;
+    const rounds = Number(rj.generation_rounds) || 0;
+
+    // Числа показываем только те, что есть: не выводим «0 из 0».
+    const facts = [];
+    if (found) facts.push('найдено позиций: ' + found);
+    if (valid && valid !== found) facts.push('годных: ' + valid);
+    if (expected) facts.push('в документах строк с объёмом: ' + expected);
+    if (rounds > 1) facts.push('разбор шёл в ' + rounds + ' прохода');
+
+    if (incomplete) {
+      const note = rj.incomplete_note
+        ? String(rj.incomplete_note)
+        : 'Разбор ведомости неполный — часть строк могла не попасть в просчёт.';
+      return '<div class="rp-calc-diag rp-calc-diag--bad" role="alert" data-rp-diag="incomplete">' +
+        '<div class="rp-calc-diag__title">Разбор неполный</div>' +
+        '<div class="rp-calc-diag__note">' + esc(note) + '</div>' +
+        (facts.length ? '<div class="rp-calc-diag__facts">' + esc(facts.join(' · ')) + '</div>' : '') +
+        '<div class="rp-calc-diag__hint">Проверьте ведомость на вкладке «ДВ» и при необходимости повторите разбор.</div>' +
+        '</div>';
+    }
+
+    return '<div class="rp-calc-diag rp-calc-diag--warn" role="status" data-rp-diag="review">' +
+      '<div class="rp-calc-diag__title">Сверьте с ведомостью</div>' +
+      '<div class="rp-calc-diag__note">' + esc(reviewHint) + '</div>' +
+      (facts.length ? '<div class="rp-calc-diag__facts">' + esc(facts.join(' · ')) + '</div>' : '') +
+      '</div>';
+  }
+
   function renderShell(state) {
     const t = state.tender || {};
     const dl = deadlineTone(t.docs_deadline);
@@ -669,6 +724,7 @@ window.AsgardRpCalcModal = (function () {
       '</div></div>' +
       '<div class="rp-calc-tabs-wrap"><div class="rp-calc-tabs" role="tablist">' + tabsHtml + '</div></div>' +
       '<div class="rp-calc-body">' +
+      renderParseDiagnostics(state) +
       (ready ? '' : renderSmetaNeededBanner(state)) +
       renderInputs(state) +
       renderDv(state) +
@@ -837,19 +893,37 @@ window.AsgardRpCalcModal = (function () {
         : (p.method_name || p.category_name
           || [p.category_code, p.method_code].filter(Boolean).join('.'))) || null;
 
-      cards += '<article class="rp-calc-dv-card" data-dv-pos="' + esc(p.id) + '">' +
+      cards += '<article class="rp-calc-dv-card' + (p.needs_classification ? ' is-warn' : '') +
+        '" data-dv-pos="' + esc(p.id) + '" data-dv-idx="' + idx + '">' +
         '<div class="rp-calc-dv-card__top">' +
           '<span class="rp-calc-dv-card__num">' + (idx + 1) + '</span>' +
-          '<div class="rp-calc-dv-card__title"><h4>' + esc(p.name || '—') + '</h4>' +
+          '<div class="rp-calc-dv-card__title">' +
+            // Название правится на месте: если Мимир понял работу неверно,
+            // РП исправляет сам, не выходя из просчёта.
+            '<input class="rp-calc-dv-inp rp-calc-dv-inp--name" data-dv-field="name" ' +
+              'value="' + esc(p.name || '') + '" placeholder="Что делаем" ' +
+              'aria-label="Наименование работ"/>' +
             '<div class="rp-calc-dv-card__meta">' +
-              '<b>' + (p.volume != null ? esc(String(p.volume)) : '—') +
-              ' <i>' + esc(p.unit || '') + '</i></b>' +
+              // Объём и единица — главное, что ошибается чаще всего.
+              '<input class="rp-calc-dv-inp rp-calc-dv-inp--vol" type="number" step="any" min="0" ' +
+                'data-dv-field="volume" ' +
+                'value="' + (p.volume != null ? esc(String(p.volume)) : '') + '" ' +
+                'placeholder="0" aria-label="Объём"/>' +
+              '<select class="rp-calc-dv-inp rp-calc-dv-inp--unit" data-dv-field="unit" ' +
+                'aria-label="Единица измерения">' +
+                ['м3', 'м2', 'п.м', 'т', 'шт', 'кг', 'компл', 'Гкал', 'апп.', 'м'].map((u) =>
+                  '<option value="' + u + '"' + (u === p.unit ? ' selected' : '') + '>' + u + '</option>').join('') +
+                (p.unit && ['м3', 'м2', 'п.м', 'т', 'шт', 'кг', 'компл', 'Гкал', 'апп.', 'м'].indexOf(p.unit) === -1
+                  ? '<option value="' + esc(p.unit) + '" selected>' + esc(p.unit) + '</option>' : '') +
+              '</select>' +
               (objects.length ? '<span>' +
                 objects.slice(0, 4).map((t) => '<em>' + esc(t) + '</em>').join('') + '</span>' : '') +
             '</div>' +
           '</div>' +
           (src ? '<span class="rp-dv-source' + srcCls + '" title="' + esc(c.explain || '') + '">' +
             esc(src) + '</span>' : '') +
+          '<button type="button" class="rp-calc-dv-del" data-act="dv-del" data-dv-idx="' + idx + '" ' +
+            'title="Удалить позицию">✕</button>' +
         '</div>' +
         // Откуда взят объём — отдельной строкой с доказательством.
         (p.volume_source && p.volume_source !== 'none'
@@ -885,10 +959,13 @@ window.AsgardRpCalcModal = (function () {
 
     return '<div class="rp-calc-panel' + active + '" data-panel="dv">' +
       '<div class="rp-calc-card">' +
-      '<div class="rp-calc-card__head">Объёмы работ · ' + positions.length + ' позиц.' +
+      '<div class="rp-calc-card__head">Объёмы работ · <span data-dv-count>' + positions.length + '</span> позиц.' +
+        '<button type="button" class="btn mini rp-calc-dv-add" data-act="dv-add">+ Позиция</button>' +
         '<button type="button" class="btn mini rp-calc-dv-plan" data-act="plan-dv">' +
         (hasPlan ? 'Пересчитать план' : 'Рассчитать людей и сроки') + '</button>' +
       '</div>' +
+      '<p class="rp-calc-hint">Если Мимир ошибся в объёме, единице или названии — правьте прямо здесь, ' +
+        'изменения сохранятся. Лишнюю позицию можно удалить, недостающую — добавить.</p>' +
       (hasPlan
         ? '<div class="rp-calc-dv-summary">' +
             (plan.crews ? '<span>Бригад: <b>' + esc(String(plan.crews)) + '</b> × ' +
@@ -1785,6 +1862,110 @@ window.AsgardRpCalcModal = (function () {
           if (state.tab === 'tech') loadTechStockAndRepaint();
         });
       });
+
+      // ── Правка объёмов прямо в просчёте ──────────────────────────────────
+      // Жалоба РП 09.11.2026: на вкладке «Объёмы» всё было только для чтения,
+      // и если Мимир ошибся — исправить было негде, кроме карточки анализа.
+      // Теперь объёмы правятся здесь: это то место, где РП принимает решение.
+      const dvRoot = root.querySelector('[data-panel="dv"]');
+
+      /** Читает текущие позиции из отчёта. */
+      function dvPositions() {
+        const rjNow = parseReportJson(state.review && state.review.report_json) || {};
+        return Array.isArray(rjNow.dv_positions) ? rjNow.dv_positions : [];
+      }
+
+      /** Пишет позиции в отчёт и помечает карточку изменённой. */
+      function dvSave(list) {
+        const rjNow = parseReportJson(state.review && state.review.report_json) || {};
+        rjNow.dv_positions = list;
+        // Правка РП отменяет автоматические метки: модель больше не отвечает
+        // за эти строки. Снимаем «нужен метод» только там, где РП заполнил.
+        list.forEach(function (p) {
+          if (p.name && p.volume != null && p.unit) delete p.needs_classification;
+        });
+        if (state.review) {
+          state.review.report_json = typeof state.review.report_json === 'string'
+            ? JSON.stringify(rjNow) : rjNow;
+        }
+        state.dvDirty = true;
+        const cnt = root.querySelector('[data-dv-count]');
+        if (cnt) cnt.textContent = String(list.length);
+        // Обновляем сводку в футере: смета пересчитывается при сохранении.
+        const warn = root.querySelector('[data-dv-dirty-hint]');
+        if (warn) warn.hidden = false;
+      }
+
+      /** Перерисовывает вкладку «Объёмы», сохраняя позицию скролла. */
+      function dvRerender() {
+        const body = root.querySelector('.rp-calc-body');
+        if (!body) return;
+        const scroll = body.scrollTop;
+        body.innerHTML = renderDv(state);
+        dvBind();
+        try { body.scrollTop = scroll; } catch (_) {}
+      }
+
+      /** Навешивает обработчики на текущую разметку ДВ. */
+      function dvBind() {
+        const panel = root.querySelector('[data-panel="dv"]');
+        if (!panel) return;
+
+        // Удаление позиции.
+        panel.querySelectorAll('[data-act="dv-del"]').forEach(function (btn) {
+          btn.addEventListener('click', function () {
+            const idx = Number(btn.getAttribute('data-dv-idx'));
+            const list = dvPositions();
+            if (!Number.isFinite(idx) || idx < 0 || idx >= list.length) return;
+            list.splice(idx, 1);
+            dvSave(list);
+            dvRerender();
+          });
+        });
+
+        // Добавление позиции: пустая строка, которую РП заполнит.
+        const addBtn = panel.querySelector('[data-act="dv-add"]');
+        if (addBtn) {
+          addBtn.addEventListener('click', function () {
+            const list = dvPositions();
+            list.push({
+              name: '',
+              volume: null,
+              unit: 'м3',
+              volume_source: 'rp',
+              needs_classification: true
+            });
+            dvSave(list);
+            dvRerender();
+            // Ставим курсор в название новой строки — чтобы сразу печатать.
+            const inputs = root.querySelectorAll('[data-dv-field="name"]');
+            const last = inputs[inputs.length - 1];
+            if (last) { last.focus(); }
+          });
+        }
+
+        // Правка полей.
+        panel.querySelectorAll('[data-dv-field]').forEach(function (inp) {
+          const field = inp.getAttribute('data-dv-field');
+          const card = inp.closest('[data-dv-idx]');
+          const idx = card ? Number(card.getAttribute('data-dv-idx')) : NaN;
+          function apply() {
+            const list = dvPositions();
+            if (!Number.isFinite(idx) || idx < 0 || idx >= list.length) return;
+            let v = inp.value;
+            if (field === 'volume') v = v === '' ? null : Number(v);
+            if (field === 'name' && !String(v).trim()) return;
+            list[idx][field] = v;
+            // Ручная правка объёма или единицы — источник теперь РП.
+            if (field === 'volume' || field === 'unit') list[idx].volume_source = 'rp';
+            dvSave(list);
+          }
+          inp.addEventListener('change', apply);
+          if (inp.tagName === 'INPUT' && inp.type !== 'number') inp.addEventListener('input', apply);
+        });
+      }
+
+      if (dvRoot) dvBind();
 
       // Расчёт плана прямо на вкладке «Объёмы»: без него люди/сроки/источник
       // остаются пустыми, и таблица выглядит недоделанной.

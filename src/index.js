@@ -2338,6 +2338,63 @@ const start = async () => {
     setTimeout(cleanupCompletedReminders, 10_000);
     fastify.log.info('[Cron] Автоочистка напоминаний запланирована');
 
+    // ─── Единый дайджест по тендерам ───────────────────────────────────────
+    // Раньше каждый шаг тендера слал своё письмо: 14 тендеров × 4 события =
+    // десятки писем в день, и РП перестал их читать. Теперь события копятся
+    // в очереди (tender_digest_outbox), а крон отправляет их ОДНИМ письмом
+    // в окна 09:00–10:00 и 17:00–18:00 МСК. Ночью не уходит ничего.
+    //
+    // Крон тикает раз в 10 минут: окно длиной в час, поэтому точность
+    // доставки — до 10 минут, а лишних проверок немного (запрос по индексу).
+    try {
+      const digestRunner = require('./services/tender-digest-runner');
+      const { sendCrmEmail } = require('./services/crm-mailer');
+
+      const runTenderDigest = async () => {
+        try {
+          // Кому слать: логины РП дежурства и руководителя тендерного отдела.
+          // Настройку берём из settings, чтобы не хардкодить людей.
+          const cfg = await db.query(
+            `SELECT value FROM settings WHERE key = 'tender_digest_recipients' LIMIT 1`
+          ).catch(() => ({ rows: [] }));
+          let recipients = [];
+          const raw = cfg.rows && cfg.rows[0] && cfg.rows[0].value;
+          if (raw) {
+            try {
+              const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
+              recipients = Array.isArray(parsed) ? parsed.filter(Boolean) : [];
+            } catch (_) { recipients = []; }
+          }
+          if (!recipients.length) {
+            // Без настроенных получателей не шлём: пустое письмо хуже молчания.
+            return;
+          }
+          await digestRunner.runDigest({
+            db,
+            log: fastify.log,
+            sendMail: sendCrmEmail,
+            recipients
+          });
+        } catch (e) {
+          fastify.log.warn('[TenderDigest] проход не удался: ' + e.message);
+        }
+      };
+
+      const digestTimer = setInterval(runTenderDigest, 10 * 60 * 1000);
+      if (digestTimer.unref) digestTimer.unref();
+      setTimeout(runTenderDigest, 60 * 1000).unref?.();
+      fastify.decorate('tenderDigest', () => clearInterval(digestTimer));
+      fastify.log.info('[Cron] Единый дайджест тендеров запланирован (каждые 10 мин, окна 09-10 и 17-18 МСК)');
+
+      // Чистка старых отправленных событий — раз в сутки.
+      const purgeTimer = setInterval(async () => {
+        try { await digestRunner.purgeOld(db, 60); } catch (_) {}
+      }, 24 * 60 * 60 * 1000);
+      if (purgeTimer.unref) purgeTimer.unref();
+    } catch (digestErr) {
+      fastify.log.warn('[TenderDigest] не запущен: ' + digestErr.message);
+    }
+
     // Initialize Telegram bot (from env var or DB settings)
     try {
       const telegram = require('./services/telegram');

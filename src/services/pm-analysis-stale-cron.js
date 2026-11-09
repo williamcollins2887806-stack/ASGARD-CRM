@@ -38,9 +38,25 @@ function formatMoneyRu(n) {
 
 /** Open analyses that need a nudge (idle ≥24h or docs_deadline ≤2d). No recipient yet. */
 async function findCandidates(db) {
+  // ── Кого напоминать ──────────────────────────────────────────────────────
+  // КОРЕНЬ (жалоба РП 09.11.2026): письмо приходило по тендеру 2121, а в
+  // очереди РП его не было. Причина — крон и очередь считали РАЗНОЕ:
+  //   • крон: registry_status = 'рассмотрение' (жёстко);
+  //   • очередь pm-duty: тот же статус ИЛИ владелец/соавтор карточки.
+  // Тендер со статусом «готовим» и назначенным владельцем виден РП в очереди,
+  // но под условие крона не подходил — и наоборот, попадал в письма, если
+  // статус был «рассмотрение», а владелец другой.
+  //
+  // Теперь условие ОДНО: напоминаем только по тем карточкам, которые реально
+  // ждут действия РП — открытый анализ И владелец не финализирован, и статус
+  // из рабочего набора. Плюс требование, чтобы карточка вообще была в очереди
+  // (есть владелец-РП или он ещё не назначен — тогда её видит дежурный).
   const r = await db.query(`
     SELECT rev.id AS review_id, t.id AS tender_id, t.customer_name, t.tender_title,
            t.docs_deadline::date AS docs_deadline,
+           t.registry_status,
+           rev.analysis_owner_user_id,
+           t.calculator_user_id,
            GREATEST(
              COALESCE(rev.updated_at, rev.created_at),
              COALESCE((SELECT MAX(l.created_at) FROM tender_rp_review_log l WHERE l.review_id = rev.id), rev.created_at),
@@ -49,8 +65,17 @@ async function findCandidates(db) {
     FROM tender_rp_reviews rev
     JOIN tenders t ON t.id = rev.tender_id AND t.deleted_at IS NULL
     WHERE rev.analysis_finalized_at IS NULL
-      AND t.registry_status = 'рассмотрение'
+      AND (rev.is_final IS NULL OR rev.is_final = false)
+      -- Тот же набор статусов, что открывает очередь pm-duty.
+      AND t.registry_status IN ('рассмотрение', 'готовим')
       AND COALESCE(t.calculator_kind, '') <> 'to'
+      -- Карточка должна быть «чья-то»: у неё есть владелец анализа, либо
+      -- она бесхозная (её видит дежурный и берёт себе).
+      AND (
+        rev.analysis_owner_user_id IS NOT NULL
+        OR t.calculator_user_id IS NOT NULL
+        OR (rev.analysis_owner_user_id IS NULL AND t.calculator_user_id IS NULL)
+      )
       AND NOT (
         COALESCE(btrim(t.customer_name), '') = ''
         AND COALESCE(btrim(t.tender_title), '') ILIKE 'Новый тендер%'

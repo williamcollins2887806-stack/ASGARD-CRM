@@ -1006,3 +1006,114 @@
   background: var(--bg4);
   border-left: 2px solid color-mix(in srgb, var(--gold) 42%, transparent);
 }
+
+
+/* ══ Ведомость объёмов: редактируемые строки ═══════════════════════════════
+   Ведомость читают построчно, поэтому правка — это строка таблицы, а не
+   карточка-анкета. Поля выглядят как текст, пока в них не встал фокус:
+   так таблица остаётся таблицей, но всё правится на месте. */
+.rp-dv-row {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr) 148px 108px 30px;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 10px;
+  border-radius: 9px;
+  transition: background .15s ease;
+}
+.rp-dv-row + .rp-dv-row { border-top: 1px solid var(--brd-m, rgba(255,255,255,.06)); }
+.rp-dv-row:hover { background: var(--bg3, rgba(255,255,255,.03)); }
+.rp-dv-row.is-warn { box-shadow: inset 3px 0 0 var(--warn); }
+.rp-dv-row.is-ok { box-shadow: inset 3px 0 0 var(--ok); }
+
+.rp-dv-row__num {
+  font-size: 11.5px; font-weight: 700; color: var(--t3);
+  font-variant-numeric: tabular-nums; text-align: right;
+}
+.rp-dv-row__name { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.rp-dv-row__qty { display: flex; align-items: center; gap: 6px; }
+
+/* Поле в состоянии покоя выглядит как текст: рамка появляется по фокусу. */
+.rp-dv-field {
+  width: 100%;
+  padding: 4px 6px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--t1);
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.35;
+  transition: border-color .15s ease, background .15s ease;
+}
+.rp-dv-field:hover { border-color: var(--brd, rgba(255,255,255,.10)); }
+.rp-dv-field:focus {
+  outline: none;
+  border-color: var(--accent, #3B82F6);
+  background: var(--bg1, rgba(0,0,0,.18));
+  box-shadow: 0 0 0 3px rgba(59,130,246,.15);
+}
+.rp-dv-field::placeholder { color: var(--t3); opacity: .7; }
+.rp-dv-field--name { font-weight: 600; font-size: 13.5px; }
+.rp-dv-field--method { font-size: 11.5px; color: var(--t2); }
+.rp-dv-field--vol {
+  width: 74px; text-align: right; font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+.rp-dv-field--unit { width: 66px; font-size: 12px; color: var(--t2); cursor: pointer; }
+.rp-dv-field--foul { font-size: 11.5px; color: var(--t2); cursor: pointer; }
+.rp-dv-field--unit option, .rp-dv-field--foul option { color: #111; background: #fff; }
+
+/* Удаление — тихое, проявляется по наведению на строку. */
+.rp-dv-row__del {
+  border: 0; background: transparent; cursor: pointer;
+  color: var(--t3); padding: 5px; border-radius: 6px;
+  display: inline-flex; align-items: center; justify-content: center;
+  opacity: 0; transition: opacity .15s ease, background .15s ease, color .15s ease;
+}
+.rp-dv-row:hover .rp-dv-row__del, .rp-dv-row__del:focus-visible { opacity: 1; }
+.rp-dv-row__del:hover { background: var(--err-bg); color: var(--err-t); }
+
+.rp-dv-row__src {
+  grid-column: 2 / -1;
+  font-size: 10.5px; color: var(--t3); line-height: 1.4;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.rp-dv-row__src span { opacity: .75; }
+
+/* Кнопка добавления — мягкая, пунктирная: это действие, а не основное. */
+.rp-dv-actions {
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  margin-top: 12px; padding-top: 12px;
+  border-top: 1px dashed var(--brd-m, rgba(255,255,255,.08));
+}
+.rp-dv-add {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 7px 13px; border-radius: 8px;
+  border: 1px dashed var(--brd, rgba(255,255,255,.16));
+  background: transparent; color: var(--t2);
+  font-size: 12.5px; font-weight: 600; cursor: pointer;
+  transition: border-color .15s ease, color .15s ease, background .15s ease;
+}
+.rp-dv-add:hover {
+  border-color: var(--accent, #3B82F6);
+  color: var(--t1);
+  background: rgba(59,130,246,.08);
+}
+.rp-dv-actions__hint { font-size: 11.5px; color: var(--t3); line-height: 1.45; }
+
+/* Пустая ведомость: не ошибка, а приглашение заполнить. */
+.rp-dv-empty-manual {
+  margin: 0 0 12px; padding: 14px 16px; border-radius: 10px;
+  background: var(--warn-bg); border-left: 2px solid var(--warn);
+  font-size: 12.5px; line-height: 1.55; color: var(--warn-t);
+}
+
+/* Узкие экраны: две колонки вместо пяти, номер и удаление — в шапке строки. */
+@media (max-width: 720px) {
+  .rp-dv-row { grid-template-columns: 24px minmax(0, 1fr) 30px; row-gap: 6px; }
+  .rp-dv-row__qty { grid-column: 2 / 3; }
+  .rp-dv-row__foul { grid-column: 2 / 3; }
+  .rp-dv-row__del { grid-column: 3 / 4; grid-row: 1 / 2; opacity: 1; }
+  .rp-dv-row__src { grid-column: 1 / -1; }
+}

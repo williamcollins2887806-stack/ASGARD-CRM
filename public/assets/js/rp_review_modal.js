@@ -183,25 +183,59 @@ window.AsgardRpReviewModal = (function () {
    * ниже технология и источник. На экране 1–2 позиции целиком, без скролла
    * по горизонтали.
    */
-  function renderDvBlock(rj) {
+  /**
+   * Ведомость объёмов с ПОЛНЫМ ручным редактированием.
+   *
+   * ── Почему редактируемая ─────────────────────────────────────────────────
+   * Модель может ошибиться: не понять объём, взять не ту единицу, пропустить
+   * строку или придумать лишнюю. Если ДВ только для чтения, РП не закроет
+   * анализ — он заперт чужим разбором.
+   *
+   * Поэтому каждая позиция правится целиком: название, объём, единица,
+   * метод. Строки можно удалять и добавлять вручную. Пустая ДВ — не тупик:
+   * её можно заполнить с нуля.
+   *
+   * @param {object} rj — report_json
+   * @param {boolean} isLocked — карточка закрыта (только просмотр)
+   */
+  function renderDvBlock(rj, isLocked) {
     const positions = Array.isArray(rj && rj.dv_positions) ? rj.dv_positions : [];
-    if (!positions.length) return '';
+    const locked = !!isLocked;
+    if (!positions.length && locked) return '';
 
     const foulingMap = { light: 'лёгкие', medium: 'средние', heavy: 'тяжёлые' };
     const foulingCls = { light: 'is-light', medium: 'is-medium', heavy: 'is-heavy' };
     const agreed = positions.filter((p) => p.approved).length;
     const blocked = positions.filter((p) => p.needs_classification).length;
 
-    let h = '<div class="rp-review-dv-block">' +
+    // Единицы — только те, что понимает справочник норм. «п.м трубок» и
+    // подобные склейки не годятся: норма их не примет.
+    const UNITS = ['м3', 'м2', 'п.м', 'т', 'шт', 'кг', 'компл', 'Гкал', 'апп.', 'м'];
+
+    let h = '<div class="rp-review-dv-block" data-rp-dv-root="1">' +
       '<div class="rp-review-dv-head">' +
         '<div><strong>Ведомость объёмов</strong>' +
-        '<span class="rp-review-dv-sub">что разобрал Мимир по документам</span></div>' +
+        '<span class="rp-review-dv-sub">' +
+          (locked
+            ? 'что разобрал Мимир по документам'
+            : 'можно править: изменить, удалить или добавить строку') +
+        '</span></div>' +
         '<div class="rp-review-dv-metrics">' +
-          '<span><b>' + positions.length + '</b> позиц.</span>' +
+          '<span><b data-rp-dv-count>' + positions.length + '</b> позиц.</span>' +
           '<span' + (agreed ? '' : ' class="is-dim"') + '><b>' + agreed + '</b> согласовано</span>' +
           (blocked ? '<span class="is-warn"><b>' + blocked + '</b> без метода</span>' : '') +
         '</div>' +
-      '</div><div class="rp-review-dv-list">';
+      '</div>';
+
+    // Пустая ДВ: не тупик, а приглашение заполнить руками.
+    if (!positions.length) {
+      h += '<div class="rp-dv-empty-manual">' +
+        'Мимир не нашёл позиций в документах. Заполните ведомость вручную — ' +
+        'анализ можно закрыть и без автоматического разбора.' +
+        '</div>';
+    }
+
+    h += '<div class="rp-review-dv-list">';
 
     positions.forEach((p, idx) => {
       const objects = Array.isArray(p.objects)
@@ -217,39 +251,107 @@ window.AsgardRpReviewModal = (function () {
           ? '<span class="rp-dv-st rp-dv-st--ok">согласовано</span>'
           : '<span class="rp-dv-st">проверено</span>');
 
-      h += '<article class="rp-dv-card' + (p.approved ? ' is-approved' : '') + '">' +
-        '<div class="rp-dv-card__top">' +
-          '<span class="rp-dv-card__num">' + (idx + 1) + '</span>' +
-          '<div class="rp-dv-card__title">' +
-            '<h4>' + esc(p.name || '—') + '</h4>' +
-            '<div class="rp-dv-card__meta">' +
-              '<span class="rp-dv-vol">' +
-                (p.volume != null ? esc(String(p.volume)) : '—') +
-                ' <i>' + esc(p.unit || '') + '</i></span>' +
-              (objects.length ? '<span class="rp-dv-tags">' +
-                objects.slice(0, 4).map((t) => '<b>' + esc(t) + '</b>').join('') +
-                (objects.length > 4 ? '<b>+' + (objects.length - 4) + '</b>' : '') +
-              '</span>' : '') +
+      // ── Режим просмотра ──────────────────────────────────────────────────
+      if (locked) {
+        h += '<article class="rp-dv-card' + (p.approved ? ' is-approved' : '') + '">' +
+          '<div class="rp-dv-card__top">' +
+            '<span class="rp-dv-card__num">' + (idx + 1) + '</span>' +
+            '<div class="rp-dv-card__title">' +
+              '<h4>' + esc(p.name || '—') + '</h4>' +
+              '<div class="rp-dv-card__meta">' +
+                '<span class="rp-dv-vol">' +
+                  (p.volume != null ? esc(String(p.volume)) : '—') +
+                  ' <i>' + esc(p.unit || '') + '</i></span>' +
+                (objects.length ? '<span class="rp-dv-tags">' +
+                  objects.slice(0, 4).map((t) => '<b>' + esc(t) + '</b>').join('') +
+                  (objects.length > 4 ? '<b>+' + (objects.length - 4) + '</b>' : '') +
+                '</span>' : '') +
+              '</div>' +
             '</div>' +
+            '<div class="rp-dv-card__side">' + st + '</div>' +
           '</div>' +
-          '<div class="rp-dv-card__side">' + st + '</div>' +
+          '<dl class="rp-dv-card__grid">' +
+            '<div><dt>Метод</dt><dd>' + esc(method || '—') + '</dd></div>' +
+            '<div><dt>Отложения</dt><dd><span class="rp-dv-foul ' +
+              (foulingCls[p.fouling] || '') + '">' +
+              esc(foulingMap[p.fouling] || 'не указаны') + '</span></dd></div>' +
+          '</dl>' +
+          (p.tech_equip
+            ? '<div class="rp-dv-card__tech"><span>Чем работаем</span><p>' +
+              esc(p.tech_equip) + '</p></div>'
+            : '<div class="rp-dv-card__tech is-empty"><span>Чем работаем</span><p>не указано</p></div>') +
+          (src ? '<div class="rp-dv-card__src" title="' + esc(src) + '">' +
+            '<span>Источник</span> ' + esc(src) + '</div>' : '') +
+          '</article>';
+        return;
+      }
+
+      // ── Режим редактирования ────────────────────────────────────────────
+      // Строка таблицы, а не карточка: ведомость читают построчно, и правка
+      // должна ощущаться как работа в таблице, а не как заполнение анкеты.
+      const unitOpts = UNITS.map((u) =>
+        '<option value="' + esc(u) + '"' + (u === p.unit ? ' selected' : '') + '>' +
+        esc(u) + '</option>').join('');
+      // Если единица модели не входит в список — показываем её как есть,
+      // чтобы правка не стёрла данные молча.
+      const extraUnit = p.unit && UNITS.indexOf(p.unit) === -1
+        ? '<option value="' + esc(p.unit) + '" selected>' + esc(p.unit) + '</option>' : '';
+      const rowCls = p.needs_classification ? ' is-warn' : (p.approved ? ' is-ok' : '');
+
+      h += '<div class="rp-dv-row' + rowCls + '" data-rp-dv-idx="' + idx + '">' +
+        '<div class="rp-dv-row__num">' + (idx + 1) + '</div>' +
+        '<div class="rp-dv-row__name">' +
+          '<input class="rp-dv-field rp-dv-field--name" data-rp-dv-field="name" ' +
+            'value="' + esc(p.name || '') + '" placeholder="Что делаем" ' +
+            'aria-label="Наименование работ"/>' +
+          '<input class="rp-dv-field rp-dv-field--method" data-rp-dv-field="method_name" ' +
+            'value="' + esc(p.method_name || p.category_name || '') + '" ' +
+            'placeholder="метод: чистка, гидродинамика…" aria-label="Метод"/>' +
         '</div>' +
-        '<dl class="rp-dv-card__grid">' +
-          '<div><dt>Метод</dt><dd>' + esc(method || '—') + '</dd></div>' +
-          '<div><dt>Отложения</dt><dd><span class="rp-dv-foul ' +
-            (foulingCls[p.fouling] || '') + '">' +
-            esc(foulingMap[p.fouling] || 'не указаны') + '</span></dd></div>' +
-        '</dl>' +
-        (p.tech_equip
-          ? '<div class="rp-dv-card__tech"><span>Чем работаем</span><p>' +
-            esc(p.tech_equip) + '</p></div>'
-          : '<div class="rp-dv-card__tech is-empty"><span>Чем работаем</span><p>не указано</p></div>') +
-        (src ? '<div class="rp-dv-card__src" title="' + esc(src) + '">' +
-          '<span>Источник</span> ' + esc(src) + '</div>' : '') +
-        '</article>';
+        '<div class="rp-dv-row__qty">' +
+          '<input class="rp-dv-field rp-dv-field--vol" type="number" step="any" min="0" ' +
+            'data-rp-dv-field="volume" ' +
+            'value="' + (p.volume != null ? esc(String(p.volume)) : '') + '" ' +
+            'placeholder="0" aria-label="Объём"/>' +
+          '<select class="rp-dv-field rp-dv-field--unit" data-rp-dv-field="unit" aria-label="Единица">' +
+            '<option value="">—</option>' + extraUnit + unitOpts + '</select>' +
+        '</div>' +
+        '<div class="rp-dv-row__foul">' +
+          '<select class="rp-dv-field rp-dv-field--foul" data-rp-dv-field="fouling" aria-label="Отложения">' +
+            '<option value="">—</option>' +
+            '<option value="light"' + (p.fouling === 'light' ? ' selected' : '') + '>лёгкие</option>' +
+            '<option value="medium"' + (p.fouling === 'medium' ? ' selected' : '') + '>средние</option>' +
+            '<option value="heavy"' + (p.fouling === 'heavy' ? ' selected' : '') + '>тяжёлые</option>' +
+          '</select>' +
+        '</div>' +
+        '<button type="button" class="rp-dv-row__del" data-rp-dv-act="del" ' +
+          'data-rp-dv-idx="' + idx + '" title="Удалить строку" aria-label="Удалить строку">' +
+          '<svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true">' +
+            '<path d="M2 2l10 10M12 2L2 12" stroke="currentColor" stroke-width="1.6" ' +
+            'stroke-linecap="round"/></svg>' +
+        '</button>' +
+        (src ? '<div class="rp-dv-row__src" title="' + esc(src) + '">' +
+          '<span>источник:</span> ' + esc(src) + '</div>' : '') +
+        '</div>';
     });
 
-    h += '</div></div>';
+    h += '</div>';
+
+    if (!locked) {
+      h += '<div class="rp-dv-actions">' +
+        '<button type="button" class="rp-dv-add" data-rp-dv-act="add">' +
+          '<svg width="13" height="13" viewBox="0 0 13 13" aria-hidden="true">' +
+            '<path d="M6.5 1v11M1 6.5h11" stroke="currentColor" stroke-width="1.7" ' +
+            'stroke-linecap="round"/></svg>' +
+          'Добавить строку' +
+        '</button>' +
+        '<span class="rp-dv-actions__hint">' +
+          'Если Мимир ошибся — правьте здесь: объём и единицу подхватит справочник норм.' +
+        '</span>' +
+      '</div>';
+    }
+
+    h += '</div>';
     return h;
   }
 
@@ -898,7 +1000,7 @@ window.AsgardRpReviewModal = (function () {
         }
         // ДВ, технология и звонок — то, что разобрал Мимир. Без них карточка
         // показывала только текст и не давала проверить объёмы.
-        h += renderDvBlock(reportJson);
+        h += renderDvBlock(reportJson, isLocked);
         h += renderCallBlock(reportJson);
         h += renderTechPlanBlock(reportJson);
       }
@@ -1560,8 +1662,101 @@ window.AsgardRpReviewModal = (function () {
       }).catch(() => { el.innerHTML = ''; });
     }
 
+    /**
+     * Живое редактирование ДВ прямо в карточке.
+     *
+     * Работает без перерисовки всей модалки: меняем reportJson и обновляем
+     * счётчик. Перерисовка сбивала бы фокус и теряла недопечатанный символ.
+     */
+    function bindDvEditing() {
+      const root = document.querySelector('[data-rp-dv-root]');
+      if (!root) return;
+
+      const positions = () => (Array.isArray(reportJson.dv_positions) ? reportJson.dv_positions : []);
+
+      // Удаление строки.
+      root.querySelectorAll('[data-rp-dv-act="del"]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const idx = Number(btn.getAttribute('data-rp-dv-idx'));
+          const list = positions();
+          if (!Number.isFinite(idx) || idx < 0 || idx >= list.length) return;
+          list.splice(idx, 1);
+          reportJson.dv_positions = list;
+          rerenderDvSection();
+        });
+      });
+
+      // Добавление строки.
+      const addBtn = root.querySelector('[data-rp-dv-act="add"]');
+      if (addBtn) {
+        addBtn.addEventListener('click', () => {
+          const list = positions();
+          list.push({
+            name: '',
+            volume: null,
+            unit: 'м3',
+            method_name: '',
+            fouling: '',
+            // Пометка: позиция введена человеком, а не моделью. Справочник
+            // подберёт норму при просчёте, но приоритет — за РП.
+            volume_source: 'manual'
+          });
+          reportJson.dv_positions = list;
+          rerenderDvSection();
+        });
+      }
+
+      // Правка полей — пишем сразу в reportJson.
+      root.querySelectorAll('[data-rp-dv-field]').forEach((inp) => {
+        const field = inp.getAttribute('data-rp-dv-field');
+        const card = inp.closest('[data-rp-dv-idx]');
+        const idx = card ? Number(card.getAttribute('data-rp-dv-idx')) : NaN;
+        const handler = () => {
+          const list = positions();
+          if (!Number.isFinite(idx) || idx < 0 || idx >= list.length) return;
+          let v = inp.value;
+          if (field === 'volume') v = v === '' ? null : Number(v);
+          if (field === 'name' && !String(v).trim()) return; // пустое имя не пишем
+          list[idx][field] = v;
+          // Ручная правка снимает автоматические метки: модель больше не
+          // отвечает за эту строку.
+          if (field === 'volume' || field === 'unit') {
+            list[idx].volume_source = 'manual';
+            delete list[idx].needs_classification;
+          }
+          reportJson.dv_positions = list;
+        };
+        inp.addEventListener('change', handler);
+        // Для текста — ещё и ввод, чтобы не терять правку при закрытии без blur.
+        if (inp.tagName === 'INPUT' && inp.type !== 'number') {
+          inp.addEventListener('input', handler);
+        }
+      });
+    }
+
+    /** Перерисовывает только блок ДВ, сохраняя позицию скролла. */
+    function rerenderDvSection() {
+      const old = document.querySelector('[data-rp-dv-root]');
+      if (!old) return;
+      const scrollTop = old.ownerDocument.documentElement.scrollTop;
+      const html = renderDvBlock(reportJson, false);
+      const wrap = old.ownerDocument.createElement('div');
+      wrap.innerHTML = html;
+      const fresh = wrap.firstElementChild;
+      if (!fresh) return;
+      old.replaceWith(fresh);
+      bindDvEditing();
+      try { old.ownerDocument.documentElement.scrollTop = scrollTop; } catch (_) {}
+    }
+
     function bindModal() {
       document.getElementById('rpExit')?.addEventListener('click', hideModal);
+
+      // ── Редактирование ведомости объёмов ────────────────────────────────
+      // РП должен уметь исправить разбор Мимира: удалить лишнюю строку,
+      // добавить пропущенную, поправить объём или единицу. Без этого
+      // ошибочный разбор запирал бы закрытие анализа.
+      bindDvEditing();
       document.getElementById('rpDirDocsToggle')?.addEventListener('click', () => {
         const panel = document.getElementById('rpDirDocsPanel');
         if (!panel) return;
@@ -1679,6 +1874,49 @@ window.AsgardRpReviewModal = (function () {
                 if (d.feasibility_note) reportJson.feasibility_note = String(d.feasibility_note).trim();
                 if (d.competition) reportJson.competition = d.competition;
                 if (d.risks) reportJson.risks = String(d.risks).trim();
+
+                // ── Диагностика разбора ──────────────────────────────────
+                // Без переноса этих полей баннер в модалке просчёта НИКОГДА
+                // не появится: он читает их из report_json, а сюда они не
+                // попадали (на проде 0 из 219 записей — найдено верификатором).
+                if (d.incomplete != null) reportJson.incomplete = !!d.incomplete;
+                if (d.incomplete_note) reportJson.incomplete_note = String(d.incomplete_note);
+                if (d.review_hint) reportJson.review_hint = String(d.review_hint);
+                if (d.expected_rows != null) reportJson.expected_rows = Number(d.expected_rows) || 0;
+                if (d.expected_rows_grid != null) reportJson.expected_rows_grid = Number(d.expected_rows_grid) || 0;
+                if (d.model_said_positions != null) reportJson.model_said_positions = Number(d.model_said_positions) || 0;
+                if (d.found_positions != null) reportJson.found_positions = Number(d.found_positions) || 0;
+                if (d.valid_positions != null) reportJson.valid_positions = Number(d.valid_positions) || 0;
+                if (d.generation_rounds != null) reportJson.generation_rounds = Number(d.generation_rounds) || 1;
+
+                // ── Материалы и оборудование ────────────────────────────────
+                // Раньше МТР всегда был пуст («Перечень не заполнен»), потому
+                // что модель его не возвращала, а заполнять вручную каждый раз
+                // никто не станет. Теперь модель предлагает расходники по
+                // документам, а РП правит их на вкладке «Бригада и МТР».
+                if (Array.isArray(d.mtr_suggestions) && d.mtr_suggestions.length) {
+                  const mtrList = d.mtr_suggestions
+                    .filter((x) => x && x.name)
+                    .map((x) => ({
+                      name: String(x.name).trim().slice(0, 200),
+                      qty: Number(x.qty) > 0 ? Number(x.qty) : null,
+                      unit: String(x.unit || '').trim().slice(0, 20),
+                      purpose: String(x.purpose || '').trim().slice(0, 200),
+                      // Источник: из документа или типовой расходник.
+                      source: String(x.source || '').toLowerCase() === 'typical' ? 'typical' : 'doc'
+                    }));
+                  reportJson.mtr_suggestions = mtrList;
+                  // Кладём в техплан, чтобы вкладка «Бригада и МТР» была
+                  // заполнена сразу, а не показывала «Перечень не заполнен».
+                  if (!Array.isArray(reportJson.mtr) || !reportJson.mtr.length) {
+                    reportJson.mtr = mtrList.map((x) => ({
+                      name: x.name,
+                      qty: x.qty,
+                      unit: x.unit,
+                      note: x.purpose
+                    }));
+                  }
+                }
 
                 if (positions.length) {
                   const scopeText = positions.map((p) =>

@@ -444,8 +444,7 @@ async function extractTextOnly({ buf, originalName, force_ocr, allowOcr }) {
     return { text: '', usedOcr: false, unsupported: true, ext };
   }
   const canOcr = allowOcr !== false;
-  try {
-    if (ext === '.pdf') {
+  try {    if (ext === '.pdf') {
       if (!force_ocr) {
         try {
           const pdfParse = require('pdf-parse');
@@ -498,11 +497,34 @@ async function extractTextOnly({ buf, originalName, force_ocr, allowOcr }) {
 
     // docx/xlsx/txt — без OCR
     const r = await _extractText(buf, originalName, { forceOcr: false });
+
+    // Структурный счёт позиций: по сетке ячеек, а не по склеенному тексту.
+    // Текстовые эвристики не работают (13 проходов верификатора): форматы
+    // ведомостей бесконечны, а сетка ячеек структуру сохраняет. Считаем
+    // ЗДЕСЬ, пока буфер и структура под рукой.
+    let table_positions = 0;
+    let table_per_sheet = [];
+    let table_source = 'none';
+    try {
+      const rowCount = require('./table-row-count');
+      const counted = await rowCount.countPositionsFromBuffer({ buf, originalName });
+      table_positions = counted.positions || 0;
+      table_per_sheet = counted.perSheet || [];
+      table_source = counted.source || 'none';
+    } catch (_) {
+      // Не смогли посчитать структуру — работаем без порога.
+    }
+
     return {
       text: String(r.text || '').substring(0, MAX_TEXT_CHARS),
       usedOcr: false,
       unsupported: false,
-      ext
+      ext,
+      // Число позиций, посчитанное по структуре файла. 0 = не посчитали
+      // (не табличный формат или ошибка) — тогда анализ идёт без порога.
+      table_positions,
+      table_per_sheet,
+      table_source
     };
   } catch (e) {
     return { text: '', usedOcr: false, unsupported: false, error: e.message, ext };

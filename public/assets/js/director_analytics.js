@@ -73,6 +73,7 @@ window.AsgardDirectorAnalyticsPage = (function () {
 
   const TENDER_TABS = [
     { id: 'summary', label: 'Сводка' },
+    { id: 'analysis', label: 'Анализ' },
     { id: 'calc', label: 'Просчёт РП' },
     { id: 'estimate', label: 'Смета' },
     { id: 'checklist', label: 'Чек-лист' },
@@ -1092,6 +1093,88 @@ window.AsgardDirectorAnalyticsPage = (function () {
     return items;
   }
 
+  /**
+   * Вкладка «Анализ» — то, что модель разобрала до просчёта.
+   *
+   * ── Почему отдельной вкладкой ─────────────────────────────────────────────
+   * Директор согласовывает цену, но судит по обоснованию. Раньше в пульсе
+   * были только сводка, просчёт, смета и чек-лист: источник объёмов,
+   * уверенность разбора и проблемы — всё это жило в report_json и нигде
+   * не показывалось. Директор видел итог без причины.
+   */
+  function renderAnalysisTab(t) {
+    const rj = (t && t.rp_review && t.rp_review.report_json) || {};
+    const rep = typeof rj === 'string' ? (function () {
+      try { return JSON.parse(rj); } catch (_) { return {}; }
+    })() : (rj || {});
+
+    const SOURCE = {
+      vor: 'ведомость объёмов работ',
+      tz: 'техническое задание',
+      tz_labor: 'трудоёмкость из технического задания',
+      defect_act: 'дефектный акт',
+      passport: 'паспорт оборудования',
+      web: 'открытые данные (паспорт найден поиском)',
+      expert: 'оценка специалиста'
+    };
+
+    const facts = [];
+    if (rep.volume_source) {
+      facts.push(['Источник объёмов', SOURCE[rep.volume_source] || String(rep.volume_source)]);
+    }
+    if (rep.confidence != null) {
+      const c = Number(rep.confidence);
+      const word = c >= 0.8 ? 'высокая' : (c >= 0.5 ? 'средняя' : 'низкая');
+      facts.push(['Уверенность разбора', word + ' (' + Math.round(c * 100) + ' %)']);
+    }
+    if (rep.expected_rows) facts.push(['Строк с объёмом в документах', String(rep.expected_rows)]);
+    if (rep.found_positions) facts.push(['Найдено позиций', String(rep.found_positions)]);
+    if (rep.valid_positions) facts.push(['Годных позиций', String(rep.valid_positions)]);
+    if (rep.generation_rounds > 1) facts.push(['Проходов разбора', String(rep.generation_rounds)]);
+    if (rep.incomplete) facts.push(['Разбор', 'неполный']);
+    if (rep.history_count) facts.push(['Прошлых тендеров заказчика', String(rep.history_count)]);
+
+    const works = Array.isArray(rep.works) ? rep.works
+      : (Array.isArray((t && t.smeta) && t.smeta.works) ? t.smeta.works : []);
+    const probs = Array.isArray(rep.problems) ? rep.problems.filter(Boolean) : [];
+
+    const factsHtml = facts.length
+      ? '<div class="kv">' + facts.map((f) =>
+        '<div class="kv-row"><span class="kv-k">' + esc(f[0]) + '</span>' +
+        '<span class="kv-v">' + esc(f[1]) + '</span></div>').join('') + '</div>'
+      : '<div class="empty" style="padding:28px 0">Анализ ещё не проводился — данных нет, ' +
+        'это честный пустой экран, не заглушка.</div>';
+
+    const worksHtml = works.length
+      ? block('Состав работ · ' + works.length,
+        '<div class="checklist">' + works.slice(0, 40).map((w) =>
+          '<div class="check-item"><span class="check-txt">' + esc(String(w.name || '—')) + '</span>' +
+          '<span class="check-when">' + esc((w.volume != null ? String(w.volume) : '—')
+            + (w.unit ? ' ' + w.unit : '')) +
+          (w.volume_source ? '<span class="sub"> · ' + esc(SOURCE[w.volume_source] || '') + '</span>' : '') +
+          '</span></div>').join('') + '</div>',
+        works.length > 40 ? '<span class="badge neutral">первые 40</span>' : '')
+      : '';
+
+    const probsHtml = probs.length
+      ? block('Требует внимания',
+        '<ul class="rp-problems">' + probs.map((p) => {
+          const text = typeof p === 'string' ? p : (p && (p.text || p.message || p.name)) || '';
+          return text ? '<li>' + esc(String(text)) + '</li>' : '';
+        }).join('') + '</ul>',
+        '<span class="badge warn">' + probs.length + '</span>')
+      : '';
+
+    return '<div class="split"><div class="split-main">' +
+      block('Анализ тендера', factsHtml) + worksHtml + probsHtml +
+      '</div><div class="split-side">' +
+      sideCard('Разбор',
+        rep.incomplete ? 'неполный' : (rep.found_positions ? 'полный' : '—'),
+        rep.incomplete ? 'warn' : 'ok',
+        rep.incomplete ? 'часть строк могла не попасть' : 'все найденные строки учтены') +
+      '</div></div>';
+  }
+
   function estimateTableHtml(est) {
     if (!est || !est.rows || !est.rows.length) {
       return '<div class="empty" style="padding:28px 0">Строк сметы нет — честные пустые данные, не заглушка.</div>';
@@ -1209,6 +1292,10 @@ window.AsgardDirectorAnalyticsPage = (function () {
       return '<div class="split"><div class="split-main">' +
         block('Смета Асгард · ' + est.rows.length + ' позиций', estimateTableHtml(est)) +
         '</div><div class="split-side">' + side + '</div></div>';
+    }
+
+    if (state.tab === 'analysis') {
+      return renderAnalysisTab(t);
     }
 
     if (state.tab === 'checklist') {

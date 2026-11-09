@@ -241,18 +241,35 @@ function selectForPrompt(documents, opts) {
     const role = detectRole({ name, text });
     const useful = role.use || (role.role === 'unknown' && includeUnknown);
 
-    // Копия уже отобранного документа — не тратим бюджет.
-    // Сначала точный хеш, затем нечёткое сравнение: копии одного PDF
-    // распознаются по-разному, хеш у них разный, а документ один.
-    // Сверяем ТОЛЬКО с отобранными: иначе ВОР схлопнется с договором,
-    // у которого случайно совпал кусок текста.
     const hash = contentHash(text);
     if (hash && seen.has(hash)) {
       const first = seen.get(hash);
       duplicates.push({ name, copy_of: first.name, chars: text.length, match: 'точное' });
       continue;
     }
-    const twin = kept.find((k) => similarity(k.text, text) >= 0.9);
+
+    // Копия уже отобранного документа — не тратим бюджет.
+    // Сначала точный хеш, затем нечёткое сравнение: копии одного PDF
+    // распознаются по-разному, хеш у них разный, а документ один.
+    //
+    // ПОРОГ 0.97 (было 0.9). Два РАЗНЫХ документа с общими юридическими
+    // формулировками («Договор поставки…», «Настоящий договор…») давали
+    // похожесть выше 0.9 и схлопывались как копия. В результате ВОР или
+    // дефектная ведомость отбрасывались, и модель разбирала пустоту.
+    // Копия одного файла отличается от оригинала на единицы процентов,
+    // поэтому 0.97 разделяет «копия» и «похожий по стилю документ».
+    //
+    // Дополнительная защита: разные размеры текста при высокой похожести —
+    // это всё-таки разные документы (копия не может быть вдвое короче).
+    const twin = kept.find((k) => {
+      if (similarity(k.text, text) < 0.97) return false;
+      const a = k.text.length;
+      const b = text.length;
+      const smaller = Math.min(a, b);
+      const bigger = Math.max(a, b);
+      // Разница в размере больше 15 % — не копия, а другой документ.
+      return bigger > 0 && smaller / bigger >= 0.85;
+    });
     if (twin) {
       duplicates.push({ name, copy_of: twin.original_name, chars: text.length, match: 'распознано иначе' });
       continue;

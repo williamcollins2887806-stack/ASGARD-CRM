@@ -665,7 +665,11 @@ class TenderOcrWorker {
       await this._markFailed(doc.id, r.error || `мало текста (${t.length})`);
       return 0;
     }
-    await this._saveText(doc.id, t, 0, 'text-extract');
+    await this._saveText(doc.id, t, 0, 'text-extract', {
+      positions: r.table_positions,
+      perSheet: r.table_per_sheet,
+      source: r.table_source
+    });
     return t.length;
   }
 
@@ -777,7 +781,16 @@ class TenderOcrWorker {
     }
   }
 
-  async _saveText(docId, text, pages, model) {
+  async _saveText(docId, text, pages, model, tableCount) {
+    // Структурный счёт позиций (table_positions) приходит из extractTextOnly:
+    // он посчитан по сетке ячеек файла, а не по тексту. Сохраняем вместе с
+    // текстом, чтобы анализ читал готовое число без повторных эвристик.
+    const positions = (tableCount && Number(tableCount.positions)) || 0;
+    const perSheet = (tableCount && Array.isArray(tableCount.perSheet))
+      ? JSON.stringify(tableCount.perSheet)
+      : null;
+    const source = (tableCount && tableCount.source) || null;
+
     await this.db.query(
       `UPDATE documents SET
          ocr_status = 'done',
@@ -785,9 +798,12 @@ class TenderOcrWorker {
          ocr_pages_count = $2,
          ocr_model = $3,
          ocr_completed_at = NOW(),
-         ocr_error = NULL
-       WHERE id = $4`,
-      [String(text).slice(0, 500000), pages, model || null, docId]
+         ocr_error = NULL,
+         table_positions = $4,
+         table_per_sheet = $5,
+         table_source = $6
+       WHERE id = $7`,
+      [String(text).slice(0, 500000), pages, model || null, positions, perSheet, source, docId]
     );
   }
 

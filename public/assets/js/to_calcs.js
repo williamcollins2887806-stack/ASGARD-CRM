@@ -178,6 +178,12 @@ window.AsgardToCalcsPage = (function () {
    * Источник — `rp_review.tech_json` (колонка tender_rp_reviews, приходит
    * вместе с реестром). Если техплана нет — берём смету из отчёта, чтобы
    * старые просчёты тоже были видны.
+   *
+   * ── Что видит ТО ─────────────────────────────────────────────────────────
+   * Раньше были только чипы «срок · бригада · МТР» — по ним нельзя ни
+   * спланировать работы, ни заказать материалы. Требование (09.11.2026):
+   * ТО должен видеть СОСТАВ бригады, СРОКИ работ и ПЕРЕЧЕНЬ МТР.
+   * Теперь под чипами раскрывается таблица с этими данными.
    */
   function techSummary(t) {
     const ui = window.AsgardTechPlanUI;
@@ -191,8 +197,99 @@ window.AsgardToCalcsPage = (function () {
       (rj && rj.asgard_smeta) || {}
     );
     const chips = ui.chipsHtml(plan, { hideEmpty: true });
-    if (!chips) return '';
-    return '<div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap">' + chips + '</div>';
+    const details = techDetailsHtml(plan);
+    if (!chips && !details) return '';
+    return '<div style="margin-top:8px">'
+      + (chips ? '<div style="display:flex;gap:6px;flex-wrap:wrap">' + chips + '</div>' : '')
+      + details
+      + '</div>';
+  }
+
+  /**
+   * Подробности техплана для ТО: сроки, бригада по ролям, материалы.
+   *
+   * @param {object} plan — результат AsgardTechPlanUI.readPlan
+   * @returns {string} HTML или ''
+   */
+  function techDetailsHtml(plan) {
+    const p = plan || {};
+    const crew = Array.isArray(p.crew) ? p.crew.filter((c) => c && (c.role || c.role_code)) : [];
+    const mtr = Array.isArray(p.mtr) ? p.mtr.filter((m) => m && m.name) : [];
+    const sch = p.schedule || {};
+    if (!crew.length && !mtr.length && !sch.work_days && !sch.duration_days) return '';
+
+    const cell = 'padding:5px 8px;border-bottom:1px solid rgba(255,255,255,.06);font-size:12px';
+    const head = 'padding:5px 8px;border-bottom:1px solid rgba(255,255,255,.12);'
+      + 'font-size:10.5px;letter-spacing:.04em;text-transform:uppercase;opacity:.6';
+
+    // ── Сроки ────────────────────────────────────────────────────────────
+    const days = sch.work_days || sch.duration_days || p.work_days || null;
+    const start = sch.start_date || sch.work_start_plan || null;
+    let schedHtml = '';
+    if (days || start) {
+      const parts = [];
+      if (days) parts.push('<b>' + Number(days) + ' сут</b>');
+      if (start) parts.push('начало ' + String(start).slice(0, 10));
+      if (sch.crews) parts.push('бригад: <b>' + Number(sch.crews) + '</b>');
+      schedHtml = '<div style="margin-top:8px;font-size:12px;opacity:.85">Сроки: ' + parts.join(' · ') + '</div>';
+    }
+
+    // ── Бригада ──────────────────────────────────────────────────────────
+    let crewHtml = '';
+    if (crew.length) {
+      const rows = crew.map((c) => {
+        const role = c.role || c.role_code || '—';
+        const count = Number(c.count) || 0;
+        const shifts = Number(c.shifts_per_day) || 0;
+        // Человеко-смены: сколько людей × сколько смен. ТО планирует по ним.
+        const ps = count && shifts ? (count * shifts).toLocaleString('ru-RU') : '';
+        return '<tr><td style="' + cell + '">' + escHtml(role) + '</td>'
+          + '<td style="' + cell + ';text-align:right">' + count + '</td>'
+          + '<td style="' + cell + ';text-align:right">' + (shifts || '—') + '</td>'
+          + '<td style="' + cell + ';text-align:right">' + (ps || '—') + '</td></tr>';
+      }).join('');
+      crewHtml = '<div style="margin-top:10px">'
+        + '<div style="font-size:11px;letter-spacing:.04em;text-transform:uppercase;opacity:.6;margin-bottom:4px">Бригада</div>'
+        + '<table style="width:100%;border-collapse:collapse">'
+        + '<thead><tr><th style="' + head + ';text-align:left">Роль</th>'
+        + '<th style="' + head + ';text-align:right">Чел.</th>'
+        + '<th style="' + head + ';text-align:right">Смен/сут</th>'
+        + '<th style="' + head + ';text-align:right">Чел·смен</th></tr></thead>'
+        + '<tbody>' + rows + '</tbody></table></div>';
+    }
+
+    // ── Материалы и оборудование ─────────────────────────────────────────
+    let mtrHtml = '';
+    if (mtr.length) {
+      const rows = mtr.slice(0, 12).map((m) => {
+        const qty = m.qty != null ? String(m.qty) : '—';
+        const unit = m.unit ? ' ' + m.unit : '';
+        return '<tr><td style="' + cell + '">' + escHtml(String(m.name)) + '</td>'
+          + '<td style="' + cell + ';text-align:right;white-space:nowrap">' + escHtml(qty + unit) + '</td>'
+          + '<td style="' + cell + ';opacity:.7">' + escHtml(String(m.note || m.purpose || '')) + '</td></tr>';
+      }).join('');
+      const more = mtr.length > 12
+        ? '<div style="font-size:11px;opacity:.6;margin-top:4px">и ещё ' + (mtr.length - 12) + ' поз.</div>' : '';
+      mtrHtml = '<div style="margin-top:10px">'
+        + '<div style="font-size:11px;letter-spacing:.04em;text-transform:uppercase;opacity:.6;margin-bottom:4px">'
+        + 'Материалы и оборудование</div>'
+        + '<table style="width:100%;border-collapse:collapse">'
+        + '<thead><tr><th style="' + head + ';text-align:left">Название</th>'
+        + '<th style="' + head + ';text-align:right">Кол-во</th>'
+        + '<th style="' + head + ';text-align:left">Назначение</th></tr></thead>'
+        + '<tbody>' + rows + '</tbody></table>' + more + '</div>';
+    } else {
+      mtrHtml = '<div style="margin-top:10px;font-size:11.5px;opacity:.6">'
+        + 'Материалы и оборудование не указаны.</div>';
+    }
+
+    return schedHtml + crewHtml + mtrHtml;
+  }
+
+  /** Экранирование HTML. */
+  function escHtml(s) {
+    return String(s == null ? '' : s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   }
 
   function safeJson(s) {

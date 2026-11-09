@@ -591,11 +591,68 @@ function mergeSkeletonRows(rows) {
 }
 
 /**
+ * Наценка на себестоимость по её величине.
+ *
+ * ── Почему три ступени ────────────────────────────────────────────────────
+ * Единая наценка плохо работает на разных масштабах. Мелкий тендер
+ * (до 5 млн) несёт почти те же постоянные издержки продажи и управления,
+ * что и крупный, поэтому в процентах они тяжелее — нужна наценка выше.
+ * Крупный тендер (свыше 15 млн) идёт на конкурентном рынке, где 50 % сверху
+ * просто не пройдут по цене.
+ *
+ *    до 5 000 000 ₽      → ×1.75
+ *    5 000 000–15 000 000 → ×1.50
+ *    свыше 15 000 000    → ×1.45
+ *
+ * Границы — по СЕБЕСТОИМОСТИ (прямые + накладные + непредвиденные), а не по
+ * цене: наценка применяется к ней, поэтому определять ступень по цене было бы
+ * циклической зависимостью.
+ *
+ * @param {number} cost — себестоимость в рублях
+ * @returns {number} коэффициент наценки
+ */
+function tieredMarkup(cost) {
+  const c = Number(cost) || 0;
+  if (c <= 0) return 1.5;
+  if (c < 5000000) return 1.75;
+  if (c <= 15000000) return 1.5;
+  return 1.45;
+}
+
+/**
  * Пересчёт сметы. Мутирует копию.
  */
 function recalcAsgardSmeta(estimate) {
   const est = JSON.parse(JSON.stringify(estimate || {}));
   est.template = 'asgard_v1';
+
+  // ── Какая наценка ЗАДАНА ЯВНО ─────────────────────────────────────────────
+  // Отличаем «РП задал коэффициент руками» от «подставился дефолт».
+  //
+  // КОРЕНЬ (найдено верификатором): модалка засевает params из DEFAULT_PARAMS,
+  // где markup = 1.5. Проверка «markup != null» считала это ручным вводом, и
+  // ступенчатая наценка не включалась НИКОГДА: малая смета 1.88 млн шла по
+  // 1.5 вместо 1.75, теряя ~470 тыс. в цене.
+  //
+  // Признак «задано руками» — ЯВНОЕ присутствие ключа в params. Модалка
+  // засевает DEFAULT_PARAMS целиком, поэтому её значение нельзя отличить от
+  // ручного по величине. Решение: модалка НЕ должна присылать дефолтную
+  // наценку (см. rp_calc_modal.js — seed больше не копирует markup).
+  // Тогда любое присланное значение = ручной ввод, и его уважаем.
+  const rawParams = (estimate && estimate.params) || {};
+  const hasMarkupKey = rawParams.markup != null || rawParams.markup_multiplier != null;
+  let explicitMarkup = num(
+    (rawParams.markup != null ? rawParams.markup : rawParams.markup_multiplier), 0
+  );
+  // Процентную форму нормализуем ЗДЕСЬ, а не только в mergeParams: иначе
+  // явная ветка обходила нормализацию и markup=50 давал ×50 (найдено
+  // верификатором: цена 61.5 млн вместо 1.85 млн).
+  if (explicitMarkup > 10) explicitMarkup = explicitMarkup / 100 + 1;
+  // Замок: наценка уже посчитана при прошлом пересчёте — не пересчитываем,
+  // иначе цена «плывёт» между карточкой и письмом.
+  const lockedMarkup = num(rawParams.markup_locked, 0) > 0;
+  const hasExplicit = lockedMarkup || (hasMarkupKey && explicitMarkup > 0);
+
   est.params = mergeParams(est.params);
   const p = est.params;
 
@@ -694,8 +751,29 @@ function recalcAsgardSmeta(estimate) {
   const overhead = Math.round(direct * p.overhead * 100) / 100;
   const contingency = Math.round((direct + overhead) * p.contingency * 100) / 100;
   const cost = direct + overhead + contingency;
+
+  // ── Динамическая наценка по себестоимости ─────────────────────────────────
+  // Раньше наценка была единой (1.5). На крупных тендерах это завышает цену:
+  // 50 % сверху на 30 млн даёт маржу, которую заказчик не примет, а на мелких
+  // наоборот — 50 % не покрывают накладные расходы продажи.
+  //
+  // Пороги — общее правило расчёта, а не настройка под конкретный тендер:
+  //   • до 5 млн      — ×1.75 (мелкие: риск и накладные выше);
+  //   • 5–15 млн      — ×1.50 (средние, базовый уровень);
+  //   • свыше 15 млн  — ×1.45 (крупные: конкуренция жёстче, маржа тоньше).
+  //
+  // ЯВНАЯ настройка имеет приоритет: если в params передан `markup` или
+  // `markup_multiplier`, коэффициент задан руками (РП или тест) и ступень
+  // не применяется. Иначе расчёт молча перебивал бы ручной ввод.
+  const effectiveMarkup = hasExplicit ? explicitMarkup : tieredMarkup(cost);
+  const pM = { ...p, markup: effectiveMarkup };
+  // Фиксируем фактическую наценку в params + ставим замок. Без этого каждый
+  // пересчёт сохранённой сметы заново решал бы ступень и цена «плыла»
+  // (найдено верификатором: расхождение 307 548 ₽ между карточкой и письмом).
+  est.params.markup = effectiveMarkup;
+  est.params.markup_locked = 1;
   const priceNoVat = Math.round(
-    (materials * p.material_markup + equipment + (cost - materials - equipment) * p.markup) * 100
+    (materials * pM.material_markup + equipment + (cost - materials - equipment) * pM.markup) * 100
   ) / 100;
   // НДС считаем в ЦЕЛЫХ копейках, а не через float-произведение (D-181).
   // `Math.round(priceNoVat * p.vat * 100) / 100` давал ошибку в 1 копейку на полугранице:
@@ -767,8 +845,8 @@ function recalcAsgardSmeta(estimate) {
     ...totalsMap,
     vat_pct: Math.round(p.vat * 1000) / 10,
     income_tax_pct: Math.round(p.income_tax * 1000) / 10,
-    markup: p.markup,
-    margin_pct: Math.round((p.markup - 1) * 1000) / 10
+    markup: pM.markup,
+    margin_pct: Math.round((pM.markup - 1) * 1000) / 10
   };
 
   // Совместимость с UI Quick

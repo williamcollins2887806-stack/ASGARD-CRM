@@ -176,18 +176,177 @@ function parseRj(raw) {
   try { return JSON.parse(raw || '{}'); } catch (_) { return {}; }
 }
 
+/**
+ * Доводит смету до согласованного вида для письма директору.
+ *
+ * КОРЕНЬ (найдено при аудите): функция передавала в recalcAsgardSmeta только
+ * meta, params и rows. Поля crew, mtr, schedule, works, meta работ терялись,
+ * и письмо директору показывало смету без бригады, без состава работ и без
+ * источника объёмов — то есть директор видел голые суммы без обоснования.
+ *
+ * Теперь переносим ВСЁ, что есть: пересчёт сам разберётся, что из этого
+ * используется.
+ */
 function ensureEstimate(raw) {
   const base = raw && typeof raw === 'object' ? raw : {};
   try {
-    return recalcAsgardSmeta({
+    const input = {
       template: 'asgard_v1',
       meta: base.meta || {},
       params: base.params || {},
       rows: Array.isArray(base.rows) && base.rows.length ? base.rows : undefined
-    });
+    };
+    // Техплан и работы: без них письмо теряет состав бригады и обоснование.
+    if (Array.isArray(base.crew) && base.crew.length) input.crew = base.crew;
+    if (Array.isArray(base.mtr) && base.mtr.length) input.mtr = base.mtr;
+    if (base.schedule && typeof base.schedule === 'object') input.schedule = base.schedule;
+    if (Array.isArray(base.works) && base.works.length) input.works = base.works;
+    if (base.totals && typeof base.totals === 'object') input.totals = base.totals;
+    return recalcAsgardSmeta(input);
   } catch (_) {
     return recalcAsgardSmeta({ template: 'asgard_v1' });
   }
+}
+
+/**
+ * Блок анализа для письма директору.
+ *
+ * ── Что здесь и зачем ─────────────────────────────────────────────────────
+ * Директор согласовывает ЦЕНУ, но решает по ОБОСНОВАНИЮ. Раньше письмо
+ * показывало только смету: откуда взялись объёмы, по какой норме считали,
+ * сколько людей и на какой срок — директор не видел и согласовывал вслепую.
+ *
+ * Теперь в письме то, что модель разобрала и проверила:
+ *   • состав работ — позиции с объёмом и источником объёма (ВОР, ТЗ, паспорт);
+ *   • бригада и срок — кто, сколько и надолго;
+ *   • уверенность и проблемы — что модель не смогла определить сама.
+ *
+ * Блок необязательный: если анализа нет, письмо просто не содержит его.
+ *
+ * @param {object} rj — report_json просчёта
+ * @param {object} est — смета
+ * @returns {string} HTML или пустая строка
+ */
+function renderAnalysisBlockHtml(rj, est) {
+  const r = rj && typeof rj === 'object' ? rj : {};
+  const e = est && typeof est === 'object' ? est : {};
+  // Состав работ лежит в разных местах в зависимости от того, кто считал:
+  //   • смета Асгарда — est.works;
+  //   • отчёт РП — report_json.works;
+  //   • карточка РП пишет позиции в report_json.dv_positions.
+  // Раньше читались только первые два, и на проде состав работ попадал в
+  // письмо лишь у 12 смет из 31 (найдено верификатором).
+  const sm = (e.works && Array.isArray(e.works)) ? e.works
+    : (Array.isArray(r.works) ? r.works
+      : (Array.isArray(r.dv_positions) ? r.dv_positions : []));
+  const crew = Array.isArray(e.crew) ? e.crew : (Array.isArray(r.crew) ? r.crew : []);
+  const meta = e.meta || {};
+  const days = meta.work_duration_days || (e.params && e.params.work_days) || null;
+  const confidence = r.confidence != null ? r.confidence : null;
+  const problems = Array.isArray(r.problems) ? r.problems.filter(Boolean) : [];
+  const volumeSource = r.volume_source || null;
+
+  const hasAnything = sm.length || crew.length || days || problems.length || confidence != null;
+  if (!hasAnything) return '';
+
+  const h2 = 'font-size:13px;font-weight:800;color:#1b2a4a;margin:18px 0 6px;letter-spacing:.04em';
+  const label = 'color:#6b7280';
+  const row = 'padding:5px 0;border-bottom:1px solid #eef1f6;font-size:13px';
+
+  // ── Источник объёма и уверенность ──────────────────────────────────────
+  const SOURCE_LABELS = {
+    vor: 'ведомость объёмов работ',
+    tz: 'техническое задание',
+    tz_labor: 'трудоёмкость из технического задания',
+    defect_act: 'дефектный акт',
+    passport: 'паспорт оборудования',
+    web: 'открытые данные (паспорт найден поиском)',
+    expert: 'оценка специалиста'
+  };
+  const facts = [];
+  if (volumeSource) facts.push(`Объёмы взяты из: <b>${esc(SOURCE_LABELS[volumeSource] || volumeSource)}</b>`);
+  if (confidence != null) facts.push(`Уверенность разбора: <b>${confidenceWord(confidence)}</b>`);
+  if (days) facts.push(`Срок работ: <b>${esc(String(days))} сут</b>`);
+
+  // ── Состав работ ───────────────────────────────────────────────────────
+  let worksHtml = '';
+  if (sm.length) {
+    const shown = sm.slice(0, 25);
+    const rows = shown.map((w) => {
+      const vol = w.volume != null ? String(w.volume) : '—';
+      const unit = w.unit ? ` ${w.unit}` : '';
+      const src = w.volume_source
+        ? ` <span style="color:#6b7280">· ${esc(SOURCE_LABELS[w.volume_source] || w.volume_source)}</span>`
+        : '';
+      return `<tr><td style="${row}">${esc(String(w.name || '—')).slice(0, 120)}</td>`
+        + `<td style="${row};text-align:right;white-space:nowrap">${esc(vol + unit)}${src}</td></tr>`;
+    }).join('');
+    const more = sm.length > shown.length
+      ? `<div style="font-size:12px;color:#6b7280;padding-top:6px">и ещё ${sm.length - shown.length} позиций — в смете</div>`
+      : '';
+    worksHtml = `<div style="${h2}">СОСТАВ РАБОТ (${sm.length})</div>
+      <table style="width:100%;border-collapse:collapse">${rows}</table>${more}`;
+  }
+
+  // ── Бригада ────────────────────────────────────────────────────────────
+  let crewHtml = '';
+  if (crew.length) {
+    const parts = crew
+      .filter((c) => c && (c.role || c.code) && Number(c.count) > 0)
+      .map((c) => `${esc(String(c.role || c.code))} — ${esc(String(c.count))}`);
+    if (parts.length) {
+      crewHtml = `<div style="${h2}">БРИГАДА</div>
+        <div style="font-size:13px;line-height:1.7">${parts.join(' · ')}</div>`;
+    }
+  }
+
+  // ── Проблемы ───────────────────────────────────────────────────────────
+  let problemsHtml = '';
+  if (problems.length) {
+    const items = problems.map((p) => {
+      const text = typeof p === 'string' ? p : (p && (p.text || p.message || p.name)) || '';
+      if (!text) return '';
+      const kind = (p && p.kind) ? `<span style="color:#b45309">${esc(String(p.kind))}: </span>` : '';
+      return `<li style="margin:3px 0">${kind}${esc(String(text))}</li>`;
+    }).filter(Boolean).join('');
+    if (items) {
+      problemsHtml = `<div style="${h2}">ЧТО ТРЕБУЕТ ВНИМАНИЯ</div>
+        <ul style="margin:0;padding-left:18px;font-size:13px;line-height:1.6">${items}</ul>`;
+    }
+  }
+
+  const head = facts.length
+    ? `<div style="font-size:13px;line-height:1.7"><span style="${label}">${facts.join(' · ')}</span></div>`
+    : '';
+
+  return `<div style="margin:18px 0 6px;padding:14px 16px;background:#f8fafc;border:1px solid #e5e9f0;border-radius:12px">
+    <div style="font-size:11px;font-weight:800;color:#1b2a4a;letter-spacing:.06em;text-transform:uppercase;margin-bottom:8px">Анализ</div>
+    ${head}${worksHtml}${crewHtml}${problemsHtml}
+  </div>`;
+}
+
+/**
+ * Слово об уверенности разбора — из числа ИЛИ из слова.
+ *
+ * Конвейер нормализует уверенность в слово (`high` / `medium` / `low`),
+ * а блок письма ждал число. На слове `Number('high')` даёт NaN, и директор
+ * видел «низкая (NaN %)» — ложный сигнал в документе на согласование.
+ *
+ * @param {number|string} v
+ * @returns {string} «высокая» / «средняя» / «низкая» / «—»
+ */
+function confidenceWord(v) {
+  const raw = String(v == null ? '' : v).trim().toLowerCase();
+  if (raw === 'high' || raw === 'высокая') return 'высокая';
+  if (raw === 'medium' || raw === 'средняя') return 'средняя';
+  if (raw === 'low' || raw === 'низкая') return 'низкая';
+  const n = Number(v);
+  if (!Number.isFinite(n)) return '—';
+  // Доля (0..1) или проценты (0..100).
+  const share = n > 1 ? n / 100 : n;
+  const pct = Math.round(share * 100);
+  const word = share >= 0.8 ? 'высокая' : (share >= 0.5 ? 'средняя' : 'низкая');
+  return `${word} (${pct} %)`;
 }
 
 function renderSmetaTableHtml(estimate) {
@@ -394,6 +553,7 @@ function buildEmailHtml({ tender, review, estimate, decideUrl, filesUrl, files, 
       </table>
       ${textBlock('Описание работ', workDesc)}
       ${textBlock('Комментарий РП', rpComment)}
+      ${renderAnalysisBlockHtml(rj, est)}
       <div style="font-size:13px;font-weight:800;color:#1b2a4a;margin:18px 0 6px;letter-spacing:.04em">СМЕТА</div>
       ${renderSmetaTableHtml(est)}
       <div style="margin:18px 0 8px;padding:16px 18px;background:linear-gradient(180deg,#faf6e8,#f8fafc);border-radius:12px;border:1px solid #e8dfc0">
@@ -927,6 +1087,7 @@ module.exports = {
   resolveMailTo,
   buildEmailHtml,
   renderSmetaTableHtml,
+  renderAnalysisBlockHtml,
   ensureEstimate,
   landingMessageHtml,
   landingActionHtml,

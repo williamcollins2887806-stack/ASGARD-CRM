@@ -666,7 +666,12 @@ async function routes(fastify, options) {
       let documents = attachments.map((a) => ({
         original_name: a.filename || a.original_name || 'документ',
         text: a.ocr_text || a.text || '',
-        size: a.size || null
+        size: a.size || null,
+        // Структурный счёт позиций из парсера (V474). Передаём дальше —
+        // иначе прямая загрузка теряет счёт и откатывается на текстовые
+        // эвристики, которые 13 раз ошибались.
+        table_positions: Number(a.table_positions) || 0,
+        table_source: a.table_source || null
       }));
 
       if (session.tender_id) {
@@ -680,7 +685,7 @@ async function routes(fastify, options) {
           // которые дают объёмы (ВОР, ведомость, ТЗ), идут первыми.
           // Лимит поднят до 200 — 68 документов проходят целиком.
           const { rows } = await db.query(
-            `SELECT original_name, ocr_text, size FROM documents
+            `SELECT original_name, ocr_text, size, table_positions, table_source FROM documents
               WHERE tender_id = $1
                 AND COALESCE(ocr_text, '') <> ''
                 AND COALESCE(ocr_status, 'done') <> 'failed'
@@ -699,7 +704,15 @@ async function routes(fastify, options) {
           const known = new Set(documents.map((d) => d.original_name));
           for (const r of rows) {
             if (known.has(r.original_name)) continue;
-            documents.push({ original_name: r.original_name, text: r.ocr_text, size: r.size });
+            documents.push({
+              original_name: r.original_name,
+              text: r.ocr_text,
+              size: r.size,
+              // Структурный счёт позиций из парсера (V474). Если посчитан,
+              // анализ использует его вместо текстовых эвристик.
+              table_positions: Number(r.table_positions) || 0,
+              table_source: r.table_source || null
+            });
           }
         } catch (_) { /* кэш OCR необязателен */ }
       }
@@ -944,6 +957,26 @@ async function routes(fastify, options) {
         // Сколько раундов заняла генерация: на больших ведомостях модель
         // отвечает порциями, и РП должен видеть, что разбор шёл частями.
         generation_rounds: gen.rounds || 1,
+        // ── Диагностика полноты разбора ──────────────────────────────────
+        // Без этих полей РП не отличает полный разбор от частичного:
+        // «353 позиции» выглядели одинаково, было их 353 в ведомости или 673.
+        salvaged: !!gen.salvaged,
+        truncated_by_length: !!gen.truncated_by_length,
+        expected_min: gen.expected_min || 0,
+        expected_rows: gen.expected_rows || 0,
+        found_positions: gen.found_positions != null ? gen.found_positions : (gen.dv.positions || []).length,
+        incomplete: !!gen.incomplete,
+        incomplete_note: gen.incomplete_note || null,
+        // Сводка для сверки с ведомостью. Справочная: форматы ведомостей
+        // слишком разные, чтобы строить на ней автоматический порог.
+        review_hint: gen.review_hint || null,
+        // ── Полная диагностика разбора ──────────────────────────────────
+        // Без этих полей нельзя разобраться, почему разбор вышел неполным:
+        // модель ли оборвалась, сетка ли не поняла формат, или копии
+        // документов съели бюджет. РП и разработчик видели только итог.
+        model_said_positions: gen.model_said_positions || 0,
+        expected_rows_grid: gen.expected_rows_grid || 0,
+        salvaged: !!gen.salvaged,
         // Срок и режим работ: РП видит, что нашлось в ТЗ и документах.
         schedule: sched,
         // История заказчика: видно, подтянулась ли и сколько прошлых тендеров.
@@ -1430,7 +1463,14 @@ async function routes(fastify, options) {
           prio,
           name: innerName,
           text: tRaw.slice(0, perCap),
-          usedOcr: !!r.usedOcr
+          usedOcr: !!r.usedOcr,
+          // Структурный счёт позиций: он посчитан по сетке ячеек в парсере.
+          // Без проброса сюда прямая загрузка (без кэша тендера) теряла счёт
+          // и откатывалась на текстовые эвристики — те самые, что 13 раз
+          // ошибались. Проводка обязательна на обоих путях.
+          table_positions: Number(r.table_positions) || 0,
+          table_per_sheet: r.table_per_sheet || null,
+          table_source: r.table_source || null
         };
       } catch (e) {
         warnings.push(`${innerName}: ${e.message}`);
@@ -1623,6 +1663,16 @@ async function routes(fastify, options) {
     }
 
     const existing = Array.isArray(session.tz_attachments) ? session.tz_attachments : [];
+    // Структурный счёт позиций по файлу (по сетке ячеек, из парсера).
+    // Складываем по всем извлечённым фрагментам: архив может содержать
+    // несколько ведомостей, каждая даёт своё число.
+    const tablePositions = Array.isArray(chunks)
+      ? chunks.reduce((sum, c) => sum + (Number(c && c.table_positions) || 0), 0)
+      : 0;
+    const tablePerSheet = Array.isArray(chunks)
+      ? chunks.flatMap((c) => (Array.isArray(c && c.table_per_sheet) ? c.table_per_sheet : []))
+      : [];
+
     const newEntry = {
       filename,
       mime,
@@ -1631,6 +1681,8 @@ async function routes(fastify, options) {
       files_parsed: filesParsed,
       used_ocr: usedOcr,
       from_tender_cache: fromTenderCache,
+      table_positions: tablePositions,
+      table_per_sheet: tablePerSheet,
       warnings,
       added_at: new Date().toISOString()
     };

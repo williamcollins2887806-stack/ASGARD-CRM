@@ -131,5 +131,56 @@ check('«24 апп.» не превращается в 24 трубки', () => {
   assert.strictEqual(out._measured_value, 24, 'потеряно значение');
 });
 
+// ── Дедупликация различает аппараты ───────────────────────────────────────
+check('одинаковая работа по разным аппаратам — не дубль', () => {
+  // В ведомостях одна и та же работа по Т-1, Т-2, Т-3 — это три позиции.
+  // Раньше ключ не включал тег аппарата, и при совпадении объёмов они
+  // схлопывались в одну.
+  const a = dupKey({ name: 'Гидрочистка трубок', volume: 100, unit: 'м3',
+    objects: [{ tag: 'Т-1' }] });
+  const b = dupKey({ name: 'Гидрочистка трубок', volume: 100, unit: 'м3',
+    objects: [{ tag: 'Т-2' }] });
+  assert.notStrictEqual(a, b, 'разные аппараты схлопнуты в один ключ');
+});
+
+check('точный дубль всё равно схлопывается', () => {
+  const p = { name: 'Очистка', volume: 10, unit: 'м3', objects: [{ tag: 'Р-1' }] };
+  assert.strictEqual(dupKey(p), dupKey({ ...p }));
+});
+
+check('id позиций уникальны между раундами', () => {
+  // Модель нумерует с 1 в каждом ответе: при разборе порциями id повторялись,
+  // и связи «позиция → план → смета» рвались.
+  const stagesService = require('../src/services/mimir-tender-stages');
+  const dv = stagesService.normalizeDv({
+    positions: Array.from({ length: 300 }, (_, k) => ({
+      id: 'p' + ((k % 100) + 1),  // как отдаёт модель: 1..100 трижды
+      name: 'Работа ' + (k + 1),
+      category_code: 'tubes', method_code: 'gdo',
+      volume: 10 + k, unit: 'м3'
+    }))
+  }, null);
+  const ids = dv.positions.map((p) => p.id);
+  const uniq = new Set(ids);
+  assert.strictEqual(uniq.size, ids.length,
+    'id не уникальны: ' + ids.length + ' позиций, ' + uniq.size + ' id');
+});
+
+check('objects сохраняются в нормализованной позиции', () => {
+  // Без этого поля тег аппарата терялся до дедупликации.
+  const stagesService = require('../src/services/mimir-tender-stages');
+  const dv = stagesService.normalizeDv({
+    positions: [{
+      name: 'Гидрочистка трубок', category_code: 'tubes', method_code: 'gdo',
+      volume: 100, unit: 'м3',
+      objects: [{ tag: 'Т-1', type: 'теплообменник', size: '100 м2', qty: 1 }]
+    }]
+  }, null);
+  const p = dv.positions[0];
+  assert.ok(Array.isArray(p.objects), 'objects не сохранены');
+  assert.strictEqual(p.objects.length, 1);
+  assert.strictEqual(p.objects[0].tag, 'Т-1');
+});
+
 console.log(`\nитог: ${pass} PASS, ${fail} FAIL`);
 process.exitCode = fail ? 1 : 0;

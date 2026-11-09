@@ -364,13 +364,31 @@ module.exports = async function directorAnalyticsRoutes(fastify) {
       const { rows: [tSum] } = await db.query(`
         SELECT
           COUNT(*)::int AS total,
-          COUNT(*) FILTER (WHERE t.registry_status = 'выиграли')::int AS won,
-          COUNT(*) FILTER (WHERE t.registry_status = 'проиграли')::int AS lost,
-          COUNT(*) FILTER (WHERE t.registry_status IN ('рассмотрение','готовим','подались'))::int AS active,
+          -- ВАЖНО: COUNT(*) здесь считал СТРОКИ ДЖОЙНА, а не тендеры.
+          -- У тендера бывает несколько просчётов (пересчёт, разные РП),
+          -- и LEFT JOIN давал дубли: один тендер учитывался 2–3 раза.
+          -- Отсюда «просрочки», которых нет (жалоба директора 09.11.2026).
+          COUNT(DISTINCT t.id)::int AS total_unique,
+          COUNT(DISTINCT t.id) FILTER (WHERE t.registry_status = 'выиграли')::int AS won,
+          COUNT(DISTINCT t.id) FILTER (WHERE t.registry_status = 'проиграли')::int AS lost,
+          COUNT(DISTINCT t.id) FILTER (WHERE t.registry_status IN ('рассмотрение','готовим','подались'))::int AS active,
           COALESCE(SUM(COALESCE(t.submission_price, t.tender_price)), 0)::float AS sum,
           COALESCE(SUM(t.tender_price), 0)::float AS nmck_sum,
-          COALESCE(SUM(tr.work_price), 0)::float AS work_price_sum,
-          COUNT(*) FILTER (
+          -- Цена работ — по УНИКАЛЬНЫМ тендерам. Раньше SUM(tr.work_price)
+          -- складывал строки джойна: тендер с двумя просчётами учитывался
+          -- дважды (та же ошибка, что в счётчиках).
+          COALESCE((
+            SELECT SUM(x.wp)
+              FROM (
+                SELECT DISTINCT ON (tr2.tender_id) tr2.tender_id, tr2.work_price AS wp
+                  FROM tender_rp_reviews tr2
+                 WHERE tr2.tender_id IN (SELECT DISTINCT t3.id FROM tenders t3
+                                          WHERE t3.archived_at IS NULL AND (${tPeriod.clause}))
+                 ORDER BY tr2.tender_id, tr2.updated_at DESC NULLS LAST
+              ) x
+          ), 0)::float AS work_price_sum,
+          -- Просрочки — по УНИКАЛЬНЫМ тендерам, а не по строкам джойна.
+          COUNT(DISTINCT t.id) FILTER (
             WHERE t.registry_status IN ('рассмотрение','готовим','подались')
               AND t.docs_deadline IS NOT NULL
               AND t.docs_deadline::date < CURRENT_DATE
@@ -559,7 +577,10 @@ module.exports = async function directorAnalyticsRoutes(fastify) {
       return {
         period,
         tenders: {
-          total: Number(tSum.total || 0),
+          // total_unique — счётч по УНИКАЛЬНЫМ тендерам. Старое поле total
+          // считало строки джойна с просчётами и завышало число вдвое-втрое
+          // (ложные «просрочки», жалоба директора 09.11.2026).
+          total: Number(tSum.total_unique || tSum.total || 0),
           active: Number(tSum.active || 0),
           won,
           lost,

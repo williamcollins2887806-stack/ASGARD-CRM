@@ -1096,3 +1096,13 @@ html[data-theme='light'] .rp-calc-approve-toggle input[type='checkbox']:checked 
   background: var(--warn-bg); border-left: 2px solid var(--warn); font-size: 11.5px;
   line-height: 1.5; color: var(--warn-t); }
 .rp-calc-dv-warn li { margin-bottom: 3px; }
+
+/* Диагностика разбора ведомости: баннер над вкладками.
+   Показывается только когда разбор неполный или требует сверки. */
+.rp-calc-diag { margin: 0 0 14px; padding: 12px 14px; border-radius: 10px; border-left: 3px solid; font-size: 12px; line-height: 1.55; }
+.rp-calc-diag--bad { background: var(--err-bg, #fdecec); border-left-color: var(--err, #b91c1c); color: var(--err-t, #7f1d1d); }
+.rp-calc-diag--warn { background: var(--warn-bg); border-left-color: var(--warn); color: var(--warn-t); }
+.rp-calc-diag__title { font-size: 12.5px; font-weight: 800; letter-spacing: .02em; margin-bottom: 4px; }
+.rp-calc-diag__note { font-size: 12px; }
+.rp-calc-diag__facts { margin-top: 5px; font-size: 11.5px; opacity: .85; }
+.rp-calc-diag__hint { margin-top: 6px; font-size: 11.5px; opacity: .9; }
