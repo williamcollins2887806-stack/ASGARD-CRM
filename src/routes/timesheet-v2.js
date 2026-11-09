@@ -2073,7 +2073,10 @@ async function routes(fastify) {
       // Свободные этапы: work_id из UI не доверяем слепо — только если рабочий
       // назначен на эту работу на дату отметки (иначе берём его активное/датированное
       // назначение, либо null).
-      if (FREE_STANDING_STAGE_TYPES.has(type)) {
+      // DELETE: НЕ резолвим work_id из назначения. Офис ставит travel/ship с work_id=NULL,
+      // а назначение на объект (МЛСП и т.п.) подставляло чужой work_id → DELETE
+      // фильтровал `work_id=354` и отдавал 404 «Отметка не найдена», хотя stage жив.
+      if (FREE_STANDING_STAGE_TYPES.has(type) && !del) {
         work_id = await resolveFreestandingWorkId(db, employee_id, work_id, date);
       }
       if (typeRequiresWorkId(mode, type) && !work_id) {
@@ -2110,32 +2113,70 @@ async function routes(fastify) {
           await db.query(`UPDATE field_checkins SET status='cancelled', updated_at=NOW() WHERE id=$1`, [ci[0].id]);
           return { ok: true, deleted: true, kind: 'checkin' };
         }
-        // stage
-        // FIX 5: DELETE stage не фильтровал по work_id — на одной дате этап
-        // на work#2 мог быть удалён операцией для work#1. Добавляем фильтр.
-        // Если в payload work_id не передан — оставляем «любая работа», т.к. рабочему
-        // на дату должно быть только одно из (waiting/medical/travel/warehouse),
-        // но дозволяем явный work_id из тела.
-        const stParams = work_id
-          ? [employee_id, type, date, work_id]
-          : [employee_id, type, date];
+        // stage / logistics
+        // Канон stage_type в БД (road→travel, standby→waiting).
+        const stageType = normalizeLogisticsType(type) || type;
+        // Одна активная logistics-отметка на сотрудника+день. Явный work_id из тела
+        // только повышает приоритет совпадения — не делает его обязательным
+        // (иначе freestanding NULL-stage не находится после резолва назначения).
         const { rows: st } = await db.query(`
           SELECT id, entered_by_user_id, work_id FROM field_trip_stages
           WHERE employee_id=$1 AND stage_type=$2 AND date_from <= $3::date
             AND COALESCE(date_to, date_from) >= $3::date
             AND COALESCE(status,'active') NOT IN ('rejected','cancelled')
-            ${work_id ? 'AND work_id=$4' : ''}
+          ORDER BY
+            CASE WHEN $4::int IS NOT NULL AND work_id IS NOT DISTINCT FROM $4::int THEN 0 ELSE 1 END,
+            updated_at DESC NULLS LAST, id DESC
           LIMIT 1
-        `, stParams);
-        if (!st.length) return reply.code(404).send({ error: 'Отметка не найдена' });
+        `, [employee_id, stageType, date, work_id || null]);
+
+        // РП иногда пишет дорогу/ожидание в field_checkins (shift=travel|road|…).
+        // UI показывает их как type=travel, а старый DELETE смотрел только stages → 404.
+        const LOGISTICS_CHECKIN_SHIFTS = {
+          travel: ['travel', 'road'],
+          waiting: ['waiting', 'standby'],
+          ship: ['ship'],
+          helicopter: ['helicopter']
+        };
+        const logisticsShifts = LOGISTICS_CHECKIN_SHIFTS[stageType] || null;
+        let logisticsCi = [];
+        if (logisticsShifts) {
+          const { rows } = await db.query(`
+            SELECT id, entered_by_user_id, work_id FROM field_checkins
+            WHERE employee_id=$1 AND date=$2::date AND status='completed'
+              AND shift = ANY($3::text[])
+            ORDER BY
+              CASE WHEN $4::int IS NOT NULL AND work_id IS NOT DISTINCT FROM $4::int THEN 0 ELSE 1 END,
+              updated_at DESC NULLS LAST, id DESC
+          `, [employee_id, date, logisticsShifts, work_id || null]);
+          logisticsCi = rows;
+        }
+
+        if (!st.length && !logisticsCi.length) {
+          return reply.code(404).send({ error: 'Отметка не найдена' });
+        }
         // D-258: freestanding logistics (work_id NULL) — РП удаляет, если сотрудник в его дружине.
-        if (mode === 'pm' && isPmOverwriteType(type)) {
-          const ok = await pmOwnsEmployeeOrWork(db, viewer, employee_id, st[0].work_id || work_id);
+        if (mode === 'pm' && isPmOverwriteType(stageType)) {
+          const ownWorkId = (st[0] && st[0].work_id) || (logisticsCi[0] && logisticsCi[0].work_id) || work_id;
+          const ok = await pmOwnsEmployeeOrWork(db, viewer, employee_id, ownWorkId);
           if (!ok) return reply.code(403).send({ error: 'Нет доступа к этой отметке' });
         }
-        // FIX 4: убран NULL-bypass — PM удаляет всё на своей работе (RBAC выше).
-        await db.query(`UPDATE field_trip_stages SET status='cancelled', updated_at=NOW() WHERE id=$1`, [st[0].id]);
-        return { ok: true, deleted: true, kind: 'stage' };
+        if (st.length) {
+          await db.query(`UPDATE field_trip_stages SET status='cancelled', updated_at=NOW() WHERE id=$1`, [st[0].id]);
+        }
+        if (logisticsCi.length) {
+          await db.query(
+            `UPDATE field_checkins SET status='cancelled', updated_at=NOW() WHERE id = ANY($1::int[])`,
+            [logisticsCi.map((r) => r.id)]
+          );
+        }
+        return {
+          ok: true,
+          deleted: true,
+          kind: st.length && logisticsCi.length ? 'stage+checkin' : (st.length ? 'stage' : 'checkin'),
+          stage_id: st[0] ? st[0].id : null,
+          checkin_ids: logisticsCi.map((r) => r.id)
+        };
       }
 
       // ── INSERT/UPDATE ───────────────────────────────────────────

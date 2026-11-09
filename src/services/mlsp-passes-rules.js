@@ -1,26 +1,35 @@
 'use strict';
 
 /**
- * Правила BLOCK / WARN для генератора МЛСП.
- * BLOCK — нельзя выгрузить Excel.
- * WARN  — можно после confirm.
+ * Правила генератора МЛСП.
+ * Excel не блокируем по допускам/паспорту — только WARN (пакет = коды Дружины).
+ * BLOCK только если нет людей в заявке (на уровне UI/create).
  */
 
+/** Алиасы → канон permit_types.code из Дружины */
+/** Только коды из permit_types Дружины. Выше группа закрывает ниже (высота). */
 const PERMIT_CODE_ALIASES = {
-  medical: ['medical', 'MED_EXAM', 'MED_EXAM_PRELIM'],
-  offshore_med: ['offshore_med', 'UTM', 'utm'],
-  psych: ['psych', 'PSYCH_EXAM'],
-  bosiet: ['bosiet', 'BOSIET', 'BMPVO', 'bmpvo'],
-  helicopter: ['helicopter', 'HUET', 'huet'],
-  height_1: ['height_1', 'HEIGHT', 'height'],
-  fire: ['fire', 'FIRE'],
-  labor: ['labor', 'OT', 'labor_safety'],
-  first_aid: ['first_aid', 'FIRST_AID'],
-  confined: ['confined', 'CONFINED'],
-  gas_hazard: ['gas_hazard', 'GAS', 'H2S'],
-  ice_class: ['ice_class', 'ICE'],
-  FSB: ['FSB', 'fsb'],
-  MLSP_PASS: ['MLSP_PASS', 'mlsp_pass', 'MLSP']
+  MEDCHECK: ['MEDCHECK'],
+  OFFSHORE_MED: ['OFFSHORE_MED'],
+  PSYCH: ['PSYCH'],
+  BOSIET: ['BOSIET'],
+  // HUET часто внутри БОСИЕТ — засчитываем оба кода справочника
+  HELICOPTER: ['HELICOPTER', 'BOSIET'],
+  HEIGHT_1: ['HEIGHT_1', 'HEIGHT_2', 'HEIGHT_3', 'OTZP_1', 'OTZP_2', 'OTZP_3'],
+  HEIGHT_2: ['HEIGHT_2', 'HEIGHT_3', 'OTZP_2', 'OTZP_3'],
+  HEIGHT_3: ['HEIGHT_3', 'OTZP_3'],
+  PTM: ['PTM', 'FIRE_SAFETY'],
+  OT: ['OT', 'OT_V', 'OT_B', 'OT_A'],
+  OT_A: ['OT_A'],
+  PMP: ['PMP', 'FIRST_AID'],
+  CONFINED: ['CONFINED'],
+  GAS_HAZARD: ['GAS_HAZARD'],
+  ICE_CLASS: ['ICE_CLASS'],
+  NAKS: ['NAKS', 'WELD_RD', 'WELD_TIG', 'WELD_GAS', 'WELD_ORBITAL', 'WELD_PLASTIC'],
+  HOT_WORK: ['HOT_WORK'],
+  PROMBEZ: ['PROMBEZ', 'PB_B2'],
+  FSB: ['FSB'],
+  MLSP_PASS: ['MLSP_PASS']
 };
 
 function ymd(v) {
@@ -68,7 +77,7 @@ function addDays(dateYmd, days) {
   return ymd(dt);
 }
 
-/** Просрочен ли паспорт РФ по смене в 20/45 (+90 дн.) — как в Дружине. */
+/** Паспорт РФ по смене 20/45 (+90 дн.) — как в Дружине. Только WARN. */
 function passportStatus(emp, onDate) {
   const birth = parseFlexibleDate(emp.birth_date || emp.birthDate);
   const issued = parseFlexibleDate(emp.passport_date || emp.passportDate);
@@ -125,20 +134,9 @@ function findPermit(permits, code) {
   for (const p of list) {
     const c = String(p.code || p.type_code || p.permit_code || '').trim();
     const name = String(p.name || p.type_name || '').toLowerCase();
-    const hit = aliases.some((a) => {
-      const al = a.toLowerCase();
-      return c.toLowerCase() === al || name.includes(al.toLowerCase());
-    });
-    // name heuristics
-    const nameHit =
-      (code === 'bosiet' && /босиет|bmpvo|бмпво|bosiet/i.test(name)) ||
-      (code === 'FSB' && /фсб|fsb|погран/i.test(name)) ||
-      (code === 'MLSP_PASS' && /млсп|mlsp/i.test(name) && /пропуск/i.test(name)) ||
-      (code === 'medical' && /медосмотр|медицин/i.test(name) && !/шельф|offshore|утм/i.test(name)) ||
-      (code === 'offshore_med' && /шельф|offshore|утм|морск.*мед/i.test(name)) ||
-      (code === 'psych' && /психиатр/i.test(name)) ||
-      (code === 'helicopter' && /вертол|huet/i.test(name));
-    if (!hit && !nameHit) continue;
+    const hit = aliases.some((a) => c.toLowerCase() === String(a).toLowerCase());
+    // Только точное совпадение кода справочника (или алиас кода). Имена не угадываем.
+    if (!hit) continue;
     const exp = ymd(p.expiry_date || p.expires_at || p.valid_to);
     if (!best) best = { ...p, _expiry: exp };
     else {
@@ -154,23 +152,26 @@ function permitCovers(permit, onDate, periodTo) {
   const checkFrom = ymd(onDate) || ymd(new Date());
   const checkTo = ymd(periodTo) || checkFrom;
   const exp = permit._expiry || ymd(permit.expiry_date);
-  if (!exp) return { ok: true, openEnded: true }; // бессрочный / без даты — считаем ок, но можно warn
+  if (!exp) return { ok: true, openEnded: true };
   if (exp < checkFrom) return { ok: false, reason: 'просрочен', expiry: exp };
   if (exp < checkTo) return { ok: false, reason: 'не кроет период', expiry: exp };
   return { ok: true, expiry: exp };
 }
 
+/** Должность → доп. проверки из Дружины (только WARN) */
+function positionExtraChecks(person) {
+  const pos = String(person.position || person.spec || '').toLowerCase();
+  const out = [];
+  if (/свар/.test(pos)) out.push({ code: 'NAKS', label: 'НАКС' });
+  if (/мастер|прораб|бригадир|руковод|начальник/.test(pos)) {
+    out.push({ code: 'OT_A', label: 'Охрана труда (гр. А)' });
+  }
+  if (/слесар/.test(pos)) out.push({ code: 'OT', label: 'Охрана труда (ОТ)' });
+  return out;
+}
+
 /**
  * @param {object} opts
- * @param {string} opts.appType
- * @param {object[]} opts.people — { id, fio, birth_date, passport_*, permits[], mlsp_stay?, existing_fsb?, existing_mlsp_pass? }
- * @param {string} [opts.dateFrom]
- * @param {string} [opts.dateTo]
- * @param {string} [opts.direction] inbound|outbound|both
- * @param {object[]} [opts.pack] rows from mlsp_requirement_pack
- * @param {object[]} [opts.openRegistry] open pass registry rows
- * @param {object[]} [opts.otherLegs] other transport legs for overlap
- * @param {object} [opts.contractMeta]
  */
 function evaluateApplication(opts) {
   const appType = opts.appType;
@@ -181,18 +182,18 @@ function evaluateApplication(opts) {
     ? opts.pack.filter((p) => p.is_active !== false)
     : defaultPack();
 
-  const needsOffshoreBlock = ['flight', 'ship', 'pass_mlsp'].includes(appType);
-  const needsPassportBlock = ['flight', 'ship', 'pass_mlsp', 'pass_mmrp', 'pass_fsb', 'pass_35srz'].includes(appType);
+  const needsOffshoreChecks = ['flight', 'ship', 'pass_mlsp'].includes(appType);
+  const needsPassportCheck = ['flight', 'ship', 'pass_mlsp', 'pass_mmrp', 'pass_fsb', 'pass_35srz'].includes(appType);
   const isTransport = appType === 'flight' || appType === 'ship';
   const isPassApp = appType === 'pass_mlsp' || appType === 'pass_fsb';
 
+  // BLOCK больше не используем для допусков — только WARN. ok всегда true.
   const blocks = [];
   const warnings = [];
 
   const seenIds = new Set();
   for (const person of people) {
     const label = person.fio || person.name || `#${person.id || '?'}`;
-    const empKey = person.id != null ? `id:${person.id}` : `fio:${label}`;
 
     if (person.id != null || label) {
       const sk = person.id != null ? String(person.id) : label.toLowerCase();
@@ -208,12 +209,11 @@ function evaluateApplication(opts) {
       seenIds.add(sk);
     }
 
-    // Passport BLOCK
-    if (needsPassportBlock) {
+    if (needsPassportCheck) {
       const ps = passportStatus(person, dateFrom);
       if (!ps.ok) {
-        blocks.push({
-          severity: 'block',
+        warnings.push({
+          severity: 'warn',
           code: 'passport',
           employee_id: person.id || null,
           fio: label,
@@ -230,7 +230,6 @@ function evaluateApplication(opts) {
       }
     }
 
-    // Data holes WARN
     if (['pass_mlsp', 'pass_mmrp', 'pass_fsb'].includes(appType)) {
       if (!(person.registration_address || person.address)) {
         warnings.push({
@@ -263,48 +262,44 @@ function evaluateApplication(opts) {
       });
     }
 
-    // Pack checks
+    // Пакет Дружины — только WARN; offshore-коды для flight/ship/mlsp
     for (const req of pack) {
       const code = req.code;
-      if (code === 'passport') continue; // already handled
-      const sev = req.severity === 'block' ? 'block' : 'warn';
-      if (sev === 'block' && !needsOffshoreBlock) continue;
-      if (sev === 'warn' && !isTransport && !isPassApp) {
-        // FSB/MLSP warn mostly for transport and pass apps
-        if (!['FSB', 'MLSP_PASS'].includes(code)) continue;
-      }
-      if (sev === 'warn' && isPassApp && code === 'FSB' && appType === 'pass_fsb') {
-        // applying for FSB — check duplicate below
-      }
+      if (!code || code === 'passport') continue;
+      const isPassWarn = ['FSB', 'MLSP_PASS'].includes(code);
+      const isNaks = code === 'NAKS';
+      if (!isPassWarn && !isNaks && !needsOffshoreChecks) continue;
+      if (isPassWarn && !(isTransport || isPassApp)) continue;
+      if (isNaks) continue; // должность — ниже
 
       const permit = findPermit(person.permits || [], code);
       const cover = permitCovers(permit, dateFrom, dateTo);
-
-      if (sev === 'block') {
-        if (!cover.ok) {
-          blocks.push({
-            severity: 'block',
-            code,
-            employee_id: person.id || null,
-            fio: label,
-            message: `${req.label}: ${cover.reason === 'просрочен' ? `просрочен до ${fmtRu(cover.expiry)}` : cover.reason === 'не кроет период' ? `не кроет период (до ${fmtRu(cover.expiry)})` : 'нет действующего'}`
-          });
-        }
-      } else {
-        // warn pack (FSB / MLSP_PASS) for transport
-        if (isTransport && ['FSB', 'MLSP_PASS'].includes(code) && !cover.ok) {
-          warnings.push({
-            severity: 'warn',
-            code,
-            employee_id: person.id || null,
-            fio: label,
-            message: `${req.label}: ${cover.reason === 'нет' ? 'нет' : cover.reason}${cover.expiry ? ` (${fmtRu(cover.expiry)})` : ''}`
-          });
-        }
+      if (!cover.ok) {
+        warnings.push({
+          severity: 'warn',
+          code,
+          employee_id: person.id || null,
+          fio: label,
+          message: `${req.label}: ${cover.reason === 'просрочен' ? `просрочен до ${fmtRu(cover.expiry)}` : cover.reason === 'не кроет период' ? `не кроет период (до ${fmtRu(cover.expiry)})` : 'нет действующего'}`
+        });
       }
     }
 
-    // Anti-duplicate pass applications
+    // По должности — доп. WARN из каталога Дружины
+    for (const extra of positionExtraChecks(person)) {
+      const permit = findPermit(person.permits || [], extra.code);
+      const cover = permitCovers(permit, dateFrom, dateTo);
+      if (!cover.ok) {
+        warnings.push({
+          severity: 'warn',
+          code: extra.code,
+          employee_id: person.id || null,
+          fio: label,
+          message: `${extra.label}: ${cover.reason === 'нет' ? 'нет' : cover.reason}${cover.expiry ? ` (${fmtRu(cover.expiry)})` : ''}`
+        });
+      }
+    }
+
     if (appType === 'pass_mlsp' || appType === 'pass_fsb') {
       const code = appType === 'pass_mlsp' ? 'MLSP_PASS' : 'FSB';
       const permit = findPermit(person.permits || [], code);
@@ -320,7 +315,6 @@ function evaluateApplication(opts) {
       }
     }
 
-    // Transport logistics
     if (isTransport) {
       const dir = opts.direction || 'inbound';
       const stay = person.mlsp_stay;
@@ -363,7 +357,6 @@ function evaluateApplication(opts) {
     }
   }
 
-  // Open registry for same contract
   if (isPassApp && opts.contractNumber) {
     const open = (opts.openRegistry || []).filter((r) =>
       r.contract_number === opts.contractNumber &&
@@ -378,13 +371,12 @@ function evaluateApplication(opts) {
     }
   }
 
-  // Contract meta
   const meta = opts.contractMeta || {};
   if (appType === 'pass_mlsp' && !meta.end_date) {
     warnings.push({
       severity: 'warn',
       code: 'contract_end',
-      message: 'Нет даты окончания договора — период пропуска МЛСП?'
+      message: 'Нет даты окончания договора — укажите во вкладке «База» (колонка Окончание)'
     });
   }
   if ((isTransport || appType === 'pass_mlsp') && !meta.mvz && !opts.mvz) {
@@ -402,7 +394,6 @@ function evaluateApplication(opts) {
     });
   }
 
-  // Capacity
   if (appType === 'flight' && people.length > 50) {
     warnings.push({ severity: 'warn', code: 'capacity', message: 'Больше 50 человек — бланк авиа обычно 2×25' });
   }
@@ -414,7 +405,7 @@ function evaluateApplication(opts) {
   }
 
   return {
-    ok: blocks.length === 0,
+    ok: true,
     blocks,
     warnings,
     summary: {
@@ -426,54 +417,46 @@ function evaluateApplication(opts) {
 }
 
 function defaultPack() {
+  // Подписи = name из permit_types (Дружина)
   return [
-    { code: 'passport', label: 'Паспорт РФ', severity: 'block' },
-    { code: 'medical', label: 'Периодический медосмотр', severity: 'block' },
-    { code: 'offshore_med', label: 'Шельфовый медосмотр', severity: 'block' },
-    { code: 'psych', label: 'Психиатрия', severity: 'block' },
-    { code: 'bosiet', label: 'BOSIET / БМПВО', severity: 'block' },
-    { code: 'helicopter', label: 'Вертолётная подготовка', severity: 'block' },
-    { code: 'height_1', label: 'Высота', severity: 'block' },
-    { code: 'fire', label: 'Пожарка', severity: 'block' },
-    { code: 'labor', label: 'Охрана труда', severity: 'block' },
-    { code: 'first_aid', label: 'Первая помощь', severity: 'block' },
-    { code: 'confined', label: 'Закрытые пространства', severity: 'block' },
-    { code: 'gas_hazard', label: 'Газоопасные', severity: 'block' },
-    { code: 'ice_class', label: 'Ледовый модуль', severity: 'block' },
+    { code: 'MEDCHECK', label: 'Медицинский осмотр', severity: 'warn' },
+    { code: 'OFFSHORE_MED', label: 'Морской медицинский осмотр', severity: 'warn' },
+    { code: 'PSYCH', label: 'Психиатрическое освидетельствование', severity: 'warn' },
+    { code: 'BOSIET', label: 'БОСИЕТ', severity: 'warn' },
+    { code: 'HELICOPTER', label: 'Вертолётная подготовка (HUET)', severity: 'warn' },
+    { code: 'HEIGHT_1', label: 'Работы на высоте (1 группа)', severity: 'warn' },
+    { code: 'PTM', label: 'Пожарная безопасность (ПТМ)', severity: 'warn' },
+    { code: 'OT', label: 'Охрана труда (ОТ)', severity: 'warn' },
+    { code: 'PMP', label: 'Первая медицинская помощь (ПМП)', severity: 'warn' },
+    { code: 'CONFINED', label: 'Работа в замкнутых пространствах', severity: 'warn' },
+    { code: 'GAS_HAZARD', label: 'Газоопасные работы', severity: 'warn' },
+    { code: 'ICE_CLASS', label: 'Ледовый класс', severity: 'warn' },
     { code: 'FSB', label: 'Пропуск ФСБ', severity: 'warn' },
     { code: 'MLSP_PASS', label: 'Пропуск МЛСП', severity: 'warn' }
   ];
 }
 
 function registrySignal(row, todayYmd) {
-  const today = todayYmd || ymd(new Date());
+  const today = ymd(todayYmd) || ymd(new Date());
   const status = row.status || '';
-  const req = ymd(row.request_date);
-  const planned = ymd(row.planned_ready) || (req ? addDays(req, 45) : null);
-  const confirm = ymd(row.curator_confirm_date);
-  const issued = ymd(row.issued_date);
-
-  if (status === 'Готова' || issued) {
-    return { signal: 'issued', label: 'выдан', overdue_days: 0 };
+  if (status === 'Готова' || row.issued_date) {
+    return { signal: 'issued', signal_label: 'выдан' };
   }
-  if (planned && planned < today && status !== 'Готова') {
+  if (status === 'Сорвана') {
+    return { signal: 'breach', signal_label: 'сорвана' };
+  }
+  const planned = ymd(row.planned_ready);
+  if (planned && planned < today) {
     const n = daysBetween(planned, today);
-    return { signal: 'breach', label: `срыв ${n} дн.`, overdue_days: n };
+    return { signal: 'breach', signal_label: `срыв ${n} дн.` };
   }
-  if (req && !confirm) {
-    const since = daysBetween(req, today);
-    // approx business days ~ calendar for UI; регламент 3 раб.дня
-    if (since > 3 && ['Подана'].includes(status)) {
-      return { signal: 'no_confirm', label: 'нет подтв. куратора', overdue_days: 0 };
-    }
+  if (planned && daysBetween(today, planned) <= 7) {
+    return { signal: 'due_soon', signal_label: 'до срока ≤7 дн.' };
   }
-  if (planned) {
-    const left = daysBetween(today, planned);
-    if (left >= 0 && left <= 7) {
-      return { signal: 'due_soon', label: `до срока ${left} дн.`, overdue_days: 0 };
-    }
+  if (!row.curator_confirm_date && ['Подана', 'Подтверждена', 'В работе'].includes(status)) {
+    return { signal: 'no_confirm', signal_label: 'нет подтв. куратора' };
   }
-  return { signal: 'ok', label: 'в норме', overdue_days: 0 };
+  return { signal: 'ok', signal_label: 'в норме' };
 }
 
 module.exports = {
@@ -482,10 +465,12 @@ module.exports = {
   registrySignal,
   findPermit,
   permitCovers,
-  ymd,
-  fmtRu,
-  addDays,
-  parseFlexibleDate,
+  positionExtraChecks,
   defaultPack,
+  ymd,
+  addDays,
+  addYears,
+  fmtRu,
+  parseFlexibleDate,
   PERMIT_CODE_ALIASES
 };

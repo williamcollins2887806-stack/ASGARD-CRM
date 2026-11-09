@@ -492,9 +492,23 @@ function buildHtml(data, opts) {
   const liGap = [0.2, 0.1, 0][step];
 
   const signature = o.with_signature === false ? '' : _shared.getSignatureBase64();
-  const stamp = o.with_stamp === false ? '' : _shared.getStampBase64();
-  // D-387: логотип в бланке — как в Word-версии (templates/*.docx).
-  const logo = _shared.getLogoBase64();
+  // Комбинированный факсимиле предпочтительнее раздельных stamp/signature.
+  const stampCombined = (() => {
+    try {
+      const p = path.join(process.cwd(), 'public', 'assets', 'img', 'obs_stamp_sign.png');
+      if (fs.existsSync(p)) return 'data:image/png;base64,' + fs.readFileSync(p).toString('base64');
+    } catch (_) { /* */ }
+    return '';
+  })();
+  const stamp = o.with_stamp === false ? '' : (stampCombined || _shared.getStampBase64());
+  // Фирменный логотип бланка ОБС (не asgard_logo CRM).
+  const logo = (() => {
+    try {
+      const p = path.join(process.cwd(), 'public', 'assets', 'img', 'obs_letterhead_logo.png');
+      if (fs.existsSync(p)) return 'data:image/png;base64,' + fs.readFileSync(p).toString('base64');
+    } catch (_) { /* */ }
+    return _shared.getLogoBase64();
+  })();
 
   // D-378: в образце письма даты записаны числами («23.10.2026 г.»), а не
   // словами. formatRuDate даёт «23 октября 2026 г.» — для официальной бумаги
@@ -829,9 +843,9 @@ function buildHtml(data, opts) {
       <div class="line"></div>
       <div class="name">/ ${esc(gendir.name)} /</div>
     </div>
-    ${signature ? `<img class="overlay-signature" src="${signature}" alt=""/>` : ''}
-    ${stamp ? `<img class="overlay-stamp" src="${stamp}" alt=""/>` : ''}
-    ${(!signature && !stamp) ? '<div class="mp-placeholder">М.П.</div>' : ''}
+    ${stampCombined ? '' : (signature ? `<img class="overlay-signature" src="${signature}" alt=""/>` : '')}
+    ${stamp ? `<img class="overlay-stamp" src="${stamp}" alt="" style="${stampCombined ? 'height:40mm;width:auto;left:72mm;top:-14mm;opacity:0.95;z-index:5' : 'width:40mm;height:40mm'}"/>` : ''}
+    ${(!signature && !stamp && !stampCombined) ? '<div class="mp-placeholder">М.П.</div>' : ''}
   </div>
 
   ${(data.initiator && data.initiator.name && data.initiator.name !== '—') ? `<div class="executor-line">
@@ -934,24 +948,22 @@ async function generateObsLetterPdf(db, docId) {
   const base = `ОБС_${safeNo}_${number}`;
   const pdfPath = path.join(STORAGE_DIR, `${base}.pdf`);
 
-  // D-378 (P3 от верификатора 25.10.2026): HTML-исходник письма на диск
-  // больше не пишем. Каталог раздаётся nginx напрямую, и файл .html
-  // открывался бы в браузере как страница с реквизитами и суммами —
-  // это утечка внешнего документа и лишняя XSS-поверхность.
-  // Для отладки HTML можно получить из функции buildHtml.
+  // PDF = Word 1в1 через фирменный бланк.
+  try {
+    const { generateObsLetterDocx } = require('./obs-letter-docx');
+    const docxBuf = await generateObsLetterDocx(db, docId, { number, dateText });
+    const fromDocx = await _pdfFromOfficialDocx(docxBuf);
+    if (fromDocx && fromDocx.length > 1000) {
+      fs.writeFileSync(pdfPath, fromDocx);
+      return { pdfPath, htmlPath: null, url: `${URL_PREFIX}/${encodeURIComponent(`${base}.pdf`)}`, number, dateText, docId: doc.id, fileName: `${base}.pdf`, source: 'docx-libreoffice' };
+    }
+  } catch (e) {
+    console.warn('[obs-letter] generatePdf DOCX→PDF fail, HTML fallback:', e && e.message);
+  }
 
   const browser = await _getBrowser();
   const page = await browser.newPage();
   try {
-    // D-385: письмо обязано уместиться на ОДНОМ листе (Д. Путков, 28.10.2026:
-    // «всегда умещать на 1 листе письмо или как-то делить его на части»).
-    // Замер: 16 позиций — ещё 1 лист, 25 — уже 2, и подпись с печатью
-    // уезжали на второй лист отдельно от текста.
-    //
-    // Делить письмо не нужно: перечень справочный, поэтому сначала ужимаем
-    // его (шрифт/интерлиньяж), а суммы и реквизиты не трогаем. Подгонка
-    // детерминированная — масштабы пробуем по порядку и берём первый,
-    // который дал одну страницу.
     let buf = null;
     for (const compact of COMPACT_STEPS) {
       const html = buildHtml(data, { number, dateText, compact });
@@ -969,7 +981,7 @@ async function generateObsLetterPdf(db, docId) {
     try { await page.close(); } catch (_) { /* */ }
   }
 
-  return { pdfPath, htmlPath: null, url: `${URL_PREFIX}/${encodeURIComponent(`${base}.pdf`)}`, number, dateText, docId: doc.id, fileName: `${base}.pdf` };
+  return { pdfPath, htmlPath: null, url: `${URL_PREFIX}/${encodeURIComponent(`${base}.pdf`)}`, number, dateText, docId: doc.id, fileName: `${base}.pdf`, source: 'html-fallback' };
 }
 
 // ─── Рендер по payload без записи в БД (V473: предпросмотр) ────────────────
@@ -991,6 +1003,27 @@ async function generateObsLetterPdf(db, docId) {
  * @param {{format?:'pdf'|'docx'}} [opts]
  * @returns {Promise<{buffer:Buffer, contentType:string, fileName:string}>}
  */
+/**
+ * PDF = Word 1в1: сначала DOCX с фирменного бланка, потом LibreOffice → PDF.
+ * HTML/Puppeteer с asgard_logo CRM больше не источник истины (заказчик 09.11.2026).
+ */
+async function _pdfFromOfficialDocx(docxBuf) {
+  const os = require('os');
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'obs-letter-'));
+  const docxPath = path.join(tmpDir, 'obs-letter.docx');
+  try {
+    fs.writeFileSync(docxPath, docxBuf);
+    const pdfPath = _shared.convertDocxToPdf(docxPath, tmpDir);
+    if (pdfPath && fs.existsSync(pdfPath)) return fs.readFileSync(pdfPath);
+  } finally {
+    try {
+      for (const f of fs.readdirSync(tmpDir)) fs.unlinkSync(path.join(tmpDir, f));
+      fs.rmdirSync(tmpDir);
+    } catch (_) { /* tmp */ }
+  }
+  return null;
+}
+
 async function renderObsLetterPdf(db, docId, payload, opts = {}) {
   const data = await buildLetterDataFromPayload(db, docId, payload);
   const doc = data.doc;
@@ -1004,6 +1037,25 @@ async function renderObsLetterPdf(db, docId, payload, opts = {}) {
   const safeNo = String(doc.invoice_number || doc.id).replace(/[^\p{L}\p{N}-]+/gu, '_').slice(0, 40);
   const base = `ОБС_${safeNo}_предпросмотр`;
 
+  // 1) Основной путь: DOCX бланка → PDF (идентично Word).
+  try {
+    const docxBuf = await renderObsLetterDocx(db, docId, payload, opts);
+    const fromDocx = await _pdfFromOfficialDocx(docxBuf);
+    if (fromDocx && fromDocx.length > 1000) {
+      return {
+        buffer: fromDocx,
+        contentType: 'application/pdf',
+        fileName: `${base}.pdf`,
+        number,
+        dateText,
+        source: 'docx-libreoffice',
+      };
+    }
+  } catch (e) {
+    console.warn('[obs-letter] PDF из DOCX не собрался, fallback HTML:', e && e.message);
+  }
+
+  // 2) Fallback только если LibreOffice недоступен.
   const browser = await _getBrowser();
   const page = await browser.newPage();
   let buf = null;
@@ -1029,6 +1081,7 @@ async function renderObsLetterPdf(db, docId, payload, opts = {}) {
     fileName: `${base}.pdf`,
     number,
     dateText,
+    source: 'html-fallback',
   };
 }
 

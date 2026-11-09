@@ -3476,6 +3476,27 @@ module.exports = async function docRegistryRoutes(fastify) {
       }
     }
 
+    // PDF тоже с бланка 1в1: старые файлы собраны Chromium+asgard_logo CRM.
+    // Скачивание пересобирает из текущего DOCX-шаблона (номер — из письма).
+    try {
+      const srcId = parentId || id;
+      const letterNo = String(doc.invoice_number || '').replace(/^Исх\.\s*/i, '') || undefined;
+      const obs = require('../services/obs-letter');
+      const res = await obs.renderObsLetterPdf(db, srcId, {
+        preview_number: letterNo || 'б/н',
+      }, {});
+      if (res && res.buffer && res.buffer.length > 1000) {
+        const name = (first && first.name) || path.basename(fsPath);
+        const pdfName = /\.pdf$/i.test(name) ? name : `${String(name).replace(/\.[^.]+$/, '')}.pdf`;
+        reply.header('Content-Type', 'application/pdf');
+        reply.header('Content-Disposition', `inline; filename="${encodeURIComponent(pdfName)}"`);
+        if (res.source) reply.header('X-Obs-Letter-Source', res.source);
+        return reply.send(res.buffer);
+      }
+    } catch (e) {
+      req.log.warn({ err: e, docId: id }, '[doc-registry] letter-file regenerate PDF failed, fallback file');
+    }
+
     if (!fs.existsSync(fsPath)) return reply.code(404).send({ error: 'Файл отсутствует на диске' });
 
     const { safeContentType } = require('../lib/upload-ext');

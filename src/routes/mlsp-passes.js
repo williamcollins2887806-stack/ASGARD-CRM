@@ -340,6 +340,39 @@ async function routes(fastify) {
     return { meta: meta.rows, contracts: crm.rows };
   });
 
+  // Правка meta договора ГНШ (окончание, МВЗ, кураторы) — для Хосе / ТО / директоров
+  fastify.patch('/contracts/meta/:id', { preHandler: [fastify.requireRoles(WRITE_ROLES)] }, async (request, reply) => {
+    const body = request.body || {};
+    const fields = [];
+    const params = [];
+    const map = {
+      end_date: 'end_date',
+      mvz: 'mvz',
+      curator: 'curator',
+      ship_curator: 'ship_curator',
+      contract_number: 'contract_number',
+      counterparty_inn: 'counterparty_inn',
+      counterparty_name: 'counterparty_name'
+    };
+    for (const [k, col] of Object.entries(map)) {
+      if (body[k] !== undefined) {
+        params.push(body[k] === '' ? null : body[k]);
+        fields.push(`${col} = $${params.length}`);
+      }
+    }
+    if (!fields.length) return reply.code(400).send({ error: 'Нет полей' });
+    params.push(request.params.id);
+    const { rows } = await db.query(
+      `UPDATE mlsp_contract_meta
+          SET ${fields.join(', ')}, updated_at = NOW()
+        WHERE id = $${params.length}
+        RETURNING *`,
+      params
+    );
+    if (!rows[0]) return reply.code(404).send({ error: 'Не найдено' });
+    return { item: rows[0] };
+  });
+
   // Ensure counterparties + GNSH contracts exist in CRM
   fastify.post('/ensure-counterparties', { preHandler: [fastify.requireRoles(WRITE_ROLES)] }, async (request) => {
     const created = { customers: [], contracts: [] };
@@ -358,19 +391,25 @@ async function routes(fastify) {
         existing = { rows: [] };
       }
       if (existing.rows[0]) return existing.rows[0];
-      const ins = await db.query(
-        `INSERT INTO customers (inn, name, full_name)
-         VALUES ($1, $2, $2)
-         ON CONFLICT (inn) DO UPDATE SET name = EXCLUDED.name
-         RETURNING inn, name`,
-        [inn, name]
-      ).catch(async (e) => {
-        // maybe different PK
-        request.log.warn(e, 'customers upsert');
-        return { rows: [{ inn, name, skipped: true }] };
-      });
-      created.customers.push(ins.rows[0]);
-      return ins.rows[0];
+      // customers.inn может быть без UNIQUE — select→insert без ON CONFLICT
+      try {
+        const ins = await db.query(
+          `INSERT INTO customers (inn, name, full_name)
+           VALUES ($1, $2, $2)
+           RETURNING inn, name`,
+          [inn, name]
+        );
+        created.customers.push(ins.rows[0]);
+        return ins.rows[0];
+      } catch (e) {
+        request.log.warn(e, 'customers insert');
+        const again = await db.query(
+          `SELECT inn, name FROM customers WHERE inn = $1 LIMIT 1`,
+          [inn]
+        ).catch(() => ({ rows: [] }));
+        if (again.rows[0]) return again.rows[0];
+        return { inn, name, skipped: true };
+      }
     }
 
     // DaData — уточняем названия по ИНН, если токен есть
@@ -669,11 +708,9 @@ async function routes(fastify) {
     const { rows } = await db.query(`SELECT * FROM mlsp_applications WHERE id = $1`, [request.params.id]);
     if (!rows[0]) return reply.code(404).send({ error: 'Не найдено' });
     const app = rows[0];
-    const force = String(request.query.force || '') === '1';
-    const blocks = Array.isArray(app.blocks) ? app.blocks : [];
-    if (blocks.length && !force) {
-      return reply.code(422).send({ error: 'Есть BLOCK — исправьте или force=1', blocks });
-    }
+    // BLOCK по допускам отключён (V479) — Excel отдаём всегда; force оставлен для совместимости
+    void request.query.force;
+    // Допуски/паспорт — только WARN; force оставляем на случай старых BLOCK в payload
     const buf = await buildApplicationExcel({
       ...app,
       people: app.people || [],

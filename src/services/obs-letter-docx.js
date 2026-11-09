@@ -74,23 +74,40 @@ function _buildImageOpts(withSignature, withStamp) {
     try { return fs.readFileSync(path.join(base, 'public', 'assets', 'img', name)); }
     catch (_) { return Buffer.alloc(0); }
   };
+  // Комбинированный факсимиле (печать + подпись одним PNG с прозрачным фоном).
+  // Если файла нет — старый раздельный путь (stamp.png / signature.png).
+  const combined = (() => {
+    try {
+      const p = path.join(base, 'public', 'assets', 'img', 'obs_stamp_sign.png');
+      if (fs.existsSync(p)) return fs.readFileSync(p);
+    } catch (_) { /* */ }
+    return null;
+  })();
 
   return {
     centered: false,
     getImage(tagValue, tagName) {
-      if (tagName === 'signature_img') return withSignature ? pick('signature.png') : Buffer.alloc(0);
-      if (tagName === 'stamp_img') return withStamp ? pick('stamp.png') : Buffer.alloc(0);
-      if (tagName === 'logo_img') return pick('asgard_logo.png');
+      // Один слой: комбинированная печать+подпись в {%stamp_img}.
+      // {%signature_img} пустой — иначе двойное наложение.
+      if (tagName === 'stamp_img') {
+        if (!withStamp && !withSignature) return Buffer.alloc(0);
+        if (combined) return combined;
+        return withStamp ? pick('stamp.png') : Buffer.alloc(0);
+      }
+      if (tagName === 'signature_img') {
+        if (combined) return Buffer.alloc(0);
+        return withSignature ? pick('signature.png') : Buffer.alloc(0);
+      }
+      // Логотип бланка — из шаблона (word/media), не asgard_logo CRM.
+      if (tagName === 'logo_img') return Buffer.alloc(0);
       return Buffer.alloc(0);
     },
     getSize(tagValue, tagName) {
-      // D-392d: печать 110×110 pt — это ~3.9 см, и вместе с подписью блок
-      // занимал почти 5 см, из-за чего письмо не умещалось на лист.
-      // Уменьшаем до соразмерных деловому письму: подпись 4 см × 1.5 см,
-      // печать 2.6 см, логотип 3.2 см (в шаблоне он уже масштабирован).
-      if (tagName === 'signature_img') return [113, 42];   // 4.0 × 1.5 см
-      if (tagName === 'stamp_img') return [74, 74];        // 2.6 см
-      if (tagName === 'logo_img') return [91, 30];
+      // Печать Ø 40 мм (заказчик 09.11.2026: 22% масштаба ≈ 40 мм в диаметре).
+      // 40 мм = 40/25.4*72 ≈ 113.4 pt. PNG печати+подписи шире круга (~1.42×).
+      if (tagName === 'stamp_img' && combined) return [161, 113];
+      if (tagName === 'signature_img') return [113, 42];
+      if (tagName === 'stamp_img') return [113, 113]; // Ø 40 мм
       return [0, 0];
     },
   };
@@ -331,53 +348,65 @@ async function generateObsLetterDocx(db, docId, opts = {}) {
     }
   }
 
-  // D-392f: ГАРАНТИЯ ОДНОГО ЛИСТА.
-  //
-  // Перебором установлено (pdfimages по каждой странице): текст занимает
-  // около половины листа, но КАРТИНКА ПЕЧАТИ всё равно уходит на вторую
-  // страницу отдельным объектом. Причина в поведении LibreOffice при
-  // конвертации: рисунок в собственном абзаце с межстрочным интервалом
-  // резервирует высоту «строка + рисунок», и последний блок не влезает
-  // даже при большом запасе.
-  //
-  // Надёжное решение: печать делаем ФОНОМ абзаца подписи (за текстом),
-  // а не отдельным рисунком в потоке. Тогда она физически не может
-  // создать новую страницу, и подпись с печатью выглядят как на бумаге:
-  // печать поверх подписи, чуть левее.
+  // Факсимиле (печать+подпись) — ВЕРХНИЙ слой на абзаце должности/ФИО.
+  // Абзац {%stamp_img} убираем целиком: иначе LibreOffice резервирует под
+  // него высоту и печать уезжает на 2-ю страницу (проверено pdfimages 09.11).
   {
     let xml = outZip.file('word/document.xml').asText();
     const ps = xml.match(/<w:p\b[\s\S]*?<\/w:p>/g) || [];
     const imgParas = ps.filter((p) => /w:drawing/.test(p));
-    // Два последних абзаца-картинки — печать и подпись.
-    if (imgParas.length >= 2) {
-      const stampPara = imgParas[imgParas.length - 2];
-      const signPara = imgParas[imgParas.length - 1];
+    // Первый drawing — логотип шапки (крупный), последний — факсимиле.
+    const stampPara = imgParas.length >= 2 ? imgParas[imgParas.length - 1] : null;
+    if (stampPara) {
       const stampRun = (stampPara.match(/<w:r\b[^>]*>(?:(?!<\/w:r>)[\s\S])*?<w:drawing>[\s\S]*?<\/w:drawing>(?:(?!<\/w:r>)[\s\S])*?<\/w:r>/) || [''])[0];
-      // 1. Печать → плавающая за текстом, привязана к абзацу подписи.
-      if (stampRun) {
-        const behind = stampRun.replace(
+      // Хост: абзац с должностью или ФИО директора (не картинка).
+      const hostPara = [...ps].reverse().find((p) => {
+        if (/w:drawing/.test(p)) return false;
+        const t = p.replace(/<[^>]+>/g, '').trim();
+        return /Генеральный директор|Директор|Путков|Кудряшов|Гажилиев|[А-ЯЁ][а-яё]+\s+[А-ЯЁ]\.[А-ЯЁ]\./.test(t);
+      }) || [...ps].reverse().find((p) => !/w:drawing/.test(p) && p.replace(/<[^>]+>/g, '').trim());
+
+      if (stampRun && hostPara) {
+        // Ø печати 40 мм. Комбинированный PNG шире круга (~1.42×): высота=диаметр.
+        const CM = 360000;
+        const diam = 4.0; // 40 мм
+        const aspect = 1586 / 1114;
+        const hEmu = Math.round(diam * CM);
+        const wEmu = Math.round(diam * aspect * CM);
+        const over = stampRun.replace(
           /<wp:inline\b([^>]*)>([\s\S]*?)<\/wp:inline>/,
           (m, attrs, inner) => {
             const clean = inner
               .replace(/<wp:simplePos[^/]*\/>/g, '')
               .replace(/<wp:positionH\b[\s\S]*?<\/wp:positionH>/g, '')
               .replace(/<wp:positionV\b[\s\S]*?<\/wp:positionV>/g, '')
-              .replace(/<wp:wrap\w*[^/]*\/>/g, '');
-            // Позиция: чуть левее и ниже начала подписи, за текстом.
-            return `<wp:anchor distT="0" distB="0" distL="0" distR="0" simplePos="0" relativeHeight="1" behindDoc="1" locked="0" layoutInCell="1" allowOverlap="1">`
+              .replace(/<wp:wrap\w*[^/]*\/>/g, '')
+              .replace(/<wp:extent\b[^/]*\/>/g, '');
+            return `<wp:anchor distT="0" distB="0" distL="0" distR="0" simplePos="0" relativeHeight="251658240" behindDoc="0" locked="0" layoutInCell="1" allowOverlap="1">`
               + `<wp:simplePos x="0" y="0"/>`
-              + `<wp:positionH relativeFrom="paragraph"><wp:posOffset>1250000</wp:posOffset></wp:positionH>`
-              + `<wp:positionV relativeFrom="paragraph"><wp:posOffset>-180000</wp:posOffset></wp:positionV>`
+              + `<wp:positionH relativeFrom="paragraph"><wp:posOffset>1100000</wp:posOffset></wp:positionH>`
+              + `<wp:positionV relativeFrom="paragraph"><wp:posOffset>-200000</wp:posOffset></wp:positionV>`
+              + `<wp:extent cx="${wEmu}" cy="${hEmu}"/>`
               + `<wp:wrapNone/>`
               + clean
               + '</wp:anchor>';
           });
-        // Абзац печати убираем целиком, а плавающий рисунок переносим
-        // в абзац подписи.
         xml = xml.replace(stampPara, '');
-        xml = xml.replace(signPara, signPara.replace('</w:p>', behind + '</w:p>'));
+        xml = xml.replace(hostPara, hostPara.replace('</w:p>', over + '</w:p>'));
+        outZip.file('word/document.xml', xml);
       }
-      outZip.file('word/document.xml', xml);
+    }
+  }
+
+  // Пустой {%signature_img} (0 байт) ImageModule всё равно вставляет —
+  // убираем нулевые media и ссылки на них, чтобы не плодить мусор.
+  {
+    const names = Object.keys(outZip.files).filter((n) => n.startsWith('word/media/'));
+    for (const n of names) {
+      const f = outZip.file(n);
+      if (f && f.asUint8Array().length === 0) {
+        outZip.remove(n);
+      }
     }
   }
 
