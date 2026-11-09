@@ -1405,7 +1405,11 @@ module.exports = async function thingRoutes(fastify) {
         state: p.state,
         tracks: (p.tracks || []).map((t) => ({ sid: t.sid, source: t.source, muted: t.muted }))
       })),
-      is_host: isHost(room, request.user)
+      is_host: isHost(room, request.user),
+      /* D-183: соорганизатор и директор тоже могут модерировать (это уже
+         разрешено на сервере через canModerateAsync). Фронт показывал
+         кнопки только хосту, поэтому у модератора их просто не было. */
+      is_moderator: await canModerateAsync(room, request.user)
     };
   });
 
@@ -1960,6 +1964,22 @@ module.exports = async function thingRoutes(fastify) {
       payload: { kind, tracks: muted },
       ip: request.ip
     });
+
+    /* D-183: сообщаем КЛИЕНТУ участника, что модератор выключил ему
+       микрофон/камеру. Серверный mutePublishedTrack глушит трек на SFU,
+       но клиент об этом не знал: его локальный флаг оставался «вкл», и при
+       следующем действии он включал дорожку обратно — «выключил, а оно
+       само включилось». Клиент по этому пакету глушит у себя и показывает
+       статус. */
+    try {
+      await livekit.sendData(room.livekit_room_name, {
+        type: 'moderation_mute',
+        kind,
+        by: `user_${request.user.id}`
+      }, { destinationIdentities: [identity] });
+    } catch (e) {
+      fastify.log.warn('[thing] moderation_mute sendData: ' + (e.message || e));
+    }
 
     return { ok: true, kind, muted_tracks: muted };
   });

@@ -256,11 +256,22 @@
   }
 
   async function setCamEnabled(on) {
-    camOn = !!on;
+    /* D-183: синхронизируем флаг с LiveKit, а не с нашим представлением.
+       Иначе выключение в комнате не доходило до сессии, и камера
+       «сама включалась» при любом следующем действии. */
     if (room && room.localParticipant) {
-      try { await room.localParticipant.setCameraEnabled(camOn && !videoPaused); } catch (_) {}
+      const target = !!on;
+      try {
+        await room.localParticipant.setCameraEnabled(target && !videoPaused);
+        camOn = room.localParticipant.isCameraEnabled === true;
+      } catch (_) {
+        camOn = room.localParticipant.isCameraEnabled === true;
+      }
+      emit('media', { micOn: micOn && !phoneForcedMute, camOn: camOn });
+      return;
     }
-    emit('media', { micOn: micOn && !phoneForcedMute, camOn: camOn && !videoPaused });
+    camOn = !!on;
+    emit('media', { micOn: micOn && !phoneForcedMute, camOn: camOn });
   }
 
   async function pauseRemoteVideo(pause) {
@@ -278,7 +289,13 @@
         });
       });
       if (room.localParticipant) {
-        await room.localParticipant.setCameraEnabled(camOn && !videoPaused);
+        /* D-183: камера сама включалась. Источник истины — фактическое
+           состояние публикации LiveKit, а не локальный флаг (он расходился
+           с комнатой: выключил камеру в доке, а здесь осталось camOn=true,
+           и на следующем событии камера включалась обратно). */
+        const reallyOn = room.localParticipant.isCameraEnabled === true;
+        camOn = reallyOn;
+        await room.localParticipant.setCameraEnabled(reallyOn && !videoPaused);
       }
     } catch (_) {}
     emit('visibility', { videoPaused: videoPaused });

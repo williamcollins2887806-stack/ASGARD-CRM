@@ -90,6 +90,7 @@
     hubError: null,
     layout: 'speaker',
     isHost: false,
+    isModerator: false,
     /* Фаза 3: шумодав по умолчанию включён (как у Телемоста). */
     noiseSuppression: true,
     hideRemoteVideo: false,
@@ -859,7 +860,7 @@
         return x.isMuted !== true;
       }) : false;
       const handUp = !!(state.raisedHands && state.raisedHands[p.identity]);
-      const actions = (p.role !== 'host' && state.isHost) ? `<span class="ting-list-actions">
+      const actions = (p.role !== 'host' && (state.isHost || state.isModerator)) ? `<span class="ting-list-actions">
           <button type="button" class="ting-icon-btn ting-icon-sm" data-act="mute-mic-one" data-id="${esc(p.identity)}" title="Выключить микрофон" aria-label="Выключить микрофон">${svgMic(false)}</button>
           <button type="button" class="ting-icon-btn ting-icon-sm" data-act="mute-cam-one" data-id="${esc(p.identity)}" title="Выключить камеру" aria-label="Выключить камеру">${svgCam(false)}</button>
           ${handUp ? `<button type="button" class="ting-icon-btn ting-icon-sm" data-act="lower-hand-one" data-id="${esc(p.identity)}" title="Опустить руку" aria-label="Опустить руку">✋↓</button>` : ''}
@@ -2741,6 +2742,31 @@
             showReactionBurst(msg.emoji, msg.identity || msg.display_name || '');
             return;
           }
+          if (msg.type === 'moderation_mute') {
+            /* D-183: модератор выключил нам микрофон или камеру.
+               Глушим у себя и обновляем кнопки, иначе локальный флаг
+               оставался «вкл» и дорожка включалась обратно. */
+            const lp2 = state.lkRoom && state.lkRoom.localParticipant;
+            if (!lp2) return;
+            const kind = String(msg.kind || 'audio');
+            (async () => {
+              try {
+                if (kind === 'audio') {
+                  await lp2.setMicrophoneEnabled(false);
+                  state.micOn = false;
+                  toast('Организатор выключил ваш микрофон', false);
+                } else if (kind === 'video') {
+                  await lp2.setCameraEnabled(false);
+                  await unpublishLocalCamera(state.lkRoom);
+                  state.camOn = false;
+                  toast('Организатор выключил вашу камеру', false);
+                }
+              } catch (_) { /* */ }
+              updateDockMedia();
+              paintTiles();
+            })();
+            return;
+          }
           if (msg.type === 'hand_raise' || msg.type === 'hand_lower' || msg.type === 'hand_force_lower') {
             const id = msg.identity || '';
             if (!id) return;
@@ -3000,6 +3026,7 @@
       }
       state.participants = parts;
       if (typeof j.is_host === 'boolean') state.isHost = j.is_host;
+      if (typeof j.is_moderator === 'boolean') state.isModerator = j.is_moderator;
       state.peopleError = null;
     } catch (e) {
       state.peopleError = e.message || 'Не удалось обновить участников';
@@ -3737,22 +3764,29 @@
         return;
       }
       if (act === 'cam' && state.lkRoom) {
-        const want = !state.camOn;
+        const lp = state.lkRoom.localParticipant;
+        /* D-183: берём фактическое состояние из LiveKit. Локальный
+           state.camOn расходился с публикацией, поэтому кнопка показывала
+           «выключено», а камера работала — и включалась сама. */
+        const currentlyOn = lp.isCameraEnabled === true;
+        const want = !currentlyOn;
         try {
           if (want) {
             await enableLocalCamera(state.lkRoom);
-            state.camOn = true;
           } else {
             await runCameraOp(async () => {
-              await state.lkRoom.localParticipant.setCameraEnabled(false);
+              await lp.setCameraEnabled(false);
               await unpublishLocalCamera(state.lkRoom);
             });
-            state.camOn = false;
           }
         } catch (e) {
-          state.camOn = false;
           toast(cameraErrorMessage(e), false);
         } finally {
+          /* Единственный источник истины — публикация, а не наши флаги. */
+          state.camOn = lp.isCameraEnabled === true;
+          if (window.TingSession && typeof TingSession.setCamEnabled === 'function') {
+            try { await TingSession.setCamEnabled(state.camOn); } catch (_) { /* */ }
+          }
           try { TingSound.play('mic'); } catch (_) { /* */ }
           updateDockMedia();
           paintTiles();
