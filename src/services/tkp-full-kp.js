@@ -671,12 +671,13 @@ function applyStampAndSignature(buf, opts) {
 
     const PT = 12700; // 1 pt = 12 700 EMU
     // Смещения — от строки подписи (абзац «____ (ФИО)»), не от верха листа.
-    // Подпись: чуть выше и левее линии, чтобы легла на «____».
-    // Печать: ниже и правее подписи, чтобы не закрывать ФИО, но остаться
-    // в пределах листа (высота шаблона переменная — от координат страницы
-    // это не зависит).
-    const SIG_OFF = { x: 6 * PT, y: -34 * PT };   // подпись
-    const STAMP_OFF = { x: 168 * PT, y: 8 * PT }; // печать
+    //
+    // Блок подписи в шаблоне стоит ВНУТРИ таблицы и вплотную под итогами.
+    // Поэтому вверх уходить нельзя: при -34 pt подпись наезжала на «ИТОГО»
+    // (реальный ТКП 3072, 09.11.2026). Подпись кладём на линию (чуть выше
+    // базовой), печать — правее и ниже, чтобы не закрыть ФИО.
+    const SIG_OFF = { x: 4 * PT, y: -8 * PT };    // подпись — на линии
+    const STAMP_OFF = { x: 196 * PT, y: 6 * PT }; // печать — правее ФИО
 
     let insert = '';
     // В шаблоне уже есть картинка подписи — плавающий якорь в абзаце ПЕРЕД
@@ -735,19 +736,31 @@ function applyStampAndSignature(buf, opts) {
     if (!insert) return buf;
 
     // Ставим картинки в абзац со строкой подписи (____ (ФИО)) — как в шаблоне.
-    // Раньше regex искал «{author_name}» в уже отрендеренном XML и не находил,
-    // из-за чего печать уезжала отдельным абзацем перед sectPr.
-    const paras = xml.match(/<w:p\b[^>]*>[\s\S]*?<\/w:p>/g) || [];
-    let sigPara = null;
-    for (const p of paras) {
-      const txt = p.replace(/<[^>]+>/g, '');
-      if (/_{5,}/.test(txt)) sigPara = p;
+    //
+    // ВАЖНО: в шаблоне ЯКОРЬ подписи живёт в абзаце ПЕРЕД линией, а текст
+    // «____ (ФИО)» — в следующем. Если вставлять в абзац с текстом, картинка
+    // висит над линией на предыдущей странице, а сам абзац остаётся на новой
+    // (наблюдалось на реальном ТКП 3072: подпись поверх итогов, вторая
+    // страница почти пустая). Поэтому вставляем в абзац, который уже держит
+    // якорь, — это ровно тот блок подписи.
+    let anchorIdx = sigLineIdx - 1;
+    if (anchorIdx < 0 || !/<wp:anchor/.test(tplParas[anchorIdx] || '')) {
+      anchorIdx = sigLineIdx;
     }
-    if (sigPara) {
-      xml = xml.replace(sigPara, sigPara.replace(/<\/w:p>$/, '') + insert + '</w:p>');
+    const paras = xml.match(/<w:p\b[^>]*>[\s\S]*?<\/w:p>/g) || [];
+    const hostPara = (anchorIdx >= 0 && paras[anchorIdx]) ? paras[anchorIdx] : null;
+    if (hostPara) {
+      xml = xml.replace(hostPara, hostPara.replace(/<\/w:p>$/, '') + insert + '</w:p>');
     } else {
       xml = xml.replace('<w:sectPr', `<w:p><w:pPr><w:jc w:val="center"/></w:pPr>${insert}</w:p><w:sectPr`);
     }
+
+    // Пустой абзац сразу после таблицы уезжает на новую страницу и создаёт
+    // «лист-призрак» (реальный ТКП 3072: вторая страница пустая, подпись на
+    // первой). Убираем его — подпись остаётся в блоке таблицы.
+    xml = xml.replace(/<\/w:tbl><w:p\b[^>]*\/><w:sectPr/g, '</w:tbl><w:sectPr');
+    xml = xml.replace(/<\/w:tbl><w:p\b[^>]*>(?:\s*<w:pPr>[\s\S]*?<\/w:pPr>)?\s*<\/w:p><w:sectPr/g,
+      '</w:tbl><w:sectPr');
 
     zip.file('word/document.xml', xml);
     zip.file('word/_rels/document.xml.rels', rels);

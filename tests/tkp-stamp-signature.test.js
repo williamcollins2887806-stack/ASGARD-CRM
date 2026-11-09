@@ -123,6 +123,25 @@ function docx(opts) {
     assert.ok(/signature/.test(docxRoute.slice(0, 3000)), 'флаг signature не читается в /docx');
   });
 
+  await check('нет пустой страницы после таблицы', () => {
+    // Пустой абзац после </w:tbl> уезжал на новую страницу — ТКП 3072
+    // выходил на 2 листа, второй пустой.
+    const d = docx({ stamp: true, signature: true });
+    assert.ok(!/<\/w:tbl><w:p\b[^>]*\/><w:sectPr/.test(d.xml),
+      'остался пустой абзац перед sectPr');
+  });
+
+  await check('подпись не залезает на итоги', () => {
+    // Смещение вверх на 34 pt накрывало строку «ИТОГО С НДС».
+    const src = fs.readFileSync(
+      path.join(__dirname, '..', 'src', 'services', 'tkp-full-kp.js'), 'utf8'
+    );
+    const m = src.match(/SIG_OFF\s*=\s*\{\s*x:\s*([\d.]+)\s*\*\s*PT\s*,\s*y:\s*(-?[\d.]+)\s*\*\s*PT/);
+    assert.ok(m, 'не найден SIG_OFF');
+    const y = Number(m[2]);
+    assert.ok(y > -20, 'подпись уходит вверх на ' + y + ' pt — накроет итоги');
+  });
+
   const failed = results.filter((r) => !r.ok);
   console.log('\nитог: ' + (results.length - failed.length) + ' PASS, ' + failed.length + ' FAIL');
   process.exit(failed.length ? 1 : 0);
