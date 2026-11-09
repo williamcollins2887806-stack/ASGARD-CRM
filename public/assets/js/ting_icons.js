@@ -47,6 +47,13 @@
     return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>';
   }
 
+  /* «Свернуть в мини-окно»: стрелка вниз-вправо в угол — как у Телемоста. */
+  function minimize() {
+    return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">'
+      + '<path d="M4 9V5h4"/><path d="M20 15v4h-4"/>'
+      + '<path d="M9 4L4 9"/><path d="M15 20l5-5"/></svg>';
+  }
+
   function logoMark() {
     /* Тинг: золотой знак «T» + точка эфира (не Capacitor-заглушка) */
     return '<svg viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">'
@@ -75,6 +82,7 @@
     speaker: speaker,
     grid: grid,
     endCall: endCall,
+    minimize: minimize,
     logoMark: logoMark,
     send: send
   };

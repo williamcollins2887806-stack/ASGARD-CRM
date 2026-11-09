@@ -324,6 +324,10 @@
   function svgChat() { return (window.TingIcons && TingIcons.chat()) || ''; }
   function svgMore() { return (window.TingIcons && TingIcons.more()) || ''; }
   function svgHang() { return (window.TingIcons && TingIcons.hang()) || ''; }
+  function svgMinimize() {
+    return (window.TingIcons && TingIcons.minimize && TingIcons.minimize())
+      || '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 9V5h4"/><path d="M20 15v4h-4"/><path d="M9 4L4 9"/><path d="M15 20l5-5"/></svg>';
+  }
   function svgSpeaker() { return (window.TingIcons && TingIcons.speaker()) || ''; }
 
   function isChatMine(m) {
@@ -942,6 +946,7 @@
       <div class="ting-dock-cap"><button type="button" class="ting-dock-btn ${state.peopleOpen ? 'active' : ''}" data-act="toggle-people" title="${esc(COPY.people)}">${peopleIco}</button><span>Люди</span></div>
       <div class="ting-dock-cap"><button type="button" class="ting-dock-btn ${state.moreOpen ? 'active' : ''}" data-act="toggle-more" title="Ещё">${moreIco}</button><span>Ещё</span></div>
       <div class="ting-dock-sep" aria-hidden="true"></div>
+      <div class="ting-dock-cap"><button type="button" class="ting-dock-btn" data-act="minimize" title="Свернуть в мини-окно и работать в CRM">${svgMinimize()}</button><span>В CRM</span></div>
       ${state.isHost ? `<div class="ting-dock-cap"><button type="button" class="ting-dock-btn" data-act="host-end-open" title="${esc(COPY.end)}">${endIco}</button><span>${esc(COPY.end)}</span></div>` : ''}
       <div class="ting-dock-cap"><button type="button" class="ting-dock-btn danger" data-act="leave" title="${esc(COPY.leave)}">${svgHang()}</button><span>Выйти</span></div>
     </div></div>`;
@@ -4090,6 +4095,29 @@
         } catch (e) {
           toast(friendlyErrorMessage(e, 'Не удалось проголосовать'), false);
         }
+        return;
+      }
+      if (act === 'minimize') {
+        /* D-182: «В CRM» — свернуть в мини-окно и уйти на главную.
+           Раньше такой кнопки не было ВООБЩЕ: позвонить можно, а работать
+           в CRM параллельно — нет. PiP-механизм существовал, но вызвать
+           его из звонка было нечем. */
+        if (!state.lkRoom) { toast('Сначала подключитесь к Тингу', false); return; }
+        const sess = window.TingSession;
+        const keep = sess && typeof sess.isActive === 'function' && sess.isActive();
+        if (!keep) { toast('Созвон не активен', false); return; }
+        parkCallToPip();
+        try { location.hash = '#/'; } catch (_) { /* */ }
+        /* Страховка: PiP должен реально появиться. Если DOM ещё не готов
+           (переход по hash асинхронный), повторяем после кадра. */
+        setTimeout(() => {
+          try {
+            if (!document.querySelector('.hg-ting-pip') && window.HuginnTing
+                && typeof HuginnTing.ensurePip === 'function') {
+              HuginnTing.ensurePip();
+            }
+          } catch (_) { /* */ }
+        }, 300);
         return;
       }
       if (act === 'host-end-open') { renderHostEnd(); return; }
