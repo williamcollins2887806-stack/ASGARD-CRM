@@ -2288,7 +2288,37 @@
       });
       if (hidden > 0) stage.appendChild(makeOverflowTile(hidden));
     }
-    bumpRemoteVideoQuality(room);
+    /* D-180: качество поднимаем ОДИН раз на публикацию, а не после каждой
+       перерисовки. Раньше paintTiles() вызывал bumpRemoteVideoQuality()
+       каждый раз, и при каждом «кто говорит» заново запрашивался HIGH-слой —
+       лишний трафик, задержка видео и рассинхрон со звуком. */
+  }
+
+  /**
+   * Подсветка «кто говорит» БЕЗ перерисовки сцены.
+   * Меняет только класс .speak у уже существующих плиток и аватаров.
+   * Полная пересборка ради подсветки — корень «прыгающих окон» (D-180).
+   */
+  function applySpeakerHighlight(activeIdentity) {
+    const stage = qs('#ting-stage');
+    const strip = qs('#ting-filmstrip');
+    if (!stage && !strip) return;
+    const apply = (root) => {
+      if (!root) return;
+      root.querySelectorAll('.ting-tile').forEach((el) => {
+        const id = el.dataset.id || '';
+        const on = !!activeIdentity && id === activeIdentity;
+        if (el.classList.contains('speak') !== on) el.classList.toggle('speak', on);
+        /* Аватар внутри плитки без видео тоже подсвечиваем */
+        const av = el.querySelector('.ting-avatar');
+        if (av) {
+          if (on && !av.classList.contains('speaking')) av.classList.add('speaking');
+          else if (!on && av.classList.contains('speaking')) av.classList.remove('speaking');
+        }
+      });
+    };
+    apply(stage);
+    apply(strip);
   }
 
   /** Плитка «+N»: остальные участники не теряются, а видны счётчиком. */
@@ -2553,6 +2583,17 @@
     } else {
       opts.adaptiveStream = false;
     }
+    /* D-180: звук. Причины «дёргается сцена» и «задержка видео» были и в
+       аудиотракте: без voiceIsolation и с авто-гейном каждый шорох
+       пробивался как активный спикер. */
+    try {
+      opts.audioCaptureDefaults = {
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: true,
+        voiceIsolation: true
+      };
+    } catch (_) { /* старые сборки LiveKit */ }
     try {
       if (LK && LK.VideoPresets) {
         const layers = [];
@@ -2567,20 +2608,20 @@
     return opts;
   }
 
-  function bumpRemoteVideoQuality(room) {
+  /**
+   * Поднять качество видео у ЗРИТЕЛЯ для одной публикации.
+   * Вызывается ровно один раз при подписке (TrackSubscribed), а не после
+   * каждой перерисовки: повторные setVideoQuality(HIGH) гоняют лишний
+   * трафик и добавляют задержку видео.
+   */
+  function bumpPublicationQuality(pub) {
     const LK = window.LivekitClient;
-    if (!room || !LK || !LK.VideoQuality) return;
+    if (!pub || !LK || !LK.VideoQuality) return;
     try {
-      room.remoteParticipants.forEach((p) => {
-        Array.from(p.videoTrackPublications.values()).forEach((pub) => {
-          if (!pub || (pub.kind && pub.kind !== 'video')) return;
-          try {
-            if (typeof pub.setVideoQuality === 'function') {
-              pub.setVideoQuality(LK.VideoQuality.HIGH);
-            }
-          } catch (_) { /* */ }
-        });
-      });
+      if (pub.kind && pub.kind !== 'video') return;
+      if (typeof pub.setVideoQuality === 'function') {
+        pub.setVideoQuality(LK.VideoQuality.HIGH);
+      }
     } catch (_) { /* */ }
   }
 
@@ -2598,11 +2639,8 @@
       const bump = () => { syncRemoteAudio(room); paintTiles(); refreshPeople(slug); };
       room.on(LK.RoomEvent.TrackSubscribed, (track, pub) => {
         if (track && track.kind === 'audio') syncRemoteAudio(room);
-        try {
-          if (pub && track && track.kind === 'video' && typeof pub.setVideoQuality === 'function' && LK.VideoQuality) {
-            pub.setVideoQuality(LK.VideoQuality.HIGH);
-          }
-        } catch (_) { /* */ }
+        /* Качество поднимаем один раз на публикацию — не в каждом paintTiles. */
+        bumpPublicationQuality(pub);
         bump();
       });
       room.on(LK.RoomEvent.TrackUnsubscribed, bump);
@@ -2620,13 +2658,32 @@
       if (LK.RoomEvent.ActiveSpeakersChanged) {
         room.on(LK.RoomEvent.ActiveSpeakersChanged, (speakers) => {
           if (harnessDemo()) return;
+          /* D-180: раньше здесь вызывался paintTiles() — полная пересборка
+             сцены. Микрофон ловит шорохи, событие приходит несколько раз в
+             секунду, и ВСЁ видео пересоздавалось: картинка «прыгала» между
+             говорящими, а треки переподключались (задержка видео + рассинхрон
+             со звуком). Теперь меняем только класс .speak у существующих
+             плиток. Переключение центрального спикера — отдельно и с
+             «гистерезисом», чтобы не дёргалось при равной громкости. */
           const next = (speakers && speakers[0] && speakers[0].identity) || null;
+          applySpeakerHighlight(next);
+
+          if (state.layout !== 'speaker') return;
+          if (state.pinnedId || state.swapPrimary) return;
+          if (state.view !== 'room') return;
+          if (next === state.activeSpeakerId) return;
+
+          /* Владелец центра меняется только если держится дольше settle или
+             силуэт явно сменился (не «двое на равных»). */
+          const settleMs = state.activeSpeakerId ? 1400 : 600;
           if (speakerTimer) clearTimeout(speakerTimer);
           speakerTimer = setTimeout(() => {
+            if (state.view !== 'room') return;
+            if (state.pinnedId || state.swapPrimary) return;
             if (state.activeSpeakerId === next) return;
             state.activeSpeakerId = next;
-            if (state.view === 'room') paintTiles();
-          }, 200);
+            paintTiles();
+          }, settleMs);
         });
       }
       room.on(LK.RoomEvent.DataReceived, (payload, _participant, _kind, topic) => {
