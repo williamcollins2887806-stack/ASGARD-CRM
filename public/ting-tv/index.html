@@ -178,6 +178,40 @@
     micDeviceId: localStorage.getItem(PREF_MIC) || ''
   };
 
+  /* ── Док на пульте: автоскрытие через 10 с бездействия ──────────────
+     На ТВ панель постоянно висела поверх картинки и мешала смотреть.
+     Теперь: показывается на входе и при нажатии любой кнопки пульта,
+     через 10 с плавно уезжает вниз. Скрытый док не ловит фокус. */
+  var DOCK_IDLE_MS = 10000;
+  var dockIdleTimer = null;
+
+  function dockEl() { return document.querySelector('#roomView .ttv-dock'); }
+
+  function showDock() {
+    var el = dockEl();
+    if (!el) return;
+    el.classList.remove('is-idle');
+    if (dockIdleTimer) clearTimeout(dockIdleTimer);
+    if (state.view !== 'room') return;
+    /* Не прячем, пока фокус на кнопке дока — иначе «прыгает» под пальцем. */
+    dockIdleTimer = setTimeout(function () {
+      var active = document.activeElement;
+      if (active && el.contains(active)) { showDock(); return; }
+      if (state.view !== 'room') return;
+      hideDock();
+    }, DOCK_IDLE_MS);
+  }
+
+  function hideDock() {
+    var el = dockEl();
+    if (!el) return;
+    el.classList.add('is-idle');
+    var active = document.activeElement;
+    if (active && el.contains(active)) {
+      try { active.blur(); } catch (_) { /* */ }
+    }
+  }
+
   function qs(id) { return document.getElementById(id); }
   function toast(msg) {
     var el = qs('ttvToast');
@@ -693,6 +727,8 @@
     qs('roomTitle').textContent = (creds.room && (creds.room.title || creds.room.slug)) || state.slug || 'Тинг';
     startTimer();
     paintIcons();
+    /* Док показываем на входе и запускаем 10-секундный таймер. */
+    showDock();
 
     /* ТВ: большой экран → denser adaptive; publish h720 чтобы ноут мог взять HIGH-слой. */
     var roomOpts = { adaptiveStream: { pixelDensity: 2 }, dynacast: true };
@@ -862,7 +898,16 @@
   /* D-pad: focusable cycle on start + dock */
   function focusables() {
     if (state.view === 'room') {
-      return Array.from(document.querySelectorAll('#roomView button.ttv-dock-btn, #roomView .ttv-btn'));
+      /* Скрытый (уехавший) док не должен попадать в обход фокуса:
+         иначе пульт «теряется» на невидимых кнопках. */
+      var dock = dockEl();
+      var hiddenDock = !!(dock && dock.classList.contains('is-idle'));
+      var sel = hiddenDock
+        ? '#roomView .ttv-btn:not(.ttv-dock .ttv-btn)'
+        : '#roomView button.ttv-dock-btn, #roomView .ttv-btn';
+      return Array.from(document.querySelectorAll(sel)).filter(function (el) {
+        return !el.closest('.ttv-dock') || !hiddenDock;
+      });
     }
     if (state.view === 'wait') return Array.from(document.querySelectorAll('#waitView button'));
     if (state.view === 'ended') return Array.from(document.querySelectorAll('#endedView button'));
@@ -872,6 +917,8 @@
   }
   document.addEventListener('keydown', function (ev) {
     var key = ev.key;
+    /* Любая кнопка пульта возвращает док: смотрим, что нажимаем. */
+    if (state.view === 'room') showDock();
     if (key === 'Escape' || key === 'BrowserBack') {
       if (state.view === 'room' && state.peopleOpen) { setPeopleOpen(false); ev.preventDefault(); return; }
       if (state.view === 'room') { qs('btnLeave').click(); ev.preventDefault(); return; }

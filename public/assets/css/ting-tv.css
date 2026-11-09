@@ -399,6 +399,19 @@ html, body.ting-tv {
   /* низ панели часто режется overscan'ом ТВ — запас больше, чем сверху */
   padding: 12px 20px max(36px, 4.2vh);
   z-index: 6;
+  /* Плавное появление/уход с пульта: док не перекрывает картинку постоянно */
+  transition: opacity .32s cubic-bezier(.22,.61,.36,1),
+              transform .32s cubic-bezier(.22,.61,.36,1);
+  will-change: opacity, transform;
+}
+/* Автоскрытие через 10 с бездействия (10-foot UI, как на ТВ-приставках). */
+.ttv-dock.is-idle {
+  opacity: 0;
+  transform: translateY(28px);
+  pointer-events: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .ttv-dock { transition: none; }
 }
 .ttv-dock-inner {
   display: flex; gap: 16px; align-items: center;
