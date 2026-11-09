@@ -375,23 +375,42 @@ async function loadExtrasMonth(db, fromIso, toIso, mergeGapMin) {
   const gap = mergeGapMin == null ? 60 : Number(mergeGapMin);
   const extras = [];
   for (const [rawName, byDate] of byPerson) {
+    const dates = [...byDate.keys()].sort();
+    const skipTs = new Set();
     const days = [];
     let monthMin = 0;
-    for (const [date, evs] of [...byDate.entries()].sort((a, b) => (a[0] < b[0] ? -1 : 1))) {
-      const clean = evs.filter((e) => !e.technical).sort((a, b) => a.ts - b.ts);
-      const collapsed = skudXls.collapseState(clean);
-      const { segments, openEnded } = skudXls.buildIntervals(collapsed, gap);
-      const minutes = segments.reduce((s, x) => s + x.minutes, 0);
-      const firstIn = collapsed.find((e) => e.direction === 'вход');
-      const lastOut = [...collapsed].reverse().find((e) => e.direction === 'выход');
-      monthMin += minutes;
+    for (let i = 0; i < dates.length; i++) {
+      const date = dates[i];
+      const clean = (byDate.get(date) || [])
+        .filter((e) => !e.technical && !skipTs.has(e.ts))
+        .sort((a, b) => a.ts - b.ts);
+      const nextIso = dates[i + 1] || null;
+      const nextDayEarlyExits = nextIso
+        ? (byDate.get(nextIso) || []).filter((e) =>
+          !e.technical
+          && e.direction === 'выход'
+          && new Date(e.ts).getUTCHours() < skudXls.DEFAULT_NEXT_EARLY_EXIT_BEFORE_HOUR)
+        : [];
+      const presence = skudXls.computeDayPresence(clean, {
+        mergeGapMin: gap,
+        dayIso: date,
+        nextDayEarlyExits
+      });
+      if (presence.consumedNextEarly && presence.consumedNextEarly.ts != null) {
+        skipTs.add(presence.consumedNextEarly.ts);
+      }
+      const firstIn = presence.firstIn;
+      const lastOut = presence.lastOut;
+      monthMin += presence.minutes;
       days.push({
         date,
-        office_minutes: minutes,
-        open_ended: !!openEnded,
-        first_in: firstIn ? `${date} ${firstIn.time}` : null,
-        last_out: lastOut ? `${date} ${lastOut.time}` : null,
-        segments
+        office_minutes: presence.minutes,
+        open_ended: !!presence.openEnded,
+        first_in: firstIn ? `${date} ${firstIn.time || skudXls._hhmm(firstIn.ts)}` : null,
+        last_out: lastOut
+          ? `${(lastOut.assumed_close === 'next_early_exit' && nextIso) ? nextIso : date} ${lastOut.time || skudXls._hhmm(lastOut.ts)}`
+          : null,
+        segments: presence.segments
       });
     }
     extras.push({

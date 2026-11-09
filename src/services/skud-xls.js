@@ -17,8 +17,12 @@
  *      «вход 6 этаж» → «выход 6 этаж новая» — это ОДИН проход, а не два события.
  *      Считать по устройствам нельзя: получится 1.7 часа вместо 6.6 (замерено).
  *   3. Есть события «неизвестный ключ» — направление ненадёжно, в часы не идём.
- *   4. Вход без выхода (забыл приложить карту) закрывается последним событием дня
- *      и помечается open_ended — иначе получится 12 часов «работы».
+ *   4. Вход без выхода (забыл карту на выходе) → закрываем в 18:00; если на
+ *      следующий день есть «выход» до 06:00 — закрываем им (ночная работа).
+ *   5. День начинается с «выход» → это ВХОД (сотрудник не отметился на входе,
+ *      время до первого касания карты не восстанавливаем).
+ *   6. Сиротский «выход» среди дня (после чистого выхода, забыли войти) →
+ *      дотягиваем сессию, если разрыв ≤ 3 ч. Выход суток = последний учтённый.
  *
  * Поэтому состояние бинарное («внутри / снаружи»), а не по устройствам.
  */
@@ -29,6 +33,13 @@ const crypto = require('crypto');
 const TECHNICAL_EVENTS = new Set(['проход']);
 /** Неизвестный ключ: направление может быть любым — в расчёт часов не берём. */
 const UNKNOWN_EVENTS = new Set(['неизвестный ключ']);
+
+/** Незакрытый вход без ночного ухода закрываем в этот час (МСК/настенные). */
+const DEFAULT_DAY_CLOSE_HOUR = 18;
+/** Сиротский выход после ухода: дотягиваем сессию, если разрыв не больше (мин). */
+const DEFAULT_ORPHAN_EXTEND_MIN = 180;
+/** «Выход» на следующий день до этого часа — закрытие вчерашней смены. */
+const DEFAULT_NEXT_EARLY_EXIT_BEFORE_HOUR = 6;
 
 const DDMMYYYY_TIME_RE = /^(\d{2})\.(\d{2})\.(\d{4})\s+(\d{2}):(\d{2}):(\d{2})$/;
 const PERIOD_RE = /период\s+c\s+(\d{2})\.(\d{2})\.(\d{4})[^]*?по\s+(\d{2})\.(\d{2})\.(\d{4})/i;
@@ -75,14 +86,8 @@ function parsePeriodHeader(rows) {
 }
 
 /**
- * Схлопывание в бинарное состояние «внутри / снаружи».
- *
- * На одном проёме два считывателя: в сыром отчёте часто «вход→выход» за пару
- * секунд или день начинается с «выход». Это НЕ перепутанные колонки — так
- * пишет СКУД. Мы держим только смены состояния:
- *   уже внутри + ещё «вход» → отброс;
- *   уже снаружи + «выход» → отброс.
- * Контрольные суммы недели (Тумаева/Зубань) сверены с этим правилом.
+ * Схлопывание дублей двух считывателей: вход→вход / выход→выход подряд.
+ * Без правил «первый выход = вход» и сирот — их делает computeDayPresence.
  */
 function collapseState(events) {
   const out = [];
@@ -102,7 +107,8 @@ function collapseState(events) {
 }
 
 /**
- * Интервалы присутствия из схлопнутого списка.
+ * Интервалы присутствия из схлопнутого списка (только склейка gap).
+ * Закрытие незакрытого входа — в computeDayPresence (18:00 / ночной уход).
  * @param {Array} events — [{ts, direction, ...}] по возрастанию ts
  * @param {number} mergeGapMin — разрыв, который считаем тем же присутствием
  */
@@ -120,7 +126,6 @@ function buildIntervals(events, mergeGapMin) {
   }
   let openEnded = false;
   if (openedAt !== null) {
-    // Незакрытый вход: закрываем последним событием дня, иначе «до полуночи».
     const last = events[events.length - 1].ts;
     if (last > openedAt) raw.push({ from: openedAt, to: last });
     openEnded = true;
@@ -144,6 +149,171 @@ function buildIntervals(events, mergeGapMin) {
     minutes: Math.round((iv.to - iv.from) / 60000)
   }));
   return { segments, openEnded };
+}
+
+/** Настенные часы суток из ts (наивный UTC = МСК в отчёте). */
+function wallHourOf(ts) {
+  return new Date(ts).getUTCHours();
+}
+
+function dayCloseTs(dayIso, hour) {
+  const [y, m, d] = String(dayIso).slice(0, 10).split('-').map(Number);
+  return Date.UTC(y, m - 1, d, hour, 0, 0);
+}
+
+/**
+ * Часы присутствия за один календарный день.
+ *
+ * Правила (заказчик 09.11.2026):
+ *   1) первый «выход» дня = вход (не восставливаем утро до карты);
+ *   2) сиротский «выход» ≤ orphanExtendMin после предыдущего выхода → дотянуть;
+ *   3) незакрытый вход → 18:00, либо «выход» след.дня до 06:00;
+ *   4) выход суток = последний учтённый выход.
+ *
+ * @param {Array<{ts:number, direction:string, time?:string}>} events
+ * @param {{
+ *   mergeGapMin?: number,
+ *   dayIso?: string,
+ *   dayCloseHour?: number,
+ *   orphanExtendMin?: number,
+ *   nextEarlyExitBeforeHour?: number,
+ *   nextDayEarlyExits?: Array<{ts:number, direction:string, time?:string}>
+ * }} opts
+ * @returns {{
+ *   segments: Array,
+ *   openEnded: boolean,
+ *   collapsed: Array,
+ *   minutes: number,
+ *   firstIn: object|null,
+ *   lastOut: object|null,
+ *   consumedNextEarly: object|null
+ * }}
+ */
+function computeDayPresence(events, opts = {}) {
+  const mergeGapMin = opts.mergeGapMin == null ? 60 : Number(opts.mergeGapMin);
+  const dayCloseHour = opts.dayCloseHour == null ? DEFAULT_DAY_CLOSE_HOUR : Number(opts.dayCloseHour);
+  const orphanExtendMin = opts.orphanExtendMin == null ? DEFAULT_ORPHAN_EXTEND_MIN : Number(opts.orphanExtendMin);
+  const earlyBefore = opts.nextEarlyExitBeforeHour == null
+    ? DEFAULT_NEXT_EARLY_EXIT_BEFORE_HOUR
+    : Number(opts.nextEarlyExitBeforeHour);
+  const orphanExtendMs = Math.max(0, orphanExtendMin) * 60000;
+
+  const sorted = [...(events || [])]
+    .filter((e) => e && (e.direction === 'вход' || e.direction === 'выход') && Number.isFinite(e.ts))
+    .sort((a, b) => a.ts - b.ts);
+
+  if (!sorted.length) {
+    return {
+      segments: [], openEnded: false, collapsed: [], minutes: 0,
+      firstIn: null, lastOut: null, consumedNextEarly: null
+    };
+  }
+
+  const dayIso = opts.dayIso || (sorted[0].iso ? String(sorted[0].iso).slice(0, 10) : null)
+    || new Date(sorted[0].ts).toISOString().slice(0, 10);
+
+  const collapsed = [];
+  let inside = false;
+  let sawPresence = false;
+  let lastExitTs = null;
+
+  for (const ev of sorted) {
+    if (ev.direction === 'вход') {
+      if (inside) continue;
+      inside = true;
+      sawPresence = true;
+      collapsed.push({ ...ev, direction: 'вход' });
+      continue;
+    }
+    // выход
+    if (inside) {
+      inside = false;
+      sawPresence = true;
+      collapsed.push({ ...ev, direction: 'выход' });
+      lastExitTs = ev.ts;
+      continue;
+    }
+    if (!sawPresence) {
+      // Первый значимый сигнал — «выход»: считаем входом.
+      inside = true;
+      sawPresence = true;
+      collapsed.push({
+        ...ev,
+        direction: 'вход',
+        assumed_entry: true,
+        time: ev.time || hhmm(ev.ts)
+      });
+      continue;
+    }
+    // Сиротский выход среди дня: забыли войти обратно.
+    if (lastExitTs != null && ev.ts - lastExitTs <= orphanExtendMs) {
+      collapsed.push({
+        ts: lastExitTs,
+        direction: 'вход',
+        time: hhmm(lastExitTs),
+        assumed_entry: true,
+        synthetic: true
+      });
+      inside = false;
+      collapsed.push({ ...ev, direction: 'выход' });
+      lastExitTs = ev.ts;
+      sawPresence = true;
+    }
+    // Иначе шум / чужой проход — игнор.
+  }
+
+  let openEnded = false;
+  let consumedNextEarly = null;
+
+  if (inside) {
+    const early = (opts.nextDayEarlyExits || [])
+      .filter((e) => e && e.direction === 'выход' && Number.isFinite(e.ts) && wallHourOf(e.ts) < earlyBefore)
+      .sort((a, b) => a.ts - b.ts)[0] || null;
+
+    if (early) {
+      collapsed.push({
+        ...early,
+        direction: 'выход',
+        assumed_close: 'next_early_exit'
+      });
+      inside = false;
+      lastExitTs = early.ts;
+      consumedNextEarly = early;
+      openEnded = true;
+    } else {
+      const closeAt = dayCloseTs(dayIso, dayCloseHour);
+      const opened = [...collapsed].reverse().find((e) => e.direction === 'вход');
+      const fromTs = opened ? opened.ts : sorted[0].ts;
+      // Если «вход» уже после 18:00 — закрываем последним событием дня, не отрицательным интервалом.
+      const toTs = closeAt > fromTs ? closeAt : (sorted[sorted.length - 1].ts > fromTs
+        ? sorted[sorted.length - 1].ts
+        : fromTs);
+      collapsed.push({
+        ts: toTs,
+        direction: 'выход',
+        time: hhmm(toTs),
+        assumed_close: closeAt > fromTs ? 'day_close_18' : 'last_event'
+      });
+      inside = false;
+      lastExitTs = toTs;
+      openEnded = true;
+    }
+  }
+
+  const { segments } = buildIntervals(collapsed, mergeGapMin);
+  const minutes = segments.reduce((s, x) => s + x.minutes, 0);
+  const firstIn = collapsed.find((e) => e.direction === 'вход') || null;
+  const lastOut = [...collapsed].reverse().find((e) => e.direction === 'выход') || null;
+
+  return {
+    segments,
+    openEnded,
+    collapsed,
+    minutes,
+    firstIn,
+    lastOut,
+    consumedNextEarly
+  };
 }
 
 function hhmm(ts) {
@@ -231,24 +401,42 @@ function parseRows(rows, opts = {}) {
       if (!byDate.has(ev.iso)) byDate.set(ev.iso, []);
       byDate.get(ev.iso).push(ev);
     }
+    const dates = [...byDate.keys()].sort();
+    const skipTs = new Set(); // ночные выходы, уже закрывшие вчера
     const days = [];
-    for (const [iso, evs] of byDate) {
+    for (let i = 0; i < dates.length; i++) {
+      const iso = dates[i];
       allDates.push(iso);
-      evs.sort((a, b) => a.ts - b.ts);
-      const collapsed = collapseState(evs);
-      const { segments, openEnded } = buildIntervals(collapsed, mergeGapMin);
-      const minutes = segments.reduce((s, x) => s + x.minutes, 0);
-      const firstIn = collapsed.find((e) => e.direction === 'вход');
-      const lastOut = [...collapsed].reverse().find((e) => e.direction === 'выход');
+      const evs = (byDate.get(iso) || [])
+        .filter((e) => !skipTs.has(e.ts))
+        .sort((a, b) => a.ts - b.ts);
+      const nextIso = dates[i + 1] || null;
+      const nextDayEarlyExits = nextIso
+        ? (byDate.get(nextIso) || []).filter((e) =>
+          e.direction === 'выход' && wallHourOf(e.ts) < DEFAULT_NEXT_EARLY_EXIT_BEFORE_HOUR)
+        : [];
+
+      const presence = computeDayPresence(evs, {
+        mergeGapMin,
+        dayIso: iso,
+        nextDayEarlyExits
+      });
+      if (presence.consumedNextEarly && presence.consumedNextEarly.ts != null) {
+        skipTs.add(presence.consumedNextEarly.ts);
+      }
+
+      const firstIn = presence.firstIn;
+      const lastOut = presence.lastOut;
       days.push({
         date: iso,
-        minutes,
-        openEnded,
-        firstIn: firstIn ? `${iso} ${firstIn.time}` : null,
-        lastOut: lastOut ? `${iso} ${lastOut.time}` : null,
-        segments,
+        minutes: presence.minutes,
+        openEnded: presence.openEnded,
+        firstIn: firstIn ? `${iso} ${firstIn.time || hhmm(firstIn.ts)}` : null,
+        lastOut: lastOut
+          ? `${(lastOut.assumed_close === 'next_early_exit' && nextIso) ? nextIso : iso} ${lastOut.time || hhmm(lastOut.ts)}`
+          : null,
+        segments: presence.segments,
         skippedEvents: bucket.skipped,
-        // Сырые прохождения (для доказуемости в карточке дня).
         punches: evs.map((e) => ({
           date: iso,
           ts: `${iso} ${e.time}`,
@@ -258,7 +446,6 @@ function parseRows(rows, opts = {}) {
         }))
       });
     }
-    days.sort((a, b) => (a.date < b.date ? -1 : 1));
     result.push({ rawName, days, skippedEvents: bucket.skipped });
   }
 
@@ -340,9 +527,13 @@ module.exports = {
   parsePeriodHeader,
   collapseState,
   buildIntervals,
+  computeDayPresence,
   looksLikeSkudRows,
   sha256,
   TECHNICAL_EVENTS,
   UNKNOWN_EVENTS,
+  DEFAULT_DAY_CLOSE_HOUR,
+  DEFAULT_ORPHAN_EXTEND_MIN,
+  DEFAULT_NEXT_EARLY_EXIT_BEFORE_HOUR,
   _hhmm: hhmm
 };

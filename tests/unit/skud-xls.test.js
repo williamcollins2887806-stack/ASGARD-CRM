@@ -66,7 +66,7 @@ describe('skud-xls: бинарное состояние (два считыват
     expect(out.map((e) => e.ts)).toEqual([1, 3]);
   });
 
-  test('выход при «уже снаружи» отбрасывается', () => {
+  test('collapseState: выход при «уже снаружи» отбрасывается (без правил дня)', () => {
     const out = skud.collapseState([
       { ts: 1, direction: 'выход' },
       { ts: 2, direction: 'вход' },
@@ -74,6 +74,78 @@ describe('skud-xls: бинарное состояние (два считыват
       { ts: 4, direction: 'выход' }
     ]);
     expect(out.map((e) => e.ts)).toEqual([2, 3]);
+  });
+});
+
+describe('skud-xls: computeDayPresence (забытые входы/выходы)', () => {
+  const t = (h, m, s = 0) => Date.UTC(2026, 9, 30, h, m, s); // 30.10.2026
+
+  test('первый выход дня = вход (кейс Андросов 14.10)', () => {
+    // 10:34 выход, 10:38 вход, … 11:37 выход → старт с 10:34, не отбрасываем утро целиком
+    const evs = [
+      { ts: Date.UTC(2026, 9, 14, 10, 34, 14), direction: 'выход', time: '10:34:14' },
+      { ts: Date.UTC(2026, 9, 14, 10, 38, 28), direction: 'вход', time: '10:38:28' },
+      { ts: Date.UTC(2026, 9, 14, 11, 7, 12), direction: 'выход', time: '11:07:12' },
+      { ts: Date.UTC(2026, 9, 14, 11, 8, 41), direction: 'вход', time: '11:08:41' },
+      { ts: Date.UTC(2026, 9, 14, 11, 15, 9), direction: 'выход', time: '11:15:09' },
+      { ts: Date.UTC(2026, 9, 14, 11, 16, 38), direction: 'вход', time: '11:16:38' },
+      { ts: Date.UTC(2026, 9, 14, 11, 37, 56), direction: 'выход', time: '11:37:56' }
+    ];
+    const r = skud.computeDayPresence(evs, { dayIso: '2026-10-14', mergeGapMin: 60 });
+    expect(r.firstIn.assumed_entry).toBe(true);
+    expect(r.minutes).toBe(64); // 10:34–11:37
+    expect(r.openEnded).toBe(false);
+  });
+
+  test('сиротский выход ≤3 ч дотягивает до последнего (кейс 30.10)', () => {
+    const evs = [
+      { ts: t(13, 27, 31), direction: 'выход', time: '13:27:31' },
+      { ts: t(13, 29, 33), direction: 'вход', time: '13:29:33' },
+      { ts: t(15, 55, 53), direction: 'выход', time: '15:55:53' },
+      { ts: t(15, 59, 4), direction: 'вход', time: '15:59:04' },
+      { ts: t(15, 59, 15), direction: 'выход', time: '15:59:15' },
+      { ts: t(17, 27, 17), direction: 'выход', time: '17:27:17' }
+    ];
+    const r = skud.computeDayPresence(evs, { dayIso: '2026-10-30', mergeGapMin: 60 });
+    // 13:27–17:27 = 240 мин (сирота 15:59→17:27 ≈ 88 мин ≤ 180)
+    expect(r.minutes).toBe(240);
+    expect(r.lastOut.ts).toBe(t(17, 27, 17));
+  });
+
+  test('сиротский выход >3 ч не дотягиваем', () => {
+    const evs = [
+      { ts: t(10, 0, 0), direction: 'вход' },
+      { ts: t(12, 0, 0), direction: 'выход' },
+      { ts: t(16, 0, 0), direction: 'выход' } // 4 ч после выхода
+    ];
+    const r = skud.computeDayPresence(evs, { dayIso: '2026-10-30', mergeGapMin: 60, orphanExtendMin: 180 });
+    expect(r.minutes).toBe(120); // только 10:00–12:00
+    expect(r.lastOut.ts).toBe(t(12, 0, 0));
+  });
+
+  test('незакрытый вход закрывается в 18:00', () => {
+    const evs = [
+      { ts: t(10, 0, 0), direction: 'вход', time: '10:00:00' }
+    ];
+    const r = skud.computeDayPresence(evs, { dayIso: '2026-10-30', mergeGapMin: 60 });
+    expect(r.openEnded).toBe(true);
+    expect(r.minutes).toBe(480); // 10:00–18:00
+    expect(r.lastOut.assumed_close).toBe('day_close_18');
+  });
+
+  test('незакрытый вход + ночной выход до 06:00 след.дня', () => {
+    const evs = [
+      { ts: t(20, 0, 0), direction: 'вход', time: '20:00:00' }
+    ];
+    const early = [{ ts: Date.UTC(2026, 9, 31, 1, 30, 0), direction: 'выход', time: '01:30:00' }];
+    const r = skud.computeDayPresence(evs, {
+      dayIso: '2026-10-30',
+      mergeGapMin: 60,
+      nextDayEarlyExits: early
+    });
+    expect(r.openEnded).toBe(true);
+    expect(r.consumedNextEarly.ts).toBe(early[0].ts);
+    expect(r.minutes).toBe(330); // 20:00–01:30 = 5.5 ч
   });
 });
 
@@ -167,12 +239,13 @@ describe('skud-xls: реальный отчёт за 26.10–01.11.2026', () => 
     expect(p.days.length).toBe(3);
   });
 
-  test('Зубань за неделю = 36.62 ч (5 дней) — контрольная сумма недели', () => {
+  test('Зубань за неделю ≈ 37.25 ч (5 дней) — эталон после правил 09.11 (первый выход=вход / сироты ≤3ч)', () => {
     const p = parsed.people.find((x) => x.rawName.includes('Зубань'));
     const total = p.days.reduce((s, d) => s + d.minutes, 0);
     expect(Math.round(total / 60)).toBe(37);
     expect(p.days.length).toBe(5);
-    expect(total).toBe(2197);
+    // Было 2197 до правил забытых проходов; +38 мин — дотянутые сироты/ведущий выход.
+    expect(total).toBe(2235);
   });
 
   test('дни с незакрытым входом помечены (Данилова — все 5 дней)', () => {

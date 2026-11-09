@@ -1028,14 +1028,21 @@ window.AsgardOfficeSchedulePage=(function(){
         ).join('') || '<div class="oh-empty">Активности в СРМ нет</div>';
 
         const flag = (j.flags||[])[0];
-        const flagHtml = flag
+        // Старые флаги skud_no_punch после привязки ФИО закрыты, часы уже есть —
+        // красный баннер «не зафиксировал» только путает (Андросов 27–30.10).
+        const officeMin = Number(j.office_minutes || 0);
+        const flagOpen = flag && !flag.resolved_at;
+        const flagHtml = flagOpen
           ? `<div class="oh-alert">
                <div class="oh-alert__t">Отметка «в офисе» снята</div>
-               <div class="oh-alert__b">СКУД не зафиксировал присутствие. ${flag.resolved_at
-                 ? `Ответ: ${esc(flag.resolved_status||'—')}`
-                 : 'Сотрудник ещё не ответил.'}</div>
+               <div class="oh-alert__b">СКУД не зафиксировал присутствие. Сотрудник ещё не ответил.</div>
              </div>`
-          : '';
+          : (flag && flag.resolved_at && officeMin <= 0
+            ? `<div class="oh-alert">
+                 <div class="oh-alert__t">Ранее спор по СКУД</div>
+                 <div class="oh-alert__b">Ответ: ${esc(flag.resolved_status||'—')}. Часов по СКУД за день нет.</div>
+               </div>`
+            : '');
 
         const statusLabel = (STATUS.find(x=>x.code===j.status)||{}).label || (j.status || 'без статуса');
         const creditLabel = {
