@@ -75,7 +75,7 @@ async function assertCanCreateTkpForTender(db, user, tenderId) {
     return;
   }
   const { rows } = await db.query(
-    'SELECT responsible_pm_id FROM tenders WHERE id = $1',
+    'SELECT responsible_pm_id, calculator_user_id FROM tenders WHERE id = $1',
     [tenderId]
   );
   if (!rows[0]) {
@@ -90,7 +90,16 @@ async function assertCanCreateTkpForTender(db, user, tenderId) {
 
   // PM — только свой тендер; HEAD_PM/директора/ADMIN — без проверки
   if (user.role !== 'PM') return;
-  if (Number(t.responsible_pm_id) !== Number(user.id)) {
+  // ── Кто «свой» ──────────────────────────────────────────────────────────
+  // Раньше смотрели ТОЛЬКО responsible_pm_id. Но по факту просчёт ведёт
+  // calculator_user_id (его ставит дежурство/ensureCalcOwner), и у карточек
+  // очереди responsible_pm_id пуст. РП, который посчитал смету, получал 403
+  // «ТКП по этому тендеру создаёт только назначенный РП» и не мог создать ТКП
+  // по собственной работе (найдено 09.11.2026 на 10 карточках).
+  const owners = [t.responsible_pm_id, t.calculator_user_id]
+    .map((v) => Number(v))
+    .filter((v) => Number.isFinite(v) && v > 0);
+  if (!owners.includes(Number(user.id))) {
     throw Object.assign(
       new Error('ТКП по этому тендеру создаёт только назначенный РП'),
       { statusCode: 403 }
