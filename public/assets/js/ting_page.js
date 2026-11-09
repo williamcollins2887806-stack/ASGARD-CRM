@@ -1905,13 +1905,18 @@
   async function loadTrackProcessors() {
     if (window.LivekitTrackProcessors) return window.LivekitTrackProcessors;
     if (window.TrackProcessors) return window.TrackProcessors;
-    /* D24: только локальный ассет. Внешний CDN — SPOF: за корп. фаерволом
-       размытие фона молча не работает, а ошибка не видна. */
+    /* D-184: раньше грузился vendor/livekit-track-processors.esm.js, который
+       содержит `import 'livekit-client'` и `import '@mediapipe/tasks-vision'`.
+       В браузере таких модулей нет → import падал, а ошибка проглатывалась
+       в catch → «Эффекты фона недоступны в этом браузере».
+       Теперь это самодостаточный бандл (tools/build_ting_bg_effects.js):
+       зависимости внутри, wasm и модель — локальные, без CDN. */
     try {
-      const mod = await import('/assets/vendor/livekit-track-processors.esm.js');
+      const mod = await import('/assets/vendor/ting-bg-effects.esm.js');
       window.LivekitTrackProcessors = mod;
       return mod;
-    } catch (_) {
+    } catch (e) {
+      console.warn('[Ting] bg effects bundle failed', e && e.name, e && e.message);
       return null;
     }
   }

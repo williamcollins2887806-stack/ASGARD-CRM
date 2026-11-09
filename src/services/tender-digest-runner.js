@@ -167,7 +167,11 @@ async function runDigest({ db, log, sendMail, now, recipients, force }) {
       return { ok: false, sent: 0, pending: events.length, reason: 'некому отправлять' };
     }
 
-    await sendMail(db, log, {
+    // ROOT-CAUSE: sendCrmEmail(db, userId, mailOptions) — второй аргумент это
+    // ИД ПОЛЬЗОВАТЕЛЯ, а не логгер. Мы передавали `log`, и объект конфига pino
+    // ({levels:{…}}) уходил в SQL как user_id → «invalid input syntax for type
+    // integer». Письма не уходили вовсе.
+    await sendMail(db, null, {
       to: to.length === 1 ? to[0] : to,
       subject,
       html,

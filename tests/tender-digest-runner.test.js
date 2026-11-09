@@ -304,6 +304,22 @@ function msk(y, m, d, h, min = 0) {
     assert.strictEqual(revived.queued, true, 'напоминание не ожило через 40 ч');
   });
 
+  // ── 8. Сигнатура sendCrmEmail ────────────────────────────────────────────
+  await check('второй аргумент письма — null, а не логгер', async () => {
+    // Дефект 09.11.2026: runDigest звал sendMail(db, log, {...}), а сигнатура
+    // sendCrmEmail(db, userId, mailOptions). Объект pino-конфига уходил в SQL
+    // как user_id → «invalid input syntax for type integer», письма не уходили.
+    const db = makeDb();
+    await runner.enqueueEvent(db, { kind: 'analysis', tender_id: 9, title: 'A' });
+    let second = 'НЕ ВЫЗВАН';
+    await runner.runDigest({
+      db, log: { levels: { values: { info: 30 } } },
+      sendMail: async (_db, userId) => { second = userId; },
+      now: msk(2026, 11, 9, 9, 30), recipients: ['a@b.c']
+    });
+    assert.strictEqual(second, null, 'во второй аргумент попал ' + typeof second + ', а нужен null');
+  });
+
   const failed = results.filter((r) => !r.ok);
   console.log('');
   console.log('итог: ' + (results.length - failed.length) + ' PASS, ' + failed.length + ' FAIL');
