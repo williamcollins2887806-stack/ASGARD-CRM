@@ -456,7 +456,11 @@ function extractInvoice(text, opts) {
         const p = noM[2].split(/[.\-/]/);
         if (p.length === 3) { const yy = p[2].length === 2 ? '20' + p[2] : p[2]; dt = `${yy}-${p[1].padStart(2, '0')}-${p[0].padStart(2, '0')}`; }
       }
-      out.contract_basis = { number: noM[1].replace(/^№/, ''), date: dt, raw: seg.slice(0, 120) };
+      const basisNo = noM[1].replace(/^№/, '');
+      // Без цифр («оферта», «Счет-оферта») — не номер договора, только raw.
+      out.contract_basis = /\d/.test(basisNo)
+        ? { number: basisNo, date: dt, raw: seg.slice(0, 120) }
+        : { number: null, date: null, raw: seg.slice(0, 120) };
     } else if (seg) {
       out.contract_basis = { number: null, date: null, raw: seg.slice(0, 120) };
     }

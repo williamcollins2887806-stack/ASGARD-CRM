@@ -28,6 +28,15 @@ function normContractNo(v) {
 }
 
 /**
+ * Номер договора без цифр («оферта», «+», «Счет-оферта», «Услуги гостиницы») —
+ * не ключ. Искать/создавать по нему нельзя: на проде такие «договоры» уже
+ * набрали десятки ложных привязок (pipeline_check §5).
+ */
+function hasContractDigits(v) {
+  return /\d/.test(String(v || ''));
+}
+
+/**
  * Найти договор по основанию из счёта.
  * @param {object} db
  * @param {{number?:string, date?:string, counterpartyInn?:string, counterpartyName?:string}} basis
@@ -36,6 +45,7 @@ function normContractNo(v) {
 async function matchContract(db, basis = {}) {
   const num = normContractNo(basis.number);
   if (!num) return { found: false, reason: 'no_number' };
+  if (!hasContractDigits(num)) return { found: false, reason: 'no_digits' };
 
   // Нормализация номера на стороне Postgres: убираем №, кавычки, пробелы.
   const NORM_SQL = `regexp_replace(coalesce(number,''), '[^a-zA-Z0-9а-яА-ЯёЁ/\\-]', '', 'g')`;
@@ -456,4 +466,4 @@ function simTrgm(a, b) {
   return inter / (A.size + B.size - inter);
 }
 
-module.exports = { normContractNo, matchContract, matchWork };
+module.exports = { normContractNo, hasContractDigits, matchContract, matchWork };

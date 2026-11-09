@@ -1,7 +1,15 @@
 'use strict';
 
 const assert = require('assert');
-const { buildApplicationExcel, filenameFor } = require('../src/services/mlsp-passes-excel');
+const ExcelJS = require('exceljs');
+const {
+  buildApplicationExcel,
+  buildPreviewMatrix,
+  filenameFor,
+  SHEET_BY_TYPE,
+  TEMPLATE_PATH
+} = require('../src/services/mlsp-passes-excel');
+const fs = require('fs');
 
 const samplePeople = [{
   fio: 'Зубань Руслан Владимирович',
@@ -22,10 +30,20 @@ const samplePeople = [{
   permits_text: 'пропуск ФСБ'
 }];
 
+async function assertSingleSheet(buf, expectedName) {
+  const wb = new ExcelJS.Workbook();
+  await wb.xlsx.load(buf);
+  assert.strictEqual(wb.worksheets.length, 1, 'должен быть ровно один лист');
+  assert.strictEqual(wb.worksheets[0].name, expectedName);
+  return wb.worksheets[0];
+}
+
 async function run() {
+  assert.ok(fs.existsSync(TEMPLATE_PATH), 'шаблон base-generator.xlsx должен лежать в templates/mlsp');
+
   const types = ['flight', 'ship', 'pass_35srz', 'pass_mmrp', 'pass_mlsp', 'pass_fsb'];
   for (const app_type of types) {
-    const buf = await buildApplicationExcel({
+    const app = {
       app_type,
       contract_number: 'ГНШ-24/10000/00056/Р от 01.04.24 г.',
       curator: 'Марков М.В.',
@@ -37,12 +55,39 @@ async function run() {
       outgoing_number: '141603/02',
       people: samplePeople,
       purpose_text: 'работы',
-      pass_kind: app_type === 'pass_fsb' ? 'individual' : 'разовый'
-    });
-    assert.ok(Buffer.isBuffer(buf) && buf.length > 2000, app_type + ' too small');
+      pass_kind: app_type === 'pass_fsb' ? 'individual' : 'разовый',
+      mvz: '5850374402'
+    };
+    const buf = await buildApplicationExcel(app);
+    assert.ok(Buffer.isBuffer(buf) && buf.length > 3000, app_type + ' too small: ' + buf.length);
     assert.ok(filenameFor({ app_type, date_from: '2026-11-09' }).endsWith('.xlsx'));
+
+    const expected = app_type === 'pass_fsb' ? 'Пропуск_ФСБ' : SHEET_BY_TYPE[app_type];
+    const ws = await assertSingleSheet(buf, expected);
+
+    if (app_type === 'flight') {
+      const fio = ws.getCell('C15').value;
+      assert.strictEqual(fio, samplePeople[0].fio, 'ФИО в C15');
+      const org = ws.getCell('D15').value;
+      assert.ok(org && !String(org).startsWith('='), 'организация без формулы');
+      assert.ok(String(ws.getCell('B13').value || '').includes('АРХАНГЕЛЬСК'), 'маршрут туда');
+    }
+    if (app_type === 'ship') {
+      assert.strictEqual(ws.getCell('B10').value, samplePeople[0].fio);
+      assert.ok(!String(ws.getCell('C10').value || '').startsWith('='));
+    }
+    if (app_type === 'pass_mlsp') {
+      assert.ok(String(ws.getCell('A5').value || '').includes('141603/02'));
+      assert.ok(!String(ws.getCell('B14').value || '').startsWith('='));
+      assert.ok(String(ws.getCell('B14').value || '').includes('Зубань'));
+    }
+
+    const preview = await buildPreviewMatrix(app);
+    assert.ok(preview.rows && preview.rows.length > 2, app_type + ' preview rows');
+    assert.strictEqual(preview.sheet, expected);
   }
-  console.log('mlsp-passes-excel.test.js OK', types.length);
+
+  console.log('mlsp-passes-excel.test.js OK', types.length, 'template-parity');
 }
 
 run().catch((e) => {

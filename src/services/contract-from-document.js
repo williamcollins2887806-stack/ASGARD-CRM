@@ -95,6 +95,8 @@ function extractContractNumber(text) {
   if (/^\d{1,2}[.\-]\d{1,2}[.\-]\d{2,4}$/.test(raw)) return null;
   // Только цифры и разделители, 8+ знаков — похоже на номер счёта/р/с, не договора.
   if (/^\d{15,}$/.test(raw)) return null;
+  // Без цифр («оферта», «Основной договор») — не номер, станет мусором в реестре.
+  if (!/\d/.test(raw)) return null;
   return raw;
 }
 

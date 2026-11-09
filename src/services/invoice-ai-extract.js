@@ -541,9 +541,15 @@ function mergeWithRegex(ai, rx) {
   out.payment_due_at = pick(ai.payment_due_at, base.payment_due_at);
   // Договор: ИИ отдаёт строку «номер», регулярки — объект {number,date,raw}.
   if (ai.contract_basis) {
-    out.contract_basis = base.contract_basis && base.contract_basis.number
-      ? { ...base.contract_basis, number: ai.contract_basis }
-      : { number: String(ai.contract_basis).replace(/^№\s*/, ''), date: null, raw: String(ai.contract_basis) };
+    const aiNo = String(ai.contract_basis).replace(/^№\s*/, '').trim();
+    if (/\d/.test(aiNo)) {
+      out.contract_basis = base.contract_basis && base.contract_basis.number
+        ? { ...base.contract_basis, number: aiNo }
+        : { number: aiNo, date: null, raw: String(ai.contract_basis) };
+    } else {
+      // «оферта»/«Счет-оферта» без цифр — не номер, только подпись в raw.
+      out.contract_basis = { number: null, date: null, raw: String(ai.contract_basis).slice(0, 120) };
+    }
   }
 
   // Позиции: если ИИ разобрал таблицу — используем её (там смысл важнее шаблона).

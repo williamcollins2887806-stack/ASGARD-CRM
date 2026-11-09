@@ -30,13 +30,14 @@
  * сумма. Файл и подписанный скан прикрепляются позже человеком.
  */
 
-const { normContractNo, matchContract } = require('./contract-match');
+const { normContractNo, hasContractDigits, matchContract } = require('./contract-match');
 
 /** Причины отказа matchContract, при которых создавать договор НЕЛЬЗЯ. */
 const NO_CREATE_REASONS = new Set([
   'ambiguous',                        // несколько похожих — человек должен выбрать
   'number_taken_by_other_counterparty', // номер занят другим лицом — не наш случай
   'no_number',                        // нет номера — нечего создавать
+  'no_digits',                        // «оферта»/«+»/«Счет-оферта» — не номер
   'error'
 ]);
 
@@ -57,6 +58,10 @@ async function ensureContractFromInvoice(db, basis = {}, opts = {}) {
   const rawNumber = String(basis.number || '').trim();
   const num = normContractNo(rawNumber);
   if (!num) return { action: 'skipped', reason: 'no_number' };
+  // Без цифр — мусор («Счет-оферта», «+», «Услуги гостиницы»). Не создаём.
+  if (!hasContractDigits(rawNumber) && !hasContractDigits(num)) {
+    return { action: 'skipped', reason: 'no_digits' };
+  }
 
   // 1. Сначала честно ищем. matchContract уже умеет: точный номер, вхождение,
   // цифры, и veto по чужому ИНН.

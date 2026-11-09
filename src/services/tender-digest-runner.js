@@ -51,7 +51,14 @@ async function enqueueEvent(db, ev) {
       `INSERT INTO tender_digest_outbox
          (event_key, kind, tender_id, title, deadline, urgent, payload)
        VALUES ($1, $2, $3, $4, $5, $6, $7)
-       ON CONFLICT (event_key) DO NOTHING
+       ON CONFLICT (event_key) DO UPDATE
+         SET sent_at = NULL,
+             urgent = EXCLUDED.urgent,
+             deadline = EXCLUDED.deadline,
+             payload = EXCLUDED.payload,
+             created_at = NOW()
+       WHERE tender_digest_outbox.sent_at IS NOT NULL
+         AND tender_digest_outbox.sent_at < NOW() - INTERVAL '36 hours'
        RETURNING id`,
       [key, String(e.kind), e.tender_id, e.title || null,
         e.deadline || null, urgent, e.payload ? JSON.stringify(e.payload) : null]

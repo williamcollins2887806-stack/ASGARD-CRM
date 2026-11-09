@@ -48,7 +48,19 @@ function makeDb() {
 
       if (/INSERT INTO tender_digest_outbox/.test(s)) {
         const key = params[0];
-        if (rows.some((r) => r.event_key === key)) return { rows: [], rowCount: 0 };
+        const existing = rows.find((r) => r.event_key === key);
+        if (existing) {
+          // ON CONFLICT DO UPDATE ... WHERE sent_at IS NOT NULL AND old > 36ч
+          const canRevive = existing.sent_at
+            && (Date.now() - new Date(existing.sent_at).getTime()) > 36 * 3600 * 1000;
+          if (!canRevive) return { rows: [], rowCount: 0 };
+          existing.sent_at = null;
+          existing.urgent = params[5];
+          existing.deadline = params[4];
+          existing.payload = params[6];
+          existing.created_at = new Date();
+          return { rows: [{ id: existing.id }], rowCount: 1 };
+        }
         const row = {
           id: nextId++,
           event_key: key,
@@ -58,6 +70,7 @@ function makeDb() {
           deadline: params[4],
           urgent: params[5],
           payload: params[6],
+          created_at: new Date(),
           sent_at: null
         };
         rows.push(row);
@@ -261,6 +274,34 @@ function msk(y, m, d, h, min = 0) {
       path.join(__dirname, '..', 'src', 'services', 'notify.js'), 'utf8'
     );
     assert.ok(/isTenderDigestEvent/.test(notifySrc), 'нет фильтра тендерных пущ-событий');
+  });
+
+  // ── 7. Повторное напоминание ─────────────────────────────────────────────
+  await check('повторное напоминание доходит после 36 ч, но не раньше', async () => {
+    // Дефект: ON CONFLICT DO NOTHING делал ключ вечным. Один раз напомнили —
+    // и тендер навсегда выпадал из напоминаний, хотя он ещё висит.
+    const db = makeDb();
+    const ev = { kind: 'analysis_idle', tender_id: 77, title: 'X' };
+
+    const first = await runner.enqueueEvent(db, ev);
+    assert.strictEqual(first.queued, true, 'первое событие не встало в очередь');
+
+    let mails = 0;
+    await runner.runDigest({
+      db, log: null, sendMail: async () => { mails += 1; },
+      now: msk(2026, 11, 9, 9, 30), recipients: ['a@b.c']
+    });
+    assert.strictEqual(mails, 1, 'письмо не ушло');
+    assert.strictEqual(db.rows[0].sent_at != null, true, 'событие не помечено отправленным');
+
+    // Сразу повторно — не дубль.
+    const again = await runner.enqueueEvent(db, ev);
+    assert.strictEqual(again.queued, false, 'продублировали отправленное событие');
+
+    // Сдвигаем отметку на 40 часов назад: напоминание должно ожить.
+    db.rows[0].sent_at = new Date(Date.now() - 40 * 3600 * 1000);
+    const revived = await runner.enqueueEvent(db, ev);
+    assert.strictEqual(revived.queued, true, 'напоминание не ожило через 40 ч');
   });
 
   const failed = results.filter((r) => !r.ok);

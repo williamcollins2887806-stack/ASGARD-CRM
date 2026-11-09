@@ -74,6 +74,12 @@ test('D-402: номер счёта из 20 цифр не принимается 
   assert.strictEqual(extractContractNumber('Договор № 40702810502260000343'), null);
 });
 
+test('D-402: номер без цифр («оферта») не принимается', () => {
+  assert.strictEqual(extractContractNumber('Договор № оферта'), null);
+  assert.strictEqual(extractContractNumber('Договор № Счет-оферта'), null);
+  assert.strictEqual(extractContractNumber('Договор № +'), null);
+});
+
 // ─── Дата договора ────────────────────────────────────────────────────────
 test('D-402: дата текстом «5 ноября 2026 г.» (формат договора Гала Юг)', () => {
   const t = 'ДОГОВОР № 16/2026\n5 ноября 2026 г.';

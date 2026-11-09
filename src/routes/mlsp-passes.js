@@ -6,7 +6,8 @@
  */
 
 const { evaluateApplication, registrySignal, ymd, addDays, fmtRu } = require('../services/mlsp-passes-rules');
-const { buildApplicationExcel, filenameFor } = require('../services/mlsp-passes-excel');
+const { buildApplicationExcel, buildPreviewMatrix, filenameFor } = require('../services/mlsp-passes-excel');
+const dadata = require('../services/dadata');
 
 const VIEW_ROLES = [
   'ADMIN', 'HR', 'HR_MANAGER', 'OFFICE_MANAGER', 'PM', 'HEAD_PM',
@@ -14,10 +15,13 @@ const VIEW_ROLES = [
 ];
 const WRITE_ROLES = VIEW_ROLES;
 
+/** Канон ЕГРЮЛ (проверено): ГНШ 7725610285, Снабжение 5501072608, Аврора 5190087937 */
 const GNSH_NAME = 'ООО «Газпром нефть шельф»';
-const GNSH_INN = '8901014565'; // канон ЕГРЮЛ; при расхождении с customers — подтянем по имени
+const GNSH_INN = '7725610285';
 const SUPPLY_NAME = 'ООО «Газпромнефть-Снабжение»';
+const SUPPLY_INN = '5501072608';
 const AURORA_NAME = 'АО «Аврора Логистика»';
+const AURORA_INN = '5190087937';
 
 function parseIds(body) {
   const raw = body?.employee_ids || body?.people_ids || [];
@@ -46,24 +50,36 @@ async function loadEmployeesRich(db, ids) {
     [ids]
   );
 
-  const { rows: permits } = await db.query(
-    `SELECT ep.employee_id, ep.expiry_date, ep.issue_date, ep.document_number,
-            pt.code, pt.name
-       FROM employee_permits ep
-       JOIN permit_types pt ON pt.id = ep.type_id
-      WHERE ep.employee_id = ANY($1::int[])
-        AND COALESCE(ep.is_active, true) = true`,
-    [ids]
-  ).catch(() => ({ rows: [] }));
+  let permits = [];
+  try {
+    const r = await db.query(
+      `SELECT ep.employee_id, ep.expiry_date, ep.issue_date, ep.document_number,
+              pt.code, pt.name
+         FROM employee_permits ep
+         JOIN permit_types pt ON pt.id = ep.type_id
+        WHERE ep.employee_id = ANY($1::int[])
+          AND COALESCE(ep.is_active, true) = true`,
+      [ids]
+    );
+    permits = r.rows;
+  } catch (e) {
+    console.warn('[mlsp-passes] permits query:', e.message);
+  }
 
-  const { rows: stays } = await db.query(
-    `SELECT s.*
-       FROM mlsp_stays s
-      WHERE s.employee_id = ANY($1::int[])
-        AND s.actual_departed_at IS NULL
-      ORDER BY s.arrived_at DESC`,
-    [ids]
-  ).catch(() => ({ rows: [] }));
+  let stays = [];
+  try {
+    const r = await db.query(
+      `SELECT s.*
+         FROM mlsp_stays s
+        WHERE s.employee_id = ANY($1::int[])
+          AND s.actual_departed_at IS NULL
+        ORDER BY s.arrived_at DESC`,
+      [ids]
+    );
+    stays = r.rows;
+  } catch (e) {
+    console.warn('[mlsp-passes] stays query:', e.message);
+  }
 
   const stayByEmp = {};
   for (const s of stays) {
@@ -122,13 +138,19 @@ async function loadContractMeta(db, contractNumber) {
   );
   if (rows[0]) return rows[0];
   // fallback: contracts table
-  const c = await db.query(
-    `SELECT id, number, counterparty_name, customer_name, customer_inn, end_date, start_date, subject
-       FROM contracts
-      WHERE number = $1
-      LIMIT 1`,
-    [contractNumber]
-  ).catch(() => ({ rows: [] }));
+  let c;
+  try {
+    c = await db.query(
+      `SELECT id, number, counterparty_name, customer_name, customer_inn, end_date, start_date, subject
+         FROM contracts
+        WHERE number = $1
+        LIMIT 1`,
+      [contractNumber]
+    );
+  } catch (e) {
+    console.warn('[mlsp-passes] contracts lookup:', e.message);
+    return { contract_number: contractNumber };
+  }
   if (!c.rows[0]) return { contract_number: contractNumber };
   return {
     contract_id: c.rows[0].id,
@@ -162,10 +184,15 @@ async function routes(fastify) {
     const reg = await db.query(`SELECT * FROM mlsp_pass_registry`);
     const items = reg.rows.map(enrichRegistryRow);
     const next = await nextOutgoing(db);
-    const legs = await db.query(
-      `SELECT COUNT(*)::int AS n FROM mlsp_transport_legs
-        WHERE leg_date BETWEEN CURRENT_DATE AND CURRENT_DATE + 7`
-    ).catch(() => ({ rows: [{ n: 0 }] }));
+    let legs = { rows: [{ n: 0 }] };
+    try {
+      legs = await db.query(
+        `SELECT COUNT(*)::int AS n FROM mlsp_transport_legs
+          WHERE leg_date BETWEEN CURRENT_DATE AND CURRENT_DATE + 7`
+      );
+    } catch (e) {
+      console.warn('[mlsp-passes] legs pulse:', e.message);
+    }
     return {
       registry: {
         total: items.length,
@@ -190,7 +217,10 @@ async function routes(fastify) {
            OR counterparty_name ILIKE '%шельф%'
            OR customer_name ILIKE '%шельф%'
         ORDER BY number`
-    ).catch(() => ({ rows: [] }));
+    ).catch((e) => {
+      request.log.warn(e, 'contracts GNSH list');
+      return { rows: [] };
+    });
     return { meta: meta.rows, contracts: crm.rows };
   });
 
@@ -199,12 +229,18 @@ async function routes(fastify) {
     const created = { customers: [], contracts: [] };
 
     async function upsertCustomer(inn, name) {
-      const existing = await db.query(
-        `SELECT inn, name FROM customers
-          WHERE inn = $1 OR name ILIKE $2
-          LIMIT 1`,
-        [inn, '%' + name.replace(/[«»"]/g, '') + '%']
-      ).catch(() => ({ rows: [] }));
+      let existing;
+      try {
+        existing = await db.query(
+          `SELECT inn, name FROM customers
+            WHERE inn = $1 OR name ILIKE $2
+            LIMIT 1`,
+          [inn, '%' + name.replace(/[«»"]/g, '') + '%']
+        );
+      } catch (e) {
+        request.log.warn(e, 'customers lookup ' + inn);
+        existing = { rows: [] };
+      }
       if (existing.rows[0]) return existing.rows[0];
       const ins = await db.query(
         `INSERT INTO customers (inn, name, full_name)
@@ -221,21 +257,44 @@ async function routes(fastify) {
       return ins.rows[0];
     }
 
-    await upsertCustomer(GNSH_INN, GNSH_NAME);
-    await upsertCustomer('7727562177', SUPPLY_NAME).catch(() => null);
-    await upsertCustomer('2902058890', AURORA_NAME).catch(() => null);
+    // DaData — уточняем названия по ИНН, если токен есть
+    const parties = [
+      { inn: GNSH_INN, fallback: GNSH_NAME },
+      { inn: SUPPLY_INN, fallback: SUPPLY_NAME },
+      { inn: AURORA_INN, fallback: AURORA_NAME }
+    ];
+    for (const p of parties) {
+      let name = p.fallback;
+      try {
+        const hit = await dadata.resolveByInn(p.inn);
+        if (hit?.name) name = hit.name;
+      } catch (e) {
+        request.log.warn({ err: e.message, inn: p.inn }, 'dadata resolve');
+      }
+      await upsertCustomer(p.inn, name);
+    }
 
     const { rows: meta } = await db.query(`SELECT * FROM mlsp_contract_meta`);
     for (const m of meta) {
-      const exists = await db.query(
-        `SELECT id, number FROM contracts WHERE number = $1 LIMIT 1`,
-        [m.contract_number]
-      ).catch(() => ({ rows: [] }));
+      let exists;
+      try {
+        exists = await db.query(
+          `SELECT id, number FROM contracts WHERE number = $1 LIMIT 1`,
+          [m.contract_number]
+        );
+      } catch (e) {
+        request.log.warn(e, 'contract exists ' + m.contract_number);
+        exists = { rows: [] };
+      }
       if (exists.rows[0]) {
-        await db.query(
-          `UPDATE mlsp_contract_meta SET contract_id = $1, updated_at = NOW() WHERE id = $2`,
-          [exists.rows[0].id, m.id]
-        ).catch(() => null);
+        try {
+          await db.query(
+            `UPDATE mlsp_contract_meta SET contract_id = $1, updated_at = NOW() WHERE id = $2`,
+            [exists.rows[0].id, m.id]
+          );
+        } catch (e) {
+          request.log.warn(e, 'meta link ' + m.contract_number);
+        }
         continue;
       }
       const ins = await db.query(
@@ -327,14 +386,19 @@ async function routes(fastify) {
       `SELECT * FROM mlsp_pass_registry
         WHERE status NOT IN ('Готова', 'Сорвана')`
     );
-    const legs = ids.length
-      ? await db.query(
-        `SELECT * FROM mlsp_transport_legs
-          WHERE employee_id = ANY($1::int[])
-            AND leg_date BETWEEN $2::date - 2 AND $3::date + 2`,
-        [ids, body.date_from || new Date(), body.date_to || body.date_from || new Date()]
-      ).catch(() => ({ rows: [] }))
-      : { rows: [] };
+    let legs = { rows: [] };
+    if (ids.length) {
+      try {
+        legs = await db.query(
+          `SELECT * FROM mlsp_transport_legs
+            WHERE employee_id = ANY($1::int[])
+              AND leg_date BETWEEN $2::date - 2 AND $3::date + 2`,
+          [ids, body.date_from || new Date(), body.date_to || body.date_from || new Date()]
+        );
+      } catch (e) {
+        console.warn('[mlsp-passes] validate legs:', e.message);
+      }
+    }
 
     const result = evaluateApplication({
       appType: body.app_type || body.type || 'flight',
@@ -504,11 +568,17 @@ async function routes(fastify) {
       .send(buf);
   });
 
-  // Preview rows (JSON table) + optional download via same builder
+  // Preview: матрица листа как после выгрузки (паритет с Excel)
   fastify.get('/applications/:id/preview', { preHandler: [fastify.requireRoles(VIEW_ROLES)] }, async (request, reply) => {
     const { rows } = await db.query(`SELECT * FROM mlsp_applications WHERE id = $1`, [request.params.id]);
     if (!rows[0]) return reply.code(404).send({ error: 'Не найдено' });
     const app = rows[0];
+    const meta = await loadContractMeta(db, app.contract_number);
+    const matrix = await buildPreviewMatrix({
+      ...app,
+      people: app.people || [],
+      contract_end: meta?.end_date
+    });
     return {
       app_type: app.app_type,
       outgoing_number: app.outgoing_number,
@@ -519,8 +589,45 @@ async function routes(fastify) {
       people: app.people,
       blocks: app.blocks,
       warnings: app.warnings,
-      fsb_form_draft: app.app_type === 'pass_fsb'
+      fsb_form_draft: app.app_type === 'pass_fsb',
+      sheet: matrix
     };
+  });
+
+  // Preview без сохранения заявки (черновик генератора)
+  fastify.post('/preview-draft', { preHandler: [fastify.requireRoles(VIEW_ROLES)] }, async (request, reply) => {
+    const body = request.body || {};
+    const ids = parseIds(body);
+    const people = await loadEmployeesRich(db, ids);
+    const missing = ids.filter((id) => !people.find((p) => p && p.id === id));
+    if (missing.length) return reply.code(400).send({ error: 'Сотрудники не найдены', missing });
+    const meta = await loadContractMeta(db, body.contract_number);
+    const app = {
+      app_type: body.app_type,
+      contract_number: body.contract_number || '',
+      curator: body.curator || meta?.curator || '',
+      ship_curator: body.ship_curator || meta?.ship_curator || body.curator || '',
+      mvz: body.mvz || meta?.mvz || '',
+      date_from: body.date_from,
+      date_to: body.date_to || null,
+      direction: body.direction || 'inbound',
+      transport: body.transport || 'plane',
+      route_text: body.route_text || '',
+      purpose_text: body.purpose_text || '',
+      subject_text: body.subject_text || '',
+      pass_kind: body.pass_kind || '',
+      outgoing_number: body.outgoing_number || null,
+      contract_end: meta?.end_date || null,
+      people: people.map((p) => ({
+        ...p,
+        curator: body.curator || meta?.curator || '',
+        contract_number: body.contract_number || '',
+        mvz: body.mvz || meta?.mvz || p.mvz || ''
+      })),
+      payload: body.payload || {}
+    };
+    const matrix = await buildPreviewMatrix(app);
+    return { sheet: matrix, people_count: people.length };
   });
 
   // Finalize MLSP pass → outgoing registry + pass registry row
@@ -746,9 +853,7 @@ async function routes(fastify) {
     return { items: rows.map((r) => ({ ...r, leg_date: ymd(r.leg_date) })) };
   });
 
-  // Import flight history from JSON body (one-shot from Excel extract)
-  fastify.post('/history/import', { preHandler: [fastify.requireRoles(WRITE_ROLES)] }, async (request) => {
-    const items = Array.isArray(request.body?.items) ? request.body.items : [];
+  async function importFlightItems(items) {
     let n = 0;
     for (const it of items) {
       const fio = it.fio;
@@ -763,7 +868,45 @@ async function routes(fastify) {
       );
       n += 1;
     }
+    return n;
+  }
+
+  // Import flight history from JSON body (one-shot from Excel extract)
+  fastify.post('/history/import', { preHandler: [fastify.requireRoles(WRITE_ROLES)] }, async (request) => {
+    const items = Array.isArray(request.body?.items) ? request.body.items : [];
+    const n = await importFlightItems(items);
     return { ok: true, inserted: n };
+  });
+
+  // Import 219 flights from seed file on disk (deployed with module)
+  fastify.post('/history/import-seed', { preHandler: [fastify.requireRoles(WRITE_ROLES)] }, async (request, reply) => {
+    const fs = require('fs');
+    const path = require('path');
+    const candidates = [
+      path.join(__dirname, '../../.deploy/mlsp-plan-extract/flights_seed.json'),
+      path.join(__dirname, '../../templates/mlsp/flights_seed.json')
+    ];
+    let items = null;
+    let used = null;
+    for (const p of candidates) {
+      if (fs.existsSync(p)) {
+        items = JSON.parse(fs.readFileSync(p, 'utf8'));
+        used = p;
+        break;
+      }
+    }
+    if (!Array.isArray(items)) {
+      return reply.code(404).send({ error: 'Файл flights_seed.json не найден на сервере' });
+    }
+    // не дублируем, если уже импортировали
+    const { rows: cnt } = await db.query(
+      `SELECT COUNT(*)::int AS n FROM mlsp_transport_legs WHERE source = 'history_import'`
+    );
+    if (cnt[0].n >= items.length) {
+      return { ok: true, inserted: 0, skipped: true, existing: cnt[0].n, file: used };
+    }
+    const n = await importFlightItems(items);
+    return { ok: true, inserted: n, file: used };
   });
 
   // Outgoing next

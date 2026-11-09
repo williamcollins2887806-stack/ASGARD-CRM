@@ -2355,19 +2355,45 @@ const start = async () => {
         try {
           // Кому слать: логины РП дежурства и руководителя тендерного отдела.
           // Настройку берём из settings, чтобы не хардкодить людей.
+          //
+          // ВНИМАНИЕ: колонка называется value_json (не value). Раньше читали
+          // `value` — запрос падал, и дайджест молча не отправлялся НИКОГДА.
           const cfg = await db.query(
-            `SELECT value FROM settings WHERE key = 'tender_digest_recipients' LIMIT 1`
+            `SELECT value_json FROM settings WHERE key = 'tender_digest_recipients' LIMIT 1`
           ).catch(() => ({ rows: [] }));
           let recipients = [];
-          const raw = cfg.rows && cfg.rows[0] && cfg.rows[0].value;
+          const raw = cfg.rows && cfg.rows[0] && cfg.rows[0].value_json;
           if (raw) {
             try {
               const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
-              recipients = Array.isArray(parsed) ? parsed.filter(Boolean) : [];
+              // Настройка может быть массивом логинов/адресов или объектом
+              // { emails: [...] } — поддерживаем оба вида.
+              if (Array.isArray(parsed)) recipients = parsed.filter(Boolean);
+              else if (parsed && Array.isArray(parsed.emails)) recipients = parsed.emails.filter(Boolean);
             } catch (_) { recipients = []; }
           }
           if (!recipients.length) {
-            // Без настроенных получателей не шлём: пустое письмо хуже молчания.
+            // Настройки нет — не молчим, а шлём текущему дежурному РП.
+            // Раньше пустой список означал «дайджест никогда не уходит», и
+            // это выглядело как «уведомления сломались».
+            try {
+              const { getCurrentDuty } = require('./services/tender-registry-helpers');
+              const duty = await getCurrentDuty(db).catch(() => null);
+              if (duty && duty.pm_user_id) {
+                const u = await db.query(
+                  `SELECT email FROM users
+                    WHERE id = $1 AND is_active
+                      AND COALESCE(btrim(email), '') <> ''
+                    LIMIT 1`,
+                  [duty.pm_user_id]
+                ).catch(() => ({ rows: [] }));
+                if (u.rows && u.rows[0] && u.rows[0].email) recipients = [u.rows[0].email];
+              }
+            } catch (_) { /* остаёмся без получателей */ }
+          }
+          if (!recipients.length) {
+            // Действительно некому: ни настройки, ни дежурного с почтой.
+            fastify.log.warn('[TenderDigest] нет получателей — настройте tender_digest_recipients');
             return;
           }
           await digestRunner.runDigest({
