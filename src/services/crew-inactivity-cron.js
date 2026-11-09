@@ -1,7 +1,7 @@
 'use strict';
 
 /**
- * Crew inactivity cron
+ * Crew inactivity cron (warn-only)
  * ─────────────────────────────────────────────────────────────
  * Правило (МСК, ежедневно 08:00):
  *   • last_activity = MAX(последний checkin на этой работе,
@@ -9,23 +9,21 @@
  *                         date_from назначения)
  *   • idle = сегодня − last_activity
  *   • ≥25 дней без отметок → одно письмо РП со списком (warn)
- *   • ≥30 дней И уже было предупреждение ≥5 дня назад
- *       → departure_date = last_activity, is_active=false
  *
- * Безопасность первого запуска:
- *   даже если idle=100 дней, сначала ТОЛЬКО письмо; убытие — не раньше
- *   чем через (30−25)=5 дней после warned_at. Массового сноса в день деплоя нет.
+ * Автоснятие по простою ОТКЛЮЧЕНО (2026-11): людей без смен, но без
+ * признака отъезда, с бригады не снимаем. Снятие — только по отъезду
+ * (crew-travel-depart-cron: to_site + from_site, охлаждение 2 суток).
  *
  * Закрытые/отменённые работы не трогаем.
- * Работы site_category='mlsp' не трогаем (вахта 45 суток — mlsp_stays).
+ * Работы site_category='mlsp' не трогаем (вахта — mlsp_stays).
  */
 
 const cron = require('node-cron');
 const { notClosedSql } = require('../helpers/work-status');
 
 const WARN_DAYS = 25;
-const DEPART_DAYS = 30;
-const WARN_TO_DEPART_GAP = DEPART_DAYS - WARN_DAYS; // 5
+/** @deprecated автоснятие выключено; константа оставлена для совместимости логов/тестов */
+const DEPART_DAYS = null;
 
 let _task = null;
 
@@ -34,14 +32,39 @@ function start(db, log) {
   _task = cron.schedule('0 8 * * *', () => {
     run(db, log).catch((e) => log.error('[crew-inactivity] ' + (e && e.message)));
   }, { timezone: 'Europe/Moscow' });
-  log.info(`[crew-inactivity] Started — daily 08:00 MSK (warn ${WARN_DAYS}d / depart ${DEPART_DAYS}d)`);
+  log.info(`[crew-inactivity] Started — daily 08:00 MSK (warn-only ${WARN_DAYS}d, no auto-depart)`);
 }
 
 function stop() {
   if (_task) { _task.stop(); _task = null; }
 }
 
-async function sendEmailSafe(db, log, payload) {
+function fmtRuDate(d) {
+  const s = d == null ? '' : String(d).slice(0, 10);
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(s);
+  if (m) return `${m[3]}.${m[2]}.${m[1]}`;
+  try {
+    const dt = d instanceof Date ? d : new Date(d);
+    if (!Number.isNaN(dt.getTime())) {
+      const dd = String(dt.getDate()).padStart(2, '0');
+      const mm = String(dt.getMonth() + 1).padStart(2, '0');
+      const yy = dt.getFullYear();
+      return `${dd}.${mm}.${yy}`;
+    }
+  } catch (_) { /* ignore */ }
+  return s || '—';
+}
+
+function isTestDbName() {
+  const name = String(process.env.DB_NAME || process.env.PGDATABASE || '');
+  return /_test$/i.test(name) || process.env.CREW_INACTIVITY_NO_EMAIL === '1';
+}
+
+async function sendEmailSafe(db, log, payload, opts = {}) {
+  if (opts.noEmail || isTestDbName()) {
+    log?.info?.(`[crew-inactivity] email skipped (test/noEmail): ${payload && payload.subject}`);
+    return { skipped: true };
+  }
   try {
     const { sendCrmEmail } = require('./crm-mailer');
     await sendCrmEmail(db, null, payload);
@@ -50,7 +73,6 @@ async function sendEmailSafe(db, log, payload) {
   }
 }
 
-/** Сбросить предупреждение, если снова появились отметки (idle < WARN). */
 /** Работы МЛСП (site_category) не трогаем — вахта 45 суток отдельно (mlsp_stays). */
 const NOT_MLSP = `
   AND NOT EXISTS (
@@ -138,17 +160,16 @@ async function loadIdleCrew(db) {
   return rows;
 }
 
-async function run(db, log) {
+async function run(db, log, opts = {}) {
   await clearStaleWarnings(db, log);
   const rows = await loadIdleCrew(db);
   if (!rows.length) {
-    log.info('[crew-inactivity] nothing to warn/depart');
+    log.info('[crew-inactivity] nothing to warn');
     return { warned: 0, departed: 0 };
   }
 
   const toWarn = rows.filter((r) => !r.inactivity_warned_at);
 
-  // ── WARN: группируем по РП ──
   const byPm = new Map();
   for (const r of toWarn) {
     const key = r.pm_id || 0;
@@ -166,7 +187,7 @@ async function run(db, log) {
   let warned = 0;
   for (const group of byPm.values()) {
     const lines = group.items.map((r) =>
-      `• ${r.fio} — «${r.work_title || ('#' + r.work_id)}»: нет отметок ${r.idle_days} дн. (последняя ${r.last_activity})`
+      `• ${r.fio} — «${r.work_title || ('#' + r.work_id)}»: нет отметок ${r.idle_days} дн. (последняя ${fmtRuDate(r.last_activity)})`
     );
     const subject = `[АСГАРД] Нет отметок в табеле ≥${WARN_DAYS} дн. — ${group.items.length} чел.`;
     const text =
@@ -174,8 +195,9 @@ async function run(db, log) {
       `У персонала на ваших объектах нет отметок в табеле ${WARN_DAYS}+ дней:\n\n` +
       lines.join('\n') +
       `\n\nПроставьте смены/дорогу в полевом табеле или «Мой табель».\n` +
-      `Если за ${DEPART_DAYS} дней с последней отметки отметок не будет — ` +
-      `система снимет их с бригады (дата убытия = дата последней отметки).\n\n` +
+      `Система НЕ снимает людей с бригады только из‑за отсутствия смен.\n` +
+      `Автоснятие — только если в табеле есть заезд и отъезд (дорога/корабль/вертолёт) и прошло 2 дня без смен.\n` +
+      `Городской объект / добрался сам — снимите вручную: полевой модуль → Бригада → Отъезд.\n\n` +
       `— АСГАРД CRM`;
 
     if (group.pm_email) {
@@ -184,7 +206,7 @@ async function run(db, log) {
         subject,
         text,
         html: `<p>${text.replace(/\n/g, '<br>')}</p>`
-      });
+      }, opts);
     } else {
       log.warn(`[crew-inactivity] PM ${group.pm_name} (id=${group.pm_id}) has no email — warn logged only`);
     }
@@ -200,14 +222,13 @@ async function run(db, log) {
     `, [ids]);
     warned += ids.length;
 
-    // in-app notification
     if (group.pm_id) {
       try {
         const { createNotification } = require('./notify');
         await createNotification(db, {
           user_id: group.pm_id,
           title: `Нет отметок ≥${WARN_DAYS} дн.`,
-          message: `${group.items.length} чел. без отметок. Через ${WARN_TO_DEPART_GAP} дн. после письма — авто-убытие.`,
+          message: `${group.items.length} чел. без отметок. Автоснятие по простою выключено — проверьте бригаду.`,
           type: 'crew',
           link: '#/pm-works'
         });
@@ -215,68 +236,8 @@ async function run(db, log) {
     }
   }
 
-  // ── DEPART: только после warn + gap, idle≥DEPART_DAYS ──
-  const { rows: departedRows } = await db.query(`
-    WITH active AS (
-      SELECT ea.id, ea.employee_id, ea.work_id, ea.date_from, ea.created_at::date AS created,
-             ea.inactivity_warned_at,
-             COALESCE(e.fio, e.full_name) AS fio,
-             w.work_title
-      FROM employee_assignments ea
-      JOIN works w ON w.id = ea.work_id
-      JOIN employees e ON e.id = ea.employee_id
-      WHERE COALESCE(ea.is_active, true) = true
-        AND ea.departure_date IS NULL
-        AND ea.inactivity_warned_at IS NOT NULL
-        AND ea.inactivity_warned_at::date <= (CURRENT_DATE - $1::int)
-        AND w.deleted_at IS NULL
-        AND ${notClosedSql('w.work_status')}
-        ${NOT_MLSP}
-    ),
-    marked AS (
-      SELECT a.*,
-             GREATEST(
-               COALESCE((
-                 SELECT MAX(fc.date)::date FROM field_checkins fc
-                  WHERE fc.employee_id = a.employee_id AND fc.work_id = a.work_id
-                    AND fc.status = 'completed'
-               ), '1900-01-01'::date),
-               COALESCE((
-                 SELECT MAX(COALESCE(fts.date_to, fts.date_from))::date
-                   FROM field_trip_stages fts
-                  WHERE fts.employee_id = a.employee_id AND fts.work_id = a.work_id
-                    AND COALESCE(fts.status, 'active') NOT IN ('rejected', 'cancelled')
-               ), '1900-01-01'::date),
-               COALESCE(a.date_from, a.created)
-             ) AS last_activity
-      FROM active a
-    )
-    UPDATE employee_assignments ea
-       SET departure_date = m.last_activity,
-           departure_reason = COALESCE(ea.departure_reason,
-             'Авто: нет отметок ≥' || $2::text || ' дн. (последняя отметка ' || m.last_activity::text || ')'),
-           is_active = false,
-           inactivity_auto_departed_at = NOW(),
-           updated_at = NOW()
-      FROM marked m
-     WHERE ea.id = m.id
-       AND (CURRENT_DATE - m.last_activity) >= $2
-    RETURNING ea.id, ea.employee_id, ea.work_id, ea.departure_date, m.fio, m.work_title
-  `, [WARN_TO_DEPART_GAP, DEPART_DAYS]);
-
-  for (const d of departedRows) {
-    log.info(`[crew-inactivity] auto-depart ${d.fio} work#${d.work_id} dep=${d.departure_date}`);
-    try {
-      await db.query(`
-        UPDATE employees
-           SET readiness_status = 'unknown', readiness_updated_at = NOW()
-         WHERE id = $1 AND COALESCE(readiness_status,'') IN ('on_site','')
-      `, [d.employee_id]);
-    } catch (_) { /* ignore */ }
-  }
-
-  log.info(`[crew-inactivity] done warned=${warned} departed=${departedRows.length}`);
-  return { warned, departed: departedRows.length };
+  log.info(`[crew-inactivity] done warned=${warned} departed=0 (warn-only)`);
+  return { warned, departed: 0 };
 }
 
 module.exports = {

@@ -1026,6 +1026,7 @@ window.AsgardPersonnelPage = (function () {
             <button class="btn ghost" id="prs_bc_open" type="button" title="Корзина бригады">
               Корзина<span id="prs_bc_badge" class="bc-badge" hidden>0</span>
             </button>
+            <a class="btn primary" href="#/mlsp-passes" id="prs_mlsp_passes" title="Заявки на перелёт, корабль и пропуска · реестр SLA">МЛСП · пропуска</a>
             <button class="btn ghost" id="prs_mlsp_export" type="button" title="Excel перевахтовки за период">Excel перевахтовка</button>
             <button class="btn ghost" id="prs_btnSchedule">График</button>
           </div>

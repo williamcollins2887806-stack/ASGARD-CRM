@@ -2112,6 +2112,11 @@ window.AsgardRpCalcModal = (function () {
           if (PCT_KEYS[key]) v = v / 100;
           state.estimate.params = state.estimate.params || {};
           state.estimate.params[key] = v;
+          // Ручной выбор наценки помечаем флагом. Без него бэкенд не отличает
+          // «РП выбрал 1.5» от «пришёл дефолт 1.5» и подменяет выбор ступенью.
+          if (key === 'markup' || key === 'markup_multiplier') {
+            state.estimate.params.markup_chosen = 1;
+          }
         };
         // На «input» — мгновенный локальный пересчёт, на «change»/blur — полная перерисовка.
         // Раньше был только «change», поэтому смета «не считалась», пока не уйдёшь из поля (D-186).

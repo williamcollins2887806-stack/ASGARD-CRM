@@ -167,10 +167,14 @@ function normalizeSchedule(schedule, params) {
     : [];
   return {
     start_plan: normalizeIsoDate(s.start_plan) || normalizeIsoDate(params && params.start_plan) || null,
-    work_days: num(s.work_days, 0) || null,
-    trip_count: num(s.trip_count, 0) || null,
+    // Срок берём и из params: модалка хранит его там (work_days), а объект
+    // schedule часто пустой. Без этой подстановки график во ВСЕХ сметах
+    // оказывался с work_days: null — карточка просчёта показывала «срок не
+    // задан», хотя срок посчитан и лежит в params (найдено 09.11.2026).
+    work_days: num(s.work_days, 0) || num(params && params.work_days, 0) || null,
+    trip_count: num(s.trip_count, 0) || num(params && params.trip_count, 0) || null,
     shift_mode: normalizeShiftMode(s.shift_mode) || normalizeShiftMode(params && params.shifts_per_day) || '',
-    shift_hours: num(s.shift_hours, 0) || null,
+    shift_hours: num(s.shift_hours, 0) || num(params && params.shift_hours, 0) || null,
     trips
   };
 }
@@ -612,6 +616,23 @@ function mergeSkeletonRows(rows) {
  * @param {number} cost — себестоимость в рублях
  * @returns {number} коэффициент наценки
  */
+/**
+ * Наценка 1.5 из старого дефолта против осознанного выбора.
+ *
+ * Старый фронт подставлял markup: 1.5 в params автоматически. Отличить это
+ * от «РП решил взять 1.5» по величине нельзя, поэтому договорились о флаге:
+ * модалка, где РП реально выбирает наценку, ставит markup_chosen: 1.
+ *
+ * @param {object} rawParams
+ * @returns {boolean} true — это наследие, а не решение человека
+ */
+function isLegacyDefaultMarkup(rawParams) {
+  const p = rawParams || {};
+  if (num(p.markup_chosen, 0) > 0) return false;
+  const v = num(p.markup != null ? p.markup : p.markup_multiplier, 0);
+  return Math.abs(v - 1.5) < 0.001;
+}
+
 function tieredMarkup(cost) {
   const c = Number(cost) || 0;
   if (c <= 0) return 1.5;
@@ -652,7 +673,18 @@ function recalcAsgardSmeta(estimate) {
   // Замок: наценка уже посчитана при прошлом пересчёте — не пересчитываем,
   // иначе цена «плывёт» между карточкой и письмом.
   const lockedMarkup = num(rawParams.markup_locked, 0) > 0;
-  const hasExplicit = lockedMarkup || (hasMarkupKey && explicitMarkup > 0);
+  // ── Дефолт старого кода — НЕ ручной ввод ────────────────────────────────
+  // Историческая причина массовой недооценки (09.11.2026): старый фронт
+  // подставлял в params дефолт `markup: 1.5`. Бэкенд видел ключ и считал это
+  // выбором РП, поэтому ступень не применялась: 16 из 20 смет с
+  // себестоимостью < 5 млн шли по 1.5 вместо 1.75 — недобор до 1 млн на смету.
+  //
+  // Важно не перепутать это с ОСОЗНАННЫМ 1.5: тест-эталон Киров Тайр задаёт
+  // markup: 1.5 руками и требует именно его. Отличить можно по флагу: фронт,
+  // который реально даёт РП выбрать наценку, ставит `markup_chosen: 1`.
+  // Наследие старого кода такого флага не ставит — и получает ступень.
+  const chosenByHuman = num(rawParams.markup_chosen, 0) > 0;
+  const hasExplicit = lockedMarkup || chosenByHuman || (hasMarkupKey && explicitMarkup > 0 && !isLegacyDefaultMarkup(rawParams));
 
   est.params = mergeParams(est.params);
   const p = est.params;
@@ -772,7 +804,9 @@ function recalcAsgardSmeta(estimate) {
   // пересчёт сохранённой сметы заново решал бы ступень и цена «плыла»
   // (найдено верификатором: расхождение 307 548 ₽ между карточкой и письмом).
   est.params.markup = effectiveMarkup;
-  est.params.markup_locked = 1;
+  // Замок ставим ТОЛЬКО когда наценку выбрал человек. Для ступени замка нет:
+  // иначе дефолт застывает и при изменении себестоимости ступень не пересчитать.
+  if (hasExplicit) est.params.markup_locked = 1;
   const priceNoVat = Math.round(
     (materials * pM.material_markup + equipment + (cost - materials - equipment) * pM.markup) * 100
   ) / 100;

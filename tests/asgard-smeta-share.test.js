@@ -286,7 +286,7 @@ check('регресс Киров Тайр (реестр 1229): движок во
   // Маржа 50%; на оборудование наценка НЕ начисляется (см. отдельный кейс).
   const est = server.recalcAsgardSmeta({
     template: 'asgard_v1',
-    params: { markup: 1.5, material_markup: 1, fot_tax: 0.55, overhead: 0.10, contingency: 0.05, vat: 0.22 }
+    params: { markup: 1.5, markup_chosen: 1, material_markup: 1, fot_tax: 0.55, overhead: 0.10, contingency: 0.05, vat: 0.22 }
   });
   est.rows.forEach((r) => {
     if (r.kind !== 'line') return;
@@ -358,7 +358,7 @@ check('чистая прибыль и прибыль на чел·смену: д
   const est = server.recalcAsgardSmeta({
     template: 'asgard_v1',
     params: {
-      markup: 1.5, material_markup: 1, fot_tax: 0, overhead: 0, contingency: 0, vat: 0.22, income_tax: 0.25,
+          markup: 1.5, markup_chosen: 1, material_markup: 1, fot_tax: 0, overhead: 0, contingency: 0, vat: 0.22, income_tax: 0.25,
       work_days: 10, shifts_per_day: 2, workers_per_shift: 2, masters_per_shift: 1
     }
   });
@@ -384,7 +384,7 @@ check('ставка налога на прибыль настраивается 
   const mk = (incomeTax) => {
     const est = server.recalcAsgardSmeta({
       template: 'asgard_v1',
-      params: { markup: 1.5, material_markup: 1, fot_tax: 0, overhead: 0, contingency: 0, vat: 0.22, income_tax: incomeTax }
+      params: { markup: 1.5, markup_chosen: 1, material_markup: 1, fot_tax: 0, overhead: 0, contingency: 0, vat: 0.22, income_tax: incomeTax }
     });
     est.rows.forEach((r) => {
       if (r.kind !== 'line') return;
@@ -405,7 +405,7 @@ check('ставка «25» (проценты) и «0.25» (доля) дают о
   const mk = (v) => {
     const est = server.recalcAsgardSmeta({
       template: 'asgard_v1',
-      params: { markup: 1.5, material_markup: 1, fot_tax: 0, overhead: 0, contingency: 0, vat: 0.22, income_tax: v }
+      params: { markup: 1.5, markup_chosen: 1, material_markup: 1, fot_tax: 0, overhead: 0, contingency: 0, vat: 0.22, income_tax: v }
     });
     est.rows.forEach((r) => {
       if (r.kind !== 'line') return;

@@ -1637,12 +1637,12 @@ try {
   fastify.log.warn('[ReadinessCron] Init skipped: ' + cronErr.message);
 }
 
-// ── Crew inactivity: 5d warn email to PM / 7d auto-depart (date = last mark) ──
+// ── Crew inactivity: warn-only ≥25d email to PM (автоснятие по простою выкл.) ──
 try {
   const crewInactivityCron = require('./services/crew-inactivity-cron');
   fastify.addHook('onReady', async () => {
     crewInactivityCron.start(fastify.db, fastify.log);
-    fastify.log.info('[CrewInactivity] Cron started (warn 5d / depart 7d MSK 08:00)');
+    fastify.log.info('[CrewInactivity] Cron started (warn-only 25d MSK 08:00, no auto-depart)');
   });
   fastify.addHook('onClose', async () => {
     crewInactivityCron.stop();
@@ -1651,12 +1651,26 @@ try {
   fastify.log.warn('[CrewInactivity] Init skipped: ' + cronErr.message);
 }
 
+// ── Crew travel-depart: to_site+from_site, cool 2d → departure_date = дата отъезда ──
+try {
+  const crewTravelDepartCron = require('./services/crew-travel-depart-cron');
+  fastify.addHook('onReady', async () => {
+    crewTravelDepartCron.start(fastify.db, fastify.log);
+    fastify.log.info('[CrewTravelDepart] Cron started (to_site+from_site cool 2d MSK 08:10)');
+  });
+  fastify.addHook('onClose', async () => {
+    crewTravelDepartCron.stop();
+  });
+} catch (cronErr) {
+  fastify.log.warn('[CrewTravelDepart] Init skipped: ' + cronErr.message);
+}
+
 // ── MLSP stay: reconcile + notify 14/7 days before planned depart (08:05 MSK) ──
 try {
   const mlspStayCron = require('./services/mlsp-stay-cron');
   fastify.addHook('onReady', async () => {
     mlspStayCron.start(fastify.db, fastify.log);
-    fastify.log.info('[MlspStay] Cron started (reconcile + notify 14/7 MSK 08:05)');
+    fastify.log.info('[MlspStay] Cron started (reconcile + notify 14/7 MSK 08:05; auto closes assignment)');
   });
   fastify.addHook('onClose', async () => {
     mlspStayCron.stop();

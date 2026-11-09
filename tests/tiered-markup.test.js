@@ -102,6 +102,30 @@ check('явная настройка mark имеет приоритет над �
     'явный коэффициент не применился: ' + est.totals.markup);
 });
 
+check('дефолт 1.5 из старого кода не считается ручным выбором', () => {
+  // 16 из 20 смет на проде шли по 1.5 при себестоимости < 5 млн вместо 1.75.
+  // Проверяем рабочий код: есть предикат наследия и он участвует в hasExplicit.
+  assert.ok(/function isLegacyDefaultMarkup/.test(src), 'нет предиката isLegacyDefaultMarkup');
+  assert.ok(/isLegacyDefaultMarkup\(rawParams\)/.test(src), 'предикат не используется в hasExplicit');
+});
+
+check('явный выбор 1.5 (markup_chosen) уважается', () => {
+  assert.ok(/markup_chosen/.test(src), 'нет флага ручного выбора markup_chosen');
+});
+
+check('ступень не ставит замок — цена пересчитается при новой себестоимости', () => {
+  // Замок только для явного выбора: иначе дефолт застывает.
+  assert.ok(/if \(hasExplicit\) est\.params\.markup_locked = 1/.test(src),
+    'замок ставится безусловно — наценка застынет');
+});
+
+check('модалка помечает ручной выбор наценки', () => {
+  const modal = fs.readFileSync(
+    path.join(__dirname, '..', 'public', 'assets', 'js', 'rp_calc_modal.js'), 'utf8'
+  );
+  assert.ok(/markup_chosen = 1/.test(modal), 'модалка не ставит флаг выбора наценки');
+});
+
 const failed = results.filter((r) => !r.ok);
 console.log('');
 console.log('итог: ' + (results.length - failed.length) + ' PASS, ' + failed.length + ' FAIL');

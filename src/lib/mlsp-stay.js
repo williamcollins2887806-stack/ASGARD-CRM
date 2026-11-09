@@ -4,19 +4,22 @@
  * MLSP stay (вахта) — непрерывное пребывание на платформе, 45 суток на отрезок.
  * Один открытый stay на человека. Не путать с employee_assignments.departure_date.
  *
- * 2026-09-01: вахта режется дорогой домой (from_site). Назначение на работу
- * снимает только ручной «Съехал». Август Горшков/Романов — ждать табель.
+ * 2026-09-01: вахта режется дорогой домой (from_site).
+ * 2026-11: автовыезд (auto_travel) закрывает и stay, и assignment на МЛСП.
+ * Ручной «Съехал» — по-прежнему закрывает оба.
  *
  * Заезд: первая completed смена day/night на работе site_category='mlsp'
  *        после даты последнего съезда (не по updated_at смены — иначе бэкфилл
  *        не откроет новую вахту по старым отметкам).
  * Плановый вывоз: arrived_at + 44 (день заезда = 1, вывоз в день 45).
- * Автозакрытие stay:
+ * Автозакрытие stay + assignment (с 2026-11):
  *   A) явный from_site (travel|ship|helicopter), охлаждение 1 сутки
  *      (и дата этапа, и день создания отметки < сегодня) — даже если потом
  *      снова были смены: stay закрывается, следующая смена открывает новый.
  *   B) ship/helicopter без direction после последней смены, без возврата,
  *      то же охлаждение 1 сутки.
+ * При автовыезде закрываем и employee_assignments на МЛСП-работах
+ * (reason «Авто: выезд с МЛСП…») — иначе человек висит в бригаде.
  * Этапы без work_id (ставит Хосе) учитываем; если work_id задан — только МЛСП.
  * to_site никогда не закрывает вахту.
  */
@@ -238,11 +241,13 @@ async function maybeFillInboundTransport(db, stay) {
  */
 async function closeMlspAssignments(db, employeeId, departureDate, reason) {
   const dep = ymd(departureDate) || new Date().toISOString().slice(0, 10);
+  const isAuto = /^Авто:\s*выезд с МЛСП/i.test(String(reason || ''));
   const { rows } = await db.query(`
     UPDATE employee_assignments ea
        SET departure_date = $2::date,
            departure_reason = COALESCE($3, ea.departure_reason),
            is_active = false,
+           inactivity_auto_departed_at = CASE WHEN $4::boolean THEN NOW() ELSE inactivity_auto_departed_at END,
            updated_at = NOW()
       FROM field_project_settings fps
      WHERE ea.work_id = fps.work_id
@@ -251,7 +256,7 @@ async function closeMlspAssignments(db, employeeId, departureDate, reason) {
        AND COALESCE(ea.is_active, true) = true
        AND ea.departure_date IS NULL
     RETURNING ea.id, ea.work_id
-  `, [employeeId, dep, reason || null]);
+  `, [employeeId, dep, reason || null, isAuto]);
 
   try {
     await db.query(`
@@ -315,10 +320,13 @@ async function departStay(db, stayId, actualDepartedAt, source, opts = {}) {
   const stay = rows[0];
   if (!stay) throw new Error('Stay не найден или уже закрыт');
 
-  const closeAssignments = opts.closeAssignments === true || source === 'manual';
+  // auto_travel тоже закрывает assignment — иначе человек висит в бригаде после съезда.
+  const closeAssignments = opts.closeAssignments === true
+    || source === 'manual'
+    || source === 'auto_travel';
   const reason = source === 'manual'
     ? (opts.reason || 'Съехал с МЛСП')
-    : (opts.reason || 'Авто: дорога домой (вахта закрыта, назначение не снимаем)');
+    : (opts.reason || 'Авто: выезд с МЛСП (дорога домой)');
 
   const closed = closeAssignments
     ? await closeMlspAssignments(db, stay.employee_id, dep, reason)
@@ -627,8 +635,8 @@ async function tryAutoDepart(db, stay, log) {
     const travelDate = ymd(home.date_from);
     await departStay(db, stay.id, travelDate, 'auto_travel', {
       transport: transportOfStage(home),
-      closeAssignments: false,
-      reason: 'Авто: дорога домой (вахта закрыта, назначение не снимаем)',
+      closeAssignments: true,
+      reason: 'Авто: выезд с МЛСП (дорога домой)',
       log
     });
     log?.info?.(`[mlsp-stay] home-split emp#${stay.employee_id} dep=${travelDate} stage#${home.id}`);
@@ -664,8 +672,8 @@ async function tryAutoDepart(db, stay, log) {
 
   await departStay(db, stay.id, travelDate, 'auto_travel', {
     transport: transportOfStage(travel),
-    closeAssignments: false,
-    reason: 'Авто: вывоз (судно/вертолёт), назначение не снимаем',
+    closeAssignments: true,
+    reason: 'Авто: выезд с МЛСП (вывоз судно/вертолёт)',
     log
   });
   log?.info?.(`[mlsp-stay] auto-depart emp#${stay.employee_id} dep=${travelDate}`);
@@ -816,6 +824,7 @@ module.exports = {
   extendStay,
   reopenAutoStay,
   closeMlspAssignments,
+  reopenMlspAssignments,
   reconcileStays,
   tryAutoDepart,
   backfillClosedStaySplits,

@@ -954,6 +954,20 @@ function normalizeDv(ai, catalog) {
   return {
     decision_recommend: ['go', 'no_go', 'need_info'].includes(raw.decision_recommend)
       ? raw.decision_recommend : 'need_info',
+    // ── МТР: модель предлагает расходники по документам ──────────────────
+    // Промпт просит `mtr_suggestions`, модалка анализа их ждёт и раскладывает
+    // в техплан, но ЭТА функция их выбрасывала: РП видел «Перечень не
+    // заполнен» на каждом тендере (найдено 09.11.2026). Нормализуем здесь,
+    // чтобы контракт промпт → БД → модалка был замкнут.
+    mtr_suggestions: (Array.isArray(raw.mtr_suggestions) ? raw.mtr_suggestions : [])
+      .filter((m) => m && String(m.name || '').trim())
+      .map((m) => ({
+        name: String(m.name).trim().slice(0, 200),
+        qty: Number(m.qty) > 0 ? Number(m.qty) : null,
+        unit: String(m.unit || '').trim().slice(0, 20) || null,
+        purpose: String(m.purpose || '').trim().slice(0, 200) || null,
+        source: String(m.source || '').toLowerCase() === 'typical' ? 'typical' : 'doc'
+      })),
     // Поля для карточки ТО. Раньше промпт их не просил, и РП видел пустые
     // «Суть для ТО», «Риски», «Выполнимость» — приходилось заполнять руками.
     summary: String(raw.summary || '').trim() || null,
