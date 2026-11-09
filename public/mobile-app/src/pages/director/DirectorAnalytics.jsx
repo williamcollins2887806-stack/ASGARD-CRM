@@ -75,6 +75,7 @@ const CHANNELS = {
 
 const TENDER_TABS = [
   { id: 'summary', label: 'Сводка' },
+  { id: 'analysis', label: 'Анализ' },
   { id: 'calc', label: 'Просчёт РП' },
   { id: 'estimate', label: 'Смета' },
   { id: 'checklist', label: 'Чек-лист' },
@@ -1707,6 +1708,86 @@ function TenderTabs({ d, tab }) {
               ['Маржа', est.margin_pct != null ? pct(est.margin_pct) : '—'],
               ['НДС 20 %', formatMoneyShort(est.vat)],
             ]}
+          />
+        )}
+      />
+    );
+  }
+
+  if (tab === 'analysis') {
+    // Вкладка «Анализ»: что модель разобрала до просчёта. Директор судит
+    // по обоснованию, а не только по цене: источник объёмов, уверенность,
+    // состав работ и проблемы.
+    const rj = detail?.rp_review?.report_json || {};
+    const rep = typeof rj === 'string' ? (() => { try { return JSON.parse(rj); } catch (_) { return {}; } })() : rj;
+    const SOURCE = {
+      vor: 'ведомость объёмов', tz: 'техническое задание', tz_labor: 'трудоёмкость из ТЗ',
+      defect_act: 'дефектный акт', passport: 'паспорт оборудования',
+      web: 'открытые данные', expert: 'оценка специалиста', manual: 'введено РП',
+    };
+    const facts = [];
+    if (rep.volume_source) facts.push(['Источник объёмов', SOURCE[rep.volume_source] || String(rep.volume_source)]);
+    if (rep.confidence != null) {
+      const c = Number(rep.confidence);
+      const w = c >= 0.8 ? 'высокая' : (c >= 0.5 ? 'средняя' : 'низкая');
+      facts.push(['Уверенность разбора', Number.isFinite(c) ? `${w} (${Math.round(c * 100)} %)` : String(rep.confidence)]);
+    }
+    if (rep.expected_rows) facts.push(['Позиций в документах', String(rep.expected_rows)]);
+    if (rep.found_positions) facts.push(['Найдено', String(rep.found_positions)]);
+    if (rep.incomplete) facts.push(['Разбор', 'неполный']);
+    if (rep.history_count) facts.push(['Прошлых тендеров', String(rep.history_count)]);
+
+    const works = Array.isArray(rep.works) ? rep.works
+      : (Array.isArray(rep.dv_positions) ? rep.dv_positions : []);
+    const problems = Array.isArray(rep.problems) ? rep.problems.filter(Boolean) : [];
+
+    if (!facts.length && !works.length) return <EmptyHint>Анализ ещё не проводился.</EmptyHint>;
+
+    return (
+      <Split
+        main={(
+          <>
+            <Block title="Анализ тендера">
+              <div className="jp-kv">
+                {facts.map((f, i) => (
+                  <div key={i} className="jp-kv-row">
+                    <span className="jp-kv-k">{f[0]}</span>
+                    <span className="jp-kv-v">{f[1]}</span>
+                  </div>
+                ))}
+              </div>
+            </Block>
+            {works.length > 0 && (
+              <Block title={`Состав работ · ${works.length}`}>
+                <div className="jp-checklist">
+                  {works.slice(0, 30).map((w, i) => (
+                    <div key={i} className="jp-check-item">
+                      <span className="jp-check-txt">{w.name || '—'}</span>
+                      <span className="jp-check-when">
+                        {w.volume != null ? String(w.volume) : '—'} {w.unit || ''}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </Block>
+            )}
+            {problems.length > 0 && (
+              <Block title="Требует внимания" right={<span className="jp-badge tone-warn">{problems.length}</span>}>
+                <ul className="jp-problems">
+                  {problems.map((p, i) => {
+                    const text = typeof p === 'string' ? p : (p && (p.text || p.message || p.name)) || '';
+                    return text ? <li key={i}>{text}</li> : null;
+                  })}
+                </ul>
+              </Block>
+            )}
+          </>
+        )}
+        side={(
+          <SideCard
+            cap="Разбор"
+            value={rep.incomplete ? 'неполный' : (rep.found_positions ? 'полный' : '—')}
+            sub={rep.incomplete ? 'часть строк могла не попасть' : 'все найденные строки учтены'}
           />
         )}
       />

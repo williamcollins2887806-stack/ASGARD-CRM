@@ -55,6 +55,18 @@ async function createNotification(db, { user_id, title, message, type, link }) {
     // Блок удалён, чтобы не создавать ложное впечатление доставки в Telegram.
 
     // Push notification (web-push)
+    //
+    // ── Режим дайджеста для тендеров ──────────────────────────────────────
+    // Раньше push уходил на КАЖДОЕ уведомление: 14 тендеров × 4 события =
+    // десятки пушей в день, и РП перестал их замечать. Для тендерных событий
+    // push теперь не отправляется — они уходят ОДНИМ пушем в дайджесте
+    // (tender-digest-runner, окна 09–10 и 17–18 МСК).
+    //
+    // Остальные уведомления (задачи, заявки, касса) работают как раньше:
+    // там важна мгновенность.
+    const isTenderDigestEvent = /^tender[_:]/i.test(String(type || ''))
+      || type === 'tender_analysis' || type === 'tender_calc' || type === 'tender_deadline';
+    if (!isTenderDigestEvent) {
     try {
       // Get unread count for badge
       const countRes = await db.query(
@@ -107,6 +119,7 @@ async function createNotification(db, { user_id, title, message, type, link }) {
     } catch (e) {
       // Push may not be configured
     }
+    }  // конец «не тендерное событие»
   } catch (e) {
     console.error('[notify] Error:', e.message);
   }

@@ -330,6 +330,7 @@ console.log('[ASGARD] Global period functions loaded');
 
     // ── ПЕРСОНАЛ ──
     {r:"/personnel",l:"Дружина",d:"Сотрудники",roles:["ADMIN","HR","HR_MANAGER","PM","HEAD_PM","TO","HEAD_TO","OFFICE_MANAGER",...DIRECTOR_ROLES],i:"workers",p:"personnel",g:"personnel"},
+    {r:"/mlsp-passes",l:"МЛСП · пропуска",d:"Генератор бланков, реестр SLA, сводка рейсов",roles:["ADMIN","HR","HR_MANAGER","OFFICE_MANAGER","PM","HEAD_PM","TO","HEAD_TO",...DIRECTOR_ROLES],i:"travel",p:"mlsp_passes",g:"personnel"},
     {r:"/hr-requests",l:"Заявки персонала",d:"HR-заявки",roles:["ADMIN","HR","HR_MANAGER",...DIRECTOR_ROLES],i:"workers",p:"hr_requests",g:"personnel"},
     {r:"/collections",l:"Подборки дружины",d:"Именные списки сотрудников",roles:["ADMIN","HR","HR_MANAGER",...DIRECTOR_ROLES],i:"workers",p:"personnel",g:"personnel"},
     {r:"/permits",l:"Разрешения и допуски",d:"Сроки действия, матрица",roles:["ADMIN","HR","HR_MANAGER","TO","HEAD_TO","PM","CHIEF_ENGINEER",...DIRECTOR_ROLES],i:"workers",p:"permits",g:"personnel"},
@@ -647,7 +648,7 @@ try{
     // ═══════════════════════════════════════════════════════════════
     // MOBILE V2 (LEGACY) — полностью отдельный UI при ≤768px
     // ═══════════════════════════════════════════════════════════════
-    const mobileV2Routes = new Set(['/welcome','/login','/register','/home','/dashboard','/my-dashboard','/big-screen','/engineer-dashboard','/pre-tenders','/funnel','/tenders','/customers','/customer','/tkp','/calculator','/pm-calcs','/to-calcs','/head-to-approvals','/approvals','/bonus-approval','/pm-works','/all-works','/all-estimates','/gantt','/gantt-calcs','/gantt-works','/gantt-objects','/kanban','/tasks','/tasks-admin','/pm-consents','/finances','/billing','/invoices','/acts','/buh-registry','/office-expenses','/cash','/cash-admin','/payroll','/payroll-sheet','/payroll-grid','/my-timesheet','/timesheet','/timesheet-warehouse','/timesheet-medical','/timesheet-travel','/self-employed','/one-time-pay','/pass-requests','/procurement','/assembly','/warehouse','/my-equipment','/correspondence','/contracts','/seals','/proxies','/personnel','/employee','/hr-requests','/collections','/permits','/permit-applications','/permit-application-form','/training','/office-schedule','/workers-schedule','/hr-rating','/travel','/birthdays','/messenger','/chat','/mail','/my-mail','/mailbox','/alerts','/meetings','/telegram','/telephony','/mail-settings','/integrations','/mango','/kpi-works','/kpi-money','/to-analytics','/pm-analytics','/readiness','/readiness-board','/object-map','/calendar','/settings','/admin/timesheet-settings','/backup','/sync','/diag','/system-panel','/more','/user-requests','/reminders','/inbox-applications','/mimir','/test','/test-table']);
+    const mobileV2Routes = new Set(['/welcome','/login','/register','/home','/dashboard','/my-dashboard','/big-screen','/engineer-dashboard','/pre-tenders','/funnel','/tenders','/customers','/customer','/tkp','/calculator','/pm-calcs','/to-calcs','/head-to-approvals','/approvals','/bonus-approval','/pm-works','/all-works','/all-estimates','/gantt','/gantt-calcs','/gantt-works','/gantt-objects','/kanban','/tasks','/tasks-admin','/pm-consents','/finances','/billing','/invoices','/acts','/buh-registry','/office-expenses','/cash','/cash-admin','/payroll','/payroll-sheet','/payroll-grid','/my-timesheet','/timesheet','/timesheet-warehouse','/timesheet-medical','/timesheet-travel','/self-employed','/one-time-pay','/pass-requests','/procurement','/assembly','/warehouse','/my-equipment','/correspondence','/contracts','/seals','/proxies','/personnel','/mlsp-passes','/employee','/hr-requests','/collections','/permits','/permit-applications','/permit-application-form','/training','/office-schedule','/workers-schedule','/hr-rating','/travel','/birthdays','/messenger','/chat','/mail','/my-mail','/mailbox','/alerts','/meetings','/telegram','/telephony','/mail-settings','/integrations','/mango','/kpi-works','/kpi-money','/to-analytics','/pm-analytics','/readiness','/readiness-board','/object-map','/calendar','/settings','/admin/timesheet-settings','/backup','/sync','/diag','/system-panel','/more','/user-requests','/reminders','/inbox-applications','/mimir','/test','/test-table']);
     if (MOBILE_V2_ENABLED && _isMobile && window.App && window.M && window.DS && mobileV2Routes.has(cur)) {
       try { if (window.AsgardSessionGuard) AsgardSessionGuard.destroy(); } catch(e) {}
       window.removeEventListener('hashchange', window.__ASG_MOBILE_HASH__);
@@ -2225,6 +2226,7 @@ var _setupPinKeypad = null;
     'kanban':              'Канбан-доска',
     'one-time-pay':        'Разовые оплаты',
     'pass-requests':       'Заявки на пропуск',
+    'mlsp-passes':         'МЛСП · пропуска',
     'training':            'Обучение',
     'all-works':           'Свод Контрактов',
     'tasks-admin':         'Управление задачами',
@@ -2387,6 +2389,9 @@ var _setupPinKeypad = null;
     AsgardRouter.add("/personnel", () => {
       AsgardPersonnelPage.render({layout, title:"Дружина • Персонал"});
     }, {auth:true, roles:["ADMIN","HR","HR_MANAGER","PM","HEAD_PM","TO","HEAD_TO","OFFICE_MANAGER",...DIRECTOR_ROLES]});
+    AsgardRouter.add("/mlsp-passes", () => {
+      AsgardMlspPassesPage.render({layout, title:"МЛСП · пропуска и транспорт"});
+    }, {auth:true, roles:["ADMIN","HR","HR_MANAGER","OFFICE_MANAGER","PM","HEAD_PM","TO","HEAD_TO",...DIRECTOR_ROLES]});
     AsgardRouter.add("/hr-rating", ()=>AsgardHrRatingPage.render({layout, title:"Рейтинг Дружины"}), {auth:true, roles:["ADMIN","HR","HR_MANAGER",...DIRECTOR_ROLES]});
     AsgardRouter.add("/employee", () => {
       AsgardEmployeePage.render({layout, title:"Личное дело"});

@@ -314,6 +314,29 @@ async function saveDeferredGrant(db, email, action = 'approve', comment = null) 
  *
  * @returns {Promise<{applied:boolean, grant_id?:number, expired?:number}>}
  */
+/**
+ * Погасить просроченные отложенные «Добро» (старше TTL_HOURS).
+ * Нужен и как сайд-эффект applyPendingGrants, и как отдельный тик ReminderCron:
+ * иначе согласие висит с applied_at IS NULL до первой новой заявки — pipeline_check
+ * краснеет, а риск «молчаливого» согласования живёт дольше нужного.
+ *
+ * @returns {Promise<{expired:number, ids:number[]}>}
+ */
+async function expireStaleGrants(db, hours = 72) {
+  const TTL_HOURS = Number(hours) > 0 ? Number(hours) : 72;
+  const dead = await db.query(
+    `UPDATE doc_approval_grant
+        SET applied_at = NOW(),
+            comment = COALESCE(comment,'') || ' [просрочено, не применено]'
+      WHERE applied_at IS NULL
+        AND created_at <= NOW() - ($1 || ' hours')::interval
+      RETURNING id`, [String(TTL_HOURS)]);
+  if (dead.rows.length) {
+    console.warn(`[approval-thread] просрочено согласий: ${dead.rows.length} (${dead.rows.map((r) => '#' + r.id).join(',')})`);
+  }
+  return { expired: dead.rows.length, ids: dead.rows.map((r) => r.id) };
+}
+
 async function applyPendingGrants(db, { paymentId, sourceEmailId, threadKey }) {
   try {
     if (!paymentId) return { applied: false };
@@ -329,17 +352,9 @@ async function applyPendingGrants(db, { paymentId, sourceEmailId, threadKey }) {
         ORDER BY g.id ASC LIMIT 5`,
       [threadKey || null, sourceEmailId || null, String(TTL_HOURS)]);
     // Просроченные согласия гасим отдельно — чтобы не всплыли через полгода
-    // при совпадении треда.
+    // при совпадении треда. (Тот же SQL зовёт ReminderCron раз в час.)
     try {
-      const dead = await db.query(
-        `UPDATE doc_approval_grant
-            SET applied_at = NOW(), comment = COALESCE(comment,'') || ' [просрочено, не применено]'
-          WHERE applied_at IS NULL AND action='approve'
-            AND created_at <= NOW() - ($1 || ' hours')::interval
-          RETURNING id`, [String(TTL_HOURS)]);
-      if (dead.rows.length) {
-        console.warn(`[approval-thread] просрочено согласий: ${dead.rows.length} (${dead.rows.map((r) => '#' + r.id).join(',')})`);
-      }
+      await expireStaleGrants(db, TTL_HOURS);
     } catch (e) { console.warn('[approval-thread] гашение просроченных: ' + e.message); }
 
     if (!q.rows.length) return { applied: false };
@@ -433,4 +448,7 @@ async function approverEmails(db) {
   return [...out].map((e) => extractEmail(e)).filter(Boolean);
 }
 
-module.exports = { handleApprovalReply, approverId, approverEmails, extractEmail, saveDeferredGrant, applyPendingGrants };
+module.exports = {
+  handleApprovalReply, approverId, approverEmails, extractEmail,
+  saveDeferredGrant, applyPendingGrants, expireStaleGrants
+};

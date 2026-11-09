@@ -418,6 +418,7 @@ window.AsgardEmployeePage=(function(){
             <section class="emp-ws-panel${initialSection==='overview'?' is-active':''}" data-section="overview" id="empPanel_overview">
               <h3 class="emp-ws-panel-title"><span class="bar"></span> Обзор</h3>
 
+              <div id="empTransportPlaque"></div>
               ${emp && (emp.on_site_info || emp.approved_info) ? `
                 <div class="emp-ws-banner">
                   <span style="color:var(--t3)">🏗 ${emp.on_site_info ? "На объекте" : "Согласован"}:</span>
@@ -955,6 +956,31 @@ window.AsgardEmployeePage=(function(){
     `;
 
     await layout(html, {title: title || "Личное дело", motto: "Сильна дружина, где помнят имена и дела."});
+
+    // Плашка ближайшего рейса (заезд/съезд) — над блоком «На объекте»
+    (async function loadTransportPlaque(){
+      const box = document.getElementById('empTransportPlaque');
+      if (!box || !emp?.id) return;
+      try {
+        const token = localStorage.getItem('asgard_token') || '';
+        const r = await fetch('/api/mlsp-passes/upcoming/' + emp.id + '?days=14', {
+          headers: { Authorization: 'Bearer ' + token }
+        });
+        if (!r.ok) return;
+        const j = await r.json();
+        const item = (j.items || [])[0];
+        if (!item) { box.innerHTML = ''; return; }
+        const isOut = item.direction === 'outbound';
+        const when = String(item.leg_date || '').slice(0, 10);
+        const whenRu = when.length === 10 ? when.slice(8,10)+'.'+when.slice(5,7)+'.'+when.slice(0,4) : when;
+        box.innerHTML = `<div class="emp-transport-plaque${isOut ? ' is-out' : ''}">
+          <span class="emp-transport-plaque__tag">${esc(item.direction_label || (isOut ? 'Съезжает' : 'Заезжает'))}</span>
+          <span class="emp-transport-plaque__text">${esc(whenRu)} · ${esc(item.transport_label || item.transport || '')}</span>
+          <span class="emp-transport-plaque__meta">${esc(item.route_text || '')}</span>
+          <a class="btn ghost mini" href="#/mlsp-passes">Сводка МЛСП</a>
+        </div>`;
+      } catch (_) { /* модуль может быть ещё не задеплоен */ }
+    })();
 
     // ─── CRSelect: employee form fields ───
     $('#gender_w')?.appendChild(CRSelect.create({ id: 'gender', options: [{ value: '', label: '—' }, { value: 'male', label: 'Мужской' }, { value: 'female', label: 'Женский' }], value: (() => { const g = String(emp.gender || '').toLowerCase(); if (['m','м','male','мужской'].includes(g)) return 'male'; if (['f','ж','female','женский'].includes(g)) return 'female'; return ''; })(), disabled: !canEdit }));

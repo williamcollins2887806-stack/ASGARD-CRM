@@ -635,6 +635,14 @@ async function runOnce(db, log) {
     const res = await ttl.archiveExpired(db, log);
     ttlArchived = res.archived;
   } catch (e) { log?.error?.({ err: e }, '[ReminderCron] approval TTL failed'); }
+  // D-342 / pipeline_check §6: отложенные «Добро» старше 72ч гасим по крону,
+  // не дожидаясь появления следующей заявки (раньше гасились только внутри
+  // applyPendingGrants → FAIL «висят Добро старше 72ч» между intake'ами).
+  try {
+    const { expireStaleGrants } = require('./approval-thread');
+    const dead = await expireStaleGrants(db, 72);
+    if (dead.expired) log?.info?.(`[ReminderCron] expired grants: ${dead.expired} (${dead.ids.map((id) => '#' + id).join(',')})`);
+  } catch (e) { log?.error?.({ err: e }, '[ReminderCron] expireStaleGrants failed'); }
   try { cleaned = await cleanupOld(db, log); } catch (e) { log?.error?.({ err: e }, '[ReminderCron] cleanup failed'); }
   const ms = Date.now() - t0;
   log?.info?.(`[ReminderCron] tick: tenders=${tenders} works=${works} invoices=${invoices} docs=${docs} ttl_archived=${ttlArchived} cleaned=${cleaned} (${ms}ms)`);

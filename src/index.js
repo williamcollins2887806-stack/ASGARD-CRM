@@ -1082,6 +1082,7 @@ fastify.register(require('./routes/worker-readiness'),  { prefix: '/api/staff/re
 fastify.register(require('./routes/planned-engagements'), { prefix: '/api/staff/planned-engagements' });
 fastify.register(require('./routes/brigade-cart'), { prefix: '/api/staff/brigade-cart' });
 fastify.register(require('./routes/mlsp-stays'), { prefix: '/api/staff/mlsp-stays' });
+fastify.register(require('./routes/mlsp-passes'), { prefix: '/api/mlsp-passes' });
 fastify.register(require('./routes/staff-requests-v2'), { prefix: '/api/staff-requests' });
 fastify.register(require('./routes/global-timesheet'),  { prefix: '/api/timesheet' });
 fastify.register(require('./routes/timesheet-v2'),      { prefix: '/api/timesheet/v2' });

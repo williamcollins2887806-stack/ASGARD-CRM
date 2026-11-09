@@ -2235,6 +2235,23 @@ async function reviewRoutes(fastify) {
         UPDATE tender_rp_reviews SET calculator_user_id = $1, updated_at = NOW()
         WHERE tender_id = $2
       `, [ownerId, tenderId]);
+
+      // ── Событие в единый дайджест ────────────────────────────────────────
+      // Раньше об этом слалось отдельное письмо в момент закрытия. Теперь
+      // событие копится в очереди и уходит одним дайджестом в окно 09–10
+      // или 17–18 МСК. Ошибку не пробрасываем: бизнес-операция важнее.
+      try {
+        const digestRunner = require('../services/tender-digest-runner');
+        await digestRunner.enqueueEvent(db, {
+          kind: 'analysis',
+          tender_id: Number(tenderId),
+          title: tender && tender.tender_title ? String(tender.tender_title).slice(0, 200) : null,
+          deadline: tender && tender.docs_deadline ? tender.docs_deadline : null,
+          payload: { decision, owner: ownerId }
+        });
+      } catch (e) {
+        request.log.warn({ err: e }, '[digest] анализ не поставлен в очередь');
+      }
     } else if (mode === 'calc' && logAction !== 'finalize_analysis') {
       await syncCalculatorActor(db, tenderId, userId, userRole, tender, { isDuty });
     }
