@@ -883,6 +883,17 @@ html[data-theme="light"] .dh-table tbody tr.is-selected.is-traffic-green {
   opacity: .55;
   cursor: default;
 }
+/* Кнопка «Через ОБС» на обычном счёте — заметнее серой «Создать». */
+.dh-obs-gen--promote {
+  color: var(--gold, #c8a84e);
+  border-color: color-mix(in srgb, var(--gold, #c8a84e) 55%, var(--brd));
+  font-weight: 800;
+}
+.dh-obs-gen--promote:hover {
+  background: color-mix(in srgb, var(--gold, #c8a84e) 14%, transparent);
+  color: var(--gold, #c8a84e);
+  border-color: var(--gold, #c8a84e);
+}
 
 /* ═══ D-386: блок «Откуда платим» в карточке счёта ═══════════════════════
    Заказчик 28.10.2026: переключатель контура, выбор договора и индикатор
@@ -3184,8 +3195,38 @@ html[data-theme="light"] .dh-cp-badge { color: #24503B; background: rgba(45,106,
 
 /* ═══ V473: модалка письма для ОБС ══════════════════════════════════════
    Окно двухколоночное: слева форма, справа предпросмотр PDF. На узких
-   экранах предпросмотр уезжает под форму. Цвета — только токены темы. */
-.dh-obs-modal { z-index: 12100; }
+   экранах предпросмотр уезжает под форму. Цвета — только токены темы.
+
+   ВАЖНО про позиционирование. В этом же файле есть ДВА смысла `.dh-modal`:
+     • ~1382 — КАРТОЧКА внутри `.dh-modal-root` (width: 760px, column);
+     • ~1784 — ОВЕРЛЕЙ (position:fixed; inset:0; flex-center).
+   ОБС-модалка вешает `dh-modal` на ОВЕРЛЕЙ. Без сброса width/flex-direction
+   от карточного правила оверлей сжимается до 760px и прилипает к левому
+   краю экрана — «окно уехало влево» (жалоба 09.11.2026). */
+.dh-obs-modal {
+  position: fixed !important;
+  inset: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  top: 0 !important;
+  bottom: 0 !important;
+  width: auto !important;
+  max-width: none !important;
+  height: auto !important;
+  max-height: none !important;
+  margin: 0 !important;
+  z-index: 12100;
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: center !important;
+  justify-content: center !important;
+  padding: 24px;
+  background: rgba(0, 0, 0, 0.45);
+  overflow: auto;
+  box-sizing: border-box;
+  animation: none;
+}
+.dh-obs-modal[hidden] { display: none !important; }
 .dh-obs-card {
   max-width: 1180px;
   width: min(1180px, 96vw);
@@ -3193,6 +3234,8 @@ html[data-theme="light"] .dh-cp-badge { color: #24503B; background: rgba(45,106,
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  margin: auto;
+  flex: 0 1 auto;
 }
 .dh-obs-head { align-items: flex-start; }
 .dh-obs-body {

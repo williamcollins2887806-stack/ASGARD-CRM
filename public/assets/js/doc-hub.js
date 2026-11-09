@@ -983,11 +983,24 @@ window.AsgardDocHubPage = (function () {
         ${createAllowed ? '<button type="button" class="dh-obs-gen" data-obs-gen="' + Number(row.id) + '">Создать письмо</button>' : ''}</div>`;
     }
 
+    // V475b: если счёт ещё на расчётном, но человеку можно писать письмо —
+    // показываем кнопку снаружи скрытого блока договора. Модалка сама
+    // переведёт контур на ОБС при сохранении (forceObsContour на бэке).
+    const promoteBlock = (!isObs && createAllowed)
+      ? `<div class="dh-obs-state" style="margin-top:12px">
+           Счёт сейчас с расчётного счёта.
+           <button type="button" class="dh-obs-gen dh-obs-gen--promote" data-obs-gen="${Number(row.id)}"
+             title="Открыть модалку: выбрать ОБС-счёт, договор и создать письмо — контур переключится сам">
+             Создать письмо для ОБС</button>
+           <div class="dh-help" style="margin-top:6px">При сохранении письма счёт станет «через ОБС».</div>
+         </div>`
+      : '';
+
     return `
       <div class="dh-section dh-section--obs">
         <div class="dh-section__h">Откуда платим</div>
         <div class="dh-section__b">
-          ${manage ? '' : `<div class="dh-help" style="margin-bottom:8px">Способ оплаты и договор определяет бухгалтерия. Ниже — для сведения.</div>`}
+          ${manage ? '' : `<div class="dh-help" style="margin-bottom:8px">Способ оплаты и договор вручную меняет бухгалтерия. Письмо для ОБС можете создать вы — контур переключится вместе с письмом.</div>`}
           <div class="dh-src-cards" id="drSrcCards">
             <button type="button" class="dh-src-card${!isObs ? ' is-on' : ''}" data-obs-src="regular" ${dis}>
               <div class="t">Расчётный счёт</div>
@@ -999,6 +1012,8 @@ window.AsgardDocHubPage = (function () {
             </button>
           </div>
           <input type="hidden" id="drObsSrc" value="${esc(src)}"/>
+
+          ${promoteBlock}
 
           <div id="drObsSubWrap" ${isObs ? '' : 'hidden'}>
             <div class="dh-field" style="margin-top:10px">
@@ -1626,11 +1641,23 @@ window.AsgardDocHubPage = (function () {
 
   function obsBadges(row) {
     const src = String(row.payment_source || 'regular');
-    if (src !== 'obs') return '';
+    const canCreate = !!row.can_create_obs_letter;
+    const num = esc(row.invoice_number || '');
+
+    // V475b (09.11.2026): у не-ОБС счёта тоже нужна кнопка — иначе Путков /
+    // инициатор / бух видят «Создать» только после того, как бух вручную
+    // переключит контур. Бэкенд уже умеет forceObsContour при сохранении
+    // письма: модалка сама переводит счёт на ОБС.
+    if (src !== 'obs') {
+      if (!canCreate) return '';
+      return `<div class="dh-obs-row">
+        <button type="button" class="dh-obs-gen dh-obs-gen--promote" data-obs-gen="${Number(row.id)}"
+          title="Перевести счёт на оплату через ОБС и создать письмо">Через ОБС</button>
+      </div>`;
+    }
 
     const status = String(row.obs_letter_status || 'none');
     const hasLetter = Number(row.obs_letter_doc_id || 0) > 0;
-    const num = esc(row.invoice_number || '');
 
     // V473: в плашке теперь видно, ЧЕРЕЗ КАКОЙ ОБС-счёт платим — раньше была
     // только надпись «ОБС», и бухгалтерия не понимала, с какого счёта уйдёт
@@ -1666,7 +1693,6 @@ window.AsgardDocHubPage = (function () {
       const err = row.obs_letter_error
         ? ` title="${esc(String(row.obs_letter_error).slice(0, 200))}"`
         : ' title="Письмо для ОБС ещё не сформировано"';
-      const canCreate = !!row.can_create_obs_letter;
       letterPill = `<span class="dh-obs-letter-wrap">
         <span class="dh-pill dh-pill--err dh-obs-letter"${err}>Письма нет</span>
         ${canCreate
@@ -4840,15 +4866,17 @@ window.AsgardDocHubPage = (function () {
       // `data-obs-gen` уже открывает модалку, и получалось два разных
       // поведения на один атрибут: из карточки нельзя было ни выбрать ОБС-счёт,
       // ни поправить номер/дату/сумму. Теперь везде модалка.
-      d.querySelector('[data-obs-gen]')?.addEventListener('click', (ev) => {
-        ev.preventDefault();
-        if (window.AsgardObsLetterModal) {
-          window.AsgardObsLetterModal.open(id, {
-            onSaved: async () => { await reloadObs(); await refresh(); },
-          });
-        } else {
-          toast('Не удалось открыть', 'Модуль письма не загружен — обновите страницу', 'err');
-        }
+      d.querySelectorAll('[data-obs-gen]').forEach((btn) => {
+        btn.addEventListener('click', (ev) => {
+          ev.preventDefault();
+          if (window.AsgardObsLetterModal) {
+            window.AsgardObsLetterModal.open(id, {
+              onSaved: async () => { await reloadObs(); await refresh(); },
+            });
+          } else {
+            toast('Не удалось открыть', 'Модуль письма не загружен — обновите страницу', 'err');
+          }
+        });
       });
 
       d.querySelector('#dhDrawerSave')?.addEventListener('click', saveDrawer);

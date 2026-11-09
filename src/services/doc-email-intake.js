@@ -1213,6 +1213,18 @@ async function intakeOne(db, { email, attachment, text, userId = null, dryRun = 
         const dv = require('../lib/doc-visibility');
         await dv.grantSharedVisibility(db, docId, senderUserId || null);
       } catch (e) { console.warn('[intake] grantSharedVisibility: ' + (e && e.message)); }
+      // V475: ОБС-счёт — подставить договор субподряда, чтобы израсходовался
+      // лимит существенности. Только при однозначном совпадении основания;
+      // неоднозначное оставляем человеку (см. obs-contract-match.js).
+      try {
+        if (docId) {
+          const { linkObsContract } = require('./obs-contract-match');
+          const lk = await linkObsContract(db, docId);
+          if (lk.linked) {
+            console.log(`[intake] ОБС-счёт #${docId} привязан к договору субподряда #${lk.subcontract_id} (${lk.reason})`);
+          }
+        }
+      } catch (e) { console.warn('[intake] linkObsContract: ' + (e && e.message)); }
       // TTL 72ч.
       try { require('./doc-approval-ttl').stampExpiry(db, paymentId); } catch (_) {}
       // D-293 (аудит почты 20.10.2026): ЗАЯВКА СОЗДАВАЛАСЬ МОЛЧА.

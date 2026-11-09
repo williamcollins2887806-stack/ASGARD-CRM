@@ -378,6 +378,208 @@ window.AsgardCustomersPage = (function(){
     await reload();
   }
 
+  /**
+   * V475: вкладка «Договоры» — обычные и ОБС, ОБС с полосой лимита.
+   *
+   * Заказчик 08.11.2026: «в карточке контрагента мы должны видеть все ОБС
+   * договора» и «если у него подходит лимит ОБС — сколько он выработал».
+   */
+  function contractsTabHtml(dash) {
+    const regular = (dash && dash.contracts_list) || [];
+    const obs = (dash && dash.obs_contracts_list) || [];
+    const limits = (dash && dash.obs_limits) || null;
+
+    const limitSummary = limits && limits.limit > 0 ? (() => {
+      const pct = Math.min(100, Math.max(0, Number(limits.used_pct) || 0));
+      const color = limits.exhausted_count > 0 ? 'var(--red)'
+        : (limits.near_limit ? 'var(--amber)' : 'var(--green)');
+      return `<div style="margin-bottom:14px;padding:12px 14px;border-radius:10px;background:var(--bg3);border:1px solid var(--brd)">
+        <div style="font-size:13px;color:var(--t2)">
+          ОБС-лимиты: использовано <b style="color:${color}">${esc(moneyRu(limits.spent))}</b>
+          из ${esc(moneyRu(limits.limit))} (${pct}%)
+        </div>
+        <div style="height:6px;border-radius:3px;background:var(--bg4);overflow:hidden;margin:6px 0">
+          <div style="height:100%;width:${pct}%;background:${color}"></div>
+        </div>
+        <div style="font-size:12px;color:${color};font-weight:600">
+          Остаток ${esc(moneyRu(limits.remaining))}${
+            limits.exhausted_count > 0 ? ' · есть выработанный договор' : ''
+          }${limits.near_limit && limits.exhausted_count === 0 ? ' · остаток меньше 10%' : ''}
+        </div>
+      </div>`;
+    })() : '';
+
+    const rowsRegular = regular.length ? regular.map((c) => `
+      <tr data-contract-id="${c.id}" data-contract-kind="contract" style="cursor:pointer">
+        <td><b>${esc(c.number) || '—'}</b></td>
+        <td>${c.date ? esc(String(c.date).slice(0, 10)) : '—'}</td>
+        <td style="text-align:right">${c.amount != null ? esc(moneyRu(c.amount)) : '—'}</td>
+        <td>${esc(typeLabelRu(c.type))}</td>
+        <td>${c.docs_count || 0}</td>
+        <td>${c.has_scan ? 'есть' : '—'}</td>
+        <td>${esc(c.status) || '—'}</td>
+      </tr>`).join('') : '';
+
+    const rowsObs = obs.length ? obs.map((c) => {
+      const l = c.limit || {};
+      const pct = Math.min(100, Math.max(0, Number(l.used_pct) || 0));
+      const color = l.exhausted ? 'var(--red)' : (pct >= 90 ? 'var(--amber)' : 'var(--green)');
+      return `
+      <tr data-contract-id="${c.id}" data-contract-kind="obs" style="cursor:pointer">
+        <td><b>${esc(c.number) || '—'}</b>
+          <div style="font-size:11px;color:var(--t3)">ОБС</div></td>
+        <td>${c.date ? esc(String(c.date).slice(0, 10)) : '—'}</td>
+        <td style="text-align:right">${esc(moneyRu(l.amount || 0))}</td>
+        <td>${c.docs_count || 0}</td>
+        <td style="min-width:160px">
+          <div style="font-size:12px;color:${color};font-weight:600">
+            ${esc(moneyRu(l.spent || 0))} / ${esc(moneyRu(l.amount || 0))}
+          </div>
+          <div style="height:5px;border-radius:3px;background:var(--bg4);overflow:hidden;margin-top:3px">
+            <div style="height:100%;width:${pct}%;background:${color}"></div>
+          </div>
+          <div style="font-size:11px;color:var(--t3);margin-top:2px">
+            остаток ${esc(moneyRu(l.remaining || 0))} · ${pct}%
+            ${l.exhausted ? ' · выработан' : ''}
+          </div>
+        </td>
+        <td>${l.exhausted ? '<span style="color:var(--red);font-weight:600">лимит исчерпан</span>' : 'действует'}</td>
+      </tr>`;
+    }).join('') : '';
+
+    return `
+      ${limitSummary}
+      ${regular.length ? `<div class="cc-sec-title" style="margin-bottom:6px">Договоры</div>
+      <table class="cp-table"><thead><tr>
+        <th>Номер</th><th>Дата</th><th>Сумма</th><th>Тип</th><th>Счетов</th><th>Скан</th><th>Статус</th>
+      </tr></thead><tbody>${rowsRegular}</tbody></table>` : ''}
+      ${obs.length ? `<div class="cc-sec-title" style="margin:16px 0 6px">ОБС-договоры (субподряд)</div>
+      <table class="cp-table"><thead><tr>
+        <th>Номер</th><th>Дата</th><th>Лимит</th><th>Счетов</th><th>Выработано</th><th>Статус</th>
+      </tr></thead><tbody>${rowsObs}</tbody></table>` : ''}
+      ${!regular.length && !obs.length ? '<div class="help" style="padding:20px;text-align:center">Договоров и ОБС-договоров нет</div>' : ''}`;
+  }
+
+  /**
+   * V475: вкладка «Счета» — входящие от контрагента и исходящие наши.
+   * Раньше здесь были только три строчки-счётчика.
+   */
+  function docsTabHtml(dash) {
+    const incoming = (dash && dash.docs_list) || [];
+    const outgoing = (dash && dash.invoices_out_list) || [];
+    const docsTotal = Number((dash && dash.docs_total) != null
+      ? dash.docs_total
+      : ((dash && dash.kpi && dash.kpi.docs_in) || incoming.length)) || incoming.length;
+
+    const incomingRows = incoming.length ? incoming.map((r) => `
+      <tr>
+        <td><b>${esc(r.invoice_number) || 'б/н'}</b></td>
+        <td>${r.invoice_date ? esc(String(r.invoice_date).slice(0, 10)) : '—'}</td>
+        <td style="text-align:right">${r.amount != null ? esc(moneyRu(r.amount)) : '—'}</td>
+        <td>${esc(r.work_number) || '—'}</td>
+        <td>${esc(r.ops_status) || '—'}</td>
+        <td>${esc(r.pay_status) || '—'}</td>
+      </tr>`).join('') : '';
+
+    const outgoingRows = outgoing.length ? outgoing.map((r) => `
+      <tr>
+        <td><b>${esc(r.number) || 'б/н'}</b></td>
+        <td>${r.date ? esc(String(r.date).slice(0, 10)) : '—'}</td>
+        <td style="text-align:right">${esc(moneyRu(r.amount || 0))}</td>
+        <td style="text-align:right">${esc(moneyRu(r.paid || 0))}</td>
+        <td style="text-align:right;color:${r.overdue ? 'var(--red)' : 'inherit'}">
+          ${esc(moneyRu(r.outstanding || 0))}</td>
+        <td>${esc(r.status) || '—'}${r.overdue ? ' · просрочен' : ''}</td>
+      </tr>`).join('') : '';
+
+    const moreIn = docsTotal > incoming.length
+      ? `<div class="help" style="margin-top:6px">Показаны ${incoming.length} из ${docsTotal}</div>`
+      : '';
+
+    return `
+      <div class="cc-sec-title" style="margin-bottom:6px">Входящие счета (от контрагента)${
+        docsTotal ? ` · ${docsTotal}` : ''
+      }</div>
+      ${incoming.length ? `<table class="cp-table"><thead><tr>
+        <th>Номер</th><th>Дата</th><th style="text-align:right">Сумма</th><th>Работа</th><th>Статус</th><th>Оплата</th>
+      </tr></thead><tbody>${incomingRows}</tbody></table>${moreIn}`
+        : '<div class="help" style="padding:14px 0">Входящих счетов нет</div>'}
+
+      <div class="cc-sec-title" style="margin:18px 0 6px">Исходящие счета (наши)</div>
+      ${outgoing.length ? `<table class="cp-table"><thead><tr>
+        <th>Номер</th><th>Дата</th><th style="text-align:right">Сумма</th>
+        <th style="text-align:right">Оплачено</th><th style="text-align:right">Долг</th><th>Статус</th>
+      </tr></thead><tbody>${outgoingRows}</tbody></table>`
+        : '<div class="help" style="padding:14px 0">Исходящих счетов нет</div>'}`;
+  }
+
+  /** V475: вкладка «Письма» — вся переписка, ОБС помечены. */
+  function lettersTabHtml(dash) {
+    const letters = (dash && dash.letters_list) || [];
+    if (!letters.length) return '<div class="help" style="padding:20px;text-align:center">Писем нет</div>';
+    return `<table class="cp-table"><thead><tr>
+      <th>Номер</th><th>Дата</th><th>Вид</th><th>Тема</th><th>Счёт</th><th>Статус</th>
+    </tr></thead><tbody>
+      ${letters.map((r) => `
+        <tr>
+          <td><b>${esc(r.number) || 'б/н'}</b></td>
+          <td>${r.date ? esc(String(r.date).slice(0, 10)) : '—'}</td>
+          <td>${r.is_obs ? '<span style="color:var(--amber);font-weight:600">ОБС</span>'
+            : esc(r.letter_kind || r.doc_type || '—')}</td>
+          <td style="max-width:280px;overflow:hidden;text-overflow:ellipsis">${esc(r.subject) || '—'}</td>
+          <td>${esc(r.invoice_number) || '—'}</td>
+          <td>${esc(r.status) || '—'}</td>
+        </tr>`).join('')}
+    </tbody></table>`;
+  }
+
+  /**
+   * V475: вкладка «История» — хронология контрагента.
+   *
+   * Собирается на сервере из всех источников (тендеры, работы, договоры,
+   * счета, письма). Отдельной таблицы истории нет — `customer_score_events`
+   * на проде пуста.
+   */
+  function timelineTabHtml(dash) {
+    const tl = (dash && dash.timeline) || [];
+    if (!tl.length) return '<div class="help" style="padding:20px;text-align:center">Событий пока нет</div>';
+    const icon = {
+      contract: '📄', obs_contract: '🤝', doc_in: '📥', doc_out: '📤',
+      letter: '✉️', work: '🏗', tender: '🎯',
+    };
+    return `<div class="cp-timeline">
+      ${tl.map((t) => `
+        <div class="cp-timeline__item">
+          <div class="cp-timeline__date">${t.date ? esc(String(t.date).slice(0, 10)) : ''}</div>
+          <div class="cp-timeline__body">
+            <span class="cp-timeline__icon">${icon[t.kind] || '•'}</span>
+            <span>${esc(t.title)}</span>
+            ${t.amount != null ? `<b style="margin-left:6px">${esc(moneyRu(t.amount))}</b>` : ''}
+            ${t.note ? `<span class="cp-timeline__note">${esc(t.note)}</span>` : ''}
+          </div>
+        </div>`).join('')}
+    </div>`;
+  }
+
+  function typeLabelRu(v) {
+    const map = { customer: 'Заказчик', supplier: 'Поставщик', supply: 'Поставка', obs: 'ОБС' };
+    return map[v] || (v || '—');
+  }
+
+  /**
+   * Деньги для вкладок карточки контрагента.
+   * `String(Math.round(x))` давал «455987» — читать неудобно, а сумма лимита
+   * на экране директора должна читаться сразу. Формат — как в реестре.
+   */
+  function moneyRu(v) {
+    const n = Number(v);
+    if (!Number.isFinite(n)) return '—';
+    if (typeof AsgardMoney !== 'undefined' && AsgardMoney.formatMoney) {
+      return AsgardMoney.formatMoney(n);
+    }
+    return n.toLocaleString('ru-RU', { maximumFractionDigits: 2 }) + ' ₽';
+  }
+
   async function renderCard({layout, title, query}={}){
     const auth = await AsgardAuth.requireUser();
     if (!auth) return;
@@ -432,8 +634,10 @@ window.AsgardCustomersPage = (function(){
         <div class="cp-tabs" id="cpTabs">
           <button type="button" data-tab="profile" class="is-on">Профиль</button>
           <button type="button" data-tab="contacts">Контакты</button>
+          <button type="button" data-tab="contracts">Договоры</button>
           <button type="button" data-tab="deals">Сделки</button>
           <button type="button" data-tab="docs">Счета</button>
+          <button type="button" data-tab="letters">Письма</button>
           <button type="button" data-tab="history">История</button>
         </div>
 
@@ -465,6 +669,10 @@ window.AsgardCustomersPage = (function(){
           <div style="margin-top:12px"><button type="button" class="btn ghost" id="btnAddContact">Добавить контакт</button></div>
         </div>
 
+        <div class="cp-panel" data-panel="contracts" hidden>
+          <div id="cpContracts">${contractsTabHtml(dash)}</div>
+        </div>
+
         <div class="cp-panel" data-panel="deals" hidden>
           <table class="cp-table"><thead><tr><th>Статус</th><th>Кол-во</th><th>Сумма</th></tr></thead>
           <tbody>
@@ -475,13 +683,15 @@ window.AsgardCustomersPage = (function(){
         </div>
 
         <div class="cp-panel" data-panel="docs" hidden>
-          <p class="help">Входящие счета (Doc Hub): <b>${dash?.docs?.incoming||0}</b></p>
-          <p class="help">Исходящие счета: <b>${dash?.docs?.outgoing_invoices||0}</b></p>
-          <p class="help">Договоры: <b>${dash?.contracts?.total||0}</b></p>
+          ${docsTabHtml(dash)}
+        </div>
+
+        <div class="cp-panel" data-panel="letters" hidden>
+          ${lettersTabHtml(dash)}
         </div>
 
         <div class="cp-panel" data-panel="history" hidden id="cpHistory">
-          <div class="help">Загрузка чек-листов…</div>
+          ${timelineTabHtml(dash)}
         </div>
       </div>`;
 
@@ -492,6 +702,17 @@ window.AsgardCustomersPage = (function(){
         const tab = b.getAttribute('data-tab');
         $$('#cpTabs button').forEach((x)=>x.classList.toggle('is-on', x===b));
         $$('[data-panel]').forEach((p)=>{ p.hidden = p.getAttribute('data-panel') !== tab; });
+      });
+    });
+
+    // V475: договор в карточке открывает свою карточку (счета, письма, акты).
+    $$('[data-contract-id]').forEach((row) => {
+      row.addEventListener('click', () => {
+        const id = row.getAttribute('data-contract-id');
+        const kind = row.getAttribute('data-contract-kind') || 'contract';
+        if (window.AsgardContractsPage && AsgardContractsPage.openContractCard) {
+          AsgardContractsPage.openContractCard(kind, id);
+        }
       });
     });
 
@@ -657,19 +878,23 @@ window.AsgardCustomersPage = (function(){
       });
     }
 
-    // История чек-листов
+    // Чек-листы анализа — ДОПОЛНИТЕЛЬНЫЙ блок внизу «Истории».
+    // Раньше этот код перезаписывал вкладку целиком (`box.innerHTML = ...`),
+    // и хронология контрагента исчезала, как только приходил ответ чек-листов.
+    // Теперь дописываем отдельной секцией: хронология остаётся на месте.
     if (c?.inn) {
       apiGet('/api/customers/' + encodeURIComponent(c.inn) + '/analysis-checklists')
         .then((d)=>{
           const items = d.items || d.checklists || d.rows || [];
           const box = $('#cpHistory');
-          if (!box) return;
-          if (!items.length) { box.innerHTML = '<div class="help">Истории пока нет.</div>'; return; }
-          box.innerHTML = '<table class="cp-table"><thead><tr><th>Дата</th><th>Тендер / работа</th><th>Статус</th></tr></thead><tbody>' +
+          if (!box || !items.length) return;
+          const rowsHtml = '<table class="cp-table"><thead><tr><th>Дата</th><th>Тендер / работа</th><th>Статус</th></tr></thead><tbody>' +
             items.slice(0,30).map((x)=>'<tr><td>'+esc(String(x.created_at||x.updated_at||'').slice(0,10))+'</td><td>'+esc(x.tender_title||x.work_title||x.title||'—')+'</td><td>'+esc(x.status||'')+'</td></tr>').join('') +
             '</tbody></table>';
+          box.insertAdjacentHTML('beforeend',
+            '<div class="cc-sec-title" style="margin:20px 0 6px">Чек-листы анализа</div>' + rowsHtml);
         })
-        .catch(()=>{ const box = $('#cpHistory'); if (box) box.innerHTML = '<div class="help">История недоступна.</div>'; });
+        .catch(()=>{ /* чек-листы необязательны: хронология уже отрисована */ });
     }
   }
 

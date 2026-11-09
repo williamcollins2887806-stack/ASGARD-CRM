@@ -18,6 +18,23 @@ const ALLOWED_COLS = new Set([
 const WRITE_ROLES = ['ADMIN', 'PM', 'HEAD_PM', 'TO', 'HEAD_TO', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'OFFICE_MANAGER'];
 const PUT_ROLES = [...WRITE_ROLES, 'BUH'];
 
+/**
+ * Дата → 'YYYY-MM-DD' или null.
+ * pg отдаёт DATE строкой с T12:00 (см. db.js), но TIMESTAMP — объектом Date.
+ * `String(x).slice(0,10)` от Date даёт «Wed Jul 29» — так в хронологию
+ * контрагента попадали дни недели вместо дат (найдено на клоне 08.11.2026).
+ */
+function toIsoDate(v) {
+  if (!v) return null;
+  if (typeof v === 'string') {
+    const m = v.match(/^(\d{4}-\d{2}-\d{2})/);
+    if (m) return m[1];
+  }
+  const dt = new Date(v);
+  if (isNaN(dt.getTime())) return null;
+  return dt.toISOString().slice(0, 10);
+}
+
 // Нормализация массива contacts: чистим строки, фильтруем пустые,
 // гарантируем единственный is_primary (если несколько true — оставляем первый;
 // если ни одного — первый контакт становится primary).
@@ -546,18 +563,6 @@ async function routes(fastify, options) {
     }
 
     const dirMeta = await statsForInn(db, inn).catch(() => null);
-    const docsInRes = await db.query(
-      `SELECT COUNT(*)::int AS n FROM doc_registry d
-        WHERE d.deleted_at IS NULL AND d.dir = 'in'
-          AND (
-            regexp_replace(COALESCE(d.counterparty_inn,''), '\\D', '', 'g') = $1
-            OR d.supplier_id IN (
-              SELECT id FROM suppliers
-               WHERE deleted_at IS NULL
-                 AND regexp_replace(COALESCE(inn,''), '\\D', '', 'g') = $1
-            )
-          )`, [inn]
-    ).catch(() => ({ rows: [{ n: 0 }] }));
 
     const contractsRes = await db.query(
       `SELECT COUNT(*)::int AS n FROM contracts ct
@@ -585,7 +590,6 @@ async function routes(fastify, options) {
           )`, [inn]
     ).catch(() => ({ rows: [{ n: 0 }] }));
 
-    const docsIn = +(docsInRes.rows[0] && docsInRes.rows[0].n) || 0;
     const contractsCnt = +(contractsRes.rows[0] && contractsRes.rows[0].n) || 0;
 
     // D-402 (08.11.2026): СПИСОК договоров и счетов контрагента, не только цифры.
@@ -593,6 +597,41 @@ async function routes(fastify, options) {
     // контрагенту». Счётчик без списка не отвечает на вопрос «какие именно» —
     // приходилось идти в реестр договоров и искать вручную.
     //
+    // Объекты этого контрагента — по трём признакам, потому что ни один не
+    // заполнен у всех работ: ИНН, тендер с его ИНН, совпадение названия.
+    // Только так «ООО ГСП Ремонт» видит свою стройку #417: у неё customer_inn
+    // пуст, tender_id пуст, а название совпадает.
+    const cpNameEarly = (profileRes.rows[0] && profileRes.rows[0].name) || '';
+    const worksScopeRes = await db.query(
+      `SELECT id FROM works
+        WHERE deleted_at IS NULL
+          AND (
+            regexp_replace(COALESCE(customer_inn,''), '\\D', '', 'g') = $1
+            OR tender_id IN (SELECT id FROM tenders WHERE deleted_at IS NULL AND customer_inn = $1)
+            OR ($2 <> '' AND lower(trim(COALESCE(customer_name,''))) = lower(trim($2)))
+          )`, [inn, cpNameEarly]
+    ).catch((e) => { console.warn('[customers] works scope: ' + e.message); return { rows: [] }; });
+    const workIds = (worksScopeRes.rows || []).map((r) => r.id);
+    const workIdsSql = workIds.length ? `ARRAY[${workIds.join(',')}]::int[]` : 'ARRAY[]::int[]';
+
+    // Счётчик входящих счетов — ТОТ ЖЕ scope, что и docs_list (ИНН + поставщик
+    // + объекты заказчика). Раньше KPI считал только по ИНН/supplier_id и для
+    // ГСП Ремонт показывал 0 при 300+ счетах по стройке #417.
+    const docsInRes = await db.query(
+      `SELECT COUNT(*)::int AS n FROM doc_registry d
+        WHERE d.deleted_at IS NULL AND d.dir = 'in' AND d.package_type <> 'letter'
+          AND (
+            regexp_replace(COALESCE(d.counterparty_inn,''), '\\D', '', 'g') = $1
+            OR d.supplier_id IN (
+              SELECT id FROM suppliers
+               WHERE deleted_at IS NULL
+                 AND regexp_replace(COALESCE(inn,''), '\\D', '', 'g') = $1
+            )
+            OR d.work_id = ANY(${workIdsSql})
+          )`, [inn]
+    ).catch(() => ({ rows: [{ n: 0 }] }));
+    const docsIn = +(docsInRes.rows[0] && docsInRes.rows[0].n) || 0;
+
     // Договоры ищем по ИНН (основной ключ) с запасным путём по имени для
     // старых записей без customer_inn.
     const contractListRes = await db.query(
@@ -621,15 +660,21 @@ async function routes(fastify, options) {
          LEFT JOIN works w ON w.id = d.work_id
         WHERE d.deleted_at IS NULL AND d.dir = 'in' AND d.package_type <> 'letter'
           AND (
+            -- 1. Счёт от этого контрагента (по ИНН или справочнику поставщиков).
             regexp_replace(COALESCE(d.counterparty_inn,''), '\\D', '', 'g') = $1
             OR d.supplier_id IN (
               SELECT id FROM suppliers
                WHERE deleted_at IS NULL
                  AND regexp_replace(COALESCE(inn,''), '\\D', '', 'g') = $1
             )
+            -- 2. Счёт по объекту (работе) этого контрагента. Нужно для ОБС:
+            --    ГСП — ЗАКАЗЧИК субподряда, а счета идут от третьих поставщиков
+            --    (Безопасность Труда, ЭкоЦентр, Комус). Без этой ветки карточка
+            --    «ООО ГСП Ремонт» показывала 0 счетов по своей же стройке.
+            OR d.work_id = ANY(${workIdsSql})
           )
         ORDER BY d.invoice_date DESC NULLS LAST, d.id DESC
-        LIMIT 100`, [inn]
+        LIMIT 300`, [inn]
     ).catch(() => ({ rows: [] }));
 
     const invoicesOut = await db.query(
@@ -637,6 +682,190 @@ async function routes(fastify, options) {
     ).catch(() => ({ rows: [{ n: 0 }] }));
     const invOut = +(invoicesOut.rows[0] && invoicesOut.rows[0].n) || 0;
 
+    // ─────────────────────────────────────────────────────────────────────
+    // V475: полная карточка контрагента.
+    //
+    // Заказчик 08.11.2026: «в карточке контрагента мы должны видеть информацию
+    // если у него подходит лимит ОБС и сколько он выработал», «какие именно
+    // счета — исходящие и входящие, кто и когда выставлял», «если есть исх
+    // письма — все должны быть», «вся история контрагента».
+    //
+    // Что здесь добавлено к D-402:
+    //   • ОБС-договоры с лимитом (раньше их не было вовсе: customer_inn пуст);
+    //   • исходящие счета (`invoices`) — раньше только счётчик;
+    //   • письма (`correspondence`) — по ИНН и по имени;
+    //   • хронология, собранная из всех источников.
+    // ─────────────────────────────────────────────────────────────────────
+    const cpName = cpNameEarly;
+
+    const obsContractsRes = await db.query(
+      `SELECT a.id, a.number, a.agreement_date, a.customer_name, a.customer_inn,
+              a.work_id, a.limit_amount, a.is_active,
+              COALESCE(st.spent_amount, 0)::numeric AS spent_amount,
+              COALESCE(st.remaining, a.limit_amount)::numeric AS remaining,
+              COALESCE(st.used_pct, 0)::numeric AS used_pct,
+              COALESCE(st.exhausted, FALSE) AS exhausted,
+              COALESCE(agg.docs_count, 0)::int AS docs_count
+         FROM subcontract_agreements a
+         LEFT JOIN LATERAL subcontract_limit_state(a.id) st ON TRUE
+         LEFT JOIN LATERAL (
+           SELECT count(*) FILTER (WHERE d.package_type <> 'letter')::int AS docs_count
+             FROM doc_registry d
+            WHERE d.deleted_at IS NULL AND d.subcontract_id = a.id
+         ) agg ON TRUE
+        WHERE a.is_active = TRUE
+          AND (
+            regexp_replace(COALESCE(a.customer_inn, ''), '\\D', '', 'g') = $1
+            OR a.counterparty_id = $2
+            -- Третий путь: договор привязан к объекту этого заказчика.
+            OR a.work_id = ANY(${workIdsSql})
+          )
+        ORDER BY a.agreement_date DESC NULLS LAST, a.id DESC`, [inn, String((profileRes.rows[0] && profileRes.rows[0].id) || '')]
+    ).catch(() => ({ rows: [] }));
+
+    // Исходящие счета: invoice_number, дата, сумма, оплачено, просрочка.
+    const invoicesOutRes = await db.query(
+      `SELECT id, invoice_number, invoice_date, status, total_amount, amount,
+              paid_amount, due_date, work_id, description, created_by, created_at
+         FROM invoices
+        WHERE customer_inn = $1
+        ORDER BY invoice_date DESC NULLS LAST, id DESC
+        LIMIT 200`, [inn]
+    ).catch(() => ({ rows: [] }));
+
+    // Письма: по ИНН (быстрый путь) + по имени (старые записи без ИНН).
+    // Имя сравниваем в нижнем регистре и без кавычек — написания расходятся
+    // («ООО "ГСП РЕМОНТ"» / «ООО «ГСП Ремонт»»).
+    const lettersRes = await db.query(
+      `SELECT c.id, c.number, c.date, c.direction, c.letter_kind, c.doc_type,
+              c.subject, c.counterparty, c.counterparty_inn, c.status, c.file_path,
+              c.obs_invoice_doc_id, c.obs_account_id,
+              COALESCE(a.name, '') AS obs_account_name,
+              COALESCE(dd.invoice_number, '') AS invoice_number,
+              dd.amount_gross AS invoice_amount
+         FROM correspondence c
+         LEFT JOIN obs_accounts a ON a.id = c.obs_account_id
+         LEFT JOIN doc_registry dd ON dd.id = c.obs_invoice_doc_id
+        WHERE c.deleted_at IS NULL
+          AND (
+            regexp_replace(COALESCE(c.counterparty_inn, ''), '\\D', '', 'g') = $1
+            OR (
+              $2 <> '' AND
+              lower(replace(replace(replace(replace(COALESCE(c.counterparty,''), '"', ''), '«', ''), '»', ''), '  ', ' '))
+                LIKE '%' || lower(replace(replace(replace(replace($2,'"',''),'«',''),'»',''),'  ',' ')) || '%'
+            )
+            -- Письма по счетам объекта этого заказчика (ОБС: письмо выписано
+            -- не заказчику, а поставщику — в тексте стоит его имя).
+            OR c.obs_invoice_doc_id IN (
+              SELECT dd2.id FROM doc_registry dd2
+               WHERE dd2.deleted_at IS NULL
+                 AND dd2.work_id = ANY(${workIdsSql})
+            )
+            OR c.work_id = ANY(${workIdsSql})
+          )
+        ORDER BY c.date DESC NULLS LAST, c.id DESC
+        LIMIT 300`, [inn, cpName]
+    ).catch(() => ({ rows: [] }));
+
+    // Работы контрагента — нужны и для вкладки «Сделки», и для хронологии.
+    const worksListRes = workIds.length ? await db.query(
+      `SELECT id, work_number, work_title, object_name, work_status,
+              contract_value, start_plan, end_fact, created_at
+         FROM works
+        WHERE deleted_at IS NULL AND id = ANY($1::int[])
+        ORDER BY id DESC
+        LIMIT 200`, [workIds]
+    ).catch((e) => { console.warn('[customers] works list: ' + e.message); return { rows: [] }; })
+      : { rows: [] };
+
+    // Сводка по ОБС-лимитам: суммарный лимит, выработано, остаток.
+    const obsRows = obsContractsRes.rows || [];
+    const obsLimits = obsRows.reduce((acc, r) => {
+      const amount = Number(r.limit_amount) || 0;
+      const spent = Number(r.spent_amount) || 0;
+      acc.limit += amount;
+      acc.spent += spent;
+      acc.remaining += amount - spent;
+      if (r.exhausted) acc.exhausted_count += 1;
+      else if (amount > 0 && (amount - spent) / amount < 0.1) acc.near_limit_count += 1;
+      return acc;
+    }, { limit: 0, spent: 0, remaining: 0, exhausted_count: 0, near_limit_count: 0 });
+    obsLimits.used_pct = obsLimits.limit > 0
+      ? Math.round(obsLimits.spent / obsLimits.limit * 10000) / 100
+      : 0;
+    obsLimits.near_limit = obsLimits.near_limit_count > 0 || obsLimits.exhausted_count > 0;
+
+    // ── Хронология ──
+    // Собирается из уже полученных данных: отдельных таблиц истории нет
+    // (`customer_score_events` пуста). Сортируем по дате убыванием.
+    const timeline = [];
+    for (const r of contractsRes.rows || []) {
+      if (r.start_date) timeline.push({
+        date: r.start_date, kind: 'contract', id: r.id,
+        title: `Заключён договор ${r.number || ''}`.trim(),
+        amount: r.amount != null ? Number(r.amount) : null,
+      });
+    }
+    for (const r of obsRows) {
+      if (r.agreement_date) timeline.push({
+        date: r.agreement_date, kind: 'obs_contract', id: r.id,
+        title: `ОБС-договор ${r.number || ''}`.trim(),
+        amount: Number(r.limit_amount) || null,
+        note: 'лимит существенности',
+      });
+    }
+    for (const r of docListRes.rows || []) {
+      if (r.invoice_date) timeline.push({
+        date: r.invoice_date, kind: 'doc_in', id: r.id,
+        title: `Входящий счёт ${r.invoice_number || 'б/н'}`.trim(),
+        amount: Number(r.amount_gross) || null,
+        note: r.ops_status || null,
+      });
+    }
+    for (const r of invoicesOutRes.rows || []) {
+      if (r.invoice_date) timeline.push({
+        date: r.invoice_date, kind: 'doc_out', id: r.id,
+        title: `Выставлен счёт ${r.invoice_number || 'б/н'}`.trim(),
+        amount: Number(r.total_amount || r.amount) || null,
+        note: r.status || null,
+      });
+    }
+    for (const r of lettersRes.rows || []) {
+      if (r.date) timeline.push({
+        date: r.date, kind: 'letter', id: r.id,
+        title: `${r.direction === 'in' ? 'Входящее' : 'Исходящее'} письмо ${r.number || 'б/н'}`.trim(),
+        note: r.letter_kind === 'obs_payment' ? 'оплата через ОБС' : (r.doc_type || null),
+      });
+    }
+    for (const r of worksListRes.rows || []) {
+      if (r.created_at) timeline.push({
+        date: r.created_at, kind: 'work', id: r.id,
+        title: `Работа ${r.work_number || ''} ${r.work_title || r.object_name || ''}`.replace(/\s+/g, ' ').trim(),
+        amount: r.contract_value != null ? Number(r.contract_value) : null,
+        note: r.work_status || null,
+      });
+    }
+    const tendersListRes = await db.query(
+      `SELECT id, tender_number, title, tender_status, tender_price, created_at, updated_at
+         FROM tenders
+        WHERE customer_inn = $1 AND deleted_at IS NULL
+        ORDER BY created_at DESC NULLS LAST
+        LIMIT 200`, [inn]
+    ).catch(() => ({ rows: [] }));
+    for (const r of tendersListRes.rows || []) {
+      if (r.created_at) timeline.push({
+        date: r.created_at, kind: 'tender', id: r.id,
+        title: `Тендер ${r.tender_number || ''} ${r.title || ''}`.replace(/\s+/g, ' ').trim(),
+        amount: r.tender_price != null ? Number(r.tender_price) : null,
+        note: r.tender_status || null,
+      });
+    }
+
+    // Сортируем по нормализованной дате, а не по строковому виду: у работ
+    // приходит Date, у документов — строка, и смешанное сравнение давало
+    // случайный порядок.
+    for (const t of timeline) t.date = toIsoDate(t.date);
+    timeline.sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
     return {
       profile: profileRes.rows[0] || null,
       traffic_light: { color: traffic_color, label: traffic_label, reason: traffic_reason },
@@ -677,6 +906,81 @@ async function routes(fastify, options) {
         spend_kind: r.spend_kind || null,
         work_number: r.work_number || null,
         object_name: r.object_name || null
+      })),
+      // Полный счётчик (docs_list обрезан LIMIT 300) — чтобы UI показал
+      // «показаны 300 из N», а KPI не врал.
+      docs_total: docsIn,
+      // ── V475: блоки полной карточки ──
+      // eslint-disable-next-line no-use-before-define
+      obs_contracts_list: obsRows.map((r) => ({
+        id: r.id,
+        number: r.number,
+        date: r.agreement_date,
+        customer_name: r.customer_name,
+        customer_inn: r.customer_inn,
+        work_id: r.work_id,
+        docs_count: +r.docs_count || 0,
+        limit: {
+          amount: Number(r.limit_amount) || 0,
+          spent: Number(r.spent_amount) || 0,
+          remaining: Number(r.remaining) || 0,
+          used_pct: Number(r.used_pct) || 0,
+          exhausted: !!r.exhausted,
+        },
+      })),
+      obs_limits: obsLimits,
+      invoices_out_list: (invoicesOutRes.rows || []).map((r) => {
+        const total = Number(r.total_amount || r.amount) || 0;
+        const paid = Number(r.paid_amount) || 0;
+        const overdue = r.due_date && paid < total
+          && new Date(r.due_date).getTime() < Date.now();
+        return {
+          id: r.id,
+          number: r.invoice_number,
+          date: r.invoice_date,
+          status: r.status,
+          amount: total,
+          paid,
+          outstanding: Math.max(0, total - paid),
+          due_date: r.due_date,
+          overdue: !!overdue,
+          work_id: r.work_id || null,
+          description: r.description || null,
+        };
+      }),
+      letters_list: (lettersRes.rows || []).map((r) => ({
+        id: r.id,
+        number: r.number,
+        date: r.date,
+        direction: r.direction,
+        letter_kind: r.letter_kind,
+        doc_type: r.doc_type,
+        subject: r.subject,
+        counterparty: r.counterparty,
+        status: r.status,
+        has_file: !!r.file_path,
+        is_obs: r.letter_kind === 'obs_payment',
+        obs_account_name: r.obs_account_name || null,
+        invoice_number: r.invoice_number || null,
+        invoice_amount: r.invoice_amount != null ? Number(r.invoice_amount) : null,
+        invoice_doc_id: r.obs_invoice_doc_id || null,
+      })),
+      works_list: (worksListRes.rows || []).map((r) => ({
+        id: r.id,
+        number: r.work_number,
+        title: r.work_title,
+        object_name: r.object_name,
+        status: r.work_status,
+        amount: r.contract_value != null ? Number(r.contract_value) : null,
+        start_date: r.start_plan,
+        end_date_plan: r.end_fact,
+      })),
+      timeline: timeline.slice(0, 500).map((t) => ({
+        ...t,
+        // Дата приводится к YYYY-MM-DD: у работ приходит Date-объект, у
+        // документов — строка. `String(date).slice(0,10)` от Date давал
+        // «Wed Jul 29» — в хронологии стояли дни недели вместо дат.
+        date: toIsoDate(t.date),
       })),
       tenders: {
         total:        +t.total,

@@ -960,6 +960,7 @@ fastify.register(require('./routes/work-readiness'), { prefix: '/api/work-readin
 fastify.register(require('./routes/birthdays'), { prefix: '/api/birthdays' });  // C-14: виджет ДР на главной
 fastify.register(require('./routes/birthday-gifts'), { prefix: '/api/birthday-gifts' });
 fastify.register(require('./routes/customers'), { prefix: '/api/customers' });
+fastify.register(require('./routes/contracts'), { prefix: '/api/contracts' }); // V475: карточка договора — счета, письма, акты, работы
 fastify.register(require('./routes/expenses'), { prefix: '/api/expenses' });
 fastify.register(require('./routes/kpi-money'), { prefix: '/api/kpi-money' }); // KPI v2: серверный агрегат /expenses-by-category для donut
 fastify.register(require('./routes/incomes'), { prefix: '/api/incomes' });

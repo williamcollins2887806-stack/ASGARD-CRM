@@ -467,6 +467,58 @@
 }
 .cp-table td:first-child { color: var(--t1); font-weight: 600; }
 
+/* V475: хронология контрагента — события по датам (тендеры, договоры, счета, письма). */
+.cp-timeline {
+  position: relative;
+  padding-left: 22px;
+  margin-top: 6px;
+}
+.cp-timeline::before {
+  content: '';
+  position: absolute;
+  left: 6px;
+  top: 6px;
+  bottom: 6px;
+  width: 1px;
+  background: var(--brd);
+}
+.cp-timeline__item {
+  display: flex;
+  gap: 14px;
+  padding: 8px 0;
+  align-items: baseline;
+}
+.cp-timeline__date {
+  flex: 0 0 92px;
+  font-size: 12px;
+  color: var(--t3);
+  font-variant-numeric: tabular-nums;
+}
+.cp-timeline__body {
+  position: relative;
+  font-size: 13px;
+  color: var(--t1);
+}
+.cp-timeline__body::before {
+  content: '';
+  position: absolute;
+  left: -20px;
+  top: 6px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--gold);
+}
+.cp-timeline__icon { margin-right: 6px; }
+.cp-timeline__note {
+  margin-left: 8px;
+  font-size: 11px;
+  color: var(--t3);
+  padding: 1px 7px;
+  border-radius: 9px;
+  background: var(--bg3);
+}
+
 /* Modal */
 .cp-modal { max-width: 520px; }
 .cp-modal__grid {

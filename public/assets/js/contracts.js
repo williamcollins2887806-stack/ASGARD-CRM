@@ -27,6 +27,42 @@ window.AsgardContractsPage = (function(){
     return 'contracts';
   }
 
+  // ═══════ V475: серверный реестр договоров ═══════
+  // До V475 реестр читал IndexedDB/localStorage — то есть то, что этот браузер
+  // когда-то загрузил. Счета и письма в такой модели не видны вовсе: они живут
+  // в doc_registry и correspondence. Теперь список берём с сервера, а локальный
+  // кэш остаётся запасным путём (офлайн / старая версия бэкенда).
+  function authToken() {
+    return (window.AsgardAuth && AsgardAuth.token) || localStorage.getItem('asgard_token') || '';
+  }
+
+  async function apiFetchJson(url, opts) {
+    const r = await fetch(url, Object.assign({
+      headers: Object.assign(
+        { Authorization: 'Bearer ' + authToken() },
+        (opts && opts.body) ? { 'Content-Type': 'application/json' } : {}
+      )
+    }, opts || {}));
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(data.error || ('HTTP ' + r.status));
+    return data;
+  }
+
+  /** Список договоров обоих видов (обычные + ОБС) с агрегатами. */
+  async function loadRegistry(filters) {
+    const q = new URLSearchParams();
+    if (filters && filters.search) q.set('search', filters.search);
+    if (filters && filters.kind) q.set('kind', filters.kind);
+    if (filters && filters.status) q.set('status', filters.status);
+    const data = await apiFetchJson('/api/contracts' + (q.toString() ? '?' + q.toString() : ''));
+    return data.items || [];
+  }
+
+  /** Полная карточка договора: счета, письма, акты, работы, расходы. */
+  async function loadCard(kind, id) {
+    return apiFetchJson('/api/contracts/full?kind=' + encodeURIComponent(kind) + '&id=' + encodeURIComponent(id));
+  }
+
   // CRUD операции
   async function getAll() {
     try {
@@ -104,18 +140,12 @@ window.AsgardContractsPage = (function(){
       return;
     }
 
-    const contracts = await getAll();
     const customers = await AsgardDB.getAll('customers') || [];
-    
-    // Обновляем статусы
-    contracts.forEach(c => c.computed_status = computeStatus(c));
-    
-    // Сортировка по дате (новые первые)
-    contracts.sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
 
     const filterHtml = `
       <div class="filters" style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px">
-        <input type="text" id="fltSearch" class="inp" placeholder="Поиск по номеру/названию..." style="flex:1;min-width:200px"/>
+        <input type="text" id="fltSearch" class="inp" placeholder="Поиск по номеру/контрагенту..." style="flex:1;min-width:200px"/>
+        <div id="crw_fltKind" style="width:180px"></div>
         <div id="crw_fltType" style="width:180px"></div>
         <div id="crw_fltStatus" style="width:160px"></div>
         <button class="btn primary" id="btnAddContract">+ Новый договор</button>
@@ -134,16 +164,21 @@ window.AsgardContractsPage = (function(){
               <th>Дата</th>
               <th>Срок до</th>
               <th>Сумма</th>
+              <th title="Привязанных счетов в реестре">Счетов</th>
+              <th title="Сумма привязанных счетов">Сумма по счетам</th>
+              <th title="Остаток лимита существенности (только ОБС)">Лимит</th>
               <th>Статус</th>
               <th></th>
             </tr>
           </thead>
           <tbody id="contractsBody">
-            ${renderRows(contracts, customers)}
+            <tr><td colspan="12" class="help" style="text-align:center;padding:24px">Загрузка…</td></tr>
           </tbody>
         </table>
       </div>
-      ${contracts.length === 0 ? '<div class="help" style="text-align:center;padding:40px">Договоров пока нет. Нажмите «+ Новый договор» для добавления.</div>' : ''}
+      <div id="contractsEmpty" class="help" style="text-align:center;padding:40px;display:none">
+        Договоров нет. Нажмите «+ Новый договор» для добавления.
+      </div>
     `;
 
     const body = `
@@ -155,72 +190,126 @@ window.AsgardContractsPage = (function(){
 
     await layout(body, { title: title || 'Реестр договоров' });
 
-    // Обработчики
     document.getElementById('btnAddContract')?.addEventListener('click', () => openContractModal(null, customers));
 
-    // Фильтры
-    const applyFilters = () => {
-      const search = document.getElementById('fltSearch')?.value.toLowerCase() || '';
+    // ── Состояние фильтров и загруженные строки ──
+    let rows = [];
+
+    async function reload() {
+      const tbody = document.getElementById('contractsBody');
+      if (tbody) tbody.innerHTML = '<tr><td colspan="12" class="help" style="text-align:center;padding:24px">Загрузка…</td></tr>';
+      try {
+        rows = await loadRegistry({
+          search: document.getElementById('fltSearch')?.value.trim() || '',
+          kind: CRSelect.getValue('fltKind') || '',
+          status: '', // фильтр по статусу применяем на клиенте: у ОБС свои статусы
+        });
+      } catch (e) {
+        // Бэкенд старее фронта (нет /api/contracts) — не оставляем пустой экран.
+        console.warn('[contracts] list failed:', e.message);
+        rows = [];
+        if (tbody) {
+          tbody.innerHTML = '<tr><td colspan="12" class="help" style="text-align:center;padding:24px;color:var(--red)">'
+            + 'Не удалось загрузить реестр: ' + AsgardUI.esc(e.message || 'ошибка') + '</td></tr>';
+        }
+        return;
+      }
+      paint();
+    }
+
+    function paint() {
       const type = CRSelect.getValue('fltType') || '';
       const status = CRSelect.getValue('fltStatus') || '';
-
-      const filtered = contracts.filter(c => {
-        const matchSearch = !search ||
-          (c.number || '').toLowerCase().includes(search) ||
-          (c.subject || '').toLowerCase().includes(search) ||
-          (c.counterparty_name || '').toLowerCase().includes(search);
-        const matchType = !type || c.type === type;
-        const matchStatus = !status || c.computed_status === status;
-        return matchSearch && matchType && matchStatus;
+      const filtered = rows.filter((r) => {
+        if (type && r.type !== type && !(type === 'obs' && r.kind === 'obs')) return false;
+        if (status && r.status !== status) return false;
+        return true;
       });
+      const tbody = document.getElementById('contractsBody');
+      const empty = document.getElementById('contractsEmpty');
+      if (tbody) tbody.innerHTML = renderRows(filtered);
+      if (empty) empty.style.display = filtered.length ? 'none' : 'block';
+      attachRowHandlers(customers, filtered);
+    }
 
-      document.getElementById('contractsBody').innerHTML = renderRows(filtered, customers);
-      attachRowHandlers(customers);
-    };
-
+    document.getElementById('crw_fltKind')?.appendChild(CRSelect.create({
+      id: 'fltKind', fullWidth: true, placeholder: 'Все договоры', clearable: true,
+      options: [
+        { value: 'contract', label: 'Обычные договоры' },
+        { value: 'obs', label: 'ОБС (субподряд)' },
+      ],
+      onChange: reload
+    }));
     document.getElementById('crw_fltType')?.appendChild(CRSelect.create({
       id: 'fltType', fullWidth: true, placeholder: 'Все типы', clearable: true,
       options: CONTRACT_TYPES.map(t => ({ value: t.id, label: t.name })),
-      onChange: applyFilters
+      onChange: paint
     }));
     document.getElementById('crw_fltStatus')?.appendChild(CRSelect.create({
       id: 'fltStatus', fullWidth: true, placeholder: 'Все статусы', clearable: true,
       options: CONTRACT_STATUSES.map(s => ({ value: s.id, label: s.name })),
-      onChange: applyFilters
+      onChange: paint
     }));
-    // P1.3: debounce 300мс — иначе каждый символ перебирает весь реестр и
-    // перерисовывает tbody (attachRowHandlers навешивает обработчики заново).
+    // P1.3: debounce 300мс — иначе каждый символ перебирает весь реестр.
     const _fltDebounced = (window.AsgardDebounce
-      ? AsgardDebounce(applyFilters, 300)
-      : (() => { let t=null; return () => { clearTimeout(t); t=setTimeout(applyFilters,300); }; })());
+      ? AsgardDebounce(reload, 300)
+      : (() => { let t=null; return () => { clearTimeout(t); t=setTimeout(reload,300); }; })());
     document.getElementById('fltSearch')?.addEventListener('input', _fltDebounced);
 
-    attachRowHandlers(customers);
+    await reload();
   }
 
-  function renderRows(contracts, customers) {
-    if (!contracts.length) return '';
-    
-    return contracts.map(c => {
-      const status = CONTRACT_STATUSES.find(s => s.id === c.computed_status) || CONTRACT_STATUSES[0];
-      const type = CONTRACT_TYPES.find(t => t.id === c.type);
-      const customer = customers.find(cust => cust.id === c.counterparty_id);
-      
-      const esc = AsgardUI.esc;
+  /**
+   * Строка реестра.
+   * V475: добавлены колонки «Счетов», «Сумма по счетам», «Лимит» — они отвечают
+   * на вопрос «сколько по договору уже прошло» без открытия карточки.
+   */
+  function renderRows(items) {
+    if (!items.length) return '';
+    const esc = AsgardUI.esc;
+
+    return items.map((c) => {
+      const status = CONTRACT_STATUSES.find(s => s.id === c.status)
+        || CONTRACT_STATUSES.find(s => s.id === computeStatus({ ...c, end_date: c.end_date, is_perpetual: c.is_perpetual }))
+        || { name: c.status || '—', color: 'var(--text-muted)' };
+      const isObs = c.kind === 'obs';
+      const typeLabel = isObs ? 'ОБС' : (CONTRACT_TYPES.find(t => t.id === c.type)?.name || c.type || '—');
+      const typeColor = isObs ? 'var(--amber)' : (c.type === 'customer' ? 'var(--green)' : 'var(--blue)');
+
+      // Лимит: полоса + процент. Для обычных договоров — прочерк.
+      let limitCell = '—';
+      if (isObs && c.limit) {
+        const pct = Math.min(100, Math.max(0, Number(c.limit.used_pct) || 0));
+        const color = c.limit.exhausted ? 'var(--red)'
+          : (pct >= 90 ? 'var(--amber)' : 'var(--green)');
+        limitCell = `
+          <div style="min-width:120px">
+            <div style="font-size:12px;color:${color};font-weight:600">${esc(formatMoney(c.limit.remaining))} остаток</div>
+            <div style="height:5px;border-radius:3px;background:var(--bg3);margin-top:3px;overflow:hidden">
+              <div style="height:100%;width:${pct}%;background:${color}"></div>
+            </div>
+            <div style="font-size:11px;color:var(--t3);margin-top:2px">${pct}% из ${esc(formatMoney(c.limit.amount))}</div>
+          </div>`;
+      }
+
       return `
-        <tr data-id="${c.id}" style="background:transparent">
+        <tr data-kind="${c.kind}" data-id="${c.id}" style="cursor:pointer;background:transparent">
           <td><strong>${esc(c.number) || '—'}</strong></td>
-          <td><span class="badge" style="background:${c.type === 'customer' ? 'var(--green-glow)' : 'var(--blue-glow)'}; color:${c.type === 'customer' ? 'var(--green)' : 'var(--blue)'}">${esc(type?.name || c.type)}</span></td>
-          <td>${esc(customer?.name || c.counterparty_name) || '—'}</td>
-          <td style="max-width:250px;overflow:hidden;text-overflow:ellipsis">${esc(c.subject) || '—'}</td>
+          <td><span class="badge" style="background:${typeColor}20;color:${typeColor}">${esc(typeLabel)}</span></td>
+          <td>${esc(c.counterparty_name) || '—'}</td>
+          <td style="max-width:220px;overflow:hidden;text-overflow:ellipsis">${esc(c.subject) || '—'}</td>
           <td>${c.start_date ? formatDate(c.start_date) : '—'}</td>
           <td>${c.is_perpetual ? '<span style="opacity:0.7">Бессрочный</span>' : (c.end_date ? formatDate(c.end_date) : '—')}</td>
           <td>${c.amount ? formatMoney(c.amount) : '—'}</td>
-          <td><span class="badge" style="background:${status.color}20;color:${status.color}">${status.name}</span></td>
+          <td>${c.docs_count ? '<b>' + c.docs_count + '</b>' : '<span style="opacity:.5">0</span>'}</td>
+          <td>${c.docs_amount ? formatMoney(c.docs_amount) : '—'}</td>
+          <td>${limitCell}</td>
+          <td><span class="badge" style="background:${status.color}20;color:${status.color}">${esc(status.name)}</span></td>
           <td>
             <div style="display:flex;gap:6px">
-              <button class="btn mini ghost btnEdit" title="Редактировать">✏️</button>
-              <button class="btn mini ghost btnDelete" title="Удалить">🗑️</button>
+              <button class="btn mini ghost btnOpen" title="Карточка договора">👁</button>
+              ${isObs ? '' : '<button class="btn mini ghost btnEdit" title="Редактировать">✏️</button>'}
+              ${isObs ? '' : '<button class="btn mini ghost btnDelete" title="Удалить">🗑️</button>'}
             </div>
           </td>
         </tr>
@@ -228,13 +317,27 @@ window.AsgardContractsPage = (function(){
     }).join('');
   }
 
-  function attachRowHandlers(customers) {
+  function attachRowHandlers(customers, items) {
     document.querySelectorAll('#contractsBody tr').forEach(row => {
       const id = row.dataset.id;
+      const kind = row.dataset.kind || 'contract';
+      const rec = (items || []).find(x => String(x.id) === String(id) && x.kind === kind);
+
+      // Клик по строке — карточка договора (заказчик 08.11.2026: «должна быть
+      // информация по счетам, работам и всему, что относится к договору»).
+      row.addEventListener('click', (e) => {
+        if (e.target.closest('.btnEdit') || e.target.closest('.btnDelete')) return;
+        openContractCard(kind, id);
+      });
+
+      row.querySelector('.btnOpen')?.addEventListener('click', (e) => {
+        e.stopPropagation();
+        openContractCard(kind, id);
+      });
+
       row.querySelector('.btnEdit')?.addEventListener('click', async (e) => {
         e.stopPropagation();
-        const contracts = await getAll();
-        const contract = contracts.find(c => String(c.id) === String(id));
+        const contract = await getContractRecord(id);
         if (contract) openContractModal(contract, customers);
       });
       row.querySelector('.btnDelete')?.addEventListener('click', async (e) => {
@@ -246,6 +349,454 @@ window.AsgardContractsPage = (function(){
         }
       });
     });
+  }
+
+  /**
+   * Запись договора для формы редактирования.
+   *
+   * Реестр теперь читает сервер, а форма правит локальную запись — поэтому
+   * сначала ищем локальную (там есть все поля), а при промахе собираем из
+   * серверной строки. Без этого у договора, добавленного из почты, форма
+   * открывалась пустой.
+   */
+  async function getContractRecord(id) {
+    try {
+      const all = await getAll();
+      const hit = all.find(c => String(c.id) === String(id));
+      if (hit) return hit;
+    } catch (_) { /* локальный кэш может быть пуст */ }
+    try {
+      const card = await loadCard('contract', id);
+      return card.contract || null;
+    } catch (_) { return null; }
+  }
+
+  // ═══════ V475: карточка договора — счета, письма, акты, работы, история ═══════
+  // Открывается кликом по строке реестра. Данные — один запрос
+  // GET /api/contracts/full: счета (Doc Hub), письма (correspondence),
+  // акты, работы, расходы, лимит ОБС и итоги.
+  async function openContractCard(kind, id) {
+    ensureModalStyles();
+    const esc = AsgardUI.esc;
+    const K = String(kind) === 'obs' ? 'obs' : 'contract';
+
+    const modalHtml = `
+      <div id="contractCardModal">
+        <div class="cm-overlay">
+          <div class="cm-card" style="max-width:1040px">
+            <div style="padding:20px 24px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--brd-m)">
+              <div style="display:flex;align-items:center;gap:14px;min-width:0">
+                <div style="width:42px;height:42px;border-radius:11px;background:linear-gradient(135deg,#3b82f6,#6366f1);display:flex;align-items:center;justify-content:center;flex-shrink:0">
+                  <svg width="20" height="20" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 00-2 2v12a2 2 0 002 2h8a2 2 0 002-2V4a2 2 0 00-2-2z"/><path d="M8 6h4M8 10h4M8 14h2"/></svg>
+                </div>
+                <div style="min-width:0">
+                  <div id="ccTitle" style="font-size:17px;font-weight:700;color:var(--t1)">Загрузка…</div>
+                  <div id="ccSub" style="font-size:12px;color:var(--t3);margin-top:2px"></div>
+                </div>
+              </div>
+              <button class="ccClose btn mini ghost" title="Закрыть" style="font-size:16px">✕</button>
+            </div>
+
+            <div id="ccTabs" style="display:flex;gap:4px;padding:12px 24px 0;border-bottom:1px solid var(--brd-m);flex-wrap:wrap">
+              <button class="cc-tab is-on" data-tab="overview">Обзор</button>
+              <button class="cc-tab" data-tab="docs">Счета <span id="ccCntDocs" class="cc-badge">0</span></button>
+              <button class="cc-tab" data-tab="letters">Письма <span id="ccCntLetters" class="cc-badge">0</span></button>
+              <button class="cc-tab" data-tab="works">Акты и работы <span id="ccCntWorks" class="cc-badge">0</span></button>
+              <button class="cc-tab" data-tab="history">История</button>
+            </div>
+
+            <div style="max-height:66vh;overflow-y:auto;padding:18px 24px" id="ccBody">
+              <div class="help" style="text-align:center;padding:30px">Загрузка данных договора…</div>
+            </div>
+
+            <div class="cm-footer" style="justify-content:space-between">
+              <div id="ccTotals" style="font-size:12px;color:var(--t3)"></div>
+              <button class="cm-btn cm-btn-ghost ccClose">Закрыть</button>
+            </div>
+          </div>
+        </div>
+      </div>`;
+
+    document.body.insertAdjacentHTML('beforeend', modalHtml);
+    ensureCardStyles();
+
+    const modal = document.getElementById('contractCardModal');
+    const overlay = modal.querySelector('.cm-overlay');
+    const bodyEl = document.getElementById('ccBody');
+
+    function close() {
+      modal.remove();
+      document.removeEventListener('keydown', onKey);
+    }
+    const onKey = (e) => { if (e.key === 'Escape') close(); };
+    document.addEventListener('keydown', onKey);
+    modal.querySelectorAll('.ccClose').forEach(b => b.addEventListener('click', close));
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+
+    let card = null;
+    try {
+      card = await loadCard(K, id);
+    } catch (e) {
+      bodyEl.innerHTML = '<div class="help" style="padding:24px;color:var(--red)">'
+        + 'Не удалось загрузить карточку: ' + esc(e.message || 'ошибка') + '</div>';
+      return;
+    }
+
+    const c = card.contract || {};
+    const isObs = card.kind === 'obs';
+    const totals = card.totals || {};
+
+    document.getElementById('ccTitle').textContent =
+      (isObs ? 'ОБС-договор ' : 'Договор ') + (c.number || 'б/н');
+    document.getElementById('ccSub').textContent = [
+      c.customer_name || c.counterparty_name || '',
+      c.customer_inn || '',
+      c.agreement_date || c.start_date ? 'от ' + formatDate(c.agreement_date || c.start_date) : '',
+    ].filter(Boolean).join(' · ');
+
+    document.getElementById('ccCntDocs').textContent = String(totals.docs_count || 0);
+    document.getElementById('ccCntLetters').textContent = String(totals.letters_count || 0);
+    document.getElementById('ccCntWorks').textContent =
+      String((totals.works_count || 0) + (totals.acts_count || 0));
+    document.getElementById('ccTotals').textContent =
+      'Счетов ' + (totals.docs_count || 0)
+      + ' на ' + formatMoney(totals.docs_sum || 0)
+      + ' · оплачено ' + formatMoney(totals.paid_sum || 0)
+      + ' · долг ' + formatMoney(totals.unpaid_sum || 0);
+
+    // ── Вкладки ──
+    const panels = {
+      overview: renderOverview(c, card, isObs),
+      docs: renderDocs(card),
+      letters: renderLetters(card),
+      works: renderWorksActs(card),
+      history: renderCardHistory(card),
+    };
+
+    function showTab(name) {
+      modal.querySelectorAll('.cc-tab').forEach((b) => {
+        b.classList.toggle('is-on', b.getAttribute('data-tab') === name);
+      });
+      bodyEl.innerHTML = panels[name] || '<div class="help">Нет данных</div>';
+      // Кнопки внутри вкладок «Счета» и «Письма» открывают вложения и реестр.
+      bindCardActions(bodyEl, card);
+    }
+    modal.querySelectorAll('.cc-tab').forEach((b) => {
+      b.addEventListener('click', () => showTab(b.getAttribute('data-tab')));
+    });
+    showTab('overview');
+  }
+
+  /** Стили карточки (вставляются один раз). */
+  function ensureCardStyles() {
+    if (document.getElementById('cc-card-styles')) return;
+    const s = document.createElement('style');
+    s.id = 'cc-card-styles';
+    s.textContent = `
+      #contractCardModal .cc-tab { padding:9px 14px;border:none;background:transparent;color:var(--t2);
+        font-size:13px;font-weight:600;cursor:pointer;border-radius:8px 8px 0 0;font-family:inherit;
+        border-bottom:2px solid transparent;transition:all .15s }
+      #contractCardModal .cc-tab:hover { background:var(--bg3);color:var(--t1) }
+      #contractCardModal .cc-tab.is-on { color:#3b82f6;border-bottom-color:#3b82f6 }
+      #contractCardModal .cc-badge { display:inline-block;min-width:18px;padding:1px 5px;border-radius:9px;
+        background:var(--bg4);color:var(--t3);font-size:11px;font-weight:700;margin-left:4px }
+      #contractCardModal .cc-sec { margin-bottom:20px }
+      #contractCardModal .cc-sec-title { font-size:12px;font-weight:700;color:var(--t3);
+        text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px }
+      #contractCardModal .cc-kv { display:grid;grid-template-columns:180px 1fr;gap:6px 14px;font-size:13px }
+      #contractCardModal .cc-kv dt { color:var(--t3) }
+      #contractCardModal .cc-kv dd { margin:0;color:var(--t1) }
+      #contractCardModal table.cc-tbl { width:100%;border-collapse:collapse;font-size:13px }
+      #contractCardModal table.cc-tbl th { text-align:left;font-size:11px;text-transform:uppercase;
+        letter-spacing:.4px;color:var(--t3);font-weight:600;padding:7px 8px;border-bottom:1px solid var(--brd) }
+      #contractCardModal table.cc-tbl td { padding:7px 8px;border-bottom:1px solid var(--brd-m);color:var(--t1) }
+      #contractCardModal table.cc-tbl tr:hover td { background:var(--bg3) }
+      #contractCardModal .cc-limit-bar { height:8px;border-radius:4px;background:var(--bg3);overflow:hidden;margin:6px 0 }
+      #contractCardModal .cc-empty { padding:18px;text-align:center;color:var(--t3);font-size:13px }
+      #contractCardModal .cc-tl { position:relative;padding-left:20px }
+      #contractCardModal .cc-tl::before { content:'';position:absolute;left:5px;top:4px;bottom:4px;
+        width:1px;background:var(--brd) }
+      #contractCardModal .cc-tl-item { position:relative;padding:6px 0 }
+      #contractCardModal .cc-tl-item::before { content:'';position:absolute;left:-18px;top:12px;
+        width:7px;height:7px;border-radius:50%;background:#3b82f6 }
+    `;
+    document.head.appendChild(s);
+  }
+
+  function renderOverview(c, card, isObs) {
+    const esc = AsgardUI.esc;
+    const limit = c.limit;
+    let limitHtml = '';
+    if (isObs && limit && limit.amount > 0) {
+      const pct = Math.min(100, Math.max(0, Number(limit.used_pct) || 0));
+      const color = limit.exhausted ? 'var(--red)' : (pct >= 90 ? 'var(--amber)' : 'var(--green)');
+      limitHtml = `
+        <div class="cc-sec">
+          <div class="cc-sec-title">Лимит существенности</div>
+          <div style="font-size:13px;color:var(--t2)">
+            Использовано <b style="color:${color}">${esc(formatMoney(limit.spent))}</b>
+            из ${esc(formatMoney(limit.amount))} (${pct}%)
+          </div>
+          <div class="cc-limit-bar"><div style="height:100%;width:${pct}%;background:${color}"></div></div>
+          <div style="font-size:12px;color:${color};font-weight:600">
+            Остаток ${esc(formatMoney(limit.remaining))}
+            ${limit.exhausted ? ' — лимит выработан, ОБС по этому договору недоступен' : ''}
+          </div>
+        </div>`;
+    } else if (isObs) {
+      limitHtml = '<div class="cc-sec"><div class="cc-sec-title">Лимит существенности</div>'
+        + '<div class="help">Лимит не задан</div></div>';
+    }
+
+    return `
+      <div class="cc-sec">
+        <div class="cc-sec-title">Реквизиты</div>
+        <dl class="cc-kv">
+          <dt>Номер</dt><dd>${esc(c.number) || '—'}</dd>
+          <dt>Контрагент</dt><dd>${esc(c.customer_name || c.counterparty_name) || '—'}</dd>
+          <dt>ИНН</dt><dd>${esc(c.customer_inn) || '—'}</dd>
+          <dt>Дата</dt><dd>${(c.agreement_date || c.start_date) ? formatDate(c.agreement_date || c.start_date) : '—'}</dd>
+          <dt>${isObs ? 'Лимит' : 'Сумма'}</dt>
+          <dd>${c.limit_amount ? formatMoney(c.limit_amount) : (c.amount ? formatMoney(c.amount) : '—')}</dd>
+          ${!isObs ? `<dt>Срок до</dt><dd>${c.is_perpetual ? 'Бессрочный' : (c.end_date ? formatDate(c.end_date) : '—')}</dd>` : ''}
+          <dt>Статус</dt><dd>${esc(c.status || (c.is_active ? 'действует' : '')) || '—'}</dd>
+          ${c.subject ? `<dt>Предмет</dt><dd>${esc(c.subject)}</dd>` : ''}
+          ${c.note ? `<dt>Примечание</dt><dd>${esc(c.note)}</dd>` : ''}
+        </dl>
+        ${(c.file_url || c.file_path) ? `<div style="margin-top:10px">
+          <a class="btn ghost" href="${esc(c.file_url || c.file_path)}" target="_blank" rel="noopener">Открыть скан договора</a>
+        </div>` : ''}
+      </div>
+      ${limitHtml}
+      <div class="cc-sec">
+        <div class="cc-sec-title">Итоги</div>
+        <dl class="cc-kv">
+          <dt>Счетов</dt><dd>${card.totals.docs_count} на ${esc(formatMoney(card.totals.docs_sum))}</dd>
+          <dt>Оплачено</dt><dd>${esc(formatMoney(card.totals.paid_sum))}</dd>
+          <dt>Долг</dt><dd style="color:${card.totals.unpaid_sum > 0 ? 'var(--amber)' : 'var(--t1)'}">${esc(formatMoney(card.totals.unpaid_sum))}</dd>
+          ${card.totals.obs_docs_sum > 0 ? `<dt>Из них через ОБС</dt><dd>${esc(formatMoney(card.totals.obs_docs_sum))}</dd>` : ''}
+          <dt>Писем</dt><dd>${card.totals.letters_count}</dd>
+          <dt>Актов</dt><dd>${card.totals.acts_count} на ${esc(formatMoney(card.totals.acts_sum))}</dd>
+        </dl>
+      </div>`;
+  }
+
+  function renderDocs(card) {
+    const esc = AsgardUI.esc;
+    const rows = card.docs_in || [];
+    const unlinked = card.docs_unlinked || [];
+    const unlinkedHtml = unlinked.length ? `
+      <div class="cc-sec">
+        <div class="cc-sec-title">ОБС-счета объекта без договора (${unlinked.length})</div>
+        <div class="help" style="margin-bottom:8px">
+          Эти счета оплачиваются через ОБС, но договор не проставлен — лимит по ним
+          не расходуется и в расчёте выше не учтён. Договор выбирает бухгалтерия.
+        </div>
+        <table class="cc-tbl">
+          <thead><tr><th>Номер</th><th>Дата</th><th>Контрагент</th><th>Основание</th>
+            <th style="text-align:right">Сумма</th></tr></thead>
+          <tbody>
+            ${unlinked.map((r) => `
+              <tr>
+                <td><b>${esc(r.invoice_number) || 'б/н'}</b></td>
+                <td>${r.invoice_date ? formatDate(r.invoice_date) : '—'}</td>
+                <td>${esc(r.counterparty_name) || '—'}</td>
+                <td>${esc(r.contract_label) || '—'}</td>
+                <td style="text-align:right">${esc(formatMoney(r.amount))}</td>
+              </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>` : '';
+
+    if (!rows.length && !unlinked.length) return '<div class="cc-empty">Счетов по этому договору нет</div>';
+    if (!rows.length) return unlinkedHtml;
+    return `
+      <div class="cc-sec">
+        <div class="cc-sec-title">Входящие счета (Doc Hub)</div>
+        <table class="cc-tbl">
+          <thead><tr>
+            <th>Номер</th><th>Дата</th><th>Контрагент</th><th>Основание</th>
+            <th style="text-align:right">Сумма</th><th>Оплата</th><th>ОБС</th>
+          </tr></thead>
+          <tbody>
+            ${rows.map((r) => `
+              <tr>
+                <td><b>${esc(r.invoice_number) || 'б/н'}</b></td>
+                <td>${r.invoice_date ? formatDate(r.invoice_date) : '—'}</td>
+                <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis">${esc(r.counterparty_name) || '—'}</td>
+                <td>${esc(r.contract_label) || '—'}</td>
+                <td style="text-align:right;white-space:nowrap">${esc(formatMoney(r.amount))}</td>
+                <td>${esc(payStatusLabel(r.pay_status))}</td>
+                <td>${r.payment_source === 'obs'
+                  ? '<span style="color:var(--amber);font-weight:600">ОБС</span>'
+                    + (r.obs_account_name ? ' · ' + esc(r.obs_account_name) : '')
+                  : '—'}</td>
+              </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>
+      ${unlinkedHtml}`;
+  }
+
+  function renderLetters(card) {
+    const esc = AsgardUI.esc;
+    const letters = card.letters || [];
+    const reg = card.registry_letters || [];
+    if (!letters.length && !reg.length) {
+      return '<div class="cc-empty">Писем по этому договору нет</div>';
+    }
+    return `
+      ${letters.length ? `
+      <div class="cc-sec">
+        <div class="cc-sec-title">Переписка</div>
+        <table class="cc-tbl">
+          <thead><tr><th>ИСХ</th><th>Дата</th><th>Вид</th><th>Тема</th><th>Счёт</th><th>Статус</th></tr></thead>
+          <tbody>
+            ${letters.map((r) => `
+              <tr>
+                <td><b>${esc(r.number) || 'б/н'}</b></td>
+                <td>${r.date ? formatDate(r.date) : '—'}</td>
+                <td>${r.letter_kind === 'obs_payment'
+                  ? '<span style="color:var(--amber);font-weight:600">ОБС</span>'
+                  : esc(kindLabel(r.letter_kind || r.doc_type))}</td>
+                <td style="max-width:260px;overflow:hidden;text-overflow:ellipsis">${esc(r.subject) || '—'}</td>
+                <td>${esc(r.invoice_number) || '—'}</td>
+                <td>${esc(r.status) || '—'}</td>
+              </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>` : ''}
+      ${reg.length ? `
+      <div class="cc-sec">
+        <div class="cc-sec-title">Письма в реестре счетов</div>
+        <table class="cc-tbl">
+          <thead><tr><th>Номер</th><th>Дата</th><th>Контрагент</th><th>Файл</th></tr></thead>
+          <tbody>
+            ${reg.map((r) => `
+              <tr>
+                <td><b>${esc(r.number) || 'б/н'}</b></td>
+                <td>${r.date ? formatDate(r.date) : '—'}</td>
+                <td>${esc(r.counterparty_name) || '—'}</td>
+                <td>${r.file_url ? '<a href="' + esc(r.file_url) + '" target="_blank" rel="noopener">открыть</a>' : '—'}</td>
+              </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>` : ''}`;
+  }
+
+  function renderWorksActs(card) {
+    const esc = AsgardUI.esc;
+    const works = card.works || [];
+    const acts = card.acts || [];
+    const exp = card.expenses || [];
+    const parts = [];
+
+    parts.push(`<div class="cc-sec">
+      <div class="cc-sec-title">Работы</div>
+      ${works.length ? `<table class="cc-tbl">
+        <thead><tr><th>Номер</th><th>Объект / название</th><th>Статус</th><th style="text-align:right">Стоимость</th><th>Связь</th></tr></thead>
+        <tbody>${works.map((w) => `
+          <tr>
+            <td>${esc(w.number) || '—'}</td>
+            <td>${esc(w.object_name || w.title) || '—'}</td>
+            <td>${esc(w.status) || '—'}</td>
+            <td style="text-align:right">${w.amount != null ? esc(formatMoney(w.amount)) : '—'}</td>
+            <td>${w.link === 'contract' ? 'по договору' : '<span style="color:var(--t3)">по заказчику</span>'}</td>
+          </tr>`).join('')}</tbody>
+      </table>` : '<div class="cc-empty">Работ не найдено</div>'}
+    </div>`);
+
+    parts.push(`<div class="cc-sec">
+      <div class="cc-sec-title">Акты</div>
+      ${acts.length ? `<table class="cc-tbl">
+        <thead><tr><th>Номер</th><th>Дата</th><th>Статус</th><th style="text-align:right">Сумма</th></tr></thead>
+        <tbody>${acts.map((a) => `
+          <tr>
+            <td>${esc(a.number) || '—'}</td>
+            <td>${a.date ? formatDate(a.date) : '—'}</td>
+            <td>${esc(a.status) || '—'}</td>
+            <td style="text-align:right">${esc(formatMoney(a.amount))}</td>
+          </tr>`).join('')}</tbody>
+      </table>` : '<div class="cc-empty">Актов не найдено</div>'}
+    </div>`);
+
+    if (exp.length) {
+      parts.push(`<div class="cc-sec">
+        <div class="cc-sec-title">Расходы по работам</div>
+        <table class="cc-tbl">
+          <thead><tr><th>Дата</th><th>Вид</th><th>Описание</th><th style="text-align:right">Сумма</th></tr></thead>
+          <tbody>${exp.map((e) => `
+            <tr>
+              <td>${e.date ? formatDate(e.date) : '—'}</td>
+              <td>${esc(e.type) || '—'}</td>
+              <td>${esc(e.description) || '—'}</td>
+              <td style="text-align:right">${esc(formatMoney(e.amount))}</td>
+            </tr>`).join('')}</tbody>
+        </table>
+      </div>`);
+    }
+    return parts.join('');
+  }
+
+  /**
+   * История по договору.
+   * Отдельной таблицы событий нет — собираем из дат документов, которые уже
+   * пришли в карточке. Честнее, чем пустая вкладка «история»: тут видно, что
+   * и когда по договору произошло.
+   */
+  function renderCardHistory(card) {
+    const esc = AsgardUI.esc;
+    const c = card.contract || {};
+    const events = [];
+    if (c.agreement_date || c.start_date) {
+      events.push({ date: c.agreement_date || c.start_date, text: 'Заключён договор' });
+    }
+    for (const r of card.docs_in || []) {
+      if (r.invoice_date) events.push({
+        date: r.invoice_date,
+        text: `Добавлен счёт ${r.invoice_number || 'б/н'} на ${formatMoney(r.amount)}`
+          + (r.payment_source === 'obs' ? ' (через ОБС)' : ''),
+      });
+    }
+    for (const r of card.letters || []) {
+      if (r.date) events.push({
+        date: r.date,
+        text: `Письмо ${r.number || 'б/н'}` + (r.letter_kind === 'obs_payment' ? ' для оплаты через ОБС' : ''),
+      });
+    }
+    for (const r of card.acts || []) {
+      if (r.date) events.push({ date: r.date, text: `Акт ${r.number || 'б/н'} на ${formatMoney(r.amount)}` });
+    }
+    events.sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
+
+    if (!events.length) return '<div class="cc-empty">Событий по договору пока нет</div>';
+    return `<div class="cc-sec cc-tl">
+      ${events.map((e) => `
+        <div class="cc-tl-item">
+          <div style="font-size:12px;color:var(--t3)">${e.date ? formatDate(e.date) : ''}</div>
+          <div style="font-size:13px;color:var(--t1)">${esc(e.text)}</div>
+        </div>`).join('')}
+    </div>`;
+  }
+
+  /** Кнопки внутри вкладок (пока их нет, но точка расширения нужна). */
+  function bindCardActions(root, card) { void root; void card; }
+
+  function payStatusLabel(v) {
+    const map = {
+      none: 'не оплачен', wait: 'к оплате', paid: 'оплачен',
+      overdue: 'просрочен', n_a: 'не требуется',
+    };
+    return map[v] || (v || '—');
+  }
+
+  function kindLabel(v) {
+    const map = {
+      obs_payment: 'ОБС', clarification: 'Уточнение', request: 'Запрос',
+      response: 'Ответ', notification: 'Уведомление', claim: 'Претензия',
+      cover: 'Сопроводительное', information: 'Информационное', free: 'Свободное',
+    };
+    return map[v] || (v || '—');
   }
 
   // ═══════ Premium modal styles (injected once) ═══════
@@ -1391,6 +1942,9 @@ window.AsgardContractsPage = (function(){
     findByCounterparty,
     openContractSelector,
     openContractModal,
+    openContractCard,
+    loadRegistry,
+    loadCard,
     checkExpiringContracts,
     openNewCustomerModal,
     CONTRACT_TYPES,

@@ -93,7 +93,9 @@ window.AsgardCustomerCard = (function () {
 
         ${contractsHtml(d.contracts_list)}
 
-        ${docsHtml(d.docs_list)}
+        ${obsContractsHtml(d.obs_contracts_list, d.obs_limits)}
+
+        ${docsHtml(d.docs_list, d.docs_total || (d.kpi && d.kpi.docs_in))}
 
         <div class="cp-panel" style="padding:12px" id="ccChecklistsBlock">
           <div class="help" style="margin-bottom:8px;font-weight:700">Чек-листы анализа</div>
@@ -139,15 +141,66 @@ window.AsgardCustomerCard = (function () {
     </div>`;
   }
 
+  /** V475: компактный блок ОБС-лимитов в embed-карточке. */
+  function obsContractsHtml(list, limits) {
+    if ((!Array.isArray(list) || !list.length) && !(limits && limits.limit > 0)) {
+      return '';
+    }
+    const items = Array.isArray(list) ? list : [];
+    const summary = limits && limits.limit > 0 ? (() => {
+      const pct = Math.min(100, Math.max(0, Number(limits.used_pct) || 0));
+      const color = limits.exhausted_count > 0 ? 'var(--red)'
+        : (limits.near_limit ? 'var(--amber)' : 'var(--green)');
+      return `<div style="margin-bottom:8px">
+        <div style="font-size:12px;color:var(--t2)">
+          ОБС: <b style="color:${color}">${esc(fmt(limits.spent))}</b>
+          из ${esc(fmt(limits.limit))} (${pct}%)
+          · остаток ${esc(fmt(limits.remaining))}
+          ${limits.near_limit && !(limits.exhausted_count > 0) ? ' · &lt;10%' : ''}
+          ${limits.exhausted_count > 0 ? ' · лимит исчерпан' : ''}
+        </div>
+        <div style="height:5px;border-radius:3px;background:var(--bg4);overflow:hidden;margin-top:4px">
+          <div style="height:100%;width:${pct}%;background:${color}"></div>
+        </div>
+      </div>`;
+    })() : '';
+
+    const rows = items.map((c) => {
+      const l = c.limit || {};
+      const pct = Math.min(100, Math.max(0, Number(l.used_pct) || 0));
+      const color = l.exhausted ? 'var(--red)' : (pct >= 90 ? 'var(--amber)' : 'var(--green)');
+      const limitLabel = l.amount > 0
+        ? `${esc(fmt(l.spent || 0))} / ${esc(fmt(l.amount))} (${pct}%)`
+        : 'лимит не задан';
+      return `<tr>
+        <td><b>${esc(c.number || '—')}</b></td>
+        <td style="color:${color};font-weight:600">${limitLabel}</td>
+        <td>${esc(fmt(l.remaining || 0))}</td>
+        <td>${c.docs_count || 0}</td>
+      </tr>`;
+    }).join('');
+
+    return `<div class="cp-panel" style="padding:12px;margin-bottom:8px">
+      <div class="help" style="margin-bottom:8px;font-weight:700">ОБС-договоры (${items.length})</div>
+      ${summary}
+      ${items.length ? `<table class="cp-table">
+        <thead><tr><th>Номер</th><th>Выработано</th><th>Остаток</th><th>Счетов</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>` : ''}
+    </div>`;
+  }
+
   /** D-402: список счетов контрагента — с номером договора, если привязан. */
-  function docsHtml(list) {
+  function docsHtml(list, totalHint) {
     if (!Array.isArray(list) || !list.length) {
       return `<div class="cp-panel" style="padding:12px;margin-bottom:8px">
         <div class="help" style="margin-bottom:8px;font-weight:700">Счета</div>
         <div class="help">Счетов по этому контрагенту нет.</div>
       </div>`;
     }
-    const rows = list.slice(0, 40).map((d) => {
+    const total = Number(totalHint) > 0 ? Number(totalHint) : list.length;
+    const shown = list.slice(0, 40);
+    const rows = shown.map((d) => {
       const sum = d.amount != null ? fmt(d.amount) + ' ₽' : '—';
       const date = d.invoice_date ? String(d.invoice_date).slice(0, 10).split('-').reverse().join('.') : '—';
       const obj = d.object_name ? String(d.object_name).slice(0, 40) : (d.work_number || '—');
@@ -160,9 +213,11 @@ window.AsgardCustomerCard = (function () {
         <td>${esc(d.ops_status || '')}</td>
       </tr>`;
     }).join('');
-    const more = list.length > 40 ? `<div class="help" style="margin-top:6px">Показаны 40 из ${list.length}.</div>` : '';
+    const more = total > shown.length
+      ? `<div class="help" style="margin-top:6px">Показаны ${shown.length} из ${total}.</div>`
+      : '';
     return `<div class="cp-panel" style="padding:12px;margin-bottom:8px">
-      <div class="help" style="margin-bottom:8px;font-weight:700">Счета (${list.length})</div>
+      <div class="help" style="margin-bottom:8px;font-weight:700">Счета (${total})</div>
       <table class="cp-table">
         <thead><tr><th>Счёт</th><th>Дата</th><th>Сумма</th><th>Объект</th><th>Договор</th><th>Статус</th></tr></thead>
         <tbody>${rows}</tbody>

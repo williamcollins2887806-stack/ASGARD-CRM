@@ -641,13 +641,9 @@ window.AsgardObsLetterModal = (function () {
         state.defaults.invoice_date ? 'от ' + fmtDate(state.defaults.invoice_date) : '',
         opt.amount_gross ? money(opt.amount_gross) + ' ₽' : '',
       ].filter(Boolean).join(' · ');
-      el('dhObsSub').innerHTML = '';
-      el('dhObsSub').value = '';
-      el('dhObsSub').value = String(opt.subcontract_id || '');
-      el('dhObsAccount').innerHTML = '';
-      el('dhObsAccount').value = '';
-      el('dhObsAccount').value = String(opt.obs_account_id || '');
 
+      // Сначала заполняем опции, потом ставим value — иначе select
+      // молча сбрасывает выбранный договор/ОБС.
       fillAccounts(state.obsAccounts, opt.obs_account_id);
       fillSubcontracts(state.subcontracts, opt.subcontract_id, Number(opt.amount_gross) || 0);
       el('dhObsLetterDate').value = state.defaults.letter_date || new Date().toISOString().slice(0, 10);
