@@ -3604,6 +3604,17 @@ html[data-theme="light"] .hg-send.is-mic:hover {
   background: var(--hg-bg, #151922);
   border: 1px solid var(--hg-border, rgba(255,255,255,.12));
   box-shadow: 0 12px 40px rgba(0,0,0,.35);
+  /* Мягкое появление как в Телемосте: без рывка при входе в мини-окно. */
+  animation: hg-ting-pip-in .28s cubic-bezier(.22,.61,.36,1);
+  transition: opacity .24s ease, transform .24s ease;
+  will-change: opacity, transform;
+}
+@keyframes hg-ting-pip-in {
+  from { opacity: 0; transform: translateY(14px) scale(.96); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .hg-ting-pip { animation: none; transition: none; }
 }
 .hg-ting-pip.is-parked {
   right: 76px;

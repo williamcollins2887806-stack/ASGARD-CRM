@@ -1,18 +1,52 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Adaptive foreground: только знак, без плитки. Safe zone ~66%. -->
+<!-- Legacy-foreground для Android < 8 (API < 26) и layer-list fallback.
+     Рисуем фирменную марку Тинга v3: перекладина T + корпус объектива
+     с лепестками диафрагмы и точкой «в эфире».
+     Золото: сатиновый градиент D4A843 -> F4D98A (как на марке).
+     Safe zone: знак занимает ~66% (Android сам режет маску). -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
+
+    <!-- Перекладина T -->
+    <path android:pathData="M22,20h64a7,7 0 0 1 0,14H22a7,7 0 0 1 0,-14z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:type="linear"
+                android:startX="22" android:startY="20"
+                android:endX="86" android:endY="34">
+                <item android:color="#F4D98A" android:offset="0" />
+                <item android:color="#D4A843" android:offset="0.55" />
+                <item android:color="#A87C2A" android:offset="1" />
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <!-- Стойка T, входящая в корпус -->
     <path
-        android:fillColor="#FFD660"
-        android:fillAlpha="0.14"
-        android:pathData="M54,20c18.8,0 34,15.2 34,34s-15.2,34 -34,34 -34,-15.2 -34,-34 15.2,-34 34,-34z" />
+        android:fillColor="#D4A843"
+        android:pathData="M48,34h12v14H48z" />
+
+    <!-- Корпус объектива -->
     <path
-        android:fillColor="#FFD660"
-        android:pathData="M28,30h52c3.9,0 7,3.1 7,7s-3.1,7 -7,7H61v38c0,3.9 -3.1,7 -7,7s-7,-3.1 -7,-7V44H28c-3.9,0 -7,-3.1 -7,-7s3.1,-7 7,-7z" />
+        android:strokeColor="#D4A843"
+        android:strokeWidth="9"
+        android:fillColor="#00000000"
+        android:pathData="M54,54m-21,0a21,21 0 1,0 42,0a21,21 0 1,0 -42,0" />
+
+    <!-- Лепестки диафрагмы -->
     <path
-        android:fillColor="#FFD660"
-        android:pathData="M54,88c3.9,0 7,3.1 7,7s-3.1,7 -7,7 -7,-3.1 -7,-7 3.1,-7 7,-7z" />
+        android:strokeColor="#E8C35A"
+        android:strokeWidth="5.5"
+        android:strokeLineCap="round"
+        android:fillColor="#00000000"
+        android:pathData="M54,40v8 M67,45.5l-6.5,4.5 M62,65l-5,-5.5 M46,65l5,-5.5 M41,45.5l6.5,4.5" />
+
+    <!-- Точка «в эфире» -->
+    <path
+        android:fillColor="#F4D98A"
+        android:pathData="M54,54m-6,0a6,6 0 1,0 12,0a6,6 0 1,0 -12,0" />
 </vector>

@@ -595,8 +595,19 @@
       paintCompact();
       if (pipEl) paintStage(pipEl.querySelector('#hgTingPipVid'));
     } else if (d.type === 'speaker') {
-      /* D-181: смена говорящего — мини-окно переключается на него. */
-      if (pipEl) paintStage(pipEl.querySelector('#hgTingPipVid'));
+      /* D-181: смена говорящего — мини-окно переключается на него.
+         Перерисовываем ТОЛЬКО если он реально сменился и окно на экране:
+         иначе на каждом шорохе пересоздавались видео-элементы и картинка
+         мигала (стабильность важнее мгновенной реакции). */
+      if (!pipEl || !document.body.contains(pipEl)) {
+        if (mounted) paintCompact();
+        return;
+      }
+      const shown = pipEl.getAttribute('data-speaker') || '';
+      const next = String(d.identity || '');
+      if (shown === next) return;
+      pipEl.setAttribute('data-speaker', next);
+      paintStage(pipEl.querySelector('#hgTingPipVid'));
       if (mounted) paintCompact();
     } else if (d.type === 'left') {
       closePip();
