@@ -52,15 +52,20 @@ async function findCandidates(db) {
     JOIN tenders t ON t.id = rev.tender_id AND t.deleted_at IS NULL
     WHERE rev.analysis_finalized_at IS NULL
       AND (rev.is_final IS NULL OR rev.is_final = false)
-      -- Тот же набор статусов, что открывает очередь pm-duty.
+      -- Тот же набор статусов, что открывает очередь pm-duty (см. pm-duty.js):
+      -- 'рассмотрение' И 'готовим'. Раньше крон брал только 'рассмотрение',
+      -- а очередь показывала и 'готовим' — из-за этого тендер 2121 приходил
+      -- письмом, но в очереди РП его не было.
       AND t.registry_status IN ('рассмотрение', 'готовим')
       AND COALESCE(t.calculator_kind, '') <> 'to'
-      -- Карточка должна быть «чья-то»: у неё есть владелец анализа, либо
-      -- она бесхозная (её видит дежурный и берёт себе).
+      -- Карточка должна быть «чья-то»: у неё есть владелец анализа либо
+      -- владелец расчёта. Раньше здесь стояло третье условие
+      -- (оба NULL), из-за чего выражение было тавтологией и не фильтровало
+      -- ничего. Бесхозные карточки в очередь не попадают — их некому
+      -- напоминать; их подхватывает handoffToCurrentDuty выше.
       AND (
         rev.analysis_owner_user_id IS NOT NULL
         OR t.calculator_user_id IS NOT NULL
-        OR (rev.analysis_owner_user_id IS NULL AND t.calculator_user_id IS NULL)
       )
       AND NOT (
         COALESCE(btrim(t.customer_name), '') = ''

@@ -590,7 +590,7 @@ export default function FieldPermitDetail() {
                 type="button"
                 disabled={busy}
                 className="rounded-xl py-2.5 text-xs font-bold flex items-center justify-center gap-1"
-            style={{ background: closed ? 'var(--bg-surface-alt)' : 'var(--ok)', color: closed ? 'var(--text-primary)' : 'var(--on-ok)' }}
+            style={{ background: 'var(--ok)', color: 'var(--on-ok)' }}
             onClick={() => run(() => fieldApi.post(`/nd/${id}/daily`, { action: 'end' }))}
               >
                 <Square size={14} /> Окончание дня

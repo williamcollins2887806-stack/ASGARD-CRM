@@ -1085,6 +1085,35 @@ function normalizeCalcPlan(ai, opts) {
   const totalCrewDays = positions.reduce((s, p) => s + (Number(p.days) || 0), 0);
   const windowDays = Number(opts && opts.window_days) > 0 ? Number(opts.window_days) : null;
 
+  // ── Трудоёмкость из ТЗ: срок считаем по часам, а не по нормам ────────────
+  // Часть заказчиков присылает не объёмы, а готовую норму: «зачистка 1800 мин»
+  // = 30 чел·ч (тендер 2143 Hi Pro). Тогда справочник не нужен — норму дал
+  // заказчик. Считаем срок и число бригад из этих часов (labor-plan), а
+  // мастер/ИТР добавляем СВЕРХ фонда заказчика: его часы — только рабочие.
+  //
+  // Без этого модуля такой тендер давал work_days = null и просчёт не
+  // создавался вовсе (найдено верификатором 09.11.2026).
+  const laborPlan = require('./labor-plan');
+  const laborHours = (() => {
+    let sum = 0;
+    for (const p of positions) {
+      const unit = String(p.unit || '').toLowerCase();
+      const vol = Number(p.volume) || 0;
+      if (!(vol > 0)) continue;
+      const hours = laborPlan.toLaborHours(vol, unit);
+      if (hours > 0) sum += hours;
+    }
+    return sum;
+  })();
+  const laborSchedule = laborHours > 0
+    ? laborPlan.planByLabor({
+      laborHours,
+      workers: Math.max(1, Number(opts && opts.workers) || 10),
+      shiftHours: Number(opts && opts.shift_hours) || undefined,
+      shiftsPerDay: Number(opts && opts.shifts_per_day) || undefined
+    })
+    : null;
+
   /**
    * Состав одной бригады: 1 мастер + 4 слесаря = 5 человек. Это рабочая
    * единица, а не «сколько модель написала в people». Раньше брали максимум
@@ -1167,7 +1196,13 @@ function normalizeCalcPlan(ai, opts) {
 
   return {
     positions,
-    work_days: workDays || null,
+    // Срок по трудоёмкости заказчика главнее расчёта по позициям: если он дал
+    // часы, значит норму уже посчитал он (тендер 2143 Hi Pro).
+    work_days: (laborSchedule ? laborSchedule.days : workDays) || null,
+    labor_hours: laborSchedule ? laborSchedule.labor_hours : null,
+    labor_basis: laborSchedule
+      ? 'трудоёмкость из ТЗ: ' + laborSchedule.note
+      : null,
     road_days: Number(raw.road_days) > 0 ? Number(raw.road_days) : null,
     people_total: peopleTotal || null,
     crews,

@@ -235,19 +235,34 @@ async function sendDigestPush(db, log, p) {
   const title = urgentCount
     ? `Тендеры: ${events.length} (${urgentCount} срочно)`
     : `Тендеры: ${events.length}`;
-  // Тело: первые три названия, чтобы было понятно без открытия.
+  // Тело: номер тендера (если есть) + первые три названия.
+  // Раньше брали `e.registry_no`, но такого поля в очереди нет — SELECT его
+  // не выбирает, enqueueEvent не пишет. Номер достаём из payload.tender_no.
   const names = events.slice(0, 3)
     .map((e) => {
-      const no = e.registry_no ? `№ ${e.registry_no} · ` : '';
-      return no + String(e.title || 'тендер').slice(0, 60);
+      const pl = (e && e.payload) || {};
+      const no = pl.tender_no ? `№ ${pl.tender_no} · ` : '';
+      return no + String((e && e.title) || 'тендер').slice(0, 60);
     });
   const more = events.length > 3 ? ` и ещё ${events.length - 3}` : '';
   const body = names.join('; ') + more;
 
-  // Кому: все активные подписки. Дайджест общий для тендерного контура,
-  // поэтому не привязываемся к конкретному userId.
+  // ── Кому: только тем, чьи это события ──────────────────────────────────
+  // Раньше push уходил на ВСЕ подписки в базе — включая тех, кто к тендерам
+  // не имеет отношения (склад, касса, СКУД). Это ровно тот спам, который
+  // задача и убирала. Собираем владельцев из payload.owner и шлём по ним;
+  // если владельцев нет — не шлём вообще (письмо всё равно уходит).
+  const owners = new Set();
+  for (const e of events) {
+    const pl = (e && e.payload) || {};
+    const id = Number(pl.owner);
+    if (Number.isFinite(id) && id > 0) owners.add(id);
+  }
+  if (!owners.size) return 0;
+
   const subs = await db.query(
-    'SELECT id, user_id, endpoint, p256dh, auth FROM push_subscriptions'
+    'SELECT id, user_id, endpoint, p256dh, auth FROM push_subscriptions WHERE user_id = ANY($1::int[])',
+    [[...owners]]
   );
   if (!subs.rows || !subs.rows.length) return 0;
 

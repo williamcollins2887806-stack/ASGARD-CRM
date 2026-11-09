@@ -871,6 +871,17 @@ async function generateDv(p) {
   // Собираем итоговую ДВ: поля-описания из первого круга, позиции — все.
   const dv = Object.assign({}, firstDv, { positions: allPositions });
 
+  // ── Роль «объёмы» из dv-agents: проверка полноты ──────────────────────────
+  // Модуль ролей (dv-agents) держит три раздельных промпта и функцию сверки
+  // «сколько строк перечня увидели — сколько позиций выписали». Здесь
+  // используется именно сверка: она ловит случай «модель прочитала таблицу
+  // и молча выписала треть», не требуя угадывать формат документа.
+  const agents = require('./dv-agents');
+  const agentsCompleteness = agents.checkCompleteness(
+    Math.max(expectedRows || 0, modelSaidPositions || 0),
+    validFound
+  );
+
   // ── Диагностика полноты ──────────────────────────────────────────────────
   // Без этих полей РП не отличает полный разбор от частичного: в ответе API
   // было только generation_rounds, и «353 позиции» выглядели одинаково
@@ -957,6 +968,9 @@ async function generateDv(p) {
           ? ` (модель: ${modelSaidPositions}, сетка: ${expectedRows})` : '')
         + `, в разборе: ${validFound}. Сверьте с ведомостью.`
       : null,
+    // Заключение роли объёмов: отдельное поле, чтобы модалка показала его
+    // даже когда общая оценка выглядит нормально, а строки разошлись.
+    agents_completeness: agentsCompleteness,
     model: usedModel,
     provider: usedProvider,
     tokens: totalUsage

@@ -64,9 +64,13 @@ async function createNotification(db, { user_id, title, message, type, link }) {
     //
     // Остальные уведомления (задачи, заявки, касса) работают как раньше:
     // там важна мгновенность.
+    //
+    // ВАЖНО: условие именно «НЕ тендерное». Инверсия (`if (isTenderDigestEvent)`)
+    // лишала push ВСЕ остальные уведомления и удваивала тендерные —
+    // регресс шире задачи, найден верификатором 09.11.2026.
     const isTenderDigestEvent = /^tender[_:]/i.test(String(type || ''))
       || type === 'tender_analysis' || type === 'tender_calc' || type === 'tender_deadline';
-    if (isTenderDigestEvent) {
+    if (!isTenderDigestEvent) {
     try {
       // Get unread count for badge
       const countRes = await db.query(

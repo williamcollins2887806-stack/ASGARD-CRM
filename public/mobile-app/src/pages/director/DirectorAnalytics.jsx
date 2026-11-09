@@ -1718,7 +1718,11 @@ function TenderTabs({ d, tab }) {
     // Вкладка «Анализ»: что модель разобрала до просчёта. Директор судит
     // по обоснованию, а не только по цене: источник объёмов, уверенность,
     // состав работ и проблемы.
-    const rj = detail?.rp_review?.report_json || {};
+    //
+    // ВАЖНО: в этой области видимости есть только проп `d`. Обращение к
+    // несуществующему `detail` бросало ReferenceError, и error boundary
+    // закрывала ВЕСЬ экран аналитики директора (найдено верификатором).
+    const rj = d?.rp_review?.report_json || d?.report_json || {};
     const rep = typeof rj === 'string' ? (() => { try { return JSON.parse(rj); } catch (_) { return {}; } })() : rj;
     const SOURCE = {
       vor: 'ведомость объёмов', tz: 'техническое задание', tz_labor: 'трудоёмкость из ТЗ',
