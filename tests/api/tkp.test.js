@@ -157,9 +157,10 @@ module.exports = {
         assert(resp.status < 500, `PDF should not 5xx, got ${resp.status}`);
       }
     },
-    // ── DELETE: only ADMIN ──
+    // ── DELETE: автор или ADMIN (с 10.11.2026 — не только ADMIN) ──
+    // ТКП создано администратором, поэтому PM и TO здесь не авторы → 403.
     {
-      name: 'NEGATIVE: PM cannot delete TKP → 403',
+      name: 'NEGATIVE: PM cannot delete чужое TKP → 403',
       run: async () => {
         if (!testTkpId) return;
         const resp = await api('DELETE', `/api/tkp/${testTkpId}`, { role: 'PM' });
@@ -167,7 +168,7 @@ module.exports = {
       }
     },
     {
-      name: 'NEGATIVE: TO cannot delete TKP → 403',
+      name: 'NEGATIVE: TO cannot delete чужое TKP → 403',
       run: async () => {
         if (!testTkpId) return;
         const resp = await api('DELETE', `/api/tkp/${testTkpId}`, { role: 'TO' });

@@ -110,6 +110,10 @@ async function assertCanCreateTkpForTender(db, user, tenderId) {
 async function routes(fastify, options) {
   const db = fastify.db;
   const { createNotification } = require('../services/notify');
+  // Алиасы и каталог загрузок: используются ниже (удаление ТКП, работа с PDF).
+  const pathLib = path;
+  const fsLib = fs;
+  const UPLOAD_DIR = process.env.UPLOAD_DIR || './uploads';
 
   // GET / — List
   fastify.get('/', {
@@ -721,15 +725,145 @@ async function routes(fastify, options) {
     return { item: rows[0] };
   });
 
-  // DELETE /:id — Delete draft
+  // DELETE /:id — Удалить ТКП (автор или ADMIN).
+  //
+  // ── Почему не «только draft и только ADMIN» ──────────────────────────────
+  // Прежнее правило оставляло мусор: черновик, созданный из канбана другим
+  // сотрудником, автор удалить не мог, а админ не мог снять ТКП, уже
+  // отправленный клиенту ошибочно. Плюс удаление не убирало привязки —
+  // документ оставался в карточке тендера и в реестре, и ТКП «висело»
+  // в списках с битой ссылкой.
+  //
+  // Теперь: автор или ADMIN, любая стадия, и полная уборка связей.
   fastify.delete('/:id', {
-    preHandler: [fastify.requireRoles(['ADMIN'])]
+    preHandler: [fastify.authenticate]
   }, async (request, reply) => {
+    const id = parseInt(request.params.id, 10);
+    if (!id || isNaN(id)) return reply.code(400).send({ error: 'Bad id' });
+
     const { rows } = await db.query(
-      `DELETE FROM tkp WHERE id = $1 AND status = 'draft' RETURNING id`, [request.params.id]
+      `SELECT id, author_id, tender_id, pre_tender_id, work_id, status, pdf_path, subject, total_sum
+         FROM tkp WHERE id = $1`,
+      [id]
     );
-    if (!rows[0]) return reply.code(404).send({ error: 'TKP not found or not a draft' });
-    return { success: true };
+    if (!rows[0]) return reply.code(404).send({ error: 'ТКП не найдено' });
+    const tkp = rows[0];
+
+    const isAdmin = String(request.user.role || '') === 'ADMIN';
+    const isAuthor = Number(tkp.author_id) === Number(request.user.id);
+    if (!isAdmin && !isAuthor) {
+      return reply.code(403).send({
+        error: 'Удалить ТКП может только автор или администратор',
+        code: 'tkp_delete_forbidden'
+      });
+    }
+
+    // В счёте ТКП — это основание платежа. Удаление сделает счёт безосновным,
+    // поэтому такие ТКП не удаляем: сначала надо отвязать счёт.
+    const inv = await db.query('SELECT count(*)::int AS n FROM invoices WHERE tkp_id = $1', [id]);
+    if (inv.rows[0] && inv.rows[0].n > 0) {
+      return reply.code(409).send({
+        error: `К ТКП привязано счетов: ${inv.rows[0].n}. Сначала отвяжите их — иначе счета останутся без основания.`,
+        code: 'tkp_has_invoices'
+      });
+    }
+
+    const removed = { blocks: 0, documents: 0, review_links: 0, pre_tender_links: 0, quick_sessions: 0, file: false };
+
+    const client = await db.connect();
+    try {
+      await client.query('BEGIN');
+
+      // 1) Блоки конструктора: уходят каскадом, но считаем заранее для отчёта.
+      const b = await client.query('DELETE FROM tkp_blocks WHERE tkp_id = $1 RETURNING id', [id]);
+      removed.blocks = b.rowCount || 0;
+
+      // 2) Файл ТКП в карточке тендера. Привязанные PDF живут в documents
+      //    с type='tkp' и original_name='ТКП_<id>.pdf'. Только ТКП этого id —
+      //    чужие файлы того же тендера не трогаем.
+      const d = await client.query(
+        `DELETE FROM documents
+          WHERE type = 'tkp'
+            AND (
+              original_name = $1
+              OR filename = $2
+            )
+          RETURNING id`,
+        [`ТКП_${id}.pdf`, pathLib.basename(String(tkp.pdf_path || ''))]
+      );
+      removed.documents = d.rowCount || 0;
+
+      // 3) Привязки в просчёте: tkp_file_id ссылался на documents, поле
+      //    очищаем, чтобы карточка просчёта не показывала удалённый документ.
+      const rv = await client.query(
+        `UPDATE tender_rp_reviews SET tkp_file_id = NULL
+          WHERE tkp_file_id IS NOT NULL
+            AND tender_id = $1
+            AND tkp_file_id NOT IN (SELECT id FROM documents)`,
+        [tkp.tender_id]
+      );
+      removed.review_links = rv.rowCount || 0;
+
+      // 4) Обратная ссылка из заявки: «ТКП создано» больше не существует.
+      const pt = await client.query(
+        'UPDATE pre_tender_requests SET created_tkp_id = NULL WHERE created_tkp_id = $1',
+        [id]
+      );
+      removed.pre_tender_links = pt.rowCount || 0;
+
+      // 5) Сессия Quick-сметы, из которой ТКП собрали, отвязывается и
+      //    возвращается в работу — иначе её нельзя пересобрать.
+      const qs = await client.query(
+        `UPDATE tkp_quick_sessions
+            SET tkp_id = NULL,
+                status = CASE WHEN status = 'finalized' THEN 'chatting' ELSE status END,
+                finalized_at = NULL,
+                updated_at = NOW()
+          WHERE tkp_id = $1
+          RETURNING id`,
+        [id]
+      );
+      removed.quick_sessions = qs.rowCount || 0;
+
+      await client.query('DELETE FROM tkp WHERE id = $1', [id]);
+      await client.query('COMMIT');
+    } catch (e) {
+      try { await client.query('ROLLBACK'); } catch (_) {}
+      request.log.error({ err: e, tkp_id: id }, '[TKP delete] failed');
+      return reply.code(500).send({ error: 'Не удалось удалить ТКП', message: e.message });
+    } finally {
+      client.release();
+    }
+
+    // 6) Файл на диске. Удаляем после коммита: если БД откатится, файл нужен.
+    try {
+      if (tkp.pdf_path) {
+        const abs = pathLib.resolve(UPLOAD_DIR, tkp.pdf_path);
+        if (fsLib.existsSync(abs)) {
+          fsLib.unlinkSync(abs);
+          removed.file = true;
+        }
+      }
+    } catch (e) {
+      request.log.warn({ err: e, tkp_id: id }, '[TKP delete] файл не удалён');
+    }
+
+    try {
+      _sseBroadcast('tkp:deleted', {
+        tkp_id: id,
+        tender_id: tkp.tender_id || null,
+        pre_tender_id: tkp.pre_tender_id || null,
+        deleted_by: request.user.id
+      });
+    } catch (_) {}
+
+    return {
+      success: true,
+      deleted_id: id,
+      subject: tkp.subject || null,
+      total_sum: tkp.total_sum != null ? Number(tkp.total_sum) : null,
+      removed
+    };
   });
 
   // PUT /:id/status — Change status

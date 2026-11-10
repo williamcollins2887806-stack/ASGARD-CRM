@@ -2244,6 +2244,9 @@ window.AsgardPersonalKanbanV3 = (function () {
 .pk3-doc-actions { display: flex; gap: 4px; flex-shrink: 0; }
 .pk3-doc-btn { width: 30px; height: 30px; border-radius: 7px; border: 1px solid var(--brd-m); background: var(--bg2); color: var(--t2); cursor: pointer; font-size: 12px; display: inline-flex; align-items: center; justify-content: center; transition: all .12s ease; }
 .pk3-doc-btn:hover { color: var(--bsys-primary-1); border-color: var(--bsys-primary-1); background: var(--gold-bg); }
+/* Удаление ТКП — отдельный акцент: красный только на hover, чтобы не шуметь в списке. */
+.pk3-doc-del { border-color: transparent; }
+.pk3-doc-del:hover { color: var(--err-t, #c0392b); border-color: var(--err-t, #c0392b); background: transparent; }
 .pk3-doc-ctx { position: fixed; z-index: 100010; background: var(--bg2); border: 1px solid var(--brd-m); border-radius: 10px; padding: 4px; min-width: 168px; box-shadow: 0 12px 32px rgba(0,0,0,.45); }
 .pk3-doc-ctx button { display: block; width: 100%; text-align: left; padding: 8px 12px; border: none; background: transparent; color: var(--t1); font-size: 12px; cursor: pointer; border-radius: 6px; font-family: inherit; }
 .pk3-doc-ctx button:hover { background: var(--gold-bg); color: var(--gold-l); }
@@ -4966,6 +4969,7 @@ html[data-theme="light"] .pk3-stk-float-bar { background: rgba(255,255,255,.94);
           <a class="pk3-doc-btn" href="#/tkp?edit=${t.id}" title="Открыть в конструкторе">✏️</a>
           <a class="pk3-doc-btn" href="/api/tkp/${t.id}/pdf${tokenQs}" target="_blank" title="Скачать PDF">📥 PDF</a>
           <a class="pk3-doc-btn" href="/api/tkp/${t.id}/excel${tokenQs}" target="_blank" title="Скачать Excel">📊 XLSX</a>
+          ${_canDeleteTkpRow(t) ? `<button type="button" class="pk3-doc-btn pk3-doc-del" data-tkp-del="${t.id}" title="Удалить ТКП">🗑</button>` : ''}
         </div>
       </div>
     `;
@@ -4988,11 +4992,98 @@ html[data-theme="light"] .pk3-stk-float-bar { background: rgba(255,255,255,.94);
       if (container) {
         if (!items.length) container.innerHTML = '';
         else container.innerHTML = items.map(_renderTkpListItem).join('');
+        // Делегирование: строки перерисовываются, поэтому слушатель на контейнере.
+        if (!container._tkpDelBound) {
+          container._tkpDelBound = true;
+          container.addEventListener('click', function (e) {
+            const btn = e.target.closest('[data-tkp-del]');
+            if (!btn) return;
+            e.preventDefault();
+            e.stopPropagation();
+            _deleteTkpFromCard(Number(btn.getAttribute('data-tkp-del')), card);
+          });
+        }
       }
       // 22.06.2026: автоподтяжка фин-карточек. Сначала смета (полные totals),
       // если её нет — ТКП (только КП без НДС). Не ждём, делаем параллельно.
       _autofillFinFromTkp(card);
     } catch (_) {}
+  }
+
+  /** Может ли текущий пользователь удалить ТКП из карточки (автор или админ). */
+  function _canDeleteTkpRow(t) {
+    try {
+      const u = (window.AsgardAuth && window.AsgardAuth.getUser && window.AsgardAuth.getUser()) || {};
+      if (String(u.role || '') === 'ADMIN') return true;
+      return t && t.author_id != null && Number(t.author_id) === Number(u.id);
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /**
+   * Удалить ТКП прямо из карточки канбана.
+   *
+   * Сервер снимает запись, блоки, документ из карточки тендера и ссылку из
+   * заявки. После успеха перерисовываем секцию и action-bar — иначе строка
+   * остаётся на экране, и кажется, что удаление не сработало.
+   */
+  function _deleteTkpFromCard(tkpId, card) {
+    if (!tkpId) return;
+    const money = _fmtMoney(card._tkp_max_sum);
+    const m = document.createElement('div');
+    m.className = 'pk3-modal-backdrop';
+    m.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9999;display:flex;align-items:center;justify-content:center';
+    m.innerHTML = `
+      <div class="pk3-modal" style="max-width:480px;width:calc(100% - 32px)">
+        <div class="pk3-modal-head">
+          <div class="pk3-modal-title">Удалить ТКП №${esc(String(tkpId))}?</div>
+        </div>
+        <div class="pk3-modal-body" style="padding:16px;display:flex;flex-direction:column;gap:12px">
+          <div style="font-size:12.5px;color:var(--t3);line-height:1.5">
+            ТКП${card._tkp_max_sum ? ' на ' + esc(money) : ''} будет удалено вместе с файлом
+            из карточки тендера и из реестра. Ссылка из заявки снимется. Действие необратимо.
+          </div>
+          <div style="display:flex;gap:8px;justify-content:flex-end">
+            <button type="button" class="pk3-btn" data-act="cancel">Отмена</button>
+            <button type="button" class="pk3-btn" data-act="ok"
+                    style="background:var(--err-t,#c0392b);color:#fff;border-color:transparent">Удалить</button>
+          </div>
+        </div>
+      </div>`;
+    document.body.appendChild(m);
+    const close = () => { try { m.remove(); } catch (_) {} };
+    m.addEventListener('click', async (e) => {
+      if (e.target === m) return close();
+      const act = e.target.closest('[data-act]') && e.target.closest('[data-act]').dataset.act;
+      if (act === 'cancel') return close();
+      if (act !== 'ok') return;
+      const btn = m.querySelector('[data-act="ok"]');
+      btn.disabled = true;
+      btn.textContent = 'Удаляю…';
+      try {
+        const token = localStorage.getItem('asgard_token');
+        const resp = await fetch('/api/tkp/' + tkpId, {
+          method: 'DELETE',
+          headers: { Authorization: 'Bearer ' + token }
+        });
+        let data = null;
+        try { data = await resp.json(); } catch (_) {}
+        if (!resp.ok) {
+          toast('Не удалось', (data && data.error) || ('HTTP ' + resp.status), 'err');
+          btn.disabled = false;
+          btn.textContent = 'Удалить';
+          return;
+        }
+        close();
+        toast('Удалено', 'ТКП и его файл убраны', 'ok');
+        await _loadAndRenderTkpList(card);
+      } catch (err) {
+        toast('Не удалось', String((err && err.message) || err), 'err');
+        btn.disabled = false;
+        btn.textContent = 'Удалить';
+      }
+    });
   }
 
   // 22.06.2026: автоподтяжка финансов в карту — единый endpoint /finance-source.

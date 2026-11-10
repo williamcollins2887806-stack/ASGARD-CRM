@@ -449,6 +449,9 @@ window.AsgardTkpPage = (function() {
             '<button class="tkp-tbl-btn" data-action="excel" data-id="' + i.id + '" title="Скачать Excel" style="color:#1B7340"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14,2 14,8 20,8"/><line x1="9" y1="13" x2="15" y2="19"/><line x1="15" y1="13" x2="9" y2="19"/></svg></button>' +
             '<button class="tkp-tbl-btn" data-action="send" data-id="' + i.id + '" title="Отправить"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 2L11 13"/><path d="M22 2L15 22 11 13 2 9z"/></svg></button>' +
             '<button class="tkp-tbl-btn" data-action="decision" data-id="' + i.id + '" title="Решение клиента" style="color:var(--blue)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg></button>' +
+            // Удаление: автор или администратор. Права проверяет сервер, кнопку
+            // показываем только тем, кому она реально сработает.
+            (canDeleteTkp(i) ? '<button class="tkp-tbl-btn" data-action="delete" data-id="' + i.id + '" title="Удалить ТКП" style="color:var(--err-t, #c0392b)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3,6 5,6 21,6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a2 2 0 012-2h2a2 2 0 012 2v2"/></svg></button>' : '') +
           '</td></tr>';
       }).join('') : '<tr><td colspan="10" style="text-align:center;padding:24px;color:var(--t3)">Нет ТКП по выбранным фильтрам</td></tr>') +
       '</tbody></table></div>';
@@ -501,6 +504,82 @@ window.AsgardTkpPage = (function() {
     });
     el.querySelectorAll('[data-action="decision"]').forEach(function(b) {
       b.addEventListener('click', function() { openClientDecisionModal(b.dataset.id); });
+    });
+    el.querySelectorAll('[data-action="delete"]').forEach(function(b) {
+      b.addEventListener('click', function() { confirmDeleteTkp(b.dataset.id); });
+    });
+  }
+
+  /** Может ли текущий пользователь удалить это ТКП (автор или администратор). */
+  function canDeleteTkp(row) {
+    try {
+      const u = (window.AsgardAuth && window.AsgardAuth.getUser && window.AsgardAuth.getUser()) || {};
+      const role = String(u.role || '');
+      // Админ удаляет любое ТКП; остальные — только свои черновики/ТКП.
+      if (role === 'ADMIN') return true;
+      return row && row.author_id != null && Number(row.author_id) === Number(u.id);
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /**
+   * Удаление ТКП с подтверждением.
+   *
+   * Удаляем и запись, и привязки: сервер снимает документ из карточки тендера,
+   * чистит created_tkp_id заявки и возвращает Quick-сессию в работу. После
+   * успеха перерисовываем реестр — иначе строка остаётся на экране.
+   */
+  function confirmDeleteTkp(id) {
+    const row = _tkpAllItems.find(function (x) { return Number(x.id) === Number(id); });
+    const money = row && row.total_sum ? ' на ' + fmt(row.total_sum) : '';
+    const subject = row && (row.subject || row.title) ? String(row.subject || row.title).slice(0, 120) : '';
+    showModal({
+      title: 'Удалить ТКП?',
+      icon: '🗑',
+      subtitle: 'ТКП №' + id + money,
+      html:
+        '<div style="display:flex;flex-direction:column;gap:12px">' +
+          (subject ? '<div style="font-size:13px;color:var(--t1)"><b>' + esc(subject) + '</b></div>' : '') +
+          '<div style="font-size:12.5px;color:var(--t3);line-height:1.5">' +
+            'ТКП будет удалено вместе с файлом в карточке тендера и в реестре. ' +
+            'Ссылка из заявки снимется. Действие необратимо.' +
+          '</div>' +
+          '<div style="display:flex;gap:8px;justify-content:flex-end">' +
+            '<button type="button" class="btn ghost" id="tkpDelCancel">Отмена</button>' +
+            '<button type="button" class="btn" id="tkpDelOk" style="background:var(--err-t,#c0392b);color:#fff;border-color:transparent">Удалить</button>' +
+          '</div>' +
+        '</div>',
+      onMount: function () {
+        document.getElementById('tkpDelCancel').addEventListener('click', function () { hideModal(); });
+        document.getElementById('tkpDelOk').addEventListener('click', async function () {
+          const btn = document.getElementById('tkpDelOk');
+          btn.disabled = true;
+          btn.textContent = 'Удаляю…';
+          try {
+            const token = localStorage.getItem('asgard_token');
+            const resp = await fetch('/api/tkp/' + id, {
+              method: 'DELETE',
+              headers: { Authorization: 'Bearer ' + token }
+            });
+            let data = null;
+            try { data = await resp.json(); } catch (_) {}
+            if (!resp.ok) {
+              toast('Не удалось', (data && data.error) || ('HTTP ' + resp.status), 'err');
+              btn.disabled = false;
+              btn.textContent = 'Удалить';
+              return;
+            }
+            hideModal();
+            toast('Удалено', 'ТКП и его файл убраны', 'ok');
+            loadList();
+          } catch (e) {
+            toast('Не удалось', String((e && e.message) || e), 'err');
+            btn.disabled = false;
+            btn.textContent = 'Удалить';
+          }
+        });
+      }
     });
   }
 
