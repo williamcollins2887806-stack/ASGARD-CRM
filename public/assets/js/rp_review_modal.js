@@ -1950,12 +1950,12 @@ window.AsgardRpReviewModal = (function () {
           reportJson.visit_mode = reportJson.visit_plan.mode;
           reportJson.trip_count = reportJson.visit_plan.trip_count;
           try {
-            await API.saveRpReview(tender.id, {
+            const saved = await API.saveRpReview(tender.id, {
               mode: 'analysis',
               report_json: reportJson,
               // work_price не трогаем: на анализе денег нет.
             });
-            if (d && d.review) review = d.review;
+            if (saved && saved.review) review = saved.review;
           } catch (e) {
             toast('График заездов', 'Не удалось сохранить режим: ' + (e.message || 'ошибка'), 'warn');
           }
