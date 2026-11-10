@@ -1261,7 +1261,8 @@ window.AsgardVacationSchedulePage = (function () {
   }
 
   function handleClick(ev) {
-    var el = ev.target.closest ? ev.target.closest('[data-vs-tab],[data-year],[data-month],[data-day],[data-period],[data-vs-hide],[data-vs-unhide],[data-vs-hidegroup],[data-vs-unhidegroup],[data-vs-dept-only],[data-vs-show-all],[data-vs-hide-all],[data-vs-why],[data-vs-blocked],[data-vs-clear],[data-vs-save],[data-vs-rules],[data-vs-reload],[data-vs-approve-all],[data-vs-close-graph],[data-vs-decide],[data-vs-reject-confirm],[data-vs-revoke],[data-vs-edit],[data-vs-cancel],[data-vs-buh-save],[data-vs-doc],[data-vs-close-overlay],[data-vs-close-modal]') : null;
+    // data-vs-submit обязательно в closest — иначе «Готово и согласовать» молчит (клик не находится).
+    var el = ev.target.closest ? ev.target.closest('[data-vs-tab],[data-year],[data-month],[data-day],[data-period],[data-vs-hide],[data-vs-unhide],[data-vs-hidegroup],[data-vs-unhidegroup],[data-vs-dept-only],[data-vs-show-all],[data-vs-hide-all],[data-vs-why],[data-vs-blocked],[data-vs-clear],[data-vs-save],[data-vs-submit],[data-vs-rules],[data-vs-reload],[data-vs-approve-all],[data-vs-close-graph],[data-vs-decide],[data-vs-reject-confirm],[data-vs-revoke],[data-vs-edit],[data-vs-cancel],[data-vs-buh-save],[data-vs-doc],[data-vs-close-overlay],[data-vs-close-modal]') : null;
 
     if (!el) {
       // клик мимо шита — закрыть оверлей
