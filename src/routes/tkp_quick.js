@@ -959,7 +959,8 @@ async function routes(fastify, options) {
       // Требование РП 07.11: отсутствие ВОР не должно быть блокером —
       // бывает только ТЗ, и объёмы надо вывести из оборудования.
       // Незнакомые марки ищем веб-поиском. Всё найденное помечается
-      // confidence: low и требует подтверждения РП.      let passportEnriched = 0;
+      // confidence: low и требует подтверждения РП.
+      let passportEnriched = 0;
       emit({
         step: 'passport',
         message: `Проверяю паспорта оборудования по ${(gen.dv.positions || []).length} позициям…`,
