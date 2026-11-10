@@ -140,9 +140,12 @@ function buildCrew(aiEstimate) {
       role_code: code,
       // ИТР и специалист ОТ заступают на одну смену в сутки, даже если работы
       // идут в две-три: иначе ИТР «удваивается» и ФОТ разъезжается с расчётом.
+      // Флаг shifts_locked обязателен: движок сметы уважает смены роли только
+      // при нём, иначе режим объекта (2–3 смены) перебивает канон «ИТР = 1».
       shifts_per_day: num(c.shifts_per_day, 0) > 0
         ? num(c.shifts_per_day)
         : (['itr', 'safety'].includes(code) ? 1 : null),
+      shifts_locked: num(c.shifts_per_day, 0) > 0 || ['itr', 'safety'].includes(code),
       rate: c.rate != null ? num(c.rate) : null,
       employee_ids: Array.isArray(c.employee_ids) ? c.employee_ids
         : (c.employee_id ? [c.employee_id] : []),

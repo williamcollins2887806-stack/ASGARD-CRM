@@ -119,10 +119,13 @@ function normalizeCrew(crew) {
       count: Math.max(0, num(c.count, 0)),
       unit: String(c.unit || 'чел·смен'),
       shifts_per_day: num(c.shifts_per_day, 0) > 0 ? num(c.shifts_per_day) : null,
-      // Признак «смены роли заданы человеком»: только тогда они перебивают
-      // режим объекта. Машинное заполнение (из анализа) флаг не ставит, иначе
-      // правка «Смен в сутки» переставала доезжать до строк бригады.
-      shifts_locked: c.shifts_locked === true || num(c.shifts_locked, 0) > 0,
+      // Смены роли заданы явно (числом или флагом) — значит это намерение,
+      // и режим объекта их не перебивает. Без флага движок множил ИТР на
+      // смены объекта: было 9 чел·смен, стало 18 (верификатор 10.11.2026).
+      // Прибивание дефолта живёт не здесь, а в сборке сметы из анализа
+      // (pm-duty.js пишет shifts_per_day: null) — это и был корень бага.
+      shifts_locked: c.shifts_locked === true || num(c.shifts_locked, 0) > 0
+        || num(c.shifts_per_day, 0) > 0,
       hours_per_shift: num(c.hours_per_shift, 0) > 0 ? num(c.hours_per_shift) : null,
       rate: (c.rate != null && c.rate !== '') ? num(c.rate) : null,
       source: c.source === 'hire' ? 'hire' : 'staff',
@@ -970,11 +973,19 @@ function recalcAsgardSmeta(estimate) {
   // из РЕАЛЬНОЙ бригады. Раньше считали от `params.workers_per_shift`, а строки — от
   // `crew[]`: при правке смены знаменатель менялся, а строки A стояли на месте,
   // и «человеко-смены не пересчитываются» (баг 10.11.2026).
-  const personShifts = (est.rows || []).reduce((s, r) => {
+  //
+  // Фолбэк на параметры обязателен: сметы, собранные по параметрам (без
+  // структурной бригады, см. composeFromRecomputed), иначе получали 0 и теряли
+  // KPI «прибыль на чел·смену» в модалке, письме директору и тексте сметы.
+  const personShiftsFromRows = (est.rows || []).reduce((s, r) => {
     if (!r || r.kind !== 'line' || String(r.section) !== 'A') return s;
     if (r.crewRole !== 'worker' && r.crewRole !== 'master') return s;
     return s + num(r.qty);
   }, 0);
+  const personShifts = personShiftsFromRows > 0
+    ? personShiftsFromRows
+    : (num(p.work_days) * num(p.shifts_per_day)
+      * (num(p.workers_per_shift) + num(p.masters_per_shift)));
   const profitPerPersonShift = personShifts > 0
     ? Math.round(netProfit / personShifts * 100) / 100
     : null;
@@ -982,7 +993,24 @@ function recalcAsgardSmeta(estimate) {
   // Человеко-часы: из техплана, если бригада задана структурно; иначе из параметров.
   const peoplePerShift = crewPerShift(est.crew, p);
   const shiftHours = num(p.shift_hours) > 0 ? num(p.shift_hours) : 12;
-  const manHours = Math.round(num(p.work_days) * num(p.shifts_per_day) * peoplePerShift * shiftHours * 100) / 100;
+  // ── Человеко-часы: сумма по РОЛЯМ, а не «все × режим объекта» ─────────────
+  // Формула "work_days × shifts_per_day × люди × часы" считает каждую роль по
+  // режиму объекта. Но у ИТР и специалиста ОТ смены фиксированы (1 в сутки),
+  // и такой пересчёт давал им лишние смены: 1836 → 1944 ч, ИТР «удваивался»
+  // (верификатор 10.11.2026). Считаем по тем же сменам, что стоят в строках A:
+  // Σ (qty роли × часы смены). Это ровно те трудозатраты, за которые платим.
+  const manHoursFromCrew = (est.crew || []).reduce((s, c) => {
+    const roleShifts = (c.shifts_locked && num(c.shifts_per_day) > 0)
+      ? num(c.shifts_per_day)
+      : (num(p.shifts_per_day) || 1);
+    const roleHours = num(c.hours_per_shift) > 0 ? num(c.hours_per_shift) : shiftHours;
+    return s + num(c.count) * num(p.work_days) * roleShifts * roleHours;
+  }, 0);
+  const manHours = Math.round(
+    (manHoursFromCrew > 0
+      ? manHoursFromCrew
+      : num(p.work_days) * num(p.shifts_per_day) * peoplePerShift * shiftHours) * 100
+  ) / 100;
   const crewHeadcount = (est.crew || []).reduce((s, c) => s + num(c.count), 0) || peoplePerShift;
 
   const totalsMap = {

@@ -160,6 +160,17 @@ async function buildSmetaFromStage(db, tenderId, rj) {
   const dvPositions = Array.isArray(st.positions) ? st.positions : [];
   if (!calc.length) return null;
 
+  // Индекс позиций ДВ по id: из него берём наименование, объём, единицу и
+  // источник объёма. Без него падал `byId is not defined` — исключение
+  // глоталось catch в вызывающем коде, и смета из анализа не собиралась
+  // вовсе (найдено верификатором 10.11.2026).
+  const byId = new Map();
+  dvPositions.forEach((p) => {
+    if (!p) return;
+    if (p.id != null) byId.set(String(p.id), p);
+    if (p.position_id != null) byId.set(String(p.position_id), p);
+  });
+
   const asgardSmeta = require('../services/asgard-smeta');
 
   // Параметры — из настроек компании, чтобы смета совпадала с ручным расчётом.

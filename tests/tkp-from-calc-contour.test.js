@@ -59,12 +59,43 @@ check('из поиска сессии убран фильтр по автору'
 });
 
 check('роли персонала не попадают в клиентскую таблицу', () => {
-  const re = /const INTERNAL_RE = \/([\s\S]*?)\/i;/.exec(QUICK);
-  assert.ok(re, 'INTERNAL_RE не найден');
-  const body = re[1];
-  ['ИТР', 'Мастер', 'Рабочий', 'Наблюдающ', 'Слесарь'].forEach((w) => {
-    assert.ok(body.indexOf(w) >= 0, 'в фильтре нет роли «' + w + '»');
-  });
+  // Поведенческая проверка, а не поиск подстрок в исходнике (верификатор
+  // 10.11.2026: тест находил «ИТР» в тексте регекспа и потому пропускал
+  // реальную утечку — \b не работает с кириллицей).
+  // Модуль требует DB_PASSWORD на загрузке, поэтому подставляем заглушку:
+  // для этой проверки БД не нужна.
+  if (!process.env.DB_PASSWORD) process.env.DB_PASSWORD = 'test-stub';
+  const quick = require('../src/services/mimir-tkp-quick');
+  const draft = {
+    items: [
+      { name: 'ИТР', qty: 10, price: 15000 },
+      { name: 'ИТР (10 см.)', qty: 10, price: 15000 },
+      { name: 'Мастер / бригадир (10 см.)', qty: 10, price: 12000 },
+      { name: 'Рабочий', qty: 10, price: 9750 },
+      { name: 'Слесарь (10 см.)', qty: 10, price: 9750 },
+      { name: 'Наблюдающий', qty: 10, price: 5500 },
+      { name: 'Химик (10 см.)', qty: 10, price: 10000 },
+      { name: 'ПТО / приёмка (10 см.)', qty: 10, price: 10000 },
+      { name: 'СИЗ + спецодежда', qty: 9, price: 15000 },
+      { name: 'Оборудование (амортизация)', qty: 1, price: 100000 },
+      { name: 'Аренда техники', qty: 1, price: 50000 },
+      { name: 'Накладные (10%)', qty: 1, price: 90000 },
+      { name: 'Непредвиденные (5%)', qty: 1, price: 45000 },
+      { name: 'Пайковые', qty: 100, price: 1000 },
+      { name: 'Проживание', qty: 60, price: 1250 },
+      { name: 'Гидроструйная чистка АВО', qty: 2770, price: 500, unit: 'м²' }
+    ],
+    totals: { price_no_vat: 5000000, markup_multiplier: 1.75 }
+  };
+  const out = quick.buildClientItems(draft);
+  const names = out.map((x) => x.name);
+  const forbidden = ['ИТР', 'Мастер', 'Рабочий', 'Слесарь', 'Химик', 'ПТО', 'Наблюдающ',
+    'СИЗ', 'амортизац', 'Аренда техники', 'Накладные', 'Непредвиденные', 'Пайковые', 'Проживание'];
+  const leaked = names.filter((n) => forbidden.some((f) => new RegExp(f, 'i').test(String(n))));
+  assert.deepStrictEqual(leaked, [], 'в клиентскую таблицу утекло: ' + leaked.join(' | '));
+  assert.ok(names.some((n) => /Гидроструйная чистка/.test(n)), 'работы потерялись: ' + names.join(' | '));
+  const sum = out.reduce((s, i) => s + (Number(i.total) || 0), 0);
+  assert.ok(Math.abs(sum - 5000000) < 2, 'Σ строк не равна цене КП: ' + sum);
 });
 
 check('демо-позиции удалены из vanilla-канбана', () => {
