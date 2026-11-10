@@ -315,40 +315,76 @@ html, body.ting-tv {
   right: max(28px, 2.8vw, env(safe-area-inset-right, 0px));
   bottom: max(36px, 4vh, env(safe-area-inset-bottom, 0px));
   left: max(28px, 2.8vw, env(safe-area-inset-left, 0px));
-  display: grid;
-  grid-template-rows: auto 1fr auto;
+  /* Одна область: сцена занимает ВСЁ место, а док и шапка лежат поверх
+     картинки. Раньше doc забирал ~110px высоты снизу, сцена становилась
+     «сплющенной» (2.7–3.1:1 вместо 16:9) — это и было «узко». */
+  display: block;
   background: #050608;
   border-radius: 22px;
   overflow: hidden;
   box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.06);
 }
 .ttv-room-top {
+  position: absolute;
+  top: 0; left: 0; right: 0;
   display: flex; align-items: center; justify-content: space-between;
   padding: 14px 20px 8px;
-  z-index: 5;
-  flex-shrink: 0;
+  z-index: 10;
+  /* Мягкая подложка, чтобы текст читался на любой картинке. */
+  background: linear-gradient(180deg, rgba(3, 4, 6, .82) 0%, rgba(3, 4, 6, .45) 60%, transparent 100%);
+  pointer-events: none;
 }
+.ttv-room-top > * { pointer-events: auto; }
 .ttv-room-title { display: flex; align-items: center; gap: 14px; }
 .ttv-room-title strong { font-size: clamp(20px, 1.6vw, 26px); }
+/* Диагностика: фактическое разрешение публикации, видно с дивана. */
+.ttv-diag {
+  align-self: center;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, .45);
+  border: 1px solid rgba(255, 255, 255, .14);
+  color: var(--ttv-t2);
+  font: 700 13px/1 var(--ttv-font, system-ui, sans-serif);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: .02em;
+}
+.ttv-diag:empty { display: none; }
 .ttv-room-title .ttv-muted { font-size: clamp(15px, 1.2vw, 18px); font-variant-numeric: tabular-nums; }
 .ttv-stage-wrap {
-  position: relative;
-  min-height: 0;
+  position: absolute;
+  inset: 0;
   display: flex;
   flex-direction: column;
-  padding: 4px 16px 10px;
+  /* Верх — под шапку (60px), низ — под док (96px), чтобы док лежал ПОВЕРХ
+     картинки, а не отнимал у неё высоту. */
+  padding: 60px 16px 96px;
+  box-sizing: border-box;
   overflow: hidden;
 }
 .ttv-stage {
   flex: 1 1 auto;
   min-height: 0;
+  min-width: 0;
   width: 100%;
   position: relative;
-  display: grid;
-  gap: 12px;
-  align-content: stretch;
-  justify-items: stretch;
+  /* Flex, а не grid: плитка должна занимать максимум места, сохраняя 16:9.
+     Grid с place-items:center + width:100% схлопывал её до 7×4 px. */
+  display: flex;
+  align-items: center;
+  justify-content: center;
   overflow: hidden;
+  container-type: size;
+}
+.ttv-stage > .ttv-tile {
+  /* Наибольший 16:9, который влезает: по высоте сцены, ограничен шириной. */
+  aspect-ratio: 16 / 9;
+  height: 100%;
+  width: auto;
+  flex: 0 0 auto;
+  max-width: 100%;
+  min-height: 0;
+  margin: 0 auto;
 }
 /* Hall modes: wait / spot / share — main fills stage */
 .ttv-stage.hall,
@@ -356,12 +392,26 @@ html, body.ting-tv {
 .ttv-stage.hall-spot,
 .ttv-stage.hall-spot-rail,
 .ttv-stage.hall-share {
-  display: block;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
-.ttv-stage.hall-dual {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 12px;
+.ttv-stage.hall > .ttv-tile.is-main,
+.ttv-stage.hall-wait > .ttv-tile.is-main,
+.ttv-stage.hall-spot > .ttv-tile.is-main,
+.ttv-stage.hall-spot-rail > .ttv-tile.is-main,
+.ttv-stage.hall-share > .ttv-tile.is-main {
+  /* Главный кадр: высота — вся сцена, ширина считается из 16:9 и ограничена
+     шириной сцены. Раньше inset:0 + aspect-ratio:auto давали 2.07:1. */
+  position: relative;
+  inset: auto;
+  height: 100%;
+  width: auto;
+  flex: 0 0 auto;
+  max-width: 100%;
+  aspect-ratio: 16 / 9;
+  z-index: 1;
+  border-radius: 20px;
 }
 .ttv-stage.hall-g3 {
   display: grid;
@@ -381,27 +431,18 @@ html, body.ting-tv {
   grid-template-rows: repeat(3, 1fr);
   gap: 8px;
 }
-.ttv-stage.hall > .ttv-tile.is-main,
-.ttv-stage.hall-wait > .ttv-tile.is-main,
-.ttv-stage.hall-spot > .ttv-tile.is-main,
-.ttv-stage.hall-spot-rail > .ttv-tile.is-main,
-.ttv-stage.hall-share > .ttv-tile.is-main {
-  position: absolute;
-  inset: 0;
-  aspect-ratio: auto;
-  width: auto;
-  height: auto;
-  z-index: 1;
-  border-radius: 20px;
-}
+/* Второй блок (раньше стоял ниже) удалён: он перебивал 16:9 кадра,
+   ставя absolute/inset:0/aspect-ratio:auto → картинка 2.07:1. */
 .ttv-stage.hall-share > .ttv-tile.is-share-main video {
   object-fit: contain;
   background: #000;
 }
 .ttv-stage.hall-dual > .ttv-tile.is-gallery {
   position: relative;
-  aspect-ratio: auto;
-  height: 100%;
+  /* Галерея: обе плитки тоже держат 16:9, а не растягиваются по высоте. */
+  aspect-ratio: 16 / 9;
+  width: 100%;
+  height: auto;
   min-height: 0;
   border-radius: 18px;
 }
@@ -409,8 +450,8 @@ html, body.ting-tv {
 .ttv-stage.hall-g4 > .ttv-tile.is-gallery,
 .ttv-stage.hall-g5 > .ttv-tile.is-gallery {
   position: relative;
-  aspect-ratio: auto;
-  width: auto;
+  aspect-ratio: 16 / 9;
+  width: 100%;
   height: auto;
   min-height: 0;
   border-radius: 14px;
@@ -532,10 +573,12 @@ html, body.ting-tv {
 }
 
 .ttv-dock {
+  position: absolute;
+  left: 0; right: 0; bottom: 0;
   display: flex; justify-content: center;
-  /* низ панели часто режется overscan'ом ТВ — запас больше, чем сверху */
-  padding: 12px 20px max(36px, 4.2vh);
-  z-index: 6;
+  /* Док лежит поверх сцены: картинка получает всю высоту. */
+  padding: 12px 20px max(20px, 2.4vh);
+  z-index: 8;
   /* Плавное появление/уход с пульта: док не перекрывает картинку постоянно */
   transition: opacity .32s cubic-bezier(.22,.61,.36,1),
               transform .32s cubic-bezier(.22,.61,.36,1);
@@ -641,7 +684,7 @@ html, body.ting-tv {
   border-radius: 24px;
   display: grid; place-items: center;
   border: 1px solid rgba(200, 168, 78, 0.4);
-  animation: ttvPulse 1.6s ease-in-out infinite;
+  animation: none;
 }
 @keyframes ttvPulse {
   0%, 100% { box-shadow: 0 0 0 0 rgba(200, 168, 78, 0.35); }

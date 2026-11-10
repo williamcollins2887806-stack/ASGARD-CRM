@@ -5,14 +5,14 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="ting-tv" content="1" />
   <title>Тинг Переговорка</title>
-  <link rel="icon" type="image/svg+xml" href="/assets/img/ting-logo.svg?v=20.28.499" />
-  <link rel="stylesheet" href="/assets/css/design-tokens.css?v=20.28.499" />
-  <link rel="stylesheet" href="/assets/css/ting.css?v=20.28.499" />
-  <link rel="stylesheet" href="/assets/css/ting-tv.css?v=20.28.499" />
-  <script src="/assets/vendor/livekit-client.umd.min.js?v=20.28.499"></script>
-  <script src="/assets/js/ting_icons.js?v=20.28.499"></script>
-  <script src="/assets/js/ting_common.js?v=20.28.499"></script>
-  <script src="/assets/js/ting_room_core.js?v=20.28.499"></script>
+  <link rel="icon" type="image/svg+xml" href="/assets/img/ting-logo.svg?v=20.28.500" />
+  <link rel="stylesheet" href="/assets/css/design-tokens.css?v=20.28.500" />
+  <link rel="stylesheet" href="/assets/css/ting.css?v=20.28.500" />
+  <link rel="stylesheet" href="/assets/css/ting-tv.css?v=20.28.500" />
+  <script src="/assets/vendor/livekit-client.umd.min.js?v=20.28.500"></script>
+  <script src="/assets/js/ting_icons.js?v=20.28.500"></script>
+  <script src="/assets/js/ting_common.js?v=20.28.500"></script>
+  <script src="/assets/js/ting_room_core.js?v=20.28.500"></script>
 </head>
 <body class="ting-tv">
   <div class="ttv-screen" id="startView">
@@ -109,6 +109,7 @@
         </div>
       </div>
       <div class="ttv-actions">
+        <span class="ttv-diag" id="ttvDiag" aria-hidden="true"></span>
         <button type="button" class="ttv-btn ghost" id="btnPeople" style="min-height:48px;font-size:16px">Участники</button>
       </div>
     </div>
@@ -412,7 +413,9 @@
     var out = [];
     try {
       if (LK.VideoPresets) {
-        ['h2160', 'h1440', 'h1080', 'h720'].forEach(function (k) {
+        /* 1080p первым, 4K — только если канал проверенно хороший (см.
+           autoUpgradeTo4K). Иначе 8 Мбит/с вверх душит собственный приём. */
+        ['h1080', 'h720', 'h1440', 'h2160'].forEach(function (k) {
           if (LK.VideoPresets[k] && LK.VideoPresets[k].resolution) out.push(LK.VideoPresets[k]);
         });
       }
@@ -425,8 +428,120 @@
     try {
       var mst = track && (track.mediaStreamTrack || track);
       var s = mst && typeof mst.getSettings === 'function' ? mst.getSettings() : {};
-      if (s && s.width) console.info('[TingTV] camera', s.width + 'x' + s.height, 'fps', s.frameRate || '?');
+      if (s && s.width) {
+        var msg = '[TingTV] PUBLISH ' + s.width + 'x' + s.height + ' @' + (s.frameRate || '?') + 'fps';
+        console.info(msg);
+        diag(msg);
+        /* Диагностика в интерфейсе: видно без консоли. */
+        var badge = document.getElementById('ttvDiag');
+        if (badge) badge.textContent = s.width + '×' + s.height;
+      }
     } catch (_) { /* */ }
+  }
+
+  /** Отправка диагностики на сервер: без этого «у меня лагает» не доказать. */
+  function diag(line) {
+    try {
+      var body = JSON.stringify({
+        room: state.slug || '',
+        identity: state.identity || '',
+        ua: navigator.userAgent,
+        line: String(line).slice(0, 400),
+        ts: new Date().toISOString()
+      });
+      var url = '/api/thing/public/' + encodeURIComponent(state.slug || '') + '/client-log';
+      fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: body,
+        keepalive: true
+      }).catch(function () { /* офлайн — не критично */ });
+    } catch (_) { /* */ }
+  }
+
+  /* ── Проверка РЕАЛЬНОГО звука с микрофона ────────────────────────────────
+     «Публикация есть» ≠ «звук идёт». На Android TV WebView часто отдаёт
+     audioinput-устройство, которое молчит (или занято камерой).
+     Меряем RMS через AnalyserNode: если 3 секунды тишина — пробуем другое
+     устройство и пишем это в диагностику. */
+  var micProbe = { ctx: null, analyser: null, raf: 0, buf: null };
+
+  function stopMicProbe() {
+    try { cancelAnimationFrame(micProbe.raf); } catch (_) { /* */ }
+    micProbe.raf = 0;
+    try { if (micProbe.ctx) micProbe.ctx.close(); } catch (_) { /* */ }
+    micProbe.ctx = null;
+    micProbe.analyser = null;
+    micProbe.buf = null;
+  }
+
+  /** Пиковый RMS за ms миллисекунд. Возвращает 0..1. */
+  function measureMicLevel(stream, ms) {
+    return new Promise(function (resolve) {
+      try {
+        if (!stream) return resolve(0);
+        var AC = window.AudioContext || window.webkitAudioContext;
+        if (!AC) return resolve(0);
+        stopMicProbe();
+        var ctx = new AC();
+        micProbe.ctx = ctx;
+        /* Android WebView стартует AudioContext в suspended — без resume тишина. */
+        try { ctx.resume(); } catch (_) { /* */ }
+        var src = ctx.createMediaStreamSource(stream);
+        var an = ctx.createAnalyser();
+        an.fftSize = 1024;
+        micProbe.analyser = an;
+        micProbe.buf = new Float32Array(an.fftSize);
+        src.connect(an);
+        var peak = 0;
+        var stopAt = Date.now() + (ms || 3000);
+        var tick = function () {
+          if (!micProbe.analyser) return resolve(peak);
+          try {
+            an.getFloatTimeDomainData(micProbe.buf);
+            for (var i = 0; i < micProbe.buf.length; i++) {
+              var v = Math.abs(micProbe.buf[i]);
+              if (v > peak) peak = v;
+            }
+          } catch (_) { /* */ }
+          if (Date.now() >= stopAt) return resolve(peak);
+          micProbe.raf = setTimeout(tick, 60);
+        };
+        tick();
+      } catch (e) {
+        resolve(0);
+      }
+    });
+  }
+
+  /**
+   * Проверить, что опубликованный микрофон реально даёт звук.
+   * Возвращает { ok, level, deviceId }.
+   */
+  async function verifyMicSignal(room) {
+    var lp = room && room.localParticipant;
+    if (!lp) return { ok: false, level: 0 };
+    var mst = null;
+    try {
+      var pubs = Array.from(lp.audioTrackPublications.values());
+      for (var i = 0; i < pubs.length; i++) {
+        var t = pubs[i] && pubs[i].track && pubs[i].track.mediaStreamTrack;
+        if (t && t.readyState === 'live') {
+          mst = t;
+          t.enabled = true;
+          break;
+        }
+      }
+    } catch (_) { /* */ }
+    if (!mst) {
+      diag('MIC no-live-track');
+      return { ok: false, level: 0 };
+    }
+    var stream = null;
+    try { stream = new MediaStream([mst]); } catch (_) { /* */ }
+    var level = await measureMicLevel(stream, 2500);
+    diag('MIC level=' + level.toFixed(4) + ' dev=' + (mst.label || '?').slice(0, 40));
+    return { ok: level > 0.004, level: level };
   }
 
   async function enableLocalCamera(lkRoom) {
@@ -953,6 +1068,7 @@
     if (!lp) return false;
     if (!state.micOn) {
       try { await lp.setMicrophoneEnabled(false); } catch (_) { /* */ }
+      stopMicProbe();
       syncMicIconFromRoom(room);
       return false;
     }
@@ -961,6 +1077,7 @@
       ok = await publishMicOnce(room, true);
     } catch (e) {
       console.warn('[TingTV] mic publish failed', e && e.name, e && e.message);
+      diag('MIC publish-fail ' + (e && e.name) + ' ' + (e && e.message));
       ok = false;
     }
     if (!ok) {
@@ -972,10 +1089,67 @@
       } catch (_) { ok = false; }
     }
     state.micOn = ok;
-    if (!ok) toast('Микрофон не найден. Проверьте, что он подключён, и нажмите кнопку ещё раз.');
-    else refreshDevices();
+    if (!ok) {
+      diag('MIC publish-unavailable');
+      toast('Микрофон не найден. Проверьте, что он подключён, и нажмите кнопку ещё раз.');
+    } else {
+      refreshDevices();
+      /* Главное: проверяем, что звук РЕАЛЬНО идёт. Публикация может быть,
+         а сигнал — нулевой (WebView отдал молчащее устройство). */
+      try {
+        var sig = await verifyMicSignal(room);
+        if (!sig.ok) {
+          toast('Микрофон подключён, но сигнала нет — переключаю устройство');
+          await switchToNextMic(room);
+        }
+      } catch (_) { /* */ }
+    }
     syncMicIconFromRoom(room);
     return ok;
+  }
+
+  /** Перебор микрофонов: берём следующий audioinput и проверяем сигнал. */
+  async function switchToNextMic(room) {
+    var lp = room && room.localParticipant;
+    if (!lp) return false;
+    var mics = [];
+    try {
+      var devices = await navigator.mediaDevices.enumerateDevices();
+      mics = devices.filter(function (d) { return d.kind === 'audioinput'; });
+    } catch (_) { /* */ }
+    if (mics.length < 2) {
+      diag('MIC only ' + mics.length + ' device(s)');
+      return false;
+    }
+    var curIdx = -1;
+    mics.forEach(function (d, i) { if (d.deviceId === state.micDeviceId) curIdx = i; });
+    for (var step = 1; step <= mics.length; step++) {
+      var cand = mics[(curIdx + step + mics.length) % mics.length];
+      if (!cand || cand.deviceId === state.micDeviceId) continue;
+      try {
+        state.micDeviceId = cand.deviceId;
+        prefsSet(PREF_MIC, cand.deviceId);
+        try { await lp.setMicrophoneEnabled(false); } catch (_) { /* */ }
+        await withTimeout(lp.setMicrophoneEnabled(true, {
+          deviceId: cand.deviceId,
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true
+        }), 12000, 'microphone');
+        var sig = await verifyMicSignal(room);
+        if (sig.ok) {
+          diag('MIC switched to ' + (cand.label || cand.deviceId).slice(0, 40));
+          toast('Микрофон: ' + (cand.label || 'другое устройство'));
+          refreshDevices();
+          return true;
+        }
+      } catch (e) {
+        diag('MIC switch-fail ' + (e && e.name));
+      }
+    }
+    diag('MIC no-device-with-signal');
+    toast('Ни один микрофон не даёт сигнала. Проверьте настройки ТВ.');
+    return false;
   }
 
   function ensureParticipantTile(p, isLocal) {
@@ -1123,8 +1297,11 @@
         roomOpts.publishDefaults = {
           simulcast: true,
           videoSimulcastLayers: layers,
-          videoEncoding: (LK.VideoPresets.h2160 && LK.VideoPresets.h2160.encoding)
-            || (LK.VideoPresets.h1080 && LK.VideoPresets.h1080.encoding) || undefined
+          /* ВАЖНО: не 8 Мбит/с «на всякий случай». ТВ часто на Wi-Fi: отдавая
+             8 Мбит/с вверх, он забивает эфир и САМ не может принимать —
+             отсюда «140p» у собеседника и лаги. 1080p-битрейт как потолок,
+             а 4K включается точечно, когда канал проверенно хороший. */
+          videoEncoding: (LK.VideoPresets.h1080 && LK.VideoPresets.h1080.encoding) || undefined
         };
       }
     } catch (_) { /* */ }

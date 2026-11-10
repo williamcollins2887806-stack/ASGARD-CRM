@@ -16,8 +16,8 @@
       if (t === 'light' || t === 'dark') document.documentElement.setAttribute('data-theme', t);
     } catch (e) {}
   </script>
-  <link rel="stylesheet" href="/assets/css/design-tokens.css?v=20.28.499" />
-  <link rel="stylesheet" href="/assets/css/ting.css?v=20.28.499" />
+  <link rel="stylesheet" href="/assets/css/design-tokens.css?v=20.28.500" />
+  <link rel="stylesheet" href="/assets/css/ting.css?v=20.28.500" />
   <style>
     html, body { margin: 0; min-height: 100%; }
     .hidden { display: none !important; }
@@ -48,10 +48,10 @@
       backdrop-filter: blur(12px);
     }
   </style>
-  <script src="/assets/vendor/livekit-client.umd.min.js?v=20.28.499"></script>
-  <script src="/assets/js/ting_icons.js?v=20.28.499"></script>
-  <script src="/assets/js/ting_common.js?v=20.28.499"></script>
-  <script src="/assets/js/ting_room_core.js?v=20.28.499"></script>
+  <script src="/assets/vendor/livekit-client.umd.min.js?v=20.28.500"></script>
+  <script src="/assets/js/ting_icons.js?v=20.28.500"></script>
+  <script src="/assets/js/ting_common.js?v=20.28.500"></script>
+  <script src="/assets/js/ting_room_core.js?v=20.28.500"></script>
 </head>
 <body class="ting-guest">
   <div class="g-screen" id="lobby">
@@ -433,12 +433,16 @@
       async function enableLocalCamera(lkRoom) {
         var LK = window.LivekitClient;
         var busyRe = /NotReadable|Device in use|Could not start|AbortError|Permission|Timeout starting video|Timed out|Overconstrained/i;
-        /* Максимум качества: 4K первым, иначе 1080p. «ideal» безопасен —
-           слабая камера вернёт свой предел, а не упадёт. */
+        /* Максимум качества, но по устройству: телефон не должен публиковать
+           4K — 8 Мбит/с он не отдаст, и у остальных будет «140p». */
         var presetOpts = {};
         try {
           if (LK && LK.VideoPresets) {
-            var pref = LK.VideoPresets.h2160 || LK.VideoPresets.h1080;
+            var uaP = navigator.userAgent || '';
+            var smallP = /Android|iPhone|iPad|Mobile/i.test(uaP);
+            var pref = smallP
+              ? (LK.VideoPresets.h720 || LK.VideoPresets.h360)
+              : (LK.VideoPresets.h2160 || LK.VideoPresets.h1080);
             if (pref && pref.resolution) {
               presetOpts.resolution = pref.resolution;
               presetOpts.frameRate = pref.frameRate || 30;
@@ -543,9 +547,16 @@
       async function ensurePreview() {
         try {
           stopPreview();
-          /* Максимум качества: 4K-камеры отдают 4K, слабые — свой предел.
-             Без явного разрешения камера отдаёт 640×480 → «мыло». */
-          var hdVideo = { facingMode: 'user', width: { ideal: 3840 }, height: { ideal: 2160 }, frameRate: { ideal: 30 } };
+        /* Максимум качества, но по устройству: телефон не должен захватывать
+           4K — 8 Мбит/с он не отдаст, а картинка у остальных рассыплется.
+           «ideal» безопасен: слабая камера вернёт свой предел. */
+        var hdVideo = { facingMode: 'user', width: { ideal: 3840 }, height: { ideal: 2160 }, frameRate: { ideal: 30 } };
+        try {
+          var uaM = navigator.userAgent || '';
+          if (/Android|iPhone|iPad|Mobile/i.test(uaM)) {
+            hdVideo = { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 } };
+          }
+        } catch (_) { /* */ }
           previewStream = await navigator.mediaDevices.getUserMedia({
             audio: true,
             video: localVideo ? hdVideo : false
@@ -1030,20 +1041,39 @@
           } else {
             let el = tile.querySelector('video');
             if (!el) {
-              el = hardenVideoEl(track.attach());
+              /* ВАЖНО: attach() без аргумента создаёт элемент, который НЕ
+                 вставлен в DOM — видео остаётся невидимым, пока не «потыкаешь».
+                 Всегда создаём <video> сами и передаём его в attach. */
+              el = document.createElement('video');
+              el.playsInline = true;
+              el.autoplay = true;
+              el.muted = false;
+              hardenVideoEl(el);
               el.style.width = '100%'; el.style.height = '100%'; el.style.objectFit = 'cover';
               const ph = tile.querySelector('.ting-tile-ph');
               if (ph) ph.remove();
               tile.insertBefore(el, tile.firstChild);
-            } else {
-              hardenVideoEl(el);
-              track.attach(el);
             }
+            hardenVideoEl(el);
+            try { track.attach(el); } catch (_) {
+              try { el.srcObject = new MediaStream([track.mediaStreamTrack]); } catch (__) { /* */ }
+            }
+            try { el.play().catch(function () { /* автоплей может ждать жеста */ }); } catch (_) { /* */ }
           }
         } else if (track.kind === 'audio') {
-          const el = track.attach();
-          el.style.display = 'none';
-          tile.appendChild(el);
+          /* Аудио тоже не должно «теряться»: элемент обязан быть в DOM. */
+          let aEl = tile.querySelector('audio[data-ting-audio]');
+          if (!aEl) {
+            aEl = document.createElement('audio');
+            aEl.autoplay = true;
+            aEl.setAttribute('data-ting-audio', '1');
+            aEl.style.display = 'none';
+            tile.appendChild(aEl);
+          }
+          try { track.attach(aEl); } catch (_) {
+            try { aEl.srcObject = new MediaStream([track.mediaStreamTrack]); } catch (__) { /* */ }
+          }
+          try { aEl.play().catch(function () { /* */ }); } catch (_) { /* */ }
         }
         const lab = tile.querySelector('.lbl .name');
         if (lab) lab.textContent = name || identity;
@@ -1239,25 +1269,32 @@
           room = null;
         }
         /* Опции комнаты задаём ДО конструктора: LiveKit применяет их только там.
-           Битрейт 1080p — без него публикация упиралась в ~1.7 Мбит/с и мылилась. */
+           ВАЖНО: 4K/1080p с битрейтом 8 Мбит/с — это ТОЛЬКО для больших экранов
+           с гарантированным каналом. На телефоне такой профиль не тянет канал,
+           и собеседник видит «140p». Поэтому профиль выбирается по устройству. */
         var roomOpts = { adaptiveStream: true, dynacast: true };
         try {
           var LKp = window.LivekitClient;
+          var ua = navigator.userAgent || '';
+          var small = /Android|iPhone|iPad|Mobile/i.test(ua);
           if (LKp && LKp.VideoPresets) {
             var layers = [];
             if (LKp.VideoPresets.h180) layers.push(LKp.VideoPresets.h180);
             if (LKp.VideoPresets.h360) layers.push(LKp.VideoPresets.h360);
             if (LKp.VideoPresets.h720) layers.push(LKp.VideoPresets.h720);
-            if (LKp.VideoPresets.h1080) layers.push(LKp.VideoPresets.h1080);
-            if (LKp.VideoPresets.h1440) layers.push(LKp.VideoPresets.h1440);
-            if (LKp.VideoPresets.h2160) {
-              roomOpts.publishDefaults = {
-                simulcast: true,
-                videoSimulcastLayers: layers,
-                videoEncoding: LKp.VideoPresets.h2160.encoding
-              };
-              roomOpts.videoCaptureDefaults = { resolution: LKp.VideoPresets.h2160.resolution };
+            if (!small) {
+              if (LKp.VideoPresets.h1080) layers.push(LKp.VideoPresets.h1080);
+              if (LKp.VideoPresets.h1440) layers.push(LKp.VideoPresets.h1440);
             }
+            var top = small
+              ? (LKp.VideoPresets.h720 || LKp.VideoPresets.h360)
+              : (LKp.VideoPresets.h2160 || LKp.VideoPresets.h1080);
+            roomOpts.publishDefaults = {
+              simulcast: true,
+              videoSimulcastLayers: layers,
+              videoEncoding: top && top.encoding
+            };
+            if (top && top.resolution) roomOpts.videoCaptureDefaults = { resolution: top.resolution };
           }
         } catch (_) { /* */ }
         var next = new window.LivekitClient.Room(roomOpts);
@@ -1267,7 +1304,42 @@
             if (!TingRoomCore.trackIsLive(pub || { track: track })) return;
           }
           attachTrack(track, participant.identity, participant.name, false);
+          /* Зритель на слабом канале не должен «смотреть в мусор»: сразу
+             просим HIGH, а дальше качество решает адаптив. */
+          try {
+            var LKq = window.LivekitClient;
+            if (pub && track.kind === 'video' && LKq.VideoQuality
+                && typeof pub.setVideoQuality === 'function') {
+              pub.setVideoQuality(LKq.VideoQuality.HIGH);
+            }
+          } catch (_) { /* */ }
         });
+        /* КРИТИЧНО: треки, опубликованные ДО нашего входа, не приходят в
+           TrackSubscribed. Без этого зритель видит пустые плитки, пока не
+           выйдет/войдёт заново — ровно то, что было на телефоне. */
+        next.on(window.LivekitClient.RoomEvent.ParticipantConnected, function (p) {
+          try { attachExistingTracks(p); } catch (_) { /* */ }
+        });
+        function attachExistingTracks(p) {
+          if (!p || !p.trackPublications) return;
+          p.trackPublications.forEach(function (pub) {
+            try {
+              if (!pub || !pub.isSubscribed || !pub.track) return;
+              if (pub.kind === 'video') {
+                if (window.TingRoomCore && TingRoomCore.trackIsLive && !TingRoomCore.trackIsLive(pub)) return;
+                attachTrack(pub.track, p.identity, p.name, false);
+              } else if (pub.kind === 'audio') {
+                attachTrack(pub.track, p.identity, p.name, false);
+              }
+            } catch (_) { /* */ }
+          });
+        }
+        window.__tingAttachExisting = function () {
+          try {
+            if (!next || !next.remoteParticipants) return;
+            next.remoteParticipants.forEach(function (p) { attachExistingTracks(p); });
+          } catch (_) { /* */ }
+        };
         next.on(window.LivekitClient.RoomEvent.TrackUnsubscribed, function (track) {
           track.detach().forEach(function (el) { el.remove(); });
         });
@@ -1406,6 +1478,9 @@
         });
         try {
           await next.connect(creds.url || creds.livekit_url, creds.token);
+          /* Треки, опубликованные ДО входа, событий не дают — добираем вручную,
+             иначе телефон показывает пустые плитки, пока не выйдешь/войдёшь. */
+          try { if (window.__tingAttachExisting) window.__tingAttachExisting(); } catch (_) { /* */ }
           /* Сначала attach audio (ниже через события), затем startAudio — иначе autoplay fail. */
           try {
             if (typeof next.startAudio === 'function') await next.startAudio();

@@ -1355,6 +1355,23 @@ module.exports = async function thingRoutes(fastify) {
   });
 
   // ─── PARTICIPANTS / LOBBY / MODERATION ───────────────────────
+  fastify.post('/public/:code/client-log', async (request, reply) => {
+    const code = String(request.params.code || '').toLowerCase();
+    if (!isSlug(code) && !isDialCode(code)) {
+      return reply.code(400).send({ error: 'slug/dial' });
+    }
+    const body = request.body || {};
+    const line = String(body.line || '').slice(0, 500);
+    const identity = String(body.identity || '').slice(0, 120);
+    const ua = String(body.ua || '').slice(0, 300);
+    // Только для диагностики — пишем в лог сервиса, БД не трогаем.
+    fastify.log.info(
+      { tingDiag: true, code, identity, ua, line, ts: body.ts || null },
+      `[TING-DIAG] ${code} ${identity} :: ${line}`
+    );
+    return { ok: true };
+  });
+
   fastify.get('/rooms/:id/participants', { preHandler: [fastify.authenticate] }, async (request, reply) => {
     const room = await loadRoom(request.params.id);
     if (!room) return reply.code(404).send({ error: 'Тинг не найден' });

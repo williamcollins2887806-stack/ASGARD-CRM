@@ -342,18 +342,15 @@
    * Visibility: не глушим локальную камеру (как Телемост).
    * Remote video — только setEnabled, без detach (иначе PiP/stage чернеют).
    */
+  /**
+   * Visibility: НИЧЕГО не выключаем — как Телемост.
+   * Раньше здесь дергали pub.setEnabled(false) на всех видео-подписках, а это
+   * реально ОТПИСЫВАЕТ трек и детачит элемент. На возврате во вкладку часть
+   * публикаций не переподписывалась → «чёрные плитки до выхода-входа».
+   * Камеру и микрофон тоже не трогаем: локальные треки браузер сам придержит.
+   */
   async function pauseRemoteVideo(pause) {
     videoPaused = !!pause;
-    if (!room) return;
-    try {
-      room.remoteParticipants.forEach((p) => {
-        p.trackPublications.forEach((pub) => {
-          if (pub.kind === 'video' || (pub.track && pub.track.kind === 'video')) {
-            if (typeof pub.setEnabled === 'function') pub.setEnabled(!videoPaused);
-          }
-        });
-      });
-    } catch (_) {}
     emit('visibility', { videoPaused: videoPaused });
   }
 
