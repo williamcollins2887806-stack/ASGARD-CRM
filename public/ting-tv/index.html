@@ -578,10 +578,22 @@
       state.camOn = false;
       paintIcons();
       toast('Камера или микрофон недоступны — можно войти только со звуком');
+      /* Раздельные попытки: если микрофон жив, а камера нет (и наоборот),
+         не теряем рабочий источник. Раньше общий catch обнулял оба. */
       try {
         state.previewStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
         state.previewStream.getAudioTracks().forEach(function (tr) { tr.enabled = state.micOn; });
-      } catch (__){ /* */ }
+        await refreshDevices();
+      } catch (__){
+        try {
+          state.previewStream = await navigator.mediaDevices.getUserMedia({ audio: false, video: true });
+          await refreshDevices();
+        } catch (___){
+          state.micOn = false;
+          paintIcons();
+          toast('Микрофон и камера недоступны. Проверьте разрешения в настройках ТВ.');
+        }
+      }
     }
   }
 
