@@ -1233,11 +1233,19 @@ function normalizeCalcPlan(ai, opts) {
 
   const fitsWindow = !!windowDays && workDays <= windowDays;
 
+  // ── Один срок на весь контур ──────────────────────────────────────────────
+  // План и смета считали срок по-разному: план — по человеко-суткам позиций,
+  // смета — по `params.work_days`, который приходил из настроек/модели. На
+  // проде это давало два разных срока у одного тендера (2133: план 1440 ч,
+  // смета 2016 ч — 40 % расхождения). Теперь срок плана фиксируется явно и
+  // уходит в смету тем же значением: `schedule.work_days = params.work_days`.
+  const finalWorkDays = (laborSchedule ? laborSchedule.days : workDays) || null;
+
   return {
     positions,
     // Срок по трудоёмкости заказчика главнее расчёта по позициям: если он дал
     // часы, значит норму уже посчитал он (тендер 2143 Hi Pro).
-    work_days: (laborSchedule ? laborSchedule.days : workDays) || null,
+    work_days: finalWorkDays,
     labor_hours: laborSchedule ? laborSchedule.labor_hours : null,
     labor_basis: laborSchedule
       ? 'трудоёмкость из ТЗ: ' + laborSchedule.note

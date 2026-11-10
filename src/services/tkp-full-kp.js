@@ -443,8 +443,21 @@ async function resolveCompany(company) {
   };
 }
 
-/** Данные для templates/full-kp-nika-tpl.docx */
-function buildFullKpTemplateData(tkp, company = {}) {
+/**
+ * Данные для templates/full-kp-nika-tpl.docx
+ *
+ * `opts.variant`:
+ *   'full'    — всё: условия, периметр, аппараты, сдача, риски, обязанности.
+ *   'classic' — КОРОТКОЕ КП из ТОГО ЖЕ шаблона: та же шапка с логотипом и
+ *               реквизитами, та же таблица стоимости и подпись, но без
+ *               развёрнутых разделов. Раньше короткое КП собиралось
+ *               отдельным генератором на 1,6 КБ: без логотипа, без печати,
+ *               без реквизитов — для заказчика это выглядело как голый
+ *               текстовый файл. Теперь шаблон ОДИН, разница только в объёме.
+ */
+function buildFullKpTemplateData(tkp, company = {}, opts = {}) {
+  const variant = opts.variant === 'classic' ? 'classic' : 'full';
+  const isShort = variant === 'classic';
   const full = getFullPayload(tkp);
   const cj = parseItems(tkp);
   const vatPct = cj.vat_pct != null ? Number(cj.vat_pct) : 22;
@@ -454,24 +467,47 @@ function buildFullKpTemplateData(tkp, company = {}) {
   const priceSummary = cond.price_summary
     || `${fmtMoney(totals.subtotal)} руб. без НДС; НДС ${vatPct}% — ${fmtMoney(totals.vatSum)} руб.; итого с НДС — ${fmtMoney(totals.total)} руб.`;
 
-  const apparatus = (full.apparatus || []).map((r, i) => ({
-    n: String(i + 1),
-    equipment: posVal(r, 'equipment', 'name', 'title', 'work') || '—',
-    inventory_no: posVal(r, 'inventory_no', 'unit', 'measure') || '—',
-    tube_data: posVal(r, 'tube_data', 'details', 'volume', 'scope') || '—',
-    qty: r.qty || '1 компл.',
-    amount: fmtMoney(r.amount_no_vat)
-  }));
+  // ── Таблица стоимости ──────────────────────────────────────────────────
+  // В полном КП строки берутся из `full.apparatus` (детальная раскладка по
+  // аппаратам с инвентарными номерами). У короткого КП такой раскладки нет
+  // и не должно быть — берём готовые клиентские позиции из `items.items`
+  // (их сформировал from-card/ai-draft: работы + МТР, без себестоимости).
+  let apparatus;
+  if (isShort) {
+    const clientItems = Array.isArray(cj.items) ? cj.items : [];
+    apparatus = clientItems.map((r, i) => ({
+      n: String(i + 1),
+      equipment: posVal(r, 'name', 'description', 'title') || '—',
+      inventory_no: posVal(r, 'unit', 'measure') || '—',
+      tube_data: [
+        r.qty != null ? String(r.qty) : '',
+        r.unit ? String(r.unit) : ''
+      ].filter(Boolean).join(' ') || '—',
+      qty: r.qty != null ? String(r.qty) : '1',
+      amount: fmtMoney(r.total != null ? r.total : (Number(r.qty) || 0) * (Number(r.price) || 0))
+    }));
+  } else {
+    apparatus = (full.apparatus || []).map((r, i) => ({
+      n: String(i + 1),
+      equipment: posVal(r, 'equipment', 'name', 'title', 'work') || '—',
+      inventory_no: posVal(r, 'inventory_no', 'unit', 'measure') || '—',
+      tube_data: posVal(r, 'tube_data', 'details', 'volume', 'scope') || '—',
+      qty: r.qty || '1 компл.',
+      amount: fmtMoney(r.amount_no_vat)
+    }));
+  }
 
   const L = resolveTableLabels(tkp);
 
   // Флаги разделов: заголовок печатается только при наличии содержания
   // (см. tools/patch_full_kp_sections.js). Пустой «ПОРЯДОК СДАЧИ…» без текста
   // — дефект клиентского документа, а не раздел.
-  const hasAcceptance = splitParas(full.acceptance).length > 0;
-  const hasRisks = splitParas(full.risks).length > 0;
-  const hasDuties = splitListItems(full.customer_duties).length > 0;
-  const hasDeliverables = splitListItems(full.deliverables).length > 0;
+  // В коротком КП развёрнутые разделы выключены осознанно: это не «забыли
+  // заполнить», а другой объём документа.
+  const hasAcceptance = !isShort && splitParas(full.acceptance).length > 0;
+  const hasRisks = !isShort && splitParas(full.risks).length > 0;
+  const hasDuties = !isShort && splitListItems(full.customer_duties).length > 0;
+  const hasDeliverables = !isShort && splitListItems(full.deliverables).length > 0;
 
   let totalWords = '';
   try {
@@ -491,14 +527,15 @@ function buildFullKpTemplateData(tkp, company = {}) {
     object_name: full.object_name || '—',
     subject: tkp.subject || '—',
     basis: full.basis || '—',
-    cond_mobilization: cond.mobilization || '',
-    cond_personnel: cond.personnel || '',
-    cond_regime: cond.regime || '',
+    cond_mobilization: isShort ? '' : (cond.mobilization || ''),
+    cond_personnel: isShort ? '' : (cond.personnel || ''),
+    cond_regime: isShort ? '' : (cond.regime || ''),
     cond_payment: cond.payment || '',
-    cond_customer_resources: cond.customer_resources || '',
+    cond_customer_resources: isShort ? '' : (cond.customer_resources || ''),
     cond_price_summary: priceSummary,
-    scope_paras: splitParas(full.scope),
-    scope_boundary: full.scope_boundary || '',
+    // Короткое КП оставляет только периметр работ: он и есть суть предложения.
+    scope_paras: splitParas(isShort ? (full.scope || cj.work_description || '') : full.scope),
+    scope_boundary: isShort ? '' : (full.scope_boundary || ''),
     apparatus,
     // Строка транспорта печатается только при ненулевой сумме (см. шаблон
     // full-kp-nika-tpl.docx: строка обёрнута в {#has_transport}...{/has_transport}).
@@ -509,7 +546,7 @@ function buildFullKpTemplateData(tkp, company = {}) {
     vat_sum: fmtMoney(totals.vatSum),
     total: fmtMoney(totals.total),
     total_words: totalWords,
-    cost_notes: full.cost_notes || '',
+    cost_notes: isShort ? '' : (full.cost_notes || ''),
     has_acceptance: hasAcceptance,
     has_risks: hasRisks,
     has_duties: hasDuties,
@@ -518,13 +555,13 @@ function buildFullKpTemplateData(tkp, company = {}) {
     // дырка в документе (см. tools/patch_full_kp_conditions.js,
     // tools/patch_full_kp_optional.js). 114 из 115 готовых просчётов не имеют
     // crew/params — без guard'ов они давали «Персонал:» и «Режим производства:».
-    has_cond_mobilization: !!String(cond.mobilization || '').trim(),
-    has_cond_personnel: !!String(cond.personnel || '').trim(),
-    has_cond_regime: !!String(cond.regime || '').trim(),
+    has_cond_mobilization: !isShort && !!String(cond.mobilization || '').trim(),
+    has_cond_personnel: !isShort && !!String(cond.personnel || '').trim(),
+    has_cond_regime: !isShort && !!String(cond.regime || '').trim(),
     has_cond_payment: !!String(cond.payment || '').trim(),
-    has_cond_customer_resources: !!String(cond.customer_resources || '').trim(),
-    has_cost_notes: !!String(full.cost_notes || '').trim(),
-    has_scope_boundary: !!String(full.scope_boundary || '').trim(),
+    has_cond_customer_resources: !isShort && !!String(cond.customer_resources || '').trim(),
+    has_cost_notes: !isShort && !!String(full.cost_notes || '').trim(),
+    has_scope_boundary: !isShort && !!String(full.scope_boundary || '').trim(),
     acceptance_paras: splitParas(full.acceptance),
     risks_paras: splitParas(full.risks),
     duties: splitListItems(full.customer_duties),
@@ -556,7 +593,8 @@ function _signerName(full, company) {
 }
 
 function generateFullKpDocxBuffer(tkp, company = {}, opts = {}) {
-  const data = buildFullKpTemplateData(tkp, company);
+  const variant = opts && opts.variant === 'classic' ? 'classic' : 'full';
+  const data = buildFullKpTemplateData(tkp, company, { variant });
   const content = fs.readFileSync(FULL_KP_TPL);
   const { Docxtemplater, PizZip } = _loadDocxLibs();
   const zip = new PizZip(content);
@@ -869,8 +907,30 @@ function docxP(text, opts = {}) {
   return `<w:p><w:pPr>${align}<w:spacing w:after="100"/></w:pPr>${runs || '<w:r><w:t></w:t></w:r>'}</w:p>`;
 }
 
-/** Classic brief DOCX (упрощённый) */
-function generateClassicDocxBuffer(tkp, company = {}) {
+/**
+ * Короткое (классическое) КП — ТОТ ЖЕ шаблон «Ника», только с сокращённым
+ * набором разделов.
+ *
+ * ── Почему так (10.11.2026) ────────────────────────────────────────────────
+ * Раньше это был отдельный генератор, собиравший docx «с нуля» строками:
+ * 1,6 КБ, без логотипа, без реквизитов и без печати. Заказчик получал файл,
+ * не похожий на фирменный документ, а PDF и Word одного и того же ТКП
+ * выглядели как два разных письма.
+ *
+ * Теперь шапка (лого + реквизиты + номер + срок действия), таблица стоимости
+ * и блок подписи — из шаблона. Отличается только объём: в коротком КП нет
+ * развёрнутых условий, периметра по аппаратам, порядка сдачи и рисков.
+ *
+ * @param {object} tkp
+ * @param {object} company
+ * @param {object} [opts] — { stamp, signature } как у полного КП
+ */
+function generateClassicDocxBuffer(tkp, company = {}, opts = {}) {
+  return generateFullKpDocxBuffer(tkp, company, Object.assign({}, opts, { variant: 'classic' }));
+}
+
+/** Classic brief DOCX — устаревшее имя, оставлено для совместимости вызовов. */
+function _legacyClassicDocxBuffer(tkp, company = {}) {
   let cj;
   try { cj = typeof tkp.items === 'string' ? JSON.parse(tkp.items || '{}') : (tkp.items || {}); }
   catch (_) { cj = {}; }

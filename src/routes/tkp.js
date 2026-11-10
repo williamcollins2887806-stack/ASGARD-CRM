@@ -996,15 +996,17 @@ async function routes(fastify, options) {
 
     let pdfBuffer;
 
-    // Полное КП (Ника) — отдельный рендерер
-    if (tkp.kp_variant === 'full') {
-      try {
-        const fullKp = require('../services/tkp-full-kp');
-        pdfBuffer = await fullKp.generateFullKpPdf(tkp.id, pdfOpts);
-      } catch (err) {
-        request.log.warn(`[TKP PDF] full KP failed for ${tkp.id}: ${err.message}`);
-        pdfBuffer = null;
-      }
+    // ОДИН шаблон на оба варианта: полное и короткое КП — это один документ
+    // «Ника» с разным объёмом разделов. Word и PDF собираются из него же,
+    // поэтому логотип, реквизиты и печать одинаковы (10.11.2026).
+    try {
+      const fullKp = require('../services/tkp-full-kp');
+      pdfBuffer = await fullKp.generateFullKpPdfBuffer(tkp, Object.assign({}, pdfOpts, {
+        variant: tkp.kp_variant === 'full' ? 'full' : 'classic'
+      }));
+    } catch (err) {
+      request.log.warn(`[TKP PDF] template render failed for ${tkp.id}: ${err.message}`);
+      pdfBuffer = null;
     }
 
     // Try Puppeteer-based generator first (classic)
@@ -2348,9 +2350,13 @@ module.exports = async function routesWithExtensions(fastify, options) {
     // умел её ставить. Фронт теперь всегда просит stamp=1&signature=1.
     const wantStamp = request.query.stamp === '1' || request.query.stamp === 'true';
     const wantSignature = request.query.signature === '1' || request.query.signature === 'true';
-    const buf = tkp.kp_variant === 'full'
-      ? fullKp.generateFullKpDocxBuffer(tkp, company, { stamp: wantStamp, signature: wantSignature })
-      : fullKp.generateClassicDocxBuffer(tkp, company);
+    // Шаблон ОДИН для обоих вариантов: короткое КП — тот же документ с
+    // сокращённым набором разделов. Печать и подпись ставятся в обоих.
+    const buf = fullKp.generateFullKpDocxBuffer(tkp, company, {
+      variant: tkp.kp_variant === 'full' ? 'full' : 'classic',
+      stamp: wantStamp,
+      signature: wantSignature
+    });
     reply.header('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
     reply.header('Content-Disposition', `attachment; filename="TKP_${tkp.id}.docx"`);
     return reply.send(buf);
