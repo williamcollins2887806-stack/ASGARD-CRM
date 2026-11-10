@@ -1,12 +1,12 @@
 # TING-TV-APK-VERIFY
 
-at: 2026-11-05T15:30:10.751Z
-result: VERIFIED (12/12)
+at: 2026-11-09T17:28:48.669Z
+result: FAIL (11/12)
 
 | ID | PASS | Evidence |
 |----|------|----------|
 | TV01_spa | PASS | TV SPA guest-token + default name |
-| TV02_cam_handoff | PASS | cam handoff + enumerateDevices |
+| TV02_cam_handoff | FAIL | cam handoff + enumerateDevices |
 | TV03_no_screenshare | PASS | no screen share on TV |
 | TV04_dpad | PASS | D-pad + focus ring |
 | TV05_active_speaker | PASS | active speaker ring |
@@ -18,4 +18,5 @@ result: VERIFIED (12/12)
 | TV11_report | PASS | TING-TV-APK.md |
 | TV12_qr | PASS | QR for phones |
 
-## All PASS
+## FAILs
+- TV02_cam_handoff

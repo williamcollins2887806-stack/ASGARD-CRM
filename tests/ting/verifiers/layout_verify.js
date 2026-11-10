@@ -131,7 +131,7 @@ async function main() {
     await context.close();
   }
 
-  /* ---- 3. Mobile portrait: один столбец, тайлы 16:9, PiP влезает ---- */
+  /* ---- 3. Mobile portrait: speaker + grid строго 16:9, без выхода за viewport ---- */
   {
     const { context, page } = await openRoom({ width: 390, height: 844 }, '#/ting?view=room&slug=k7m2qx');
     const cols = await page.evaluate(() => getComputedStyle(document.querySelector('.ting-stage')).gridTemplateColumns.split(' ').filter(Boolean).length);
@@ -146,11 +146,49 @@ async function main() {
     await page.evaluate(() => document.querySelector('[data-act="layout-toggle"]')?.click());
     await page.waitForTimeout(400);
     const gcols = await page.evaluate(() => getComputedStyle(document.querySelector('.ting-stage')).gridTemplateColumns.split(' ').filter(Boolean).length);
-    check('mobile grid: один столбец', gcols === 1, 'cols=' + gcols);
-    const gtiles = await page.evaluate(() => Array.from(document.querySelectorAll('.ting-stage > .ting-tile'))
-      .map((el) => { const r = el.getBoundingClientRect(); return { w: r.width, h: r.height }; }));
-    const gbad = gtiles.filter((t) => Math.abs(ratio(t.w, t.h) - 16 / 9) > TOL);
-    check('mobile grid: все тайлы ≈ 16:9', gbad.length === 0, JSON.stringify(gtiles.map((t) => ratio(t.w, t.h).toFixed(2))));
+    check('mobile grid: две колонки', gcols === 2, 'cols=' + gcols);
+    const ginfo = await page.evaluate(() => {
+      const tiles = Array.from(document.querySelectorAll('.ting-stage > .ting-tile')).map((el) => {
+        const r = el.getBoundingClientRect();
+        return { left: r.left, right: r.right, w: r.width, h: r.height };
+      });
+      let overlap = false;
+      for (let i = 0; i < tiles.length; i++) {
+        for (let j = i + 1; j < tiles.length; j++) {
+          const a = tiles[i]; const b = tiles[j];
+          if (Math.min(a.right, b.right) - Math.max(a.left, b.left) > 1
+            && Math.min(a.h + (a.top || 0), b.h + (b.top || 0)) > 1) {
+            /* use full boxes */
+          }
+        }
+      }
+      const boxes = Array.from(document.querySelectorAll('.ting-stage > .ting-tile')).map((el) => {
+        const r = el.getBoundingClientRect();
+        return { left: r.left, top: r.top, right: r.right, bottom: r.bottom, w: r.width, h: r.height };
+      });
+      overlap = false;
+      for (let i = 0; i < boxes.length; i++) {
+        for (let j = i + 1; j < boxes.length; j++) {
+          const a = boxes[i]; const b = boxes[j];
+          if (Math.min(a.right, b.right) - Math.max(a.left, b.left) > 1
+            && Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top) > 1) overlap = true;
+        }
+      }
+      const pastVw = boxes.some((t) => t.right > innerWidth + 0.5);
+      const ratios = boxes.map((t) => (t.h > 0 ? t.w / t.h : 0));
+      return {
+        n: boxes.length,
+        overlap,
+        pastVw,
+        scrollW: document.documentElement.scrollWidth,
+        ratios,
+        sizes: boxes.map((t) => Math.round(t.w) + 'x' + Math.round(t.h))
+      };
+    });
+    check('mobile grid N=3: нет bbox-пересечений', !ginfo.overlap, JSON.stringify(ginfo.sizes));
+    check('mobile grid N=3: не вылезает за viewport', !ginfo.pastVw && ginfo.scrollW <= 390 + 1, 'scrollW=' + ginfo.scrollW);
+    const bad169 = (ginfo.ratios || []).filter((r) => Math.abs(r - 16 / 9) > TOL);
+    check('mobile grid N=3: все тайлы ≈ 16:9', bad169.length === 0, JSON.stringify((ginfo.ratios || []).map((r) => r.toFixed(2))));
     await context.close();
   }
 
@@ -269,8 +307,8 @@ async function main() {
     await context.close();
   }
 
-  /* ---- 8. Premium grid N=5 / N=10: класс + 16:9 + нет native controls / HTTP ---- */
-  for (const n of [5, 10]) {
+  /* ---- 8. Premium grid N=5/10/12/15: класс + 16:9 + нет native controls / HTTP ---- */
+  for (const n of [5, 10, 12, 15]) {
     const { context, page } = await openRoom({ width: 1280, height: 800 }, '#/ting?view=room&slug=k7m2qx&n=' + n);
     await page.evaluate((nn) => {
       window.__TING_DEMO_N__ = nn;
@@ -290,24 +328,58 @@ async function main() {
         n: tiles.length,
         ratios: tiles.map((t) => (t.h > 0 ? t.w / t.h : 0)),
         controls: Array.from(document.querySelectorAll('.ting-tile video')).some((v) => v.controls),
-        http: !!(document.body.innerText || '').match(/\bHTTP\s+\d+/),
-        gapY: (() => {
-          if (tiles.length < 2) return 0;
-          const tops = tiles.map((t) => {
-            /* re-query for top */
-            return null;
-          });
-          return 0;
-        })()
+        http: !!(document.body.innerText || '').match(/\bHTTP\s+\d+/)
       };
     });
-    const expectCls = n <= 4 ? ('g' + n) : (n <= 6 ? 'g6' : (n <= 9 ? 'g9' : 'g10'));
+    const expectCls = n <= 4 ? ('g' + n) : (n <= 6 ? 'g6' : (n <= 9 ? 'g9' : (n <= 10 ? 'g10' : 'g12')));
     check('desktop N=' + n + ': класс ' + expectCls, new RegExp('\\b' + expectCls + '\\b').test(info.cls), 'cls=' + info.cls);
     check('desktop N=' + n + ': число тайлов', info.n === n, 'n=' + info.n);
     const badR = (info.ratios || []).filter((r) => Math.abs(r - 16 / 9) > TOL);
     check('desktop N=' + n + ': все тайлы ≈ 16:9', badR.length === 0, JSON.stringify((info.ratios || []).map((r) => r.toFixed(2))));
     check('desktop N=' + n + ': нет native video.controls', !info.controls, 'controls=' + info.controls);
     check('desktop N=' + n + ': нет HTTP-тоста в viewport', !info.http, 'http=' + info.http);
+    await context.close();
+  }
+
+  /* ---- 8b. Tablet 768 (≤820 → fit 2col) + laptop 1440 (desktop 16:9) grid N=9 ---- */
+  for (const vp of [{ width: 768, height: 1024, label: 'tablet768', mobileFit: true }, { width: 1440, height: 900, label: 'laptop1440', mobileFit: false }]) {
+    const { context, page } = await openRoom(vp, '#/ting?view=room&slug=k7m2qx&n=9');
+    await page.evaluate(() => {
+      window.__TING_DEMO_N__ = 9;
+      const btn = document.querySelector('[data-act="layout-toggle"]');
+      if (document.querySelector('.ting-stage.speaker')) btn?.click();
+      else { btn?.click(); btn?.click(); }
+    });
+    await page.waitForTimeout(450);
+    const info = await page.evaluate(() => {
+      const stage = document.querySelector('.ting-stage');
+      const sr = stage ? stage.getBoundingClientRect() : null;
+      const tiles = Array.from(document.querySelectorAll('.ting-stage > .ting-tile')).map((el) => {
+        const r = el.getBoundingClientRect();
+        return { left: r.left, top: r.top, right: r.right, bottom: r.bottom, w: r.width, h: r.height };
+      });
+      let overlap = false;
+      for (let i = 0; i < tiles.length; i++) {
+        for (let j = i + 1; j < tiles.length; j++) {
+          const a = tiles[i]; const b = tiles[j];
+          if (Math.min(a.right, b.right) - Math.max(a.left, b.left) > 1
+            && Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top) > 1) overlap = true;
+        }
+      }
+      return {
+        n: tiles.length,
+        ratios: tiles.map((t) => (t.h > 0 ? t.w / t.h : 0)),
+        overlap,
+        stageH: sr ? sr.height : 0
+      };
+    });
+    check(vp.label + ' N=9: 9 тайлов', info.n === 9, 'n=' + info.n);
+    const badR = (info.ratios || []).filter((r) => Math.abs(r - 16 / 9) > TOL);
+    check(vp.label + ' N=9: ≈16:9', badR.length === 0, JSON.stringify((info.ratios || []).map((r) => r.toFixed(2))));
+    if (vp.mobileFit) {
+      check(vp.label + ' N=9: нет bbox-пересечений', !info.overlap, 'overlap');
+      check(vp.label + ' N=9: stage не бесконечный (<2000px)', info.stageH < 2000, 'stageH=' + Math.round(info.stageH));
+    }
     await context.close();
   }
 
@@ -326,6 +398,171 @@ async function main() {
     check('speaker N=5: thumbs ≥72px шириной', small.length === 0, JSON.stringify(strip));
     check('speaker N=5: нет PiP на стейдже', (await page.$$('.ting-stage > .ting-tile.is-pip')).length === 0, 'ok');
     await context.close();
+  }
+
+  /* ---- 10. Mobile N=5/12/15: fit + non-intersect + count chip ---- */
+  for (const n of [5, 12, 15]) {
+    const { context, page } = await openRoom({ width: 390, height: 844 }, '#/ting?view=room&slug=k7m2qx&n=' + n);
+    await page.evaluate((nn) => {
+      window.__TING_DEMO_N__ = nn;
+      const btn = document.querySelector('[data-act="layout-toggle"]');
+      if (document.querySelector('.ting-stage.speaker')) btn?.click();
+      else { btn?.click(); btn?.click(); }
+    }, n);
+    await page.waitForTimeout(500);
+    const info = await page.evaluate((nn) => {
+      const stage = document.querySelector('.ting-stage');
+      const sr = stage.getBoundingClientRect();
+      const tiles = Array.from(document.querySelectorAll('.ting-stage > .ting-tile:not(.ting-tile--more)')).map((el) => {
+        const r = el.getBoundingClientRect();
+        return { left: r.left, top: r.top, right: r.right, bottom: r.bottom, w: r.width, h: r.height };
+      });
+      let overlap = false;
+      for (let i = 0; i < tiles.length; i++) {
+        for (let j = i + 1; j < tiles.length; j++) {
+          const a = tiles[i]; const b = tiles[j];
+          if (Math.min(a.right, b.right) - Math.max(a.left, b.left) > 1
+            && Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top) > 1) overlap = true;
+        }
+      }
+      const chip = (document.querySelector('.ting-count-chip') || {}).textContent || '';
+      const chipN = parseInt(String(chip).replace(/\D+/g, ''), 10) || 0;
+      const dock = document.querySelector('.ting-dock');
+      const dockTop = dock ? dock.getBoundingClientRect().top : 844;
+      const underDock = tiles.some((t) => t.bottom > dockTop + 4);
+      const ratios = tiles.map((t) => (t.h > 0 ? t.w / t.h : 0));
+      const pastVw = tiles.some((t) => t.right > innerWidth + 0.5);
+      return {
+        n: tiles.length,
+        overlap,
+        stageH: sr.height,
+        chip,
+        chipN,
+        cols: getComputedStyle(stage).gridTemplateColumns.split(' ').filter(Boolean).length,
+        ratios,
+        pastVw,
+        scrollW: document.documentElement.scrollWidth,
+        expect: nn
+      };
+    }, n);
+    check('mobile N=' + n + ': число тайлов', info.n === n, 'n=' + info.n);
+    check('mobile N=' + n + ': 2 колонки', info.cols === 2, 'cols=' + info.cols);
+    check('mobile N=' + n + ': нет bbox-пересечений', !info.overlap, 'overlap');
+    check('mobile N=' + n + ': count chip = N', info.chipN === n, 'chip=' + info.chip);
+    const badR = (info.ratios || []).filter((r) => Math.abs(r - 16 / 9) > TOL);
+    check('mobile N=' + n + ': все тайлы ≈ 16:9', badR.length === 0, JSON.stringify((info.ratios || []).map((r) => r.toFixed(2))));
+    check('mobile N=' + n + ': нет полосы справа (scrollW≤390)', !info.pastVw && info.scrollW <= 391, 'scrollW=' + info.scrollW);
+    await context.close();
+  }
+
+  /* ---- 11. Desktop count chip matches demo N ---- */
+  {
+    const { context, page } = await openRoom({ width: 1280, height: 800 }, '#/ting?view=room&slug=k7m2qx&n=10');
+    await page.evaluate(() => {
+      window.__TING_DEMO_N__ = 10;
+      const btn = document.querySelector('[data-act="layout-toggle"]');
+      if (document.querySelector('.ting-stage.speaker')) btn?.click();
+      else { btn?.click(); btn?.click(); }
+    });
+    await page.waitForTimeout(450);
+    const chip = await page.evaluate(() => (document.querySelector('.ting-count-chip') || {}).textContent || '');
+    const nTiles = await page.evaluate(() => document.querySelectorAll('.ting-stage > .ting-tile').length);
+    const chipN = parseInt(String(chip).replace(/\D+/g, ''), 10) || 0;
+    check('desktop N=10: count chip = 10', chipN === 10 && nTiles === 10, 'chip=' + chip + ' tiles=' + nTiles);
+    await context.close();
+  }
+
+  /* ---- 12. TV dual + g4: injector classes, no gallery overlap ---- */
+  {
+    const tvServer = await new Promise((resolve) => {
+      const srv = http.createServer((req, res) => {
+        const urlPath = decodeURIComponent((req.url || '/').split('?')[0]);
+        const file = path.join(root, 'public', urlPath.replace(/^\//, ''));
+        if (!file.startsWith(path.join(root, 'public')) || !fs.existsSync(file) || fs.statSync(file).isDirectory()) {
+          res.writeHead(404); res.end('no'); return;
+        }
+        const ct = urlPath.endsWith('.css') ? 'text/css; charset=utf-8'
+          : urlPath.endsWith('.js') ? 'application/javascript; charset=utf-8'
+            : urlPath.endsWith('.html') ? 'text/html; charset=utf-8' : 'application/octet-stream';
+        res.writeHead(200, { 'Content-Type': ct });
+        fs.createReadStream(file).pipe(res);
+      });
+      srv.listen(0, '127.0.0.1', () => resolve({ srv, base: 'http://127.0.0.1:' + srv.address().port }));
+    });
+    async function injectTv(page, count) {
+      return page.evaluate((R) => {
+        function hallModeFor(r) {
+          if (r <= 0) return 'wait';
+          if (r === 1) return 'spot';
+          if (r === 2) return 'dual';
+          if (r <= 7) return 'spot-rail';
+          if (r <= 9) return 'g3';
+          if (r <= 12) return 'g4';
+          return 'g5';
+        }
+        const mode = hallModeFor(R);
+        document.getElementById('startView')?.classList.add('hidden');
+        document.getElementById('roomView')?.classList.remove('hidden');
+        const stage = document.getElementById('stage');
+        const strip = document.getElementById('filmstrip');
+        stage.innerHTML = '';
+        if (strip) { strip.innerHTML = ''; strip.classList.add('hidden'); }
+        stage.className = 'ttv-stage hall hall-' + mode;
+        const names = ['Зал', 'Никита', 'Елена', 'Андрей', 'Мария', 'Игорь', 'Ольга', 'Сергей', 'Анна', 'Дмитрий', 'Павел', 'Наталья'];
+        const mk = (id, label, cls) => {
+          const d = document.createElement('div');
+          d.className = 'ttv-tile ' + cls;
+          d.setAttribute('data-id', id);
+          d.innerHTML = '<div class="ttv-av-fallback">' + label.slice(0, 1) + '</div><div class="ttv-lbl">' + label + '</div>';
+          return d;
+        };
+        if (mode === 'dual') {
+          stage.appendChild(mk('r1', names[1], 'is-gallery'));
+          stage.appendChild(mk('r2', names[2], 'is-gallery'));
+          stage.appendChild(mk('local', 'Зал', 'is-local is-self-pip'));
+        } else {
+          for (let i = 1; i <= R; i++) stage.appendChild(mk('r' + i, names[i] || ('Уч' + i), 'is-gallery'));
+          stage.appendChild(mk('local', 'Зал', 'is-local is-self-pip'));
+        }
+        return mode;
+      }, count);
+    }
+    for (const [R, label] of [[2, 'dual'], [12, 'g4']]) {
+      const context = await browser.newContext({ viewport: { width: 1920, height: 1080 } });
+      const page = await context.newPage();
+      await page.goto(tvServer.base + '/ting-tv/index.html', { waitUntil: 'domcontentloaded', timeout: 30000 });
+      await page.waitForTimeout(300);
+      const mode = await injectTv(page, R);
+      await page.waitForTimeout(200);
+      const geom = await page.evaluate(() => {
+        const gallery = Array.from(document.querySelectorAll('.ttv-stage > .ttv-tile.is-gallery'));
+        const pip = document.querySelector('.ttv-stage > .ttv-tile.is-self-pip');
+        const boxes = gallery.map((el) => {
+          const r = el.getBoundingClientRect();
+          return { left: r.left, top: r.top, right: r.right, bottom: r.bottom };
+        });
+        let overlap = false;
+        for (let i = 0; i < boxes.length; i++) {
+          for (let j = i + 1; j < boxes.length; j++) {
+            const a = boxes[i]; const b = boxes[j];
+            if (Math.min(a.right, b.right) - Math.max(a.left, b.left) > 1
+              && Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top) > 1) overlap = true;
+          }
+        }
+        return {
+          galleryN: gallery.length,
+          hasPip: !!pip,
+          overlap,
+          modeCls: document.getElementById('stage')?.className || ''
+        };
+      });
+      check('TV ' + label + ': mode class', new RegExp('hall-' + (label === 'dual' ? 'dual' : 'g4')).test(geom.modeCls), geom.modeCls);
+      check('TV ' + label + ': is-gallery плитки', geom.galleryN === R, 'n=' + geom.galleryN);
+      check('TV ' + label + ': is-self-pip local', geom.hasPip, 'pip=' + geom.hasPip);
+      check('TV ' + label + ': gallery без overlap', !geom.overlap, 'overlap');
+      await context.close();
+    }
+    tvServer.srv.close();
   }
 
   await browser.close();

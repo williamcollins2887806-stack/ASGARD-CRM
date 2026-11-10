@@ -1177,7 +1177,15 @@ module.exports = async function thingRoutes(fastify) {
       return reply.code(403).send({ error: 'Комната заполнена', code: 'ROOM_FULL' });
     }
 
-    const identity = `guest_${crypto.randomBytes(8).toString('hex')}`;
+    /* Стабильный identity по guest_key — иначе F5 = новый guest_* → ghost / ROOM_FULL. */
+    const identity = guestKey
+      ? `guest_${crypto.createHash('sha256').update(String(guestKey) + ':' + room.id).digest('hex').slice(0, 16)}`
+      : `guest_${crypto.randomBytes(8).toString('hex')}`;
+    await db.query(
+      `UPDATE thing_participants SET left_at = NOW()
+         WHERE room_id = $1 AND identity = $2 AND left_at IS NULL`,
+      [room.id, identity]
+    );
     const { token: joinToken, hash: joinHash } = makeJoinToken();
     /* C01: категории лобби. Раньше был один boolean на всю комнату.
        'guests'     — в лобби только внешние гости (CRM-сотрудники входят сразу);
@@ -1230,7 +1238,7 @@ module.exports = async function thingRoutes(fastify) {
         isModerator: false,
         participantsCount: await countAdmittedParticipants(room.id)
       });
-      /* T31: первичный вход гостя ≤ 30 мин; дальше — refresh через lobby-status. */
+      /* Гостевой JWT 4ч — как refresh через lobby-status; фронт всё равно refresh'ит. */
       const creds = await livekit.createAccessToken({
         roomName: room.livekit_room_name,
         identity,
@@ -1238,7 +1246,7 @@ module.exports = async function thingRoutes(fastify) {
         roomAdmin: false,
         canPublish: guestPolicy.canPublish,
         canPublishSources: guestPolicy.sources || undefined,
-        ttlSec: 30 * 60
+        ttlSec: 4 * 60 * 60
       });
       return {
         ...creds,
@@ -1656,6 +1664,14 @@ module.exports = async function thingRoutes(fastify) {
     if (process.env.THING_DIALIN_ENABLED === '1' || process.env.THING_DIALIN_ENABLED === 'true') {
       enabled = true;
     }
+    /* Основной Mango DID компании — только CRM inbound, не Ting dial-in. */
+    const CRM_MAIN_DID = '74993223062';
+    const digits = String(number || '').replace(/\D+/g, '');
+    if (digits === CRM_MAIN_DID || digits === '84993223062') {
+      fastify.log.warn({ number }, 'thing: dial-in DID rejected (CRM main DID)');
+      number = '';
+      enabled = false;
+    }
     const hasNumber = Boolean(number);
     return {
       enabled: Boolean(enabled) && hasNumber,
@@ -1663,7 +1679,7 @@ module.exports = async function thingRoutes(fastify) {
       configured: hasNumber,
       instruction: hasNumber
         ? 'Позвоните и введите 6 цифр кода Тинга'
-        : 'Телефонный вход не настроен: нужен DID в settings.thing_dialin_number или THING_DIALIN_NUMBER'
+        : 'Телефонный вход не настроен: нужен отдельный Ting-DID (не 74993223062)'
     };
   }
 
@@ -1922,6 +1938,9 @@ module.exports = async function thingRoutes(fastify) {
     }
     const identity = decodeURIComponent(request.params.identity);
     const kind = String((request.body && request.body.kind) || 'audio');
+    const wantMuted = request.body && Object.prototype.hasOwnProperty.call(request.body, 'muted')
+      ? request.body.muted !== false && request.body.muted !== 'false' && request.body.muted !== 0
+      : true;
     if (!['audio', 'video', 'screen'].includes(kind)) {
       return reply.code(400).send({ error: 'kind: audio | video | screen' });
     }
@@ -1930,12 +1949,13 @@ module.exports = async function thingRoutes(fastify) {
     }
 
     let muted = 0;
+    let targets = [];
     try {
       const parts = await livekit.listLiveKitParticipants(room.livekit_room_name);
       /* D-176: один человек может быть с нескольких устройств (identity
          `user_<id>__<device>`). Модерация по базовой identity бьёт по всем
          его подключениям, иначе «выключить микрофон» попадал в 404. */
-      const targets = parts.filter(x => x.identity === identity || baseIdentityOf(x.identity) === baseIdentityOf(identity));
+      targets = parts.filter(x => x.identity === identity || baseIdentityOf(x.identity) === baseIdentityOf(identity));
       if (!targets.length) return reply.code(404).send({ error: 'Участник не в комнате' });
       for (const p of targets) {
         for (const t of (p.tracks || [])) {
@@ -1946,7 +1966,7 @@ module.exports = async function thingRoutes(fastify) {
             : kind === 'video' ? livekit.isCameraSource(src)
               : livekit.isScreenSource(src);
           if (match) {
-            await livekit.muteLiveKitTrack(room.livekit_room_name, p.identity, sid, true);
+            await livekit.muteLiveKitTrack(room.livekit_room_name, p.identity, sid, wantMuted);
             muted++;
           }
         }
@@ -1959,29 +1979,27 @@ module.exports = async function thingRoutes(fastify) {
       roomId: room.id,
       actorId: request.user.id,
       actorRole: request.user.role,
-      action: 'participant_muted',
+      action: wantMuted ? 'participant_muted' : 'participant_unmuted',
       target: identity,
-      payload: { kind, tracks: muted },
+      payload: { kind, tracks: muted, muted: wantMuted },
       ip: request.ip
     });
 
-    /* D-183: сообщаем КЛИЕНТУ участника, что модератор выключил ему
-       микрофон/камеру. Серверный mutePublishedTrack глушит трек на SFU,
-       но клиент об этом не знал: его локальный флаг оставался «вкл», и при
-       следующем действии он включал дорожку обратно — «выключил, а оно
-       само включилось». Клиент по этому пакету глушит у себя и показывает
-       статус. */
+    /* D-183: пакет клиенту на ВСЕ device-identity (не только «голый» id). */
     try {
+      const dest = targets.map((t) => t.identity).filter(Boolean);
+      if (!dest.includes(identity)) dest.push(identity);
       await livekit.sendData(room.livekit_room_name, {
-        type: 'moderation_mute',
+        type: wantMuted ? 'moderation_mute' : 'moderation_unmute',
         kind,
+        muted: wantMuted,
         by: `user_${request.user.id}`
-      }, { destinationIdentities: [identity] });
+      }, { destinationIdentities: dest });
     } catch (e) {
       fastify.log.warn('[thing] moderation_mute sendData: ' + (e.message || e));
     }
 
-    return { ok: true, kind, muted_tracks: muted };
+    return { ok: true, kind, muted: wantMuted, muted_tracks: muted };
   });
 
   /* T09: опустить руку участнику. Рука живёт в data-channel клиента;

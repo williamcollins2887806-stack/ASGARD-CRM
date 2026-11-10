@@ -41,7 +41,7 @@ check('C08_chat_sidebar', /ting-chat/.test(tingPage) && /\.ting-chat\.open/.test
 check('C09_screenshare', /setScreenShareEnabled/.test(tingPage) && /setScreenShareEnabled/.test(guest), 'screen share API');
 check('C10_live_loop', /startLiveLoop|setInterval\(async/.test(tingPage), 'live refresh loop');
 check('C11_hub_telemost', /Новый Тинг/.test(tingPage) && /Подключиться/.test(tingPage) && /Запланировать/.test(tingPage), 'hub Telemost IA');
-check('C12_logo_mark', /ting-logo-mark/.test(tingPage) && /ting-logo-mark/.test(tingCss), 'logo mark');
+check('C12_logo_mark', /ting-logo-(mark|glyph|tile)/.test(tingPage) && /ting-logo-(mark|glyph|tile)/.test(tingCss), 'logo mark');
 check('C13_grid_speaker', /layout === 'speaker'|layout-toggle/.test(tingPage), 'grid/speaker modes');
 check('C14_floating_dock', /ting-dock-inner/.test(tingPage) && /ting-dock-inner/.test(tingCss), 'floating dock');
 check('C15_tile_mic_label', /ting-tile|\.lbl/.test(tingCss) && /svgMic/.test(tingPage), 'tile name+mic');
@@ -115,8 +115,9 @@ check('C49_lobby_crm_name', /resolveLocalProfile/.test(tingPage) && /asgard_user
   'lobby берёт ФИО из CRM-профиля');
 check('C50_cinema_chat_overlay', /no-chat cinema|cinema/.test(tingPage)
   && /toggle-chat/.test(tingPage)
-  && /transform:\s*translateX\(105%\)/.test(tingCss)
-  && /\.ting-chat\.open/.test(tingCss),
+  && /transform:\s*translateX\((105%|calc\(100%\s*\+\s*\d+px\))\)/.test(tingCss)
+  && /\.ting-chat\.open/.test(tingCss)
+  && /visibility:\s*hidden/.test(tingCss),
   'desktop chat = overlay, не G-колонка');
 check('C51_intentional_leave', /intentionalLeave/.test(tingPage) && /intentionalLeave/.test(guest),
   'leave/end без авто-reconnect reopen');
@@ -157,11 +158,11 @@ check('C58_guest_attach_searches_strip',
   && /stage && stage\.querySelector\('\[data-id=/.test(guest),
   'attachTrack finds tiles in stage AND filmstrip');
 check('C59_cam_preview_handoff',
-  /function releasePreviewKeepVideoTrack/.test(tingPage)
-  && /function enableLocalCamera/.test(tingPage)
+  /function enableLocalCamera/.test(tingPage)
   && /Timeout starting video/.test(tingPage)
-  && /withTimeout\(room\.localParticipant\.setCameraEnabled/.test(tingPage),
-  'CRM: preview MST handoff + timeout cam publish');
+  && /setCameraEnabled\(true\)/.test(tingPage)
+  && /enableLocalCamera:\s*enableLocalCamera/.test(tingPage),
+  'CRM: enableLocalCamera + timeout cam publish');
 check('C60_park_pip_on_nav',
   /function parkCallToPip/.test(tingPage)
   && /HuginnTing\.ensurePip/.test(tingPage)

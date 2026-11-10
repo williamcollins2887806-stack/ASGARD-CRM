@@ -94,6 +94,11 @@ const APP_FLOW_TYPES = ['application', 'pre_tender'];
 const PERIODS = new Set(['month', 'half_year', 'year', 'all']);
 
 const OPEN_REGISTRY = new Set(['рассмотрение', 'готовим', 'подались']);
+// «Рабочие» статусы — те, где решение ещё не принято. `подались` в них НЕ входит:
+// по TERMINAL_REGISTRY_STATUSES (pm-duty.js) это терминальный статус, работа сделана.
+const WORKING_REGISTRY = new Set(['рассмотрение', 'готовим']);
+// Заявки: `sent` (КП ушло) — уже действие РП, а не «требует внимания».
+const ATTENTION_APP_COLS = new Set(['new', 'calc', 'approval', 'kp_prep', 'addendum']);
 const OPEN_APP_COLS = new Set(['new', 'calc', 'approval', 'kp_prep', 'sent', 'addendum', 'work']);
 const WIN_APP_COLS = new Set(['win', 'work', 'done']);
 const CLOSED_APP_COLS = new Set(['win', 'lose', 'done', 'trash']);
@@ -378,7 +383,15 @@ module.exports = async function directorAnalyticsRoutes(fastify) {
           COUNT(DISTINCT t.id) FILTER (WHERE t.registry_status = 'проиграли')::int AS lost,
           COUNT(DISTINCT t.id) FILTER (WHERE t.registry_status IN ('рассмотрение','готовим','подались'))::int AS active,
           COALESCE(SUM(COALESCE(t.submission_price, t.tender_price)), 0)::float AS sum,
-          COALESCE(SUM(t.tender_price), 0)::float AS nmck_sum,
+          -- НМЦК: tender_price пуст у 865 из 1313 тендеров (площадки кладут цену
+          -- в submission_price). Без фолбэка директор видел «НМЦК 0 ₽ по 25
+          -- процедурам» рядом с «цена работ 89,1 млн» (жалоба 10.11.2026).
+          COALESCE(SUM(COALESCE(t.tender_price, t.submission_price)), 0)::float AS nmck_sum,
+          -- Отдельно: сколько тендеров реально имеют цену. Нужен, чтобы на
+          -- экране писать «по N из M процедур», а не «по 25» при нуле.
+          COUNT(DISTINCT t.id) FILTER (
+            WHERE COALESCE(t.tender_price, t.submission_price) > 0
+          )::int AS priced_count,
           -- Рабочие (ещё не поданные) — отдельным счётчиком. Директору нужен
           -- именно он: 'подались' — терминальный статус, работа сделана.
           COUNT(DISTINCT t.id) FILTER (WHERE t.registry_status IN ('рассмотрение','готовим'))::int AS active_work,
@@ -433,19 +446,50 @@ module.exports = async function directorAnalyticsRoutes(fastify) {
 
       const { rows: tAttn } = await db.query(`
         SELECT t.id, t.tender_title AS title, t.customer_name, t.registry_status,
-               t.docs_deadline,
+               t.docs_deadline, t.analysis_deadline,
                COALESCE(t.submission_price, t.tender_price)::float AS price,
-               tr.work_price::float AS work_price
+               tr.work_price::float AS work_price,
+               tr.director_review_status,
+               CASE
+                 WHEN tr.director_review_status = 'pending' THEN 'director'
+                 WHEN COALESCE(t.analysis_deadline, t.docs_deadline) < CURRENT_DATE THEN 'analysis_overdue'
+                 ELSE 'deadline_soon'
+               END AS attention_kind
         FROM tenders t
         LEFT JOIN tender_rp_reviews tr ON tr.tender_id = t.id
         WHERE t.archived_at IS NULL
-          AND (${tPeriod.clause})
-          AND t.registry_status IN ('рассмотрение','готовим','подались')
-          AND t.docs_deadline IS NOT NULL
-          AND t.docs_deadline::date <= CURRENT_DATE + INTERVAL '1 day'
-        ORDER BY t.docs_deadline ASC
-        LIMIT 5
-      `, tPeriod.params);
+          AND t.deleted_at IS NULL
+          AND t.registry_status IN ('рассмотрение','готовим')
+          AND COALESCE(tr.decision, 'pending') = 'pending'
+          AND COALESCE(tr.is_final, false) = false
+          AND (
+            tr.director_review_status = 'pending'
+            OR COALESCE(t.analysis_deadline, t.docs_deadline) < CURRENT_DATE
+            OR COALESCE(t.analysis_deadline, t.docs_deadline) <= CURRENT_DATE + INTERVAL '3 days'
+          )
+        ORDER BY
+          CASE WHEN tr.director_review_status = 'pending' THEN 0 ELSE 1 END,
+          COALESCE(t.analysis_deadline, t.docs_deadline) ASC
+        LIMIT 20
+      `).catch(() => ({ rows: [] }));
+
+      // Верхняя граница ответственности директора: полный набор поводов,
+      // а не длина среза. Фронт рисует число в бейдже и не должен врать.
+      const { rows: [tAttnCount] } = await db.query(`
+        SELECT COUNT(*)::int AS n
+        FROM tenders t
+        LEFT JOIN tender_rp_reviews tr ON tr.tender_id = t.id
+        WHERE t.archived_at IS NULL
+          AND t.deleted_at IS NULL
+          AND t.registry_status IN ('рассмотрение','готовим')
+          AND COALESCE(tr.decision, 'pending') = 'pending'
+          AND COALESCE(tr.is_final, false) = false
+          AND (
+            tr.director_review_status = 'pending'
+            OR COALESCE(t.analysis_deadline, t.docs_deadline) < CURRENT_DATE
+            OR COALESCE(t.analysis_deadline, t.docs_deadline) <= CURRENT_DATE + INTERVAL '3 days'
+          )
+      `).catch(() => ({ rows: [{ n: 0 }] }));
 
       // ── Заявки (канбан V3: application + pre_tender) ──
       let aByStatus = [];
@@ -486,7 +530,6 @@ module.exports = async function directorAnalyticsRoutes(fastify) {
           LEFT JOIN pre_tender_requests pt
             ON c.entity_kind = 'pre_tender' AND pt.id = c.entity_id
           WHERE c.flow_type = ANY($1::text[])
-            AND (c.is_closed = FALSE OR c.current_main_status IN ('trash','done'))
             AND c.v3_column = ANY($2::text[])
             AND (${aPer4.clause})
             AND pt.work_deadline IS NOT NULL
@@ -494,13 +537,16 @@ module.exports = async function directorAnalyticsRoutes(fastify) {
         `, aPer4.params);
         aHero.overdue_count = Number(aOver2?.n || 0);
 
-        const aP5 = [APP_FLOW_TYPES, [...OPEN_APP_COLS]];
-        const aPer5 = periodSql('c.created_at', period, aP5);
+        // Внимание заявок — БЕЗ периода по созданию: просроченная задача не
+        // перестаёт требовать решения от того, что карточку завели в июле.
+        // Окно по сроку с НИЖНЕЙ границей: старьё (просрочка >30 дней) не
+        // вытесняет актуальные, но и не пропадает из счётчика отдельно.
+        const aP5 = [APP_FLOW_TYPES, [...ATTENTION_APP_COLS]];
         const { rows: aAttnRows } = await db.query(`
           SELECT c.id AS card_id, c.entity_id, c.entity_kind, c.v3_column AS status,
                  COALESCE(pt.customer_name, ia.source_name, 'Заявка #' || c.entity_id::text) AS customer_name,
                  COALESCE(pt.work_description, ia.subject) AS title,
-                 pt.work_deadline AS deadline,
+                 COALESCE(pt.work_deadline, ia.created_at::date) AS deadline,
                  pt.estimated_sum::float AS estimated_sum,
                  pt.ai_color
           FROM v_unified_kanban_cards c
@@ -509,14 +555,13 @@ module.exports = async function directorAnalyticsRoutes(fastify) {
           LEFT JOIN inbox_applications ia
             ON c.entity_kind = 'inbox_application' AND ia.id = c.entity_id
           WHERE c.flow_type = ANY($1::text[])
-            AND (c.is_closed = FALSE OR c.current_main_status IN ('trash','done'))
             AND c.v3_column = ANY($2::text[])
-            AND (${aPer5.clause})
-            AND pt.work_deadline IS NOT NULL
-            AND pt.work_deadline::date <= CURRENT_DATE + INTERVAL '1 day'
-          ORDER BY pt.work_deadline ASC
-          LIMIT 5
-        `, aPer5.params);
+            AND COALESCE(pt.work_deadline, ia.created_at::date) IS NOT NULL
+            AND COALESCE(pt.work_deadline, ia.created_at::date) >= CURRENT_DATE - INTERVAL '30 days'
+            AND COALESCE(pt.work_deadline, ia.created_at::date) <= CURRENT_DATE + INTERVAL '3 days'
+          ORDER BY COALESCE(pt.work_deadline, ia.created_at::date) ASC
+          LIMIT 20
+        `, aP5.params);
         aAttn = aAttnRows;
       } catch (e) {
         request.log.warn({ err: e }, 'director-analytics overview apps (kanban view)');
@@ -604,6 +649,7 @@ module.exports = async function directorAnalyticsRoutes(fastify) {
           conversion: (won + lost) > 0 ? Math.round(won / (won + lost) * 100) : null,
           sum: Number(tSum.sum || 0),
           nmck_sum: Number(tSum.nmck_sum || 0),
+          priced_count: Number(tSum.priced_count || 0),
           work_price_sum: Number(tSum.work_price_sum || 0),
           overdue_count: Number(tSum.overdue_count || 0),
           by_status: REGISTRY_STATUSES.map((status) => ({
@@ -618,10 +664,13 @@ module.exports = async function directorAnalyticsRoutes(fastify) {
             customer_name: r.customer_name,
             status: r.registry_status,
             deadline: r.docs_deadline,
+            analysis_deadline: r.analysis_deadline,
             price: r.price,
             work_price: r.work_price,
+            attention_kind: r.attention_kind,
             due_flag: dueFlagOf(r.docs_deadline, false)
-          }))
+          })),
+          attention_count: Number(tAttnCount?.n || 0)
         },
         applications: {
           total: aHero.total,
@@ -2117,9 +2166,21 @@ module.exports = async function directorAnalyticsRoutes(fastify) {
           people_total: inNorm.length,
           people_under: under.length,
           under_pct: inNorm.length ? Math.round((under.length / inNorm.length) * 100) : null,
+          // Счётчики по ОДНОЙ метрике — state. Раньше UI писал «В норме:
+          // people_total − people_under», где under считался по delta_minutes,
+          // а цвет — по ratio_pct. Получалось «0 из 17» рядом с 7 зелёными
+          // (жалоба 10.11.2026).
+          people_green: inNorm.filter((p) => p.state === 'green').length,
+          people_yellow: inNorm.filter((p) => p.state === 'yellow').length,
+          people_red: inNorm.filter((p) => p.state === 'red').length,
+          people_no_norm: people.filter((p) => !(p.norm_minutes > 0)).length,
           avg_delta_minutes: avgDelta,
           norm_minutes_total: inNorm.reduce((a, p) => a + p.norm_minutes, 0),
           credited_minutes_total: inNorm.reduce((a, p) => a + p.credited_minutes, 0),
+          // Сходимость: сумма дневных отклонений должна равняться итогу.
+          // Если нет — одна из двух цифр врёт, лучше знать это в тесте.
+          worked_minutes_total: inNorm.reduce((a, p) => a + (p.worked_minutes || 0), 0),
+          days_counted_total: inNorm.reduce((a, p) => a + (p.days_counted || 0), 0),
           worst
         },
         data_quality: {

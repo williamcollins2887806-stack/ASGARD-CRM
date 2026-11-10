@@ -1,6 +1,6 @@
 # THING-CODE-VERIFY-F4
 
-at: 2026-11-05T15:20:49.721Z
+at: 2026-11-10T09:40:51.990Z
 result: VERIFIED (62/62)
 
 | ID | PASS | Evidence |
@@ -63,7 +63,7 @@ result: VERIFIED (62/62)
 | C56_friendly_http_toast | PASS | no raw HTTP status in user toasts |
 | C57_guest_relayout_grids | PASS | guest: g1..g10 + speaker filmstrip relayout |
 | C58_guest_attach_searches_strip | PASS | attachTrack finds tiles in stage AND filmstrip |
-| C59_cam_preview_handoff | PASS | CRM: preview MST handoff + timeout cam publish |
+| C59_cam_preview_handoff | PASS | CRM: enableLocalCamera + timeout cam publish |
 | C60_park_pip_on_nav | PASS | уход из #/ting → PiP, не leave |
 | C61_join_end_timeouts | PASS | join UI early + end/disconnect timeouts |
 | C62_incall_credit_hidden | PASS | ting-incall hides .credit + fixed room shell |

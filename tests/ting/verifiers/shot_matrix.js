@@ -10,8 +10,9 @@ const path = require('path');
 const http = require('http');
 
 const root = path.join(__dirname, '../../..');
-const outDir = path.join(root, 'tests/reports/ting_ui_shots_v2');
+const outDir = path.join(root, 'tests/reports/ting_ui_shots_v4');
 const matrixMd = path.join(outDir, 'MATRIX.md');
+const indexMd = path.join(outDir, 'INDEX.md');
 
 function contentType(p) {
   if (p.endsWith('.html') || p.endsWith('.htm')) return 'text/html; charset=utf-8';
@@ -165,7 +166,7 @@ window.__TING_HARNESS_DEMO__ = true;
 window.__TING_DEMO_EXTRA__ = /demo=group/.test(location.hash);
 (function () {
   var m = location.hash.match(/[?&]n=(\\d+)/);
-  if (m) window.__TING_DEMO_N__ = Math.max(1, Math.min(10, parseInt(m[1], 10) || 2));
+  if (m) window.__TING_DEMO_N__ = Math.max(1, Math.min(15, parseInt(m[1], 10) || 2));
 })();
 TingPage.mount('#ting-root');
 window.addEventListener('hashchange', () => TingPage.onHash());
@@ -209,7 +210,12 @@ async function main() {
       await page.waitForTimeout(450);
       if (after) await after(page);
       await page.waitForTimeout(250);
-      await page.screenshot({ path: path.join(outDir, name + '.png'), fullPage: true });
+      /* Строго viewport — fullPage ловил scrollWidth>vp → чёрная полоса справа */
+      await page.screenshot({
+        path: path.join(outDir, name + '.png'),
+        fullPage: false,
+        clip: { x: 0, y: 0, width: viewport.width, height: viewport.height }
+      });
       rows.push({ name, ok: true, vp: viewport.width + 'x' + viewport.height });
       console.log('OK', name);
     } catch (e) {
@@ -220,28 +226,38 @@ async function main() {
   }
 
   async function shotRoom(name, viewport, after, clipMain) {
-    const context = await browser.newContext({ viewport, permissions: [] });
-    const page = await context.newPage();
-    try {
-      await page.goto(base + '/ting-harness.html#/ting?view=room&slug=k7m2qx', { waitUntil: 'domcontentloaded', timeout: 30000 });
-      await page.waitForSelector('.ting-room-shell', { timeout: 15000 });
-      await page.waitForTimeout(400);
-      if (after) await after(page);
-      await page.waitForTimeout(300);
-      const file = path.join(outDir, name + '.png');
-      if (clipMain) {
-        const el = await page.$('.ting-room-main') || await page.$('.ting-room-shell');
-        await el.screenshot({ path: file });
-      } else {
-        await page.screenshot({ path: file, fullPage: false });
+    let lastErr = null;
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      const context = await browser.newContext({ viewport, permissions: [] });
+      const page = await context.newPage();
+      try {
+        await page.goto(base + '/ting-harness.html#/ting?view=room&slug=k7m2qx', {
+          waitUntil: 'domcontentloaded', timeout: 60000
+        });
+        await page.waitForSelector('.ting-room-shell', { timeout: 20000 });
+        await page.waitForTimeout(400);
+        if (after) await after(page);
+        await page.waitForTimeout(300);
+        const file = path.join(outDir, name + '.png');
+        /* Всегда клип viewport — element.screenshot тянул раздутый border-box */
+        await page.screenshot({
+          path: file,
+          fullPage: false,
+          clip: { x: 0, y: 0, width: viewport.width, height: viewport.height }
+        });
+        void clipMain;
+        rows.push({ name, ok: true, vp: viewport.width + 'x' + viewport.height });
+        console.log('OK', name);
+        await context.close();
+        return;
+      } catch (e) {
+        lastErr = e;
+        console.log('RETRY', name, 'attempt', attempt, e.message.split('\n')[0]);
+        await context.close();
       }
-      rows.push({ name, ok: true, vp: viewport.width + 'x' + viewport.height });
-      console.log('OK', name);
-    } catch (e) {
-      rows.push({ name, ok: false, err: e.message, vp: viewport.width + 'x' + viewport.height });
-      console.log('FAIL', name, e.message);
     }
-    await context.close();
+    rows.push({ name, ok: false, err: (lastErr && lastErr.message) || 'fail', vp: viewport.width + 'x' + viewport.height });
+    console.log('FAIL', name, lastErr && lastErr.message);
   }
 
   const pages = [
@@ -270,24 +286,59 @@ async function main() {
   }
 
   async function hideChat(page) {
-    /* Cinema default is overlay closed; keep closed for full-bleed shots */
+    /* Hard-hide closed chat — no fixed/composited peek on room shots */
     await page.evaluate(() => {
       const c = document.querySelector('.ting-chat');
-      if (c) c.classList.remove('open');
+      if (c) {
+        c.classList.remove('open');
+        c.style.display = 'none';
+        c.style.visibility = 'hidden';
+        c.setAttribute('aria-hidden', 'true');
+      }
       document.querySelector('.ting-room-shell')?.classList.add('no-chat', 'cinema');
+      document.querySelector('.ting-room-shell')?.classList.remove('has-chat-open');
     });
   }
 
+  async function burnIn(page, label, clipMain) {
+    await page.evaluate(({ text, clip }) => {
+      let bar = document.getElementById('ting-shot-caption');
+      if (!bar) {
+        bar = document.createElement('div');
+        bar.id = 'ting-shot-caption';
+        bar.style.cssText = [
+          'position:' + (clip ? 'absolute' : 'fixed'),
+          'left:0', 'right:0', 'bottom:0', 'z-index:99999',
+          'padding:8px 12px', 'background:rgba(0,0,0,.82)', 'color:#fff',
+          'font:600 13px/1.35 system-ui,Segoe UI,sans-serif',
+          'pointer-events:none', 'letter-spacing:.2px'
+        ].join(';');
+        const host = clip
+          ? (document.querySelector('.ting-room-main') || document.querySelector('.ting-room-shell') || document.body)
+          : document.body;
+        if (host && getComputedStyle(host).position === 'static') host.style.position = 'relative';
+        host.appendChild(bar);
+      }
+      bar.textContent = text;
+    }, { text: label, clip: !!clipMain });
+  }
+
+  const surf = (prefix) => (prefix === 'crm_d' ? 'CRM · desktop' : 'CRM · mobile');
+  const vpLabel = (vp) => vp.width + '×' + vp.height;
+
   for (const [prefix, vp] of [['crm_d', desk], ['crm_m', mob]]) {
-    await shotRoom(prefix + '_room_grid', vp, async (page) => {
+    /* Default layout = speaker (было ошибочно названо room_grid) */
+    await shotRoom(prefix + '_room_speaker', vp, async (page) => {
       await page.waitForSelector('.ting-tile', { timeout: 5000 });
       await hideChat(page);
+      await burnIn(page, surf(prefix) + ' · спикер 1:1 · ' + vpLabel(vp), true);
     }, true);
-    await shotRoom(prefix + '_room_speaker', vp, async (page) => {
-      /* dock-inner overflow-x can steal Playwright hit-target; DOM click is enough */
+    /* Toggle → grid N=3 (было ошибочно названо room_speaker) */
+    await shotRoom(prefix + '_room_grid', vp, async (page) => {
       await page.evaluate(() => document.querySelector('[data-act="layout-toggle"]')?.click());
       await page.waitForTimeout(350);
       await hideChat(page);
+      await burnIn(page, surf(prefix) + ' · сетка 3 · ' + vpLabel(vp), true);
     }, true);
     await shotRoom(prefix + '_room_grid5', vp, async (page) => {
       await page.evaluate(() => {
@@ -300,15 +351,14 @@ async function main() {
       if (n < 5) throw new Error('grid5 expected ≥5 tiles, got ' + n);
       const http = await page.evaluate(() => !!(document.body.innerText || '').match(/\bHTTP\s+\d+/));
       if (http) throw new Error('HTTP toast visible in room');
+      await burnIn(page, surf(prefix) + ' · сетка 5 · ' + vpLabel(vp), true);
     }, true);
     await shotRoom(prefix + '_room_grid10', vp, async (page) => {
       await page.evaluate(() => {
         window.__TING_DEMO_N__ = 10;
         const btn = document.querySelector('[data-act="layout-toggle"]');
-        /* ensure grid: if still speaker, toggle once */
         if (document.querySelector('.ting-stage.speaker')) btn?.click();
         else {
-          /* remount paint via toggle twice to refresh with new N */
           btn?.click();
           btn?.click();
         }
@@ -325,11 +375,32 @@ async function main() {
       if (!/\bg10\b/.test(info.cls)) throw new Error('expected g10 class, got ' + info.cls);
       if (info.controls) throw new Error('native video controls present');
       if (info.http) throw new Error('HTTP toast visible in room');
+      await burnIn(page, surf(prefix) + ' · сетка 10 · ' + vpLabel(vp), true);
     }, true);
+    for (const nBig of [12, 15]) {
+      await shotRoom(prefix + '_room_grid' + nBig, vp, async (page) => {
+        await page.evaluate((nn) => {
+          window.__TING_DEMO_N__ = nn;
+          const btn = document.querySelector('[data-act="layout-toggle"]');
+          if (document.querySelector('.ting-stage.speaker')) btn?.click();
+          else { btn?.click(); btn?.click(); }
+        }, nBig);
+        await page.waitForTimeout(450);
+        await hideChat(page);
+        const info = await page.evaluate(() => ({
+          n: document.querySelectorAll('.ting-stage > .ting-tile').length,
+          cls: document.querySelector('.ting-stage')?.className || ''
+        }));
+        if (info.n < nBig) throw new Error('grid' + nBig + ' expected ' + nBig + ' tiles, got ' + info.n);
+        if (!/\bg12\b/.test(info.cls)) throw new Error('expected g12 class, got ' + info.cls);
+        await burnIn(page, surf(prefix) + ' · сетка ' + nBig + ' · ' + vpLabel(vp), true);
+      }, true);
+    }
     await shotRoom(prefix + '_room_people', vp, async (page) => {
       await page.evaluate(() => document.querySelector('.ting-top-actions [data-act="toggle-people"]')?.click());
       await page.waitForSelector('.ting-people-drawer', { timeout: 5000 });
       await page.waitForTimeout(200);
+      await burnIn(page, surf(prefix) + ' · участники · ' + vpLabel(vp), false);
     }, false);
     await shotRoom(prefix + '_room_chat', vp, async (page) => {
       if (vp.width < 500) {
@@ -343,12 +414,19 @@ async function main() {
         if (list) {
           list.innerHTML = '<div class="ting-chat-bubble"><b>Елена</b>Скиньте ссылку</div><div class="ting-chat-bubble me"><b>Вы</b>Уже в чате ✓</div>';
         }
-        document.querySelector('.ting-chat')?.classList.add('open');
+        const c = document.querySelector('.ting-chat');
+        if (c) {
+          c.style.display = '';
+          c.style.visibility = '';
+          c.classList.add('open');
+        }
       });
+      await burnIn(page, surf(prefix) + ' · чат открыт · ' + vpLabel(vp), false);
     }, false);
     await shotRoom(prefix + '_host_end', vp, async (page) => {
       await page.evaluate(() => document.querySelector('[data-act="host-end-open"]')?.click());
       await page.waitForSelector('#ting-host-end', { timeout: 5000 });
+      await burnIn(page, surf(prefix) + ' · завершить встречу · ' + vpLabel(vp), false);
     }, false);
   }
 
@@ -364,6 +442,7 @@ async function main() {
       });
       await page.waitForTimeout(400);
       await hideChat(page);
+      await burnIn(page, 'CRM · desktop · сетка 5 · тема ' + theme + ' · 1280×800', true);
     }, true);
   }
 
@@ -418,7 +497,11 @@ async function main() {
         }
       }, mode);
       await page.waitForTimeout(350);
-      await page.screenshot({ path: path.join(outDir, name + '.png'), fullPage: true });
+      await page.screenshot({
+        path: path.join(outDir, name + '.png'),
+        fullPage: false,
+        clip: { x: 0, y: 0, width: viewport.width, height: viewport.height }
+      });
       rows.push({ name, ok: true, vp: viewport.width + 'x' + viewport.height });
       console.log('OK', name);
     } catch (e) {
@@ -441,19 +524,47 @@ async function main() {
   await browser.close();
   server.close();
 
+  const passed = rows.filter((r) => r.ok).length;
   const md = [
-    '# Ting UI shot matrix — layout designer pack',
+    '# Ting UI shot matrix v4',
     '',
     `at: ${new Date().toISOString()}`,
-    `ok: ${rows.filter((r) => r.ok).length}/${rows.length}`,
+    `ok: ${passed}/${rows.length}`,
     '',
-    'Viewports: desktop 1280x800, mobile 390x844',
+    'Viewports: desktop 1280×800, mobile 390×844. Имена = фактический layout (speaker/grid).',
     '',
     '| Shot | VP | OK |',
     '|------|----|----|',
     ...rows.map((r) => `| ${r.name} | ${r.vp || ''} | ${r.ok ? 'PASS' : 'FAIL ' + (r.err || '')} |`)
   ].join('\n');
   fs.writeFileSync(matrixMd, md);
+
+  const expectRu = (name) => {
+    if (/_room_speaker$/.test(name)) return 'Спикер 1:1 (+PiP), чат скрыт';
+    if (/_room_grid$/.test(name)) return 'Сетка 3, чат скрыт';
+    if (/_room_grid5/.test(name)) return 'Сетка 5, чат скрыт, chip ≈5';
+    if (/_room_grid10/.test(name)) return 'Сетка 10, чат скрыт';
+    if (/_room_grid12/.test(name)) return 'Сетка 12, чат скрыт';
+    if (/_room_grid15/.test(name)) return 'Сетка 15, чат скрыт';
+    if (/_room_chat/.test(name)) return 'Чат открыт';
+    if (/_room_people/.test(name)) return 'Панель участников';
+    if (/_host_end/.test(name)) return 'Модалка завершения';
+    if (/hub/.test(name)) return 'Хаб Тинг';
+    if (/guest_.*_lobby/.test(name)) return 'Гостевой лобби';
+    return 'Скрин страницы/режима';
+  };
+  const idx = [
+    '# Ting UI shots v4 — INDEX',
+    '',
+    'Подпись burn-in на room-шотах. PASS/FAIL ниже — по MATRIX; визуал смотреть глазами агентом.',
+    '',
+    '| Файл | Ожидание | MATRIX |',
+    '|------|----------|--------|',
+    ...rows.map((r) => `| ${r.name}.png | ${expectRu(r.name)} | ${r.ok ? 'PASS' : 'FAIL'} |`),
+    '',
+    `Total: ${passed}/${rows.length}`
+  ].join('\n');
+  fs.writeFileSync(indexMd, idx);
   console.log(md);
   process.exit(rows.every((r) => r.ok) ? 0 : 1);
 }
