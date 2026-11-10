@@ -1,0 +1,236 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   jp2 — десктопный обзор «Пульса директора» (редизайн 10.11.2026)
+
+   Та же иерархия, что в мобильном: одна главная цифра, список причин,
+   три строки-контура, итоги. Двухколоночная сетка появляется только на
+   широком экране; на узком всё в один столбец.
+
+   Только токены темы: работает и в тёмной, и в светлой.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.jp2-overview {
+  display: flex;
+  flex-direction: column;
+  gap: 26px;
+  padding: 4px 0 40px;
+  max-width: 980px;
+}
+
+/* ── Главная цифра ─────────────────────────────────────────────────────── */
+
+.jp-page .jp2-hero { padding: 8px 0 0; }
+
+.jp-page .jp2-hero-cap {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--t3);
+}
+
+.jp-page .jp2-hero-num {
+  margin-top: 10px;
+  font-family: var(--ff-head, inherit);
+  font-size: 52px;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: -0.03em;
+  font-variant-numeric: tabular-nums;
+  color: var(--t1);
+}
+
+.jp-page .jp2-hero-num.is-hot { color: var(--gold); }
+
+.jp-page .jp2-hero-sub {
+  margin-top: 8px;
+  font-size: 13px;
+  color: var(--t3);
+}
+
+/* ── Список причин ─────────────────────────────────────────────────────── */
+
+.jp-page .jp2-attention {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--brd-m);
+  border-radius: var(--r-md, 12px);
+  overflow: hidden;
+  background: var(--bg2);
+}
+
+.jp-page .jp2-att-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 12px 14px;
+  border: 0;
+  background: none;
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--jp-fast, 160ms);
+}
+
+.jp-page .jp2-att-row + .jp2-att-row {
+  border-top: 1px solid var(--brd-m);
+}
+
+.jp-page .jp2-att-row:hover { background: var(--bg3); }
+
+.jp-page .jp2-att-dot {
+  flex: 0 0 auto;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--t3);
+}
+
+.jp-page .jp2-att-dot.is-hot { background: var(--err-t, var(--err)); }
+.jp-page .jp2-att-dot.is-warm { background: var(--gold); }
+
+.jp-page .jp2-att-body {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.jp-page .jp2-att-title {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--t1);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.jp-page .jp2-att-meta {
+  font-size: 11.5px;
+  color: var(--t3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.jp-page .jp2-att-row svg { flex: 0 0 auto; color: var(--t3); opacity: 0.55; }
+
+.jp-page .jp2-att-more {
+  width: 100%;
+  padding: 11px;
+  border: 0;
+  border-top: 1px solid var(--brd-m);
+  background: none;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--gold);
+  cursor: pointer;
+}
+
+/* ── Контуры ───────────────────────────────────────────────────────────── */
+
+.jp-page .jp2-contours { display: flex; flex-direction: column; }
+
+.jp-page .jp2-sec-cap {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--t3);
+  margin-bottom: 8px;
+}
+
+.jp-page .jp2-contour {
+  display: grid;
+  grid-template-columns: auto 1fr auto auto;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  padding: 14px 6px;
+  border: 0;
+  border-top: 1px solid var(--brd-m);
+  background: none;
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--jp-fast, 160ms);
+}
+
+.jp-page .jp2-contour:last-of-type { border-bottom: 1px solid var(--brd-m); }
+.jp-page .jp2-contour:hover { background: var(--bg3); }
+
+.jp-page .jp2-contour-name {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--t1);
+  white-space: nowrap;
+}
+
+.jp-page .jp2-contour-mid {
+  font-size: 12px;
+  color: var(--t3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.jp-page .jp2-contour-num {
+  font-size: 20px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+  color: var(--t1);
+  min-width: 30px;
+  text-align: right;
+}
+
+.jp-page .jp2-contour-num.is-hot { color: var(--gold); }
+.jp-page .jp2-contour svg { color: var(--t3); opacity: 0.5; }
+
+/* ── Итоги ─────────────────────────────────────────────────────────────── */
+
+.jp-page .jp2-summary { display: flex; flex-direction: column; }
+
+.jp-page .jp2-sum-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 9px 0;
+  border-top: 1px solid var(--brd-m);
+}
+
+.jp-page .jp2-sum-k { font-size: 12px; color: var(--t3); }
+
+.jp-page .jp2-sum-v {
+  font-size: 13.5px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--t1);
+  white-space: nowrap;
+}
+
+/* ── Две колонки на широком экране ─────────────────────────────────────── */
+
+@media (min-width: 1180px) {
+  .jp-page .jp2-overview {
+    max-width: 1180px;
+    display: grid;
+    grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr);
+    grid-template-areas:
+      "hero       attention"
+      "contours   summary";
+    align-items: start;
+    column-gap: 40px;
+    row-gap: 28px;
+  }
+
+  .jp-page .jp2-hero      { grid-area: hero; }
+  .jp-page .jp2-attention { grid-area: attention; }
+  .jp-page .jp2-contours  { grid-area: contours; }
+  .jp-page .jp2-summary   { grid-area: summary; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .jp-page .jp2-att-row,
+  .jp-page .jp2-contour { transition: none; }
+}

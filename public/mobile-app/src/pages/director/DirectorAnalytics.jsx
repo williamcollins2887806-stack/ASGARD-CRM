@@ -12,6 +12,9 @@ import {
   Activity, ChevronLeft, ChevronRight, FileText, Search, X,
 } from 'lucide-react';
 import { formatMoney, formatMoneyShort, formatDate, plural } from '@/lib/utils';
+import Overview from './Overview';
+import './Overview.css';
+import './OverviewExtras.css';
 import './DirectorAnalytics.css';
 
 /**
@@ -79,6 +82,7 @@ const TENDER_TABS = [
   { id: 'calc', label: 'Просчёт РП' },
   { id: 'estimate', label: 'Смета' },
   { id: 'checklist', label: 'Чек-лист' },
+  { id: 'mtr', label: 'МТР' },
   { id: 'report', label: 'Отчёт РП' },
   { id: 'docs', label: 'Документы' },
 ];
@@ -240,13 +244,21 @@ function normalizeChecklist(cl) {
   if (!cl) return [];
   if (Array.isArray(cl.items)) return cl.items;
   if (Array.isArray(cl)) return cl;
+  // Сервер (extractChecklistItems) отдаёт готовый массив items — он
+  // нормализован из массива template_snapshot с ответами по ключам qN.
+  // Раньше здесь искали только cl.items, а приходил ответ другой формы.
+  const answers = cl.answers && typeof cl.answers === 'object' ? cl.answers : null;
   const items = [];
-  const answers = cl.answers;
-  if (answers && typeof answers === 'object') {
+  if (answers) {
     Object.keys(answers).forEach((k) => {
       const v = answers[k];
-      const done = v === true || v === 'yes' || v === 'да' || v === 1 || v === '1';
-      items.push({ text: String(k), done });
+      const raw = typeof v === 'object' && v !== null
+        ? (v.text || v.label || v.value || '')
+        : v;
+      const text = raw == null ? '' : String(raw).trim();
+      // «-», пустая строка — это НЕ ответ. Готовность считаем по реальным.
+      const answered = text !== '' && text !== '-' && text !== '—';
+      items.push({ id: k, text: answers[k] && answers[k].label ? answers[k].label : k, answer: text, done: answered });
     });
   }
   return items;
@@ -281,8 +293,10 @@ export default function DirectorAnalytics() {
   const [worksItems, setWorksItems] = useState([]);
   const [worksCounts, setWorksCounts] = useState({ active: 0, pause: 0, archive: 0 });
   const [teamHours, setTeamHours] = useState(null);
-  const [teamScope, setTeamScope] = useState('month');
-  const [teamAnchor, setTeamAnchor] = useState(null);
+  // Период/якорь графика офиса: панель живёт в отдельном экране, но состояние
+  // держим здесь, чтобы не терять выбор при возврате из карточки.
+  const [teamScope] = useState('month');
+  const [teamAnchor] = useState(null);
 
   const [loading, setLoading] = useState(true);
   const [listLoading, setListLoading] = useState(false);
@@ -430,6 +444,7 @@ export default function DirectorAnalytics() {
     setListSection(null);
     setDetailOpen(false);
   };
+  void changePeriod;
 
   const openDetail = async (kind, id) => {
     if (id == null) return;
@@ -519,20 +534,6 @@ export default function DirectorAnalytics() {
 
           {view === 'overview' && (
             <>
-              <div className="jp-periods" ref={periodHostRef}>
-                {PERIODS.map((p) => (
-                  <button
-                    key={p.id}
-                    type="button"
-                    className={`jp-period spring-tap${period === p.id ? ' is-on' : ''}`}
-                    onClick={() => changePeriod(p.id)}
-                  >
-                    {p.label}
-                  </button>
-                ))}
-              </div>
-              <div className="jp-period-hint">{periodHint}</div>
-
               {loading ? (
                 <SkeletonList count={6} />
               ) : error && !overview ? (
@@ -544,45 +545,17 @@ export default function DirectorAnalytics() {
                   description={error}
                 />
               ) : (
-                <div className="jp-stack">
-                  <BizSection
-                    id="tenders"
-                    title="Тендеры"
-                    note="6 статусов реестра"
-                    overview={overview?.tenders}
-                    items={tendersItems}
-                    onOpenList={openList}
-                    onOpenDetail={(id) => openDetail('tenders', id)}
-                  />
-                  <BizSection
-                    id="applications"
-                    title="Заявки"
-                    note="11 статусов канбана"
-                    overview={overview?.applications}
-                    items={appsItems}
-                    onOpenList={openList}
-                    onOpenDetail={(id) => openDetail('applications', id)}
-                  />
-                  <BizSection
-                    id="works"
-                    title="Работы"
-                    note="Активные · пауза · архив"
-                    overview={overview?.works}
-                    items={worksItems}
-                    worksCounts={worksCounts}
-                    onOpenList={openList}
-                    onOpenDetail={(id) => openDetail('works', id)}
-                  />
-                  <TeamSection
-                    teamHours={teamHours}
-                    period={period}
-                    onOpenPerson={(p) => setTeamPerson(p)}
-                    scope={teamScope}
-                    onScope={(s) => { setTeamScope(s); setTeamAnchor(null); }}
-                    onStep={(anchor) => anchor && setTeamAnchor(anchor)}
-                    onCurrent={() => setTeamAnchor(null)}
-                  />
-                </div>
+                <Overview
+                  overview={overview}
+                  teamHours={teamHours}
+                  periodLabel={periodLabel(period)}
+                  loading={false}
+                  onOpenList={openList}
+                  onOpenDetail={(section, id) => openDetail(section, id)}
+                  onOpenOffice={() => {
+                    document.getElementById('jp-sec-office')?.scrollIntoView({ behavior: 'smooth' });
+                  }}
+                />
               )}
             </>
           )}
@@ -1594,29 +1567,120 @@ function EstimateTable({ est }) {
 }
 
 function DocList({ docs }) {
+  const haptic = useHaptic();
+  const [preview, setPreview] = useState(null);
   if (!docs?.length) return <EmptyHint>Документов нет</EmptyHint>;
+
+  const token = localStorage.getItem('asgard_token') || '';
+  const INLINE = ['pdf', 'png', 'jpg', 'jpeg', 'gif', 'webp', 'txt'];
+  const openDoc = (d) => {
+    const name = d.original_name || d.file_name || d.name || 'файл';
+    const ext = (d.ext || name.split('.').pop() || '').toString().toLowerCase();
+    const file = d.file_name || d.name;
+    haptic.light();
+    if (!file) return;
+    const url = `/api/files/preview/${encodeURIComponent(file)}?token=${encodeURIComponent(token)}`;
+    if (INLINE.includes(ext)) {
+      setPreview({ url, name, ext });
+    } else {
+      // XLSX/DOCX сервер отдаёт как attachment — сразу скачиваем.
+      window.open(`/api/files/download/${encodeURIComponent(file)}?token=${encodeURIComponent(token)}`, '_blank');
+    }
+  };
+
   return (
-    <div className="jp-docs">
-      {docs.map((d) => {
-        const name = d.original_name || d.file_name || d.name || 'файл';
-        const ext = (d.ext || name.split('.').pop() || 'file').toString().slice(0, 4).toLowerCase();
-        return (
-          <div key={d.id || name} className="jp-doc-row">
-            <span className="jp-doc-ext">{ext}</span>
-            <FileText size={14} style={{ color: 'var(--gold)', flexShrink: 0 }} />
-            <span className="truncate" style={{ flex: 1 }}>{name}</span>
-            {d.created_at ? (
-              <span className="c-tertiary" style={{ fontSize: 11 }}>{formatDate(d.created_at)}</span>
-            ) : null}
+    <>
+      <div className="jp-docs">
+        {docs.map((d) => {
+          const name = d.original_name || d.file_name || d.name || 'файл';
+          const ext = (d.ext || name.split('.').pop() || 'file').toString().slice(0, 4).toLowerCase();
+          return (
+            <button
+              type="button"
+              key={d.id || name}
+              className="jp-doc-row spring-tap"
+              onClick={() => openDoc(d)}
+            >
+              <span className="jp-doc-ext">{ext}</span>
+              <FileText size={14} style={{ color: 'var(--gold)', flexShrink: 0 }} />
+              <span className="truncate" style={{ flex: 1 }}>{name}</span>
+              {d.created_at ? (
+                <span className="c-tertiary" style={{ fontSize: 11 }}>{formatDate(d.created_at)}</span>
+              ) : null}
+            </button>
+          );
+        })}
+      </div>
+      {preview && (
+        <div className="jp2-doc-sheet" role="dialog" aria-modal="true">
+          <button
+            type="button"
+            className="jp2-doc-scrim"
+            aria-label="Закрыть"
+            onClick={() => setPreview(null)}
+          />
+          <div className="jp2-doc-panel">
+            <div className="jp2-doc-head">
+              <span className="truncate">{preview.name}</span>
+              <button type="button" className="jp2-doc-close" onClick={() => setPreview(null)}>✕</button>
+            </div>
+            {preview.ext === 'pdf' ? (
+              <iframe className="jp2-doc-frame" src={preview.url} title={preview.name} />
+            ) : (
+              <img className="jp2-doc-img" src={preview.url} alt={preview.name} />
+            )}
           </div>
-        );
-      })}
-    </div>
+        </div>
+      )}
+    </>
   );
 }
 
-function Split({ main, side }) {
+function CustomerHistory({ inn, name }) {
+  const [data, setData] = useState(null);
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    const q = inn ? `inn=${encodeURIComponent(inn)}` : (name ? `name=${encodeURIComponent(name)}` : null);
+    if (!q) return undefined;
+    api.get(`/director-analytics/customer?${q}`)
+      .then((res) => { if (!cancelled) setData(res); })
+      .catch(() => { if (!cancelled) setFailed(true); });
+    return () => { cancelled = true; };
+  }, [inn, name]);
+
+  if (failed || !data || !data.total) return null;
+
+  const cells = [
+    ['Всего', data.total],
+    ['Подано', data.submitted],
+    ['Выиграно', data.won],
+    ['Проиграно', data.lost],
+    ['В подготовке', data.prep + data.review],
+  ];
+
   return (
+    <Block title="Контрагент за всё время">
+      <div className="jp2-cust">
+        {cells.map(([k, v]) => (
+          <div className="jp2-cust-cell" key={k}>
+            <span className="jp2-cust-v">{v}</span>
+            <span className="jp2-cust-k">{k}</span>
+          </div>
+        ))}
+      </div>
+      {data.conversion != null ? (
+        <div className="jp2-cust-note">
+          Конверсия {data.conversion} %
+          {data.won_sum ? ` · выиграно на ${formatMoney(data.won_sum)}` : ''}
+        </div>
+      ) : null}
+    </Block>
+  );
+}
+
+function Split({ main, side }) {  return (
     <div className="jp-split">
       <div className="jp-split-main">{main}</div>
       <div className="jp-split-side">{side}</div>
@@ -1723,7 +1787,7 @@ function TenderTabs({ d, tab }) {
     // несуществующему `detail` бросало ReferenceError, и error boundary
     // закрывала ВЕСЬ экран аналитики директора (найдено верификатором).
     const rj = d?.rp_review?.report_json || d?.report_json || {};
-    const rep = typeof rj === 'string' ? (() => { try { return JSON.parse(rj); } catch (_) { return {}; } })() : rj;
+    const rep = typeof rj === 'string' ? (() => { try { return JSON.parse(rj); } catch { return {}; } })() : rj;
     const SOURCE = {
       vor: 'ведомость объёмов', tz: 'техническое задание', tz_labor: 'трудоёмкость из ТЗ',
       defect_act: 'дефектный акт', passport: 'паспорт оборудования',
@@ -1809,7 +1873,10 @@ function TenderTabs({ d, tab }) {
               {checklist.map((c, i) => (
                 <div key={c.id || i} className={`jp-check-item${c.done ? ' done' : ''}`}>
                   <span className="jp-check-box">{c.done ? '✓' : ''}</span>
-                  <span className="jp-check-txt">{c.text}</span>
+                  <span className="jp-check-txt">
+                    {c.text}
+                    {c.answer ? <span className="jp-check-ans">{c.answer}</span> : null}
+                  </span>
                   <span className={`jp-check-when${c.done ? '' : ' pending'}`}>
                     {c.done ? formatDate(c.date) : (c.due ? `до ${formatDate(c.due)}` : '—')}
                   </span>
@@ -1866,6 +1933,60 @@ function TenderTabs({ d, tab }) {
     );
   }
 
+  if (tab === 'mtr') {
+    const tp = rp?.tech_plan || null;
+    const mtr = tp?.mtr || [];
+    const crew = tp?.crew || [];
+    if (!mtr.length && !crew.length) {
+      return (
+        <EmptyHint>
+          Техплан не заполнен РП. Бригада и МТР вводятся в просчёте — после
+          сохранения появятся здесь.
+        </EmptyHint>
+      );
+    }
+    return (
+      <Split
+        main={(
+          <Block title="Ведомость МТР" right={<span className="jp-badge tone-muted">{mtr.length}</span>}>
+            {mtr.length ? (
+              <div className="jp2-table">
+                <div className="jp2-thead">
+                  <span>Наименование</span>
+                  <span className="ta-r">Кол-во</span>
+                  <span className="ta-r">Источник</span>
+                </div>
+                {mtr.map((m, i) => (
+                  <div className="jp2-trow" key={i}>
+                    <span className="truncate">{m.name || m.title || '—'}</span>
+                    <span className="ta-r num">
+                      {m.qty != null ? `${m.qty} ${m.unit || ''}`.trim() : '—'}
+                    </span>
+                    <span className="ta-r src">{m.source || '—'}</span>
+                  </div>
+                ))}
+              </div>
+            ) : <EmptyHint>МТР не заполнен</EmptyHint>}
+          </Block>
+        )}
+        side={(
+          <Block title="Бригада" right={<span className="jp-badge tone-muted">{crew.length}</span>}>
+            {crew.length ? (
+              <div className="jp2-table">
+                {crew.map((c, i) => (
+                  <div className="jp2-trow jp2-trow--2" key={i}>
+                    <span className="truncate">{c.role || '—'}</span>
+                    <span className="ta-r num">{c.count != null ? `${c.count} чел.` : '—'}</span>
+                  </div>
+                ))}
+              </div>
+            ) : <EmptyHint>Бригада не заполнена</EmptyHint>}
+          </Block>
+        )}
+      />
+    );
+  }
+
   /* summary */
   const dLeft = daysLeftOf(dl);
   return (
@@ -1887,6 +2008,7 @@ function TenderTabs({ d, tab }) {
             ]}
             />
           </Block>
+          <CustomerHistory inn={d.customer_inn} name={d.customer_name} />
           <OutcomeBlock outcome={d.outcome} />
           <AuditBlock rows={d.audit} />
         </>

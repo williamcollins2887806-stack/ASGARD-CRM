@@ -1,0 +1,400 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   jp2 — «Пульс директора»: новый слой (редизайн 10.11.2026)
+
+   Задача: воздух вместо плотности. Одна главная цифра, три строки-входа,
+   детали по тапу. Палитра: один акцент (золото) + три семантических.
+   Сетка 8pt, подписи не мельче 11px, главное число 32–40px.
+
+   Слой отдельный от .jp-*: старые экраны (реестр, карточка) продолжают
+   работать, пока переключаем постепенно.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.jp2-overview {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  padding: 4px 0 32px;
+}
+
+/* ── 1. Главная цифра ──────────────────────────────────────────────────── */
+
+.jp2-hero {
+  padding: 20px 4px 0;
+}
+
+.jp2-hero-cap {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+}
+
+.jp2-hero-num {
+  margin-top: 8px;
+  font-size: 44px;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: -0.03em;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary);
+}
+
+.jp2-hero-num.is-hot {
+  color: var(--gold);
+}
+
+.jp2-hero-sub {
+  margin-top: 8px;
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--text-secondary);
+}
+
+/* ── 2. Список причин ──────────────────────────────────────────────────── */
+
+.jp2-attention {
+  display: flex;
+  flex-direction: column;
+  border-radius: 16px;
+  border: 1px solid var(--border-norse);
+  background: color-mix(in srgb, var(--bg-elevated) 92%, transparent);
+  overflow: hidden;
+}
+
+.jp2-att-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 14px 14px;
+  border: 0;
+  background: none;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  transition: background 160ms ease;
+}
+
+.jp2-att-row + .jp2-att-row {
+  border-top: 1px solid color-mix(in srgb, var(--border-norse) 60%, transparent);
+}
+
+.jp2-att-row:active {
+  background: color-mix(in srgb, var(--bg-elevated) 70%, var(--gold) 6%);
+}
+
+.jp2-att-dot {
+  flex: 0 0 auto;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--text-tertiary);
+}
+
+.jp2-att-dot.is-hot { background: var(--danger-ink, #e8553f); }
+.jp2-att-dot.is-warm { background: var(--gold); }
+
+.jp2-att-body {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.jp2-att-title {
+  font-size: 13.5px;
+  font-weight: 600;
+  line-height: 1.3;
+  color: var(--text-primary);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.jp2-att-meta {
+  font-size: 11.5px;
+  line-height: 1.3;
+  color: var(--text-tertiary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.jp2-att-chev {
+  flex: 0 0 auto;
+  color: var(--text-tertiary);
+  opacity: 0.6;
+}
+
+.jp2-att-more {
+  width: 100%;
+  padding: 12px;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--gold);
+  cursor: pointer;
+}
+
+.jp2-att-more:active { opacity: 0.6; }
+
+/* ── 3. Контуры: одна строка = один контур ─────────────────────────────── */
+
+.jp2-contours {
+  display: flex;
+  flex-direction: column;
+}
+
+.jp2-sec-cap {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+  margin-bottom: 10px;
+}
+
+.jp2-contour {
+  display: grid;
+  grid-template-columns: auto 1fr auto auto;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 16px 4px;
+  border: 0;
+  border-top: 1px solid color-mix(in srgb, var(--border-norse) 55%, transparent);
+  background: none;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  transition: background 160ms ease;
+}
+
+.jp2-contour:last-of-type {
+  border-bottom: 1px solid color-mix(in srgb, var(--border-norse) 55%, transparent);
+}
+
+.jp2-contour:active {
+  background: color-mix(in srgb, var(--bg-elevated) 60%, transparent);
+}
+
+.jp2-contour-name {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+}
+
+.jp2-contour-mid {
+  font-size: 12px;
+  color: var(--text-tertiary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.jp2-contour-num {
+  font-size: 19px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+  color: var(--text-primary);
+  min-width: 28px;
+  text-align: right;
+}
+
+.jp2-contour-num.is-hot { color: var(--gold); }
+
+.jp2-contour-chev {
+  color: var(--text-tertiary);
+  opacity: 0.5;
+}
+
+/* ── 4. График офиса: превью ───────────────────────────────────────────── */
+
+.jp2-office {
+  display: flex;
+  flex-direction: column;
+}
+
+.jp2-sec-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.jp2-sec-head .jp2-sec-cap { margin-bottom: 0; }
+
+.jp2-sec-link {
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--gold);
+  cursor: pointer;
+  padding: 0;
+}
+
+.jp2-office-sub {
+  margin: 6px 0 12px;
+  font-size: 12px;
+  color: var(--text-tertiary);
+}
+
+.jp2-office-row {
+  display: grid;
+  grid-template-columns: 3px 1fr auto;
+  align-items: center;
+  gap: 12px;
+  padding: 11px 0;
+  border-top: 1px solid color-mix(in srgb, var(--border-norse) 55%, transparent);
+}
+
+.jp2-office-bar {
+  width: 3px;
+  height: 20px;
+  border-radius: 2px;
+  background: var(--border-norse);
+}
+
+.jp2-office-bar.is-green { background: var(--ok-t, #4caf7d); }
+.jp2-office-bar.is-yellow { background: var(--warn-t, #d5a64a); }
+.jp2-office-bar.is-red { background: var(--danger-ink, #e8553f); }
+
+.jp2-office-name {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.jp2-office-crown {
+  color: var(--gold);
+  font-size: 11px;
+}
+
+.jp2-office-pct {
+  font-size: 14px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-secondary);
+}
+
+.jp2-office-pct.is-green { color: var(--ok-t, #4caf7d); }
+.jp2-office-pct.is-yellow { color: var(--warn-t, #d5a64a); }
+.jp2-office-pct.is-red { color: var(--danger-ink, #e8553f); }
+
+/* ── 5. Итоги периода ──────────────────────────────────────────────────── */
+
+.jp2-summary {
+  display: flex;
+  flex-direction: column;
+  padding-top: 4px;
+}
+
+.jp2-sum-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 10px 0;
+  border-top: 1px solid color-mix(in srgb, var(--border-norse) 45%, transparent);
+}
+
+.jp2-sum-k {
+  font-size: 12px;
+  color: var(--text-tertiary);
+}
+
+.jp2-sum-v {
+  font-size: 13.5px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary);
+  text-align: right;
+  white-space: nowrap;
+}
+
+/* ── 6. Примечание и загрузка ──────────────────────────────────────────── */
+
+.jp2-foot-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: var(--text-tertiary);
+}
+
+.jp2-foot-note svg { flex: 0 0 auto; margin-top: 2px; opacity: 0.7; }
+
+.jp2-loading {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 20px 0;
+}
+
+.jp2-skel {
+  border-radius: 12px;
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--bg-elevated) 88%, transparent) 0%,
+    color-mix(in srgb, var(--bg-elevated) 100%, transparent) 50%,
+    color-mix(in srgb, var(--bg-elevated) 88%, transparent) 100%
+  );
+  background-size: 200% 100%;
+  animation: jp2-shimmer 1.4s ease-in-out infinite;
+}
+
+.jp2-skel--hero { height: 96px; }
+.jp2-skel--row { height: 56px; }
+
+@keyframes jp2-shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* ── Светлая тема: только токены, без хардкода ─────────────────────────── */
+
+.light .jp2-attention {
+  background: color-mix(in srgb, var(--bg-elevated) 96%, transparent);
+}
+
+.light .jp2-att-row:active {
+  background: color-mix(in srgb, var(--bg-elevated) 80%, var(--gold) 8%);
+}
+
+.light .jp2-contour:active {
+  background: color-mix(in srgb, var(--bg-elevated) 50%, transparent);
+}
+
+/* ── Уважение к reduced-motion ─────────────────────────────────────────── */
+
+@media (prefers-reduced-motion: reduce) {
+  .jp2-skel { animation: none; }
+  .jp2-att-row,
+  .jp2-contour { transition: none; }
+}
+
+/* ── Широкие экраны: не растягивать в бесконечную строку ───────────────── */
+
+@media (min-width: 768px) {
+  .jp2-overview {
+    max-width: 640px;
+    margin: 0 auto;
+  }
+}

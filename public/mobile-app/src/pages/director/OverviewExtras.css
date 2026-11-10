@@ -1,0 +1,196 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   jp2 — элементы карточки тендера: таблицы, контрагент, превью документов.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ── Простая таблица без горизонтального скролла ───────────────────────── */
+
+.jp2-table {
+  display: flex;
+  flex-direction: column;
+  border-radius: 10px;
+  border: 1px solid var(--border-norse);
+  overflow: hidden;
+}
+
+.jp2-thead,
+.jp2-trow {
+  display: grid;
+  grid-template-columns: 1fr 92px 92px;
+  gap: 8px;
+  align-items: center;
+  padding: 9px 11px;
+  font-size: 12.5px;
+}
+
+.jp2-trow--2 {
+  grid-template-columns: 1fr 80px;
+}
+
+.jp2-thead {
+  background: color-mix(in srgb, var(--bg-elevated) 90%, transparent);
+  font-size: 10px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  font-weight: 600;
+  color: var(--text-tertiary);
+}
+
+.jp2-trow {
+  border-top: 1px solid color-mix(in srgb, var(--border-norse) 55%, transparent);
+  color: var(--text-secondary);
+}
+
+.jp2-trow .num {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.jp2-trow .src {
+  font-size: 11px;
+  color: var(--text-tertiary);
+  text-align: right;
+}
+
+.jp2-thead .ta-r { text-align: right; }
+
+/* ── Список (риски, вопросы) ───────────────────────────────────────────── */
+
+.jp2-list {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--text-secondary);
+}
+
+.jp2-list li { margin-bottom: 6px; }
+.jp2-list li:last-child { margin-bottom: 0; }
+
+/* ── Контрагент: пять цифр в ряд ───────────────────────────────────────── */
+
+.jp2-cust {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.jp2-cust-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  align-items: center;
+  padding: 10px 4px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--bg-elevated) 75%, transparent);
+  border: 1px solid color-mix(in srgb, var(--border-norse) 70%, transparent);
+}
+
+.jp2-cust-v {
+  font-size: 17px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary);
+}
+
+.jp2-cust-k {
+  font-size: 9.5px;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+  text-align: center;
+}
+
+.jp2-cust-note {
+  margin-top: 8px;
+  font-size: 11.5px;
+  color: var(--text-tertiary);
+}
+
+/* ── Ответ в чек-листе ─────────────────────────────────────────────────── */
+
+.jp-check-ans {
+  margin-top: 2px;
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--text-tertiary);
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+/* ── Превью документа: bottom sheet ────────────────────────────────────── */
+
+.jp2-doc-sheet {
+  position: fixed;
+  inset: 0;
+  z-index: 300;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+
+.jp2-doc-scrim {
+  position: absolute;
+  inset: 0;
+  border: 0;
+  background: rgba(0, 0, 0, 0.62);
+  backdrop-filter: blur(2px);
+}
+
+.jp2-doc-panel {
+  position: relative;
+  width: 100%;
+  max-width: 720px;
+  height: 86vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-elevated);
+  border-radius: 18px 18px 0 0;
+  overflow: hidden;
+  border-top: 1px solid var(--border-norse);
+}
+
+.jp2-doc-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  border-bottom: 1px solid var(--border-norse);
+}
+
+.jp2-doc-close {
+  flex: 0 0 auto;
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--bg-elevated) 70%, transparent);
+  color: var(--text-secondary);
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.jp2-doc-frame {
+  flex: 1 1 auto;
+  width: 100%;
+  border: 0;
+  background: #fff;
+}
+
+.jp2-doc-img {
+  flex: 1 1 auto;
+  max-width: 100%;
+  object-fit: contain;
+  background: #0b0b0e;
+}
+
+@media (max-width: 420px) {
+  .jp2-cust { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .jp2-thead, .jp2-trow { grid-template-columns: 1fr 74px 68px; font-size: 12px; padding: 8px 9px; }
+}

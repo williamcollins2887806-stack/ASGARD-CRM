@@ -123,6 +123,7 @@ window.AsgardDirectorAnalyticsPage = (function () {
     teamAnchor: null,
     teamScope: 'month',
     teamLoading: false,
+    showAllAttention: false,
     detail: null,
     loading: false,
     sheetLoading: false
@@ -723,17 +724,89 @@ window.AsgardDirectorAnalyticsPage = (function () {
     '</section>';
   }
 
+  /**
+   * Новый обзор (редизайн 10.11.2026): одна главная цифра, три контура,
+   * детали по тапу. Старые секции с четырьмя KPI убраны с первого экрана —
+   * именно они давали «разбегаются глаза».
+   */
   function renderSections() {
-    return sectionBlock({
-      id: 'tenders', title: 'Тендеры', note: '6 статусов реестра',
-      hero: heroTenders, items: state.tendersItems
-    }) + sectionBlock({
-      id: 'applications', title: 'Заявки', note: '11 статусов канбана',
-      hero: heroApps, items: state.appsItems
-    }) + sectionBlock({
-      id: 'works', title: 'Работы', note: 'Активные · пауза · архив',
-      hero: heroWorks, items: state.worksItems
-    });
+    const ov = state.overview || {};
+    const tO = ov.tenders || {};
+    const aO = ov.applications || {};
+    const wO = ov.works || {};
+    const tCount = Number(tO.attention_count || (tO.attention || []).length || 0);
+    const aCount = Number(aO.attention_count || (aO.attention || []).length || 0);
+    const wCount = Number(wO.risk_count || (wO.attention || []).length || 0);
+    const total = tCount + aCount + wCount;
+
+    const attention = [].concat(
+      (tO.attention || []).map((x) => ({ ...x, section: 'tenders', kind: x.attention_kind })),
+      (aO.attention || []).map((x) => ({ ...x, section: 'applications', kind: 'app' }))
+    );
+    const visible = state.showAllAttention ? attention : attention.slice(0, 4);
+
+    const attHtml = visible.map((x) => {
+      const label = x.kind === 'director' ? 'Ждёт вашего решения'
+        : x.kind === 'analysis_overdue' ? 'Просрочен анализ'
+          : x.kind === 'deadline_soon' ? 'Срок близко' : 'Требует внимания';
+      return '<button type="button" class="jp2-att-row" data-open-item="' + esc(x.section) + '" data-item="' + esc(x.id) + '">' +
+        '<span class="jp2-att-dot' + (x.kind === 'director' ? ' is-hot' : ' is-warm') + '"></span>' +
+        '<span class="jp2-att-body">' +
+          '<span class="jp2-att-title">' + esc(x.title || x.customer_name || '—') + '</span>' +
+          '<span class="jp2-att-meta">' + esc(label + (x.customer_name && x.title ? ' · ' + x.customer_name : '')) + '</span>' +
+        '</span>' + chev() + '</button>';
+    }).join('');
+
+    const moreHtml = attention.length > 4
+      ? '<button type="button" class="jp2-att-more" data-toggle-attention="1">' +
+        (state.showAllAttention ? 'Свернуть' : 'Ещё ' + (attention.length - 4)) + '</button>'
+      : '';
+
+    const contour = (id, title, mid, num) =>
+      '<button type="button" class="jp2-contour" data-open-list="' + id + '" data-list-status="all">' +
+        '<span class="jp2-contour-name">' + esc(title) + '</span>' +
+        '<span class="jp2-contour-mid">' + esc(mid) + '</span>' +
+        '<span class="jp2-contour-num' + (num > 0 ? ' is-hot' : '') + '">' + num + '</span>' +
+        chev() + '</button>';
+
+    const sum = (label, value) =>
+      '<div class="jp2-sum-row"><span class="jp2-sum-k">' + esc(label) + '</span>' +
+      '<span class="jp2-sum-v">' + esc(value) + '</span></div>';
+
+    return '<div class="jp2-overview">' +
+      '<section class="jp2-hero">' +
+        '<div class="jp2-hero-cap">Требует решения</div>' +
+        '<div class="jp2-hero-num' + (total > 0 ? ' is-hot' : '') + '">' + total + '</div>' +
+        '<div class="jp2-hero-sub">' +
+          (total > 0 ? 'задач по трём контурам' : 'Всё под контролем') +
+        '</div>' +
+      '</section>' +
+      (attHtml ? '<section class="jp2-attention">' + attHtml + moreHtml + '</section>' : '') +
+      '<section class="jp2-contours">' +
+        '<div class="jp2-sec-cap">Контуры</div>' +
+        contour('tenders', 'Тендеры',
+          (tO.total != null ? tO.total + ' в периоде' : '—') +
+          (tO.nmck_sum > 0 ? ' · НМЦК ' + moneyShort(tO.nmck_sum) : ''),
+          tCount > 0 ? tCount : (tO.total || 0)) +
+        contour('applications', 'Заявки',
+          (aO.total != null ? aO.total + ' создано' : '—'),
+          aCount > 0 ? aCount : (aO.total || 0)) +
+        contour('works', 'Работы',
+          (wO.total != null ? wO.total + ' в портфеле' : '—') +
+          (wO.risk_count > 0 ? ' · ' + wO.risk_count + ' в риске' : ''),
+          wCount > 0 ? wCount : (wO.active || 0)) +
+      '</section>' +
+      '<section class="jp2-summary">' +
+        '<div class="jp2-sec-cap">Итоги периода</div>' +
+        sum('НМЦК тендеров', money(tO.nmck_sum || 0)) +
+        sum('Цена работ' + (tO.priced_count ? ' · ' + tO.priced_count + ' из ' + tO.total + ' с ценой' : ''),
+          money(tO.work_price_sum || 0)) +
+        sum('Портфель работ', money(wO.contract_sum || 0)) +
+        sum('Средняя маржа' + (wO.margin_plan_count > 0 ? ' · ' + wO.margin_plan_count + ' по плану' : ''),
+          wO.avg_margin == null ? '—' : wO.avg_margin + ' %') +
+        sum('Конверсия тендеров', tO.conversion == null ? '—' : tO.conversion + ' %') +
+      '</section>' +
+    '</div>';
   }
 
   /* ── Реестр ───────────────────────────────────────────────────────────── */
@@ -2502,8 +2575,13 @@ window.AsgardDirectorAnalyticsPage = (function () {
           openSheet(itemBtn.getAttribute('data-section'), itemBtn.getAttribute('data-item'));
           return;
         }
-        const teamScopeBtn = e.target.closest('[data-team-scope]');
-        if (teamScopeBtn) {
+        const toggleAtt = e.target.closest('[data-toggle-attention]');
+        if (toggleAtt) {
+          state.showAllAttention = !state.showAllAttention;
+          renderMain();
+          return;
+        }
+        const teamScopeBtn = e.target.closest('[data-team-scope]');        if (teamScopeBtn) {
           const next = teamScopeBtn.getAttribute('data-team-scope');
           if (next && next !== state.teamScope) {
             state.teamScope = next;

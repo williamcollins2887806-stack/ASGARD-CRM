@@ -185,6 +185,38 @@ function dueFlagOf(deadline, isClosed) {
   return null;
 }
 
+/**
+ * Текст из гетерогенного jsonb: строка → строка, массив/объект → читаемый
+ * текст, null/'' → null. report_json пишут разные версии Мимира, поэтому
+ * `scope` там бывает и строкой, и массивом.
+ */
+function asText(v) {
+  if (v == null) return null;
+  if (typeof v === 'string') return v.trim() || null;
+  if (Array.isArray(v)) {
+    const parts = v.map((x) => asText(x)).filter(Boolean);
+    return parts.length ? parts.join('\n') : null;
+  }
+  if (typeof v === 'object') {
+    const parts = Object.entries(v)
+      .map(([k, val]) => {
+        const t = asText(val);
+        return t ? `${k}: ${t}` : null;
+      })
+      .filter(Boolean);
+    return parts.length ? parts.join('\n') : null;
+  }
+  return String(v);
+}
+
+/** Список из гетерогенного jsonb: массив как есть, строка → один элемент. */
+function asList(v) {
+  if (v == null) return [];
+  if (Array.isArray(v)) return v.filter((x) => x != null);
+  const s = asText(v);
+  return s ? [s] : [];
+}
+
 function platformFromUrl(url) {
   if (!url) return null;
   try {
@@ -426,6 +458,7 @@ module.exports = async function directorAnalyticsRoutes(fastify) {
         FROM tenders t
         LEFT JOIN tender_rp_reviews tr ON tr.tender_id = t.id
         WHERE t.archived_at IS NULL
+          AND t.deleted_at IS NULL
           AND (${tPeriod.clause})
       `, tPeriod.params);
 
@@ -588,9 +621,12 @@ module.exports = async function directorAnalyticsRoutes(fastify) {
         // на правду (≥10 % контракта); иначе показываем план и помечаем это.
         const fact = r.cost_fact != null ? Number(r.cost_fact) : null;
         const plan = r.cost_plan != null ? Number(r.cost_plan) : null;
+        const planUsable = plan != null && plan > 0;
         const factUsable = fact != null && fact > 0 && contract > 0 && fact >= contract * 0.1;
-        const cost = factUsable ? fact : (plan != null && plan > 0 ? plan : (fact != null ? fact : null));
-        const costBasis = factUsable ? 'fact' : (plan != null && plan > 0 ? 'plan' : (fact != null ? 'fact' : null));
+        // Порядок: правдоподобный факт → план → ничего. Мусорный факт (0,4 %
+        // от контракта) НЕ подставляем: лучше честный прочерк, чем маржа 99,6 %.
+        const cost = factUsable ? fact : (planUsable ? plan : null);
+        const costBasis = factUsable ? 'fact' : (planUsable ? 'plan' : null);
         const marginPct = (cost != null && contract > 0)
           ? Math.round(((contract - cost) / contract) * 1000) / 10 : null;
         const daysLeft = daysLeftOf(r.end_plan);
@@ -893,6 +929,77 @@ module.exports = async function directorAnalyticsRoutes(fastify) {
     }
   });
 
+  // ─── GET /customer?inn=… | ?name=… ───────────────────────────────────
+  // История контрагента за ВСЁ время, без фильтра периода: директору нужно
+  // «сколько у него было тендеров всего и чем кончилось».
+  //
+  // Источник — registry_status (единая правда аналитики). Старый
+  // /api/customers/:inn/dashboard читает легаси tender_status («КП отправлено»,
+  // «Не подходит») и даёт другую картину — его сюда не подмешиваем.
+  fastify.get('/customer', {
+    preHandler: [fastify.requireRoles(ROLES)]
+  }, async (request, reply) => {
+    try {
+      const inn = String(request.query.inn || '').replace(/\D/g, '');
+      const name = String(request.query.name || '').trim();
+      if (!inn && name.length < 3) {
+        return reply.code(400).send({ error: 'bad_query', message: 'Нужен ИНН или название (3+ символа)' });
+      }
+
+      const params = [];
+      let where = 't.deleted_at IS NULL';
+      if (inn) {
+        params.push(inn);
+        where += ` AND t.customer_inn = $${params.length}`;
+      } else {
+        params.push(name);
+        where += ` AND lower(btrim(COALESCE(t.customer_name, ''))) = lower(btrim($${params.length}))`;
+      }
+
+      const { rows: [agg] } = await db.query(`
+        SELECT
+          COUNT(*)::int AS total,
+          COUNT(*) FILTER (WHERE t.registry_status = 'рассмотрение')::int AS review,
+          COUNT(*) FILTER (WHERE t.registry_status = 'готовим')::int AS prep,
+          COUNT(*) FILTER (WHERE t.registry_status = 'подались')::int AS submitted,
+          COUNT(*) FILTER (WHERE t.registry_status = 'выиграли')::int AS won,
+          COUNT(*) FILTER (WHERE t.registry_status = 'проиграли')::int AS lost,
+          COUNT(*) FILTER (WHERE t.registry_status = 'отмена')::int AS cancelled,
+          COALESCE(SUM(CASE WHEN t.registry_status = 'выиграли'
+                            THEN COALESCE(t.submission_price, t.tender_price) END), 0)::float AS won_sum,
+          MIN(t.created_at) AS first_at,
+          MAX(t.created_at) AS last_at,
+          MAX(COALESCE(t.customer_name, '')) AS resolved_name
+        FROM tenders t
+        WHERE ${where}
+      `, params);
+
+      const total = Number(agg?.total || 0);
+      const won = Number(agg?.won || 0);
+      const lost = Number(agg?.lost || 0);
+      return {
+        ok: true,
+        inn: inn || null,
+        name: (agg && agg.resolved_name) || name || null,
+        matched_by: inn ? 'inn' : 'name',
+        total,
+        review: Number(agg?.review || 0),
+        prep: Number(agg?.prep || 0),
+        submitted: Number(agg?.submitted || 0),
+        won,
+        lost,
+        cancelled: Number(agg?.cancelled || 0),
+        won_sum: Number(agg?.won_sum || 0),
+        conversion: (won + lost) > 0 ? Math.round((won / (won + lost)) * 100) : null,
+        first_at: agg?.first_at || null,
+        last_at: agg?.last_at || null
+      };
+    } catch (err) {
+      request.log.error(err, 'director-analytics customer');
+      return reply.code(500).send({ error: 'customer_failed', message: err.message });
+    }
+  });
+
   // ─── GET /tenders/:id ────────────────────────────────────────────────
   fastify.get('/tenders/:id', {
     preHandler: [fastify.requireRoles(ROLES)]
@@ -1078,10 +1185,30 @@ module.exports = async function directorAnalyticsRoutes(fastify) {
           report_text: reportText || null,
           is_final: rp.is_final,
           report_json: rp.report_json,
+          analysis: {
+            summary: asText(rj.summary),
+            scope: asText(rj.scope),
+            risks: asList(rj.risks),
+            feasibility: asText(rj.feasibility),
+            recommendation: asText(rj.recommendation || rj.conclusion),
+            competition: asText(rj.competition),
+            questions: asList(rj.questions_for_customer),
+            duration_days: rj.duration_days != null ? Number(rj.duration_days) : null,
+            mode: rj.mode || null
+          },
+          tech_plan: (function () {
+            const tj = parseJsonMaybe(rp.tech_json) || {};
+            return {
+              mtr: asList(tj.mtr),
+              crew: asList(tj.crew),
+              schedule: tj.schedule || null,
+              filled_by: tj.filled_by || null
+            };
+          })(),
           calculator: rp.calculator_user_id
             ? { id: rp.calculator_user_id, name: rp.calculator_name } : null,
           analysis_finalized_at: rp.analysis_finalized_at,
-          finalized_at: rp.finalized_at || rp.analysis_finalized_at || null
+          finalized_at: rp.analysis_finalized_at || null
         } : null
       };
     } catch (err) {
@@ -2245,6 +2372,8 @@ module.exports = async function directorAnalyticsRoutes(fastify) {
           crown: p.crown,
           days_under: p.days_under,
           days_counted: p.days_counted,
+          norm_hours: Math.round((p.norm_minutes || 0) / 6) / 10,
+          delta_hours: Math.round(((p.delta_minutes || 0) / 60) * 100) / 100,
           office_days: p.office_days,
           crm_days: p.crm_days,
           is_under: p.is_under,
