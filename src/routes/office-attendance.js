@@ -15,6 +15,7 @@
 const officeHours = require('../services/office-hours');
 const skudImport = require('../services/skud-import');
 const skudPeople = require('../services/skud-people');
+const skudXls = require('../services/skud-xls');
 const crmActivity = require('../services/crm-activity');
 const { hhmmWallClock, wallClockStamp, isoFromWallClock } = require('../lib/msk');
 
@@ -258,7 +259,11 @@ module.exports = async function (fastify, options) {
       open_ended: !!(day && day.open_ended),
       skud_missing: !day,
       segments: day ? (day.segments || []) : [],
-      punches,
+      punches: punches.map((p) => ({
+        ...p,
+        device_raw: p.device || '',
+        device: skudXls.friendlyDeviceLabel(p.device)
+      })),
       crm: { minutes: crm.minutes, text: hm(crm.minutes), sessions: crm.sessions, has_data: crm.hasData },
       credit,
       flags

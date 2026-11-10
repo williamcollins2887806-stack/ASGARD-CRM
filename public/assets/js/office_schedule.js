@@ -1083,7 +1083,7 @@ window.AsgardOfficeSchedulePage=(function(){
               </section>
             </div>
             <section class="oh-card oh-card--wide">
-              <div class="oh-card__t">Проходы СКУД <span class="oh-card__hint">как в файле · лишние «вход/выход» с двух считывателей в часы не входят</span></div>
+              <div class="oh-card__t">Проходы СКУД <span class="oh-card__hint">основной офис / тендерный / бухгалтерия · лишние «вход/выход» с двух считывателей в часы не входят</span></div>
               <div class="oh-card__b oh-punches">${punches}</div>
             </section>
           </div>`;

@@ -22,6 +22,19 @@ function fixtureBuffer() {
   return fs.readFileSync(path.join(FIXTURE_DIR, files[0]));
 }
 
+describe('skud-xls: подписи считывателей', () => {
+  test('системные имена → понятные места', () => {
+    expect(skud.friendlyDeviceLabel('4 этаж (000B3A00EFCE)')).toBe('Бухгалтерия');
+    expect(skud.friendlyDeviceLabel('6 этаж (000B3A00FB2C)')).toBe('Основной офис');
+    expect(skud.friendlyDeviceLabel('6 этаж новая (000B3A00FCEC)')).toBe('Кабинет тендерного отдела');
+  });
+
+  test('неизвестное устройство оставляем как есть', () => {
+    expect(skud.friendlyDeviceLabel('Склад (ABC)')).toBe('Склад (ABC)');
+    expect(skud.friendlyDeviceLabel('')).toBe('');
+  });
+});
+
 describe('skud-xls: разбор дат и заголовков', () => {
   test('parseStamp разбирает формат отчёта', () => {
     const s = skud.parseStamp('26.10.2026 10:23:29');

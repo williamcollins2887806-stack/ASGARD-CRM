@@ -519,6 +519,25 @@ function looksLikeSkudRows(rows) {
   return !!headerRow && hasPerson;
 }
 
+/**
+ * Человекочитаемая подпись считывателя для истории проходов.
+ * В БД остаётся сырое «4 этаж (…» / «6 этаж новая (…)» — маппинг только на показ.
+ * «6 этаж новая» = кабинет тендеров: там сейчас перепутан вход/выход в железе;
+ * направления в расчёте не трогаем — ждём перезаливку отчётов с верными значениями.
+ */
+function friendlyDeviceLabel(raw) {
+  const s = String(raw || '').trim();
+  if (!s) return '';
+  const base = s.replace(/\s*\([^)]*\)\s*$/, '').replace(/\s+/g, ' ').trim().toLowerCase();
+  if (base === '4 этаж' || base.startsWith('4 этаж ')) return 'Бухгалтерия';
+  // «новая» раньше «6 этаж», иначе съест префикс.
+  if (base === '6 этаж новая' || base.startsWith('6 этаж новая')) {
+    return 'Кабинет тендерного отдела';
+  }
+  if (base === '6 этаж' || base.startsWith('6 этаж ')) return 'Основной офис';
+  return s;
+}
+
 module.exports = {
   parseBuffer,
   parseRows,
@@ -529,6 +548,7 @@ module.exports = {
   buildIntervals,
   computeDayPresence,
   looksLikeSkudRows,
+  friendlyDeviceLabel,
   sha256,
   TECHNICAL_EVENTS,
   UNKNOWN_EVENTS,
