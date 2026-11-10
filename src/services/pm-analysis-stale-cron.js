@@ -13,6 +13,7 @@
 const cron = require('node-cron');
 const { getCurrentDuty } = require('./tender-registry-helpers');
 const { transferOpenAnalysesToDuty } = require('./rp-review-drafts');
+const { cleanName } = require('../lib/clean-name');
 
 let _job = null;
 
@@ -25,26 +26,17 @@ function isoDate(d) {
 /** Open analyses that need a nudge (idle ≥24h or docs_deadline ≤2d). No recipient yet. */
 async function findCandidates(db) {
   // ── Кого напоминать ──────────────────────────────────────────────────────
-  // КОРЕНЬ (жалоба РП 09.11.2026): письмо приходило по тендеру 2121, а в
-  // очереди РП его не было. Причина — крон и очередь считали РАЗНОЕ:
-  //   • крон: registry_status = 'рассмотрение' (жёстко);
-  //   • очередь pm-duty: тот же статус ИЛИ владелец/соавтор карточки.
-  // Тендер со статусом «готовим» и назначенным владельцем виден РП в очереди,
-  // но под условие крона не подходил — и наоборот, попадал в письма, если
-  // статус был «рассмотрение», а владелец другой.
+  // Канон = вкладка «Анализ» дежурного (pm-duty.js → analysisQueueSql):
+  //   registry_status = 'рассмотрение', анализ не финализирован,
+  //   не ТО, не phone_call.
   //
-  // Теперь условие ОДНО: напоминаем только по тем карточкам, которые реально
-  // ждут действия РП — открытый анализ И владелец не финализирован, и статус
-  // из рабочего набора. Плюс требование, чтобы карточка вообще была в очереди
-  // (есть владелец-РП или он ещё не назначен — тогда её видит дежурный).
-  // ── LEFT JOIN вместо INNER ────────────────────────────────────────────────
-  // Верификатор замерил: 33 карточки очередь «Анализ» показывает, а крон не
-  // видел их НИКОГДА — у них ещё нет строки в tender_rp_reviews, и INNER JOIN
-  // выкидывал их из выборки. Напоминание по такому тендеру не уходило вовсе,
-  // хотя он висел в очереди.
+  // Инцидент 10.11.2026: крон ошибочно брал ещё и 'готовим'. В очередь
+  // анализа «готовим» НЕ попадает (это фаза просчёта/ТО). Из-за этого в
+  // утренний дайджест улетели зомби #758 Очаково и #744 АИМ (июнь 2026,
+  // responsible_pm = Путков, без строки ревью) — РП их в очереди не видел.
   //
-  // Все поля rev берём через COALESCE: при отсутствии строки они NULL, и это
-  // нормальное состояние «карточку ещё не открывали».
+  // LEFT JOIN: карточки без tender_rp_reviews тоже в очереди анализа
+  // (ещё не открывали) — напоминать по ним нужно.
   const r = await db.query(`
     SELECT rev.id AS review_id, t.id AS tender_id, t.customer_name, t.tender_title,
            t.docs_deadline::date AS docs_deadline,
@@ -61,21 +53,10 @@ async function findCandidates(db) {
     WHERE t.deleted_at IS NULL
       AND (rev.analysis_finalized_at IS NULL)
       AND (rev.is_final IS NULL OR rev.is_final = false)
-      -- Тот же набор статусов, что открывает очередь pm-duty (см. pm-duty.js):
-      -- 'рассмотрение' И 'готовим'. Раньше крон брал только 'рассмотрение',
-      -- а очередь показывала и 'готовим' — из-за этого тендер 2121 приходил
-      -- письмом, но в очереди РП его не было.
-      AND t.registry_status IN ('рассмотрение', 'готовим')
-      -- Тот же фильтр, что в analysisQueueSql: ТО-просчёты и звонки на анализ
-      -- дежурному не падают.
+      -- Строго как analysisQueueSql: только «рассмотрение».
+      AND t.registry_status = 'рассмотрение'
       AND COALESCE(t.calculator_kind, '') <> 'to'
       AND COALESCE(t.source, '') <> 'phone_call'
-      -- Карточка должна быть «чья-то»: есть владелец анализа, владелец
-      -- расчёта, ЛИБО карточку ещё не открывали (rev.id IS NULL) — такую
-      -- видит дежурный и берёт себе, поэтому напоминать есть кому.
-      --
-      -- Раньше третье условие было «оба NULL» без привязки к rev.id, и всё
-      -- выражение становилось тавтологией (истина всегда).
       AND (
         rev.analysis_owner_user_id IS NOT NULL
         OR t.calculator_user_id IS NOT NULL
@@ -97,7 +78,9 @@ async function findCandidates(db) {
       const d0 = new Date(today + 'T12:00:00Z').getTime();
       const d1 = new Date(ddl + 'T12:00:00Z').getTime();
       const days = Math.round((d1 - d0) / 86400000);
-      deadlineHot = days <= 2;
+      // «Горит» = срок сегодня/завтра/послезавтра ИЛИ просрочен не больше
+      // недели. Зомби с дедлайном полгода назад — не напоминание, а архив.
+      deadlineHot = days <= 2 && days >= -7;
     }
     if (!idle24 && !deadlineHot) continue;
     out.push({
@@ -263,10 +246,11 @@ async function runOverdueOnce(db, log) {
 
       // owner нужен, чтобы дайджест знал получателя; при отсутствии — дежурный.
       const ownerId = recipient ? recipient.id : null;
+      const titleRaw = row.customer_name || row.tender_title || null;
       const r = await digestRunner.enqueueEvent(db, {
         kind: 'analysis_overdue',
         tender_id: row.tender_id,
-        title: row.customer_name || row.tender_title || null,
+        title: cleanName(titleRaw) || titleRaw,
         deadline: row.docs_deadline || null,
         payload: {
           owner: ownerId,
@@ -299,10 +283,11 @@ async function runOnce(db, log) {
     try {
       if (await alreadySentReview(db, row.review_id, row.notice_kind, row.tender_id)) continue;
 
+      const titleRaw = row.customer_name || row.tender_title || null;
       const r = await digestRunner.enqueueEvent(db, {
         kind: row.notice_kind === 'deadline_2d' ? 'analysis_deadline' : 'analysis_idle',
         tender_id: row.tender_id,
-        title: row.customer_name || row.tender_title || null,
+        title: cleanName(titleRaw) || titleRaw,
         deadline: row.docs_deadline || null,
         payload: {
           owner: recipient ? recipient.id : row.analysis_owner_user_id || null,

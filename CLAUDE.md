@@ -20,6 +20,7 @@ Asgard CRM. Идёт миграция ДЕСКТОП-фронта vanilla → Re
 - Деплой v2: `cd public/desktop-v2-src && npm run build` → выхлоп в `public/v2/` → **tar + scp** на прод (scp одиночными файлами рвётся — слать tar).
 - БД на проде: `PGPASSWORD=123456789 psql -U asgard -d asgard_crm`.
 - Бамп shell-версии при выкатке: `public/sw.js` + `public/index.html` (`SHELL_VERSION` / `ASGARD_SHELL_VERSION`).
+- **Журнал миграций:** таблица `public.migrations` (VIEW-алиас `schema_migrations` с V482). Вопрос «применена ли VNNN?» — только через журнал + маркер схемы, не догадками. Сверка: `npm run migrate:status`. Backfill записи без DDL: `npm run migrate:backfill -- --apply`. Коммиты git схему не заменяют. Полный `npm run migrate` на проде при дырявом журнале опасен — точечно `tools/migrate_targeted.js` или SQL + `INSERT INTO migrations`.
 
 ## Каноны, которые нельзя «поправить обратно» (16.09.2026)
 

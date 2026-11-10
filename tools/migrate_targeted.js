@@ -135,6 +135,11 @@ async function ensureMigrationsTable() {
       executed_at TIMESTAMP DEFAULT NOW()
     )
   `);
+  await pool.query(`ALTER TABLE migrations ADD COLUMN IF NOT EXISTS checksum VARCHAR(64)`);
+  await pool.query(`ALTER TABLE migrations ADD COLUMN IF NOT EXISTS git_commit VARCHAR(40)`);
+  await pool.query(`ALTER TABLE migrations ADD COLUMN IF NOT EXISTS applied_by TEXT DEFAULT CURRENT_USER`);
+  await pool.query(`ALTER TABLE migrations ADD COLUMN IF NOT EXISTS source TEXT DEFAULT 'runner'`);
+  await pool.query(`ALTER TABLE migrations ADD COLUMN IF NOT EXISTS note TEXT`);
 }
 
 async function appliedSet() {
@@ -179,7 +184,20 @@ async function applyOne(name, down) {
     if (down) {
       await client.query('DELETE FROM migrations WHERE name = $1', [name]);
     } else {
-      await client.query('INSERT INTO migrations (name) VALUES ($1) ON CONFLICT (name) DO NOTHING', [name]);
+      const crypto = require('crypto');
+      let gitCommit = null;
+      try {
+        gitCommit = require('child_process')
+          .execSync('git rev-parse HEAD', { cwd: ROOT, stdio: ['ignore', 'pipe', 'ignore'] })
+          .toString('utf8').trim().slice(0, 40);
+      } catch (_) { /* optional */ }
+      const checksum = crypto.createHash('sha256').update(sql).digest('hex');
+      await client.query(
+        `INSERT INTO migrations (name, checksum, git_commit, applied_by, source)
+         VALUES ($1, $2, $3, CURRENT_USER, 'targeted')
+         ON CONFLICT (name) DO NOTHING`,
+        [name, checksum, gitCommit]
+      );
     }
     await client.query('COMMIT');
     console.log(`✅ ${down ? 'откат' : 'применена'}: ${name}`);

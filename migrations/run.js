@@ -10,6 +10,8 @@ require('dotenv').config();
 const { Pool } = require('pg');
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
+const { execSync } = require('child_process');
 
 const pool = new Pool({
   host: process.env.DB_HOST || 'localhost',
@@ -19,6 +21,21 @@ const pool = new Pool({
   password: process.env.DB_PASSWORD || 'password',
 });
 
+function gitHead() {
+  try {
+    return execSync('git rev-parse HEAD', {
+      cwd: path.join(__dirname, '..'),
+      stdio: ['ignore', 'pipe', 'ignore'],
+    }).toString('utf8').trim().slice(0, 40);
+  } catch {
+    return null;
+  }
+}
+
+function sha256(buf) {
+  return crypto.createHash('sha256').update(buf).digest('hex');
+}
+
 async function ensureMigrationsTable() {
   await pool.query(`
     CREATE TABLE IF NOT EXISTS migrations (
@@ -27,6 +44,12 @@ async function ensureMigrationsTable() {
       executed_at TIMESTAMP DEFAULT NOW()
     )
   `);
+  // V482 meta — идемпотентно, чтобы старые БД тоже писали полный журнал
+  await pool.query(`ALTER TABLE migrations ADD COLUMN IF NOT EXISTS checksum VARCHAR(64)`);
+  await pool.query(`ALTER TABLE migrations ADD COLUMN IF NOT EXISTS git_commit VARCHAR(40)`);
+  await pool.query(`ALTER TABLE migrations ADD COLUMN IF NOT EXISTS applied_by TEXT DEFAULT CURRENT_USER`);
+  await pool.query(`ALTER TABLE migrations ADD COLUMN IF NOT EXISTS source TEXT DEFAULT 'runner'`);
+  await pool.query(`ALTER TABLE migrations ADD COLUMN IF NOT EXISTS note TEXT`);
 }
 
 async function getExecutedMigrations() {
@@ -34,8 +57,13 @@ async function getExecutedMigrations() {
   return result.rows.map(r => r.name);
 }
 
-async function markMigrationExecuted(name) {
-  await pool.query('INSERT INTO migrations (name) VALUES ($1)', [name]);
+async function markMigrationExecuted(name, sqlText) {
+  await pool.query(
+    `INSERT INTO migrations (name, checksum, git_commit, applied_by, source)
+     VALUES ($1, $2, $3, CURRENT_USER, 'runner')
+     ON CONFLICT (name) DO NOTHING`,
+    [name, sha256(sqlText), gitHead()]
+  );
 }
 
 async function markMigrationRolledBack(name) {
@@ -69,7 +97,7 @@ async function runMigrations() {
     try {
       await pool.query('BEGIN');
       await pool.query(sql);
-      await markMigrationExecuted(name);
+      await markMigrationExecuted(name, sql);
       await pool.query('COMMIT');
       console.log(`✅ ${name} completed`);
     } catch (err) {

@@ -9,6 +9,8 @@
     "dev:audit": "node -r dotenv/config src/index.js dotenv_config_path=.env.audit",
     "migrate": "node migrations/run.js",
     "migrate:down": "node migrations/run.js down",
+    "migrate:status": "node tools/check_migrations.js",
+    "migrate:backfill": "node tools/backfill_migrations_journal.js",
     "verify:field-tariffs": "node tools/verify_field_tariff_ceilings.js",
     "verify:guards": "node tools/run_guards.js",
     "seed": "node scripts/seed.js",
