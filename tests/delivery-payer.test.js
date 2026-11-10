@@ -145,4 +145,22 @@ t('канал: мусор в override не ломает ответ', () => {
   assert.strictEqual(resolveChannel('телепатия', { edo: 1, paper: 0, defined: 1 }), 'unknown');
 });
 
+// ─── 4. Разнобой в написании receive_channel (найдено на проде 11.11) ──────
+// В базе живут 'edo' И 'эдо', 'original' И 'оригинал'. Точное сравнение
+// с 'edo' теряло 18 счетов: контрагент получал «канал не задан», хотя
+// способ получения у него известен. Нормализация — в SQL (lower+btrim),
+// здесь проверяем, что решение принимается по нормализованным счётчикам.
+t('канал: русское «эдо» считается как ЭДО', () => {
+  // 3 из 5 по ЭДО (в базе часть записей по-русски) → всё равно edo.
+  assert.strictEqual(resolveChannel('auto', { edo: 3, paper: 2, defined: 5 }), 'edo');
+});
+
+t('канал: «оригинал» по-русски не мешает решению', () => {
+  assert.strictEqual(resolveChannel('auto', { edo: 0, paper: 4, defined: 4 }), 'original');
+});
+
+t('канал: 18 русских «эдо» из 20 — большинство', () => {
+  assert.strictEqual(resolveChannel('auto', { edo: 18, paper: 2, defined: 20 }), 'edo');
+});
+
 console.log(`\nOK: ${n} проверок`);

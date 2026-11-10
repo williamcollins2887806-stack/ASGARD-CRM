@@ -1435,9 +1435,15 @@ module.exports = async function docRegistryRoutes(fastify) {
     // (ЭДО / скан / оригинал). Нужно, чтобы вывести способ подписания АКТА
     // сверки по большинству счетов контрагента. Счётчики идут ОДНИМ запросом —
     // иначе получился бы запрос на каждого контрагента (N+1 на 500 строк).
-    const CH_SQL = `count(*) FILTER (WHERE d.receive_channel = 'edo')::int AS edo_n,
-              count(*) FILTER (WHERE d.receive_channel IN ('scan','original'))::int AS paper_n,
-              count(*) FILTER (WHERE COALESCE(d.receive_channel,'') <> '')::int AS ch_n`;
+    //
+    // ВАЖНО (найдено 11.11.2026 на проде): `receive_channel` заполняли руками и
+    // вразнобой — кроме 'edo' живут 'эдо' (18 счетов), 'оригинал' (2),
+    // 'manual' (2). Точное сравнение с 'edo' теряло этих контрагентов: акт
+    // получал «канал не задан», хотя по факту бумага/ЭДО известны. Поэтому
+    // нормализуем в SQL: lower + срез пробелов.
+    const CH_SQL = `count(*) FILTER (WHERE lower(btrim(COALESCE(d.receive_channel,''))) IN ('edo','эдо'))::int AS edo_n,
+              count(*) FILTER (WHERE lower(btrim(COALESCE(d.receive_channel,''))) IN ('scan','original','скан','оригинал'))::int AS paper_n,
+              count(*) FILTER (WHERE lower(btrim(COALESCE(d.receive_channel,''))) <> '')::int AS ch_n`;
     const { rows: cands } = await db.query(
       `SELECT d.counterparty_inn AS inn, max(d.counterparty_name) AS name,
               count(*)::int AS docs, sum(d.amount_gross)::numeric AS amount,
@@ -1599,9 +1605,9 @@ module.exports = async function docRegistryRoutes(fastify) {
       if (q.inn) { cp.push(q.inn); filt = ` AND d.counterparty_inn = $${cp.length}`; }
       else if (q.name) { cp.push(String(q.name).trim().toLowerCase()); filt = ` AND lower(trim(d.counterparty_name)) = $${cp.length}`; }
       const r = await db.query(
-        `SELECT count(*) FILTER (WHERE d.receive_channel='edo')::int AS edo_n,
-                count(*) FILTER (WHERE d.receive_channel IN ('scan','original'))::int AS paper_n,
-                count(*) FILTER (WHERE COALESCE(d.receive_channel,'') <> '')::int AS ch_n
+        `SELECT count(*) FILTER (WHERE lower(btrim(COALESCE(d.receive_channel,''))) IN ('edo','эдо'))::int AS edo_n,
+                count(*) FILTER (WHERE lower(btrim(COALESCE(d.receive_channel,''))) IN ('scan','original','скан','оригинал'))::int AS paper_n,
+                count(*) FILTER (WHERE lower(btrim(COALESCE(d.receive_channel,''))) <> '')::int AS ch_n
            FROM doc_registry d
           WHERE d.deleted_at IS NULL AND d.dir='in'
             AND COALESCE(d.invoice_date, d.service_done_at) BETWEEN $1::date AND $2::date${filt}`,
