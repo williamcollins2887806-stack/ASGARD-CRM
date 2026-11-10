@@ -923,6 +923,37 @@ async function routes(fastify, options) {
       // 2. Каталог норм и ДВ через модель.
       const catalog = await workNorms.loadCatalog(db);
 
+      // ── Склад: что реально есть, чтобы МТР не выдумывался ───────────────
+      // Анализ раньше не видел остатков: МТР был пуст у всех тендеров, а
+      // оборудование модель называла «по опыту». Берём реальные остатки,
+      // сжимаем (дубли, служебные артикулы) и отдаём компактным блоком.
+      let warehouseCtx = null;
+      try {
+        const { buildWarehouseContext } = require('../services/warehouse-context');
+        const whRes = await db.query(
+          `SELECT e.name, e.quantity, e.unit, c.name AS category_name
+             FROM equipment e
+             LEFT JOIN equipment_categories c ON c.id = e.category_id
+            WHERE COALESCE(e.is_active, true) = true
+              AND COALESCE(e.status, 'available') NOT IN ('written_off','disposed','lost')
+              AND COALESCE(e.quantity, 0) > 0
+            ORDER BY c.name, e.name
+            LIMIT 2000`
+        );
+        warehouseCtx = buildWarehouseContext(whRes.rows, { text: allText });
+        emit({
+          step: 'warehouse',
+          message: `Склад: ${warehouseCtx.total} наименований в наличии`
+            + (warehouseCtx.truncated ? `, в разбор ${warehouseCtx.items.length}` : '')
+            + '.',
+          pct: 6,
+          warehouse_total: warehouseCtx.total,
+          warehouse_relevant: warehouseCtx.relevant
+        });
+      } catch (e) {
+        request.log.warn({ err: e }, 'склад не прочитан');
+      }
+
       // История заказчика: раньше сюда уходила пустая строка, и Мимир не видел
       // прошлых тендеров этого заказчика. Теперь строим блок по ИНН/названию.
       let historyBlock = '';
@@ -963,6 +994,9 @@ async function routes(fastify, options) {
         // Подсказка по графику: модель решает сама, но если промолчит —
         // у нас есть детерминированный разбор периодов из документов.
         visit_hints: visitHints,
+        // Реальные остатки склада: МТР и техника берутся отсюда, а чего нет —
+        // уходит в «купить». Выдумывать наличие запрещено промптом.
+        warehouse_text: warehouseCtx ? warehouseCtx.text : null,
         onProgress: emit
       });
 
@@ -1515,14 +1549,21 @@ async function routes(fastify, options) {
           const mtrFromState = Array.isArray(cur.state.mtr) ? cur.state.mtr : [];
           const mtrList = (mtrFromState.length ? mtrFromState : mtrSuggest)
             .filter((x) => x && x.name)
-            .map((x) => ({
-              name: String(x.name).trim().slice(0, 200),
-              qty: Number(x.qty) > 0 ? Number(x.qty) : null,
-              unit: String(x.unit || '').trim().slice(0, 20),
-              note: String(x.purpose || x.note || '').trim().slice(0, 200),
-              purpose: String(x.purpose || '').trim().slice(0, 200),
-              source: String(x.source || '').toLowerCase() === 'typical' ? 'typical' : 'doc'
-            }));
+            .map((x) => {
+              const src = String(x.source || '').toLowerCase();
+              return {
+                name: String(x.name).trim().slice(0, 200),
+                qty: Number(x.qty) > 0 ? Number(x.qty) : null,
+                unit: String(x.unit || '').trim().slice(0, 20),
+                note: String(x.purpose || x.note || '').trim().slice(0, 200),
+                purpose: String(x.purpose || '').trim().slice(0, 200),
+                // warehouse/purchase важны смете: склад не закупаем,
+                // покупку считаем отдельной строкой затрат.
+                source: src === 'warehouse' ? 'warehouse'
+                  : src === 'purchase' ? 'purchase'
+                    : src === 'typical' ? 'typical' : 'doc'
+              };
+            });
           const next = Object.assign({}, rj, {
             scope: rj.scope || scope,
             volume_summary: rj.volume_summary || scope,

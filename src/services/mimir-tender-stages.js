@@ -1052,13 +1052,22 @@ function normalizeDv(ai, catalog) {
     // чтобы контракт промпт → БД → модалка был замкнут.
     mtr_suggestions: (Array.isArray(raw.mtr_suggestions) ? raw.mtr_suggestions : [])
       .filter((m) => m && String(m.name || '').trim())
-      .map((m) => ({
-        name: String(m.name).trim().slice(0, 200),
-        qty: Number(m.qty) > 0 ? Number(m.qty) : null,
-        unit: String(m.unit || '').trim().slice(0, 20) || null,
-        purpose: String(m.purpose || '').trim().slice(0, 200) || null,
-        source: String(m.source || '').toLowerCase() === 'typical' ? 'typical' : 'doc'
-      })),
+      .map((m) => {
+        // Источник важен для сметы: со склада — бесплатно для закупки,
+        // покупка — отдельная строка затрат. Раньше всё сводилось к doc/typical,
+        // и «на складе есть» и «надо купить» выглядели одинаково.
+        const src = String(m.source || '').toLowerCase();
+        const source = src === 'warehouse' ? 'warehouse'
+          : src === 'purchase' ? 'purchase'
+            : src === 'typical' ? 'typical' : 'doc';
+        return {
+          name: String(m.name).trim().slice(0, 200),
+          qty: Number(m.qty) > 0 ? Number(m.qty) : null,
+          unit: String(m.unit || '').trim().slice(0, 20) || null,
+          purpose: String(m.purpose || '').trim().slice(0, 200) || null,
+          source
+        };
+      }),
     // Поля для карточки ТО. Раньше промпт их не просил, и РП видел пустые
     // «Суть для ТО», «Риски», «Выполнимость» — приходилось заполнять руками.
     summary: String(raw.summary || '').trim() || null,
