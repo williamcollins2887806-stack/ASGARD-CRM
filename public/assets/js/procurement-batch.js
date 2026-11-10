@@ -1308,7 +1308,14 @@ window.AsgardPaymentBatch = (function () {
       }
       const rest = skipped.filter((s) => s.reason !== 'recognizing');
       if (rest.length) {
-        const why = rest.map((s) => s.reason === 'no_file' ? 'нет файла' : 'уже отправлен').join(', ');
+        const why = rest.map((s) => {
+          if (s.reason === 'no_file') return 'нет файла';
+          if (s.reason === 'items_sum_mismatch') {
+            return `позиции ≠ сумма (#${s.id}: ${s.items_sum} vs ${s.amount}) — счёт в черновиках, поправьте позиции`;
+          }
+          if (s.reason === 'not_draft') return 'уже отправлен';
+          return s.reason || 'уже отправлен';
+        }).join('; ');
         toast('Часть не ушла', `${rest.length} шт. пропущено: ${why}`, 'warn');
       }
     } catch (e) {

@@ -931,6 +931,13 @@ window.AsgardApprovalPaymentPage = (function() {
             <div class="proc-pay-modal__section">
               <div class="proc-pay-modal__section-title">Счёт на согласование</div>
               <div class="proc-pay-modal__sum">${money2(pay.amount)}</div>
+              ${pay.items_sum_mismatch ? `
+              <div class="ap-flag ap-flag--err" style="display:block;margin-top:10px;padding:10px 12px;border-radius:8px;background:rgba(180,40,40,.08);line-height:1.35">
+                <strong>Позиции не сходятся с суммой счёта</strong>
+                (${money2(pay.items_sum)} vs ${money2(pay.amount)}).
+                Согласовать нельзя — счёт остаётся в очереди. Инициатор или бухгалтерия
+                правят позиции по PDF, затем «Согласовать» снова.
+              </div>` : ''}
               <dl class="proc-pay-modal__meta" style="margin-top:12px">
                 <dt>Поставщик</dt><dd>${esc(pay.supplier_name || '—')}</dd>
                 ${pay.supplier && pay.supplier.inn ? `<dt>ИНН / КПП</dt><dd>${esc(pay.supplier.inn)}${pay.supplier.kpp ? ' / ' + esc(pay.supplier.kpp) : ''}</dd>` : ''}
@@ -970,7 +977,7 @@ window.AsgardApprovalPaymentPage = (function() {
               <textarea id="dir-comment" class="proc-pay-modal__field" rows="2" placeholder="Необязательно"></textarea>
             </div>
             <div class="proc-pay-modal__actions" style="flex-direction:row;flex-wrap:wrap;gap:8px">
-              <button type="button" class="btn primary" id="dir-approve">Согласовать</button>
+              <button type="button" class="btn primary" id="dir-approve"${pay.items_sum_mismatch ? ' disabled title="Сначала поправьте позиции — сумма не сходится"' : ''}>Согласовать</button>
               <button type="button" class="btn ghost" id="dir-reject">Вернуть</button>
             </div>
           </div>

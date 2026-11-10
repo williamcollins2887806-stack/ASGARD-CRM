@@ -184,7 +184,11 @@ function note(section, name, detail) {
     return Math.abs(items - gross) > 0.01 && Math.abs(items - net) > 0.01;
   });
   if (!drifted.length) ok('3. Позиции', 'сумма позиций = сумме счёта', `проверено ${itemDrift.length} заявок (gross или net)`);
-  else note('3. Позиции', 'сумма позиций ≠ сумме счёта', drifted.map((x) => `#${x.id}: ${x.items_sum} vs ${x.amount}`).join('; '));
+  else {
+    // С 10.11.2026 это FAIL, не warning: такие заявки нельзя согласовывать/оплачивать
+    // (гейт invoice-items-check), иначе бухгалтерия работает по дырявой номенклатуре.
+    bad('3. Позиции', 'сумма позиций ≠ сумме счёта', drifted.map((x) => `#${x.id}: ${x.items_sum} vs ${x.amount}`).join('; '));
+  }
 
   // ═══ 4. НДС ════════════════════════════════════════════════════════════
   const vatGtGross = await one(`SELECT count(*)::int n FROM doc_registry

@@ -61,6 +61,7 @@ window.AsgardPaymentBuh = (function () {
             ${it.invoice_number ? '№ ' + esc(it.invoice_number) : 'б/н'}${it.invoice_date ? ' от ' + niceDate(it.invoice_date) : ''}
             ${it.vat_amount ? ' · НДС ' + money2(it.vat_amount) : ''}
             ${it.contract_basis_number ? ' · дог. ' + esc(it.contract_basis_number) : ''}
+            ${it.items_sum_mismatch ? ' · <span style="color:#b42828;font-weight:600">позиции ≠ сумма</span>' : ''}
           </div>
           ${isPayable && (req.bik || req.rs) ? `<div class="pbuh__req">
             ${req.bik ? `<button type="button" class="pbuh__copy" data-copy="${esc(req.bik)}">БИК ${esc(req.bik)}</button>` : ''}
@@ -125,22 +126,31 @@ window.AsgardPaymentBuh = (function () {
   /** Форма оплаты одного счёта: № п/п, дата, комментарий. */
   function openPayForm(payId, pay, onDone) {
     const today = new Date().toISOString().slice(0, 10);
+    const mismatch = !!(pay && pay.items_sum_mismatch);
     const html = `<div class="pbuh__form">
       <div class="pbuh__form-head">
         <div class="pbuh__sup">${esc((pay && pay.supplier_name) || '—')}</div>
         <div class="pbuh__sum">${money2(pay && pay.amount)}</div>
       </div>
-      <div class="pbuh__frow"><label>№ платёжного поручения</label><input id="pbuh-pp" placeholder="например 1234"></div>
-      <div class="pbuh__frow"><label>Дата п/п</label><input id="pbuh-ppd" type="date" value="${today}"></div>
-      <div class="pbuh__frow"><label>Комментарий</label><input id="pbuh-cmt" placeholder="необязательно"></div>
+      ${mismatch ? `<div style="margin:8px 0 12px;padding:10px 12px;border-radius:8px;background:rgba(180,40,40,.08);line-height:1.35;font-size:13px">
+        <strong>Позиции не сходятся с суммой</strong>
+        (${money2(pay.items_sum)} vs ${money2(pay.amount)}). Оплата заблокирована — счёт остаётся в очереди, поправьте позиции по PDF.
+      </div>` : ''}
+      <div class="pbuh__frow"><label>№ платёжного поручения</label><input id="pbuh-pp" placeholder="например 1234"${mismatch ? ' disabled' : ''}></div>
+      <div class="pbuh__frow"><label>Дата п/п</label><input id="pbuh-ppd" type="date" value="${today}"${mismatch ? ' disabled' : ''}></div>
+      <div class="pbuh__frow"><label>Комментарий</label><input id="pbuh-cmt" placeholder="необязательно"${mismatch ? ' disabled' : ''}></div>
       <div class="pbuh__actions">
         <button type="button" class="btn ghost" id="pbuh-cancel">Отмена</button>
-        <button type="button" class="btn primary" id="pbuh-confirm">Провести оплату</button>
+        <button type="button" class="btn primary" id="pbuh-confirm"${mismatch ? ' disabled title="Сначала поправьте позиции"' : ''}>Провести оплату</button>
       </div>
     </div>`;
     showModal({ title: 'Оплата счёта', html });
     document.getElementById('pbuh-cancel').onclick = () => closeModal();
     document.getElementById('pbuh-confirm').onclick = async () => {
+      if (mismatch) {
+        toast('Оплата заблокирована', 'Позиции не сходятся с суммой счёта — поправьте по PDF', 'err');
+        return;
+      }
       const pp = (document.getElementById('pbuh-pp').value || '').trim();
       const ppd = document.getElementById('pbuh-ppd').value || null;
       const cmt = (document.getElementById('pbuh-cmt').value || '').trim() || null;

@@ -14,6 +14,7 @@ const { createNotification } = require('../services/notify');
 const { stampExpiry } = require('../services/doc-approval-ttl');
 const { normalizeUploadUrl, uploadFsPath } = require('../utils/upload-url');
 const { enrichCatalogFromLines } = require('../services/catalog-from-invoice');
+const itemsCheck = require('../services/invoice-items-check');
 
 const DIR_ROLES = ['ADMIN', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV'];
 // D-369 (23.10.2026): заказчик попросил «Мои заявки» на мобильном ДЛЯ ВСЕХ
@@ -476,6 +477,7 @@ function decoratePayment(row) {
   if (!row) return row;
   const file_path = normalizeUploadUrl(row.file_path);
   const has_file = !!(row.file_path || row.file_name);
+  const items = itemsCheck.checkItemsVsAmount(row);
   return {
     ...row,
     file_path,
@@ -484,7 +486,11 @@ function decoratePayment(row) {
     // и модалка счёта БЕЗ вложения строила /file, получала 404 (ошибка в консоли), а превью
     // показывало «не удалось загрузить» вместо честного «файл не приложен».
     file_url: has_file && row.id ? `/api/payment-invoices/${row.id}/file` : null,
-    status_label: statusLabel(row.status, row.payment_status, row.pay_timing)
+    status_label: statusLabel(row.status, row.payment_status, row.pay_timing),
+    // Сверка позиций с итогом: UI показывает баннер, approve/pay блокируются на бэке.
+    items_sum_mismatch: !items.ok,
+    items_sum: items.items_sum,
+    items_n: items.n_items,
   };
 }
 
@@ -1345,6 +1351,20 @@ async function routes(fastify) {
         skipped.push({ id: pay.id, reason: 'recognizing' });
         continue;
       }
+      // Позиции ≠ итог (#368): не отправляем директору. Черновик остаётся —
+      // счёт не теряется, инициатор правит позиции по PDF и жмёт снова.
+      const itemsGate = itemsCheck.checkItemsVsAmount(pay);
+      if (!itemsGate.ok) {
+        await itemsCheck.markItemsMismatch(db, pay);
+        skipped.push({
+          id: pay.id,
+          reason: itemsCheck.CODE,
+          items_sum: itemsGate.items_sum,
+          amount: itemsGate.amount,
+          message: itemsGate.message,
+        });
+        continue;
+      }
       await db.query(
         `UPDATE payment_invoices
             SET status='awaiting_dir', submitted_at=NOW(), updated_at=NOW()
@@ -1441,12 +1461,21 @@ async function routes(fastify) {
     if (!isPriv && Number(pay.created_by) !== Number(req.user.id)) {
       return reply.code(403).send({ error: 'Можно править только свои счета' });
     }
-    // Правим ТОЛЬКО черновик: согласованный счёт — через корректировку, чтобы
-    // не переписать то, что директор уже видел и подписал.
-    if (pay.status !== 'draft') {
+    // Черновик — полная правка. После отправки директору/в оплату разрешаем
+    // ТОЛЬКО правку позиций: иначе при items_sum_mismatch (#368) счёт зависнет
+    // навечно — PATCH раньше отвечал 409, а добро/оплата уже заблокированы.
+    const bodyKeys = Object.keys(b).filter((k) => b[k] !== undefined);
+    const linesOnly = bodyKeys.length > 0
+      && bodyKeys.every((k) => k === 'line_items_json' || k === 'line_items');
+    const canFixLines = linesOnly
+      && (pay.status === 'awaiting_dir'
+        || pay.status === 'pending_payment'
+        || pay.payment_status === 'pending_payment');
+    if (pay.status !== 'draft' && !canFixLines) {
       return reply.code(409).send({
         error: 'Счёт уже отправлен — правка недоступна',
-        hint: 'Согласованный счёт меняется через корректировку у бухгалтерии.'
+        hint: 'Согласованный счёт меняется через корректировку у бухгалтерии. '
+          + 'Исключение: можно поправить только позиции, если сумма позиций не сходится с итогом.'
       });
     }
 
@@ -1463,7 +1492,8 @@ async function routes(fastify) {
       // D-369: ИНН — введённое в мастере раньше терялось (колонки не было).
       // `comment_text` уже есть в списке выше — второй раз добавлять нельзя:
       // PostgreSQL падает с 42601 «multiple assignments to same column».
-      'counterparty_inn'];
+      'counterparty_inn',
+      'line_items_json'];
     const sets = [];
     const params = [];
     // D-369 (найдено верификатором): ставки вне НК РФ отбивались 500 от
@@ -1471,13 +1501,24 @@ async function routes(fastify) {
     // любой клиент или импорт мог прислать 12345 и получить «server_error».
     const vatErr = validateVatRate(b.vat_rate);
     if (vatErr) return reply.code(400).send(vatErr);
+    // line_items — алиас тела для line_items_json.
+    if (b.line_items !== undefined && b.line_items_json === undefined) {
+      b.line_items_json = b.line_items;
+    }
     for (const k of FIELDS) {
       if (b[k] === undefined) continue;
+      if (canFixLines && k !== 'line_items_json') continue;
       // Белый список видов расхода: мусорное значение сломало бы CHECK-констрейнт.
       if (k === 'spend_kind' && b[k] != null && !['work', 'warehouse', 'office', 'other'].includes(String(b[k]))) {
         continue;
       }
       if (k === 'sf_basis' && b[k] != null && !['invoice', 'service'].includes(String(b[k]))) {
+        continue;
+      }
+      if (k === 'line_items_json') {
+        const lines = Array.isArray(b[k]) ? b[k] : [];
+        params.push(JSON.stringify(lines));
+        sets.push(`${k}=$${params.length}::jsonb`);
         continue;
       }
       params.push(b[k]);
@@ -1488,10 +1529,25 @@ async function routes(fastify) {
     }
     if (!sets.length) return decoratePayment(pay);
     params.push(id);
+    // Для draft — WHERE status='draft' (гонка «уже отправили»).
+    // Для awaiting_dir / pending_payment — только правка позиций (canFixLines).
     const upd = await db.query(
-      `UPDATE payment_invoices SET ${sets.join(', ')}, draft_updated_at=NOW(), updated_at=NOW()
-        WHERE id=$${params.length} AND status='draft' RETURNING *`, params);
-    return decoratePayment(upd.rows[0]);
+      pay.status === 'draft'
+        ? `UPDATE payment_invoices SET ${sets.join(', ')}, draft_updated_at=NOW(), updated_at=NOW()
+            WHERE id=$${params.length} AND status='draft' RETURNING *`
+        : `UPDATE payment_invoices SET ${sets.join(', ')}, updated_at=NOW()
+            WHERE id=$${params.length}
+              AND (status='awaiting_dir' OR status='pending_payment' OR payment_status='pending_payment')
+          RETURNING *`,
+      params);
+    if (!upd.rows[0]) {
+      return reply.code(409).send({ error: 'Не удалось сохранить — статус счёта изменился' });
+    }
+    const fresh = upd.rows[0];
+    const gate = itemsCheck.checkItemsVsAmount(fresh);
+    if (gate.ok) await itemsCheck.clearItemsMismatch(db, fresh);
+    else await itemsCheck.markItemsMismatch(db, fresh);
+    return decoratePayment(fresh);
   });
 
   /** D-316: удалить черновик (только свой и только неотправленный). */
@@ -1805,6 +1861,19 @@ async function routes(fastify) {
     if (!rows[0]) return reply.code(404).send({ error: 'Не найдено' });
     if (rows[0].status !== 'awaiting_dir') return reply.code(409).send({ error: 'Счёт не на согласовании директора' });
 
+    // Позиции ≠ итог: не согласуем. Статус awaiting_dir сохраняется — счёт
+    // остаётся в очереди директора, пока инициатор не поправит позиции.
+    const itemsGate = itemsCheck.checkItemsVsAmount(rows[0]);
+    if (!itemsGate.ok) {
+      await itemsCheck.markItemsMismatch(db, rows[0]);
+      return reply.code(409).send({
+        error: itemsGate.message,
+        code: itemsCheck.CODE,
+        items_sum: itemsGate.items_sum,
+        amount: itemsGate.amount,
+      });
+    }
+
     // D-386: способ оплаты здесь БОЛЬШЕ НЕ ВЫБИРАЕТСЯ.
     // Заказчик 28.10.2026: «выбор откуда платим — с ОБС или нет — должна быть
     // у бухгалтерии. Не у инициатора и не у директора». Директор согласует
@@ -1879,6 +1948,17 @@ async function routes(fastify) {
     const pay = rows[0];
     if (pay.payment_status !== 'pending_payment') {
       return reply.code(409).send({ error: 'Счёт не в очереди оплаты' });
+    }
+    // Позиции ≠ итог: не оплачиваем. Счёт остаётся pending_payment.
+    const itemsGatePay = itemsCheck.checkItemsVsAmount(pay);
+    if (!itemsGatePay.ok) {
+      await itemsCheck.markItemsMismatch(db, pay);
+      return reply.code(409).send({
+        error: itemsGatePay.message,
+        code: itemsCheck.CODE,
+        items_sum: itemsGatePay.items_sum,
+        amount: itemsGatePay.amount,
+      });
     }
     const comment = (req.body && req.body.comment) || null;
     const documentId = (req.body && req.body.document_id) || null;

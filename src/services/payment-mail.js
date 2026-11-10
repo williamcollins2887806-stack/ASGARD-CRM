@@ -516,6 +516,21 @@ async function applyDecision(db, payment, action, actor) {
   if (payment.status !== 'awaiting_dir') {
     return { ok: true, already: true, status: payment.status };
   }
+  // Согласование при дырявых позициях блокируем и из почтовой ссылки:
+  // иначе dir-approve в UI стоп, а письмо директора обходило бы гейт.
+  // Отклонение (reject) всегда можно — счёт не зависает навечно.
+  if (act === 'approve') {
+    const itemsCheck = require('./invoice-items-check');
+    const gate = itemsCheck.checkItemsVsAmount(payment);
+    if (!gate.ok) {
+      await itemsCheck.markItemsMismatch(db, payment);
+      throw Object.assign(new Error(gate.message), {
+        statusCode: 409,
+        code: itemsCheck.CODE,
+        details: gate,
+      });
+    }
+  }
   const client = await db.pool.connect();
   try {
     await client.query('BEGIN');
@@ -1155,11 +1170,17 @@ async function applyInvoiceFields(db, pay, docId) {
     // Причины, которые ставит не этот код (ошибки разбора, кривой контрагент,
     // ручные пометки), не теряем — убираем только те, что пересчитали сами.
     const OWNED = ['no_invoice_number', 'no_invoice_date', 'no_amount', 'no_work_for_expense',
-      'amount_mismatch'];
+      'amount_mismatch', 'items_sum_mismatch'];
     const foreign = (row.incomplete_reasons || []).filter((r) => !OWNED.includes(r));
     // Расхождение суммы с заявкой — повод сверить, а не «ошибка». Ставим метку,
     // чтобы разница была видна в реестре, а не всплыла в платёжке.
     if (mismatch) filtered.push('amount_mismatch');
+    // Позиции ≠ итог заявки (#368): синяя метка в реестре, оплата/добро — стоп.
+    try {
+      const itemsCheck = require('./invoice-items-check');
+      const ig = itemsCheck.checkItemsVsAmount(pay);
+      if (!ig.ok && !filtered.includes(itemsCheck.CODE)) filtered.push(itemsCheck.CODE);
+    } catch (_) { /* */ }
     const all = [...new Set([...foreign, ...filtered])];
 
     await db.query(
