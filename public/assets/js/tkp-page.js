@@ -156,21 +156,28 @@ window.AsgardTkpPage = (function() {
       // Компактные действия в таблице: три значка + меню «⋯».
       // Выравниваем по одной линии и запрещаем перенос содержимого ячейки —
       // из-за разной высоты кнопок строки «ехали» (жалоба 10.11.2026).
-      '.tkp-actions{white-space:nowrap;text-align:right;vertical-align:middle;width:1%}' +
-      '.tkp-actions .tkp-tbl-btn{vertical-align:middle}' +
+      // ВАЖНО: ячейка таблицы — отдельный класс .c-actions, а НЕ .tkp-actions.
+      // Раньше оба использовали .tkp-actions, и ячейка наследовала от подвала модалки
+      // display:flex + margin/padding + border-top → лишняя полоса и съехавшие кнопки
+      // (поймано на проде 10.11.2026).
       // ── Таблица реестра: карточка вместо «голой» сетки ──────────────────
       '.tkp-table-card{background:var(--bg1);border:1px solid var(--brd);border-radius:14px;overflow:hidden}' +
       '.tkp-table{border-collapse:separate;border-spacing:0;width:100%}' +
       '.tkp-table thead th{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--t3);' +
         'font-weight:600;padding:11px 14px;background:var(--bg2);border-bottom:1px solid var(--brd);white-space:nowrap}' +
       '.tkp-table tbody td{padding:12px 14px;border-bottom:1px solid var(--brd);vertical-align:middle;font-size:13px}' +
+      // Зебра из общего app.css (nth-child(odd) с !important) давала «полосы» поверх карточки.
+      // В карточном реестре фон плоский: ячейка прозрачная, полоса — только border-bottom.
+      '.tkp-table tbody tr td,.tkp-table tbody tr:nth-child(odd) td,.tkp-table tbody tr:nth-child(even) td{background:transparent !important}' +
       '.tkp-table tbody tr:last-child td{border-bottom:0}' +
-      '.tkp-table tbody tr:hover td{background:var(--bg2)}' +
+      '.tkp-table tbody tr:hover td{background:var(--bg2) !important}' +
       '.tkp-table .c-id{width:52px;color:var(--t3);font-variant-numeric:tabular-nums}' +
       '.tkp-table .c-num{white-space:nowrap;color:var(--t2);font-size:12.5px}' +
       '.tkp-table .c-sum{text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums;font-weight:600}' +
       '.tkp-table .c-date{white-space:nowrap}' +
-      '.tkp-table .c-actions{width:1%}' +
+      '.tkp-table .c-actions{width:1%;white-space:nowrap;text-align:right;vertical-align:middle}' +
+      '.tkp-table .c-actions .tkp-tbl-btn{vertical-align:middle}' +
+      '.tkp-table .c-actions .tkp-tbl-btn:not(:first-child){margin-left:6px}' +
       '.tkp-table .c-cust{max-width:230px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}' +
       '.tkp-subject{display:inline;line-height:1.35}' +
       '.tkp-muted{color:var(--t3);font-size:12.5px}' +
@@ -497,7 +504,7 @@ window.AsgardTkpPage = (function() {
           '<td class="c-sum">' + (i.total_sum ? fmt(i.total_sum) : '<span class="tkp-muted">—</span>') + '</td>' +
           '<td>' + _statusBadge(st) + '</td>' +
           '<td class="c-date"><span class="tkp-muted">' + (i.created_at ? new Date(i.created_at).toLocaleDateString('ru-RU') : '—') + '</span></td>' +
-          '<td class="tkp-actions">' +
+          '<td class="c-actions">' +
             // Компактно: три частых действия значками, остальное — в меню «⋯».
             '<button class="tkp-tbl-btn" data-action="edit" data-id="' + i.id + '" title="Редактировать"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>' +
             '<button class="tkp-tbl-btn" data-action="pdf" data-id="' + i.id + '" title="Скачать PDF"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14,2 14,8 20,8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg></button>' +
@@ -561,6 +568,42 @@ window.AsgardTkpPage = (function() {
     el.querySelectorAll('[data-action="delete"]').forEach(function(b) {
       b.addEventListener('click', function() { confirmDeleteTkp(b.dataset.id); });
     });
+
+    // Пункты меню «⋯» живут в document.body, поэтому обработчики выше их не видят.
+    // Делегируем клик по меню на документ (поймано на проде 10.11.2026: меню
+    // открывалось, но «Копировать»/«Удалить» не срабатывали).
+    if (document._tkpMenuBound) document.removeEventListener('click', document._tkpMenuBound);
+    document._tkpMenuBound = function(ev) {
+      const menu = document.getElementById('tkpMoreMenu');
+      if (!menu || !menu.contains(ev.target)) return;
+      const b = ev.target.closest('button[data-action]');
+      if (!b) return;
+      ev.preventDefault();
+      ev.stopPropagation();
+      const id = b.dataset.id;
+      const act = b.dataset.action;
+      closeTkpMore();
+      if (act === 'copy') {
+        var token0 = localStorage.getItem('asgard_token');
+        fetch('/api/tkp/' + id + '/copy', {
+          method: 'POST', headers: { Authorization: 'Bearer ' + token0 }
+        }).then(function(r) { return r.ok ? r.json() : Promise.reject(r); })
+          .then(function(data) {
+            toast('Готово', 'ТКП скопировано');
+            loadList();
+            if (data.item && data.item.id) openEditById(data.item.id, data.item);
+          })
+          .catch(function() { toast('Ошибка', 'Не удалось скопировать', 'err'); });
+      } else if (act === 'excel') {
+        var token1 = localStorage.getItem('asgard_token');
+        window.open('/api/tkp/' + id + '/excel?token=' + token1, '_blank');
+      } else if (act === 'decision') {
+        openClientDecisionModal(id);
+      } else if (act === 'delete') {
+        confirmDeleteTkp(id);
+      }
+    };
+    document.addEventListener('click', document._tkpMenuBound);
 
     // ── Меню «⋯»: портал в <body> ────────────────────────────────────────────
     // Обёртка таблицы имеет `overflow-x: auto`, поэтому абсолютное меню
