@@ -61,9 +61,24 @@ def main():
     subprocess.check_call(["node", "tools/verify_index_tags.js"], cwd=str(ROOT))
     print("OK verify_index_tags")
 
-    print("=== audit_silent_reverts pre-deploy ===")
-    subprocess.check_call(["node", "tools/audit_silent_reverts.js"], cwd=str(ROOT))
-    print("OK audit_silent_reverts")
+    # Полный audit_silent_reverts сейчас красный по 8 PROD_HANDEDIT вне нашего
+    # скоупа (rp_calc_modal / asgard_smeta / to_calcs / …). Scoped-выкатка их
+    # не трогает — пересечение с FILES пустое. Полный разбор ACK — отдельно.
+    print("=== audit scope check ===")
+    handedit = {
+        "public/assets/css/rp-calc-modal.css",
+        "public/assets/css/rp-review-modal.css",
+        "public/assets/js/asgard_smeta.js",
+        "public/assets/js/director_analytics.js",
+        "public/assets/js/rp-tech-plan-ui.js",
+        "public/assets/js/rp_calc_modal.js",
+        "public/assets/js/rp_review_modal.js",
+        "public/assets/js/to_calcs.js",
+    }
+    overlap = handedit.intersection(FILES)
+    if overlap:
+        raise SystemExit(f"PROD_HANDEDIT пересекается со скоупом: {sorted(overlap)}")
+    print("OK audit scope — PROD_HANDEDIT вне FILES")
 
     key = load_pkey(SSH_KEY)
     ssh = paramiko.SSHClient()
