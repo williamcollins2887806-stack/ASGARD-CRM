@@ -2146,6 +2146,11 @@ module.exports = async function directorAnalyticsRoutes(fastify) {
             ? Number(hr.manual_minutes)
             : Number(hr ? hr.office_minutes : 0);
           const norm = officeHours.dayNormMinutes(iso, calendar, settings, grp.staffIds[0]);
+          // Будущий день не судим вовсе: ни нормы, ни цвета, ни короны.
+          // Раньше отсечка держалась только на отсутствии импорта СКУД,
+          // и предзаполненный отчёт с датой вперёд давал корону за
+          // ещё не наступивший день (верификатор 10.11.2026).
+          const isFuture = iso > todayIso;
           const credit = officeHours.creditDay({
             date: iso,
             statusCode: plan,
@@ -2157,8 +2162,14 @@ module.exports = async function directorAnalyticsRoutes(fastify) {
             officeSegments: officeHours.parseSegments(hr && hr.segments),
             crmHasData: crmDay.hasData,
             skudMissing: !hr,
-            normMinutes: norm
+            normMinutes: isFuture ? 0 : norm
           });
+          if (isFuture) {
+            credit.counts_in_norm = false;
+            credit.source = 'future';
+            credit.warn = 'future_day';
+            credit.credited_minutes = 0;
+          }
 
           // Legacy-день: до старта серверного учёта СРМ и зачёт должен был бы
           // идти из СРМ — данных нет, поэтому день выпадает из нормы.
@@ -2250,7 +2261,10 @@ module.exports = async function directorAnalyticsRoutes(fastify) {
       const crmDaysWithData = crmDays.size;
 
       const inNorm = people.filter((p) => p.norm_minutes > 0);
-      const under = inNorm.filter((p) => p.delta_minutes < 0);
+      // «Под нормой» = не зелёные. Раньше считалось по delta < 0, и человек
+      // с −10 % (в пределах допуска 15 %) попадал и в «зелёные», и в список
+      // худших недоработчиков одновременно.
+      const under = inNorm.filter((p) => p.state === 'yellow' || p.state === 'red');
       const avgDelta = inNorm.length
         ? Math.round(inNorm.reduce((a, p) => a + p.delta_minutes, 0) / inNorm.length)
         : null;

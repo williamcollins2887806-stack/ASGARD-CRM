@@ -222,7 +222,7 @@ describe('office-hours: свод и недоработка', () => {
     expect(s.days_counted).toBe(5);
   });
 
-  test('переработка сверх нормы дня не раздувает зачёт (потолок — норма дня)', () => {
+  test('переработка сверх нормы дня не раздувает зачёт, но видна в дельте', () => {
     const r = oh.creditDay({
       date: '2026-10-26', statusCode: 'оф', officeMinutes: 600, crmMinutes: 0,
       crmHasData: true, skudMissing: false, normMinutes: 480
@@ -230,7 +230,10 @@ describe('office-hours: свод и недоработка', () => {
     const s = oh.summarizeDays([r]);
     expect(r.credited_minutes).toBe(600);   // факт показываем как есть
     expect(s.credited_minutes).toBe(480);   // но в норму идёт не больше 480
-    expect(s.delta_minutes).toBe(0);
+    // Дельта считается от ВЫРАБОТКИ, а не от зачёта с потолком: 600 − 480 = +120.
+    // Иначе цвет (по worked) и дельта (по credited) противоречили друг другу:
+    // человек был «зелёным» с короной и одновременно «худшим недоработчиком».
+    expect(s.delta_minutes).toBe(120);
   });
 
   test('отпуск не создаёт фиктивной нормы', () => {

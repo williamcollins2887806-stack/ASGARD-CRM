@@ -194,10 +194,32 @@ describe('team-hours: сверка с контрольным SQL', () => {
     expect(missing).toEqual([]);
   });
 
-  test('people_under совпадает с пересчётом по людям', async () => {
+  test('people_under совпадает с пересчётом по state (не по delta)', async () => {
     const r = await get('/api/director-analytics/team-hours?period=week&date=2026-10-28');
-    const manual = r.body.people.filter((p) => p.norm_minutes > 0 && p.delta_minutes < 0).length;
+    // «Под нормой» = жёлтые + красные. Считать по delta < 0 нельзя: человек
+    // с −10 % (в пределах допуска 15 %) был бы и зелёным, и недоработчиком.
+    const manual = r.body.people.filter(
+      (p) => p.norm_minutes > 0 && (p.state === 'yellow' || p.state === 'red')
+    ).length;
     expect(r.body.norm.people_under).toBe(manual);
+  });
+
+  test('дельта согласуется с цветом: у зелёного нет отрицательной дельты за порогом', async () => {
+    const r = await get('/api/director-analytics/team-hours?period=week&date=2026-10-28');
+    for (const p of r.body.people) {
+      if (p.norm_minutes === 0) continue;
+      // delta_minutes теперь считается от worked, той же базы, что и цвет.
+      if (p.state === 'green') expect(p.delta_minutes).toBeGreaterThan(-p.norm_minutes * 0.15);
+      if (p.state === 'red') expect(p.delta_minutes).toBeLessThan(-p.norm_minutes * 0.5);
+    }
+  });
+
+  test('зелёные и худшие не пересекаются', async () => {
+    const r = await get('/api/director-analytics/team-hours?period=week&date=2026-10-28');
+    const greenIds = new Set(r.body.people.filter((p) => p.state === 'green').map((p) => p.staff_id));
+    const worstIds = (r.body.norm.worst || []).map((w) => w.staff_id);
+    const overlap = worstIds.filter((id) => greenIds.has(id));
+    expect(overlap).toEqual([]);
   });
 });
 
