@@ -53,11 +53,7 @@ function FireParticles() {
           height: i % 2 === 0 ? 5 : 4,
           borderRadius: '50%',
           background: ['var(--value)','#FF8C00','#FF4500','var(--value)','#FF6B00','var(--value)','#FF4500'][i],
-          animationName: 'none',
-          animationDuration: `${0.7 + i * 0.15}s`,
-          animationTimingFunction: 'ease-in-out',
-          animationIterationCount: 'infinite',
-          animationDelay: `${i * 0.12}s`,
+          animation: 'none',
           opacity: 0.85,
         }} />
       ))}
