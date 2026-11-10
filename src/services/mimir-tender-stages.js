@@ -95,6 +95,13 @@ function canTransition(from, to) {
   const allowed = FORWARD[from] || [];
   if (allowed.includes(to)) return true;
 
+  // Повторный разбор закрытой карточки: из done/nogo возвращаемся в анализ.
+  // Без этого переиспользованная сессия на `done` роняет stage/analyze в 500
+  // «Нельзя перейти с done на dv», и перепрогон после правок невозможен
+  // (прод 10.11.2026, #2138). Возврат разрешён только в анализ, не в просчёт:
+  // просчёт по-прежнему запускается отдельным действием.
+  if ((from === 'done' || from === 'nogo') && isAnalysisStage(to)) return true;
+
   // Назад — только внутри своего конвейера.
   const iFrom = STAGES.indexOf(from);
   const iTo = STAGES.indexOf(to);
