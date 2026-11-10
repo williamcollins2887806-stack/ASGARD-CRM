@@ -42,6 +42,10 @@ const GUARDS = [
   ['tests/client-doc-lint.test.js', 'OK'],
   ['tests/tkp-ai-draft.test.js', 'OK'],
   ['tests/tkp-ai-pdf-gate.test.js', 'OK'],
+  // 10.11.2026: три файла десктопа были склеены в одну строку (анимации),
+  // файлы остались синтаксически валидными, но десктоп показывал пустой экран.
+  // Ни node --check, ни eslint такое не поймали — нужен отдельный сканер.
+  ['tools/scan_merged_strings.js', 'MERGED_STRINGS_OK'],
 ];
 
 let failed = 0;
