@@ -192,6 +192,7 @@
         </div>
       </div>
       <div class="ting-reconnect-banner hidden" id="reconnectBanner" role="status" aria-live="polite">Переподключение…</div>
+      <button type="button" class="ting-btn ting-btn-primary hidden" id="btnAudioUnlock" style="position:fixed;left:50%;bottom:96px;transform:translateX(-50%);z-index:10050">Включить звук</button>
       <div class="ting-stage-wrap">
         <div class="ting-stage" id="stage"></div>
         <div class="ting-filmstrip" id="filmstrip"></div>
@@ -327,6 +328,7 @@
       let reconnecting = false;
       let reconnectAttempts = 0;
       let intentionalLeave = false;
+      let tokenRefreshTimer = null;
       let guestChatOpen = false;
       let bgPreset = 'none';
       let guestTrackProcessors = null;
@@ -1079,7 +1081,40 @@
           }
         }
         pull();
-        chatPollId = setInterval(pull, 1000);
+        /* nginx 10r/s — не долбить чат каждую секунду. */
+        chatPollId = setInterval(pull, 4000);
+      }
+
+      function scheduleGuestTokenRefresh(creds) {
+        if (tokenRefreshTimer) {
+          clearTimeout(tokenRefreshTimer);
+          tokenRefreshTimer = null;
+        }
+        if (!creds || !guestIdentity || !joinToken || !slug) return;
+        var expiresAt = creds.expires_at ? Date.parse(creds.expires_at) : 0;
+        if (!expiresAt) {
+          /* Без expires_at — refresh через 3.5 ч (JWT 4ч). */
+          expiresAt = Date.now() + 3.5 * 60 * 60 * 1000;
+        }
+        var wait = Math.max(60 * 1000, expiresAt - Date.now() - 5 * 60 * 1000);
+        tokenRefreshTimer = setTimeout(async function () {
+          try {
+            var r = await fetch('/api/thing/public/' + encodeURIComponent(slug) + '/lobby-status', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ identity: guestIdentity, join_token: joinToken })
+            });
+            var j = await r.json();
+            if (j && j.token) {
+              lastCreds = Object.assign({}, lastCreds || {}, j);
+              scheduleGuestTokenRefresh(j);
+            } else {
+              tokenRefreshTimer = setTimeout(function () { scheduleGuestTokenRefresh(creds); }, 120000);
+            }
+          } catch (_) {
+            tokenRefreshTimer = setTimeout(function () { scheduleGuestTokenRefresh(creds); }, 120000);
+          }
+        }, wait);
       }
 
       function setReconnectUi(on) {
@@ -1156,12 +1191,16 @@
         if (window.LivekitClient.RoomEvent.ActiveSpeakersChanged) {
           next.on(window.LivekitClient.RoomEvent.ActiveSpeakersChanged, function (speakers) {
             var nextId = (speakers && speakers[0] && speakers[0].identity) || null;
+            markSpeakingTiles();
+            if (nextId === activeSpeakerId) return;
             if (speakerTimer) clearTimeout(speakerTimer);
+            var settleMs = activeSpeakerId ? 1400 : 600;
             speakerTimer = setTimeout(function () {
+              if (nextId === activeSpeakerId) return;
               activeSpeakerId = nextId;
               if (layoutMode === 'speaker') relayoutGuestTiles();
               else markSpeakingTiles();
-            }, 200);
+            }, settleMs);
           });
         }
         next.on(window.LivekitClient.RoomEvent.DataReceived, function (payload) {
@@ -1271,6 +1310,23 @@
         });
         try {
           await next.connect(creds.url || creds.livekit_url, creds.token);
+          /* Сначала attach audio (ниже через события), затем startAudio — иначе autoplay fail. */
+          try {
+            if (typeof next.startAudio === 'function') await next.startAudio();
+            var unlockBtnOk = document.getElementById('btnAudioUnlock');
+            if (unlockBtnOk) unlockBtnOk.classList.add('hidden');
+          } catch (_) {
+            var unlockBtn = document.getElementById('btnAudioUnlock');
+            if (unlockBtn) unlockBtn.classList.remove('hidden');
+          }
+          if (window.LivekitClient.RoomEvent && window.LivekitClient.RoomEvent.AudioPlaybackStatusChanged) {
+            next.on(window.LivekitClient.RoomEvent.AudioPlaybackStatusChanged, function () {
+              var b = document.getElementById('btnAudioUnlock');
+              if (!b) return;
+              var can = typeof next.canPlaybackAudio === 'function' ? next.canPlaybackAudio() : true;
+              b.classList.toggle('hidden', !!can);
+            });
+          }
           await next.localParticipant.setMicrophoneEnabled(localAudio);
           if (localVideo) {
             try {
@@ -1310,6 +1366,7 @@
         if (!opts.isReconnect) tingSound('join');
         if (!timerId) startTimer();
         startChatPoll();
+        scheduleGuestTokenRefresh(creds);
       }
 
       document.getElementById('join').addEventListener('click', function () {
@@ -1501,12 +1558,22 @@
           guestToast(e.message || 'Чат недоступен');
         }
       });
+      var btnAudioUnlock = document.getElementById('btnAudioUnlock');
+      if (btnAudioUnlock) {
+        btnAudioUnlock.addEventListener('click', async function () {
+          try {
+            if (room && typeof room.startAudio === 'function') await room.startAudio();
+            btnAudioUnlock.classList.add('hidden');
+          } catch (_) { /* */ }
+        });
+      }
       document.getElementById('btnLeave').addEventListener('click', async function () {
         tingSound('end');
         intentionalLeave = true;
         activeSpeakerId = null;
         if (timerId) clearInterval(timerId);
         if (chatPollId) clearInterval(chatPollId);
+        if (tokenRefreshTimer) { clearTimeout(tokenRefreshTimer); tokenRefreshTimer = null; }
         stopPreview();
         setPeopleOpen(false);
         setGuestChatOpen(false);

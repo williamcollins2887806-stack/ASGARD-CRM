@@ -235,7 +235,8 @@ body.ting-incall .ting-room-shell {
   position: fixed !important;
   inset: 0 !important;
   z-index: 9000;
-  width: 100vw !important;
+  width: 100% !important; /* не 100vw — иначе полоса из‑за scrollbar gutter */
+  max-width: 100% !important;
   height: 100vh !important;
   height: 100dvh !important;
   overflow: hidden !important;
@@ -247,6 +248,9 @@ body.ting-guest {
   font-family: "Manrope", system-ui, sans-serif;
   color: var(--ting-t1);
   position: relative;
+  max-width: 100%;
+  overflow-x: hidden; /* иначе tip/switch раздувают scrollWidth → чёрная полоса справа */
+  overflow-y: auto;
   background:
     radial-gradient(1100px 560px at 18% -12%, rgba(212,168,67,.16) 0%, transparent 55%),
     radial-gradient(900px 520px at 88% 8%, rgba(88,120,180,.18) 0%, transparent 50%),
@@ -353,6 +357,13 @@ body.ting-guest {
   color: var(--ting-gold-l); font-variant-numeric: tabular-nums;
   line-height: 1.15; margin-top: 6px;
 }
+.ting-dialin-number:empty,
+.ting-dialin-empty {
+  color: var(--ting-t2);
+  font-weight: 650;
+  letter-spacing: 0;
+  font-size: 22px;
+}
 .ting-step-cards {
   display: grid; gap: 10px; text-align: left; margin: 0 0 16px;
 }
@@ -384,8 +395,11 @@ body.ting-guest {
 
 .ting-wrap {
   max-width: 720px;
+  width: 100%;
   margin: 0 auto;
   padding: 20px 16px 96px;
+  box-sizing: border-box;
+  overflow-x: hidden;
 }
 
 /* Logo mark */
@@ -665,6 +679,10 @@ html[data-theme="light"] .ting-call-row .ting-btn-ghost {
   box-shadow: var(--ting-card-shadow);
   backdrop-filter: blur(28px) saturate(1.35);
   -webkit-backdrop-filter: blur(28px) saturate(1.35);
+  max-width: 100%;
+  box-sizing: border-box;
+  /* оба оси: иначе overflow-x:hidden + y:visible → scrollWidth раздувается tip'ами */
+  overflow: hidden;
 }
 body.ting-guest .ting-card,
 .g-screen .ting-card {
@@ -738,6 +756,14 @@ body.ting-guest .ting-card,
   display: flex; align-items: center; gap: 12px;
   margin: 14px 0; font-size: 14px; color: var(--ting-t1); cursor: pointer; user-select: none;
   position: relative;
+  min-width: 0;
+  max-width: 100%;
+}
+.ting-switch > span:not(.ting-switch-ui):not(.ting-tip) {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  line-height: 1.35;
 }
 .ting-switch input { position: absolute; opacity: 0; width: 0; height: 0; }
 .ting-switch-ui {
@@ -766,12 +792,18 @@ body.ting-guest .ting-card,
 }
 .ting-tip[data-tip]::after {
   content: attr(data-tip);
-  position: absolute; left: 50%; bottom: calc(100% + 8px); transform: translateX(-50%);
-  min-width: 160px; max-width: 240px; padding: 8px 10px; border-radius: 10px;
+  position: absolute; right: 0; bottom: calc(100% + 8px); left: auto;
+  transform: none;
+  width: max-content;
+  max-width: min(240px, calc(100vw - 48px));
+  min-width: 0;
+  padding: 8px 10px; border-radius: 10px;
   background: rgba(12,16,24,.96); border: 1px solid rgba(255,255,255,.12);
   color: var(--ting-t1); font-size: 11px; font-weight: 600; line-height: 1.35;
   opacity: 0; pointer-events: none; transition: opacity .15s ease;
   box-shadow: 0 10px 28px rgba(0,0,0,.45); z-index: 5; text-align: left;
+  /* скрытый tip не должен расширять layout */
+  contain: layout;
 }
 .ting-tip:hover::after, .ting-tip:focus-visible::after { opacity: 1; }
 .ting-when-row {
@@ -905,6 +937,9 @@ body.ting-guest .ting-card,
   grid-area: main;
   position: relative;
   min-height: 0;
+  min-width: 0; /* иначе min-content раздувает shell → торчит чат/плитка справа */
+  max-width: 100%;
+  overflow: hidden;
   display: flex;
   flex-direction: column;
 }
@@ -926,17 +961,20 @@ body.ting-guest .ting-card,
 .ting-stage-wrap {
   flex: 1 1 auto;
   min-height: 0;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
   display: flex;
   flex-direction: column;
   position: relative;
   padding: 56px 14px calc(210px + env(safe-area-inset-bottom));
   box-sizing: border-box;
 }
-.ting-stage-wrap .ting-stage { flex: 1 1 auto; min-height: 0; }
+.ting-stage-wrap .ting-stage { flex: 1 1 auto; min-height: 0; min-width: 0; max-width: 100%; width: 100%; }
 .ting-filmstrip {
   position: relative; z-index: 6;
   flex: 0 0 auto;
-  display: flex; gap: 10px; overflow-x: auto;
+  display: flex; gap: 6px; overflow-x: auto;
   padding: 10px 2px 8px;
   margin-bottom: 4px;
   pointer-events: auto;
@@ -1054,7 +1092,7 @@ body.ting-guest .ting-card,
     flex: 1 1 auto;
     min-height: 0;
   }
-  /* Mobile portrait: one column stack, keep 16:9 */
+  /* Mobile: строго 16:9. Много участников — скролл stage, без сжатия/растягивания. */
   .ting-stage.g2,
   .ting-stage.g3,
   .ting-stage.g4,
@@ -1063,23 +1101,38 @@ body.ting-guest .ting-card,
   .ting-stage.g10,
   .ting-stage.g12,
   .ting-stage.auto {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
     grid-template-rows: none;
+    grid-auto-rows: min-content;
+    height: auto;
+    max-height: 100%;
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
     align-content: start;
+    align-items: start;
+    justify-content: stretch;
+    overflow-x: hidden;
     overflow-y: auto;
   }
+  .ting-stage.g2 {
+    grid-template-columns: minmax(0, 1fr);
+  }
   .ting-stage.g2 .ting-tile,
-  .ting-stage.g3 .ting-tile,
-  .ting-stage.g4 .ting-tile,
-  .ting-stage.g6 .ting-tile,
-  .ting-stage.g9 .ting-tile,
-  .ting-stage.g10 .ting-tile,
-  .ting-stage.g12 .ting-tile,
-  .ting-stage.auto .ting-tile,
-  .ting-stage.speaker .ting-tile {
+  .ting-stage.speaker .ting-tile:not(.is-pip),
+  .ting-stage.g3 > .ting-tile,
+  .ting-stage.g4 > .ting-tile,
+  .ting-stage.g6 > .ting-tile,
+  .ting-stage.g9 > .ting-tile,
+  .ting-stage.g10 > .ting-tile,
+  .ting-stage.g12 > .ting-tile,
+  .ting-stage.auto > .ting-tile {
     aspect-ratio: 16 / 9;
     height: auto !important;
+    width: 100%;
+    min-width: 0;
     min-height: 0 !important;
+    overflow: hidden;
   }
   .ting-tile.is-pip {
     width: clamp(112px, 34%, 168px);
@@ -1088,8 +1141,10 @@ body.ting-guest .ting-card,
   }
   /* ???? ??? fixed inset:0 + safe-area padding ? ?? ??????????? main ?? 100dvh,
      ????? ??? (absolute bottom) ??????? ?? ?????? ???? ??????. */
-  .ting-room-shell { min-height: 0; }
-  .ting-room-main { display: flex; flex-direction: column; min-height: 0; }
+  .ting-room-shell { min-height: 0; min-width: 0; }
+  .ting-room-main { display: flex; flex-direction: column; min-height: 0; min-width: 0; max-width: 100%; overflow: hidden; }
+  .ting-room-top { max-width: 100%; min-width: 0; }
+  .ting-consent { max-width: calc(100% - 24px); box-sizing: border-box; }
   /* ??????? ??? ? ??? ??????? safe-area (????? ?????/?????? ?? iPhone) */
   .ting-room-shell .ting-room-top {
     padding-top: calc(12px + env(safe-area-inset-top, 0px));
@@ -1105,7 +1160,7 @@ body.ting-guest .ting-card,
   }
 }
 .ting-filmstrip {
-  display: flex; gap: 8px; padding: 0 0 10px; overflow-x: auto;
+  display: flex; gap: 6px; padding: 0 0 10px; overflow-x: auto;
   min-height: 0;
 }
 .ting-filmstrip:empty { display: none; }
@@ -1120,7 +1175,7 @@ body.ting-guest .ting-card,
 .ting-stage {
   flex: 1; min-height: 0;
   display: grid;
-  gap: 10px;
+  gap: 6px;
   align-content: center;
   justify-content: center;
   position: relative;
@@ -1258,17 +1313,20 @@ body.ting-guest .ting-card,
 }
 .ting-poll-opt-label, .ting-poll-opt-n { position: relative; z-index: 1; }
 .ting-poll-opt-n { margin-left: auto; opacity: .7; font-variant-numeric: tabular-nums; }
-.ting-stage.g2 > .ting-tile,
-.ting-stage.g3 > .ting-tile,
-.ting-stage.g4 > .ting-tile,
-.ting-stage.g6 > .ting-tile,
-.ting-stage.g9 > .ting-tile,
-.ting-stage.g10 > .ting-tile,
-.ting-stage.g12 > .ting-tile {
-  aspect-ratio: 16 / 9;
-  min-height: 0;
-  width: 100%;
-  height: auto;
+/* Desktop/tablet-wide: 16:9. Mobile ≤820 — fit-grid в @media выше (без простыни). */
+@media (min-width: 821px) {
+  .ting-stage.g2 > .ting-tile,
+  .ting-stage.g3 > .ting-tile,
+  .ting-stage.g4 > .ting-tile,
+  .ting-stage.g6 > .ting-tile,
+  .ting-stage.g9 > .ting-tile,
+  .ting-stage.g10 > .ting-tile,
+  .ting-stage.g12 > .ting-tile {
+    aspect-ratio: 16 / 9;
+    min-height: 0;
+    width: 100%;
+    height: auto;
+  }
 }
 /* ??????: ??????? ???? ?????? 16:9 ? ??????? ??????? ? ??????.
    container-type ??????c?, ????? ??????? ?????? ?? ? ??????, ? ?????? ??????? ?
@@ -1317,15 +1375,14 @@ body.ting-guest .ting-card,
   overflow: hidden;
   background: var(--ting-preview-bg);
   border: 1px solid rgba(255,255,255,.06);
-  animation: ting-tile-in .35s ease both;
-  /* Плавная смена подсветки спикера: без transition кольцо вспыхивало
-     рывком при каждом переключении (D-180). */
+  /* Enter: только .is-enter (~200ms), см. ниже. */
   transition: border-color .28s ease, box-shadow .28s ease;
 }
-@keyframes ting-tile-in {
-  from { opacity: 0; transform: scale(.985); }
-  to { opacity: 1; transform: scale(1); }
+.ting-tile video.is-cam-off {
+  opacity: 0;
+  pointer-events: none;
 }
+.ting-tile.cam-off video { opacity: 0; pointer-events: none; }
 .ting-tile::after {
   content: "";
   position: absolute; left: 0; right: 0; bottom: 0; height: 42%;
@@ -1335,16 +1392,11 @@ body.ting-guest .ting-card,
 /* Кольцо спикера — через box-shadow, а не outline: outline не анимируется
    и давал резкий скачок рамки. Пульсация мягче и медленнее. */
 .ting-tile.speak {
-  border-color: rgba(212,168,67,.8);
+  border-color: rgba(212,168,67,.72);
   box-shadow:
-    0 0 0 2px rgba(212,168,67,.55),
-    0 0 30px rgba(212,168,67,.32),
-    inset 0 0 0 1px rgba(212,168,67,.22);
-  animation: ting-speak-pulse 2.4s ease-in-out infinite;
-}
-@keyframes ting-speak-pulse {
-  0%, 100% { box-shadow: 0 0 0 2px rgba(212,168,67,.45), 0 0 24px rgba(212,168,67,.26); }
-  50% { box-shadow: 0 0 0 2px rgba(212,168,67,.62), 0 0 34px rgba(212,168,67,.38); }
+    0 0 0 1px rgba(212,168,67,.45),
+    0 0 16px rgba(212,168,67,.18);
+  /* Тонкая золотая обводка, без infinite pulse. */
 }
 .ting-lobby-hero .ting-preview {
   min-height: 220px;
@@ -1402,17 +1454,30 @@ body.ting-guest .ting-card,
 .ting-stage.speaker .ting-tile.is-pip {
   position: absolute;
   right: 14px;
-  bottom: 14px;
+  /* Выше dock (~88px) — иначе PiP под кнопками (T-LAY-01). */
+  bottom: calc(var(--ting-dock-h, 88px) + 12px + env(safe-area-inset-bottom, 0px));
   width: clamp(140px, 22%, 240px);
   height: auto;
   aspect-ratio: 4 / 3;
   min-height: 0;
   max-height: none;
-  z-index: 4;
+  z-index: 8;
   border-radius: 14px;
   cursor: pointer;
   box-shadow: 0 10px 32px rgba(0,0,0,.5);
   border: 1px solid rgba(255,255,255,.16);
+  transition: width .22s ease-out, height .22s ease-out, right .22s ease-out, bottom .22s ease-out,
+    border-radius .22s ease-out, box-shadow .22s ease-out;
+}
+.ting-stage.speaker > .ting-tile:not(.is-pip) {
+  transition: width .22s ease-out, height .22s ease-out, border-radius .22s ease-out;
+}
+.ting-tile.is-enter {
+  animation: ting-tile-enter .2s ease-out both;
+}
+@keyframes ting-tile-enter {
+  from { opacity: 0; transform: scale(.96); }
+  to { opacity: 1; transform: scale(1); }
 }
 .ting-tile.is-pip .ting-tile-ph { border-radius: 13px; }
 .ting-tile.is-swappable { cursor: pointer; }
@@ -1479,9 +1544,7 @@ body.ting-guest .ting-card,
   position: absolute; left: 10px; bottom: 10px; z-index: 3;
   display: flex; align-items: center; gap: 6px;
   font-size: 12px; font-weight: 700; color: rgba(255,255,255,.96);
-  background: rgba(8,10,14,.38);
-  backdrop-filter: blur(16px) saturate(1.2);
-  -webkit-backdrop-filter: blur(16px) saturate(1.2);
+  background: rgba(0,0,0,.55);
   border: 1px solid rgba(255,255,255,.14);
   box-shadow: 0 4px 14px rgba(0,0,0,.28), inset 0 1px 0 rgba(255,255,255,.08);
   padding: 6px 12px; border-radius: 14px;
@@ -1523,9 +1586,7 @@ body.ting-guest .ting-card,
     0 8px 24px rgba(0,0,0,.35),
     inset 0 1px 0 rgba(255,255,255,.12),
     inset 0 -1px 0 rgba(0,0,0,.25);
-  backdrop-filter: blur(40px) saturate(1.45);
-  -webkit-backdrop-filter: blur(40px) saturate(1.45);
-  /* hit-target: buttons above scrollport chrome (Playwright + thin mobile) */
+  /* Без тяжёлого backdrop-filter — иначе GPU thrash над video на каждом кадре. */
   isolation: isolate;
 }
 .ting-dock-cap,
@@ -1546,12 +1607,15 @@ body.ting-guest .ting-card,
   width: clamp(44px, 11.5vw, 52px); height: clamp(44px, 11.5vw, 52px); border-radius: 50%; border: 0;
   background: rgba(255,255,255,.1); color: var(--ting-on-media);
   cursor: pointer; display: grid; place-items: center;
-  transition: background .15s ease, transform .15s ease, color .15s ease, box-shadow .15s ease;
+  transition: background .15s ease, transform .12s ease, color .15s ease, box-shadow .15s ease;
+}
+.ting-dock-btn:active {
+  transform: scale(0.97);
 }
 @media (hover: hover) {
   .ting-dock-btn:hover {
     background: rgba(255,255,255,.18);
-    transform: translateY(-2px) scale(1.05);
+    transform: translateY(-1px) scale(1.03);
   }
 }
 .ting-dock-btn svg { width: 22px; height: 22px; }
@@ -1588,13 +1652,15 @@ body.ting-guest .ting-card,
   box-shadow: -12px 0 40px rgba(0,0,0,.28);
   backdrop-filter: blur(22px) saturate(1.2);
   -webkit-backdrop-filter: blur(22px) saturate(1.2);
-  transform: translateX(105%);
-  transition: transform .28s cubic-bezier(.22,.61,.36,1);
+  transform: translateX(calc(100% + 16px));
+  transition: transform .28s cubic-bezier(.22,.61,.36,1), visibility .28s;
   pointer-events: none;
+  visibility: hidden;
 }
 .ting-chat.open {
   transform: translateX(0);
   pointer-events: auto;
+  visibility: visible;
 }
 .ting-chat-head {
   padding: 16px 16px 12px; font-weight: 800; font-size: 15px;
@@ -1911,14 +1977,18 @@ body.ting-guest .ting-card,
   }
   .ting-chat {
     position: fixed; inset: 0;
-    z-index: 8; transform: translateX(100%);
-    transition: transform .22s ease;
+    z-index: 8; transform: translateX(calc(100% + 12px));
+    transition: transform .22s ease, visibility .22s ease;
     border-left: 0;
     width: 100%;
     max-width: none;
     box-shadow: none;
+    visibility: hidden;
   }
-  .ting-chat.open { transform: translateX(0); }
+  .ting-chat.open {
+    transform: translateX(0);
+    visibility: visible;
+  }
   .ting-room-main.has-people .ting-stage-wrap { padding-right: 0; padding-bottom: 0; }
   .ting-people-drawer {
     position: fixed; inset: 0;
@@ -1929,13 +1999,39 @@ body.ting-guest .ting-card,
   .ting-dock-cap span { display: none; }
   .ting-dock-sep { margin: 2px 4px 8px; }
   .ting-page .ting-wrap { padding-bottom: 48px; }
-  .ting-stage.g2,
+  /* Повтор mobile ≤820: строго 16:9 + скролл (не сжимать fr-строками) */
+  .ting-stage.g2 { grid-template-columns: minmax(0, 1fr); grid-template-rows: none; }
   .ting-stage.g3,
   .ting-stage.g4,
   .ting-stage.g6,
   .ting-stage.g9,
   .ting-stage.g10,
-  .ting-stage.g12 { grid-template-columns: 1fr; grid-template-rows: none; }
+  .ting-stage.g12 {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-rows: none;
+    grid-auto-rows: min-content;
+    height: auto;
+    max-height: 100%;
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    align-content: start;
+    overflow-x: hidden;
+    overflow-y: auto;
+  }
+  .ting-stage.g3 > .ting-tile,
+  .ting-stage.g4 > .ting-tile,
+  .ting-stage.g6 > .ting-tile,
+  .ting-stage.g9 > .ting-tile,
+  .ting-stage.g10 > .ting-tile,
+  .ting-stage.g12 > .ting-tile {
+    aspect-ratio: 16 / 9;
+    height: auto !important;
+    width: 100%;
+    min-width: 0;
+    min-height: 0 !important;
+    overflow: hidden;
+  }
   .ting-ready-foot { flex-direction: column; text-align: center; }
   .ting-count-chip { font-size: 11px; padding: 6px 10px; }
   .ting-call-row .ting-btn { padding: 8px 12px; min-height: 40px; font-size: 13px; }

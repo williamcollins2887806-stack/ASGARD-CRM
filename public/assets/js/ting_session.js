@@ -14,15 +14,17 @@
   let connectSeq = 0;
   let micOn = true;
   let camOn = true;
+  let camDesired = true;
   let tingMicWasOn = true;
   let phoneForcedMute = false;
   let timerId = null;
   let timerSec = 0;
   let videoPaused = false;
   let activeSpeakerId = null;
+  let lastToken = null;
+  let spkTimer = null;
 
   function emit(type, detail) {
-    const set = listeners.get(type) || listeners.get('*');
     const payload = Object.assign({ type: type }, detail || {});
     (listeners.get(type) || new Set()).forEach((fn) => {
       try { fn(payload); } catch (e) { console.error('[TingSession]', type, e); }
@@ -53,11 +55,26 @@
       meta: meta,
       micOn: micOn,
       camOn: camOn,
+      camDesired: camDesired,
       timerSec: timerSec,
       videoPaused: videoPaused,
       phoneForcedMute: phoneForcedMute,
       activeSpeakerId: activeSpeakerId
     };
+  }
+
+  function storeToken(tok) {
+    if (tok) lastToken = tok;
+  }
+
+  function getLastToken() {
+    return lastToken;
+  }
+
+  function syncCamFlag(on) {
+    camOn = !!on;
+    camDesired = !!on;
+    emit('media', { micOn: micOn && !phoneForcedMute, camOn: camOn });
   }
 
   function loadLk() {
@@ -123,12 +140,7 @@
       if (Ev.LocalTrackPublished) lkRoom.on(Ev.LocalTrackPublished, bump);
       if (Ev.LocalTrackUnpublished) lkRoom.on(Ev.LocalTrackUnpublished, bump);
 
-      /* D-181: PiP должен показывать того, кто ГОВОРИТ, как в Телемосте.
-         Раньше активный спикер не эмитился в сессию, и мини-окно навсегда
-         застревало на первом участнике с видео — «вижу всех» не работало.
-         Гистерезис как в комнате: не дёргаем PiP на каждый шорох. */
       if (Ev.ActiveSpeakersChanged) {
-        let spkTimer = null;
         lkRoom.on(Ev.ActiveSpeakersChanged, (speakers) => {
           const next = (speakers && speakers[0] && speakers[0].identity) || null;
           if (spkTimer) clearTimeout(spkTimer);
@@ -139,13 +151,40 @@
           }, activeSpeakerId ? 900 : 400);
         });
       }
+
+      if (Ev.Reconnecting) {
+        lkRoom.on(Ev.Reconnecting, () => emit('reconnecting', {}));
+      }
+      if (Ev.Reconnected) {
+        lkRoom.on(Ev.Reconnected, () => emit('reconnected', {}));
+      }
+      lkRoom.on(Ev.Disconnected, () => {
+        if (room !== lkRoom) return;
+        room = null;
+        stopTimer();
+        if (spkTimer) { clearTimeout(spkTimer); spkTimer = null; }
+        syncChrome();
+        document.body.classList.remove('ting-live');
+        emit('left', { reason: 'disconnected' });
+      });
     } catch (_) { /* */ }
   }
 
   function adoptRoom(lkRoom, info) {
+    if (room && room !== lkRoom) {
+      try { room.disconnect(); } catch (_) { /* */ }
+      room = null;
+    }
     room = lkRoom;
     meta = Object.assign({ startedAt: Date.now() }, info || {});
     connecting = false;
+    try {
+      if (room && room.localParticipant) {
+        camOn = room.localParticipant.isCameraEnabled === true;
+        camDesired = camOn;
+        micOn = room.localParticipant.isMicrophoneEnabled !== false;
+      }
+    } catch (_) { /* */ }
     wireRoomEvents(lkRoom);
     if (!timerId) startTimer();
     syncChrome();
@@ -157,7 +196,6 @@
     if (connecting) return getState();
     if (room && meta && meta.slug === opts.slug) return getState();
 
-    // Audio-policy: block mic/cam join while PBX in-call (listen-only only if explicit)
     const phone = global.AsgardPhone;
     const pst = phone && typeof phone.getState === 'function' ? String(phone.getState()) : '';
     const phoneBusy = ['ringing', 'in_call', 'held'].indexOf(pst) >= 0;
@@ -178,7 +216,6 @@
         try { await room.disconnect(); } catch (_) {}
         room = null;
       }
-      /* Десктоп: adaptiveStream выкл — иначе low-слой и пиксели при нормальном канале. */
       const narrow = typeof window !== 'undefined' && window.innerWidth <= 820;
       const roomOpts = { dynacast: true, adaptiveStream: narrow ? { pixelDensity: 2 } : false };
       try {
@@ -187,11 +224,13 @@
           if (LK.VideoPresets.h180) layers.push(LK.VideoPresets.h180);
           if (LK.VideoPresets.h360) layers.push(LK.VideoPresets.h360);
           roomOpts.publishDefaults = {
+            simulcast: true,
             videoSimulcastLayers: layers,
             videoEncoding: (LK.VideoPresets.h720 && LK.VideoPresets.h720.encoding) || undefined
           };
         }
       } catch (_) { /* */ }
+      if (opts.token) storeToken({ token: opts.token, url: opts.url, expires_at: opts.expires_at });
       const next = new LK.Room(roomOpts);
       await next.connect(opts.url, opts.token);
       if (seq !== connectSeq) {
@@ -210,11 +249,29 @@
       };
       micOn = opts.listenOnly ? false : opts.micOn !== false;
       camOn = opts.listenOnly ? false : opts.camOn !== false;
+      camDesired = camOn;
       tingMicWasOn = micOn;
       try {
         await next.localParticipant.setMicrophoneEnabled(micOn);
-        await next.localParticipant.setCameraEnabled(camOn);
-      } catch (_) {}
+        /* T-SESS-01: тот же publish-путь, что CRM page (AsgardTing.enableLocalCamera). */
+        if (camOn) {
+          const pub = global.AsgardTing && typeof global.AsgardTing.enableLocalCamera === 'function'
+            ? global.AsgardTing.enableLocalCamera
+            : null;
+          if (pub) {
+            await pub(next);
+            camOn = next.localParticipant.isCameraEnabled === true;
+          } else {
+            await next.localParticipant.setCameraEnabled(true);
+            camOn = next.localParticipant.isCameraEnabled === true;
+          }
+        } else {
+          await next.localParticipant.setCameraEnabled(false);
+          camOn = false;
+        }
+      } catch (_) {
+        try { camOn = next.localParticipant.isCameraEnabled === true; } catch (__) { /* */ }
+      }
       connecting = false;
       wireRoomEvents(next);
       startTimer();
@@ -232,6 +289,7 @@
     connectSeq += 1;
     connecting = false;
     stopTimer();
+    if (spkTimer) { clearTimeout(spkTimer); spkTimer = null; }
     const r = room;
     room = null;
     meta = null;
@@ -256,13 +314,19 @@
   }
 
   async function setCamEnabled(on) {
-    /* D-183: синхронизируем флаг с LiveKit, а не с нашим представлением.
-       Иначе выключение в комнате не доходило до сессии, и камера
-       «сама включалась» при любом следующем действии. */
+    camDesired = !!on;
     if (room && room.localParticipant) {
       const target = !!on;
       try {
-        await room.localParticipant.setCameraEnabled(target && !videoPaused);
+        if (target) {
+          const pub = global.AsgardTing && typeof global.AsgardTing.enableLocalCamera === 'function'
+            ? global.AsgardTing.enableLocalCamera
+            : null;
+          if (pub) await pub(room);
+          else await room.localParticipant.setCameraEnabled(true);
+        } else {
+          await room.localParticipant.setCameraEnabled(false);
+        }
         camOn = room.localParticipant.isCameraEnabled === true;
       } catch (_) {
         camOn = room.localParticipant.isCameraEnabled === true;
@@ -274,6 +338,10 @@
     emit('media', { micOn: micOn && !phoneForcedMute, camOn: camOn });
   }
 
+  /**
+   * Visibility: не глушим локальную камеру (как Телемост).
+   * Remote video — только setEnabled, без detach (иначе PiP/stage чернеют).
+   */
   async function pauseRemoteVideo(pause) {
     videoPaused = !!pause;
     if (!room) return;
@@ -282,21 +350,9 @@
         p.trackPublications.forEach((pub) => {
           if (pub.kind === 'video' || (pub.track && pub.track.kind === 'video')) {
             if (typeof pub.setEnabled === 'function') pub.setEnabled(!videoPaused);
-            else if (pub.track && typeof pub.track.detach === 'function' && videoPaused) {
-              pub.track.detach();
-            }
           }
         });
       });
-      if (room.localParticipant) {
-        /* D-183: камера сама включалась. Источник истины — фактическое
-           состояние публикации LiveKit, а не локальный флаг (он расходился
-           с комнатой: выключил камеру в доке, а здесь осталось camOn=true,
-           и на следующем событии камера включалась обратно). */
-        const reallyOn = room.localParticipant.isCameraEnabled === true;
-        camOn = reallyOn;
-        await room.localParticipant.setCameraEnabled(reallyOn && !videoPaused);
-      }
     } catch (_) {}
     emit('visibility', { videoPaused: videoPaused });
   }
@@ -354,6 +410,9 @@
     on: on,
     setMicEnabled: setMicEnabled,
     setCamEnabled: setCamEnabled,
+    syncCamFlag: syncCamFlag,
+    storeToken: storeToken,
+    getLastToken: getLastToken,
     pauseRemoteVideo: pauseRemoteVideo,
     syncChrome: syncChrome,
     /** @deprecated use leave */

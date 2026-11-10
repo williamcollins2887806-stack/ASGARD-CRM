@@ -406,6 +406,7 @@
     opts = opts || {};
     const wrap = document.createElement('div');
     wrap.className = 'hg-ting-tile' + (opts.primary ? ' is-primary' : '') + (opts.inset ? ' is-inset' : '');
+    if (participant && participant.identity) wrap.setAttribute('data-id', participant.identity);
     const label = participantLabel(participant, !!opts.local);
     if (track && track.kind === 'video') {
       const v = document.createElement('video');
@@ -441,7 +442,6 @@
 
   function paintStage(el) {
     if (!el) return;
-    el.innerHTML = '';
     const S = global.TingSession;
     const room = S && S.getRoom && S.getRoom();
     if (!room) {
@@ -454,8 +454,7 @@
 
     let primary = remotes[0] || local;
     let primaryTrack = pickVideoTrack(primary);
-    /* D-181: приоритет — активный спикер (как в Телемосте), иначе первый с видео.
-       Раньше PiP навсегда застревал на первом участнике с видео. */
+    /* D-181: приоритет — активный спикер (как в Телемосте), иначе первый с видео. */
     const activeId = S && S.getState ? S.getState().activeSpeakerId : null;
     if (activeId) {
       if (local && local.identity === activeId) {
@@ -473,6 +472,40 @@
       });
     }
 
+    const wantPrimary = primary && primary.identity;
+    const wantInset = (primary !== local && local)
+      ? local.identity
+      : (remotes.length && primary === local && remotes[0] ? remotes[0].identity : null);
+
+    /* Soft swap: не innerHTML='' на каждом speaker (T-PIP-01). PiP всегда ≤2. */
+    const existing = Array.from(el.querySelectorAll('.hg-ting-tile'));
+    const byId = {};
+    existing.forEach((t) => {
+      const id = t.getAttribute('data-id');
+      if (id) byId[id] = t;
+    });
+    const havePrimary = wantPrimary && byId[wantPrimary];
+    const haveInset = !wantInset || byId[wantInset];
+    if (havePrimary && haveInset) {
+      while (el.firstChild) el.removeChild(el.firstChild);
+      el.appendChild(byId[wantPrimary]);
+      byId[wantPrimary].classList.add('is-primary');
+      byId[wantPrimary].classList.remove('is-inset');
+      if (wantInset && byId[wantInset] && wantInset !== wantPrimary) {
+        byId[wantInset].classList.add('is-inset');
+        byId[wantInset].classList.remove('is-primary');
+        el.appendChild(byId[wantInset]);
+      }
+      /* Лишние плитки (если были) — убрать из DOM без recreate primary/inset. */
+      Object.keys(byId).forEach((id) => {
+        if (id !== wantPrimary && id !== wantInset) {
+          try { byId[id].remove(); } catch (_) { /* */ }
+        }
+      });
+      return;
+    }
+
+    el.innerHTML = '';
     el.appendChild(makeTileEl(primary, primaryTrack, {
       primary: true,
       local: primary === local
@@ -491,9 +524,19 @@
     else ensurePip();
   }
 
+  function onTingPage() {
+    try {
+      return (location.hash || '').indexOf('#/ting') === 0;
+    } catch (_) {
+      return false;
+    }
+  }
+
   function ensurePip() {
     const S = global.TingSession;
     if (!S || !S.isActive()) { closePip(); return; }
+    /* PiP только вне модуля Тинга — иначе мини-окно поверх своей же комнаты. */
+    if (onTingPage()) { closePip(); return; }
     if (pipEl && document.body.contains(pipEl)) {
       syncPipPark();
       paintStage(pipEl.querySelector('#hgTingPipVid'));
@@ -579,26 +622,50 @@
     handle.addEventListener('pointerup', onUp);
   }
 
+  function syncPipMediaIcons() {
+    if (!pipEl || !document.body.contains(pipEl)) return;
+    const S = global.TingSession;
+    const st = S ? S.getState() : {};
+    const micBtn = pipEl.querySelector('[data-pip="mic"]');
+    if (micBtn) {
+      const micLive = !!(st.micOn && !st.phoneForcedMute);
+      micBtn.innerHTML = micLive ? SVG.mic : SVG.micOff;
+      micBtn.classList.toggle('is-off', !micLive);
+    }
+  }
+
   function onSessionEvent(ev) {
     const d = ev.detail || {};
     if (d.type === 'tick' && pipEl) {
       const t = pipEl.querySelector('#hgTingPipTimer');
       if (t) t.textContent = fmtTimer(d.timerSec);
     }
-    if (!mounted) return;
-    if (d.type === 'tick') {
-      const t = panelHost && panelHost.querySelector('#hgTingTimer');
-      if (t) t.textContent = fmtTimer(d.timerSec);
-      return;
-    }
-    if (d.type === 'connected' || d.type === 'media' || d.type === 'phone-busy' || d.type === 'phone-free') {
-      paintCompact();
-      if (pipEl) paintStage(pipEl.querySelector('#hgTingPipVid'));
+    /* PiP живёт без mountPanel / dock-tab ting. */
+    if (d.type === 'connected') {
+      if (!onTingPage()) ensurePip();
+      else closePip();
+    } else if (d.type === 'media' || d.type === 'phone-busy' || d.type === 'phone-free' || d.type === 'visibility') {
+      syncPipMediaIcons();
+      if (pipEl && d.type === 'visibility' && !d.videoPaused) {
+        paintStage(pipEl.querySelector('#hgTingPipVid'));
+      }
+      if (mounted) {
+        /* Только иконки/таймер — не полный rebuild на mute. */
+        const micBtn = panelHost && panelHost.querySelector('[data-ting-ctl="mic"]');
+        const camBtn = panelHost && panelHost.querySelector('[data-ting-ctl="cam"]');
+        const S = global.TingSession;
+        const st = S ? S.getState() : {};
+        if (micBtn) {
+          const micLive = !!(st.micOn && !st.phoneForcedMute);
+          micBtn.innerHTML = micLive ? SVG.mic : SVG.micOff;
+          micBtn.classList.toggle('is-off', !micLive);
+        }
+        if (camBtn) {
+          camBtn.innerHTML = st.camOn ? SVG.cam : SVG.camOff;
+          camBtn.classList.toggle('is-off', !st.camOn);
+        }
+      }
     } else if (d.type === 'speaker') {
-      /* D-181: смена говорящего — мини-окно переключается на него.
-         Перерисовываем ТОЛЬКО если он реально сменился и окно на экране:
-         иначе на каждом шорохе пересоздавались видео-элементы и картинка
-         мигала (стабильность важнее мгновенной реакции). */
       if (!pipEl || !document.body.contains(pipEl)) {
         if (mounted) paintCompact();
         return;
@@ -608,12 +675,19 @@
       if (shown === next) return;
       pipEl.setAttribute('data-speaker', next);
       paintStage(pipEl.querySelector('#hgTingPipVid'));
-      if (mounted) paintCompact();
     } else if (d.type === 'left') {
       closePip();
-      paintIdle();
+      if (mounted) paintIdle();
+    }
+    if (!mounted) return;
+    if (d.type === 'tick') {
+      const t = panelHost && panelHost.querySelector('#hgTingTimer');
+      if (t) t.textContent = fmtTimer(d.timerSec);
     }
   }
+
+  /* Глобальный listener: PiP работает без вкладки ting в доке. */
+  document.addEventListener('ting-session', onSessionEvent);
 
   function onDockLayout(ev) {
     const d = ev && ev.detail;
@@ -639,7 +713,6 @@
     unmountPanel();
     panelHost = panelEl;
     mounted = true;
-    document.addEventListener('ting-session', onSessionEvent);
     paintIdle();
     refreshLists();
     startListPoll();
@@ -648,7 +721,6 @@
   function unmountPanel() {
     mounted = false;
     stopListPoll();
-    document.removeEventListener('ting-session', onSessionEvent);
     panelHost = null;
   }
 

@@ -128,6 +128,7 @@
         <button type="button" class="ttv-dock-btn danger" id="btnLeave" title="Выйти" aria-label="Выйти"></button>
       </div>
     </div>
+    <button type="button" class="ttv-btn ttv-audio-unlock hidden" id="btnAudioUnlock">Включить звук</button>
   </div>
 
   <div id="ttvToast" class="ttv-toast hidden" role="status" aria-live="polite"></div>
@@ -193,10 +194,9 @@
     el.classList.remove('is-idle');
     if (dockIdleTimer) clearTimeout(dockIdleTimer);
     if (state.view !== 'room') return;
-    /* Не прячем, пока фокус на кнопке дока — иначе «прыгает» под пальцем. */
+    /* Канон: по таймауту всегда hide — даже если фокус на кнопке дока.
+       Иначе D-pad вечно перезводит таймер и док залипает. */
     dockIdleTimer = setTimeout(function () {
-      var active = document.activeElement;
-      if (active && el.contains(active)) { showDock(); return; }
       if (state.view !== 'room') return;
       hideDock();
     }, DOCK_IDLE_MS);
@@ -209,6 +209,8 @@
     var active = document.activeElement;
     if (active && el.contains(active)) {
       try { active.blur(); } catch (_) { /* */ }
+      var sentinel = qs('btnPeople');
+      if (sentinel) try { sentinel.focus(); } catch (_) { /* */ }
     }
   }
 
@@ -296,6 +298,16 @@
       var el = qs(pair[0]);
       if (el && typeof pair[1] === 'function') el.innerHTML = pair[1]() || '';
     });
+    var mic = qs('btnMic');
+    if (mic) {
+      mic.classList.toggle('active', !!state.micOn);
+      mic.classList.toggle('off', !state.micOn);
+    }
+    var cam = qs('btnCam');
+    if (cam) {
+      cam.classList.toggle('active', !!state.camOn);
+      cam.classList.toggle('off', !state.camOn);
+    }
   }
   function syncPreviewAvatar() {
     var av = qs('previewAvatar');
@@ -618,75 +630,275 @@
       var fb = tile.querySelector('.ttv-av-fallback');
       if (fb) fb.style.display = 'none';
     }
-    relayout();
+  }
+
+  function findScreenShareId(room) {
+    if (!room) return null;
+    var found = null;
+    room.remoteParticipants.forEach(function (p) {
+      if (found || !p.videoTrackPublications) return;
+      var pubs = Array.from(p.videoTrackPublications.values());
+      for (var i = 0; i < pubs.length; i++) {
+        var pub = pubs[i];
+        if (!pub || !pub.track) continue;
+        if (/screen/i.test(String(pub.source || ''))) {
+          found = p.identity;
+          return;
+        }
+      }
+    });
+    return found;
+  }
+
+  function syncOverflowTile(strip, n) {
+    if (!strip) return;
+    var el = strip.querySelector('[data-id="__overflow"]');
+    if (n <= 0) {
+      if (el) el.remove();
+      return;
+    }
+    if (!el) {
+      el = document.createElement('div');
+      el.className = 'ttv-tile ttv-overflow';
+      el.setAttribute('data-id', '__overflow');
+      el.innerHTML = '<div class="ttv-av-fallback">+' + n + '</div>' +
+        '<div class="ttv-lbl">ещё ' + n + '</div>';
+      strip.appendChild(el);
+    } else {
+      var fb = el.querySelector('.ttv-av-fallback');
+      var lbl = el.querySelector('.ttv-lbl');
+      if (fb) fb.textContent = '+' + n;
+      if (lbl) lbl.textContent = 'ещё ' + n;
+    }
+  }
+
+  function hallModeFor(R, screenId) {
+    if (screenId) return 'share';
+    if (R <= 0) return 'wait';
+    if (R === 1) return 'spot';
+    if (R === 2) return 'dual';
+    if (R <= 7) return 'spot-rail';
+    if (R <= 9) return 'g3';
+    if (R <= 12) return 'g4';
+    return 'g5';
   }
 
   function relayout() {
     var stage = qs('stage');
     var strip = qs('filmstrip');
+    var wrap = stage && stage.parentElement;
     if (!stage || !state.room) return;
-    var ids = [];
     var local = state.room.localParticipant;
-    if (local) ids.push(local.identity);
-    state.room.remoteParticipants.forEach(function (p) { ids.push(p.identity); });
-    var count = Math.max(1, ids.length);
-    var speakerId = state.activeSpeakerId && ids.indexOf(state.activeSpeakerId) >= 0
+    var localId = local && local.identity;
+    var remoteIds = [];
+    state.room.remoteParticipants.forEach(function (p) { remoteIds.push(p.identity); });
+    var R = remoteIds.length;
+    var screenId = findScreenShareId(state.room);
+    var speakerId = state.activeSpeakerId && remoteIds.indexOf(state.activeSpeakerId) >= 0
       ? state.activeSpeakerId
-      : (ids.filter(function (id) { return id !== (local && local.identity); })[0] || ids[0]);
+      : (remoteIds[0] || null);
+    var mode = hallModeFor(R, screenId);
+    var mainId = null;
+    if (mode === 'share') mainId = screenId;
+    else if (mode === 'spot' || mode === 'spot-rail') mainId = speakerId;
+    else if (mode === 'wait') mainId = localId;
 
-    if (count >= 3) {
-      stage.className = 'ttv-stage speaker';
-      if (strip) strip.classList.remove('hidden');
-      /* move non-primary to filmstrip */
-      Array.from(stage.querySelectorAll('.ttv-tile')).forEach(function (tile) {
-        var id = tile.getAttribute('data-id');
-        if (id === speakerId) {
-          if (tile.parentElement !== stage) stage.appendChild(tile);
-        } else if (strip) {
-          strip.appendChild(tile);
-        }
-      });
-    } else {
-      stage.className = 'ttv-stage ' + stageGridClass(count);
-      if (strip) {
-        Array.from(strip.querySelectorAll('.ttv-tile')).forEach(function (tile) { stage.appendChild(tile); });
+    stage.className = 'ttv-stage hall hall-' + mode;
+    if (wrap) wrap.setAttribute('data-hall-mode', mode);
+
+    var useRail = mode === 'spot-rail' || mode === 'share';
+    if (strip) {
+      if (useRail) strip.classList.remove('hidden');
+      else {
         strip.classList.add('hidden');
+        syncOverflowTile(strip, 0);
       }
     }
-    stage.querySelectorAll('.ttv-tile').forEach(function (tile) {
-      tile.classList.toggle('is-speaking', tile.getAttribute('data-id') === state.activeSpeakerId);
-    });
-    if (strip) {
-      strip.querySelectorAll('.ttv-tile').forEach(function (tile) {
-        tile.classList.toggle('is-speaking', tile.getAttribute('data-id') === state.activeSpeakerId);
+
+    var railIds = [];
+    var overflow = 0;
+    if (mode === 'spot-rail') {
+      remoteIds.forEach(function (id) {
+        if (id !== mainId) railIds.push(id);
       });
+    } else if (mode === 'share') {
+      var others = remoteIds.filter(function (id) { return id !== mainId; });
+      others.sort(function (a, b) {
+        if (a === state.activeSpeakerId) return -1;
+        if (b === state.activeSpeakerId) return 1;
+        return 0;
+      });
+      if (others.length > 6) {
+        railIds = others.slice(0, 5);
+        overflow = others.length - 5;
+      } else {
+        railIds = others;
+      }
+    }
+
+    var isGallery = mode === 'dual' || mode === 'g3' || mode === 'g4' || mode === 'g5';
+    Array.from(document.querySelectorAll('.ttv-tile')).forEach(function (tile) {
+      var id = tile.getAttribute('data-id');
+      if (id === '__overflow') return;
+      var isLocal = id === localId;
+      tile.classList.remove('is-main', 'is-self-pip', 'is-gallery', 'is-rail', 'is-parked', 'is-share-main');
+      tile.classList.toggle('is-speaking', id === state.activeSpeakerId);
+
+      if (isLocal) {
+        if (mode === 'wait') {
+          tile.classList.add('is-main');
+        } else {
+          tile.classList.add('is-self-pip');
+        }
+        if (tile.parentElement !== stage) stage.appendChild(tile);
+        return;
+      }
+
+      if (isGallery) {
+        tile.classList.add('is-gallery');
+        if (tile.parentElement !== stage) stage.appendChild(tile);
+        return;
+      }
+
+      if (id === mainId) {
+        tile.classList.add('is-main');
+        if (mode === 'share') tile.classList.add('is-share-main');
+        if (tile.parentElement !== stage) stage.appendChild(tile);
+        return;
+      }
+
+      if (useRail && railIds.indexOf(id) >= 0) {
+        tile.classList.add('is-rail');
+        if (strip && tile.parentElement !== strip) strip.appendChild(tile);
+        return;
+      }
+
+      if (useRail) {
+        tile.classList.add('is-parked');
+        if (strip && tile.parentElement !== strip) strip.appendChild(tile);
+        return;
+      }
+
+      if (tile.parentElement !== stage) stage.appendChild(tile);
+    });
+
+    if (useRail) syncOverflowTile(strip, overflow);
+  }
+
+  function syncMicIconFromRoom(room) {
+    var lp = room && room.localParticipant;
+    if (!lp) return;
+    state.micOn = lp.isMicrophoneEnabled === true;
+    paintIcons();
+  }
+
+  function setAudioUnlockVisible(on) {
+    var b = qs('btnAudioUnlock');
+    if (b) b.classList.toggle('hidden', !on);
+  }
+
+  async function unlockTvAudio(room) {
+    var r = room || state.room;
+    if (!r) return false;
+    try {
+      syncRemoteAudio(r);
+      if (typeof r.startAudio === 'function') await r.startAudio();
+      var can = typeof r.canPlaybackAudio === 'function' ? r.canPlaybackAudio() : true;
+      setAudioUnlockVisible(!can);
+      return !!can;
+    } catch (_) {
+      setAudioUnlockVisible(true);
+      return false;
     }
   }
 
-  function paintAll() {
-    if (!state.room) return;
+  async function publishLocalMic(room) {
+    var lp = room && room.localParticipant;
+    if (!lp) return false;
+    var opts = {};
+    if (state.micDeviceId) opts.deviceId = state.micDeviceId;
+    try {
+      opts.echoCancellation = true;
+      opts.noiseSuppression = true;
+      opts.autoGainControl = true;
+    } catch (_) { /* */ }
+    try {
+      if (state.micOn) {
+        try {
+          await lp.setMicrophoneEnabled(true, Object.keys(opts).length ? opts : undefined);
+        } catch (_) {
+          await lp.setMicrophoneEnabled(true);
+        }
+      } else {
+        await lp.setMicrophoneEnabled(false);
+      }
+    } catch (e) {
+      toast('Микрофон не опубликовался. Нажмите кнопку микрофона ещё раз.');
+      state.micOn = false;
+    }
+    syncMicIconFromRoom(room);
+    return state.micOn;
+  }
+
+  function ensureParticipantTile(p, isLocal) {
+    if (!p || !p.identity) return null;
     var stage = qs('stage');
-    if (stage) stage.innerHTML = '';
-    var strip = qs('filmstrip');
-    if (strip) strip.innerHTML = '';
-    syncRemoteAudio(state.room);
-    function paintP(p, isLocal) {
-      var name = isLocal ? state.displayName : (p.name || p.identity);
-      var vid = Core.pickVideoTrack ? Core.pickVideoTrack(p) : null;
-      var tileId = p.identity;
-      var tile = document.createElement('div');
+    if (!stage) return null;
+    var tileId = p.identity;
+    var name = isLocal ? state.displayName : (p.name || p.identity);
+    var tile = stage.querySelector('[data-id="' + tileId + '"]') ||
+      document.querySelector('#filmstrip [data-id="' + tileId + '"]');
+    if (!tile) {
+      tile = document.createElement('div');
       tile.className = 'ttv-tile' + (state.activeSpeakerId === tileId ? ' is-speaking' : '');
       tile.setAttribute('data-id', tileId);
       tile.innerHTML = '<div class="ttv-av-fallback">' + initials(name).replace(/</g, '') + '</div>' +
         '<div class="ttv-lbl">' + String(name).replace(/</g, '&lt;') + '</div>';
       stage.appendChild(tile);
-      if (vid) attachTrack(vid, tileId, name, isLocal);
+    } else {
+      var lbl = tile.querySelector('.ttv-lbl');
+      if (lbl) lbl.innerHTML = String(name).replace(/</g, '&lt;');
+      var fb = tile.querySelector('.ttv-av-fallback');
+      if (fb && !tile.querySelector('video:not(.is-cam-off)')) {
+        fb.textContent = initials(name).replace(/</g, '');
+      }
     }
-    paintP(state.room.localParticipant, true);
-    state.room.remoteParticipants.forEach(function (p) { paintP(p, false); });
+    var vid = Core.pickVideoTrack ? Core.pickVideoTrack(p) : null;
+    if (vid) attachTrack(vid, tileId, name, isLocal);
+    else {
+      var v = tile.querySelector('video');
+      if (v) v.classList.add('is-cam-off');
+      var fb0 = tile.querySelector('.ttv-av-fallback');
+      if (fb0) fb0.style.display = '';
+    }
+    return tile;
+  }
+
+  function syncRosterTiles() {
+    if (!state.room) return;
+    var seen = {};
+    var local = state.room.localParticipant;
+    if (local && local.identity) {
+      seen[local.identity] = true;
+      ensureParticipantTile(local, true);
+    }
+    state.room.remoteParticipants.forEach(function (p) {
+      if (!p || !p.identity) return;
+      seen[p.identity] = true;
+      ensureParticipantTile(p, false);
+    });
+    Array.from(document.querySelectorAll('.ttv-tile')).forEach(function (tile) {
+      var id = tile.getAttribute('data-id');
+      if (id === '__overflow') return;
+      if (!seen[id]) tile.remove();
+    });
+    syncRemoteAudio(state.room);
     relayout();
     if (state.peopleOpen) renderPeople();
   }
+
+  /* Legacy alias — только полный remount при входе в комнату. */
+  function paintAll() { syncRosterTiles(); }
 
   function startTimer() {
     if (state.timerId) clearInterval(state.timerId);
@@ -730,14 +942,15 @@
     /* Док показываем на входе и запускаем 10-секундный таймер. */
     showDock();
 
-    /* ТВ: большой экран → denser adaptive; publish h720 чтобы ноут мог взять HIGH-слой. */
-    var roomOpts = { adaptiveStream: { pixelDensity: 2 }, dynacast: true };
+    /* ТВ: фиксированный большой стейдж — adaptive выкл (иначе thrash при relayout). */
+    var roomOpts = { adaptiveStream: false, dynacast: true };
     try {
       if (LK.VideoPresets) {
         var layers = [];
         if (LK.VideoPresets.h180) layers.push(LK.VideoPresets.h180);
         if (LK.VideoPresets.h360) layers.push(LK.VideoPresets.h360);
         roomOpts.publishDefaults = {
+          simulcast: true,
           videoSimulcastLayers: layers,
           videoEncoding: (LK.VideoPresets.h720 && LK.VideoPresets.h720.encoding) || undefined
         };
@@ -745,47 +958,160 @@
     } catch (_) { /* */ }
     var next = new LK.Room(roomOpts);
     state.room = next;
-    var bump = function () { syncRemoteAudio(next); paintAll(); };
-    next.on(LK.RoomEvent.TrackSubscribed, function (track) {
-      if (track && track.kind === 'audio') syncRemoteAudio(next);
-      bump();
+    var bumpRoster = function () { syncRosterTiles(); };
+    next.on(LK.RoomEvent.TrackSubscribed, function (track, publication, participant) {
+      if (track && track.kind === 'audio') { syncRemoteAudio(next); return; }
+      if (!participant) { bumpRoster(); return; }
+      var isLocal = !!(next.localParticipant && participant.identity === next.localParticipant.identity);
+      ensureParticipantTile(participant, isLocal);
+      if (track) {
+        attachTrack(track, participant.identity, isLocal ? state.displayName : (participant.name || participant.identity), isLocal);
+      }
+      relayout();
     });
-    next.on(LK.RoomEvent.TrackUnsubscribed, bump);
-    next.on(LK.RoomEvent.TrackMuted, bump);
-    next.on(LK.RoomEvent.TrackUnmuted, bump);
-    next.on(LK.RoomEvent.ParticipantConnected, bump);
-    next.on(LK.RoomEvent.ParticipantDisconnected, bump);
-    if (LK.RoomEvent.LocalTrackPublished) next.on(LK.RoomEvent.LocalTrackPublished, bump);
+    next.on(LK.RoomEvent.TrackUnsubscribed, function (track, publication, participant) {
+      if (track && track.kind === 'audio') { syncRemoteAudio(next); return; }
+      if (participant) {
+        var tile = document.querySelector('.ttv-tile[data-id="' + participant.identity + '"]');
+        if (tile && track && track.kind === 'video') {
+          var still = Core.pickVideoTrack ? Core.pickVideoTrack(participant) : null;
+          if (!still) {
+            var v = tile.querySelector('video');
+            if (v) {
+              try { track.detach(v); } catch (_) { /* */ }
+              v.classList.add('is-cam-off');
+            }
+            var fb = tile.querySelector('.ttv-av-fallback');
+            if (fb) fb.style.display = '';
+          } else {
+            attachTrack(still, participant.identity, participant.name || participant.identity, false);
+          }
+        }
+      }
+      relayout();
+    });
+    next.on(LK.RoomEvent.TrackMuted, function (pub, participant) {
+      syncRemoteAudio(next);
+      if (!participant) return;
+      /* Screen mute ≠ cam-off (T-MUTE-02). */
+      var src = String((pub && pub.source) || '');
+      if (/screen/i.test(src)) return;
+      var tile = document.querySelector('.ttv-tile[data-id="' + participant.identity + '"]');
+      if (!tile) return;
+      var isVid = pub && (pub.kind === 'video' || (pub.track && pub.track.kind === 'video'));
+      if (isVid) {
+        var v = tile.querySelector('video');
+        if (v) v.classList.add('is-cam-off');
+        var fb = tile.querySelector('.ttv-av-fallback');
+        if (fb) fb.style.display = '';
+      }
+    });
+    next.on(LK.RoomEvent.TrackUnmuted, function (pub, participant) {
+      syncRemoteAudio(next);
+      if (!participant) return;
+      var src = String((pub && pub.source) || '');
+      if (/screen/i.test(src)) return;
+      var tile = document.querySelector('.ttv-tile[data-id="' + participant.identity + '"]');
+      if (!tile) return;
+      var isVid = pub && (pub.kind === 'video' || (pub.track && pub.track.kind === 'video'));
+      if (isVid) {
+        var v = tile.querySelector('video');
+        if (v) v.classList.remove('is-cam-off');
+        var fb = tile.querySelector('.ttv-av-fallback');
+        if (fb) fb.style.display = 'none';
+      }
+    });
+    next.on(LK.RoomEvent.ParticipantConnected, bumpRoster);
+    next.on(LK.RoomEvent.ParticipantDisconnected, bumpRoster);
+    /* LocalTrackPublished: audio — без paintAll; video — attach/relayout без полного wipe. */
+    if (LK.RoomEvent.LocalTrackPublished) {
+      next.on(LK.RoomEvent.LocalTrackPublished, function (pub) {
+        syncRemoteAudio(next);
+        syncMicIconFromRoom(next);
+        if (!pub || !pub.track) return;
+        if (pub.track.kind === 'audio') return;
+        var lp = next.localParticipant;
+        var id = lp && lp.identity;
+        if (!id) { bumpRoster(); return; }
+        var tile = document.querySelector('.ttv-tile[data-id="' + id + '"]');
+        if (!tile) { bumpRoster(); return; }
+        attachTrack(pub.track, id, state.displayName, true);
+        syncRosterTiles();
+      });
+    }
+    var tvSpeakerTimer = null;
     if (LK.RoomEvent.ActiveSpeakersChanged) {
       next.on(LK.RoomEvent.ActiveSpeakersChanged, function (speakers) {
-        state.activeSpeakerId = (speakers && speakers[0] && speakers[0].identity) || null;
-        relayout();
-        if (state.peopleOpen) renderPeople();
+        var nextId = (speakers && speakers[0] && speakers[0].identity) || null;
+        document.querySelectorAll('.ttv-tile').forEach(function (tile) {
+          tile.classList.toggle('is-speaking', tile.getAttribute('data-id') === nextId);
+        });
+        if (nextId === state.activeSpeakerId) return;
+        if (tvSpeakerTimer) clearTimeout(tvSpeakerTimer);
+        tvSpeakerTimer = setTimeout(function () {
+          if (state.room !== next) return;
+          state.activeSpeakerId = nextId;
+          relayout();
+          if (state.peopleOpen) renderPeople();
+        }, state.activeSpeakerId ? 1400 : 600);
       });
     }
     next.on(LK.RoomEvent.Disconnected, function () {
       if (state.intentionalLeave) return;
       if (state.room !== next) return;
-      show('ended');
-      qs('endedMeta').textContent = 'Соединение прервано';
+      /* T-TV-01: один цикл reconnect со свежим guest-token (как CRM). */
+      if (state.tvReconnectBusy) return;
+      state.tvReconnectBusy = true;
+      (async function () {
+        try {
+          toast('Переподключение…');
+          var res = await fetch('/api/thing/public/' + encodeURIComponent(state.slug) + '/guest-token', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              name: state.displayName || DEFAULT_NAME,
+              pin: state.pin || undefined,
+              guest_key: guestKey(),
+              tv_hall: true
+            })
+          }).then(function (r) {
+            return r.json().then(function (j) { return { ok: r.ok, j: j }; });
+          });
+          if (!res.ok || !res.j || !res.j.token) throw new Error((res.j && res.j.error) || 'нет токена');
+          state.joinToken = res.j.join_token || state.joinToken;
+          state.identity = res.j.identity || state.identity;
+          state.tvReconnectBusy = false;
+          await enterRoom(res.j);
+          toast('Связь восстановлена');
+        } catch (e) {
+          state.tvReconnectBusy = false;
+          show('ended');
+          qs('endedMeta').textContent = 'Соединение прервано';
+        }
+      })();
     });
 
     await withTimeout(next.connect(creds.url || creds.livekit_url, creds.token), 12000, 'Таймаут подключения');
-    try { if (typeof next.startAudio === 'function') await next.startAudio(); } catch (_) { /* */ }
+    /* Сначала освобождаем device от preview — иначе mic publish на TV = Device in use. */
+    stopPreview();
+    await new Promise(function (r) { setTimeout(r, 400); });
     syncRemoteAudio(next);
-    try {
-      await next.localParticipant.setMicrophoneEnabled(state.micOn);
-    } catch (_) { /* */ }
+    await unlockTvAudio(next);
+    if (LK.RoomEvent && LK.RoomEvent.AudioPlaybackStatusChanged) {
+      next.on(LK.RoomEvent.AudioPlaybackStatusChanged, function () {
+        var can = typeof next.canPlaybackAudio === 'function' ? next.canPlaybackAudio() : true;
+        setAudioUnlockVisible(!can);
+      });
+    }
+    await publishLocalMic(next);
     if (state.camOn) {
       try {
         await enableLocalCamera(next);
       } catch (e) {
         state.camOn = false;
-        stopPreview();
         toast('Камера не включилась. Можно говорить по микрофону.');
       }
     } else {
-      stopPreview();
       try { await next.localParticipant.setCameraEnabled(false); } catch (_) { /* */ }
     }
     paintIcons();
@@ -921,7 +1247,17 @@
     if (state.view === 'room') showDock();
     if (key === 'Escape' || key === 'BrowserBack') {
       if (state.view === 'room' && state.peopleOpen) { setPeopleOpen(false); ev.preventDefault(); return; }
-      if (state.view === 'room') { qs('btnLeave').click(); ev.preventDefault(); return; }
+      /* Первый Back — спрятать док; leave только явной кнопкой «Завершить». */
+      if (state.view === 'room') {
+        var dock = dockEl();
+        if (dock && !dock.classList.contains('is-idle')) {
+          hideDock();
+          ev.preventDefault();
+          return;
+        }
+        ev.preventDefault();
+        return;
+      }
       return;
     }
     if (key !== 'ArrowDown' && key !== 'ArrowUp' && key !== 'ArrowLeft' && key !== 'ArrowRight'
@@ -1020,26 +1356,46 @@
   qs('btnMic').addEventListener('click', async function () {
     if (!state.room) return;
     state.micOn = !state.micOn;
-    try { await state.room.localParticipant.setMicrophoneEnabled(state.micOn); } catch (_) { /* */ }
     paintIcons();
+    await publishLocalMic(state.room);
   });
+  var btnAudioUnlock = qs('btnAudioUnlock');
+  if (btnAudioUnlock) {
+    btnAudioUnlock.addEventListener('click', async function () {
+      await unlockTvAudio(state.room);
+      toast(btnAudioUnlock.classList.contains('hidden') ? 'Звук включён' : 'Нажмите ещё раз или любую кнопку пульта');
+    });
+  }
+  document.addEventListener('keydown', function () {
+    if (state.view !== 'room' || !state.room) return;
+    var b = qs('btnAudioUnlock');
+    if (b && !b.classList.contains('hidden')) unlockTvAudio(state.room);
+  }, true);
   qs('btnCam').addEventListener('click', async function () {
     if (!state.room) return;
     var want = !state.camOn;
     try {
       if (want) {
         await enableLocalCamera(state.room);
-        state.camOn = true;
+        state.camOn = state.room.localParticipant.isCameraEnabled === true;
       } else {
         await state.room.localParticipant.setCameraEnabled(false);
         state.camOn = false;
+        var me = state.room.localParticipant && state.room.localParticipant.identity;
+        var tile = me && document.querySelector('.ttv-tile[data-id="' + me + '"]');
+        if (tile) {
+          var v = tile.querySelector('video');
+          if (v) v.classList.add('is-cam-off');
+          var fb = tile.querySelector('.ttv-av-fallback');
+          if (fb) fb.style.display = '';
+        }
       }
     } catch (e) {
       state.camOn = false;
       toast('Камера не включилась');
     }
     paintIcons();
-    paintAll();
+    relayout();
   });
 
   ensurePreview().then(refreshDevices);
