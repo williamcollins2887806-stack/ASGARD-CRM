@@ -457,7 +457,8 @@ module.exports = async function directorAnalyticsRoutes(fastify) {
           COUNT(DISTINCT t.id) FILTER (WHERE t.registry_status = 'выиграли')::int AS won,
           COUNT(DISTINCT t.id) FILTER (WHERE t.registry_status = 'проиграли')::int AS lost,
           COUNT(DISTINCT t.id) FILTER (WHERE t.registry_status IN ('рассмотрение','готовим','подались'))::int AS active,
-          COALESCE(SUM(COALESCE(t.submission_price, t.tender_price)), 0)::float AS sum,
+          COALESCE(SUM(COALESCE(t.submission_price, t.tender_price))
+                   FILTER (WHERE COALESCE(t.submission_price, t.tender_price) <= 5000000000), 0)::float AS sum,
           -- НМЦК: tender_price пуст у 865 из 1313 тендеров (площадки кладут цену
           -- в submission_price). Без фолбэка директор видел «НМЦК 0 ₽ по 25
           -- процедурам» (жалоба 10.11.2026).
@@ -527,7 +528,8 @@ module.exports = async function directorAnalyticsRoutes(fastify) {
         SELECT
           t.registry_status AS status,
           COUNT(*)::int AS count,
-          COALESCE(SUM(COALESCE(t.submission_price, t.tender_price)), 0)::float AS sum,
+          COALESCE(SUM(COALESCE(t.submission_price, t.tender_price))
+                   FILTER (WHERE COALESCE(t.submission_price, t.tender_price) <= 5000000000), 0)::float AS sum,
           MIN(t.docs_deadline) FILTER (
             WHERE t.docs_deadline IS NOT NULL
               AND t.registry_status IN ('рассмотрение','готовим','подались')

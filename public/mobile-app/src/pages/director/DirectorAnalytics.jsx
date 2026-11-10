@@ -467,7 +467,6 @@ export default function DirectorAnalytics() {
     setListSection(null);
     setDetailOpen(false);
   };
-  void changePeriod;
 
   const openDetail = async (kind, id) => {
     if (id == null) return;
@@ -557,6 +556,23 @@ export default function DirectorAnalytics() {
 
           {view === 'overview' && (
             <>
+              {/* Фильтр периода: локальный для раздела, не влияет на другие экраны.
+                  Без него период был заперт на «месяц», и подпись об аномальной
+                  сумме (она бывает только за всё время) на телефоне недостижима. */}
+              <div className="jp2-periods" role="tablist" aria-label="Период">
+                {PERIODS.map((p) => (
+                  <button
+                    key={p.id}
+                    type="button"
+                    role="tab"
+                    aria-selected={period === p.id}
+                    className={`jp2-period-btn spring-tap${period === p.id ? ' is-on' : ''}`}
+                    onClick={() => changePeriod(p.id)}
+                  >
+                    {p.label}
+                  </button>
+                ))}
+              </div>
               {loading ? (
                 <SkeletonList count={6} />
               ) : error && !overview ? (

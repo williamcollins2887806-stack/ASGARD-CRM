@@ -113,7 +113,16 @@
   white-space: nowrap;
 }
 
-.jp-page .jp2-att-row svg { flex: 0 0 auto; color: var(--t3); opacity: 0.55; }
+/* Шеврон внутри flex-строки не должен раздуваться до размера SVG-фона:
+   без явных размеров браузер брал 300×300 (дефолт), строка «Требует
+   решения» становилась 324 px и выносила факты за фолд (верификатор 10.11). */
+.jp-page .jp2-att-row svg {
+  flex: 0 0 auto;
+  width: 16px;
+  height: 16px;
+  color: var(--t3);
+  opacity: 0.55;
+}
 
 .jp-page .jp2-att-more {
   width: 100%;
@@ -184,7 +193,7 @@
 }
 
 .jp-page .jp2-contour-num.is-hot { color: var(--gold); }
-.jp-page .jp2-contour svg { color: var(--t3); opacity: 0.5; }
+.jp-page .jp2-contour svg { width: 16px; height: 16px; color: var(--t3); opacity: 0.5; }
 
 /* ── Итоги ─────────────────────────────────────────────────────────────── */
 
@@ -218,7 +227,7 @@
     grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr);
     grid-template-areas:
       "hero       attention"
-      "contours   summary";
+      "contours   facts";
     align-items: start;
     column-gap: 40px;
     row-gap: 28px;
@@ -227,7 +236,7 @@
   .jp-page .jp2-hero      { grid-area: hero; }
   .jp-page .jp2-attention { grid-area: attention; }
   .jp-page .jp2-contours  { grid-area: contours; }
-  .jp-page .jp2-summary   { grid-area: summary; }
+  .jp-page .jp2-facts     { grid-area: facts; }
 }
 
 @media (prefers-reduced-motion: reduce) {

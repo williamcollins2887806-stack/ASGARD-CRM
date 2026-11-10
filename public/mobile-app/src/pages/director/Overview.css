@@ -452,3 +452,40 @@
     margin: 0 auto;
   }
 }
+
+/* ── Фильтр периода (локальный для раздела) ─────────────────────────────── */
+
+.jp2-periods {
+  display: flex;
+  gap: 4px;
+  padding: 3px;
+  margin-bottom: 4px;
+  border-radius: 999px;
+  border: 1px solid var(--border-norse);
+  background: color-mix(in srgb, var(--bg-elevated) 80%, transparent);
+}
+
+.jp2-period-btn {
+  flex: 1 1 0;
+  min-width: 0;
+  padding: 8px 6px;
+  border: 0;
+  border-radius: 999px;
+  background: none;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 160ms ease, color 160ms ease;
+}
+
+.jp2-period-btn.is-on {
+  background: color-mix(in srgb, var(--gold) 16%, transparent);
+  color: var(--gold);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .jp2-period-btn { transition: none; }
+}

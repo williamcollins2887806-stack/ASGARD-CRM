@@ -73,13 +73,26 @@ window.AsgardDirectorAnalyticsPage = (function () {
 
   const TENDER_TABS = [
     { id: 'summary', label: 'Сводка' },
-    { id: 'analysis', label: 'Анализ' },
-    { id: 'calc', label: 'Просчёт РП' },
-    { id: 'estimate', label: 'Смета' },
-    { id: 'checklist', label: 'Чек-лист' },
-    { id: 'report', label: 'Отчёт РП' },
+    { id: 'analysis', label: 'Анализ РП' },
+    { id: 'calc', label: 'Просчёт' },
     { id: 'docs', label: 'Документы' }
   ];
+  // Под-навигация внутри вкладок: 8 чипов на узком экране — скролл и поиск.
+  const ANALYSIS_SUBTABS = [
+    { id: 'analysis', label: 'Анализ' },
+    { id: 'checklist', label: 'Чек-лист' },
+    { id: 'report', label: 'Отчёт' }
+  ];
+  const CALC_SUBTABS = [
+    { id: 'calc', label: 'Показатели' },
+    { id: 'estimate', label: 'Смета' },
+    { id: 'mtr', label: 'Бригада и МТР' }
+  ];
+  function subTabsOf(id) {
+    if (id === 'analysis') return ANALYSIS_SUBTABS;
+    if (id === 'calc') return CALC_SUBTABS;
+    return null;
+  }
   const APP_TABS = [
     { id: 'summary', label: 'Сводка' },
     { id: 'estimate', label: 'Просчёт' },
@@ -111,6 +124,7 @@ window.AsgardDirectorAnalyticsPage = (function () {
     listPage: 1,
     modal: null,
     tab: null,
+    subTab: null,
     overview: null,
     tendersByStatus: [],
     appsByStatus: [],
@@ -750,7 +764,7 @@ window.AsgardDirectorAnalyticsPage = (function () {
       const label = x.kind === 'director' ? 'Ждёт вашего решения'
         : x.kind === 'analysis_overdue' ? 'Просрочен анализ'
           : x.kind === 'deadline_soon' ? 'Срок близко' : 'Требует внимания';
-      return '<button type="button" class="jp2-att-row" data-open-item="' + esc(x.section) + '" data-item="' + esc(x.id) + '">' +
+      return '<button type="button" class="jp2-att-row" data-open-item="' + esc(x.section) + '" data-section="' + esc(x.section) + '" data-item="' + esc(x.id) + '">' +
         '<span class="jp2-att-dot' + (x.kind === 'director' ? ' is-hot' : ' is-warm') + '"></span>' +
         '<span class="jp2-att-body">' +
           '<span class="jp2-att-title">' + esc(x.title || x.customer_name || '—') + '</span>' +
@@ -1308,6 +1322,20 @@ window.AsgardDirectorAnalyticsPage = (function () {
 
   /* ── Тела вкладок ─────────────────────────────────────────────────────── */
   function tenderBody(t) {
+    const subs = subTabsOf(state.tab);
+    const activeSub = subs && subs.some((s) => s.id === state.subTab) ? state.subTab : (subs ? subs[0].id : null);
+    const effectiveTab = subs ? activeSub : state.tab;
+    const subNav = subs
+      ? '<div class="jp2-subnav" role="tablist">' +
+        subs.map((s) => '<button type="button" role="tab" data-subtab="' + esc(s.id) + '"' +
+          (activeSub === s.id ? ' class="is-on" aria-selected="true"' : ' aria-selected="false"') + '>' +
+          esc(s.label) + '</button>').join('') +
+        '</div>'
+      : '';
+    return subNav + tenderBodyFor(t, effectiveTab);
+  }
+
+  function tenderBodyFor(t, tab) {
     const st = findStatusMeta('tenders', t.registry_status);
     const dl = t.deadline || t.docs_deadline;
     const est = normalizeEstimate(t.estimate || (t.estimates && t.estimates[0]) || null);
@@ -1318,7 +1346,7 @@ window.AsgardDirectorAnalyticsPage = (function () {
     const workPrice = t.work_price != null ? t.work_price
       : (rp && rp.work_price != null ? rp.work_price : t.price);
 
-    if (state.tab === 'calc') {
+    if (tab === 'calc') {
       if (!rp) {
         return '<div class="empty" style="padding:40px 0">Просчёт РП ещё не создан.</div>';
       }
@@ -1362,7 +1390,7 @@ window.AsgardDirectorAnalyticsPage = (function () {
       return '<div class="split"><div class="split-main">' + main + '</div><div class="split-side">' + side + '</div></div>';
     }
 
-    if (state.tab === 'estimate') {
+    if (tab === 'estimate') {
       if (!est) {
         return '<div class="empty" style="padding:40px 0">Сметы по тендеру нет.</div>';
       }
@@ -1388,11 +1416,11 @@ window.AsgardDirectorAnalyticsPage = (function () {
         '</div><div class="split-side">' + side + '</div></div>';
     }
 
-    if (state.tab === 'analysis') {
+    if (tab === 'analysis') {
       return renderAnalysisTab(t);
     }
 
-    if (state.tab === 'checklist') {
+    if (tab === 'checklist') {
       if (!checklist.length) {
         return '<div class="empty" style="padding:40px 0">Чек-лист анализа пуст.</div>';
       }
@@ -1415,7 +1443,7 @@ window.AsgardDirectorAnalyticsPage = (function () {
         '</div></div>';
     }
 
-    if (state.tab === 'report') {
+    if (tab === 'report') {
       const r = t.report || {};
       let text = r.text || '';
       if (!text && rp && rp.report_json) {
@@ -1443,7 +1471,7 @@ window.AsgardDirectorAnalyticsPage = (function () {
         '</div></div>';
     }
 
-    if (state.tab === 'docs') {
+    if (tab === 'docs') {
       return block('Документы процедуры', docList(docs),
         '<span class="badge neutral">' + docs.length + ' файла</span>');
     }
@@ -1969,6 +1997,7 @@ window.AsgardDirectorAnalyticsPage = (function () {
   async function openSheet(section, itemId) {
     state.modal = { section: section, id: itemId };
     state.tab = (section === 'tenders' ? TENDER_TABS : section === 'applications' ? APP_TABS : WORK_TABS)[0].id;
+    state.subTab = null;
     state.sheetLoading = true;
     const sheet = elSheet();
     const inner = elSheetInner();
@@ -2517,6 +2546,15 @@ window.AsgardDirectorAnalyticsPage = (function () {
         const tabBtn = e.target.closest('[data-tab]');
         if (tabBtn && state.modal) {
           state.tab = tabBtn.getAttribute('data-tab');
+          state.subTab = null;
+          renderModal();
+          const body = elSheet() && elSheet().querySelector('.modal-body');
+          if (body) body.scrollTop = 0;
+          return;
+        }
+        const subBtn = e.target.closest('[data-subtab]');
+        if (subBtn && state.modal) {
+          state.subTab = subBtn.getAttribute('data-subtab');
           renderModal();
           const body = elSheet() && elSheet().querySelector('.modal-body');
           if (body) body.scrollTop = 0;
