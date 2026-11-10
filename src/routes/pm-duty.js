@@ -240,12 +240,15 @@ async function buildSmetaFromStage(db, tenderId, rj) {
   // на проде у ВСЕХ 10 закрытых просчётов `tech_json.mtr = 0`, и ТО видел
   // «Перечень не заполнен» на каждом тендере.
   //
-  // Приоритет: план просчёта → ведомость МТР сессии → предложения анализа.
+  // Приоритет: план просчёта → ведомость МТР сессии → предложения анализа
+  // (и в состоянии сессии, и в отчёте — модель кладёт их в mtr_suggestions).
   const mtr = (() => {
     const fromPlan = Array.isArray(st.calc && st.calc.mtr) ? st.calc.mtr : [];
     if (fromPlan.length) return fromPlan;
     const fromState = Array.isArray(st.mtr) ? st.mtr : [];
     if (fromState.length) return fromState;
+    const fromSuggest = Array.isArray(st.mtr_suggestions) ? st.mtr_suggestions : [];
+    if (fromSuggest.length) return fromSuggest;
     const fromReport = Array.isArray(rj.mtr) ? rj.mtr
       : (Array.isArray(rj.mtr_suggestions) ? rj.mtr_suggestions : []);
     return fromReport;

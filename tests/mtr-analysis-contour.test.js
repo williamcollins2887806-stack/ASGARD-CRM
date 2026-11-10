@@ -89,6 +89,19 @@ check('mapAnalysisEstimateToReport пробрасывает mtr_suggestions', ()
     'mtr_suggestions не пробрасываются в техплан');
 });
 
+check('МТР: mtr_suggestions сохраняются в состоянии анализа', () => {
+  const QS = fs.readFileSync(path.join(ROOT, 'src/routes/tkp_quick.js'), 'utf8');
+  const ST = fs.readFileSync(path.join(ROOT, 'src/services/mimir-tender-stages.js'), 'utf8');
+  assert.ok(/mtr_suggestions: Array\.isArray\(gen\.dv\.mtr_suggestions\)/.test(QS),
+    'этап ДВ не сохраняет mtr_suggestions — в БД их не будет никогда');
+  assert.ok(/out\.mtr_suggestions = Array\.isArray/.test(ST),
+    'normalizeState выбрасывает mtr_suggestions');
+});
+
+check('МТР: смета из анализа читает mtr_suggestions состояния', () => {
+  assert.ok(/st\.mtr_suggestions/.test(PM_DUTY), 'buildSmetaFromStage не смотрит в stage_state.mtr_suggestions');
+});
+
 const failed = results.filter((r) => !r.ok);
 console.log('\nитог: ' + (results.length - failed.length) + ' PASS, ' + failed.length + ' FAIL');
 process.exit(failed.length ? 1 : 0);

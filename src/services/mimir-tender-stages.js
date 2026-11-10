@@ -104,7 +104,7 @@ function canTransition(from, to) {
 }
 
 function emptyState() {
-  return { v: 1, gaps: [], positions: [], calc: { positions: [] }, decision: null };
+  return { v: 1, gaps: [], positions: [], calc: { positions: [] }, decision: null, mtr_suggestions: [] };
 }
 
 /** Приводит stage_state к известной схеме, не теряя лишние поля. */
@@ -116,6 +116,9 @@ function normalizeState(raw) {
   out.positions = Array.isArray(out.positions) ? out.positions : [];
   out.calc = out.calc && typeof out.calc === 'object' ? out.calc : { positions: [] };
   out.calc.positions = Array.isArray(out.calc.positions) ? out.calc.positions : [];
+  // МТР из анализа: без этого поля перечень терялся на записи состояния.
+  out.mtr_suggestions = Array.isArray(out.mtr_suggestions) ? out.mtr_suggestions : [];
+  if (out.calc && !Array.isArray(out.calc.mtr)) out.calc.mtr = [];
   return out;
 }
 

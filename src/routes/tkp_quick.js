@@ -889,6 +889,13 @@ async function routes(fastify, options) {
         competition: gen.dv.competition || null,
         risks: gen.dv.risks || null,
         decision_recommend: gen.dv.decision_recommend || null,
+        // ── МТР: материалы и оборудование ──────────────────────────────────
+        // Модель возвращает их в `mtr_suggestions`, нормализатор их держит,
+        // но раньше state ЭТО поле не сохранял — в БД не было ни у одного
+        // тендера (0 из 10 на 10.11.2026), и вкладка «Бригада и МТР» всегда
+        // показывала «Перечень не заполнен». Сохраняем на этапе ДВ.
+        mtr_suggestions: Array.isArray(gen.dv.mtr_suggestions)
+          ? gen.dv.mtr_suggestions : [],
         questions_for_customer: Array.isArray(gen.dv.questions_for_customer)
           ? gen.dv.questions_for_customer : [],
         // Срок и режим работ — тоже часть анализа, нужны перед просчётом.
