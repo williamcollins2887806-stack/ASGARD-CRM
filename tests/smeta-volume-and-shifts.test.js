@@ -88,8 +88,14 @@ check('смены 2→3 пересчитывают person_shifts и man_hours', 
     `person_shifts не выросли: ${a.totals.person_shifts} → ${b.totals.person_shifts}`);
   assert.ok(b.totals.man_hours > a.totals.man_hours,
     `man_hours не выросли: ${a.totals.man_hours} → ${b.totals.man_hours}`);
-  // 10 сут × 2 см × 5 чел = 100; 10 × 3 × 5 = 150
-  assert.strictEqual(b.totals.person_shifts, 150, 'person_shifts=' + b.totals.person_shifts);
+  // Инвариант: человеко-смены = сумма количеств по строкам секции A
+  // (это те смены, за которые платим в ФОТ). Раньше считали только
+  // рабочих и мастеров, и знаменатель расходился со сметой.
+  const aSum = (est) => est.rows
+    .filter((r) => r.kind === 'line' && r.section === 'A')
+    .reduce((s, r) => s + (Number(r.qty) || 0), 0);
+  assert.strictEqual(b.totals.person_shifts, aSum(b),
+    `person_shifts ${b.totals.person_shifts} ≠ Σ строк A ${aSum(b)}`);
 });
 
 check('явно заданные смены роли перебивают режим объекта', () => {
