@@ -16,8 +16,8 @@
       if (t === 'light' || t === 'dark') document.documentElement.setAttribute('data-theme', t);
     } catch (e) {}
   </script>
-  <link rel="stylesheet" href="/assets/css/design-tokens.css" />
-  <link rel="stylesheet" href="/assets/css/ting.css" />
+  <link rel="stylesheet" href="/assets/css/design-tokens.css?v=20.28.498" />
+  <link rel="stylesheet" href="/assets/css/ting.css?v=20.28.498" />
   <style>
     html, body { margin: 0; min-height: 100%; }
     .hidden { display: none !important; }
@@ -48,10 +48,10 @@
       backdrop-filter: blur(12px);
     }
   </style>
-  <script src="/assets/vendor/livekit-client.umd.min.js"></script>
-  <script src="/assets/js/ting_icons.js"></script>
-  <script src="/assets/js/ting_common.js"></script>
-  <script src="/assets/js/ting_room_core.js"></script>
+  <script src="/assets/vendor/livekit-client.umd.min.js?v=20.28.498"></script>
+  <script src="/assets/js/ting_icons.js?v=20.28.498"></script>
+  <script src="/assets/js/ting_common.js?v=20.28.498"></script>
+  <script src="/assets/js/ting_room_core.js?v=20.28.498"></script>
 </head>
 <body class="ting-guest">
   <div class="g-screen" id="lobby">
@@ -421,6 +421,14 @@
       async function enableLocalCamera(lkRoom) {
         var LK = window.LivekitClient;
         var busyRe = /NotReadable|Device in use|Could not start|AbortError|Permission|Timeout starting video|Timed out|Overconstrained/i;
+        /* 1080p по возможности: на быстром канале 720p-дефолт давал «мыло». */
+        var presetOpts = {};
+        try {
+          if (LK && LK.VideoPresets && LK.VideoPresets.h1080) {
+            presetOpts.resolution = LK.VideoPresets.h1080.resolution;
+            presetOpts.frameRate = LK.VideoPresets.h1080.frameRate || 30;
+          }
+        } catch (_) { /* */ }
         async function tryPublishMst(mst) {
           if (!mst || !LK || mst.readyState !== 'live') return false;
           try { if (mst.muted) mst.enabled = true; } catch (_) { /* */ }
@@ -436,6 +444,13 @@
           var opts = {};
           try {
             if (LK.Track && LK.Track.Source) opts.source = LK.Track.Source.Camera;
+            if (LK.VideoPresets) {
+              var layers = [];
+              if (LK.VideoPresets.h180) layers.push(LK.VideoPresets.h180);
+              if (LK.VideoPresets.h360) layers.push(LK.VideoPresets.h360);
+              if (LK.VideoPresets.h720) layers.push(LK.VideoPresets.h720);
+              if (layers.length) { opts.simulcast = true; opts.videoSimulcastLayers = layers; }
+            }
           } catch (_) { /* */ }
           await withTimeout(lkRoom.localParticipant.publishTrack(localTrack, opts), 8000, 'Timeout starting video source');
           return true;
@@ -455,7 +470,11 @@
         var lastErr = null;
         for (var i = 0; i < 3; i++) {
           try {
-            await withTimeout(lkRoom.localParticipant.setCameraEnabled(true), 9000, 'Timeout starting video source');
+            await withTimeout(
+              lkRoom.localParticipant.setCameraEnabled(true, Object.keys(presetOpts).length ? presetOpts : undefined),
+              9000,
+              'Timeout starting video source'
+            );
             return true;
           } catch (e) {
             lastErr = e;
@@ -463,6 +482,13 @@
             if (!busyRe.test(msg) || i === 2) break;
             await new Promise(function (r) { setTimeout(r, 400 + i * 250); });
           }
+        }
+        /* Камера не тянет 1080p — повтор без пресета (мягкий фолбэк). */
+        if (lastErr) {
+          try {
+            await withTimeout(lkRoom.localParticipant.setCameraEnabled(true), 9000, 'Timeout starting video source');
+            return true;
+          } catch (_) { /* отдаём исходную ошибку */ }
         }
         if (lastErr) throw lastErr;
         return false;
@@ -1171,7 +1197,27 @@
           try { await room.disconnect(); } catch (_) { /* */ }
           room = null;
         }
-        var next = new window.LivekitClient.Room({ adaptiveStream: true, dynacast: true });
+        /* Опции комнаты задаём ДО конструктора: LiveKit применяет их только там.
+           Битрейт 1080p — без него публикация упиралась в ~1.7 Мбит/с и мылилась. */
+        var roomOpts = { adaptiveStream: true, dynacast: true };
+        try {
+          var LKp = window.LivekitClient;
+          if (LKp && LKp.VideoPresets) {
+            var layers = [];
+            if (LKp.VideoPresets.h180) layers.push(LKp.VideoPresets.h180);
+            if (LKp.VideoPresets.h360) layers.push(LKp.VideoPresets.h360);
+            if (LKp.VideoPresets.h720) layers.push(LKp.VideoPresets.h720);
+            if (LKp.VideoPresets.h1080) {
+              roomOpts.publishDefaults = {
+                simulcast: true,
+                videoSimulcastLayers: layers,
+                videoEncoding: LKp.VideoPresets.h1080.encoding
+              };
+              roomOpts.videoCaptureDefaults = { resolution: LKp.VideoPresets.h1080.resolution };
+            }
+          }
+        } catch (_) { /* */ }
+        var next = new window.LivekitClient.Room(roomOpts);
         room = next;
         next.on(window.LivekitClient.RoomEvent.TrackSubscribed, function (track, pub, participant) {
           if (track.kind === 'video' && window.TingRoomCore && TingRoomCore.trackIsLive) {

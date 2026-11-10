@@ -22,6 +22,13 @@ const SW = path.join(ROOT, 'public', 'sw.js');
 const HTML = path.join(ROOT, 'public', 'index.html');
 const H_SW = path.join(ROOT, 'public', 'h', 'sw.js');
 const H_HTML = path.join(ROOT, 'public', 'h', 'index.html');
+// Тинг-страницы подключают /assets/* БЕЗ версии → браузер/ТВ держал CSS/JS
+// 30 дней (immutable) и показывал «как раньше» при уже новом HTML.
+// Поэтому ?v= в них обязан подниматься тем же bump.
+const TING_PAGES = [
+  path.join(ROOT, 'public', 'ting', 'index.html'),
+  path.join(ROOT, 'public', 'ting-tv', 'index.html')
+];
 
 function readVersion(file, re) {
   const m = re.exec(fs.readFileSync(file, 'utf8'));
@@ -34,12 +41,15 @@ const HTML_RE = /ASGARD_SHELL_VERSION = '([0-9.]+)'/;
 function snapshot() {
   const html = fs.readFileSync(HTML, 'utf8');
   const hHtml = fs.readFileSync(H_HTML, 'utf8');
+  const ting = TING_PAGES.map((p) => fs.readFileSync(p, 'utf8'));
   return {
     sw: readVersion(SW, SW_RE),
     html: readVersion(HTML, HTML_RE),
     hSw: readVersion(H_SW, SW_RE),
     qv: [...new Set(html.match(/\?v=[0-9.]+/g) || [])].sort(),
-    hQv: [...new Set(hHtml.match(/\?v=[0-9.]+/g) || [])].sort()
+    hQv: [...new Set(hHtml.match(/\?v=[0-9.]+/g) || [])].sort(),
+    // Тинг: должен быть РОВНО один вариант ?v= и он должен совпадать с shell.
+    tingQv: ting.map((t) => [...new Set(t.match(/\?v=[0-9.]+/g) || [])].sort())
   };
 }
 
@@ -66,14 +76,18 @@ function checkQuiet() {
     .replace(/(^|[^:])\/\/[^\n]*/g, '$1');
   const hVersions = [...new Set((hNoComments.match(/\d+\.\d+\.\d+/g) || []))]
     .filter((v) => v !== s.sw);
+  const tingOk = s.tingQv.every(
+    (qv) => qv.length === 1 && qv[0] === `?v=${s.sw}`
+  );
   const ok = s.sw && s.sw === s.html
     && s.qv.length === 1 && s.qv[0] === `?v=${s.sw}`
     && s.hSw === s.sw
     && s.hQv.length === 1 && s.hQv[0] === `?v=${s.sw}`
+    && tingOk
     && !unresolved
     && guardOk
     && hVersions.length === 0;
-  return { ok: !!ok, unresolved, guard, guardOk, hVersions, ...s };
+  return { ok: !!ok, unresolved, guard, guardOk, hVersions, tingOk, ...s };
 }
 
 function main() {
@@ -84,7 +98,8 @@ function main() {
       const extra = s.unresolved ? ' + есть нерезолвленный __SHELL_VERSION__ в /h/index.html' : '';
       const extra2 = (s.hVersions && s.hVersions.length) ? ` + чужой хардкод версии в /h/index.html: ${s.hVersions.join(',')}` : '';
       const extra3 = (!s.guardOk) ? ` + сторож /h/ (var VER) = ${s.guard === null ? 'НЕ НАЙДЕН' : `'${s.guard}'`}, ожидалось '${s.sw}'` : '';
-      console.error(`FAIL: версии рассогласованы — sw=${s.sw} html=${s.html} h/sw=${s.hSw} qv=${s.qv.join(',')} h/qv=${s.hQv.join(',')}${extra}${extra2}${extra3}`);
+      const extra4 = (!s.tingOk) ? ` + Тинг-страницы: ожидался один ?v=${s.sw}, получено ${JSON.stringify(s.tingQv)}` : '';
+      console.error(`FAIL: версии рассогласованы — sw=${s.sw} html=${s.html} h/sw=${s.hSw} qv=${s.qv.join(',')} h/qv=${s.hQv.join(',')}${extra}${extra2}${extra3}${extra4}`);
       process.exit(1);
     }
     console.log(`OK: оболочка согласована на ${s.sw}`);
@@ -129,12 +144,19 @@ function main() {
     .replace(/\?v=[0-9.]+/g, `?v=${next}`);
   fs.writeFileSync(H_HTML, hHtml, 'utf8');
 
+  // Тинг: собственные страницы со своими ?v= (см. TING_PAGES).
+  TING_PAGES.forEach((p) => {
+    const cur = fs.readFileSync(p, 'utf8');
+    fs.writeFileSync(p, cur.replace(/\?v=[0-9.]+/g, `?v=${next}`), 'utf8');
+  });
+
   const s = checkQuiet();
   console.log(`[bump] sw.js SHELL_VERSION: ${s.sw}`);
   console.log(`[bump] index.html ASGARD_SHELL_VERSION: ${s.html}`);
   console.log(`[bump] index.html ?v=: ${s.qv.join(',')}`);
   console.log(`[bump] h/sw.js SHELL_VERSION: ${s.hSw}`);
   console.log(`[bump] h/index.html ?v=: ${s.hQv.join(',')}`);
+  console.log(`[bump] ting ?v=: ${s.tingQv.map((q) => q.join(',')).join(' | ')}`);
   if (!s.ok) {
     console.error('ERROR: не всё обновилось!');
     process.exit(1);

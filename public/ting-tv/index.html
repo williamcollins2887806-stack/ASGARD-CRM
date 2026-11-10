@@ -5,14 +5,14 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="ting-tv" content="1" />
   <title>Тинг Переговорка</title>
-  <link rel="icon" type="image/svg+xml" href="/assets/img/ting-logo.svg" />
-  <link rel="stylesheet" href="/assets/css/design-tokens.css" />
-  <link rel="stylesheet" href="/assets/css/ting.css" />
-  <link rel="stylesheet" href="/assets/css/ting-tv.css" />
-  <script src="/assets/vendor/livekit-client.umd.min.js"></script>
-  <script src="/assets/js/ting_icons.js"></script>
-  <script src="/assets/js/ting_common.js"></script>
-  <script src="/assets/js/ting_room_core.js"></script>
+  <link rel="icon" type="image/svg+xml" href="/assets/img/ting-logo.svg?v=20.28.498" />
+  <link rel="stylesheet" href="/assets/css/design-tokens.css?v=20.28.498" />
+  <link rel="stylesheet" href="/assets/css/ting.css?v=20.28.498" />
+  <link rel="stylesheet" href="/assets/css/ting-tv.css?v=20.28.498" />
+  <script src="/assets/vendor/livekit-client.umd.min.js?v=20.28.498"></script>
+  <script src="/assets/js/ting_icons.js?v=20.28.498"></script>
+  <script src="/assets/js/ting_common.js?v=20.28.498"></script>
+  <script src="/assets/js/ting_room_core.js?v=20.28.498"></script>
 </head>
 <body class="ting-tv">
   <div class="ttv-screen" id="startView">
@@ -403,41 +403,56 @@
     } catch (_) { /* */ }
   }
 
-  /* Не переиспользуем preview MST — на Android TV/Windows publish зависает. */
+  /* Публикация камеры: 1080p по возможности, но без падения на слабых камерах
+     (h1080 → h720 → дефолт). На ТВ «пиксели» были именно из-за жёсткого h720. */
   async function enableLocalCamera(lkRoom) {
     var LK = window.LivekitClient;
     var busyRe = /NotReadable|Device in use|Could not start|AbortError|Permission|Timeout starting video|Timed out|Overconstrained|publication promise/i;
     stopPreview();
     await unpublishLocalCamera(lkRoom);
     await new Promise(function (r) { setTimeout(r, 400); });
+    var presets = [];
+    try {
+      if (LK.VideoPresets && LK.VideoPresets.h1080) presets.push(LK.VideoPresets.h1080);
+      if (LK.VideoPresets && LK.VideoPresets.h720) presets.push(LK.VideoPresets.h720);
+    } catch (_) { /* */ }
+    if (!presets.length) presets.push(null);
     var lastErr = null;
-    for (var i = 0; i < 3; i++) {
-      try {
-        if (LK && typeof LK.createLocalVideoTrack === 'function') {
-          var opts = {};
-          if (state.camDeviceId) opts.deviceId = state.camDeviceId;
-          try {
-            if (LK.VideoPresets && LK.VideoPresets.h720) opts.resolution = LK.VideoPresets.h720.resolution;
-          } catch (_) { /* */ }
-          var track = await withTimeout(LK.createLocalVideoTrack(opts), 12000, 'Timeout starting video source');
-          var pubOpts = {};
-          try { if (LK.Track && LK.Track.Source) pubOpts.source = LK.Track.Source.Camera; } catch (_) { /* */ }
-          await withTimeout(lkRoom.localParticipant.publishTrack(track, pubOpts), 15000, 'Timeout starting video source');
-          return true;
-        }
-        var camOpts = {};
+    for (var p = 0; p < presets.length; p++) {
+      var preset = presets[p];
+      for (var i = 0; i < 2; i++) {
         try {
-          if (LK && LK.VideoPresets && LK.VideoPresets.h720) camOpts.resolution = LK.VideoPresets.h720.resolution;
-        } catch (_) { /* */ }
-        await withTimeout(lkRoom.localParticipant.setCameraEnabled(true, camOpts), 15000, 'Timeout starting video source');
-        return true;
-      } catch (e) {
-        lastErr = e;
-        console.warn('[TingTV] enableLocalCamera', i, e);
-        await unpublishLocalCamera(lkRoom);
-        var msg = String((e && e.message) || e || '');
-        if (!busyRe.test(msg) && i === 2) break;
-        await new Promise(function (r) { setTimeout(r, 450 + i * 300); });
+          if (LK && typeof LK.createLocalVideoTrack === 'function') {
+            var opts = {};
+            if (state.camDeviceId) opts.deviceId = state.camDeviceId;
+            if (preset) {
+              opts.resolution = preset.resolution;
+              opts.frameRate = preset.frameRate || 30;
+            }
+            var track = await withTimeout(LK.createLocalVideoTrack(opts), 12000, 'Timeout starting video source');
+            var pubOpts = {};
+            try { if (LK.Track && LK.Track.Source) pubOpts.source = LK.Track.Source.Camera; } catch (_) { /* */ }
+            await withTimeout(lkRoom.localParticipant.publishTrack(track, pubOpts), 15000, 'Timeout starting video source');
+            return true;
+          }
+          var camOpts = {};
+          if (preset) {
+            camOpts.resolution = preset.resolution;
+            camOpts.frameRate = preset.frameRate || 30;
+          }
+          await withTimeout(lkRoom.localParticipant.setCameraEnabled(true, camOpts), 15000, 'Timeout starting video source');
+          return true;
+        } catch (e) {
+          lastErr = e;
+          console.warn('[TingTV] enableLocalCamera', p, i, e);
+          await unpublishLocalCamera(lkRoom);
+          var msg = String((e && e.message) || e || '');
+          if (busyRe.test(msg)) {
+            await new Promise(function (r) { setTimeout(r, 450 + i * 300); });
+            continue;
+          }
+          break; /* не busy — пробуем следующий пресет */
+        }
       }
     }
     if (lastErr) throw lastErr;
@@ -812,32 +827,97 @@
     }
   }
 
+  /* Микрофон на ТВ. Раньше: один вызов setMicrophoneEnabled(deviceId) —
+     если deviceId протух после перезагрузки WebView, публикация падала
+     молча, и «микрофон не найден», хотя камера (у неё есть fallback) жила.
+     Теперь: публикуем, проверяем публикацию и живой MST, при неудаче —
+     сброс deviceId и повтор без привязки, затем прямой createLocalAudioTrack. */
+  function micPublication(room) {
+    var out = { pub: null, live: false };
+    try {
+      var lp = room && room.localParticipant;
+      if (!lp) return out;
+      var pubs = Array.from(lp.audioTrackPublications.values());
+      for (var i = 0; i < pubs.length; i++) {
+        var pub = pubs[i];
+        var mst = pub && pub.track && pub.track.mediaStreamTrack;
+        if (!mst) continue;
+        if (!out.pub) out.pub = pub;
+        if (mst.readyState === 'live') { out.pub = pub; out.live = true; break; }
+      }
+    } catch (_) { /* */ }
+    return out;
+  }
+
+  function micIsPublishing(room) {
+    var info = micPublication(room);
+    if (!info.pub) return false;
+    /* Публикация есть; серверный mute мог остаться от прошлого вызова. */
+    try { if (room.localParticipant.isMicrophoneEnabled === false) return false; } catch (_) { /* */ }
+    return info.live || info.pub.isMuted !== true;
+  }
+
+  async function publishMicOnce(room, useDevice) {
+    var lp = room.localParticipant;
+    var opts = {};
+    if (useDevice && state.micDeviceId) opts.deviceId = state.micDeviceId;
+    opts.echoCancellation = true;
+    opts.noiseSuppression = true;
+    opts.autoGainControl = true;
+    try {
+      await withTimeout(lp.setMicrophoneEnabled(true, opts), 12000, 'microphone');
+    } catch (e) {
+      if (!useDevice || !state.micDeviceId) throw e;
+      /* Протухший deviceId: стираем и пробуем дефолт. */
+      state.micDeviceId = '';
+      prefsSet(PREF_MIC, '');
+      await withTimeout(lp.setMicrophoneEnabled(true), 12000, 'microphone');
+    }
+    var info = micPublication(room);
+    if (info.pub && info.pub.isMuted === true) {
+      try { await info.pub.unmute(); } catch (_) { /* */ }
+    }
+    if (!micIsPublishing(room) && !info.pub) {
+      /* Публикации не создалось вовсе — последний шанс: прямой трек. */
+      try {
+        var mk = window.LivekitClient && window.LivekitClient.createLocalAudioTrack;
+        if (typeof mk === 'function') {
+          var at = await withTimeout(mk(opts), 12000, 'microphone');
+          await withTimeout(lp.publishTrack(at), 12000, 'microphone');
+        }
+      } catch (_) { /* остаётся false */ }
+    }
+    return micIsPublishing(room);
+  }
+
   async function publishLocalMic(room) {
     var lp = room && room.localParticipant;
     if (!lp) return false;
-    var opts = {};
-    if (state.micDeviceId) opts.deviceId = state.micDeviceId;
-    try {
-      opts.echoCancellation = true;
-      opts.noiseSuppression = true;
-      opts.autoGainControl = true;
-    } catch (_) { /* */ }
-    try {
-      if (state.micOn) {
-        try {
-          await lp.setMicrophoneEnabled(true, Object.keys(opts).length ? opts : undefined);
-        } catch (_) {
-          await lp.setMicrophoneEnabled(true);
-        }
-      } else {
-        await lp.setMicrophoneEnabled(false);
-      }
-    } catch (e) {
-      toast('Микрофон не опубликовался. Нажмите кнопку микрофона ещё раз.');
-      state.micOn = false;
+    if (!state.micOn) {
+      try { await lp.setMicrophoneEnabled(false); } catch (_) { /* */ }
+      syncMicIconFromRoom(room);
+      return false;
     }
+    var ok = false;
+    try {
+      ok = await publishMicOnce(room, true);
+    } catch (e) {
+      console.warn('[TingTV] mic publish failed', e && e.name, e && e.message);
+      ok = false;
+    }
+    if (!ok) {
+      /* Второй заход без привязки к устройству — на ТВ это чаще всего и лечит. */
+      try {
+        state.micDeviceId = '';
+        prefsSet(PREF_MIC, '');
+        ok = await publishMicOnce(room, false);
+      } catch (_) { ok = false; }
+    }
+    state.micOn = ok;
+    if (!ok) toast('Микрофон не найден. Проверьте, что он подключён, и нажмите кнопку ещё раз.');
+    else refreshDevices();
     syncMicIconFromRoom(room);
-    return state.micOn;
+    return ok;
   }
 
   function ensureParticipantTile(p, isLocal) {
@@ -864,7 +944,18 @@
       }
     }
     var vid = Core.pickVideoTrack ? Core.pickVideoTrack(p) : null;
-    if (vid) attachTrack(vid, tileId, name, isLocal);
+    if (vid) {
+      /* Уже подписанные публикации (тайл создан после подписки) — тоже HIGH. */
+      try {
+        var LKq = window.LivekitClient;
+        p.videoTrackPublications.forEach(function (pub) {
+          if (pub && pub.track && LKq && LKq.VideoQuality && typeof pub.setVideoQuality === 'function') {
+            pub.setVideoQuality(LKq.VideoQuality.HIGH);
+          }
+        });
+      } catch (_) { /* */ }
+      attachTrack(vid, tileId, name, isLocal);
+    }
     else {
       var v = tile.querySelector('video');
       if (v) v.classList.add('is-cam-off');
@@ -942,17 +1033,28 @@
     /* Док показываем на входе и запускаем 10-секундный таймер. */
     showDock();
 
-    /* ТВ: фиксированный большой стейдж — adaptive выкл (иначе thrash при relayout). */
-    var roomOpts = { adaptiveStream: false, dynacast: true };
+    /* ТВ: фиксированный большой стейдж — adaptive выкл (иначе thrash при relayout).
+       Качество: ТВ смотрит на большом экране, поэтому публикуем h1080 (если камера
+       тянет) и явно просим HIGH-слой у каждой подписки. Раньше h720 + дефолтный
+       слой давали «пиксели» даже на быстром канале. */
+    var roomOpts = {
+      adaptiveStream: false,
+      dynacast: true,
+      videoCaptureDefaults: (LK.VideoPresets && LK.VideoPresets.h1080)
+        ? { resolution: LK.VideoPresets.h1080.resolution, frameRate: 30 }
+        : undefined
+    };
     try {
       if (LK.VideoPresets) {
         var layers = [];
         if (LK.VideoPresets.h180) layers.push(LK.VideoPresets.h180);
         if (LK.VideoPresets.h360) layers.push(LK.VideoPresets.h360);
+        if (LK.VideoPresets.h720) layers.push(LK.VideoPresets.h720);
         roomOpts.publishDefaults = {
           simulcast: true,
           videoSimulcastLayers: layers,
-          videoEncoding: (LK.VideoPresets.h720 && LK.VideoPresets.h720.encoding) || undefined
+          videoEncoding: (LK.VideoPresets.h1080 && LK.VideoPresets.h1080.encoding)
+            || (LK.VideoPresets.h720 && LK.VideoPresets.h720.encoding) || undefined
         };
       }
     } catch (_) { /* */ }
@@ -961,6 +1063,14 @@
     var bumpRoster = function () { syncRosterTiles(); };
     next.on(LK.RoomEvent.TrackSubscribed, function (track, publication, participant) {
       if (track && track.kind === 'audio') { syncRemoteAudio(next); return; }
+      /* ТВ смотрит на большой панели: всегда тянем HIGH-слой (если публикация
+         его отдала), иначе LiveKit держит первый/низкий слой → «пиксели». */
+      try {
+        if (publication && track && track.kind === 'video' && LK.VideoQuality
+            && typeof publication.setVideoQuality === 'function') {
+          publication.setVideoQuality(LK.VideoQuality.HIGH);
+        }
+      } catch (_) { /* */ }
       if (!participant) { bumpRoster(); return; }
       var isLocal = !!(next.localParticipant && participant.identity === next.localParticipant.identity);
       ensureParticipantTile(participant, isLocal);
@@ -1104,6 +1214,19 @@
       });
     }
     await publishLocalMic(next);
+    /* Страховка: Android TV отдаёт микрофон с задержкой после stopPreview.
+       Если публикации нет через 1.5 с — один тихий повтор без deviceId. */
+    setTimeout(async function () {
+      if (state.room !== next || !state.micOn) return;
+      if (micIsPublishing(next)) return;
+      try {
+        state.micDeviceId = '';
+        prefsSet(PREF_MIC, '');
+        await publishMicOnce(next, false);
+        syncMicIconFromRoom(next);
+        if (micIsPublishing(next)) toast('Микрофон подключён');
+      } catch (_) { /* остаётся как было */ }
+    }, 1500);
     if (state.camOn) {
       try {
         await enableLocalCamera(next);

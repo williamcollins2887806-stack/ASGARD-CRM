@@ -1,7 +1,7 @@
 # THING-CODE-VERIFY-F4
 
-at: 2026-11-10T09:40:51.990Z
-result: VERIFIED (62/62)
+at: 2026-11-10T14:44:04.181Z
+result: VERIFIED (65/65)
 
 | ID | PASS | Evidence |
 |----|------|----------|
@@ -67,5 +67,8 @@ result: VERIFIED (62/62)
 | C60_park_pip_on_nav | PASS | уход из #/ting → PiP, не leave |
 | C61_join_end_timeouts | PASS | join UI early + end/disconnect timeouts |
 | C62_incall_credit_hidden | PASS | ting-incall hides .credit + fixed room shell |
+| C63_ting_pages_assets_versioned | PASS | ting/ + ting-tv/: каждый /assets/* с ?v=, bump версионирует обе страницы |
+| C64_tv_mic_publish_verified | PASS | TV mic: проверка публикации + фолбэк без deviceId |
+| C65_video_1080p_high | PASS | h1080 пресет + HIGH-подписка на ТВ/CRM/госте |
 
 ## All PASS

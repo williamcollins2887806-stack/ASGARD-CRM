@@ -181,6 +181,35 @@ check('C62_incall_credit_hidden',
   && /ting-room-shell[\s\S]*position:\s*fixed/.test(tingCss),
   'ting-incall hides .credit + fixed room shell');
 
+/* V4-hotfix (10.11.2026): три регресса, которые увидел директор на ТВ.
+   C63 — «всё как раньше»: /assets/* immutable на 30 дней, значит страница
+   обязана версионировать каждый подключаемый CSS/JS, иначе WebView держит
+   старые стили при уже новом HTML.
+   C64 — микрофон на ТВ публиковался без проверки и без фолбэка на протухший
+   deviceId («микрофон не найден», хотя камера жила).
+   C65 — качество: 1080p-пресет и HIGH-слой у зрителя, иначе «ужасная картинка». */
+const tingTv = fs.readFileSync(path.join(root, 'public/ting-tv/index.html'), 'utf8');
+const unversioned = (src) => (src.match(/(?:src|href)="\/assets\/[^"?]+"/g) || []);
+check('C63_ting_pages_assets_versioned',
+  unversioned(guest).length === 0
+  && unversioned(tingTv).length === 0
+  && /\?v=\d+\.\d+\.\d+/.test(guest)
+  && /\?v=\d+\.\d+\.\d+/.test(tingTv)
+  && /TING_PAGES/.test(fs.readFileSync(path.join(root, 'tools/bump_shell_version.js'), 'utf8')),
+  'ting/ + ting-tv/: каждый /assets/* с ?v=, bump версионирует обе страницы');
+check('C64_tv_mic_publish_verified',
+  /function micIsPublishing/.test(tingTv)
+  && /publishMicOnce\(room, false\)/.test(tingTv)
+  && /createLocalAudioTrack/.test(tingTv)
+  && /prefsSet\(PREF_MIC, ''\)/.test(tingTv),
+  'TV mic: проверка публикации + фолбэк без deviceId');
+check('C65_video_1080p_high',
+  /VideoPresets\.h1080/.test(tingTv)
+  && /VideoQuality\.HIGH/.test(tingTv)
+  && /VideoPresets\.h1080/.test(tingPage)
+  && /VideoPresets\.h1080/.test(guest),
+  'h1080 пресет + HIGH-подписка на ТВ/CRM/госте');
+
 const fail = checks.filter((c) => !c.pass);
 const md = [
   '# THING-CODE-VERIFY-F4',

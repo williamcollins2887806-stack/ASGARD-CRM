@@ -1557,13 +1557,20 @@
     const usable = cams.filter((c) => c.score > -50);
     const list = [];
     const bestId = usable[0] && usable[0].deviceId ? usable[0].deviceId : '';
-    /* HD первым — иначе часто залипаем на VGA при encoding h720 («пиксели»). */
+    /* 1080p первым: «идеал» не ломает слабые камеры (браузер отдаст что есть),
+       но на нормальной камере даёт честный FULL HD вместо замыленного 720p.
+       Дальше — 720p и мягкие варианты как раньше. */
     if (bestId) {
+      list.push({
+        deviceId: { ideal: bestId },
+        width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: { ideal: 30 }
+      });
       list.push({
         deviceId: { ideal: bestId },
         width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 }
       });
     }
+    list.push({ width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: { ideal: 30 } });
     list.push({ width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 } });
     list.push({ frameRate: { ideal: 30 } });
     list.push(true);
@@ -1758,6 +1765,7 @@
           const layers = [];
           if (LK.VideoPresets.h180) layers.push(LK.VideoPresets.h180);
           if (LK.VideoPresets.h360) layers.push(LK.VideoPresets.h360);
+          if (LK.VideoPresets.h720) layers.push(LK.VideoPresets.h720);
           if (layers.length) {
             pubOpts.videoSimulcastLayers = layers;
             pubOpts.simulcast = true;
@@ -3076,10 +3084,14 @@
         const layers = [];
         if (LK.VideoPresets.h180) layers.push(LK.VideoPresets.h180);
         if (LK.VideoPresets.h360) layers.push(LK.VideoPresets.h360);
+        if (LK.VideoPresets.h720) layers.push(LK.VideoPresets.h720);
         opts.publishDefaults = {
           simulcast: true,
           videoSimulcastLayers: layers,
-          videoEncoding: (LK.VideoPresets.h720 && LK.VideoPresets.h720.encoding) || undefined
+          /* 1080p-битрейт: при 720p-энкодинге «дорогая» картинка упиралась
+             в ~1.7 Мбит/с и мылилась даже на быстром интернете. */
+          videoEncoding: (LK.VideoPresets.h1080 && LK.VideoPresets.h1080.encoding)
+            || (LK.VideoPresets.h720 && LK.VideoPresets.h720.encoding) || undefined
         };
       }
     } catch (_) { /* */ }
