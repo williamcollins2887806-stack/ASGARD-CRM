@@ -2014,7 +2014,11 @@ async function reviewRoutes(fastify) {
           ORDER BY id DESC LIMIT 1`, [request.params.id]);
       const st = (stageRow.rows[0] && stageRow.rows[0].stage_state) || {};
       for (const k of ['summary', 'volume_summary', 'feasibility', 'feasibility_note',
-        'competition', 'risks', 'decision_recommend', 'questions_for_customer', 'schedule']) {
+        'competition', 'risks', 'decision_recommend', 'questions_for_customer', 'schedule',
+        // Диагностика полноты разбора: без неё в карточке не видно, что модель
+        // прочитала половину ведомости. Копируем в отчёт тем же проходом.
+        'incomplete', 'incomplete_note', 'expected_rows', 'found_positions',
+        'valid_positions', 'generation_rounds', 'review_hint', 'source_positions_count']) {
         const v = st[k];
         const empty = rj[k] == null || (typeof rj[k] === 'string' && !rj[k].trim());
         if (empty && v != null && v !== '') rj[k] = v;

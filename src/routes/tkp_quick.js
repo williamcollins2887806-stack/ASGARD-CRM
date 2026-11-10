@@ -900,7 +900,21 @@ async function routes(fastify, options) {
           ? gen.dv.questions_for_customer : [],
         // Срок и режим работ — тоже часть анализа, нужны перед просчётом.
         schedule: sched || null,
-        schedule_days: (sched && sched.days) || null
+        schedule_days: (sched && sched.days) || null,
+        // ── Диагностика полноты разбора ────────────────────────────────────
+        // Раньше эти поля уходили ТОЛЬКО в ответ API и не сохранялись: после
+        // перезагрузки модалки невозможно было понять, 353 позиции в ведомости
+        // или 673, и почему разбор «нестабилен» (тендер 2138, 10.11.2026).
+        // Сохраняем, чтобы РП и ТО видели недобор сразу в карточке.
+        incomplete: gen.dv.incomplete === true,
+        incomplete_note: gen.dv.incomplete_note || null,
+        expected_rows: gen.dv.expected_rows != null ? Number(gen.dv.expected_rows) : null,
+        found_positions: gen.dv.found_positions != null ? Number(gen.dv.found_positions) : null,
+        valid_positions: gen.dv.valid_positions != null ? Number(gen.dv.valid_positions) : null,
+        generation_rounds: gen.dv.generation_rounds != null ? Number(gen.dv.generation_rounds) : null,
+        review_hint: gen.dv.review_hint || null,
+        source_positions_count: gen.dv.source_positions_count != null
+          ? Number(gen.dv.source_positions_count) : null
       });
       const saved = await stageSvc.saveStage(db, request.params.uid, {
         stage: 'dv', state, expectedVersion: b.expected_version

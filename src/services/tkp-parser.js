@@ -1,4 +1,4 @@
-'use strict';
+﻿'use strict';
 
 /**
  * ASGARD CRM — TKP Parser
@@ -20,7 +20,17 @@ const aiProvider = require('./ai-provider');
 const SUPPORTED_TEXT  = new Set(['.pdf', '.doc', '.docx', '.xlsx', '.xls', '.txt', '.csv', '.rtf']);
 const SUPPORTED_IMAGE = new Set(['.jpg', '.jpeg', '.png', '.webp', '.gif', '.bmp', '.tif', '.tiff']);
 
+// Лимит для РАЗБОРА готового КП моделью: ответ короткий, длинный вход не нужен.
 const MAX_TEXT_CHARS = 100000;
+
+// Лимит для ИЗВЛЕЧЕНИЯ текста документов тендера (анализ).
+//
+// Ведомость на 673 строки в OCR даёт >100 000 символов, и текст обрезался на
+// поз. 353 — модель физически не видела половину объёма (тендер 2138,
+// найдено 10.11.2026). Анализ при этом готов принять до 400 000 символов
+// (mimir-tender-stages-ai.docsToText), а OCR-воркер хранит до 500 000.
+// Режем по самому щедрому из потребителей, иначе теряем данные на входе.
+const MAX_EXTRACT_CHARS = 500000;
 
 const PARSE_SYSTEM = 'Ты — парсер коммерческих предложений. Извлекаешь данные из текста КП и возвращаешь СТРОГО валидный JSON без markdown-блоков и без пояснений.';
 
@@ -115,7 +125,7 @@ function _docViaLibreOffice(buf, originalName) {
         if (txt) {
           const text = String(fs.readFileSync(path.join(tmpDir, txt), 'utf8') || '')
             .replace(/^\uFEFF/, '').trim();
-          if (text.length >= 20) return text.slice(0, MAX_TEXT_CHARS);
+          if (text.length >= 20) return text.slice(0, MAX_EXTRACT_CHARS);
         }
       }
 
@@ -129,7 +139,7 @@ function _docViaLibreOffice(buf, originalName) {
             const mammoth = require('mammoth');
             const m = mammoth.extractRawText({ buffer: fs.readFileSync(path.join(tmpDir, docx)) });
             const text = String((m && m.value) || '').trim();
-            if (text.length >= 20) return text.slice(0, MAX_TEXT_CHARS);
+            if (text.length >= 20) return text.slice(0, MAX_EXTRACT_CHARS);
           } catch (_) { /* пробуем следующий бинарь */ }
         }
       }
@@ -178,7 +188,7 @@ function _xlsViaLibreOffice(buf, originalName) {
       const text = String(fs.readFileSync(path.join(tmpDir, csv), 'utf8') || '')
         .replace(/^\uFEFF/, '')
         .replace(/\r\n/g, '\n')
-        .slice(0, MAX_TEXT_CHARS);
+        .slice(0, MAX_EXTRACT_CHARS);
       if (text.trim().length >= 20) { done = true; return text; }
     }
     return done ? '' : '';
@@ -246,10 +256,10 @@ async function _extractText(buf, originalName, opts = {}) {  const ext = path.ex
       await wb.xlsx.load(buf);
       let text = '';
       wb.eachSheet((sheet) => {
-        if (text.length >= MAX_TEXT_CHARS) return;
+        if (text.length >= MAX_EXTRACT_CHARS) return;
         text += `\n=== ${sheet.name} ===\n`;
         sheet.eachRow((row) => {
-          if (text.length >= MAX_TEXT_CHARS) return;
+          if (text.length >= MAX_EXTRACT_CHARS) return;
           const vals = [];
           row.eachCell({ includeEmpty: false }, (cell) => {
             const v = cell.value;
@@ -272,12 +282,12 @@ async function _extractText(buf, originalName, opts = {}) {  const ext = path.ex
       const wb = XLSX.read(buf, { type: 'buffer', cellDates: false, cellText: true });
       let text = '';
       for (const name of wb.SheetNames) {
-        if (text.length >= MAX_TEXT_CHARS) break;
+        if (text.length >= MAX_EXTRACT_CHARS) break;
         const sheet = wb.Sheets[name];
         if (!sheet) continue;
         text += `\n=== ${name} ===\n`;
         const csv = XLSX.utils.sheet_to_csv(sheet, { blankrows: false });
-        text += String(csv || '').slice(0, MAX_TEXT_CHARS - text.length);
+        text += String(csv || '').slice(0, MAX_EXTRACT_CHARS - text.length);
       }
       if (String(text).trim().length >= 20) return { text, usedOcr: false };
     } catch (_) { /* нет SheetJS или файл битый */ }
@@ -451,7 +461,7 @@ async function extractTextOnly({ buf, originalName, force_ocr, allowOcr }) {
           const data = await pdfParse(buf);
           const text = String(data.text || '').trim();
           if (text.length >= 200) {
-            return { text: text.substring(0, MAX_TEXT_CHARS), usedOcr: false, unsupported: false, ext };
+            return { text: text.substring(0, MAX_EXTRACT_CHARS), usedOcr: false, unsupported: false, ext };
           }
         } catch (_) { /* fallthrough */ }
       }
@@ -473,7 +483,7 @@ async function extractTextOnly({ buf, originalName, force_ocr, allowOcr }) {
         });
         const text = typeof ocrResult === 'string' ? ocrResult : (ocrResult.text || '');
         return {
-          text: String(text).substring(0, MAX_TEXT_CHARS),
+          text: String(text).substring(0, MAX_EXTRACT_CHARS),
           usedOcr: true,
           unsupported: false,
           ext,
@@ -488,7 +498,7 @@ async function extractTextOnly({ buf, originalName, force_ocr, allowOcr }) {
       if (!canOcr) return { text: '', usedOcr: false, unsupported: false, ext, skippedOcr: true };
       const r = await _extractText(buf, originalName, { forceOcr: true });
       return {
-        text: String(r.text || '').substring(0, MAX_TEXT_CHARS),
+        text: String(r.text || '').substring(0, MAX_EXTRACT_CHARS),
         usedOcr: !!r.usedOcr,
         unsupported: false,
         ext
@@ -516,7 +526,7 @@ async function extractTextOnly({ buf, originalName, force_ocr, allowOcr }) {
     }
 
     return {
-      text: String(r.text || '').substring(0, MAX_TEXT_CHARS),
+      text: String(r.text || '').substring(0, MAX_EXTRACT_CHARS),
       usedOcr: false,
       unsupported: false,
       ext,
