@@ -355,7 +355,7 @@ window.AsgardPermitsPage = (function(){
     const _ptOpts = Object.entries(CATEGORIES).map(([catId, cat]) => ({ group: cat.name, items: types.filter(t => t.category === catId).map(t => ({ value: t.id, label: t.name })) })).filter(g => g.items.length);
     document.getElementById('permitType_w')?.appendChild(CRSelect.create({ id: 'permitType', placeholder: '— Выберите —', options: _ptOpts, value: permit?.type_id || '', searchable: true, dropdownClass: 'z-modal' }));
 
-    modal.querySelectorAll('.btnClose').forEach(b => b.onclick = () => modal.remove());
+    modal.querySelectorAll('.btnClose').forEach(b => b.onclick = () => (window.AsgardUI && AsgardUI.closeLegacyOverlay ? AsgardUI.closeLegacyOverlay(modal) : modal.remove()));
     modal.onclick = e => { if (e.target === modal) AsgardUI.oopsBubble(e.clientX, e.clientY); };
 
     document.getElementById('btnSavePermit').onclick = async () => {
@@ -401,7 +401,7 @@ window.AsgardPermitsPage = (function(){
           await api('/', { method: 'POST', body: formData });
         }
 
-        modal.remove();
+        if (window.AsgardUI && AsgardUI.closeLegacyOverlay) AsgardUI.closeLegacyOverlay(modal); else modal.remove();
         AsgardUI.toast('Сохранено', isEdit ? 'Допуск обновлён' : 'Допуск добавлен', 'ok');
         if (onSave) onSave();
       } catch(e) {
@@ -512,7 +512,7 @@ window.AsgardPermitsPage = (function(){
 
     document.body.insertAdjacentHTML('beforeend', html);
     const modal = document.getElementById('checklistModal');
-    modal.querySelectorAll('.btnClose').forEach(b => b.onclick = () => modal.remove());
+    modal.querySelectorAll('.btnClose').forEach(b => b.onclick = () => (window.AsgardUI && AsgardUI.closeLegacyOverlay ? AsgardUI.closeLegacyOverlay(modal) : modal.remove()));
     modal.onclick = e => { if (e.target === modal) AsgardUI.oopsBubble(e.clientX, e.clientY); };
 
     const updateCount = () => {
@@ -562,7 +562,7 @@ window.AsgardPermitsPage = (function(){
       btn.disabled = true; btn.textContent = 'Сохранение...';
       try {
         const res = await api('/employee/' + employeeId + '/bulk', { method: 'PUT', body: { items } });
-        modal.remove();
+        if (window.AsgardUI && AsgardUI.closeLegacyOverlay) AsgardUI.closeLegacyOverlay(modal); else modal.remove();
         const s = res.stats || {};
         AsgardUI.toast('Сохранено', `Добавлено: ${s.inserted||0}, обновлено: ${s.updated||0}, снято: ${s.removed||0}`, 'ok');
         if (onSave) onSave();
@@ -632,7 +632,7 @@ window.AsgardPermitsPage = (function(){
     document.body.insertAdjacentHTML('beforeend', html);
     const modal = document.getElementById('renewModal');
 
-    modal.querySelectorAll('.btnClose').forEach(b => b.onclick = () => modal.remove());
+    modal.querySelectorAll('.btnClose').forEach(b => b.onclick = () => (window.AsgardUI && AsgardUI.closeLegacyOverlay ? AsgardUI.closeLegacyOverlay(modal) : modal.remove()));
     modal.onclick = e => { if (e.target === modal) AsgardUI.oopsBubble(e.clientX, e.clientY); };
 
     document.getElementById('btnDoRenew').onclick = async () => {
@@ -649,7 +649,7 @@ window.AsgardPermitsPage = (function(){
             issuer: document.getElementById('renewIssuer').value.trim()
           }
         });
-        modal.remove();
+        if (window.AsgardUI && AsgardUI.closeLegacyOverlay) AsgardUI.closeLegacyOverlay(modal); else modal.remove();
         AsgardUI.toast('Продлено', 'Создан новый допуск', 'ok');
         if (onSave) onSave();
       } catch(e) {
@@ -693,7 +693,7 @@ window.AsgardPermitsPage = (function(){
     document.body.insertAdjacentHTML('beforeend', html);
     const modal = document.getElementById('bulkRenewModal');
 
-    modal.querySelectorAll('.btnClose').forEach(b => b.onclick = () => modal.remove());
+    modal.querySelectorAll('.btnClose').forEach(b => b.onclick = () => (window.AsgardUI && AsgardUI.closeLegacyOverlay ? AsgardUI.closeLegacyOverlay(modal) : modal.remove()));
     modal.onclick = e => { if (e.target === modal) AsgardUI.oopsBubble(e.clientX, e.clientY); };
 
     document.getElementById('btnDoBulkRenew').onclick = async () => {
@@ -709,7 +709,7 @@ window.AsgardPermitsPage = (function(){
             expiry_date: expiry
           }
         });
-        modal.remove();
+        if (window.AsgardUI && AsgardUI.closeLegacyOverlay) AsgardUI.closeLegacyOverlay(modal); else modal.remove();
         AsgardUI.toast('Продлено', `Обновлено ${result.renewed} из ${result.total}`, 'ok');
         if (onSave) onSave();
       } catch(e) {
@@ -952,14 +952,14 @@ window.AsgardPermitsPage = (function(){
         const modal = document.getElementById('selectEmployeeModal');
         const _empOpts = active.map(e => ({ value: String(e.id), label: e.fio || e.name || '' }));
         document.getElementById('empSelect_w')?.appendChild(CRSelect.create({ id: 'empSelect', placeholder: '— Выберите —', options: _empOpts, searchable: true, dropdownClass: 'z-modal' }));
-        modal.querySelectorAll('.btnClose').forEach(b => b.onclick = () => modal.remove());
+        modal.querySelectorAll('.btnClose').forEach(b => b.onclick = () => (window.AsgardUI && AsgardUI.closeLegacyOverlay ? AsgardUI.closeLegacyOverlay(modal) : modal.remove()));
         modal.onclick = e => { if (e.target === modal) AsgardUI.oopsBubble(e.clientX, e.clientY); };
 
         document.getElementById('btnConfirmEmp').onclick = () => {
           const empId = parseInt(CRSelect.getValue('empSelect') || '0', 10);
           if (!empId) { AsgardUI.toast('Ошибка', 'Выберите сотрудника', 'err'); return; }
           const empLabel = (active.find(e => String(e.id) === String(empId)) || {}).fio || null;
-          modal.remove();
+          if (window.AsgardUI && AsgardUI.closeLegacyOverlay) AsgardUI.closeLegacyOverlay(modal); else modal.remove();
           openChecklistModal(empId, empLabel, loadList);
         };
       };
@@ -1423,7 +1423,7 @@ window.AsgardPermitsPage = (function(){
     /* CRSelect: newTypeCat */
     const _ntcOpts = Object.entries(CATEGORIES).map(([k,v]) => ({ value: k, label: v.name }));
     document.getElementById('newTypeCat_w')?.appendChild(CRSelect.create({ id: 'newTypeCat', options: _ntcOpts, value: _ntcOpts[0]?.value || '', dropdownClass: 'z-modal' }));
-    modal.querySelectorAll('.btnClose').forEach(b => b.onclick = () => modal.remove());
+    modal.querySelectorAll('.btnClose').forEach(b => b.onclick = () => (window.AsgardUI && AsgardUI.closeLegacyOverlay ? AsgardUI.closeLegacyOverlay(modal) : modal.remove()));
     modal.onclick = e => { if (e.target === modal) AsgardUI.oopsBubble(e.clientX, e.clientY); };
 
     document.getElementById('btnAddType').onclick = async () => {

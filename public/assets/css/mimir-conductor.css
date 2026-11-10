@@ -70,7 +70,7 @@
 .mc-btn {
   padding: 7px 14px; border-radius: 8px; border: 1px solid var(--mc-brd);
   background: var(--mc-bg3); color: var(--mc-text); font-size: 13px; cursor: pointer;
-  text-decoration: none; display: inline-flex; align-items: center; transition: all .15s;
+  text-decoration: none; display: inline-flex; align-items: center; transition: background-color var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), color var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), border-color var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), box-shadow var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), opacity var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), transform var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1));
 }
 .mc-btn:hover { border-color: var(--mc-blue); }
 .mc-btn-primary { background: linear-gradient(135deg, #1f6feb, #2f81f7); border-color: transparent; }
@@ -188,7 +188,7 @@
 .mc-pick-card {
   background: var(--mc-bg2, #161b22); border: 2px solid var(--mc-brd, #2a3140);
   border-radius: 12px; padding: 22px 18px; text-align: center;
-  cursor: pointer; transition: all .2s; font-family: inherit;
+  cursor: pointer; transition: background-color var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), color var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), border-color var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), box-shadow var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), opacity var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), transform var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)); font-family: inherit;
 }
 .mc-pick-card:hover { border-color: var(--mc-blue, #2f81f7); transform: translateY(-2px); }
 .mc-pick-card--featured { border-color: var(--mc-gold, #d4a017); }
@@ -257,8 +257,48 @@
 .mc-btn-primary:hover { box-shadow: 0 0 0 1px #d8b15a; }
 
 /* модалки */
-.mc-modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.65);
-  display: flex; align-items: center; justify-content: center; z-index: 10000; }
+.mc-modal-overlay {
+  position: fixed; inset: 0; background: rgba(0,0,0,0.65);
+  display: flex; align-items: center; justify-content: center; z-index: 10000;
+  opacity: 0;
+}
+.mc-modal-overlay.is-open {
+  animation: mc-overlay-in var(--dur-modal-in, 220ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)) forwards;
+}
+.mc-modal-overlay.is-open .mc-modal {
+  animation: mc-panel-in var(--dur-modal-in, 220ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)) forwards;
+}
+.mc-modal-overlay.is-leaving {
+  animation: mc-overlay-out var(--dur-modal-out, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)) forwards;
+  pointer-events: none;
+}
+.mc-modal-overlay.is-leaving .mc-modal {
+  animation: mc-panel-out var(--dur-modal-out, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)) forwards;
+}
+@keyframes mc-overlay-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes mc-overlay-out {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+@keyframes mc-panel-in {
+  from { opacity: 0; transform: translateY(12px) scale(0.97); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+@keyframes mc-panel-out {
+  from { opacity: 1; transform: translateY(0) scale(1); }
+  to { opacity: 0; transform: translateY(10px) scale(0.98); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .mc-modal-overlay.is-open,
+  .mc-modal-overlay.is-leaving,
+  .mc-modal-overlay.is-open .mc-modal,
+  .mc-modal-overlay.is-leaving .mc-modal {
+    animation-duration: 0.01ms !important;
+  }
+}
 .mc-modal { background: var(--mc-card, #1b2330); border: 1px solid var(--mc-brd, #2a3647);
   border-radius: 12px; padding: 18px 20px; width: min(560px, 94vw); max-height: 90vh; overflow: auto; }
 .mc-modal-wide { width: min(900px, 96vw); }
@@ -302,7 +342,7 @@
 .mc-pick-section h3 { font-size: 16px; color: #555; margin-bottom: 12px; font-weight: 600; }
 .mc-pick-card { display: block; padding: 14px 16px; background: #fff;
   border: 1px solid #e3e3e3; border-radius: 10px; margin-bottom: 10px;
-  text-decoration: none; color: inherit; transition: all 0.15s ease; }
+  text-decoration: none; color: inherit; transition: background-color var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), color var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), border-color var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), box-shadow var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), opacity var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), transform var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)); }
 .mc-pick-card:hover { border-color: #8a6bff; box-shadow: 0 4px 12px rgba(138, 107, 255, 0.12);
   transform: translateY(-1px); }
 .mc-pick-running { border-left: 4px solid #5cb85c; }
@@ -334,7 +374,7 @@
 .mc-pick-cancel { position: absolute; top: 10px; right: 12px;
   background: transparent; border: 1px solid #e0e0e0; border-radius: 50%;
   width: 32px; height: 32px; font-size: 14px; cursor: pointer; padding: 0;
-  transition: all 0.15s ease; }
+  transition: background-color var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), color var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), border-color var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), box-shadow var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), opacity var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), transform var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)); }
 .mc-pick-cancel:hover { background: #fee; border-color: #d9534f; color: #d9534f; transform: scale(1.05); }
 
 /* Cancel-кнопка в war-room */

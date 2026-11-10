@@ -12,8 +12,7 @@
 
 /* ─── PERIOD SELECTOR ─── */
 .cr-period{display:flex;gap:var(--sp-1);background:var(--bg3);border-radius:var(--r-full);padding:3px}
-.cr-period-btn{padding:6px 14px;border-radius:var(--r-full);border:none;background:transparent;color:var(--t2);font-size:12px;font-weight:var(--fw-semi);cursor:pointer;transition:all var(--base)}
-.cr-period-btn:hover{color:var(--t1);background:var(--bg4)}
+.cr-period-btn{padding:6px 14px;border-radius:var(--r-full);border:none;background:transparent;color:var(--t2);font-size:12px;font-weight:var(--fw-semi);cursor:pointer;transition: background-color var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), color var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), border-color var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), box-shadow var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), opacity var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), transform var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1));background:var(--bg4)}
 .cr-period-btn--active{background:linear-gradient(135deg,var(--red),var(--blue));color:#fff;box-shadow:var(--shadow-sm)}
 
 /* ─── METRICS GRID ─── */

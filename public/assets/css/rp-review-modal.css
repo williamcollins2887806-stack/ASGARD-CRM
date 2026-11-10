@@ -454,7 +454,7 @@
   color: var(--t2);
   font-size: 11px;
   cursor: pointer;
-  transition: all 0.12s;
+  transition: background-color var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), color var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), border-color var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), box-shadow var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), opacity var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), transform var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1));
 }
 .rp-review-chip:hover:not(:disabled) {
   border-color: var(--gold, #c8a84e);
@@ -843,7 +843,16 @@
   color: var(--t1);
 }
 
-.cr-m--wide .rp-review-modal { max-width: 760px; margin: 0 auto; }
+/* Fullscreen shell = edge-to-edge; readable column centered inside body (not a left-shifted wide card). */
+.cr-m--fullscreen .rp-review-modal {
+  max-width: 1100px;
+  margin: 0 auto;
+  width: 100%;
+}
+.cr-m--wide:not(.cr-m--fullscreen) .rp-review-modal {
+  max-width: 960px;
+  margin: 0 auto;
+}
 
 .rp-review-tab-badge {
   display: inline-block;

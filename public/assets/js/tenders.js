@@ -330,7 +330,7 @@ window.AsgardTendersPage = (function(){
     const modal = document.getElementById('duplicateModal');
     
     // Закрытие
-    const closeModal = () => modal.remove();
+    const closeModal = () => (window.AsgardUI && AsgardUI.closeLegacyOverlay ? AsgardUI.closeLegacyOverlay(modal) : modal.remove());
     modal.querySelector('.btnClose').onclick = () => { closeModal(); if (onCancel) onCancel(); };
     document.getElementById('btnDupCancel').onclick = () => { closeModal(); if (onCancel) onCancel(); };
     

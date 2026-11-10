@@ -187,10 +187,12 @@
   --app-gap: max(0px, calc(100lvh - 100dvh));
 
   /* Transitions */
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
   --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
   --ease-smooth: cubic-bezier(0.4, 0, 0.2, 1);
-  --duration-fast: 150ms;
-  --duration-normal: 250ms;
+  --ease-smooth-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --duration-fast: 140ms;
+  --duration-normal: 220ms;
   --duration-slow: 400ms;
 
   /* === shadcn tokens — Norse Dark === */
@@ -514,9 +516,9 @@ input, textarea, [contenteditable], .selectable {
   min-width: 44px;
 }
 
-/* Haptic press */
+/* Haptic press — Emil canon: scale(0.97), 100–160ms ease-out */
 .haptic-press {
-  transition: transform var(--duration-fast) var(--ease-smooth);
+  transition: transform var(--duration-fast) var(--ease-out, var(--ease-smooth-out));
 }
 .haptic-press:active {
   transform: scale(0.97);
@@ -622,6 +624,30 @@ input, textarea, [contenteditable], .selectable {
   to { transform: translateY(0); }
 }
 
+/* Motion a11y: keep opacity feedback, drop travel/scale on sheets & taps */
+@media (prefers-reduced-motion: reduce) {
+  .haptic-press,
+  .spring-tap {
+    transition: none !important;
+  }
+  .haptic-press:active,
+  .spring-tap:active {
+    transform: none !important;
+  }
+  .page-enter {
+    animation: none !important;
+    opacity: 1 !important;
+  }
+  @keyframes sheetSlideUp {
+    from { transform: none; opacity: 0; }
+    to { transform: none; opacity: 1; }
+  }
+  @keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+}
+
 /* ============================================
    Extended Design System — Сбер/Яндекс level
    ============================================ */
@@ -629,16 +655,18 @@ input, textarea, [contenteditable], .selectable {
 /* === Motion tokens === */
 :root {
   --motion-instant: 100ms;
-  --motion-fast: 150ms;
-  --motion-normal: 250ms;
+  --motion-fast: 140ms;
+  --motion-normal: 220ms;
   --motion-slow: 400ms;
   --motion-gentle: 600ms;
 
-  --ease-enter: cubic-bezier(0, 0, 0.2, 1);
+  /* Entrances: strong ease-out (not material ease-in-ish enter) */
+  --ease-enter: cubic-bezier(0.23, 1, 0.32, 1);
   --ease-exit: cubic-bezier(0.4, 0, 1, 1);
   --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
   --ease-bounce: cubic-bezier(0.68, -0.55, 0.265, 1.55);
   --ease-smooth-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
 
   /* Elevation shadows */
   --elevation-0: none;
@@ -901,12 +929,12 @@ input, textarea, [contenteditable], .selectable {
   right: 0;
 }
 
-/* === Spring scale on tap === */
+/* === Tap press (work UI — no bounce) === */
 .spring-tap {
-  transition: transform var(--motion-fast) var(--ease-spring);
+  transition: transform var(--motion-fast) var(--ease-out, var(--ease-smooth-out));
 }
 .spring-tap:active {
-  transform: scale(0.92);
+  transform: scale(0.97);
 }
 
 /* === Page transition (tab switches) === */
@@ -1011,7 +1039,7 @@ input, textarea, [contenteditable], .selectable {
   color: var(--text-tertiary);
   background: transparent;
   flex-shrink: 0;
-  transition: all var(--motion-fast) var(--ease-smooth);
+  transition: background-color var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), color var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), border-color var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), box-shadow var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), opacity var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), transform var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1));
 }
 .filter-pill[data-active="true"] {
   background: var(--bg-elevated);

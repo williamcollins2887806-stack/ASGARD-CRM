@@ -140,6 +140,16 @@
   --base: 200ms ease;
   --slow: 400ms ease;
 
+  /* Additive motion tokens (Emil Kowalski canon). Do NOT mutate --fast/--base/--slow
+     inplace — they are used with transition:all across the vanilla shell. */
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-in-out-ui: cubic-bezier(0.77, 0, 0.175, 1);
+  --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
+  --dur-press: 140ms;
+  --dur-menu: 180ms;
+  --dur-modal-in: 220ms;
+  --dur-modal-out: 180ms;
+
   /* ═══════════════════════════════════════════════════════════════════════════
      11. Z-INDEX
      ═══════════════════════════════════════════════════════════════════════════ */

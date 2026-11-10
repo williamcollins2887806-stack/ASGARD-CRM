@@ -65,7 +65,7 @@ window.AsgardQR = (function(){
     const modal = document.getElementById('qrModal');
     
     // Закрытие
-    modal.querySelector('.btnClose').onclick = () => modal.remove();
+    modal.querySelector('.btnClose').onclick = () => (window.AsgardUI && AsgardUI.closeLegacyOverlay ? AsgardUI.closeLegacyOverlay(modal) : modal.remove());
     modal.onclick = e => { if (e.target === modal) AsgardUI.oopsBubble(e.clientX, e.clientY); };
     
     // Копировать ссылку
@@ -153,7 +153,7 @@ window.AsgardQR = (function(){
       if (stream) {
         stream.getTracks().forEach(t => t.stop());
       }
-      modal.remove();
+      if (window.AsgardUI && AsgardUI.closeLegacyOverlay) AsgardUI.closeLegacyOverlay(modal); else modal.remove();
     };
     
     modal.querySelector('.btnClose').onclick = closeScanner;

@@ -2467,7 +2467,7 @@ window.AsgardWarehouseV2 = (function () {
         }
         try {
           await api('/api/warehouse-ops/items/' + iid + '/confirm', { method: 'POST', body: JSON.stringify(payload) });
-          toast('OK', 'Строка подтверждена', 'ok');
+          toast('Подтверждено', 'Строка подтверждена', 'ok');
           openSession(sessionId);
         } catch (e) { toast('Ошибка', e.message, 'err'); }
       };
@@ -3006,7 +3006,7 @@ window.AsgardWarehouseV2 = (function () {
       detail.querySelector('#wh2-inv-close').onclick = async () => {
         try {
           await api('/api/warehouse-ops/inventory/' + id + '/close', { method: 'POST', body: '{}' });
-          toast('OK', 'Сессия закрыта', 'ok'); detail.innerHTML = ''; load();
+          toast('Готово', 'Сессия закрыта', 'ok'); detail.innerHTML = ''; load();
         } catch (e) { toast('Ошибка', e.message, 'err'); }
       };
     }
@@ -3014,7 +3014,7 @@ window.AsgardWarehouseV2 = (function () {
       if (!whId) return toast('Склад', 'Нет warehouse_id', 'err');
       try {
         const r = await api('/api/warehouse-ops/inventory', { method: 'POST', body: JSON.stringify({ warehouse_id: whId, title: 'Инвентаризация ' + new Date().toLocaleDateString('ru-RU') }) });
-        toast('OK', 'Сессия #' + r.session.id, 'ok'); await load(); openInv(r.session.id);
+        toast('Готово', 'Сессия №' + r.session.id, 'ok'); await load(); openInv(r.session.id);
       } catch (e) { toast('Ошибка', e.message, 'err'); }
     };
     body.querySelector('#wh2-inv-ref').onclick = load;

@@ -393,13 +393,16 @@ html[data-theme="light"] .hg-glass[data-role="card"] {
   /* CRITICAL: no transform when open — any transform kills backdrop-filter glass (nav/header) */
   transform: none;
   opacity: 1;
-  transition: transform 200ms ease-out, opacity 200ms ease-out;
+  transition: transform var(--dur-modal-in, 220ms) var(--ease-drawer, cubic-bezier(0.32, 0.72, 0, 1)),
+              opacity var(--dur-modal-in, 220ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1));
 }
 .hg-chrome.is-offscreen {
   transform: translateX(calc(100% + 12px));
   opacity: 0;
   pointer-events: none;
-  transition: transform 200ms ease-in, opacity 200ms ease-in;
+  /* Exit also ease-out (Emil): never ease-in on UI leave — feels sticky. */
+  transition: transform var(--dur-modal-out, 180ms) var(--ease-drawer, cubic-bezier(0.32, 0.72, 0, 1)),
+              opacity var(--dur-modal-out, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1));
 }
 .hg-chrome * { box-sizing: border-box; }
 
@@ -434,8 +437,10 @@ html[data-theme="light"] .hg-glass[data-role="card"] {
   justify-content: center;
   gap: 2px;
   font: 500 10px/1.2 var(--hg-font);
-  transition: background 120ms var(--hg-ease-ui), color 120ms var(--hg-ease-ui);
+  transition: background 120ms var(--hg-ease-ui), color 120ms var(--hg-ease-ui),
+              transform var(--dur-press, 140ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1));
 }
+.hg-rail-btn:active { transform: scale(0.97); }
 .hg-rail-btn:hover { background: var(--hg-hover); color: var(--hg-text); }
 .hg-rail-btn:focus-visible { outline: 2px solid var(--hg-accent-chat); outline-offset: 2px; }
 .hg-rail-btn.is-active {
@@ -1425,11 +1430,11 @@ html[data-theme="light"] .hg-bday-congrats:hover {
 /* Short, resisted spring only for touch pulls beyond the chat-list edges. */
 .hg-list > * {
   translate: 0 var(--hg-list-spring-y, 0px);
-  transition: translate 420ms cubic-bezier(.2, .72, .28, 1);
+  transition: translate 220ms var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1));
 }
 .hg-list.hg-overscroll-active > * { transition: none; }
 .hg-list.hg-overscroll-returning > * {
-  transition: translate 420ms cubic-bezier(.22, 1.35, .42, 1);
+  transition: translate 220ms var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1));
 }
 @media (prefers-reduced-motion: reduce) {
   .hg-list > * { transition-duration: 1ms !important; }
@@ -1454,7 +1459,7 @@ html[data-theme="light"] .hg-bday-congrats:hover {
 .hg-swipe-action.is-archive { background: #26845B; }
 .hg-swipe-action.is-delete { justify-content: flex-end; padding-left: 0; padding-right: 20px; background: #C83D4D; }
 .hg-chat-row.hg-swipe-active { z-index: 1; will-change: transform; }
-.hg-chat-row.hg-swipe-returning { transition: transform 220ms cubic-bezier(.22,1.25,.36,1); }
+.hg-chat-row.hg-swipe-returning { transition: transform 180ms var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)); }
 .hg-peek-backdrop {
   position: absolute;
   inset: 0;
@@ -1798,13 +1803,13 @@ html[data-theme="light"] .hg-bubble {
   from { opacity: 0; transform: translateY(8px); }
   to { opacity: 1; transform: none; }
 }
+/* Work chat: subtle enter, no bounce overshoot (dashboard cadence). */
 @keyframes hg-send-bounce {
-  0% { transform: scale(0.92); opacity: 0.7; }
-  60% { transform: scale(1.04); }
+  0% { transform: scale(0.97); opacity: 0.85; }
   100% { transform: scale(1); opacity: 1; }
 }
 .hg-bubble.is-bounce {
-  animation: hg-send-bounce 220ms cubic-bezier(0.34, 1.56, 0.64, 1);
+  animation: hg-send-bounce var(--dur-modal-in, 220ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1));
 }
 .hg-bubble.me {
   align-self: flex-end;
@@ -1972,7 +1977,7 @@ html[data-theme="light"] .hg-bubble {
   overflow: hidden;
   transition: transform 120ms var(--hg-ease-ui, ease), filter 120ms var(--hg-ease-ui, ease);
 }
-.hg-voice-play:active { transform: scale(0.94); }
+.hg-voice-play:active { transform: scale(0.97); }
 .hg-voice-play svg {
   width: 18px; height: 18px;
   fill: currentColor;
@@ -2060,7 +2065,7 @@ html[data-theme="light"] .hg-bubble {
   display: inline-flex; align-items: center; justify-content: center;
   transition: background 120ms ease, transform 120ms ease;
 }
-.hg-voice-aa:active { transform: scale(0.92); }
+.hg-voice-aa:active { transform: scale(0.97); }
 .hg-voice-aa:hover { background: color-mix(in srgb, var(--t1, #fff) 22%, transparent); }
 .hg-voice-aa.is-active { background: color-mix(in srgb, var(--blue-l, #4A90D9) 40%, transparent); }
 .hg-bubble.me .hg-voice-aa {
@@ -2371,7 +2376,7 @@ html[data-theme="light"] .hg-float-chrome {
   background: rgba(48, 48, 52, 0.95);
   color: #fff;
 }
-.hg-thread-head .hg-icon-btn#hgBack:active { transform: scale(0.94); }
+.hg-thread-head .hg-icon-btn#hgBack:active { transform: scale(0.97); }
 .hg-back-chevron {
   display: inline-flex;
   align-items: center;
@@ -2947,7 +2952,7 @@ html[data-theme="light"] .hg-composer-row .hg-tool.hg-attach-out {
 html[data-theme="light"] .hg-composer-row .hg-tool:hover {
   background: rgba(0, 0, 0, 0.08);
 }
-.hg-composer-row .hg-tool:active { transform: scale(0.94); }
+.hg-composer-row .hg-tool:active { transform: scale(0.97); }
 .hg-composer-row .hg-tool:focus { outline: none; }
 .hg-composer-row .hg-tool:focus-visible {
   outline: 2px solid var(--hg-accent-chat);
@@ -3144,7 +3149,7 @@ html[data-theme="light"] .hg-send.is-mic:hover {
   box-shadow: 0 4px 12px rgba(82, 136, 193, 0.5);
 }
 .hg-send.is-send:active,
-.hg-send.is-mic:active { transform: scale(0.96); }
+.hg-send.is-mic:active { transform: scale(0.97); }
 .hg-send.is-recording {
   border-color: transparent;
   background: #FF453A;
@@ -3351,7 +3356,7 @@ html[data-theme="light"] .hg-send.is-mic:hover {
   color: var(--hg-text);
   transition: filter 120ms ease, transform 120ms ease;
 }
-.hg-confirm-btn:active { transform: scale(0.98); }
+.hg-confirm-btn:active { transform: scale(0.97); }
 .hg-confirm-btn.is-primary { background: var(--blue-l, #5B8DEF); color: #fff; }
 .hg-confirm-btn.is-danger { background: var(--hg-danger, #FF453A); color: #fff; }
 .hg-member-info { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 6px 0 14px; }
@@ -4005,7 +4010,7 @@ html[data-theme="light"] .hg-bottom-nav {
   letter-spacing: 0;
   transition: color 180ms var(--hg-ease-std), background 180ms var(--hg-ease-std);
 }
-.hg-bottom-nav button:active { transform: scale(0.96); }
+.hg-bottom-nav button:active { transform: scale(0.97); }
 .hg-bottom-nav button:focus { outline: none; }
 .hg-bottom-nav button:focus-visible:not(.is-active) {
   outline: 2px solid var(--hg-accent-chat);
@@ -5453,7 +5458,7 @@ html[data-hg-fx="reduced"] {
     box-shadow var(--hg-dur-mid) var(--hg-ease-std);
 }
 .hg-invite-sheet .hg-invite-submit:hover { filter: brightness(1.06); }
-.hg-invite-sheet .hg-invite-submit:active { transform: scale(0.98); box-shadow: var(--hg-elev-1); }
+.hg-invite-sheet .hg-invite-submit:active { transform: scale(0.97); box-shadow: var(--hg-elev-1); }
 .hg-invite-sheet .hg-invite-submit:disabled {
   opacity: 0.45;
   cursor: default;
@@ -6032,7 +6037,7 @@ body:has(.hg-ai-sheet) .hg-nav-search {
     box-shadow var(--hg-dur-mid) var(--hg-ease-std);
 }
 .hg-invite-submit:hover { filter: brightness(1.06); box-shadow: var(--hg-glow-accent-soft); }
-.hg-invite-submit:active { transform: scale(0.98); box-shadow: var(--hg-elev-1); }
+.hg-invite-submit:active { transform: scale(0.97); box-shadow: var(--hg-elev-1); }
 .hg-invite-modes .hg-compose-mode.is-active {
   background: color-mix(in srgb, var(--blue-l, #4A90D9) 18%, transparent);
   color: var(--hg-text);

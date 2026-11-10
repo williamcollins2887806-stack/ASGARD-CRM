@@ -79,6 +79,28 @@
   const shortJson = (o) => { try { return JSON.stringify(o).slice(0, 60); } catch (_) { return ''; } };
   const $ = (id) => document.getElementById(id);
 
+  function openMcOverlay(overlay) {
+    if (!overlay) return overlay;
+    document.body.appendChild(overlay);
+    // Double rAF so enter animation runs after first paint
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => overlay.classList.add('is-open'));
+    });
+    return overlay;
+  }
+
+  function closeMcOverlay(overlay) {
+    if (!overlay || !overlay.classList) return;
+    if (overlay._mcClosing) return;
+    overlay._mcClosing = true;
+    overlay.classList.remove('is-open');
+    overlay.classList.add('is-leaving');
+    setTimeout(() => {
+      overlay._mcClosing = false;
+      if (overlay.parentNode) overlay.remove();
+    }, 250);
+  }
+
   function authToken() {
     return (window.AsgardAuth && window.AsgardAuth.getToken && window.AsgardAuth.getToken()) || '';
   }
@@ -95,7 +117,7 @@
     if (!a || !a.user) { location.href = '/index.html'; return false; }
     const roles = Array.isArray(a.user.roles) ? a.user.roles : [a.user.role];
     const ok = roles.some((r) => ALLOWED_ROLES.includes(r));
-    if (!ok) { toast('Доступ запрещён', 'Conductor доступен PM/ТО/директорам', 'err'); location.href = '/index.html'; return false; }
+    if (!ok) { toast('Доступ запрещён', 'Кондуктор доступен PM/ТО/директорам', 'err'); location.href = '/index.html'; return false; }
     return true;
   }
 
@@ -575,7 +597,7 @@
         }).join('');
         inlineForm = `
           <div class="mc-norm-form" data-cid="${c.id}">
-            <div class="mc-norm-title">📝 Заполните недостающие данные — Conductor сразу применит их и продолжит:</div>
+            <div class="mc-norm-title">📝 Заполните недостающие данные — Кондуктор сразу применит их и продолжит:</div>
             ${rows}
             <button class="mc-btn mc-btn-primary mc-norm-submit" data-cid="${c.id}">💾 Сохранить и продолжить</button>
           </div>`;
@@ -664,7 +686,7 @@
           if (c) c.status = 'ANSWERED';
           renderClarifications();
           if (data.resumed) {
-            toast('✅ Сохранено + Conductor продолжает', `Записано: ${(data.writes || []).join('; ')}`, 'ok');
+            toast('Сохранено — Кондуктор продолжает', `Записано: ${(data.writes || []).join('; ')}`, 'ok');
           } else {
             toast('Сохранено', `Осталось блокеров: ${data.remaining_blockers || 0}`, 'info');
           }
@@ -692,7 +714,7 @@
       if (c) c.status = 'ANSWERED';
       renderClarifications();
       if (data.resumed) {
-        toast('Conductor продолжает', 'Все блокеры закрыты — просчёт возобновлён', 'ok');
+        toast('Кондуктор продолжает', 'Все блокеры закрыты — просчёт возобновлён', 'ok');
       } else {
         toast('Ответ сохранён', `Осталось блокеров: ${data.remaining_blockers || 0}`, 'info');
       }
@@ -716,12 +738,12 @@
           <button class="mc-btn mc-btn-primary" id="mc-answer-save">Сохранить ответ</button>
         </div>
       </div>`;
-    document.body.appendChild(overlay);
-    document.getElementById('mc-answer-cancel').onclick = () => overlay.remove();
+    openMcOverlay(overlay);
+    document.getElementById('mc-answer-cancel').onclick = () => closeMcOverlay(overlay);
     document.getElementById('mc-answer-save').onclick = async () => {
       const txt = (document.getElementById('mc-answer-ta').value || '').trim();
       if (!txt) { toast('Пустой ответ', 'Введите текст', 'warn'); return; }
-      overlay.remove();
+      closeMcOverlay(overlay);
       await postAnswer(clarId, { answer_text: txt });
     };
     setTimeout(() => document.getElementById('mc-answer-ta').focus(), 50);
@@ -979,9 +1001,9 @@
     overlay.className = 'mc-modal-overlay';
     overlay.innerHTML = `
       <div class="mc-modal">
-        <div class="mc-modal-head">🔄 Попросить Conductor пересчитать</div>
+        <div class="mc-modal-head">🔄 Попросить Кондуктор пересчитать</div>
         <p style="margin:8px 0;font-size:13px;opacity:.8">
-          Опиши что нужно изменить — Conductor учтёт правку и пересчитает смету.
+          Опиши что нужно изменить — Кондуктор учтёт правку и пересчитает смету.
           Примеры: «увеличить бригаду до 12 человек», «убрать командировочные»,
           «учесть скидку поставщика 10%», «работаем в две смены вместо одной».
         </p>
@@ -991,12 +1013,12 @@
           <button class="mc-btn mc-btn-primary" id="mc-recompute-save">Запустить пересчёт</button>
         </div>
       </div>`;
-    document.body.appendChild(overlay);
-    document.getElementById('mc-recompute-cancel').onclick = () => overlay.remove();
+    openMcOverlay(overlay);
+    document.getElementById('mc-recompute-cancel').onclick = () => closeMcOverlay(overlay);
     document.getElementById('mc-recompute-save').onclick = async () => {
       const txt = (document.getElementById('mc-recompute-ta').value || '').trim();
       if (!txt) { toast('Пустая правка', 'Введите что изменить', 'warn'); return; }
-      overlay.remove();
+      closeMcOverlay(overlay);
       try {
         const r = await authFetch(`${API}/run/${state.runId}/recompute-with-feedback`, {
           method: 'POST',
@@ -1005,7 +1027,7 @@
         });
         const d = await r.json().catch(() => ({}));
         if (!r.ok) throw new Error(d.error || `HTTP ${r.status}`);
-        toast('Пересчёт', 'Conductor учтёт правку и продолжит', 'ok');
+        toast('Пересчёт', 'Кондуктор учтёт правку и продолжит', 'ok');
         // Сбросим terminal-флаг чтобы SSE снова заработал
         state.finished = false;
         connectEventStream();
@@ -1043,15 +1065,15 @@
           <button class="mc-btn mc-btn-primary" id="mc-edit-save">Сохранить</button>
         </div>
       </div>`;
-    document.body.appendChild(overlay);
+    openMcOverlay(overlay);
     document.getElementById('mc-edit-ta').value = JSON.stringify(finalContent, null, 2);
-    document.getElementById('mc-edit-cancel').onclick = () => overlay.remove();
+    document.getElementById('mc-edit-cancel').onclick = () => closeMcOverlay(overlay);
     document.getElementById('mc-edit-save').onclick = async () => {
       const raw = document.getElementById('mc-edit-ta').value;
       let parsed;
       try { parsed = JSON.parse(raw); }
-      catch (e) { toast('JSON-ошибка', e.message, 'err'); return; }
-      overlay.remove();
+      catch (e) { toast('Ошибка JSON', e.message, 'err'); return; }
+      closeMcOverlay(overlay);
       try {
         // Используем тот же recompute-with-feedback для трейс-аудита (PM не часто
         // правит руками, и Conductor должен знать что состояние изменилось).
@@ -1065,7 +1087,7 @@
         });
         const d = await r.json().catch(() => ({}));
         if (!r.ok) throw new Error(d.error || `HTTP ${r.status}`);
-        toast('Сохранено', 'Правка применена, Conductor пересчитает', 'ok');
+        toast('Сохранено', 'Правка применена, Кондуктор пересчитает', 'ok');
         renderFinalEstimate(parsed);
       } catch (e) {
         toast('Ошибка', e.message, 'err');

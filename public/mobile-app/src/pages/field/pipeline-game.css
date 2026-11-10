@@ -95,7 +95,7 @@
   font-size: 18px; font-weight: 900; color: var(--value-ink);
   letter-spacing: 0.06em; text-shadow: 0 2px 0 color-mix(in oklab, var(--bg-primary) 35%, transparent);
 }
-.pp-star { font-size: 18px; opacity: 0.18; filter: grayscale(1); transition: all 0.35s; }
+.pp-star { font-size: 18px; opacity: 0.18; filter: grayscale(1); transition: background-color var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), color var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), border-color var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), box-shadow var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), opacity var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), transform var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)); }
 .pp-star.on { opacity: 1; filter: none; transform: scale(1.15); filter: drop-shadow(0 0 8px color-mix(in oklab, var(--value) 70%, transparent)); }
 .pp-gauge { display: flex; align-items: center; gap: 10px; }
 .pp-gauge-dial {
@@ -424,7 +424,7 @@
 }
 @keyframes ppChest { 50% { transform: translateY(-4px) scale(1.04); } }
 .pp-star-row { display: flex; justify-content: center; gap: 10px; margin: 8px 0 4px; min-height: 36px; }
-.pp-star-big { font-size: 32px; opacity: 0.15; transform: scale(0.6); transition: all 0.35s cubic-bezier(0.22, 1.3, 0.36, 1); }
+.pp-star-big { font-size: 32px; opacity: 0.15; transform: scale(0.6); transition: background-color var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), color var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), border-color var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), box-shadow var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), opacity var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), transform var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)); }
 .pp-star-big.on { opacity: 1; transform: scale(1.15); filter: drop-shadow(0 0 10px color-mix(in oklab, var(--value) 80%, transparent)); }
 .pp-reward {
   display: inline-flex; align-items: center; justify-content: center; gap: 6px;

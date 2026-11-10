@@ -85,8 +85,13 @@ window.AsgardTasksPage = (function() {
 
   function openModal(el) {
     if (!el) return;
+    if (el._tasksClosing) {
+      clearTimeout(el._tasksClosing);
+      el._tasksClosing = null;
+    }
+    el.classList.remove('is-leaving');
+    el.style.display = '';
     el.classList.add('is-open');
-    el.style.display = 'flex';
     const focusable = el.querySelector('input, textarea, button, select');
     if (focusable) setTimeout(() => focusable.focus(), 0);
     if (!_escapeHandler) {
@@ -101,9 +106,15 @@ window.AsgardTasksPage = (function() {
   }
 
   function closeModalEl(el) {
-    if (!el) return;
+    if (!el || !el.classList.contains('is-open')) return;
+    if (el._tasksClosing) return;
     el.classList.remove('is-open');
-    el.style.display = 'none';
+    el.classList.add('is-leaving');
+    el._tasksClosing = setTimeout(() => {
+      el._tasksClosing = null;
+      el.classList.remove('is-leaving');
+      el.style.display = '';
+    }, 250);
   }
 
   // ─────────────────────────────────────────────────────────────────
@@ -202,7 +213,7 @@ window.AsgardTasksPage = (function() {
         </div>
       </div>
 
-      <div class="tasks-modal-overlay" id="createTaskModal" style="display:none" role="dialog" aria-modal="true"
+      <div class="tasks-modal-overlay" id="createTaskModal" role="dialog" aria-modal="true"
            onclick="if(event.target===this) AsgardTasksPage.closeCreateModal()">
         <div class="modal" onclick="event.stopPropagation()">
           <div class="modal-header">
@@ -246,7 +257,7 @@ window.AsgardTasksPage = (function() {
         </div>
       </div>
 
-      <div class="tasks-modal-overlay" id="completeTaskModal" style="display:none" role="dialog" aria-modal="true"
+      <div class="tasks-modal-overlay" id="completeTaskModal" role="dialog" aria-modal="true"
            onclick="if(event.target===this) AsgardTasksPage.closeCompleteModal()">
         <div class="modal" style="max-width:400px" onclick="event.stopPropagation()">
           <div class="modal-header">

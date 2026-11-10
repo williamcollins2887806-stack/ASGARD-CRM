@@ -6,57 +6,150 @@ window.AsgardUI = (function(){
   }[c]));
 
   const toastWrapId = "asgard_toasts";
-  function toast(title, msg="", type="ok", timeout=4000){
-    let mtxt = msg;
-    if(mtxt && typeof mtxt === "object"){
-      if(typeof mtxt.message === "string") mtxt = mtxt.message;
-      else{ try{ mtxt = JSON.stringify(mtxt); } catch(e){ mtxt = String(mtxt); } }
+  const TOAST_LEAVE_MS = 230; // --dur-modal-out (180) + buffer
+  const TOAST_EN_MAP = {
+    ok: 'Готово',
+    success: 'Готово',
+    saved: 'Сохранено',
+    done: 'Готово',
+    error: 'Сбой',
+    failed: 'Сбой',
+    failure: 'Сбой',
+    fail: 'Сбой',
+    warning: 'Внимание',
+    warn: 'Внимание',
+    info: 'Сообщение',
+    loading: 'Загрузка',
+    unauthorized: 'Нет доступа',
+    forbidden: 'Нет доступа',
+    timeout: 'Таймаут',
+    network: 'Сеть',
+    'network error': 'Сеть недоступна',
+    'failed to fetch': 'Нет связи с сервером',
+    'dry-run': 'Пробный прогон',
+    dryrun: 'Пробный прогон',
+    conductor: 'Кондуктор',
+    notifications: 'Лента',
+    notification: 'Лента'
+  };
+
+  function _toastNormType(t){
+    const s = String(t || 'ok').toLowerCase();
+    if(s === 'error' || s === 'err' || s === 'fail' || s === 'failed') return 'err';
+    if(s === 'warning' || s === 'warn') return 'warn';
+    if(s === 'info' || s === 'information') return 'info';
+    if(s === 'ok' || s === 'success' || s === 'done') return 'ok';
+    return 'ok';
+  }
+
+  function _toastLooksEnglish(s){
+    const t = String(s || '').trim();
+    if(!t) return false;
+    if(/[А-Яа-яЁё]/.test(t)) return false;
+    return /[A-Za-z]/.test(t);
+  }
+
+  function _toastSanitizeText(raw, fallback){
+    let s = raw;
+    if(s && typeof s === 'object'){
+      if(typeof s.message === 'string') s = s.message;
+      else { try { s = JSON.stringify(s); } catch(e){ s = String(s); } }
     }
-    if(mtxt === undefined || mtxt === null) mtxt = "";
-    mtxt = String(mtxt);
+    if(s == null) s = '';
+    s = String(s).trim();
+    if(!s) return fallback || '';
+    const low = s.toLowerCase();
+    if(TOAST_EN_MAP[low]) return TOAST_EN_MAP[low];
+    // whole-string English UI stamp / raw Error
+    if(/^(error|exception|typeerror|referenceerror|syntaxerror)\b/i.test(s) || _toastLooksEnglish(s)){
+      const mapped = Object.keys(TOAST_EN_MAP).find(k => low === k || low.startsWith(k + ':') || low.startsWith(k + ' '));
+      if(mapped) return TOAST_EN_MAP[mapped];
+      if(/failed to fetch|networkerror|net::/i.test(s)) return 'Нет связи с сервером';
+      if(/unauthorized|401/.test(low)) return 'Нет доступа';
+      if(/forbidden|403/.test(low)) return 'Нет доступа';
+      if(/timeout|timed out/.test(low)) return 'Превышено время ожидания';
+      return fallback || 'Не удалось выполнить';
+    }
+    // product name leftover in RU sentences
+    return s.replace(/\bConductor\b/g, 'Кондуктор').replace(/\bDry-run\b/gi, 'Пробный прогон');
+  }
+
+  function _dismissToast(el){
+    if(!el || !el.parentNode || el._toastLeaving) return;
+    el._toastLeaving = true;
+    el.classList.add('toast-exit');
+    const bar = el.querySelector('.toast-progress');
+    if(bar) bar.style.animationPlayState = 'paused';
+    setTimeout(() => { if(el.parentNode) el.remove(); }, TOAST_LEAVE_MS);
+  }
+
+  function toast(title, msg="", type="ok", timeout=4000){
+    // Compat: toast(msg, 'err'|'ok'|'warn'|'info')
+    if(typeof msg === 'string' && /^(err|ok|warn|info|error|success|warning)$/i.test(msg) && (type === 'ok' || type === undefined) && arguments.length <= 3 && timeout === 4000){
+      const t2 = _toastNormType(msg);
+      msg = '';
+      type = t2;
+      // title stays as message body → use type default title
+      const body = title;
+      title = t2 === 'err' ? 'Сбой' : t2 === 'warn' ? 'Внимание' : t2 === 'info' ? 'Сообщение' : 'Готово';
+      msg = body;
+    }
+
+    type = _toastNormType(type);
+    let mtxt = _toastSanitizeText(msg, '');
+    let ttitle = _toastSanitizeText(title, type === 'err' ? 'Сбой' : type === 'warn' ? 'Внимание' : type === 'info' ? 'Сообщение' : 'Готово');
+    if(!ttitle) ttitle = type === 'err' ? 'Сбой' : 'Готово';
+    // meaningless generic
+    if(/^уведомления$/i.test(ttitle) && mtxt){
+      ttitle = mtxt;
+      mtxt = '';
+    }
 
     let w = document.getElementById(toastWrapId);
     if(!w){
-      w = document.createElement("div");
+      w = document.createElement('div');
       w.id = toastWrapId;
-      w.className = "toastwrap";
+      w.className = 'toastwrap';
       document.body.appendChild(w);
     }
 
-    const icons = { ok: '✓', err: '✕', warn: '⚠', info: 'ℹ' };
+    const icons = { ok: '✓', err: '✕', warn: '!', info: 'i' };
     const icon = icons[type] || icons.ok;
+    const klass = type === 'err' ? 'error' : type === 'warn' ? 'warning' : type === 'info' ? 'info' : 'success';
+    const dur = Math.max(1200, Number(timeout) || 4000);
 
-    const t = document.createElement("div");
-    t.className = "toast toast-" + (type === "err" ? "error" : type === "warn" ? "warning" : type === "info" ? "info" : "success");
+    const t = document.createElement('div');
+    t.className = 'toast toast-' + klass;
     t.innerHTML = `
-      <div class="toast-icon">${icon}</div>
+      <div class="toast-icon" aria-hidden="true">${icon}</div>
       <div class="toast-content">
-        <div class="toast-title">${esc(title)}</div>
+        <div class="toast-title">${esc(ttitle)}</div>
         ${mtxt ? `<div class="toast-msg">${esc(mtxt)}</div>` : ''}
       </div>
-      <button class="toast-close" type="button">✕</button>
-      <div class="toast-progress"></div>
+      <button class="toast-close" type="button" aria-label="Закрыть">×</button>
+      <div class="toast-progress" style="animation-duration:${dur}ms"></div>
     `;
 
-    // Close button
-    t.querySelector('.toast-close').addEventListener('click', () => {
-      t.classList.add('toast-exit');
-      setTimeout(() => t.remove(), 200);
-    });
+    const dismiss = () => _dismissToast(t);
+    t.querySelector('.toast-close').addEventListener('click', dismiss);
 
-    // Auto-remove
-    setTimeout(() => {
-      if (t.parentNode) {
-        t.classList.add('toast-exit');
-        setTimeout(() => t.remove(), 200);
-      }
-    }, timeout);
+    let timer = setTimeout(dismiss, dur);
+    t.addEventListener('mouseenter', () => {
+      clearTimeout(timer);
+      const bar = t.querySelector('.toast-progress');
+      if(bar) bar.style.animationPlayState = 'paused';
+    });
+    t.addEventListener('mouseleave', () => {
+      const bar = t.querySelector('.toast-progress');
+      if(bar) bar.style.animationPlayState = 'running';
+      timer = setTimeout(dismiss, Math.max(1200, Math.round(dur * 0.35)));
+    });
 
     w.appendChild(t);
 
-    // Limit visible toasts to 5
-    const all = w.querySelectorAll('.toast');
-    if (all.length > 5) all[0].remove();
+    // Limit 5 — leave-animate oldest
+    const all = w.querySelectorAll('.toast:not(.toast-exit)');
+    if(all.length > 5) _dismissToast(all[0]);
   }
 
   // ===== Modal (CR-MODAL v2.0) — proper multi-layer stack =====
@@ -315,10 +408,11 @@ window.AsgardUI = (function(){
     target.classList.add("cr-m-overlay--leaving");
     target.classList.remove("cr-m-overlay--visible");
 
+    // Must be >= CSS --dur-modal-out (180ms) + 50ms buffer (motion skill invariant).
     setTimeout(function(){
       target.remove();
       if(_modalStack.length === 0) document.body.style.overflow = "";
-    }, 300);
+    }, 250);
   }
 
   // ═══════════════════════════════════════════════════════════════
@@ -504,9 +598,10 @@ window.AsgardUI = (function(){
     drawerOverlay.classList.remove('cr-d-overlay--visible', 'open');
     document.body.style.overflow = '';
 
+    // Must be >= CSS drawer transition (--dur-modal-in 220ms) + 50ms buffer.
     setTimeout(() => {
       if (drawerEl) $('#drawerBody').innerHTML = '';
-    }, 350);
+    }, 280);
   }
 
   // Status CSS class mapper
@@ -793,7 +888,37 @@ window.AsgardUI = (function(){
     setTimeout(() => bubble.remove(), 1800);
   }
 
-  return { renderMarkdown, $, $$, esc, toast, showModal, replaceModal, hideModal, closeModal: hideModal, showDrawer, hideDrawer, statusClass, makeResponsiveTable, emptyState, enableTableSort, formField, confirm: async (t,m) => window.confirm(m), copyToClipboard, formatDate, formatDateTime, skeleton, money, moneyRub, moneyShort, oopsBubble: _showOopsBubble };
+  /**
+   * Legacy `.modal-overlay` helpers (W2 motion canon).
+   * Enter is CSS-driven on `.show`/`.active`; close must use closeLegacyOverlay
+   * so leave animation plays before remove (timeout ≥ --dur-modal-out + 50ms).
+   */
+  function openLegacyOverlay(el) {
+    if (!el || !el.classList) return el;
+    el.classList.remove('is-leaving');
+    el.classList.add('show');
+    el.style.display = 'flex';
+    return el;
+  }
+
+  function closeLegacyOverlay(el, opts) {
+    opts = opts || {};
+    if (!el || !el.classList) return;
+    if (el._asgLegacyClosing) return;
+    el._asgLegacyClosing = true;
+    el.classList.add('is-leaving');
+    setTimeout(function () {
+      el._asgLegacyClosing = false;
+      if (opts.remove === false) {
+        el.classList.remove('show', 'active', 'is-leaving');
+        el.style.display = 'none';
+      } else {
+        el.remove();
+      }
+    }, 250);
+  }
+
+  return { renderMarkdown, $, $$, esc, toast, showModal, replaceModal, hideModal, closeModal: hideModal, showDrawer, hideDrawer, openLegacyOverlay, closeLegacyOverlay, statusClass, makeResponsiveTable, emptyState, enableTableSort, formField, confirm: async (t,m) => window.confirm(m), copyToClipboard, formatDate, formatDateTime, skeleton, money, moneyRub, moneyShort, oopsBubble: _showOopsBubble };
 
   /**
    * renderMarkdown(md) — Renders Markdown text as styled HTML

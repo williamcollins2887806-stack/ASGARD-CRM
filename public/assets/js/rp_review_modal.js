@@ -2466,7 +2466,8 @@ window.AsgardRpReviewModal = (function () {
         subtitle: subtitleText(),
         icon: '📊',
         html: bodyHtml(),
-        wide: true
+        wide: true,
+        fullscreen: true
       });
       bindModal();
     }
@@ -2477,6 +2478,7 @@ window.AsgardRpReviewModal = (function () {
       icon: '📊',
       html: '<p class="muted">Загрузка отчёта…</p>',
       wide: true,
+      fullscreen: true,
       onMount: () => {
         API.loadRpReview(tender.id).then((d) => {
           if (d.tender) {

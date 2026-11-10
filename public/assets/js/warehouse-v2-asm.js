@@ -599,7 +599,7 @@ window.WH2Asm = (function () {
             method: 'POST', body: JSON.stringify({ reason: 'РП снял с контроля' })
           });
           if (r && r.mail && r.mail.dry_run) {
-            toast('Dry-run почта', 'Письмо не отправлено наружу — только preview', 'ok');
+            toast('Пробный прогон', 'Письмо не отправлено наружу — только предпросмотр', 'ok');
           } else {
             toast('Удалено', 'Позиция снята', 'ok');
           }

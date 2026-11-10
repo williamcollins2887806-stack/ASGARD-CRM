@@ -669,7 +669,7 @@ window.AsgardReceiptScanner = (function(){
     // Удаляем модал
     const modal = document.getElementById('scannerModal');
     if (modal) {
-      modal.remove();
+      if (window.AsgardUI && AsgardUI.closeLegacyOverlay) AsgardUI.closeLegacyOverlay(modal); else modal.remove();
     }
     
     currentWorkId = null;

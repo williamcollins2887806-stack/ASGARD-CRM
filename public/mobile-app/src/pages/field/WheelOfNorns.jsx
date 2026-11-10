@@ -111,7 +111,7 @@ const WHEEL_CSS = `
 .wn-rw-equip:disabled{opacity:.45}
 .wn-bubble{position:absolute;top:-8px;left:50%;transform:translateX(-50%) scale(.7);padding:5px 12px;border-radius:14px;background:var(--card2);
   border:1px solid color-mix(in oklab, var(--text-primary) 8%, transparent);font-size:12px;font-weight:700;white-space:nowrap;
-  box-shadow:0 4px 15px color-mix(in oklab, var(--bg-primary) 40%, transparent);opacity:0;transition:all .25s cubic-bezier(.34,1.56,.64,1);pointer-events:none;z-index:6}
+  box-shadow:0 4px 15px color-mix(in oklab, var(--bg-primary) 40%, transparent);opacity:0;transition: background-color var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), color var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), border-color var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), box-shadow var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), opacity var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), transform var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1));pointer-events:none;z-index:6}
 .wn-bubble::before{content:'';position:absolute;left:50%;bottom:-5px;transform:translateX(-50%);border:5px solid transparent;border-top-color:var(--card2)}
 .wn-bubble-on{opacity:1;transform:translateX(-50%) scale(1)}
 .wn-wheel{flex:1;min-height:0;display:flex;flex-direction:column;align-items:center;justify-content:center;position:relative;z-index:10;padding:10px 0 4px}
@@ -171,8 +171,7 @@ box-shadow:inset 0 0 32px color-mix(in oklab, var(--text-primary) 8%, transparen
 .wn-spin-area{position:relative;z-index:10;padding:10px 16px 0;text-align:center}
 .wn-btn{display:inline-flex;align-items:center;justify-content:center;gap:10px;width:100%;max-width:360px;padding:16px 24px;border-radius:18px;border:none;
   font-size:17px;font-weight:800;color:#ffffff;cursor:pointer;position:relative;overflow:hidden;
-  background:linear-gradient(135deg,#B91C2C,#8E1220 55%,#6E4E0A);box-shadow:0 6px 0 #6E1220,0 8px 25px color-mix(in oklab, var(--danger) 30%, transparent);transition:all .1s}
-.wn-btn:active{transform:translateY(4px);box-shadow:0 2px 0 #6E1220}
+  background:linear-gradient(135deg,#B91C2C,#8E1220 55%,#6E4E0A);box-shadow:0 6px 0 #6E1220,0 8px 25px color-mix(in oklab, var(--danger) 30%, transparent);transition: background-color var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), color var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), border-color var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), box-shadow var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), opacity var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), transform var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1));box-shadow:0 2px 0 #6E1220}
 .wn-btn-off{opacity:.35;pointer-events:none}
 .wn-btn::after{content:'';position:absolute;top:0;left:-100%;width:40%;height:100%;background:linear-gradient(90deg,transparent,color-mix(in oklab, var(--text-primary) 10%, transparent),transparent);animation:wnShine 3s infinite}
 @keyframes wnShine{0%,100%{left:-100%}50%{left:150%}}
@@ -203,7 +202,7 @@ box-shadow:inset 0 0 32px color-mix(in oklab, var(--text-primary) 8%, transparen
 @keyframes wnZF{0%{opacity:0}30%{opacity:1;background:color-mix(in oklab, var(--value) 12%, transparent)}60%{opacity:0}80%{opacity:.5;background:color-mix(in oklab, var(--text-primary) 8%, transparent)}100%{opacity:0}}
 .wn-ov{position:absolute;inset:0;z-index:200;background:color-mix(in oklab, var(--bg-primary) 0%, transparent);pointer-events:none;transition:background .4s}
 .wn-ov-on{background:color-mix(in oklab, var(--bg-primary) 70%, transparent);pointer-events:auto;backdrop-filter:blur(6px)}
-.wn-rw{position:absolute;left:50%;bottom:0;width:100%;max-width:430px;transform:translate(-50%,110%);z-index:201;transition:transform .55s cubic-bezier(.34,1.56,.64,1)}
+.wn-rw{position:absolute;left:50%;bottom:0;width:100%;max-width:430px;transform:translate(-50%,110%);z-index:201;transition:transform .55s var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1))}
 .wn-rw-on{transform:translate(-50%,0)}
 .wn-rw-card{background:linear-gradient(180deg,var(--card2),var(--card));border-radius:28px 28px 0 0;border:1px solid color-mix(in oklab, var(--text-primary) 6%, transparent);border-bottom:none;padding:20px;padding-bottom:max(env(safe-area-inset-bottom),28px);box-shadow:0 -10px 50px color-mix(in oklab, var(--bg-primary) 50%, transparent)}
 .wn-rw-handle{width:40px;height:4px;border-radius:2px;background:color-mix(in oklab, var(--text-primary) 12%, transparent);margin:0 auto 16px}

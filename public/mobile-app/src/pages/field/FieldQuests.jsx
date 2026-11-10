@@ -786,7 +786,7 @@ const QUEST_CSS = `
 .fq-tabs{display:flex;gap:6px;padding:8px 16px;flex-shrink:0;overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch}
 .fq-tabs::-webkit-scrollbar{display:none}
 .fq-tab{display:flex;align-items:center;gap:5px;padding:8px 14px;border-radius:20px;font-size:13px;font-weight:700;
-  cursor:pointer;white-space:nowrap;transition:all .3s cubic-bezier(.34,1.56,.64,1);position:relative;
+  cursor:pointer;white-space:nowrap;transition: background-color var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), color var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), border-color var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), box-shadow var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), opacity var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), transform var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1));position:relative;
   background:color-mix(in oklab, var(--text-primary) 4%, transparent);border:1px solid color-mix(in oklab, var(--text-primary) 6%, transparent);color:var(--fq-t3);flex-shrink:0}
 .fq-tab-icon{font-size:15px}
 .fq-tab-badge{position:absolute;top:-4px;right:-4px;min-width:18px;height:18px;border-radius:9px;
@@ -827,7 +827,7 @@ const QUEST_CSS = `
 /* Quest card */
 .fq-quest-card{background:var(--fq-card);border-radius:18px;padding:14px;margin-bottom:10px;
   border:1px solid color-mix(in oklab, var(--text-primary) 4%, transparent);box-shadow:0 4px 16px color-mix(in oklab, var(--bg-primary) 20%, transparent);position:relative;overflow:hidden;
-  transition:all .4s cubic-bezier(.34,1.56,.64,1);opacity:0;transform:translateY(20px) scale(.97)}
+  transition: background-color var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), color var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), border-color var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), box-shadow var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), opacity var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), transform var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1));opacity:0;transform:translateY(20px) scale(.97)}
 .fq-quest-card.visible{opacity:1;transform:translateY(0) scale(1)}
 .fq-quest-card::before{content:'';position:absolute;left:0;top:0;bottom:0;width:4px;border-radius:4px 0 0 4px;transition:background .3s}
 .fq-quest-card.daily::before{background:var(--fq-daily)}
@@ -891,8 +891,7 @@ const QUEST_CSS = `
   border-radius:12px;border:none;font-size:14px;font-weight:800;color:var(--text-on-gold);cursor:pointer;
   margin-top:10px;position:relative;overflow:hidden;
   background:var(--gold-fill);
-  box-shadow:0 4px 0 var(--gold-fill),0 6px 16px color-mix(in oklab, var(--gold-fill) 25%, transparent);animation:fq-claimPulse 2s ease-in-out infinite;transition:all .1s}
-.fq-qc-claim:active{transform:translateY(3px);box-shadow:0 1px 0 var(--gold-fill)}
+  box-shadow:0 4px 0 var(--gold-fill),0 6px 16px color-mix(in oklab, var(--gold-fill) 25%, transparent);animation:fq-claimPulse 2s ease-in-out infinite;transition: background-color var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), color var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), border-color var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), box-shadow var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), opacity var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), transform var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1));box-shadow:0 1px 0 var(--gold-fill)}
 @keyframes fq-claimPulse{0%,100%{box-shadow:0 4px 0 var(--value),0 6px 16px color-mix(in oklab, var(--value) 20%, transparent)}50%{box-shadow:0 4px 0 var(--value),0 6px 28px color-mix(in oklab, var(--value) 40%, transparent)}}
 .fq-qc-claim::after{content:'';position:absolute;top:0;left:-100%;width:40%;height:100%;
   background:linear-gradient(90deg,transparent,color-mix(in oklab, var(--text-primary) 15%, transparent),transparent);animation:fq-claimShine 2.5s infinite}
@@ -911,7 +910,7 @@ const QUEST_CSS = `
 .fq-danger-toast{position:fixed;top:80px;left:50%;transform:translateX(-50%) translateY(-120px);z-index:300;
   padding:10px 20px;border-radius:14px;background:linear-gradient(135deg,color-mix(in oklab, var(--danger) 90%, transparent),color-mix(in oklab, var(--danger) 95%, transparent));
   border:1px solid color-mix(in oklab, var(--danger) 30%, transparent);box-shadow:0 8px 30px color-mix(in oklab, var(--danger) 40%, transparent);
-  font-size:13px;font-weight:700;color:var(--text-primary);white-space:nowrap;transition:transform .5s cubic-bezier(.34,1.56,.64,1);backdrop-filter:blur(8px)}
+  font-size:13px;font-weight:700;color:var(--text-primary);white-space:nowrap;transition:transform .5s var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1));backdrop-filter:blur(8px)}
 .fq-danger-toast.show{transform:translateX(-50%) translateY(0)}
 .fq-dt-fire{animation:fq-flame .5s ease-in-out infinite alternate}
 
@@ -927,7 +926,7 @@ const QUEST_CSS = `
 .fq-modal-overlay{position:fixed;inset:0;z-index:200;background:color-mix(in oklab, var(--bg-primary) 0%, transparent);pointer-events:none;transition:background .4s}
 .fq-modal-overlay.on{background:color-mix(in oklab, var(--bg-primary) 75%, transparent);pointer-events:auto;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
 .fq-modal-popup{position:fixed;left:50%;bottom:0;width:100%;max-width:430px;transform:translate(-50%,110%);z-index:201;
-  transition:transform .6s cubic-bezier(.34,1.56,.64,1)}
+  transition:transform .6s var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1))}
 .fq-modal-popup.on{transform:translate(-50%,0)}
 .fq-modal-card{background:linear-gradient(180deg,var(--fq-card2),var(--fq-card));border-radius:28px 28px 0 0;
   border:1px solid color-mix(in oklab, var(--text-primary) 8%, transparent);border-bottom:none;padding:20px 24px;
@@ -948,8 +947,7 @@ const QUEST_CSS = `
 .fq-modal-claim-btn{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;padding:16px;border-radius:16px;border:none;
   font-family:inherit,serif;font-size:16px;font-weight:900;color:var(--text-on-gold);cursor:pointer;position:relative;overflow:hidden;
   background:linear-gradient(135deg,var(--gold-fill),var(--gold-fill),var(--gold-fill));
-  box-shadow:0 5px 0 var(--gold-fill),0 8px 24px color-mix(in oklab, var(--gold-fill) 30%, transparent);transition:all .1s}
-.fq-modal-claim-btn:active{transform:translateY(4px);box-shadow:0 1px 0 var(--gold-fill)}
+  box-shadow:0 5px 0 var(--gold-fill),0 8px 24px color-mix(in oklab, var(--gold-fill) 30%, transparent);transition: background-color var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), color var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), border-color var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), box-shadow var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), opacity var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), transform var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1));box-shadow:0 1px 0 var(--gold-fill)}
 .fq-modal-claim-btn::after{content:'';position:absolute;top:0;left:-100%;width:50%;height:100%;
   background:linear-gradient(90deg,transparent,color-mix(in oklab, var(--text-primary) 20%, transparent),transparent);animation:fq-claimShine 3s infinite}
 .fq-modal-rune-l,.fq-modal-rune-r{position:absolute;font-size:64px;color:color-mix(in oklab, var(--danger) 5%, transparent);font-family:inherit,serif;pointer-events:none}

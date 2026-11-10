@@ -1177,7 +1177,7 @@ try{
         for(const n of items){ if(n && !n.is_read){ n.is_read=true; await AsgardDB.put("notifications", n); } }
         await loadBell();
         updateNotifBadges(0);
-        toast("Уведомления", "Отмечено как прочитано");
+        toast("Прочитано", "Лента очищена", "ok");
       });
     }
     

@@ -169,7 +169,7 @@ window.AsgardBonusApproval = (function(){
     const modal = document.getElementById('bonusModal');
     
     // Закрытие
-    modal.querySelectorAll('.btnClose').forEach(b => b.onclick = () => modal.remove());
+    modal.querySelectorAll('.btnClose').forEach(b => b.onclick = () => (window.AsgardUI && AsgardUI.closeLegacyOverlay ? AsgardUI.closeLegacyOverlay(modal) : modal.remove()));
     modal.onclick = e => { if (e.target === modal) AsgardUI.oopsBubble(e.clientX, e.clientY); };
 
     // Пересчёт итого
@@ -272,7 +272,7 @@ window.AsgardBonusApproval = (function(){
         } catch(e) {}
       }
       
-      modal.remove();
+      if (window.AsgardUI && AsgardUI.closeLegacyOverlay) AsgardUI.closeLegacyOverlay(modal); else modal.remove();
       AsgardUI.toast('Отправлено', 'Запрос на согласование отправлен директору', 'ok');
       if (onComplete) onComplete();
     };

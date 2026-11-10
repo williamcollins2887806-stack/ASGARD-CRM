@@ -20,7 +20,10 @@ input[type="checkbox"]:not(.no-cr-chk):not(.toggle-input) {
   vertical-align: middle;
   cursor: pointer;
   accent-color: transparent;
-  transition: border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
+  transition: border-color var(--dur-press, 140ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), background var(--dur-press, 140ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), box-shadow var(--dur-press, 140ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), transform var(--dur-press, 140ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1));
+}
+input[type="checkbox"]:not(.no-cr-chk):not(.toggle-input):active:not(:disabled) {
+  transform: scale(0.97);
 }
 
 input[type="checkbox"]:not(.no-cr-chk):not(.toggle-input):hover:not(:disabled) {

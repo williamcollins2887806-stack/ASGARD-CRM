@@ -46,16 +46,17 @@
 .cr-m-overlay:has(.rp-review-modal) {
   background: var(--bg1) !important;
   padding: 0 !important;
-  /* 14.09: было stretch — модалка фиксировалась в высоту overlay, а overflow:hidden
-     внутри прятал остаток контента (модалку просчёта РП нельзя было проскроллить).
-     flex-start возвращает рост по контенту: скроллит overlay (overflow-y:auto). */
+  /* 14.09: align-items flex-start — рост по контенту, скроллит overlay (overflow-y:auto).
+     09.11: justify-content был stretch — wide-панель анализа уезжала влево (дыра справа).
+     Центр по X; edge-to-edge даёт .cr-m--fullscreen { width:100% }. */
   align-items: flex-start !important;
-  justify-content: stretch !important;
+  justify-content: center !important;
 }
 .cr-m-overlay:has(.rp-calc-modal) .cr-m--fullscreen,
 .cr-m-overlay:has(.rp-review-modal) .cr-m--fullscreen {
   width: 100% !important;
   min-height: 100% !important;
+  margin: 0 !important;
   background: var(--bg2) !important;
 }
 

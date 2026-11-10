@@ -752,7 +752,7 @@ window.AsgardPermitApplications = (function(){
       onChange: () => refreshList()
     }));
 
-    modal.querySelectorAll('.btnClose').forEach(b => b.onclick = () => modal.remove());
+    modal.querySelectorAll('.btnClose').forEach(b => b.onclick = () => (window.AsgardUI && AsgardUI.closeLegacyOverlay ? AsgardUI.closeLegacyOverlay(modal) : modal.remove()));
     modal.onclick = e => { if (e.target === modal) AsgardUI.oopsBubble(e.clientX, e.clientY); };
 
     function updateCount() {
@@ -800,7 +800,7 @@ window.AsgardPermitApplications = (function(){
 
     document.getElementById('btnConfirmEmp').onclick = () => {
       const selectedEmps = allEmployees.filter(e => selected.has(String(e.id)));
-      modal.remove();
+      if (window.AsgardUI && AsgardUI.closeLegacyOverlay) AsgardUI.closeLegacyOverlay(modal); else modal.remove();
       onConfirm(selectedEmps);
     };
   }
@@ -1020,7 +1020,7 @@ window.AsgardPermitApplications = (function(){
 
     document.body.insertAdjacentHTML('beforeend', html);
     const modal = document.getElementById('permitSelectModal');
-    modal.querySelectorAll('.btnClose').forEach(b => b.onclick = () => modal.remove());
+    modal.querySelectorAll('.btnClose').forEach(b => b.onclick = () => (window.AsgardUI && AsgardUI.closeLegacyOverlay ? AsgardUI.closeLegacyOverlay(modal) : modal.remove()));
     modal.onclick = e => { if (e.target === modal) AsgardUI.oopsBubble(e.clientX, e.clientY); };
 
     function refreshContent() {
@@ -1120,7 +1120,7 @@ window.AsgardPermitApplications = (function(){
 
     // Confirm
     document.getElementById('btnConfirmPermits').onclick = () => {
-      modal.remove();
+      if (window.AsgardUI && AsgardUI.closeLegacyOverlay) AsgardUI.closeLegacyOverlay(modal); else modal.remove();
       onConfirm(Array.from(selected));
     };
   }
@@ -1164,7 +1164,7 @@ window.AsgardPermitApplications = (function(){
 
     document.body.insertAdjacentHTML('beforeend', html);
     const modal = document.getElementById('sendConfirmModal');
-    modal.querySelectorAll('.btnClose').forEach(b => b.onclick = () => modal.remove());
+    modal.querySelectorAll('.btnClose').forEach(b => b.onclick = () => (window.AsgardUI && AsgardUI.closeLegacyOverlay ? AsgardUI.closeLegacyOverlay(modal) : modal.remove()));
     modal.onclick = e => { if (e.target === modal) AsgardUI.oopsBubble(e.clientX, e.clientY); };
 
     document.getElementById('btnConfirmSend').onclick = async () => {
@@ -1179,7 +1179,7 @@ window.AsgardPermitApplications = (function(){
           body: { copy_to_self: copyToSelf }
         });
         toast('Готово', 'Заявка отправлена', 'ok');
-        modal.remove();
+        if (window.AsgardUI && AsgardUI.closeLegacyOverlay) AsgardUI.closeLegacyOverlay(modal); else modal.remove();
         if (onSuccess) onSuccess();
       } catch(e) {
         toast('Ошибка', e.message, 'err');
@@ -1270,7 +1270,7 @@ window.AsgardPermitApplications = (function(){
 
     document.body.insertAdjacentHTML('beforeend', html);
     const modal = document.getElementById('viewAppModal');
-    modal.querySelectorAll('.btnClose').forEach(b => b.onclick = () => modal.remove());
+    modal.querySelectorAll('.btnClose').forEach(b => b.onclick = () => (window.AsgardUI && AsgardUI.closeLegacyOverlay ? AsgardUI.closeLegacyOverlay(modal) : modal.remove()));
     modal.onclick = e => { if (e.target === modal) AsgardUI.oopsBubble(e.clientX, e.clientY); };
   }
 

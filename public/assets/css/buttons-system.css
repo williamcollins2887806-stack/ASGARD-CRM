@@ -47,8 +47,8 @@
   --bsys-fs: 13px;
   --bsys-fw: 600;
   --bsys-gap: 8px;
-  --bsys-ease: cubic-bezier(0.22, 1, 0.36, 1);
-  --bsys-dur: 0.16s;
+  --bsys-ease: var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1));
+  --bsys-dur: var(--dur-press, 140ms);
 }
 
 /* ── ТЁМНАЯ ТЕМА: золото как бренд ───────────────────────────────────────── */
@@ -176,7 +176,7 @@ a.btn,
   outline: none !important;
   box-shadow: var(--bsys-focus) !important;
 }
-.btn:active { transform: translateY(1px) scale(0.99); }
+.btn:active { transform: scale(0.97); }
 .btn:disabled,
 .btn[disabled],
 .btn.is-disabled {
@@ -406,8 +406,10 @@ html[data-theme="light"] .btn.warning:hover {
   font-weight: var(--bsys-fw);
   transition: background var(--bsys-dur) var(--bsys-ease),
               border-color var(--bsys-dur) var(--bsys-ease),
-              box-shadow var(--bsys-dur) var(--bsys-ease);
+              box-shadow var(--bsys-dur) var(--bsys-ease),
+              transform var(--bsys-dur) var(--bsys-ease);
 }
+.pk3-btn:active { transform: scale(0.97); }
 .pk3-btn.pk3-gold {
   background: linear-gradient(180deg, var(--bsys-primary-1) 0%, var(--bsys-primary-2) 100%) !important;
   border: 1px solid var(--bsys-primary-brd) !important;
@@ -436,4 +438,42 @@ html[data-theme="light"] .btn.warning:hover {
 }
 .mimir-sidebar-new:hover {
   background: var(--bsys-gold-fill-h) !important;
+}
+
+/* ── W5: press-канон non-.btn CTA (whitelist only) ───────────────────────── */
+.topbar-search:active,
+.themebtn:active,
+.bellbtn:active,
+.sidebar-search-btn:active,
+.nav-group-header:active,
+.tl-tab:active,
+.mimir-sidebar-new:active,
+.sidefoot #btnLogout:active,
+.cr-m__close:active,
+.cr-d__close:active,
+.mymail-btn-icon:active,
+.mymail-compose-btn:active,
+.mymail-reply-btn:active,
+.mymail-compose-send:active {
+  transform: scale(0.97);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pk3-btn:active,
+  .topbar-search:active,
+  .themebtn:active,
+  .bellbtn:active,
+  .sidebar-search-btn:active,
+  .nav-group-header:active,
+  .tl-tab:active,
+  .mimir-sidebar-new:active,
+  .sidefoot #btnLogout:active,
+  .cr-m__close:active,
+  .cr-d__close:active,
+  .mymail-btn-icon:active,
+  .mymail-compose-btn:active,
+  .mymail-reply-btn:active,
+  .mymail-compose-send:active {
+    transform: none !important;
+  }
 }

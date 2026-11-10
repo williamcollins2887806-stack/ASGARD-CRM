@@ -23,7 +23,7 @@
   line-height: 1;
   text-decoration: none;
   cursor: pointer;
-  transition: all var(--fast);
+  transition: background var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), color var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), border-color var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), box-shadow var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), opacity var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), transform var(--dur-press, 140ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1));
   white-space: nowrap;
   user-select: none;
   -webkit-tap-highlight-color: transparent;
@@ -35,9 +35,7 @@
   box-shadow: var(--shadow-sm);
 }
 
-.btn:active {
-  transform: scale(0.98);
-}
+/* Press feedback: canonical in buttons-system.css (.btn:active scale 0.97) */
 
 .btn:focus-visible {
   outline: 2px solid var(--blue);
@@ -134,7 +132,7 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  transition: all var(--fast);
+  transition: background var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), color var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), border-color var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), box-shadow var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), opacity var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), transform var(--dur-press, 140ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1));
 }
 
 .btn.icononly:hover,
@@ -391,7 +389,7 @@ textarea,
   font-family: inherit;
   font-size: 13px;
   line-height: 1.5;
-  transition: all var(--fast);
+  transition: background var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), color var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), border-color var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), box-shadow var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), opacity var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), transform var(--dur-press, 140ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1));
 }
 
 input:hover,
@@ -501,7 +499,7 @@ input[type="radio"] {
   background: var(--brd);
   border-radius: var(--r-full);
   cursor: pointer;
-  transition: background var(--fast);
+  transition: background var(--dur-press, 140ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1));
 }
 
 .toggle-switch::after {
@@ -513,7 +511,7 @@ input[type="radio"] {
   height: 20px;
   background: white;
   border-radius: 50%;
-  transition: transform var(--fast);
+  transition: transform var(--dur-press, 140ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1));
   box-shadow: var(--shadow-sm);
 }
 
@@ -565,7 +563,7 @@ label {
   font-size: 14px;
   color: var(--t3);
   pointer-events: none;
-  transition: all var(--fast);
+  transition: background var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), color var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), border-color var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), box-shadow var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), opacity var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), transform var(--dur-press, 140ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1));
   text-transform: none;
   letter-spacing: normal;
 }
@@ -793,7 +791,7 @@ table.asg tr td:last-child {
   border-color: var(--blue);
   box-shadow: var(--shadow-md);
   transform: translateY(-2px);
-  transition: all var(--base);
+  transition: background var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), color var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), border-color var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), box-shadow var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), opacity var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), transform var(--dur-press, 140ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1));
 }
 
 .card:hover::before,
@@ -936,7 +934,7 @@ table.asg tr td:last-child {
   padding: var(--sp-4);
   position: relative;
   overflow: hidden;
-  transition: all var(--base);
+  transition: background var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), color var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), border-color var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), box-shadow var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), opacity var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), transform var(--dur-press, 140ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1));
 }
 
 .kpi .k:hover {
@@ -1135,7 +1133,8 @@ table.asg tr td:last-child {
    Legacy class compatibility: .modalback → .cr-m-overlay, .modal → .cr-m
    ═══════════════════════════════════════════════════════════════════════════════ */
 
-/* modal-overlay used by non-AsgardUI code (e.g. wp-desktop modals) */
+/* modal-overlay used by non-AsgardUI code (e.g. wp-desktop modals)
+   W2: enter/exit on motion tokens (Emil canon). Inject-with-.show gets enter via keyframes. */
 .modal-overlay {
   position: fixed;
   inset: 0;
@@ -1147,11 +1146,55 @@ table.asg tr td:last-child {
   backdrop-filter: blur(8px);
   overflow-y: auto;
   z-index: var(--z-modal);
+  opacity: 0;
 }
 
 .modal-overlay.show,
 .modal-overlay.active {
   display: flex;
+  animation: asg-legacy-overlay-in var(--dur-modal-in, 220ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)) forwards;
+}
+
+.modal-overlay.show .modal-content,
+.modal-overlay.active .modal-content {
+  animation: asg-legacy-panel-in var(--dur-modal-in, 220ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)) forwards;
+}
+
+.modal-overlay.is-leaving {
+  animation: asg-legacy-overlay-out var(--dur-modal-out, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)) forwards;
+  pointer-events: none;
+}
+
+.modal-overlay.is-leaving .modal-content {
+  animation: asg-legacy-panel-out var(--dur-modal-out, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)) forwards;
+}
+
+@keyframes asg-legacy-overlay-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes asg-legacy-overlay-out {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+@keyframes asg-legacy-panel-in {
+  from { opacity: 0; transform: translateY(12px) scale(0.97); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+@keyframes asg-legacy-panel-out {
+  from { opacity: 1; transform: translateY(0) scale(1); }
+  to { opacity: 0; transform: translateY(10px) scale(0.98); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .modal-overlay.show,
+  .modal-overlay.active,
+  .modal-overlay.is-leaving,
+  .modal-overlay.show .modal-content,
+  .modal-overlay.active .modal-content,
+  .modal-overlay.is-leaving .modal-content {
+    animation-duration: 0.01ms !important;
+  }
 }
 
 .modal-content {
@@ -1243,7 +1286,7 @@ table.asg tr td:last-child {
   background: transparent;
   color: var(--t3);
   cursor: pointer;
-  transition: all var(--fast);
+  transition: background var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), color var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), border-color var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), box-shadow var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), opacity var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), transform var(--dur-press, 140ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1));
   font-size: 14px;
   line-height: 1;
   padding: 0;
@@ -1282,7 +1325,7 @@ table.asg tr td:last-child {
   font-size: var(--text-sm);
   font-weight: var(--fw-semi);
   cursor: pointer;
-  transition: all var(--fast);
+  transition: background var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), color var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), border-color var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), box-shadow var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), opacity var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), transform var(--dur-press, 140ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1));
   white-space: nowrap;
   position: relative;
 }
@@ -1363,7 +1406,7 @@ table.asg tr td:last-child {
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════════
-   TOAST NOTIFICATIONS — Redesigned
+   TOAST NOTIFICATIONS — ASGARD quiet luxury
    ═══════════════════════════════════════════════════════════════════════════════ */
 .toastwrap {
   position: fixed;
@@ -1372,49 +1415,52 @@ table.asg tr td:last-child {
   z-index: var(--z-toast);
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  max-width: min(400px, calc(100vw - 32px));
+  gap: 10px;
+  max-width: min(380px, calc(100vw - 32px));
   pointer-events: none;
 }
 
 .toast {
   display: flex;
   align-items: flex-start;
-  gap: 10px;
-  padding: 12px 14px;
-  border-radius: 12px;
-  background: var(--bg2);
-  border: 1px solid rgba(255,255,255,0.15);
-  border-left: 3px solid var(--brd);
-  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.3);
+  gap: 12px;
+  padding: 13px 14px 14px;
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--bg2) 86%, transparent);
+  border: 1px solid color-mix(in srgb, var(--brd, rgba(255,255,255,0.12)) 80%, transparent);
+  border-top: 2px solid var(--brd);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.22);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
   pointer-events: auto;
   position: relative;
   overflow: hidden;
-  animation: toast-in 250ms ease forwards;
+  animation: toast-in var(--dur-modal-in, 220ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)) forwards;
 }
 
-.toast-success { border-left-color: var(--ok); }
-.toast-error   { border-left-color: var(--red); }
-.toast-warning { border-left-color: var(--gold); }
-.toast-info    { border-left-color: var(--blue); }
+.toast-success { border-top-color: var(--ok); }
+.toast-error   { border-top-color: var(--red); }
+.toast-warning { border-top-color: var(--gold); }
+.toast-info    { border-top-color: var(--blue); }
 
 @keyframes toast-in {
-  from { opacity: 0; transform: translateX(40px) scale(0.95); }
+  from { opacity: 0; transform: translateX(12px) scale(0.98); }
   to { opacity: 1; transform: translateX(0) scale(1); }
 }
 
 .toast.toast-exit {
-  animation: toast-out 200ms ease forwards;
+  animation: toast-out var(--dur-modal-out, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)) forwards;
+  pointer-events: none;
 }
 
 @keyframes toast-out {
-  to { opacity: 0; transform: translateX(40px) scale(0.95); }
+  from { opacity: 1; transform: translateX(0) scale(1); }
+  to { opacity: 0; transform: translateX(8px) scale(0.98); }
 }
 
-/* Icon circle */
 .toast-icon {
-  width: 24px;
-  height: 24px;
+  width: 26px;
+  height: 26px;
   border-radius: 50%;
   display: flex;
   align-items: center;
@@ -1422,88 +1468,93 @@ table.asg tr td:last-child {
   font-size: 12px;
   font-weight: 700;
   flex-shrink: 0;
+  letter-spacing: 0;
 }
 
-/* Variants */
 .toast-success .toast-icon {
   background: var(--ok-bg);
   color: var(--ok-t);
 }
-
 .toast-error .toast-icon {
   background: var(--err-bg);
   color: var(--err-t);
 }
-
 .toast-warning .toast-icon {
   background: var(--warn-bg);
   color: var(--warn-t);
 }
-
 .toast-info .toast-icon {
   background: var(--info-bg);
   color: var(--info-text);
 }
 
-/* Content */
 .toast-content { flex: 1; min-width: 0; }
 
 .toast-title {
-  font-size: 13px;
+  font-size: 13.5px;
   font-weight: 600;
   color: var(--t1);
+  line-height: 1.3;
 }
 
 .toast-msg {
   font-size: 12px;
   color: var(--t3);
-  margin-top: 2px;
+  margin-top: 3px;
+  line-height: 1.4;
   word-break: break-word;
 }
 
-/* Close */
 .toast-close {
   background: none;
   border: none;
   color: var(--t3);
-  font-size: 12px;
+  font-size: 16px;
+  line-height: 1;
   cursor: pointer;
-  padding: 2px 4px;
-  border-radius: 4px;
+  padding: 2px 6px;
+  border-radius: 6px;
   flex-shrink: 0;
-  transition: color var(--fast);
+  transition: color var(--dur-press, 140ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), transform var(--dur-press, 140ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1));
 }
-
 .toast-close:hover { color: var(--t1); }
+.toast-close:active { transform: scale(0.97); }
 
-/* Progress bar */
 .toast-progress {
   position: absolute;
   bottom: 0;
   left: 0;
   height: 2px;
-  border-radius: 0 0 12px 12px;
-  animation: toast-progress 4s linear forwards;
+  width: 100%;
+  border-radius: 0 0 14px 14px;
+  transform-origin: left center;
+  animation: toast-progress linear forwards;
 }
 
 .toast-success .toast-progress { background: var(--ok); }
 .toast-error .toast-progress { background: var(--red); }
-.toast-warning .toast-progress { background: var(--warn); }
-.toast-info .toast-progress { background: var(--info); }
+.toast-warning .toast-progress { background: var(--gold); }
+.toast-info .toast-progress { background: var(--blue); }
 
 @keyframes toast-progress {
-  from { width: 100%; }
-  to { width: 0%; }
+  from { transform: scaleX(1); }
+  to { transform: scaleX(0); }
 }
 
-/* Light theme */
 html[data-theme="light"] .toast {
-  background: var(--bg2);
+  background: color-mix(in srgb, var(--bg2) 92%, #fff);
   border-color: rgba(0, 0, 0, 0.06);
-  box-shadow: var(--shadow-lg);
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.10);
 }
 
-/* Mobile: full width above tab bar */
+@media (prefers-reduced-motion: reduce) {
+  .toast,
+  .toast.toast-exit,
+  .toast-progress {
+    animation-duration: 0.01ms !important;
+  }
+}
+
 @media (max-width: 768px) {
   .toastwrap {
     top: auto;
@@ -1683,7 +1734,7 @@ html[data-theme="light"] .tbl.zebra tbody tr:nth-child(even) {
   color: var(--t2);
   font-size: 12px;
   cursor: pointer;
-  transition: all var(--fast);
+  transition: background var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), color var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), border-color var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), box-shadow var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), opacity var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), transform var(--dur-press, 140ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1));
 }
 
 .page-btn:hover {
@@ -1717,7 +1768,7 @@ html[data-theme="light"] .tbl.zebra tbody tr:nth-child(even) {
   opacity: 0;
   visibility: hidden;
   pointer-events: none;
-  transition: all var(--fast);
+  transition: background var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), color var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), border-color var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), box-shadow var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), opacity var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), transform var(--dur-press, 140ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1));
   z-index: var(--z-tooltip);
 }
 
@@ -1780,7 +1831,7 @@ summary {
   color: var(--t1);
   font-weight: var(--fw-med);
   cursor: pointer;
-  transition: all var(--fast);
+  transition: background var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), color var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), border-color var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), box-shadow var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), opacity var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), transform var(--dur-press, 140ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1));
   list-style: none;
 }
 
@@ -2147,10 +2198,7 @@ details > *:not(summary) {
   animation-fill-mode: both;
 }
 
-/* Button Press Effect */
-.btn:active {
-  transform: scale(0.98);
-}
+/* Button Press Effect: canonical in buttons-system.css */
 
 /* Pulse Animation for Notifications */
 @keyframes notification-pulse {
@@ -2446,7 +2494,7 @@ details > *:not(summary) {
   border: none;
   border-radius: var(--r-md);
   cursor: grab;
-  transition: all var(--base);
+  transition: background var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), color var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), border-color var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), box-shadow var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), opacity var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), transform var(--dur-press, 140ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1));
   box-shadow: none;
 }
 
@@ -2626,7 +2674,7 @@ details > *:not(summary) {
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: all var(--base) ease;
+  transition: background var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), color var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), border-color var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), box-shadow var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), opacity var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), transform var(--dur-press, 140ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1));
   box-shadow: 0 2px 8px rgba(212, 175, 55, 0.3);
 }
 
@@ -2862,7 +2910,7 @@ details > *:not(summary) {
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  transition: all var(--fast);
+  transition: background var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), color var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), border-color var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), box-shadow var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), opacity var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), transform var(--dur-press, 140ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1));
   margin-right: 4px;
 }
 
@@ -2943,7 +2991,7 @@ details > *:not(summary) {
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: all var(--fast) ease;
+  transition: background var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), color var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), border-color var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), box-shadow var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), opacity var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), transform var(--dur-press, 140ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1));
 }
 
 .chat-header-btn:hover {
@@ -3150,7 +3198,7 @@ details > *:not(summary) {
   background: var(--bg2);
   border: 1px solid rgba(255, 255, 255, 0.1);
   cursor: pointer;
-  transition: all var(--fast);
+  transition: background var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), color var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), border-color var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), box-shadow var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), opacity var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), transform var(--dur-press, 140ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1));
 }
 
 .chat-msg-reaction:hover {
@@ -3194,7 +3242,7 @@ details > *:not(summary) {
   justify-content: center;
   font-size: 14px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
-  transition: all var(--fast);
+  transition: background var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), color var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), border-color var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), box-shadow var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), opacity var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), transform var(--dur-press, 140ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1));
 }
 
 .chat-msg-action-btn:hover {
@@ -3300,7 +3348,7 @@ details > *:not(summary) {
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: all var(--fast);
+  transition: background var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), color var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), border-color var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), box-shadow var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), opacity var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), transform var(--dur-press, 140ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1));
 }
 
 .chat-reply-bar-close:hover {
@@ -3376,7 +3424,7 @@ details > *:not(summary) {
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: all var(--fast) ease;
+  transition: background var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), color var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), border-color var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), box-shadow var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), opacity var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), transform var(--dur-press, 140ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1));
   flex-shrink: 0;
 }
 
@@ -3413,7 +3461,7 @@ details > *:not(summary) {
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  transition: all var(--fast);
+  transition: background var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), color var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), border-color var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), box-shadow var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), opacity var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), transform var(--dur-press, 140ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1));
 }
 
 .chat-attach-btn:hover {
@@ -3734,7 +3782,7 @@ details > *:not(summary) {
   background: var(--bg2);
   border: 1px solid rgba(255,255,255,0.15);
   border-radius: var(--r-lg);
-  transition: all var(--base);
+  transition: background var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), color var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), border-color var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), box-shadow var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), opacity var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), transform var(--dur-press, 140ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1));
 }
 
 .meeting-card:hover {
@@ -3823,7 +3871,7 @@ details > *:not(summary) {
   color: var(--t2);
   font-size: var(--text-sm);
   cursor: pointer;
-  transition: all var(--fast);
+  transition: background var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), color var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), border-color var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), box-shadow var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), opacity var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), transform var(--dur-press, 140ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1));
 }
 
 .meeting-rsvp-btn:hover {
@@ -3881,7 +3929,7 @@ details > *:not(summary) {
   background: var(--bg3);
   border: 1px solid rgba(255,255,255,0.15);
   border-radius: var(--r-md);
-  transition: all var(--fast);
+  transition: background var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), color var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), border-color var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), box-shadow var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), opacity var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), transform var(--dur-press, 140ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1));
   cursor: pointer;
 }
 
@@ -3928,7 +3976,7 @@ details > *:not(summary) {
   background: var(--bg3);
   border: 1px solid rgba(255,255,255,0.15);
   border-radius: var(--r-md);
-  transition: all var(--fast);
+  transition: background var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), color var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), border-color var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), box-shadow var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), opacity var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), transform var(--dur-press, 140ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1));
   cursor: pointer;
 }
 
@@ -4347,19 +4395,7 @@ html[data-theme="light"] .status-gold {
    ═══════════════════════════════════════════════════════════════════════════════ */
 
 /* Button press effect */
-.btn {
-  transition: all var(--fast);
-  position: relative;
-  overflow: hidden;
-}
-
-.btn:active {
-  transform: scale(0.97);
-}
-
-/* Table row hover — highlight + left border */
-.tbl tbody tr {
-  transition: background var(--fast);
+/* .btn transition/active: canonical in buttons-system.css — do not reintroduce transition: background var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), color var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), border-color var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), box-shadow var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), opacity var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), transform var(--dur-press, 140ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1));
   border-left: 3px solid transparent;
 }
 
@@ -4538,7 +4574,7 @@ html[data-theme="light"] .inp:focus {
   padding: 4px 6px;
   border-radius: 4px;
   font-size: 14px;
-  transition: all var(--fast);
+  transition: background var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), color var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), border-color var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), box-shadow var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), opacity var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), transform var(--dur-press, 140ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1));
 }
 
 .btn-remove:hover {
@@ -5276,7 +5312,7 @@ html[data-theme="light"] .viking-welcome .vw-saga-wrap {
   color: var(--bg0);
   font-weight: 800;
   border: none;
-  transition: all var(--base);
+  transition: background var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), color var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), border-color var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), box-shadow var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), opacity var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), transform var(--dur-press, 140ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1));
 }
 
 .btn-fast-track:hover {
@@ -5624,7 +5660,7 @@ textarea:focus:not(:focus-visible) {
   background: rgba(255,255,255,0.04);
   color: var(--t2);
   cursor: pointer;
-  transition: all 0.15s;
+  transition: background var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), color var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), border-color var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), box-shadow var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), opacity var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), transform var(--dur-press, 140ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1));
   user-select: none;
 }
 .wp-desktop-pill:hover {
@@ -5657,7 +5693,7 @@ textarea:focus:not(:focus-visible) {
   background: rgba(255,255,255,0.04);
   color: var(--t2);
   cursor: pointer;
-  transition: all 0.2s cubic-bezier(.34,1.56,.64,1);
+  transition: background var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), color var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), border-color var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), box-shadow var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), opacity var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), transform var(--dur-press, 140ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1));
   user-select: none;
 }
 .wp-desktop-score-circle:hover {
@@ -5881,7 +5917,7 @@ textarea:focus:not(:focus-visible) {
   font-size: 13px;
   font-weight: 500;
   cursor: pointer;
-  transition: all 0.2s;
+  transition: background var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), color var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), border-color var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), box-shadow var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), opacity var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), transform var(--dur-press, 140ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1));
   white-space: nowrap;
   border-radius: 6px 6px 0 0;
 }
@@ -6498,7 +6534,7 @@ label.cr-required::after {
   width: 20px; height: 20px; min-width: 20px; border-radius: 6px;
   border: 2px solid var(--brd, rgba(255,255,255,0.12));
   display: flex; align-items: center; justify-content: center;
-  font-size: 12px; color: transparent; transition: all .15s;
+  font-size: 12px; color: transparent; transition: background var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), color var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), border-color var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), box-shadow var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), opacity var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), transform var(--dur-press, 140ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1));
 }
 .emp-selector-item input[type="checkbox"] { display: none; }
 .emp-selector-item input[type="checkbox"]:checked ~ .emp-selector-check {

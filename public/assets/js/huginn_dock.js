@@ -3803,7 +3803,7 @@
         returnTimer = setTimeout(() => {
           row.classList.remove('hg-swipe-returning');
           returnTimer = 0;
-        }, 240);
+        }, 220);
       }
     };
     const paint = (dx) => {

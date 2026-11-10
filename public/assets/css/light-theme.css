@@ -2402,7 +2402,7 @@ html[data-theme="light"] .kanban-add-btn {
   color: var(--t3) !important;
   background: transparent !important;
   border-radius: 8px;
-  transition: all 0.2s;
+  transition: background-color var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), color var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), border-color var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), box-shadow var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), opacity var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), transform var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1));
 }
 html[data-theme="light"] .kanban-add-btn:hover {
   border-color: var(--gold) !important;
@@ -3236,7 +3236,7 @@ html[data-theme="light"] .gl-tab {
   cursor: pointer;
   border: none !important;
   border-radius: 10px;
-  transition: all 0.2s;
+  transition: background-color var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), color var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), border-color var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), box-shadow var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), opacity var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), transform var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1));
 }
 html[data-theme="light"] .gl-tab.active {
   background: var(--gold) !important;
@@ -3258,7 +3258,7 @@ html[data-theme="light"] .gl-sort {
   font-weight: 600;
   cursor: pointer;
   border-radius: 8px;
-  transition: all 0.2s;
+  transition: background-color var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), color var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), border-color var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), box-shadow var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), opacity var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), transform var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1));
 }
 
 /* Строка рейтинга */
@@ -3395,7 +3395,7 @@ html[data-theme="light"] .call-toggle-switch {
 html[data-theme="light"] .call-toggle-slider {
   background: var(--bg4) !important;
   border-radius: 20px;
-  transition: background 0.3s;
+  transition: background var(--dur-press, 140ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1));
 }
 html[data-theme="light"] input:checked + .call-toggle-slider {
   background: var(--ok) !important;
@@ -3526,7 +3526,7 @@ html[data-theme="light"] .fk-btn {
   color: var(--t1) !important;
   border-radius: 8px;
   font-weight: 500;
-  transition: all 0.15s;
+  transition: background-color var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), color var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), border-color var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), box-shadow var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), opacity var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), transform var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1));
 }
 html[data-theme="light"] .fk-btn:hover {
   background: var(--bg4) !important;
@@ -3719,7 +3719,7 @@ html[data-theme="light"] .cr-f-chip {
   border: 1px solid var(--brd) !important;
   color: var(--t2) !important;
   border-radius: 8px;
-  transition: all 0.15s;
+  transition: background-color var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), color var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), border-color var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), box-shadow var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), opacity var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), transform var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1));
 }
 html[data-theme="light"] .cr-f-chip:hover {
   border-color: var(--gold) !important;

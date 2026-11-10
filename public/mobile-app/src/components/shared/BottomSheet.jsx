@@ -226,7 +226,7 @@ export function BottomSheet({ open, onClose, children, title, footer, maxHeight 
         onClick={close}
         style={{
           backgroundColor: 'rgba(0,0,0,0.5)',
-          animation: 'fadeIn var(--motion-fast) var(--ease-enter) forwards',
+          animation: 'fadeIn var(--motion-fast) var(--ease-smooth-out) forwards',
         }}
       />
 
@@ -244,7 +244,8 @@ export function BottomSheet({ open, onClose, children, title, footer, maxHeight 
           maxHeight,
           height: 'auto',
           marginBottom: kbHeight ? `${kbHeight}px` : undefined,
-          animation: 'sheetSlideUp var(--motion-normal) var(--ease-spring) forwards',
+          /* Work sheets: strong ease-out, no bounce (Emil / plan 004). */
+          animation: 'sheetSlideUp var(--motion-normal) var(--ease-smooth-out) forwards',
           paddingBottom: 'calc(var(--safe-bottom) + 8px)',
         }}
       >

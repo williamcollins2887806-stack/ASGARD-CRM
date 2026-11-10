@@ -197,7 +197,7 @@ window.AsgardMango = (function(){
           background-color: var(--bg-elevated);
           border: 1px solid var(--line);
           border-radius: 6px;
-          transition: 0.3s;
+          transition: background var(--dur-press, 140ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), border-color var(--dur-press, 140ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1));
         }
         
         .call-toggle-slider:before {
@@ -209,7 +209,7 @@ window.AsgardMango = (function(){
           bottom: 3px;
           background-color: #fff;
           border-radius: 50%;
-          transition: 0.3s;
+          transition: transform var(--dur-press, 140ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1));
           box-shadow: 0 2px 4px rgba(0,0,0,0.2);
         }
         

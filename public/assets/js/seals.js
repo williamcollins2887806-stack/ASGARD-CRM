@@ -264,7 +264,7 @@ window.AsgardSealsPage = (function(){
       value: seal?.type || SEAL_TYPES[0]?.id || ''
     }));
 
-    modal.querySelectorAll('.btnClose').forEach(b => b.onclick = () => modal.remove());
+    modal.querySelectorAll('.btnClose').forEach(b => b.onclick = () => (window.AsgardUI && AsgardUI.closeLegacyOverlay ? AsgardUI.closeLegacyOverlay(modal) : modal.remove()));
     modal.onclick = e => { if (e.target === modal) AsgardUI.oopsBubble(e.clientX, e.clientY); };
     
     $('#btnSaveSeal').onclick = async () => {
@@ -287,7 +287,7 @@ window.AsgardSealsPage = (function(){
       };
       
       await save(data);
-      modal.remove();
+      if (window.AsgardUI && AsgardUI.closeLegacyOverlay) AsgardUI.closeLegacyOverlay(modal); else modal.remove();
       AsgardUI.toast('Сохранено', isEdit ? 'Печать обновлена' : 'Печать добавлена', 'ok');
       location.hash = '#/seals';
     };
@@ -344,7 +344,7 @@ window.AsgardSealsPage = (function(){
     document.body.insertAdjacentHTML('beforeend', html);
     const modal = $('#transferModal');
     
-    modal.querySelectorAll('.btnClose').forEach(b => b.onclick = () => modal.remove());
+    modal.querySelectorAll('.btnClose').forEach(b => b.onclick = () => (window.AsgardUI && AsgardUI.closeLegacyOverlay ? AsgardUI.closeLegacyOverlay(modal) : modal.remove()));
     modal.onclick = e => { if (e.target === modal) AsgardUI.oopsBubble(e.clientX, e.clientY); };
     
     // Show/hide return date
@@ -423,7 +423,7 @@ window.AsgardSealsPage = (function(){
         } catch(e) {}
       }
       
-      modal.remove();
+      if (window.AsgardUI && AsgardUI.closeLegacyOverlay) AsgardUI.closeLegacyOverlay(modal); else modal.remove();
       AsgardUI.toast('Успешно', isReturnToOffice ? 'Печать возвращена в офис' : 'Запрос на передачу отправлен', 'ok');
       location.hash = '#/seals';
     };
@@ -480,7 +480,7 @@ window.AsgardSealsPage = (function(){
     
     document.body.insertAdjacentHTML('beforeend', html);
     const modal = $('#historyModal');
-    modal.querySelectorAll('.btnClose').forEach(b => b.onclick = () => modal.remove());
+    modal.querySelectorAll('.btnClose').forEach(b => b.onclick = () => (window.AsgardUI && AsgardUI.closeLegacyOverlay ? AsgardUI.closeLegacyOverlay(modal) : modal.remove()));
     modal.onclick = e => { if (e.target === modal) AsgardUI.oopsBubble(e.clientX, e.clientY); };
   }
 

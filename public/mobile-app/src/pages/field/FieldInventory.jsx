@@ -869,7 +869,7 @@ const INV_CSS = `
 /* Status pills */
 .finv-status-bar{display:flex;gap:8px;padding:12px 16px 8px;justify-content:center}
 .finv-pill{display:flex;align-items:center;gap:5px;padding:8px 14px;border-radius:20px;font-size:12px;font-weight:700;
-  cursor:pointer;transition:all .3s ease;border:1.5px solid transparent;background:color-mix(in oklab, var(--text-primary) 4%, transparent);color:var(--finv-t2);
+  cursor:pointer;transition: background-color var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), color var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), border-color var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), box-shadow var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), opacity var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), transform var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1));border:1.5px solid transparent;background:color-mix(in oklab, var(--text-primary) 4%, transparent);color:var(--finv-t2);
   -webkit-tap-highlight-color:transparent}
 .finv-pill:active{transform:scale(.95)}
 .finv-pill-icon{font-size:14px}
@@ -907,7 +907,7 @@ const INV_CSS = `
 
 /* Item card */
 .finv-item-card{display:flex;gap:14px;padding:14px;border-radius:18px;background:var(--finv-card);
-  border:1.5px solid color-mix(in oklab, var(--text-primary) 4%, transparent);cursor:pointer;transition:all .3s ease;position:relative;overflow:hidden;
+  border:1.5px solid color-mix(in oklab, var(--text-primary) 4%, transparent);cursor:pointer;transition: background-color var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), color var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), border-color var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), box-shadow var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), opacity var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), transform var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1));position:relative;overflow:hidden;
   -webkit-tap-highlight-color:transparent;opacity:0;transform:translateY(20px)}
 .finv-item-card.visible{opacity:1;transform:translateY(0)}
 .finv-item-card:active{transform:scale(.98)!important}
@@ -938,7 +938,7 @@ const INV_CSS = `
 .finv-item-sub{font-size:11px;color:var(--finv-t3);line-height:1.3}
 .finv-item-pm-row{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--finv-t2)}
 .finv-item-pm-call{width:28px;height:28px;border-radius:50%;background:color-mix(in oklab, var(--acc) 15%, transparent);border:1px solid color-mix(in oklab, var(--acc) 30%, transparent);
-  display:flex;align-items:center;justify-content:center;cursor:pointer;text-decoration:none;transition:all .2s;flex-shrink:0}
+  display:flex;align-items:center;justify-content:center;cursor:pointer;text-decoration:none;transition: background-color var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), color var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), border-color var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), box-shadow var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), opacity var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), transform var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1));flex-shrink:0}
 .finv-item-pm-call:active{background:color-mix(in oklab, var(--acc) 30%, transparent);transform:scale(.9)}
 .finv-item-card[data-status="ready"] .finv-item-pm-call{animation:finv-phoneRing 3s ease-in-out infinite 1.5s}
 @keyframes finv-phoneRing{0%,8%,16%,100%{transform:rotate(0)}2%{transform:rotate(12deg)}4%{transform:rotate(-12deg)}6%{transform:rotate(10deg)}10%{transform:rotate(-8deg)}12%{transform:rotate(6deg)}14%{transform:rotate(-4deg)}}
@@ -951,7 +951,7 @@ const INV_CSS = `
 .finv-modal-overlay{position:fixed;inset:0;z-index:200;background:color-mix(in oklab, var(--bg-primary) 0%, transparent);pointer-events:none;transition:background .35s}
 .finv-modal-overlay.on{background:color-mix(in oklab, var(--bg-primary) 70%, transparent);pointer-events:auto;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
 .finv-modal-sheet{position:fixed;left:50%;bottom:0;width:100%;max-width:430px;transform:translate(-50%,110%);z-index:201;
-  transition:transform .5s cubic-bezier(.34,1.56,.64,1);max-height:92dvh;overflow-y:auto}
+  transition:transform .5s var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1));max-height:92dvh;overflow-y:auto}
 .finv-modal-sheet.on{transform:translate(-50%,0)}
 .finv-modal-card{background:linear-gradient(180deg,var(--finv-card2),var(--finv-card));border-radius:28px 28px 0 0;
   border:1px solid color-mix(in oklab, var(--text-primary) 6%, transparent);border-bottom:none;padding:20px;
@@ -1020,7 +1020,7 @@ const INV_CSS = `
 /* Action buttons */
 .finv-action-btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;
   padding:9px 16px;border-radius:12px;border:none;font-size:12px;font-weight:800;cursor:pointer;
-  transition:all .15s;margin-top:6px;-webkit-tap-highlight-color:transparent}
+  transition: background-color var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), color var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), border-color var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), box-shadow var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), opacity var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), transform var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1));margin-top:6px;-webkit-tap-highlight-color:transparent}
 .finv-action-btn:active{transform:translateY(2px)}
 .finv-action-btn:disabled{opacity:.5;cursor:not-allowed}
 .finv-action-btn.equip{background:linear-gradient(135deg,var(--acc),var(--acc));color:var(--text-primary);

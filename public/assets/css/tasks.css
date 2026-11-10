@@ -208,10 +208,55 @@
   padding: 16px;
   background: rgba(8, 12, 20, 0.48);
   backdrop-filter: blur(2px);
+  opacity: 0;
+}
+
+.tasks-modal-overlay.is-open,
+.tasks-modal-overlay.is-leaving {
+  display: flex;
 }
 
 .tasks-modal-overlay.is-open {
-  display: flex;
+  animation: tasks-overlay-in var(--dur-modal-in, 220ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)) forwards;
+}
+
+.tasks-modal-overlay.is-open .modal {
+  animation: tasks-panel-in var(--dur-modal-in, 220ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)) forwards;
+}
+
+.tasks-modal-overlay.is-leaving {
+  animation: tasks-overlay-out var(--dur-modal-out, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)) forwards;
+  pointer-events: none;
+}
+
+.tasks-modal-overlay.is-leaving .modal {
+  animation: tasks-panel-out var(--dur-modal-out, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)) forwards;
+}
+
+@keyframes tasks-overlay-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes tasks-overlay-out {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+@keyframes tasks-panel-in {
+  from { opacity: 0; transform: translateY(12px) scale(0.97); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+@keyframes tasks-panel-out {
+  from { opacity: 1; transform: translateY(0) scale(1); }
+  to { opacity: 0; transform: translateY(10px) scale(0.98); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tasks-modal-overlay.is-open,
+  .tasks-modal-overlay.is-leaving,
+  .tasks-modal-overlay.is-open .modal,
+  .tasks-modal-overlay.is-leaving .modal {
+    animation-duration: 0.01ms !important;
+  }
 }
 
 .tasks-modal-overlay .modal {
