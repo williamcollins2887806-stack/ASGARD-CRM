@@ -154,14 +154,15 @@ window.AsgardTkpPage = (function() {
       '.tkp-tbl-btn:hover{border-color:var(--blue);color:var(--blue);background:rgba(30,77,140,0.06)}' +
       '.tkp-tbl-btn svg{width:15px;height:15px;stroke:currentColor}' +
       // Компактные действия в таблице: три значка + меню «⋯».
-      '.tkp-actions{white-space:nowrap;text-align:right}' +
-      '.tkp-more{position:relative;display:inline-block}' +
-      '.tkp-more__menu{position:absolute;right:0;top:calc(100% + 4px);z-index:60;min-width:190px;' +
+      // Выравниваем по одной линии и запрещаем перенос содержимого ячейки —
+      // из-за разной высоты кнопок строки «ехали» (жалоба 10.11.2026).
+      '.tkp-actions{white-space:nowrap;text-align:right;vertical-align:middle;width:1%}' +
+      '.tkp-actions .tkp-tbl-btn{vertical-align:middle}' +
+      '.tkp-more__menu{position:fixed;z-index:9999;min-width:200px;' +
         'background:var(--bg1);border:1px solid var(--brd);border-radius:10px;padding:5px;' +
-        'box-shadow:0 12px 32px rgba(0,0,0,.32);display:flex;flex-direction:column;gap:2px}' +
-      '.tkp-more__menu[hidden]{display:none}' +
-      '.tkp-more__menu button{display:block;width:100%;text-align:left;padding:8px 10px;border:0;background:transparent;' +
-        'color:var(--t1);font-size:12.5px;border-radius:7px;cursor:pointer;white-space:nowrap}' +
+        'box-shadow:0 14px 38px rgba(0,0,0,.38);display:flex;flex-direction:column;gap:2px}' +
+      '.tkp-more__menu button{display:block;width:100%;text-align:left;padding:9px 11px;border:0;background:transparent;' +
+        'color:var(--t1);font-size:12.5px;border-radius:7px;cursor:pointer;white-space:nowrap;line-height:1.25}' +
       '.tkp-more__menu button:hover{background:var(--bg3);color:var(--blue)}' +
       '.tkp-more__menu button.is-danger{color:var(--err-t,#c0392b)}' +
       '.tkp-more__menu button.is-danger:hover{background:rgba(192,57,43,.1);color:var(--err-t,#c0392b)}' +
@@ -460,19 +461,20 @@ window.AsgardTkpPage = (function() {
             '<button class="tkp-tbl-btn" data-action="edit" data-id="' + i.id + '" title="Редактировать"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>' +
             '<button class="tkp-tbl-btn" data-action="pdf" data-id="' + i.id + '" title="Скачать PDF"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14,2 14,8 20,8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg></button>' +
             '<button class="tkp-tbl-btn" data-action="send" data-id="' + i.id + '" title="Отправить"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 2L11 13"/><path d="M22 2L15 22 11 13 2 9z"/></svg></button>' +
-            '<div class="tkp-more">' +
-              '<button type="button" class="tkp-tbl-btn tkp-more__btn" data-more="' + i.id + '" title="Ещё действия">' +
-                '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="5" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="12" cy="19" r="1.6"/></svg>' +
-              '</button>' +
-              '<div class="tkp-more__menu" data-more-menu="' + i.id + '" hidden>' +
-                '<button type="button" data-action="copy" data-id="' + i.id + '">Копировать</button>' +
-                '<button type="button" data-action="excel" data-id="' + i.id + '">Скачать Excel</button>' +
-                '<button type="button" data-action="decision" data-id="' + i.id + '">Решение клиента</button>' +
-                (canDeleteTkp(i)
-                  ? '<button type="button" class="is-danger" data-action="delete" data-id="' + i.id + '">Удалить ТКП</button>'
-                  : '') +
-              '</div>' +
-            '</div>' +
+            '<button type="button" class="tkp-tbl-btn tkp-more__btn" data-more="' + i.id + '" title="Ещё действия">' +
+              '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="5" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="12" cy="19" r="1.6"/></svg>' +
+            '</button>' +
+            // Меню уходит в <body> при открытии: обёртка таблицы имеет
+            // overflow-x:auto, и абсолютное меню обрезалось её краем
+            // («открывается внутри и под страницу», 10.11.2026).
+            '<template data-more-tpl="' + i.id + '">' +
+              '<button type="button" data-action="copy" data-id="' + i.id + '">Копировать</button>' +
+              '<button type="button" data-action="excel" data-id="' + i.id + '">Скачать Excel</button>' +
+              '<button type="button" data-action="decision" data-id="' + i.id + '">Решение клиента</button>' +
+              (canDeleteTkp(i)
+                ? '<button type="button" class="is-danger" data-action="delete" data-id="' + i.id + '">Удалить ТКП</button>'
+                : '') +
+            '</template>' +
           '</td></tr>';
       }).join('') : '<tr><td colspan="10" style="text-align:center;padding:24px;color:var(--t3)">Нет ТКП по выбранным фильтрам</td></tr>') +
       '</tbody></table></div>';
@@ -530,25 +532,61 @@ window.AsgardTkpPage = (function() {
       b.addEventListener('click', function() { confirmDeleteTkp(b.dataset.id); });
     });
 
-    // ── Меню «⋯» ──────────────────────────────────────────────────────────────
-    // Одно открытое меню за раз; клик вне таблицы закрывает. Без этого меню
-    // оставалось висеть поверх соседних строк после навигации.
+    // ── Меню «⋯»: портал в <body> ────────────────────────────────────────────
+    // Обёртка таблицы имеет `overflow-x: auto`, поэтому абсолютное меню
+    // обрезалось краем и уезжало под страницу. Открываем его в body и
+    // позиционируем по кнопке — тогда оно всегда поверх, независимо от
+    // скролла и границ контейнера.
+    function closeTkpMore() {
+      const m = document.getElementById('tkpMoreMenu');
+      if (m) m.remove();
+    }
     el.querySelectorAll('[data-more]').forEach(function(btn) {
       btn.addEventListener('click', function(ev) {
+        ev.preventDefault();
         ev.stopPropagation();
         const id = btn.getAttribute('data-more');
-        el.querySelectorAll('[data-more-menu]').forEach(function(m) {
-          if (m.getAttribute('data-more-menu') !== id) m.hidden = true;
-        });
-        const menu = el.querySelector('[data-more-menu="' + id + '"]');
-        if (menu) menu.hidden = !menu.hidden;
+        const existing = document.getElementById('tkpMoreMenu');
+        const wasFor = existing && existing.getAttribute('data-for');
+        closeTkpMore();
+        if (existing && wasFor === id) return; // повторный клик закрывает
+
+        const tpl = el.querySelector('[data-more-tpl="' + id + '"]');
+        if (!tpl) return;
+        const menu = document.createElement('div');
+        menu.id = 'tkpMoreMenu';
+        menu.className = 'tkp-more__menu';
+        menu.setAttribute('data-for', id);
+        menu.innerHTML = tpl.innerHTML;
+        document.body.appendChild(menu);
+
+        // Позиция: под кнопкой, при нехватке места — над ней. Правый край
+        // выравниваем по кнопке, чтобы меню не вылезало за окно.
+        const r = btn.getBoundingClientRect();
+        const mw = menu.offsetWidth;
+        const mh = menu.offsetHeight;
+        let left = r.right - mw;
+        if (left < 8) left = 8;
+        if (left + mw > window.innerWidth - 8) left = window.innerWidth - mw - 8;
+        let top = r.bottom + 6;
+        if (top + mh > window.innerHeight - 8) top = Math.max(8, r.top - mh - 6);
+        menu.style.left = Math.round(left) + 'px';
+        menu.style.top = Math.round(top) + 'px';
       });
     });
     if (!el._tkpMoreBound) {
       el._tkpMoreBound = true;
-      document.addEventListener('click', function() {
-        el.querySelectorAll('[data-more-menu]').forEach(function(m) { m.hidden = true; });
+      document.addEventListener('click', function(ev) {
+        const menu = document.getElementById('tkpMoreMenu');
+        if (!menu) return;
+        if (menu.contains(ev.target)) return;
+        closeTkpMore();
       });
+      document.addEventListener('keydown', function(ev) {
+        if (ev.key === 'Escape') closeTkpMore();
+      });
+      window.addEventListener('scroll', closeTkpMore, true);
+      window.addEventListener('resize', closeTkpMore);
     }
   }
 
