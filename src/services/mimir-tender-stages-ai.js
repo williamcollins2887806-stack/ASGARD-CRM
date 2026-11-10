@@ -1195,7 +1195,11 @@ async function generateCalcPlan(p) {
     // Окно дат нужно, чтобы подобрать число бригад под график заказчика.
     window_days: o.dateWindow,
     // Периоды ДВ → число заездов (сентябрь ≠ декабрь), если модель не дала trip_count.
-    dv_positions: positions
+    dv_positions: positions,
+    // Режим заездов: при нескольких выездах бригада едет последовательно,
+    // и число бригад нельзя размножать по объёму (иначе 6 заездов за 16 дней).
+    visit_mode: o.visitMode || null,
+    trip_count: o.tripCount || null
   });
   return {
     ok: true,

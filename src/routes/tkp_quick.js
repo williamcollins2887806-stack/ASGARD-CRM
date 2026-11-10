@@ -1347,7 +1347,11 @@ async function routes(fastify, options) {
         normPreviewMd: normLines.join('\n') || '(нормативов нет)',
         workersMd: request.body && request.body.workers_md ? String(request.body.workers_md) : '',
         dateWindow,
-        maxParallelPosts: maxPosts
+        maxParallelPosts: maxPosts,
+        // Режим заездов из анализа: при нескольких выездах бригада едет
+        // последовательно, и срок нельзя делить на «виртуальные» бригады.
+        visitMode: cur.state.visit_mode || (cur.state.visit_plan && cur.state.visit_plan.mode) || null,
+        tripCount: cur.state.trip_count || (cur.state.visit_plan && cur.state.visit_plan.trip_count) || null
       });
 
       if (!gen.ok) return reply.code(502).send({ ok: false, error: gen.error, raw: gen.raw || null });

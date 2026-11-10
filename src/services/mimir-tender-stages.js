@@ -1248,10 +1248,24 @@ function normalizeCalcPlan(ai, opts) {
   }, 0);
 
   // Сколько бригад ставим: чтобы уложиться в окно заказчика (если оно есть).
+  //
+  // ── Заезды: бригады НЕ размножаются от объёма ──────────────────────────
+  // Дефект 10.11 (#2138): 96 бригадо-суток без окна дат давали 6 бригад, срок
+  // 96/6 = 16 суток — «вся работа за 16 дней силами 30 человек». При 6 заездах
+  // это невозможно: бригада едет, работает, уезжает и приезжает снова.
+  // Поэтому в режиме заездов число бригад ограничено тем, сколько реально
+  // работает ОДНОВРЕМЕННО: по умолчанию одна на заезд, больше — только если
+  // окно заказчика не оставляет выбора.
+  const visitsMode = String(opts && opts.visit_mode) === 'visits';
+  const tripCountOpt = Number(opts && opts.trip_count) > 0 ? Math.round(Number(opts.trip_count)) : 1;
   let crews = 1;
   if (windowDays) {
     crews = Math.ceil(crewDays / windowDays);
     crews = Math.min(Math.max(crews, 1), maxCrews);
+  } else if (visitsMode) {
+    // Заезды последовательны: одна бригада на выезд. Размножать её по объёму
+    // нельзя — иначе дорога и проживание считаются на 30 человек вместо 5.
+    crews = 1;
   } else {
     crews = crewDays > 90 ? maxCrews : (crewDays > 30 ? Math.min(2, maxCrews) : 1);
   }
@@ -1351,6 +1365,15 @@ function normalizeCalcPlan(ai, opts) {
     // Срок по трудоёмкости заказчика главнее расчёта по позициям: если он дал
     // часы, значит норму уже посчитал он (тендер 2143 Hi Pro).
     work_days: finalWorkDays,
+    // Срок в режиме заездов: работа идёт последовательно по выездам, поэтому
+    // суммарный календарный срок = сутки работ + дорога/мобилизация на каждый
+    // выезд. Без этого «6 заездов за 16 дней» физически невозможно.
+    // Считаем честно и отдаём наружу: visits_mode_sequential объясняет, почему
+    // срок больше, чем crewDays / crews.
+    work_days_per_trip: visitsMode && tripCountOpt > 1
+      ? Math.round((workDays / tripCountOpt) * 100) / 100
+      : null,
+    trips_sequential: visitsMode && tripCountOpt > 1,
     labor_hours: laborSchedule ? laborSchedule.labor_hours : null,
     labor_basis: laborSchedule
       ? 'трудоёмкость из ТЗ: ' + laborSchedule.note
