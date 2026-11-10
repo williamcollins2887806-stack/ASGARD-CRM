@@ -124,13 +124,29 @@ describe('деньги: НМЦК не обнуляется', () => {
     expect(r.body.tenders.priced_count).toBeLessThanOrEqual(r.body.tenders.total);
   });
 
-  test('nmck_sum совпадает с контрольным SQL (фолбэк на submission_price)', async () => {
+  test('nmck_sum совпадает с контрольным SQL (фолбэк + отсечение аномалий)', async () => {
     const r = await get('/api/director-analytics/overview?period=all');
+    // Контроль повторяет правило API: исключаем цены свыше 5 млрд.
+    // Одна такая запись есть в базе (90,4 млрд) и она не должна
+    // раздувать «НМЦК» — иначе директор видит миллиарды вместо миллионов.
     const { rows: [ctl] } = await pool.query(
-      `SELECT COALESCE(SUM(COALESCE(tender_price, submission_price)), 0)::float AS s
+      `SELECT COALESCE(SUM(COALESCE(tender_price, submission_price))
+                       FILTER (WHERE COALESCE(tender_price, submission_price) <= 5000000000), 0)::float AS s
          FROM tenders WHERE archived_at IS NULL AND deleted_at IS NULL`
     );
     expect(Math.round(r.body.tenders.nmck_sum)).toBe(Math.round(ctl.s));
+  });
+
+  test('аномальная цена не прячется молча, а помечается', async () => {
+    const r = await get('/api/director-analytics/overview?period=all');
+    // В базе такая запись есть — счётчик должен быть > 0, чтобы фронт
+    // мог написать «одна сумма аномальная и не включена».
+    const { rows: [real] } = await pool.query(
+      `SELECT COUNT(*)::int AS n FROM tenders
+        WHERE archived_at IS NULL AND deleted_at IS NULL
+          AND COALESCE(submission_price, tender_price) > 5000000000`
+    );
+    expect(r.body.tenders.price_suspect_count).toBe(real.n);
   });
 });
 

@@ -194,3 +194,47 @@
   .jp2-cust { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .jp2-thead, .jp2-trow { grid-template-columns: 1fr 74px 68px; font-size: 12px; padding: 8px 9px; }
 }
+
+/* ── Под-навигация внутри вкладки карточки ─────────────────────────────────
+   8 чипов в шапке — скролл и поиск. Вместо этого 4 вкладки, а внутри
+   «Анализ РП» / «Просчёт» — сегмент-контрол. Он заметный, но не спорит
+   с главной навигацией. */
+
+.jp2-subnav {
+  display: flex;
+  gap: 4px;
+  margin: 0 0 14px;
+  padding: 3px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--bg-elevated) 80%, transparent);
+  border: 1px solid var(--border-norse);
+}
+
+.jp2-subnav-btn {
+  flex: 1 1 0;
+  min-width: 0;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 999px;
+  background: none;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: background 160ms ease, color 160ms ease;
+}
+
+.jp2-subnav-btn.is-on {
+  background: color-mix(in srgb, var(--gold) 16%, transparent);
+  color: var(--gold);
+}
+
+.jp2-subnav-btn:active { opacity: 0.75; }
+
+@media (prefers-reduced-motion: reduce) {
+  .jp2-subnav-btn { transition: none; }
+}

@@ -1,7 +1,7 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { ChevronRight, AlertCircle } from 'lucide-react';
 import { useHaptic } from '@/hooks/useHaptic';
-import { formatMoneyShort, formatMoney } from '@/lib/utils';
+import { formatMoneyShort } from '@/lib/utils';
 
 /**
  * Overview — первый экран «Пульса директора».
@@ -38,6 +38,11 @@ export default function Overview({
   const haptic = useHaptic();
   const [showAllAttention, setShowAllAttention] = useState(false);
   const [showOfficeAll, setShowOfficeAll] = useState(false);
+  const rootRef = useRef(null);
+  // Число «Требует решения» набегает от 0 — только при первом показе,
+  // чтобы при возврате из карточки экран не «дёргался» заново.
+  const [heroShown, setHeroShown] = useState(0);
+  const heroRef = useRef(0);
 
   const tenders = overview?.tenders || {};
   const apps = overview?.applications || {};
@@ -69,6 +74,61 @@ export default function Overview({
 
   const norm = teamHours?.norm || {};
 
+  // Появление секций по мере скролла. Один раз на секцию, без «прыжков».
+  // Если IntersectionObserver нет (старый Safari) — секции сразу видимы,
+  // интерфейс не ломается.
+  useEffect(() => {
+    const host = rootRef.current;
+    if (!host) return undefined;
+    const sections = [...host.querySelectorAll('[data-reveal]')];
+    if (!sections.length) return undefined;
+
+    const reduce = window.matchMedia
+      && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (reduce || typeof IntersectionObserver === 'undefined') {
+      sections.forEach((el) => el.classList.add('is-visible'));
+      return undefined;
+    }
+
+    const io = new IntersectionObserver((entries) => {
+      entries.forEach((e) => {
+        if (!e.isIntersecting) return;
+        e.target.classList.add('is-visible');
+        io.unobserve(e.target);
+      });
+    }, { threshold: 0.08, rootMargin: '0px 0px -8% 0px' });
+
+    sections.forEach((el) => io.observe(el));
+    return () => io.disconnect();
+  }, [loading]);
+
+  // Набегание главной цифры. Уважаем reduced-motion.
+  useEffect(() => {
+    const target = totalAttention;
+    const reduce = window.matchMedia
+      && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+    if (!target || reduce || heroRef.current === target) {
+      // Не сбрасываем синхронно в теле эффекта: React этого не любит.
+      const id = requestAnimationFrame(() => setHeroShown(target));
+      return () => cancelAnimationFrame(id);
+    }
+
+    let raf = 0;
+    const start = performance.now();
+    const dur = 600;
+    const tick = (now) => {
+      const t = Math.min(1, (now - start) / dur);
+      // easeOutCubic — быстро стартует, мягко останавливается
+      const eased = 1 - Math.pow(1 - t, 3);
+      setHeroShown(Math.round(target * eased));
+      if (t < 1) raf = requestAnimationFrame(tick);
+      else heroRef.current = target;
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [totalAttention]);
+
   const open = (section, id) => {
     haptic.light();
     if (id) onOpenDetail(section, id);
@@ -87,12 +147,12 @@ export default function Overview({
   }
 
   return (
-    <div className="jp2-overview">
+    <div className="jp2-overview" ref={rootRef}>
       {/* ── 1. Главное число ─────────────────────────────────────────── */}
-      <section className="jp2-hero">
+      <section className="jp2-hero" data-reveal style={{ '--i': 0 }}>
         <div className="jp2-hero-cap">Требует решения</div>
         <div className={`jp2-hero-num${totalAttention > 0 ? ' is-hot' : ''}`}>
-          {totalAttention}
+          {heroShown}
         </div>
         <div className="jp2-hero-sub">
           {totalAttention > 0
@@ -104,7 +164,7 @@ export default function Overview({
 
       {/* ── 2. Что именно ждёт: список причин ────────────────────────── */}
       {attention.length > 0 && (
-        <section className="jp2-attention">
+        <section className="jp2-attention" data-reveal style={{ '--i': 1 }}>
           {visibleAttention.map((x) => (
             <button
               type="button"
@@ -136,7 +196,7 @@ export default function Overview({
       )}
 
       {/* ── 3. Три контура: одна строка — одна цифра ─────────────────── */}
-      <section className="jp2-contours">
+      <section className="jp2-contours" data-reveal style={{ '--i': 2 }}>
         <div className="jp2-sec-cap">Контуры</div>
 
         <button type="button" className="jp2-contour spring-tap" onClick={() => open('tenders')}>
@@ -181,7 +241,7 @@ export default function Overview({
 
       {/* ── 4. График офиса: превью из трёх строк ────────────────────── */}
       {(officeRows.top.length > 0 || officeRows.bottom.length > 0) && (
-        <section className="jp2-office">
+        <section className="jp2-office" data-reveal style={{ '--i': 3 }}>
           <div className="jp2-sec-head">
             <span className="jp2-sec-cap">График офиса</span>
             <button
@@ -225,41 +285,57 @@ export default function Overview({
         </section>
       )}
 
-      {/* ── 5. Прочее — свёрнуто, чтобы не мешало ────────────────────── */}
-      <section className="jp2-summary">
-        <div className="jp2-sec-cap">Итоги периода</div>
-        <div className="jp2-sum-row">
-          <span className="jp2-sum-k">НМЦК тендеров</span>
-          <span className="jp2-sum-v">{formatMoney(tenders.nmck_sum || 0)}</span>
-        </div>
-        <div className="jp2-sum-row">
-          <span className="jp2-sum-k">
-            Цена работ
-            {tenders.priced_count
-              ? ` · ${tenders.priced_count} из ${tenders.total} с ценой`
-              : ''}
-          </span>
-          <span className="jp2-sum-v">{formatMoney(tenders.work_price_sum || 0)}</span>
-        </div>
-        <div className="jp2-sum-row">
-          <span className="jp2-sum-k">Портфель работ</span>
-          <span className="jp2-sum-v">{formatMoney(works.contract_sum || 0)}</span>
-        </div>
-        <div className="jp2-sum-row">
-          <span className="jp2-sum-k">
-            Средняя маржа
-            {works.margin_plan_count > 0 ? ` · ${works.margin_plan_count} по плану` : ''}
-          </span>
-          <span className="jp2-sum-v">
-            {works.avg_margin == null ? '—' : `${works.avg_margin}%`}
+      {/* ── 5. Факты периода: не суммы, а ответы на вопросы ──────────── */}
+      <section className="jp2-facts" data-reveal style={{ '--i': 4 }}>
+        <div className="jp2-sec-cap">Сейчас в работе</div>
+
+        <div className="jp2-fact">
+          <span className="jp2-fact-k">Тендеры в работе</span>
+          <span className="jp2-fact-v">{tenders.active_work != null ? tenders.active_work : '—'}</span>
+          <span className="jp2-fact-s">
+            {tenders.active_work_sum > 0
+              ? `на ${formatMoneyShort(tenders.active_work_sum)}`
+              : 'в рассмотрении и подготовке'}
           </span>
         </div>
-        <div className="jp2-sum-row">
-          <span className="jp2-sum-k">Конверсия тендеров</span>
-          <span className="jp2-sum-v">
-            {tenders.conversion == null ? '—' : `${tenders.conversion}%`}
+
+        <div className="jp2-fact">
+          <span className="jp2-fact-k">Подписано</span>
+          <span className={`jp2-fact-v${tenders.won > 0 ? ' is-good' : ''}`}>
+            {tenders.won != null ? tenders.won : '—'}
+          </span>
+          <span className="jp2-fact-s">
+            {tenders.won_sum > 0
+              ? `на ${formatMoneyShort(tenders.won_sum)}`
+              : 'выигранных за период нет'}
           </span>
         </div>
+
+        <div className="jp2-fact">
+          <span className="jp2-fact-k">Портфель работ</span>
+          <span className="jp2-fact-v">{formatMoneyShort(works.contract_sum || 0)}</span>
+          <span className="jp2-fact-s">
+            {works.active != null ? `${works.active} активных` : '—'}
+            {works.risk_count > 0 ? ` · ${works.risk_count} в риске` : ' · без рисков'}
+          </span>
+        </div>
+
+        <div className="jp2-fact">
+          <span className="jp2-fact-k">Люди в норме</span>
+          <span className={`jp2-fact-v${norm.people_green > 0 ? ' is-good' : ''}`}>
+            {norm.people_green != null ? norm.people_green : '—'}
+            {norm.people_total != null ? <span className="jp2-fact-of"> из {norm.people_total}</span> : null}
+          </span>
+          <span className="jp2-fact-s">
+            {norm.people_red > 0 ? `${norm.people_red} ниже половины нормы` : 'недоработок нет'}
+          </span>
+        </div>
+
+        {tenders.price_suspect_count > 0 && (
+          <div className="jp2-fact-note">
+            Одна сумма в реестре аномальная (свыше 5 млрд) и в итоги не включена.
+          </div>
+        )}
       </section>
 
       {totalAttention > 0 && (

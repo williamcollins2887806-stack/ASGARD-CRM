@@ -234,3 +234,70 @@
   .jp-page .jp2-att-row,
   .jp-page .jp2-contour { transition: none; }
 }
+
+/* ── Факты периода (заменили «Итоги») ──────────────────────────────────── */
+
+.jp-page .jp2-facts { display: flex; flex-direction: column; }
+
+.jp-page .jp2-fact {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: baseline;
+  gap: 2px 20px;
+  padding: 13px 0;
+  border-top: 1px solid var(--brd-m);
+}
+
+.jp-page .jp2-fact-k {
+  font-size: 12px;
+  color: var(--t3);
+  align-self: end;
+}
+
+.jp-page .jp2-fact-v {
+  font-size: 24px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+  color: var(--t1);
+  text-align: right;
+  white-space: nowrap;
+}
+
+.jp-page .jp2-fact-v.is-good { color: var(--ok-t, var(--ok)); }
+
+.jp-page .jp2-fact-s {
+  grid-column: 1 / -1;
+  font-size: 11.5px;
+  line-height: 1.4;
+  color: var(--t3);
+}
+
+.jp-page .jp2-fact-note {
+  margin-top: 10px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--gold) 9%, transparent);
+  border: 1px solid color-mix(in srgb, var(--gold) 24%, transparent);
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: var(--t2);
+}
+
+/* ── Появление секций: без JS-наблюдателя на десктопе ──────────────────── */
+
+@media (prefers-reduced-motion: no-preference) {
+  .jp-page .jp2-overview > section {
+    animation: jp2-fade-up 320ms cubic-bezier(0.22, 0.61, 0.36, 1) both;
+  }
+  .jp-page .jp2-overview > section:nth-child(1) { animation-delay: 0ms; }
+  .jp-page .jp2-overview > section:nth-child(2) { animation-delay: 60ms; }
+  .jp-page .jp2-overview > section:nth-child(3) { animation-delay: 120ms; }
+  .jp-page .jp2-overview > section:nth-child(4) { animation-delay: 180ms; }
+  .jp-page .jp2-overview > section:nth-child(5) { animation-delay: 240ms; }
+}
+
+@keyframes jp2-fade-up {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: none; }
+}

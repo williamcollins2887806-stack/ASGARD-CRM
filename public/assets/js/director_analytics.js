@@ -734,6 +734,7 @@ window.AsgardDirectorAnalyticsPage = (function () {
     const tO = ov.tenders || {};
     const aO = ov.applications || {};
     const wO = ov.works || {};
+    const teamNorm = (state.team && state.team.norm) || {};
     const tCount = Number(tO.attention_count || (tO.attention || []).length || 0);
     const aCount = Number(aO.attention_count || (aO.attention || []).length || 0);
     const wCount = Number(wO.risk_count || (wO.attention || []).length || 0);
@@ -769,9 +770,35 @@ window.AsgardDirectorAnalyticsPage = (function () {
         '<span class="jp2-contour-num' + (num > 0 ? ' is-hot' : '') + '">' + num + '</span>' +
         chev() + '</button>';
 
-    const sum = (label, value) =>
-      '<div class="jp2-sum-row"><span class="jp2-sum-k">' + esc(label) + '</span>' +
-      '<span class="jp2-sum-v">' + esc(value) + '</span></div>';
+    // Факты периода: не «сумма ради суммы», а ответ на вопрос директора.
+    const fact = (label, value, sub, good) =>
+      '<div class="jp2-fact">' +
+        '<span class="jp2-fact-k">' + esc(label) + '</span>' +
+        '<span class="jp2-fact-v' + (good ? ' is-good' : '') + '">' + esc(String(value)) + '</span>' +
+        '<span class="jp2-fact-s">' + esc(sub) + '</span>' +
+      '</div>';
+
+    const factsHtml =
+      fact('Тендеры в работе',
+        tO.active_work != null ? tO.active_work : '—',
+        tO.active_work_sum > 0 ? 'на ' + moneyShort(tO.active_work_sum) : 'в рассмотрении и подготовке') +
+      fact('Подписано',
+        tO.won != null ? tO.won : '—',
+        tO.won_sum > 0 ? 'на ' + moneyShort(tO.won_sum) : 'выигранных за период нет',
+        tO.won > 0) +
+      fact('Портфель работ',
+        moneyShort(wO.contract_sum || 0),
+        (wO.active != null ? wO.active + ' активных' : '—') +
+          (wO.risk_count > 0 ? ' · ' + wO.risk_count + ' в риске' : ' · без рисков')) +
+      fact('Люди в норме',
+        (teamNorm.people_green != null ? teamNorm.people_green : '—') +
+          (teamNorm.people_total != null ? ' из ' + teamNorm.people_total : ''),
+        teamNorm.people_red > 0 ? teamNorm.people_red + ' ниже половины нормы' : 'недоработок нет',
+        teamNorm.people_green > 0);
+
+    const suspectNote = tO.price_suspect_count > 0
+      ? '<div class="jp2-fact-note">Одна сумма в реестре аномальная (свыше 5 млрд) и в итоги не включена.</div>'
+      : '';
 
     return '<div class="jp2-overview">' +
       '<section class="jp2-hero">' +
@@ -796,15 +823,9 @@ window.AsgardDirectorAnalyticsPage = (function () {
           (wO.risk_count > 0 ? ' · ' + wO.risk_count + ' в риске' : ''),
           wCount > 0 ? wCount : (wO.active || 0)) +
       '</section>' +
-      '<section class="jp2-summary">' +
-        '<div class="jp2-sec-cap">Итоги периода</div>' +
-        sum('НМЦК тендеров', money(tO.nmck_sum || 0)) +
-        sum('Цена работ' + (tO.priced_count ? ' · ' + tO.priced_count + ' из ' + tO.total + ' с ценой' : ''),
-          money(tO.work_price_sum || 0)) +
-        sum('Портфель работ', money(wO.contract_sum || 0)) +
-        sum('Средняя маржа' + (wO.margin_plan_count > 0 ? ' · ' + wO.margin_plan_count + ' по плану' : ''),
-          wO.avg_margin == null ? '—' : wO.avg_margin + ' %') +
-        sum('Конверсия тендеров', tO.conversion == null ? '—' : tO.conversion + ' %') +
+      '<section class="jp2-facts">' +
+        '<div class="jp2-sec-cap">Сейчас в работе</div>' +
+        factsHtml + suspectNote +
       '</section>' +
     '</div>';
   }
@@ -976,8 +997,8 @@ window.AsgardDirectorAnalyticsPage = (function () {
           '<h2 class="modal-title" id="jpModalTitle">' + esc(opts.title) + '</h2>' +
           '<div class="modal-sub">' + opts.sub + '</div>' +
         '</div>' +
-        '<button type="button" class="modal-close" data-close-sheet aria-label="Закрыть">' +
-          '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/></svg>' +
+        '<button type="button" class="modal-close asg-icon-btn" data-close-sheet aria-label="Закрыть">' +
+          '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>' +
         '</button>' +
       '</div>' +
       '<div class="modal-tabs jp-modal-tabs" role="tablist"><span class="tabs-ind" id="tabsInd"></span>' +
@@ -2245,7 +2266,7 @@ window.AsgardDirectorAnalyticsPage = (function () {
       '<div class="jp-sheet-head"><div>' +
         '<span class="jp-badge tone-info" style="margin-bottom:8px">Часы</span>' +
         '<h3 id="jpModalTitle">' + esc(p.name) + '</h3></div>' +
-        '<button type="button" class="jp-sheet-close" data-close-sheet aria-label="Закрыть">✕</button>' +
+        '<button type="button" class="jp-sheet-close asg-icon-btn" data-close-sheet aria-label="Закрыть"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button>' +
       '</div><div class="jp-sheet-section">' + body + '</div>';
     if (rootEl) {
       if (rootEl.parentElement !== document.body) document.body.appendChild(rootEl);

@@ -78,14 +78,36 @@ const CHANNELS = {
 
 const TENDER_TABS = [
   { id: 'summary', label: 'Сводка' },
-  { id: 'analysis', label: 'Анализ' },
-  { id: 'calc', label: 'Просчёт РП' },
-  { id: 'estimate', label: 'Смета' },
-  { id: 'checklist', label: 'Чек-лист' },
-  { id: 'mtr', label: 'МТР' },
-  { id: 'report', label: 'Отчёт РП' },
+  { id: 'analysis', label: 'Анализ РП' },
+  { id: 'calc', label: 'Просчёт' },
   { id: 'docs', label: 'Документы' },
 ];
+
+/**
+ * Под-навигация внутри «Анализ РП» и «Просчёт».
+ *
+ * Смысл (заказчик 10.11.2026): 8 чипов на 390px — это скролл и поиск,
+ * то же «метание глазами», что и было. Одна вкладка = один вопрос,
+ * детали внутри — сегмент-контрол, он не раздувает шапку.
+ */
+const ANALYSIS_SUBTABS = [
+  { id: 'analysis', label: 'Анализ' },
+  { id: 'checklist', label: 'Чек-лист' },
+  { id: 'report', label: 'Отчёт' },
+];
+
+const CALC_SUBTABS = [
+  { id: 'calc', label: 'Показатели' },
+  { id: 'estimate', label: 'Смета' },
+  { id: 'mtr', label: 'Бригада и МТР' },
+];
+
+/** Какой под-таб показывать для текущей вкладки. */
+function subTabsOf(tab) {
+  if (tab === 'analysis') return ANALYSIS_SUBTABS;
+  if (tab === 'calc') return CALC_SUBTABS;
+  return null;
+}
 const APP_TABS = [
   { id: 'summary', label: 'Сводка' },
   { id: 'estimate', label: 'Просчёт' },
@@ -307,6 +329,7 @@ export default function DirectorAnalytics() {
   const [detail, setDetail] = useState(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailTab, setDetailTab] = useState('summary');
+  const [detailSub, setDetailSub] = useState(null);
   const [teamPerson, setTeamPerson] = useState(null);
   const periodHostRef = useRef(null);
 
@@ -614,7 +637,9 @@ export default function DirectorAnalytics() {
           detail={detail}
           loading={detailLoading}
           tab={detailTab}
-          onTab={(t) => { haptic.light(); setDetailTab(t); }}
+          onTab={(t) => { haptic.light(); setDetailTab(t); setDetailSub(null); }}
+          sub={detailSub}
+          onSub={(s) => { haptic.light(); setDetailSub(s); }}
           onClose={closeDetail}
         />
       )}
@@ -631,441 +656,6 @@ export default function DirectorAnalytics() {
 
 /* ── Overview section ─────────────────────────────────────────────────── */
 
-function BizSection({
-  id, title, note, overview, items, worksCounts, onOpenList, onOpenDetail,
-}) {
-  const haptic = useHaptic();
-  const hero = useMemo(() => buildHero(id, overview, items, worksCounts), [id, overview, items, worksCounts]);
-  const statuses = statusesOf(id);
-  const byStatus = overview?.by_status || overview?.by_bucket || [];
-  const statusMap = Object.fromEntries((byStatus || []).map((r) => [r.status, r]));
-
-  const overdue = Number(overview?.overdue_count || 0);
-  let todayCount = 0;
-  (items || []).forEach((x) => {
-    if (dueFlag(itemDeadline(id, x), isClosed(id, x)) === 'today') todayCount += 1;
-  });
-
-  const attention = overview?.attention || [];
-
-  const totalSum = (items || []).reduce((a, x) => a + itemAmount(id, x), 0)
-    || Number(overview?.nmck_sum || overview?.contract_sum || overview?.in_work_sum || 0);
-
-  return (
-    <section className="jp-sec-block" id={`jp-sec-${id}`}>
-      <div className="jp-sec-head">
-        <div className="jp-sec-head-left">
-          <span className="jp-sec-mark" />
-          <h2 className="jp-sec-title">{title}</h2>
-          <span className="jp-sec-note">{note}</span>
-        </div>
-        <div className="jp-sec-head-right">
-          <span className="jp-sec-total">{formatMoneyShort(totalSum)}</span>
-          <button
-            type="button"
-            className="jp-sec-open spring-tap"
-            onClick={() => onOpenList(id, 'all')}
-          >
-            Открыть реестр
-            <ChevronRight size={14} />
-          </button>
-        </div>
-      </div>
-
-      {(overdue > 0 || todayCount > 0) && (
-        <div className={`jp-due-strip${overdue > 0 ? ' is-over' : ''}`}>
-          <span className="jp-due-strip-ico" aria-hidden="true">!</span>
-          <span className="jp-due-strip-text">
-            {overdue > 0 && <><b>{overdue}</b> с просроченным дедлайном</>}
-            {overdue > 0 && todayCount > 0 && ' · '}
-            {todayCount > 0 && <><b>{todayCount}</b> истекает сегодня</>}
-          </span>
-          <button
-            type="button"
-            className="jp-due-strip-act spring-tap"
-            onClick={() => onOpenList(id, 'all')}
-          >
-            Показать всё
-          </button>
-        </div>
-      )}
-
-      <div className="jp-hero">
-        {hero.map((c) => (
-          <div key={c.cap} className={`jp-hero-cell${c.tone ? ` tone-${c.tone}` : ''}`}>
-            <div className="jp-hero-cap">{c.cap}</div>
-            <div className={`jp-hero-num${c.money ? ' money' : ' lg'}`}>
-              {c.value}
-              {c.unit ? <span className="unit">{c.unit}</span> : null}
-            </div>
-            {c.meta ? <div className="jp-hero-meta" dangerouslySetInnerHTML={{ __html: c.meta }} /> : null}
-          </div>
-        ))}
-      </div>
-
-      <div className="jp-status-grid">
-        {statuses.map((st) => {
-          const row = statusMap[st.id] || {};
-          const n = Number(row.count != null ? row.count
-            : (items || []).filter((x) => itemStatusId(id, x) === st.id).length);
-          const sum = id === 'applications' && st.id === 'trash'
-            ? null
-            : (row.sum != null ? row.sum
-              : (items || []).filter((x) => itemStatusId(id, x) === st.id)
-                .reduce((a, x) => a + itemAmount(id, x), 0));
-          return (
-            <button
-              key={st.id}
-              type="button"
-              className={`jp-status-card tone-${st.tone} spring-tap`}
-              onClick={() => { haptic.light(); onOpenList(id, st.id); }}
-            >
-              <span className="sc-top">
-                <span className="sc-name"><span className="sc-dot" />{st.label}</span>
-                <span className={`sc-n${n ? '' : ' zero'}`}>{n}</span>
-              </span>
-              <span className="sc-money">
-                {n && sum != null ? formatMoneyShort(sum) : '—'}
-              </span>
-              <span className="sc-sub">
-                {n ? `${n} карточек` : 'нет карточек за период'}
-              </span>
-            </button>
-          );
-        })}
-      </div>
-
-      {attention.length > 0 && (
-        <div className="jp-attention">
-          <div className="jp-attention-h">
-            <span className="jp-attention-ico" aria-hidden="true">!</span>
-            <span className="jp-attention-title">Требует внимания</span>
-            <span className="jp-attention-n">{attention.length}</span>
-            <button
-              type="button"
-              className="jp-attention-all spring-tap"
-              onClick={() => onOpenList(id, 'all')}
-            >
-              Весь реестр
-              <ChevronRight size={12} />
-            </button>
-          </div>
-          <div className="jp-item-list jp-item-list--compact">
-            {attention.slice(0, 3).map((item) => (
-              <AttentionRow
-                key={`${id}-${item.id}`}
-                section={id}
-                item={item}
-                onOpen={() => onOpenDetail(item.id)}
-              />
-            ))}
-          </div>
-        </div>
-      )}
-    </section>
-  );
-}
-
-function buildHero(id, ov, items, worksCounts) {
-  if (id === 'tenders') {
-    const t = ov || {};
-    const total = t.total ?? (items || []).length;
-    const nmck = t.nmck_sum ?? 0;
-    const price = t.work_price_sum ?? 0;
-    const win = t.won ?? 0;
-    const lose = t.lost ?? 0;
-    const closed = win + lose;
-    const conv = t.conversion;
-    const inWork = t.active ?? (items || []).filter((x) => OPEN_REGISTRY.has(x.registry_status)).length;
-    return [
-      { cap: 'Тендеров в периоде', value: String(total), meta: `из них <b>${inWork}</b> в активной фазе` },
-      { cap: 'Сумма НМЦК', value: compactVal(nmck).v, unit: compactVal(nmck).u, money: true, meta: `по ${total} процедурам` },
-      { cap: 'Цена работ без НДС', value: compactVal(price).v, unit: compactVal(price).u, money: true, meta: 'сметы Асгард' },
-      {
-        cap: 'Конверсия',
-        value: conv == null ? '—' : `${conv} %`,
-        tone: conv != null && conv >= 30 ? 'ok' : '',
-        meta: `<b>${win}</b> побед из <b>${closed}</b> закрытых`,
-      },
-    ];
-  }
-  if (id === 'applications') {
-    const a = ov || {};
-    const total = a.total ?? (items || []).length;
-    const activeSum = a.in_work_sum ?? 0;
-    const winSum = a.won_sum ?? 0;
-    const conv = a.conversion;
-    return [
-      { cap: 'Заявок в периоде', value: String(total), meta: 'все статусы канбана' },
-      { cap: 'В работе', value: compactVal(activeSum).v, unit: compactVal(activeSum).u, money: true, meta: 'сумма в контуре' },
-      { cap: 'Выиграно', value: compactVal(winSum).v, unit: compactVal(winSum).u, money: true, tone: 'ok', meta: 'успешно закрыто' },
-      {
-        cap: 'Конверсия',
-        value: conv == null ? '—' : `${conv} %`,
-        tone: conv != null && conv >= 40 ? 'ok' : '',
-        meta: 'по решённым заявкам',
-      },
-    ];
-  }
-  const w = ov || {};
-  const total = w.total ?? (items || []).length;
-  const active = w.active ?? worksCounts?.active ?? 0;
-  const risk = w.risk_count ?? 0;
-  const contract = w.contract_sum ?? 0;
-  const avgM = w.avg_margin ?? 0;
-  const paid = w.paid_sum ?? 0;
-  return [
-    { cap: 'Работ в периоде', value: String(total), meta: `<b>${active}</b> активных · <b>${risk}</b> в риске` },
-    { cap: 'Портфель контрактов', value: compactVal(contract).v, unit: compactVal(contract).u, money: true, meta: `по ${total} договорам` },
-    {
-      cap: 'Средняя маржа',
-      value: `${Math.round(Number(avgM) * 10) / 10} %`,
-      tone: avgM >= 18 ? 'ok' : 'gold',
-      meta: `${formatMoneyShort(Math.max(0, contract - paid))} к оплате`,
-    },
-    {
-      cap: 'Оплачено',
-      value: compactVal(paid).v,
-      unit: compactVal(paid).u,
-      money: true,
-      meta: `остаток ${formatMoneyShort(Math.max(0, contract - paid))}`,
-    },
-  ];
-}
-
-function compactVal(n) {
-  const abs = Math.abs(Number(n) || 0);
-  if (abs >= 1e9) return { v: (abs / 1e9).toFixed(1), u: 'млрд' };
-  if (abs >= 1e6) return { v: (abs / 1e6).toFixed(1), u: 'млн' };
-  if (abs >= 1e3) return { v: (abs / 1e3).toFixed(0), u: 'тыс' };
-  return { v: String(Math.round(abs)), u: '₽' };
-}
-
-function AttentionRow({ section, item, onOpen }) {
-  const haptic = useHaptic();
-  const st = statusMeta(section, item.status || item.registry_status || item.bucket);
-  const dl = item.deadline || itemDeadline(section, item);
-  const chip = dueChip(dl, false);
-  return (
-    <button
-      type="button"
-      className={`jp-item spring-tap${chip?.cls === 'over' ? ' row--over' : chip?.cls === 'today' ? ' row--today' : ''}`}
-      onClick={() => { haptic.light(); onOpen(); }}
-    >
-      <div className="min-w-0 flex-1">
-        <p className="jp-item-title">{itemTitle(section, item)}</p>
-        <p className="jp-item-sub">
-          {[item.customer_name, chip?.text].filter(Boolean).join(' · ')}
-        </p>
-      </div>
-      <div className="jp-item-aside">
-        {st && <span className={`jp-badge tone-${st.tone}`}>{st.label}</span>}
-        {chip && <span className={`jp-due-chip ${chip.cls}`}>{chip.text}</span>}
-        <span className="jp-money">
-          {formatMoneyShort(item.work_price ?? item.price ?? item.estimated_sum ?? item.contract_value)}
-        </span>
-      </div>
-    </button>
-  );
-}
-
-/* ── Team ─────────────────────────────────────────────────────────────── */
-
-function TeamSection({ teamHours, period, onOpenPerson, scope, onScope, onStep, onCurrent }) {
-  const haptic = useHaptic();
-  const dq = teamHours?.data_quality || {};
-  const noSkud = !dq.last_import;
-  const activeScope = teamHours?.period?.scope || scope || 'month';
-
-  const sorted = useMemo(() => {
-    const stateRank = { red: 0, yellow: 1, none: 2, green: 3 };
-    return (teamHours?.people || []).slice().sort((a, b) => {
-      if (!!b.crown !== !!a.crown) return b.crown ? 1 : -1;
-      const ra = stateRank[a.state] == null ? 2 : stateRank[a.state];
-      const rb = stateRank[b.state] == null ? 2 : stateRank[b.state];
-      if (ra !== rb) return ra - rb;
-      const pa = a.ratio_pct == null ? Number.POSITIVE_INFINITY : a.ratio_pct;
-      const pb = b.ratio_pct == null ? Number.POSITIVE_INFINITY : b.ratio_pct;
-      if (pa !== pb) return pa - pb;
-      return String(a.name || '').localeCompare(String(b.name || ''), 'ru');
-    });
-  }, [teamHours?.people]);
-
-  const atCurrent = !teamHours?.period || !teamHours.period.current_anchor
-    ? true
-    : (teamHours.period.current_anchor >= teamHours.period.from
-      && teamHours.period.current_anchor <= teamHours.period.to);
-
-  const lastImportTo = dq.last_import ? String(dq.last_import.period_to).slice(0, 10) : null;
-  const hasNorm = (teamHours?.people || []).some((p) => Number(p.norm_minutes) > 0);
-  const notCovered = !!lastImportTo && (teamHours?.people || []).length > 0 && !hasNorm;
-
-  const stateLabel = {
-    green: 'в норме', yellow: 'недоработка', red: 'ниже половины', none: 'нет нормы',
-  };
-
-  return (
-    <section className="jp-sec-block jp-team-block">
-      <div className="jp-sec-head">
-        <div className="jp-sec-head-left">
-          <span className="jp-sec-mark" />
-          <h2 className="jp-sec-title">График офиса</h2>
-          <span className="jp-sec-note">офис + удалённо · норма 8 ч/день</span>
-        </div>
-        <div className="jp-sec-head-right">
-          <span className="jp-sec-total">{teamHours?.period?.label || periodLabel(period)}</span>
-        </div>
-      </div>
-
-      <div className="jp-og-filter">
-        <div className="jp-og-scopes" role="tablist" aria-label="Период графика офиса">
-          {TEAM_SCOPES.map((s) => (
-            <button
-              key={s.id}
-              type="button"
-              role="tab"
-              aria-selected={activeScope === s.id}
-              className={`jp-og-scope spring-tap${activeScope === s.id ? ' is-on' : ''}`}
-              onClick={() => { haptic.light(); onScope?.(s.id); }}
-            >
-              {s.label}
-            </button>
-          ))}
-        </div>
-        <div className="jp-og-nav">
-          <button
-            type="button"
-            className="jp-og-nav-btn spring-tap"
-            aria-label="Предыдущий период"
-            disabled={!teamHours?.period?.prev_anchor}
-            onClick={() => { haptic.light(); onStep?.(teamHours?.period?.prev_anchor); }}
-          >
-            <ChevronLeft size={16} />
-          </button>
-          <span className="jp-og-range">{teamHours?.period?.label || '—'}</span>
-          <button
-            type="button"
-            className="jp-og-nav-btn spring-tap"
-            aria-label="Следующий период"
-            disabled={!teamHours?.period?.next_anchor}
-            onClick={() => { haptic.light(); onStep?.(teamHours?.period?.next_anchor); }}
-          >
-            <ChevronRight size={16} />
-          </button>
-        </div>
-        {atCurrent ? null : (
-          <button type="button" className="jp-og-today spring-tap" onClick={() => { haptic.light(); onCurrent?.(); }}>
-            Текущий период
-          </button>
-        )}
-      </div>
-
-      {noSkud ? (
-        <div className="jp-warn-banner">
-          Отчёт СКУД ещё не загружен — часы офиса и норма не считаются.
-        </div>
-      ) : (
-        <>
-          {notCovered ? (
-            <div className="jp-warn-banner">
-              Период ещё не покрыт отчётом СКУД (последний — по {formatDate(lastImportTo)}
-              ). За дни без отчёта норма не начисляется.
-              <button
-                type="button"
-                className="jp-og-today spring-tap"
-                style={{ marginLeft: 8 }}
-                onClick={() => { haptic.light(); onStep?.(lastImportTo); }}
-              >
-                {formatDate(lastImportTo)}
-              </button>
-            </div>
-          ) : null}
-          <div className="jp-og-summary">
-            {teamHours?.norm?.people_total
-              ? <span>В норме: <b>{teamHours.norm.people_total - teamHours.norm.people_under}</b> из {teamHours.norm.people_total}</span>
-              : <span>Нет данных для расчёта нормы</span>}
-            {teamHours?.period?.working_days
-              ? <span>рабочих дней: <b>{teamHours.period.working_days}</b></span>
-              : null}
-          </div>
-
-          <div className="jp-og-legend">
-            <span className="is-green"><i />в норме</span>
-            <span className="is-yellow"><i />до 50 %</span>
-            <span className="is-red"><i />ниже половины</span>
-            <span className="is-none"><i />нет нормы</span>
-          </div>
-
-          {!sorted.length ? (
-            <EmptyState
-              icon={Activity}
-              title="Нет сотрудников"
-              description="Список пуст — нет людей с аккаунтом CRM"
-            />
-          ) : (
-            <div className="jp-og-list">
-              {sorted.map((p) => {
-                const st = p.state || 'none';
-                return (
-                  <button
-                    type="button"
-                    key={p.staff_id}
-                    className={`jp-og-row is-${st}${p.crown ? ' is-crown' : ''} spring-tap`}
-                    onClick={() => {
-                      haptic.light();
-                      onOpenPerson?.(p);
-                    }}
-                  >
-                    <span className="jp-og-bar" />
-                    <span className="jp-og-name">
-                      <span className="jp-og-name-txt">
-                        {p.name}
-                        {p.crown ? <CrownIcon /> : null}
-                      </span>
-                      <span className="jp-og-role">
-                        {p.role || ''}
-                        {p.norm_minutes > 0
-                          ? `${p.role ? ' · ' : ''}${p.days_counted} дн. в норме`
-                          : ''}
-                      </span>
-                    </span>
-                    <span className="jp-og-pct">
-                      <span className="v">{p.ratio_pct == null ? '—' : `${Math.round(p.ratio_pct)} %`}</span>
-                      <span className="l">{stateLabel[st] || '—'}</span>
-                    </span>
-                    <span className="jp-og-cells">
-                      <span className="c"><i>офис</i>{hoursFmt(p.office_minutes)}</span>
-                      <span className="c"><i>удалённо</i>{hoursFmt(p.remote_minutes)}</span>
-                      <span className="c sum"><i>сумма</i>{hoursFmt(p.worked_minutes)}</span>
-                      <span className="c"><i>норма</i>{p.norm_minutes ? hoursFmt(p.norm_minutes) : '—'}</span>
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-          )}
-        </>
-      )}
-
-      <div className="jp-dq">
-        <div className="h">Качество данных</div>
-        {dq.last_import ? (
-          <p>
-            Отчёт СКУД: {formatDate(dq.last_import.period_from)}–{formatDate(dq.last_import.period_to)}
-          </p>
-        ) : <p>Отчёт СКУД ещё не импортирован</p>}
-        {dq.skud_days_missing_count ? (
-          <p>Дней без отчёта СКУД: {dq.skud_days_missing_count}</p>
-        ) : null}
-        {dq.crm_activity_since
-          ? <p>Учёт времени СРМ с {formatDate(dq.crm_activity_since)}</p>
-          : <p>Серверный учёт времени СРМ ещё не собирал минут</p>}
-      </div>
-    </section>
-  );
-}
-
-/** Корона лидера периода — тот же силуэт, что на desktop. */
 function CrownIcon() {
   return (
     <svg className="jp-og-crown" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
@@ -1305,7 +895,7 @@ function RegistryRow({ section, item, onOpen }) {
 
 /* ── Fullscreen detail ────────────────────────────────────────────────── */
 
-function DetailFullscreen({ kind, detail, loading, tab, onTab, onClose }) {
+function DetailFullscreen({ kind, detail, loading, tab, onTab, sub, onSub, onClose }) {
   const tabs = kind === 'tenders' ? TENDER_TABS
     : kind === 'applications' ? APP_TABS
       : WORK_TABS;
@@ -1373,8 +963,8 @@ function DetailFullscreen({ kind, detail, loading, tab, onTab, onClose }) {
                 </div>
               )}
             </div>
-            <button type="button" className="jp-modal-close spring-tap" onClick={onClose} aria-label="Закрыть">
-              <X size={18} />
+            <button type="button" className="jp-modal-close asg-icon-btn spring-tap" onClick={onClose} aria-label="Закрыть">
+              <X size={18} strokeWidth={2} />
             </button>
           </div>
           <div className="jp-modal-tabs" role="tablist" ref={tabsRef}>
@@ -1399,7 +989,7 @@ function DetailFullscreen({ kind, detail, loading, tab, onTab, onClose }) {
           ) : detail?._error ? (
             <p className="jp-empty" style={{ color: 'var(--danger-ink)' }}>{detail._error}</p>
           ) : !detail ? null
-            : kind === 'tenders' ? <TenderTabs d={detail} tab={tab} />
+            : kind === 'tenders' ? <TenderTabs d={detail} tab={tab} sub={sub} onSub={onSub} />
               : kind === 'applications' ? <AppTabs d={detail} tab={tab} />
                 : <WorkTabs d={detail} tab={tab} />}
         </div>
@@ -1702,7 +1292,7 @@ function Block({ title, children, right }) {
 
 /* ── Tender tabs ──────────────────────────────────────────────────────── */
 
-function TenderTabs({ d, tab }) {
+function TenderTabs({ d, tab, sub, onSub }) {
   const st = statusMeta('tenders', d.registry_status);
   const dl = d.docs_deadline || d.deadline;
   const est = normalizeEstimate(d.estimate || d.estimates?.[0] || null);
@@ -1712,6 +1302,44 @@ function TenderTabs({ d, tab }) {
   const nmck = d.nmck != null ? d.nmck : d.price;
   const workPrice = rp?.work_price != null ? rp.work_price : d.price;
 
+  // Под-навигация: вкладка «Анализ РП» и «Просчёт» открывают внутренние
+  // разделы сегмент-контролом (не чипами в шапке — они бы снова раздули ряд).
+  const subs = subTabsOf(tab);
+  const activeSub = subs && subs.some((s) => s.id === sub) ? sub : (subs ? subs[0].id : null);
+  const effectiveTab = subs ? activeSub : tab;
+
+  const subNav = subs ? (
+    <div className="jp2-subnav" role="tablist" aria-label="Раздел">
+      {subs.map((s) => (
+        <button
+          key={s.id}
+          type="button"
+          role="tab"
+          aria-selected={activeSub === s.id}
+          className={`jp2-subnav-btn spring-tap${activeSub === s.id ? ' is-on' : ''}`}
+          onClick={() => onSub?.(s.id)}
+        >
+          {s.label}
+        </button>
+      ))}
+    </div>
+  ) : null;
+
+  const content = renderTenderTab({
+    d, st, dl, est, rp, checklist, docs, nmck, workPrice, tab: effectiveTab,
+  });
+
+  return (
+    <>
+      {subNav}
+      {content}
+    </>
+  );
+}
+
+function renderTenderTab({
+  d, st, dl, est, rp, checklist, docs, nmck, workPrice, tab,
+}) {
   if (tab === 'calc') {
     if (!rp) return <EmptyHint>Просчёт РП ещё не создан.</EmptyHint>;
     const ok = rp.decision === 'submit' || rp.decision === 'go' || rp.decision === 'подавать';
@@ -1779,13 +1407,13 @@ function TenderTabs({ d, tab }) {
   }
 
   if (tab === 'analysis') {
-    // Вкладка «Анализ»: что модель разобрала до просчёта. Директор судит
-    // по обоснованию, а не только по цене: источник объёмов, уверенность,
-    // состав работ и проблемы.
+    // Вкладка «Анализ»: что модель разобрала до просчёта + нормализованное
+    // заключение РП из `rp_review.analysis` (сервер отдаёт его с 10.11.2026).
     //
     // ВАЖНО: в этой области видимости есть только проп `d`. Обращение к
     // несуществующему `detail` бросало ReferenceError, и error boundary
     // закрывала ВЕСЬ экран аналитики директора (найдено верификатором).
+    const an = rp?.analysis || null;
     const rj = d?.rp_review?.report_json || d?.report_json || {};
     const rep = typeof rj === 'string' ? (() => { try { return JSON.parse(rj); } catch { return {}; } })() : rj;
     const SOURCE = {
@@ -1809,7 +1437,9 @@ function TenderTabs({ d, tab }) {
       : (Array.isArray(rep.dv_positions) ? rep.dv_positions : []);
     const problems = Array.isArray(rep.problems) ? rep.problems.filter(Boolean) : [];
 
-    if (!facts.length && !works.length) return <EmptyHint>Анализ ещё не проводился.</EmptyHint>;
+    if (!facts.length && !works.length && !an?.summary && !an?.scope && !(an?.risks || []).length) {
+      return <EmptyHint>Анализ ещё не проводился.</EmptyHint>;
+    }
 
     return (
       <Split
@@ -1825,6 +1455,16 @@ function TenderTabs({ d, tab }) {
                 ))}
               </div>
             </Block>
+            {an?.summary && (
+              <Block title="Суть работ">
+                <div className="jp-report">{an.summary}</div>
+              </Block>
+            )}
+            {an?.scope && (
+              <Block title="Объём">
+                <div className="jp-report">{an.scope}</div>
+              </Block>
+            )}
             {works.length > 0 && (
               <Block title={`Состав работ · ${works.length}`}>
                 <div className="jp-checklist">
@@ -1844,6 +1484,26 @@ function TenderTabs({ d, tab }) {
                 <ul className="jp-problems">
                   {problems.map((p, i) => {
                     const text = typeof p === 'string' ? p : (p && (p.text || p.message || p.name)) || '';
+                    return text ? <li key={i}>{text}</li> : null;
+                  })}
+                </ul>
+              </Block>
+            )}
+            {an?.risks?.length > 0 && (
+              <Block title="Риски" right={<span className="jp-badge tone-warn">{an.risks.length}</span>}>
+                <ul className="jp-problems">
+                  {an.risks.map((r, i) => {
+                    const text = typeof r === 'string' ? r : (r && (r.text || r.title)) || '';
+                    return text ? <li key={i}>{text}</li> : null;
+                  })}
+                </ul>
+              </Block>
+            )}
+            {an?.questions?.length > 0 && (
+              <Block title="Вопросы заказчику">
+                <ul className="jp-problems">
+                  {an.questions.map((q, i) => {
+                    const text = typeof q === 'string' ? q : (q && (q.text || q.title)) || '';
                     return text ? <li key={i}>{text}</li> : null;
                   })}
                 </ul>
@@ -2546,11 +2206,11 @@ function TeamPersonSheet({ person, onClose }) {
           </div>
           <button
             type="button"
-            className="jp-modal-close spring-tap"
+            className="jp-modal-close asg-icon-btn spring-tap"
             aria-label="Закрыть"
             onClick={() => { haptic.light(); onClose(); }}
           >
-            ✕
+            <X size={18} strokeWidth={2} />
           </button>
         </div>
         <div className="jp-modal-body">

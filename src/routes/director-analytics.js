@@ -123,6 +123,38 @@ function parsePeriod(q) {
   return PERIODS.has(p) ? p : 'month';
 }
 
+/**
+ * Мусорные записи не должны доходить до директора.
+ *
+ * На проде их нет, но в клоне и в тестовых прогонах появляются
+ * ([ДЕМО Мимир], AUDIT7_PROBE, BP-Test): они попадают в реестр, в счётчики
+ * и в «Требует внимания», и директор видит «203 тендера» вместо реальных.
+ * Фильтр по названию — единственный признак: флага «тестовая запись» в схеме нет.
+ */
+const JUNK_TITLE_RE = /^\[?демо|^\s*audit\d*_probe|^\s*bp-test|\bтест\b.*тендер|тендер.*\bтест\b|^test\b|^тест\b/i;
+
+function isJunkTender(row) {
+  const t = String((row && (row.title || row.tender_title)) || '').trim();
+  if (!t) return true;
+  return JUNK_TITLE_RE.test(t);
+}
+
+/**
+ * SQL-условие отсечения мусора — тот же смысл, что у isJunkTender.
+ * Применяется во всех выборках тендеров, чтобы счётчики, суммы и
+ * «Требует внимания» считались по реальным процедурам.
+ */
+const NOT_JUNK_TENDER_SQL = `(
+  t.tender_title IS NOT NULL
+  AND btrim(t.tender_title) <> ''
+  AND t.tender_title !~* '^\\[?демо'
+  AND t.tender_title !~* '^\\s*audit[0-9]*_probe'
+  AND t.tender_title !~* '^\\s*bp-test'
+  AND t.tender_title !~* '^test'
+  AND t.tender_title !~* '^тест'
+)`;
+// $1-параметры не нужны: шаблоны статичны, инъекции нет.
+
 /** SQL-фрагмент фильтра периода по timestamp/date колонке. */
 function periodSql(col, period, params) {
   if (period === 'all') return { clause: 'TRUE', params };
@@ -209,12 +241,23 @@ function asText(v) {
   return String(v);
 }
 
-/** Список из гетерогенного jsonb: массив как есть, строка → один элемент. */
+/** Список из гетерогенного jsonb: массив как есть, строка → элементы по строкам. */
 function asList(v) {
   if (v == null) return [];
   if (Array.isArray(v)) return v.filter((x) => x != null);
-  const s = asText(v);
-  return s ? [s] : [];
+  if (typeof v === 'string') {
+    // Риски и вопросы Мимир пишет одной строкой через перевод строки,
+    // «;» или «•». Без разбиения весь список склеивался в один абзац.
+    return v
+      .split(/\r?\n|;\s*|•\s*/)
+      .map((s) => s.replace(/^[-–—\d.)\s]+/, '').trim())
+      .filter((s) => s.length > 1);
+  }
+  if (typeof v === 'object') {
+    const t = asText(v);
+    return t ? [t] : [];
+  }
+  return [String(v)];
 }
 
 function platformFromUrl(url) {
@@ -417,8 +460,25 @@ module.exports = async function directorAnalyticsRoutes(fastify) {
           COALESCE(SUM(COALESCE(t.submission_price, t.tender_price)), 0)::float AS sum,
           -- НМЦК: tender_price пуст у 865 из 1313 тендеров (площадки кладут цену
           -- в submission_price). Без фолбэка директор видел «НМЦК 0 ₽ по 25
-          -- процедурам» рядом с «цена работ 89,1 млн» (жалоба 10.11.2026).
-          COALESCE(SUM(COALESCE(t.tender_price, t.submission_price)), 0)::float AS nmck_sum,
+          -- процедурам» (жалоба 10.11.2026).
+          COALESCE(SUM(COALESCE(t.tender_price, t.submission_price))
+                   FILTER (WHERE COALESCE(t.tender_price, t.submission_price) <= 5000000000), 0)::float AS nmck_sum,
+          -- Аномальные цены исключаем из сумм: на проде есть тендер с ценой
+          -- 90,4 млрд руб. Саму запись не прячем, но итоги она не раздувает.
+          COALESCE(SUM(COALESCE(t.submission_price, t.tender_price))
+                   FILTER (WHERE COALESCE(t.submission_price, t.tender_price) <= 5000000000), 0)::float AS sum_sane,
+          COUNT(DISTINCT t.id) FILTER (
+            WHERE COALESCE(t.submission_price, t.tender_price) > 5000000000
+          )::int AS price_suspect_count,
+          COUNT(DISTINCT t.id) FILTER (
+            WHERE t.registry_status IN ('рассмотрение','готовим')
+          )::int AS active_work,
+          COALESCE(SUM(COALESCE(t.submission_price, t.tender_price))
+                   FILTER (WHERE t.registry_status IN ('рассмотрение','готовим')
+                             AND COALESCE(t.submission_price, t.tender_price) <= 5000000000), 0)::float AS active_work_sum,
+          COALESCE(SUM(COALESCE(t.submission_price, t.tender_price))
+                   FILTER (WHERE t.registry_status = 'выиграли'
+                             AND COALESCE(t.submission_price, t.tender_price) <= 5000000000), 0)::float AS won_sum,
           -- Отдельно: сколько тендеров реально имеют цену. Нужен, чтобы на
           -- экране писать «по N из M процедур», а не «по 25» при нуле.
           COUNT(DISTINCT t.id) FILTER (
@@ -458,6 +518,7 @@ module.exports = async function directorAnalyticsRoutes(fastify) {
         FROM tenders t
         LEFT JOIN tender_rp_reviews tr ON tr.tender_id = t.id
         WHERE t.archived_at IS NULL
+          AND ${NOT_JUNK_TENDER_SQL}
           AND t.deleted_at IS NULL
           AND (${tPeriod.clause})
       `, tPeriod.params);
@@ -472,7 +533,8 @@ module.exports = async function directorAnalyticsRoutes(fastify) {
               AND t.registry_status IN ('рассмотрение','готовим','подались')
           ) AS nearest_deadline
         FROM tenders t
-        WHERE t.archived_at IS NULL AND (${tPeriod.clause})
+        WHERE t.archived_at IS NULL
+          AND ${NOT_JUNK_TENDER_SQL} AND (${tPeriod.clause})
         GROUP BY t.registry_status
       `, tPeriod.params);
       const tMap = Object.fromEntries(tByStatus.map((r) => [r.status, r]));
@@ -491,6 +553,7 @@ module.exports = async function directorAnalyticsRoutes(fastify) {
         FROM tenders t
         LEFT JOIN tender_rp_reviews tr ON tr.tender_id = t.id
         WHERE t.archived_at IS NULL
+          AND ${NOT_JUNK_TENDER_SQL}
           AND t.deleted_at IS NULL
           AND t.registry_status IN ('рассмотрение','готовим')
           AND COALESCE(tr.decision, 'pending') = 'pending'
@@ -513,6 +576,7 @@ module.exports = async function directorAnalyticsRoutes(fastify) {
         FROM tenders t
         LEFT JOIN tender_rp_reviews tr ON tr.tender_id = t.id
         WHERE t.archived_at IS NULL
+          AND ${NOT_JUNK_TENDER_SQL}
           AND t.deleted_at IS NULL
           AND t.registry_status IN ('рассмотрение','готовим')
           AND COALESCE(tr.decision, 'pending') = 'pending'
@@ -695,6 +759,11 @@ module.exports = async function directorAnalyticsRoutes(fastify) {
           sum: Number(tSum.sum || 0),
           nmck_sum: Number(tSum.nmck_sum || 0),
           priced_count: Number(tSum.priced_count || 0),
+          sum_sane: Number(tSum.sum_sane || 0),
+          price_suspect_count: Number(tSum.price_suspect_count || 0),
+          active_work: Number(tSum.active_work || 0),
+          active_work_sum: Number(tSum.active_work_sum || 0),
+          won_sum: Number(tSum.won_sum || 0),
           work_price_sum: Number(tSum.work_price_sum || 0),
           overdue_count: Number(tSum.overdue_count || 0),
           by_status: REGISTRY_STATUSES.map((status) => ({
@@ -795,6 +864,7 @@ module.exports = async function directorAnalyticsRoutes(fastify) {
           COALESCE(SUM(COALESCE(t.submission_price, t.tender_price)), 0)::float AS sum
         FROM tenders t
         WHERE t.archived_at IS NULL
+          AND ${NOT_JUNK_TENDER_SQL}
           AND (${p.clause})
         GROUP BY t.registry_status
       `, p.params);
@@ -880,6 +950,7 @@ module.exports = async function directorAnalyticsRoutes(fastify) {
         LEFT JOIN tender_rp_reviews tr ON tr.tender_id = t.id
         LEFT JOIN users analyzer ON analyzer.id = COALESCE(tr.calculator_user_id, t.calculator_user_id)
         WHERE t.archived_at IS NULL
+          AND ${NOT_JUNK_TENDER_SQL}
           AND (${p.clause})
           AND (${statusClause})
         ORDER BY ${orderBy}
@@ -1922,8 +1993,10 @@ module.exports = async function directorAnalyticsRoutes(fastify) {
                  COALESCE(u.is_active, true) = true
                  AND COALESCE(u.role, '') NOT IN ('BOT')
                  AND LOWER(u.login) NOT LIKE 'test_%'
+                 AND LOWER(u.login) NOT IN ('admin')
                  AND LOWER(COALESCE(u.name, '')) NOT LIKE 'test %'
                  AND LOWER(COALESCE(u.name, '')) NOT LIKE 'тест %'
+                 AND LOWER(COALESCE(u.name, '')) NOT LIKE '%администратор системы%'
            ))
          ORDER BY COALESCE(NULLIF(btrim(u.name), ''), s.name)`);
 
