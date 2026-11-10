@@ -63,7 +63,7 @@
 .mc-status-pill[data-status="REJECTED"] { color: var(--mc-red); border-color: var(--mc-red); }
 .mc-status-pill[data-status="BLOCKED_BY_CUSTOMER"],
 .mc-status-pill[data-status="BLOCKED_BY_PM"] { color: var(--mc-purple); border-color: var(--mc-purple); }
-.mc-status-live { animation: mc-pulse 1.6s ease-in-out infinite; }
+.mc-status-live { animation: none; }
 @keyframes mc-pulse { 0%,100% { opacity: 1; } 50% { opacity: .55; } }
 
 .mc-controls { display: flex; gap: 8px; margin-left: auto; }
@@ -124,7 +124,7 @@
 .mc-thought-text { color: #b9e6c9; }
 .mc-tool-call { color: var(--mc-blue); padding: 2px 0; }
 .mc-tool-result { color: var(--mc-text2); padding: 2px 0 2px 14px; }
-.mc-blink { color: var(--mc-green); animation: mc-blink 1s step-end infinite; }
+.mc-blink { color: var(--mc-green); animation: none; }
 @keyframes mc-blink { 0%,100% { opacity: 1; } 50% { opacity: 0; } }
 
 /* ─────────── Центр: лента событий ─────────── */

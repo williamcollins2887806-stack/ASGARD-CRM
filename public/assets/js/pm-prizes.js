@@ -139,7 +139,7 @@ window.AsgardPmPrizesPage = (function () {
 .pp-chip.pp-active { border-color:rgba(240,200,80,.5);background:rgba(240,200,80,.12);color:#F0C850; }
 .pp-wcard { border-radius:18px;border:1.5px solid var(--brd);overflow:hidden;margin-bottom:10px;
   background:var(--bg2);transition:border-color .25s,box-shadow .25s; }
-.pp-wcard.pp-urgent { border-color:rgba(251,191,36,.3);animation:pp-urgent-pulse 3s ease-in-out infinite; }
+.pp-wcard.pp-urgent { border-color:rgba(251,191,36,.3);animation:none; }
 .pp-whdr { display:flex;align-items:center;gap:12px;padding:14px 18px;cursor:pointer;user-select:none;transition:background .15s; }
 .pp-whdr:hover { background:var(--bg3); }
 .pp-wavatar { width:46px;height:46px;border-radius:50%;display:flex;align-items:center;justify-content:center;

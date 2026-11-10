@@ -1,0 +1,477 @@
+/**
+ * ASGARD controls canon — steel / exact / cold-warm gold
+ * Switch (elastic) + checkbox (solid, no glow) + chrome icon buttons.
+ * Load AFTER cr-checkbox.css / light-theme.css so aliases win.
+ * Scope: vanilla desktop + aliases. Mobile sheet-close mirrored in mobile-app.
+ */
+
+:root {
+  --asg-ctl-ease: var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1));
+  --asg-ctl-dur: 220ms;
+  --asg-ctl-press: var(--dur-press, 140ms);
+  --asg-sw-w: 44px;
+  --asg-sw-h: 24px;
+  --asg-sw-thumb: 20px;
+  --asg-sw-pad: 2px;
+  --asg-sw-travel: 20px;
+  --asg-sw-off: color-mix(in srgb, var(--brd, rgba(255,255,255,0.22)) 85%, #64748b);
+  --asg-sw-on: var(--gold, #D4A843);
+  --asg-sw-thumb-bg: #f5f5f7;
+  --asg-chk-size: 18px;
+  --asg-chk-mark: var(--on-gold, #1a1000);
+  --asg-ico: 32px;
+}
+
+html[data-theme="light"] {
+  --asg-sw-off: color-mix(in srgb, var(--bg4, #e8e4dc) 80%, #94a3b8);
+  --asg-sw-thumb-bg: #ffffff;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   SWITCH — elastic thumb (squash on press, stretch in travel, settle clean)
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.asg-switch,
+.toggle-switch,
+.toggle,
+.switch-track,
+.call-toggle-slider {
+  --_sw-w: var(--asg-sw-w);
+  --_sw-h: var(--asg-sw-h);
+  --_thumb: var(--asg-sw-thumb);
+  --_pad: var(--asg-sw-pad);
+  --_travel: var(--asg-sw-travel);
+  position: relative;
+  display: inline-block;
+  width: var(--_sw-w);
+  height: var(--_sw-h);
+  flex-shrink: 0;
+  box-sizing: border-box;
+  border-radius: 999px;
+  background: var(--asg-sw-off);
+  border: 1px solid color-mix(in srgb, var(--brd, rgba(255,255,255,0.18)) 100%, transparent);
+  cursor: pointer;
+  vertical-align: middle;
+  transition:
+    background var(--asg-ctl-dur) var(--asg-ctl-ease),
+    border-color var(--asg-ctl-dur) var(--asg-ctl-ease);
+}
+
+.asg-switch::after,
+.toggle-switch::after,
+.toggle::after,
+.switch-thumb,
+.call-toggle-slider:before {
+  content: '';
+  position: absolute;
+  top: var(--_pad);
+  left: var(--_pad);
+  width: var(--_thumb);
+  height: var(--_thumb);
+  border-radius: 999px;
+  background: var(--asg-sw-thumb-bg);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.28);
+  transform: translateX(0) scaleX(1);
+  transform-origin: left center;
+  transition:
+    transform var(--asg-ctl-dur) var(--asg-ctl-ease),
+    width var(--asg-ctl-press) var(--asg-ctl-ease),
+    left var(--asg-ctl-dur) var(--asg-ctl-ease),
+    box-shadow var(--asg-ctl-dur) var(--asg-ctl-ease);
+  pointer-events: none;
+}
+
+/* ON state — gold, steel family (no blue / no gradient glow) */
+.asg-switch.is-on,
+.asg-switch[aria-checked="true"],
+.asg-switch[data-on="true"],
+.toggle-switch.active,
+.toggle-switch:checked,
+.toggle-switch[data-on="true"],
+.toggle.active,
+.cm-toggle.active .cm-toggle-track,
+.switch-track.on,
+.switch-track--active,
+.toggle-track.on,
+.toggle-track--on,
+.call-toggle-switch input:checked + .call-toggle-slider {
+  background: var(--asg-sw-on) !important;
+  border-color: color-mix(in srgb, var(--gold, #D4A843) 70%, transparent) !important;
+}
+
+.asg-switch.is-on::after,
+.asg-switch[aria-checked="true"]::after,
+.asg-switch[data-on="true"]::after,
+.toggle-switch.active::after,
+.toggle-switch:checked::after,
+.toggle-switch[data-on="true"]::after,
+.toggle.active::after,
+.cm-toggle.active .cm-toggle-thumb,
+.switch-track.on .switch-thumb,
+.switch-track--active .switch-thumb,
+.toggle-track.on .toggle-thumb,
+.toggle-track--on .toggle-thumb,
+.call-toggle-switch input:checked + .call-toggle-slider:before {
+  transform: translateX(var(--_travel)) scaleX(1);
+  transform-origin: right center;
+}
+
+/* Press: thumb stretches (elastic), no bounce past end */
+.asg-switch:active:not(:disabled)::after,
+.toggle-switch:active::after,
+.toggle:active::after,
+.call-toggle-switch:active .call-toggle-slider:before,
+.cm-toggle:active .cm-toggle-thumb {
+  width: calc(var(--_thumb) + 6px);
+}
+
+.asg-switch.is-on:active:not(:disabled)::after,
+.asg-switch[aria-checked="true"]:active::after,
+.toggle-switch.active:active::after,
+.toggle-switch:checked:active::after,
+.toggle.active:active::after,
+.call-toggle-switch:active input:checked + .call-toggle-slider:before,
+.cm-toggle.active:active .cm-toggle-thumb {
+  /* stretch toward the leading edge while on */
+  transform: translateX(calc(var(--_travel) - 6px)) scaleX(1);
+}
+
+/* Hidden checkbox + track pattern (contracts / forms) */
+.toggle-input + .toggle-track,
+input.toggle-input + .toggle-track {
+  --_sw-w: var(--asg-sw-w);
+  --_sw-h: var(--asg-sw-h);
+  --_thumb: var(--asg-sw-thumb);
+  --_pad: var(--asg-sw-pad);
+  --_travel: var(--asg-sw-travel);
+  position: relative;
+  display: inline-block;
+  width: var(--_sw-w);
+  height: var(--_sw-h);
+  border-radius: 999px;
+  background: var(--asg-sw-off);
+  border: 1px solid color-mix(in srgb, var(--brd, rgba(255,255,255,0.18)) 100%, transparent);
+  transition: background var(--asg-ctl-dur) var(--asg-ctl-ease), border-color var(--asg-ctl-dur) var(--asg-ctl-ease);
+}
+
+.toggle-input + .toggle-track::after,
+input.toggle-input + .toggle-track::after {
+  content: '';
+  position: absolute;
+  top: var(--_pad);
+  left: var(--_pad);
+  width: var(--_thumb);
+  height: var(--_thumb);
+  border-radius: 999px;
+  background: var(--asg-sw-thumb-bg);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.28);
+  transition: transform var(--asg-ctl-dur) var(--asg-ctl-ease), width var(--asg-ctl-press) var(--asg-ctl-ease);
+}
+
+.toggle-input:checked + .toggle-track,
+input.toggle-input:checked + .toggle-track {
+  background: var(--asg-sw-on) !important;
+  border-color: color-mix(in srgb, var(--gold, #D4A843) 70%, transparent) !important;
+}
+
+.toggle-input:checked + .toggle-track::after,
+input.toggle-input:checked + .toggle-track::after {
+  transform: translateX(var(--_travel));
+}
+
+/* Call-toggle: pill track (override inline mango green gradient) */
+.call-toggle-switch {
+  width: 56px;
+  height: 30px;
+  position: relative;
+  display: inline-block;
+}
+/* Нативный checkbox внутри — только hit-target; иначе cr-checkbox рисует золотую галочку поверх */
+.call-toggle-switch > input[type="checkbox"] {
+  appearance: none !important;
+  -webkit-appearance: none !important;
+  position: absolute !important;
+  inset: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+  margin: 0 !important;
+  opacity: 0 !important;
+  cursor: pointer;
+  z-index: 2;
+  border: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+.call-toggle-slider {
+  --_sw-w: 56px;
+  --_sw-h: 30px;
+  --_thumb: 22px;
+  --_pad: 3px;
+  --_travel: 26px;
+  width: 100%;
+  height: 100%;
+  border-radius: 999px !important;
+}
+.call-toggle-switch input:checked + .call-toggle-slider {
+  background: var(--asg-sw-on) !important;
+  border-color: color-mix(in srgb, var(--gold, #D4A843) 70%, transparent) !important;
+}
+
+/* Legacy app.css .toggle was square + blue→gold gradient — force canon */
+.toggle {
+  border-radius: 999px !important;
+  background: var(--asg-sw-off) !important;
+  border: 1px solid color-mix(in srgb, var(--brd, rgba(255,255,255,0.18)) 100%, transparent) !important;
+}
+.toggle.active {
+  background: var(--asg-sw-on) !important;
+  border-color: color-mix(in srgb, var(--gold, #D4A843) 70%, transparent) !important;
+}
+.toggle.active::after {
+  left: var(--_pad) !important;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.28) !important;
+}
+
+/* cm-toggle (contracts): track + real thumb node */
+.cm-toggle-track {
+  position: relative;
+  width: 36px;
+  height: 20px;
+  border-radius: 999px;
+  background: var(--asg-sw-off);
+  border: 1px solid color-mix(in srgb, var(--brd, rgba(255,255,255,0.18)) 100%, transparent);
+  flex-shrink: 0;
+  transition: background var(--asg-ctl-dur) var(--asg-ctl-ease), border-color var(--asg-ctl-dur) var(--asg-ctl-ease);
+}
+.cm-toggle .cm-toggle-thumb {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  border-radius: 999px;
+  background: var(--asg-sw-thumb-bg);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.28);
+  transition: transform var(--asg-ctl-dur) var(--asg-ctl-ease), width var(--asg-ctl-press) var(--asg-ctl-ease);
+}
+.cm-toggle.active .cm-toggle-track {
+  background: var(--asg-sw-on) !important;
+  border-color: color-mix(in srgb, var(--gold, #D4A843) 70%, transparent) !important;
+}
+.cm-toggle.active .cm-toggle-thumb {
+  transform: translateX(16px);
+}
+.cm-toggle:active .cm-toggle-thumb {
+  width: 22px;
+}
+.cm-toggle.active:active .cm-toggle-thumb {
+  transform: translateX(10px);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   CHECKBOX — solid gold, mark draw, NO glow ring
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+input[type="checkbox"]:not(.no-cr-chk):not(.toggle-input) {
+  --cr-chk-size: var(--asg-chk-size);
+  --cr-chk-mark: var(--asg-chk-mark);
+  border-radius: 5px;
+  box-shadow: none !important;
+}
+
+input[type="checkbox"]:not(.no-cr-chk):not(.toggle-input):checked,
+input[type="checkbox"]:not(.no-cr-chk):not(.toggle-input):indeterminate {
+  background: var(--gold, #D4A843) !important;
+  border-color: var(--gold, #D4A843) !important;
+  box-shadow: none !important;
+}
+
+input[type="checkbox"]:not(.no-cr-chk):not(.toggle-input):checked::after {
+  animation: asg-chk-draw var(--asg-ctl-press) var(--asg-ctl-ease) both;
+}
+
+@keyframes asg-chk-draw {
+  from {
+    opacity: 0;
+    transform: rotate(-45deg) translateY(-1px) scale(0.6);
+  }
+  to {
+    opacity: 1;
+    transform: rotate(-45deg) translateY(-1px) scale(1);
+  }
+}
+
+/* Custom box variants used in modules */
+.cr-checkbox-box.checked,
+.checkbox-custom.is-checked,
+.custom-check.is-checked {
+  background: var(--gold, #D4A843) !important;
+  border-color: var(--gold, #D4A843) !important;
+  box-shadow: none !important;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   CHROME — .asg-icon-btn (+ aliases)
+   close / expand / collapse — 32×32, press 0.97, SVG only
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.asg-icon-btn,
+.cr-m__close,
+.cr-m__fullscreen-btn,
+.modal-close,
+.xbtn,
+.toast-close,
+.dh-drawer__close,
+.bc-drawer__close,
+.pk3-btn-icon[data-act="close"],
+.pk3-btn-icon#pk3-drawer-close,
+.pk3-btn-icon#pk3-fld-close,
+.pk3-btn-icon#pk3-rem-close,
+.pk3-btn-icon[data-am="close"],
+button.pk3-btn-icon[title="Закрыть"],
+button.pk3-btn-icon[title="Закрыть (Esc)"],
+.hub-funnel-sheet-x,
+.jp-sheet-close {
+  width: var(--asg-ico);
+  height: var(--asg-ico);
+  min-width: var(--asg-ico);
+  min-height: var(--asg-ico);
+  padding: 0;
+  margin: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--r-sm, 6px);
+  border: 1px solid var(--brd, rgba(255,255,255,0.14));
+  background: transparent;
+  color: var(--t3, #94a3b8);
+  cursor: pointer;
+  line-height: 1;
+  font-size: 0; /* hide leftover × glyphs if any */
+  box-sizing: border-box;
+  transition:
+    background var(--asg-ctl-press) var(--asg-ctl-ease),
+    border-color var(--asg-ctl-press) var(--asg-ctl-ease),
+    color var(--asg-ctl-press) var(--asg-ctl-ease),
+    transform var(--asg-ctl-press) var(--asg-ctl-ease);
+}
+
+.asg-icon-btn:hover,
+.cr-m__close:hover,
+.modal-close:hover,
+.xbtn:hover,
+.toast-close:hover,
+.dh-drawer__close:hover,
+.bc-drawer__close:hover,
+.pk3-btn-icon[data-act="close"]:hover,
+.pk3-btn-icon#pk3-drawer-close:hover,
+.pk3-btn-icon#pk3-fld-close:hover {
+  color: var(--t1, #f5f5f7);
+  border-color: color-mix(in srgb, var(--brd, rgba(255,255,255,0.22)) 100%, transparent);
+  background: color-mix(in srgb, var(--t1, #fff) 6%, transparent);
+}
+
+.cr-m__close:hover {
+  border-color: var(--red, #ef4444);
+  color: var(--red-l, #f87171);
+  background: var(--err-bg, rgba(239, 68, 68, 0.12));
+}
+
+.asg-icon-btn:active,
+.cr-m__close:active,
+.cr-m__fullscreen-btn:active,
+.modal-close:active,
+.xbtn:active,
+.toast-close:active,
+.dh-drawer__close:active,
+.bc-drawer__close:active,
+.pk3-btn-icon[data-act="close"]:active,
+.pk3-btn-icon#pk3-drawer-close:active,
+.pk3-btn-icon#pk3-fld-close:active {
+  transform: scale(0.97);
+}
+
+.asg-icon-btn svg,
+.cr-m__close svg,
+.cr-m__fullscreen-btn svg,
+.modal-close svg,
+.xbtn svg,
+.toast-close svg,
+.dh-drawer__close svg,
+.bc-drawer__close svg,
+.pk3-btn-icon svg {
+  width: 14px;
+  height: 14px;
+  display: block;
+  pointer-events: none;
+}
+
+/* Toast close: sit quiet in the card */
+.toast-close {
+  border: 0;
+  background: transparent;
+  color: var(--t3, #94a3b8);
+  width: 28px;
+  height: 28px;
+  min-width: 28px;
+  min-height: 28px;
+}
+.toast-close:hover {
+  color: var(--t1, #f5f5f7);
+  background: transparent;
+  border: 0;
+}
+
+html[data-theme="light"] .asg-icon-btn,
+html[data-theme="light"] .cr-m__close,
+html[data-theme="light"] .cr-m__fullscreen-btn,
+html[data-theme="light"] .modal-close,
+html[data-theme="light"] .xbtn,
+html[data-theme="light"] .dh-drawer__close,
+html[data-theme="light"] .bc-drawer__close {
+  color: var(--t3);
+  border-color: var(--brd);
+}
+
+html[data-theme="light"] .asg-icon-btn:hover,
+html[data-theme="light"] .modal-close:hover,
+html[data-theme="light"] .xbtn:hover {
+  color: var(--t1);
+  background: color-mix(in srgb, var(--t1) 5%, transparent);
+}
+
+/* Kill light-theme blue switch overrides that fight the canon */
+html[data-theme="light"] .toggle-switch.active,
+html[data-theme="light"] .toggle-switch:checked,
+html[data-theme="light"] .toggle-switch[data-on="true"],
+html[data-theme="light"] .toggle.active,
+html[data-theme="light"] .switch.active,
+html[data-theme="light"] .cr-toggle.active {
+  background: var(--asg-sw-on) !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .asg-switch,
+  .asg-switch::after,
+  .toggle-switch,
+  .toggle-switch::after,
+  .toggle,
+  .toggle::after,
+  .call-toggle-slider,
+  .call-toggle-slider:before,
+  .cm-toggle-track,
+  .cm-toggle-thumb,
+  .toggle-input + .toggle-track,
+  .toggle-input + .toggle-track::after,
+  input[type="checkbox"]:not(.no-cr-chk):not(.toggle-input),
+  input[type="checkbox"]:not(.no-cr-chk):not(.toggle-input):checked::after,
+  .asg-icon-btn,
+  .cr-m__close,
+  .cr-m__fullscreen-btn,
+  .modal-close,
+  .xbtn,
+  .toast-close {
+    transition: none !important;
+    animation: none !important;
+  }
+}

@@ -689,8 +689,8 @@ export default function FieldInventory() {
           onTouchStart={handleTouchStart} onTouchMove={handleTouchMove}>
           <div className="finv-modal-card" onClick={e => e.stopPropagation()}>
             <div className="finv-modal-handle" />
-            <button className="finv-modal-close" onClick={closeModal}>
-              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="color-mix(in oklab, var(--text-primary) 70%, transparent)" strokeWidth="2.5" strokeLinecap="round">
+            <button type="button" className="finv-modal-close asg-icon-btn" aria-label="Закрыть" onClick={closeModal}>
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
                 <path d="M18 6L6 18M6 6l12 12" />
               </svg>
             </button>
@@ -843,12 +843,10 @@ const INV_CSS = `
 .finv-bg-glow.g2{width:250px;height:250px;bottom:-30px;right:-60px;background:var(--finv-purple)}
 .finv-bg-glow.g3{width:200px;height:200px;top:40%;left:50%;transform:translateX(-50%);background:var(--finv-gold);opacity:.08}
 .finv-bg-glow.g4{width:180px;height:180px;top:60%;left:20%;background:var(--finv-gold-warm);opacity:.06}
-.finv-stars{position:absolute;inset:0}.finv-s{position:absolute;background:var(--text-primary);border-radius:50%;animation:finv-tw 3s ease-in-out infinite alternate}
-@keyframes finv-tw{0%{opacity:.1;transform:scale(.8)}100%{opacity:.5;transform:scale(1.3)}}
+.finv-stars{position:absolute;inset:0}.finv-s{position:absolute;background:var(--text-primary);border-radius:50%;animation:none;transform:scale(.8)}100%{opacity:.5;transform:scale(1.3)}}
 
 .finv-rune-float{position:fixed;font-size:28px;color:color-mix(in oklab, var(--danger) 8%, transparent);pointer-events:none;z-index:0;
-  animation:finv-runeFloat 20s linear infinite}
-@keyframes finv-runeFloat{0%{transform:translateY(100vh) rotate(0deg);opacity:0}10%{opacity:.08}90%{opacity:.08}100%{transform:translateY(-100px) rotate(360deg);opacity:0}}
+  animation:none;opacity:0}10%{opacity:.08}90%{opacity:.08}100%{transform:translateY(-100px) rotate(360deg);opacity:0}}
 
 .finv-page{position:relative;z-index:5;max-width:430px;margin:0 auto;min-height:100dvh;
   padding-bottom:max(env(safe-area-inset-bottom),24px)}
@@ -882,7 +880,7 @@ const INV_CSS = `
 .finv-pill[data-filter="ready"]{border-color:var(--soft-blue)}
 .finv-pill[data-filter="ready"].active{background:color-mix(in oklab, var(--acc) 12%, transparent);border-color:color-mix(in oklab, var(--acc) 50%, transparent);color:var(--on-soft-blue)}
 .finv-pill[data-filter="ready"].active .finv-pill-count{background:var(--finv-status-blue);color:var(--text-primary)}
-.finv-pill[data-filter="ready"] .finv-pill-icon{animation:finv-pulseBlue 2s ease-in-out infinite}
+.finv-pill[data-filter="ready"] .finv-pill-icon{animation:none;}
 @keyframes finv-pulseBlue{0%,100%{opacity:.7}50%{opacity:1;text-shadow:0 0 8px color-mix(in oklab, var(--acc) 50%, transparent)}}
 .finv-pill[data-filter="delivered"]{border-color:color-mix(in oklab, var(--ok) 30%, transparent)}
 .finv-pill[data-filter="delivered"].active{background:color-mix(in oklab, var(--ok) 12%, transparent);border-color:color-mix(in oklab, var(--ok) 50%, transparent);color:#86efac}
@@ -892,7 +890,7 @@ const INV_CSS = `
 .finv-ready-banner{margin:4px 16px 8px;padding:12px 16px;border-radius:16px;
   background:linear-gradient(135deg,color-mix(in oklab, var(--acc) 12%, transparent),color-mix(in oklab, var(--acc) 6%, transparent));
   border:1px solid color-mix(in oklab, var(--acc) 25%, transparent);display:flex;align-items:center;gap:12px;
-  animation:finv-bannerPulse 3s ease-in-out infinite}
+  animation:none;}
 @keyframes finv-bannerPulse{0%,100%{box-shadow:0 0 0 0 color-mix(in oklab, var(--acc) 0%, transparent)}50%{box-shadow:0 0 20px 2px var(--soft-blue)}}
 .finv-ready-banner-icon{font-size:24px;flex-shrink:0}
 .finv-ready-banner-text{flex:1;min-width:0}
@@ -914,15 +912,14 @@ const INV_CSS = `
 .finv-item-card[data-status="pending"].visible{opacity:.75}
 .finv-item-card[data-status="pending"] .finv-item-svg-wrap{filter:saturate(.5) brightness(.7)}
 .finv-item-card[data-status="ready"]{border-color:color-mix(in oklab, var(--value) 25%, transparent);
-  background:linear-gradient(135deg,color-mix(in oklab, var(--value) 6%, transparent),var(--finv-card));animation:finv-readyGlow 3s ease-in-out infinite}
-@keyframes finv-readyGlow{0%,100%{box-shadow:0 0 0 0 color-mix(in oklab, var(--value) 0%, transparent),0 4px 15px color-mix(in oklab, var(--bg-primary) 20%, transparent)}
-  50%{box-shadow:0 0 20px 3px color-mix(in oklab, var(--value) 12%, transparent),0 4px 15px color-mix(in oklab, var(--bg-primary) 20%, transparent)}}
+  background:linear-gradient(135deg,color-mix(in oklab, var(--value) 6%, transparent),var(--finv-card));animation:100%{box-shadow:0 0 0 0 color-mix(in oklab, var(--value) 0%, transparent), 0 4px 15px color-mix(in oklab, var(--bg-primary) 20%, transparent)}
+  50%{box-shadow:0 0 20px 3px color-mix(in oklab, var(--value) 12%, transparent), 0 4px 15px color-mix(in oklab, var(--bg-primary) 20%, transparent)}}
 .finv-item-card[data-status="delivered"]{border-color:color-mix(in oklab, var(--ok) 10%, transparent)}
 
 /* SVG wrap */
 .finv-item-svg-wrap{width:80px;height:80px;flex-shrink:0;border-radius:16px;display:flex;align-items:center;justify-content:center;position:relative;overflow:visible}
 .finv-item-svg-glow{position:absolute;inset:-8px;border-radius:20px;filter:blur(12px);opacity:.3;z-index:0}
-.finv-item-card[data-status="ready"] .finv-item-svg-glow{background:radial-gradient(circle,var(--finv-gold),transparent);opacity:.4;animation:finv-svgGlowPulse 3s ease-in-out infinite}
+.finv-item-card[data-status="ready"] .finv-item-svg-glow{background:radial-gradient(circle,var(--finv-gold),transparent);opacity:.4;animation:none;}
 @keyframes finv-svgGlowPulse{0%,100%{opacity:.3}50%{opacity:.5}}
 .finv-item-card[data-status="pending"] .finv-item-svg-glow{background:radial-gradient(circle,rgba(107,114,128,.4),transparent);opacity:.15}
 .finv-item-card[data-status="delivered"] .finv-item-svg-glow{background:radial-gradient(circle,color-mix(in oklab, var(--ok) 30%, transparent),transparent);opacity:.2}
@@ -932,16 +929,14 @@ const INV_CSS = `
 .finv-item-name{font-size:15px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .finv-item-status-badge{display:inline-flex;align-items:center;gap:4px;padding:3px 10px;border-radius:8px;font-size:11px;font-weight:700;width:fit-content}
 .finv-item-status-badge.pending{background:rgba(107,114,128,.12);color:var(--text-secondary)}
-.finv-item-status-badge.ready{background:var(--soft-blue);color:var(--on-soft-blue);animation:finv-badgePulseBlue 2s ease-in-out infinite}
-@keyframes finv-badgePulseBlue{0%,100%{box-shadow:0 0 0 0 color-mix(in oklab, var(--acc) 0%, transparent)}50%{box-shadow:0 0 8px 1px color-mix(in oklab, var(--acc) 20%, transparent)}}
+.finv-item-status-badge.ready{background:var(--soft-blue);color:var(--on-soft-blue);animation:100%{box-shadow:0 0 0 0 color-mix(in oklab, var(--acc) 0%, transparent)}50%{box-shadow:0 0 8px 1px color-mix(in oklab, var(--acc) 20%, transparent)}}
 .finv-item-status-badge.delivered{background:var(--soft-ok);color:var(--on-soft-ok)}
 .finv-item-sub{font-size:11px;color:var(--finv-t3);line-height:1.3}
 .finv-item-pm-row{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--finv-t2)}
 .finv-item-pm-call{width:28px;height:28px;border-radius:50%;background:color-mix(in oklab, var(--acc) 15%, transparent);border:1px solid color-mix(in oklab, var(--acc) 30%, transparent);
   display:flex;align-items:center;justify-content:center;cursor:pointer;text-decoration:none;transition: background-color var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), color var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), border-color var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), box-shadow var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), opacity var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), transform var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1));flex-shrink:0}
 .finv-item-pm-call:active{background:color-mix(in oklab, var(--acc) 30%, transparent);transform:scale(.9)}
-.finv-item-card[data-status="ready"] .finv-item-pm-call{animation:finv-phoneRing 3s ease-in-out infinite 1.5s}
-@keyframes finv-phoneRing{0%,8%,16%,100%{transform:rotate(0)}2%{transform:rotate(12deg)}4%{transform:rotate(-12deg)}6%{transform:rotate(10deg)}10%{transform:rotate(-8deg)}12%{transform:rotate(6deg)}14%{transform:rotate(-4deg)}}
+.finv-item-card[data-status="ready"] .finv-item-pm-call{animation:8%, 16%, 100%{transform:rotate(0)}2%{transform:rotate(12deg)}4%{transform:rotate(-12deg)}6%{transform:rotate(10deg)}10%{transform:rotate(-8deg)}12%{transform:rotate(6deg)}14%{transform:rotate(-4deg)}}
 .finv-item-source{display:flex;align-items:center;gap:4px;font-size:11px;color:var(--finv-t3)}
 .finv-item-source-icon{font-size:13px}
 .finv-item-date{font-size:10px;color:var(--finv-t3)}
@@ -957,17 +952,15 @@ const INV_CSS = `
   border:1px solid color-mix(in oklab, var(--text-primary) 6%, transparent);border-bottom:none;padding:20px;
   padding-bottom:max(env(safe-area-inset-bottom),28px);box-shadow:0 -10px 50px color-mix(in oklab, var(--bg-primary) 50%, transparent);position:relative}
 .finv-modal-handle{width:40px;height:4px;border-radius:2px;background:color-mix(in oklab, var(--text-primary) 12%, transparent);margin:0 auto 16px}
-.finv-modal-close{position:absolute;top:20px;right:20px;width:32px;height:32px;border-radius:50%;
-  background:color-mix(in oklab, var(--text-primary) 6%, transparent);border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:background .2s;z-index:5}
-.finv-modal-close:active{background:color-mix(in oklab, var(--text-primary) 15%, transparent)}
+.finv-modal-close{position:absolute;top:20px;right:20px;width:32px;height:32px;border-radius:8px;
+  background:transparent;border:1px solid color-mix(in oklab, var(--text-primary) 12%, transparent);color:color-mix(in oklab, var(--text-primary) 70%, transparent);cursor:pointer;display:flex;align-items:center;justify-content:center;transition:background 140ms var(--ease-smooth-out,cubic-bezier(0.23,1,0.32,1)),transform 140ms var(--ease-smooth-out,cubic-bezier(0.23,1,0.32,1));z-index:5}
+.finv-modal-close:active{transform:scale(0.97);background:color-mix(in oklab, var(--text-primary) 10%, transparent)}
 
 /* Modal SVG */
 .finv-modal-svg-area{text-align:center;position:relative;height:200px;margin-bottom:12px;display:flex;align-items:center;justify-content:center}
-.finv-modal-svg-glow{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:180px;height:180px;border-radius:50%;
-  background:radial-gradient(circle,color-mix(in oklab, var(--value) 20%, transparent),color-mix(in oklab, var(--danger) 10%, transparent),transparent);filter:blur(20px);animation:finv-modalGlow 3s ease-in-out infinite alternate}
-@keyframes finv-modalGlow{0%{opacity:.5;transform:translate(-50%,-50%) scale(.9)}100%{opacity:.8;transform:translate(-50%,-50%) scale(1.1)}}
+.finv-modal-svg-glow{display:none}
 .finv-modal-rune-ring{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:190px;height:190px;border-radius:50%;
-  border:1px solid color-mix(in oklab, var(--danger) 15%, transparent);z-index:1;animation:finv-runeRingSpin 30s linear infinite}
+  border:1px solid color-mix(in oklab, var(--danger) 15%, transparent);z-index:1;animation:none;}
 @keyframes finv-runeRingSpin{0%{transform:translate(-50%,-50%) rotate(0deg)}100%{transform:translate(-50%,-50%) rotate(360deg)}}
 
 .finv-modal-name{font-size:22px;font-weight:900;text-align:center;color:var(--finv-t1);margin-bottom:4px}
@@ -985,8 +978,7 @@ const INV_CSS = `
 .finv-tl-dot{width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:800;position:relative;flex-shrink:0}
 .finv-tl-dot.filled{background:var(--gold-fill);color:var(--text-on-gold);box-shadow:0 2px 8px color-mix(in oklab, var(--gold-fill) 25%, transparent)}
 .finv-tl-dot.empty{background:color-mix(in oklab, var(--text-primary) 6%, transparent);border:2px solid color-mix(in oklab, var(--text-primary) 12%, transparent);color:var(--finv-t3)}
-.finv-tl-dot.current{background:var(--gold-fill);color:var(--text-on-gold);animation:finv-tlPulse 2s ease-in-out infinite}
-@keyframes finv-tlPulse{0%,100%{box-shadow:0 0 0 0 color-mix(in oklab, var(--value) 0%, transparent)}50%{box-shadow:0 0 12px 4px color-mix(in oklab, var(--value) 30%, transparent)}}
+.finv-tl-dot.current{background:var(--gold-fill);color:var(--text-on-gold);animation:100%{box-shadow:0 0 0 0 color-mix(in oklab, var(--value) 0%, transparent)}50%{box-shadow:0 0 12px 4px color-mix(in oklab, var(--value) 30%, transparent)}}
 .finv-tl-line{flex:1;height:3px;border-radius:2px;min-width:30px}
 .finv-tl-line.filled{background:linear-gradient(90deg,var(--finv-gold-d),var(--finv-gold))}
 .finv-tl-line.empty{background:color-mix(in oklab, var(--text-primary) 8%, transparent)}

@@ -66,15 +66,15 @@
 
     '.og-content{text-align:center;max-width:400px;padding:20px;}' +
 
-    '.og-raven-g{animation:ogWing 3s ease-in-out infinite;}' +
-    '.og-wing-l{animation:ogWingL 3s ease-in-out infinite;transform-origin:38px 60px;}' +
-    '.og-wing-r{animation:ogWingR 3s ease-in-out infinite;transform-origin:82px 60px;}' +
+    '.og-raven-g{animation:none;}' +
+    '.og-wing-l{animation:none;transform-origin:38px 60px;}' +
+    '.og-wing-r{animation:none;transform-origin:82px 60px;}' +
 
     '@keyframes ogWingL{0%,100%{transform:rotate(0)}50%{transform:rotate(-8deg)}}' +
     '@keyframes ogWingR{0%,100%{transform:rotate(0)}50%{transform:rotate(8deg)}}' +
 
     '.og-title{font-size:28px;font-weight:700;color:#f5d78e;margin:20px 0 8px;}' +
-    '.og-subtitle{font-size:16px;color:var(--t2);animation:ogPulseText 2s ease-in-out infinite;}' +
+    '.og-subtitle{font-size:16px;color:var(--t2);animation:none;}' +
     '@keyframes ogPulseText{0%,100%{opacity:0.6}50%{opacity:1}}' +
 
     '.og-spinner{width:40px;height:40px;margin:24px auto 0;' +
@@ -83,7 +83,7 @@
     '@keyframes ogSpin{to{transform:rotate(360deg)}}' +
 
     '.og-rune{position:fixed;font-size:24px;font-family:serif;color:rgba(245,215,142,0.12);' +
-      'animation:ogRunePulse 4s ease-in-out infinite;}' +
+      'animation:none;}' +
     '@keyframes ogRunePulse{0%,100%{opacity:0.08;text-shadow:0 0 0 transparent}50%{opacity:0.2;text-shadow:0 0 12px rgba(245,215,142,0.15)}}' +
 
     '.og-rune-tl{top:40px;left:40px;animation-delay:0s;}' +

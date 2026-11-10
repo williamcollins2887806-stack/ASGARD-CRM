@@ -246,7 +246,7 @@ export function Composer({
                 borderRadius: '50%',
                 background: cancelZone ? 'var(--text-tertiary)' : 'var(--red-soft)',
                 flexShrink: 0,
-                animation: cancelZone ? 'none' : 'voice-pulse 1s ease-in-out infinite',
+                animation: 'none',
               }}
             />
             <div

@@ -119,7 +119,7 @@
   /* Tap ring */
   .tap-ring { position: absolute; inset: -7px; border-radius: 15px;
     border: 2px solid var(--gold); box-shadow: 0 0 14px rgba(200,168,78,0.5);
-    animation: tap 1.6s ease-out infinite; }
+    animation: none; }
   @keyframes tap { 0% { transform: scale(1); opacity: 0.9; } 100% { transform: scale(1.35); opacity: 0; } }
 
   /* Dialog */
@@ -136,7 +136,7 @@
   .dialog-ok { flex: 1; padding: 10px; font-size: 10px; font-weight: 700; color: var(--gold);
     text-align: center; background: rgba(200,168,78,0.08); position: relative; overflow: hidden; }
   .dialog-ok::after { content: ''; position: absolute; inset: 0; background: rgba(200,168,78,0.15);
-    animation: pulse 1.2s ease-in-out infinite; }
+    animation: none; }
   @keyframes pulse { 0%, 100% { opacity: 0; } 50% { opacity: 1; } }
 
   /* Splash */
@@ -149,7 +149,7 @@
   .splash-title { font-size: 17px; font-weight: 900; color: #fff; }
   .splash-sub { font-size: 9px; color: rgba(255,255,255,0.35); margin-top: 2px; }
   .dots { display: flex; gap: 5px; margin-top: 24px; }
-  .dot { width: 5px; height: 5px; border-radius: 50%; background: var(--gold); animation: dotPulse 1.2s ease-in-out infinite; }
+  .dot { width: 5px; height: 5px; border-radius: 50%; background: var(--gold); animation: none; }
   .dot:nth-child(2) { animation-delay: 0.2s; } .dot:nth-child(3) { animation-delay: 0.4s; }
   @keyframes dotPulse { 0%, 80%, 100% { opacity: 0.3; transform: scale(0.8); } 40% { opacity: 1; transform: scale(1); } }
   .phone-bar { position: absolute; bottom: 0; left: 0; right: 0; height: 44px; background: rgba(0,0,0,0.3);
@@ -558,7 +558,7 @@
               <span style="font-size:18px;color:rgba(255,255,255,0.2);">←</span>
               <span style="font-size:18px;color:rgba(255,255,255,0.2);">→</span>
               <span style="font-size:22px;color:var(--gold);position:relative;">⎙
-                <span style="position:absolute;inset:-8px;border-radius:50%;border:2px solid var(--gold);box-shadow:0 0 12px rgba(200,168,78,0.5);animation:tap 1.6s ease-out infinite;"></span>
+                <span style="position:absolute;inset:-8px;border-radius:50%;border:2px solid var(--gold);box-shadow:none;animation:none;"></span>
               </span>
               <span style="font-size:18px;color:rgba(255,255,255,0.2);">⊡</span>
               <span style="font-size:18px;color:rgba(255,255,255,0.2);">☰</span>

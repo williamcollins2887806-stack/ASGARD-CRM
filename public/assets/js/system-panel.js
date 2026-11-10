@@ -36,7 +36,7 @@ window.AsgardSystemPanel = (function () {
 .sysp-card.err  { border-color:rgba(239,68,68,.25); }
 .sysp-status-dot {
   display:inline-block; width:8px; height:8px; border-radius:50%;
-  background:#22c55e; margin-right:6px; animation: sysp-pulse 2s infinite;
+  background:#22c55e; margin-right:6px; animation: none;
 }
 .sysp-status-dot.dead { background:#ef4444; animation:none; }
 @keyframes sysp-pulse { 0%,100%{opacity:1} 50%{opacity:.4} }

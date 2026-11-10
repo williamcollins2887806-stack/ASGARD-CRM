@@ -83,7 +83,7 @@ window.AsgardTkpAi = (function () {
       '.tkpai-step.active{color:var(--t1,#1f2937);font-weight:600}',
       '.tkpai-step.done{color:#1b7339}',
       '.tkpai-dot{width:8px;height:8px;border-radius:50%;background:currentColor;opacity:.35;flex:0 0 auto}',
-      '.tkpai-step.active .tkpai-dot{opacity:1;animation:tkpaiPulse 1.1s infinite}',
+      '.tkpai-step.active .tkpai-dot{opacity:1;animation:none}',
       '.tkpai-step.done .tkpai-dot{opacity:1}',
       '@keyframes tkpaiPulse{0%,100%{transform:scale(1);opacity:1}50%{transform:scale(1.5);opacity:.55}}',
       '.tkpai-sums{display:flex;gap:16px;flex-wrap:wrap;padding:10px 14px;border-radius:10px;background:rgba(27,115,57,.07);border:1px solid rgba(27,115,57,.2);font-size:12.5px}',

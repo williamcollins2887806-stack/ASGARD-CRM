@@ -2212,7 +2212,7 @@ details > *:not(summary) {
 
 .bellcount,
 .notification-badge {
-  animation: notification-pulse 2s ease-in-out infinite;
+  animation: none;
 }
 
 /* Floating Action Button Animation */
@@ -2525,7 +2525,7 @@ details > *:not(summary) {
 .kanban-card-priority.low { background: var(--ok-t); }
 .kanban-card-priority.normal { background: var(--blue); }
 .kanban-card-priority.high { background: var(--warn-t); }
-.kanban-card-priority.urgent { background: var(--red); animation: priority-pulse 1s ease-in-out infinite; }
+.kanban-card-priority.urgent { background: var(--red); animation: none; }
 
 @keyframes priority-pulse {
   0%, 100% { opacity: 1; }
@@ -2967,7 +2967,7 @@ details > *:not(summary) {
   border-radius: 50%;
   background: var(--ok);
   display: inline-block;
-  animation: chat-online-pulse 2s infinite;
+  animation: none;
 }
 
 @keyframes chat-online-pulse {
@@ -3377,7 +3377,7 @@ details > *:not(summary) {
   height: 6px;
   border-radius: 50%;
   background: var(--text-tertiary);
-  animation: chat-typing-bounce 1.4s infinite;
+  animation: none;
 }
 
 .chat-typing-dots span:nth-child(2) {
@@ -3909,7 +3909,7 @@ details > *:not(summary) {
 }
 
 .meeting-status.scheduled { background: var(--info-bg); color: var(--blue); }
-.meeting-status.in_progress { background: var(--ok-bg); color: var(--ok-t); animation: status-pulse 2s ease-in-out infinite; }
+.meeting-status.in_progress { background: var(--ok-bg); color: var(--ok-t); animation: none; }
 .meeting-status.completed { background: var(--bg3); color: var(--text-tertiary); }
 .meeting-status.cancelled { background: var(--err-bg); color: var(--red); text-decoration: line-through; }
 
@@ -4382,7 +4382,7 @@ html[data-theme="light"] .status-gold {
 
 /* Pulsing dot (for live/active) */
 .status-dot.pulse {
-  animation: dot-pulse 2s ease-in-out infinite;
+  animation: none;
 }
 
 @keyframes dot-pulse {
@@ -4609,7 +4609,7 @@ html[data-theme="light"] .inp:focus {
   font-size: 36px;
   color: var(--gold);
   text-shadow: 0 0 16px rgba(212, 168, 67, 0.4);
-  animation: rune-pulse 3s ease-in-out infinite;
+  animation: none;
   display: block;
   margin-bottom: 12px;
 }

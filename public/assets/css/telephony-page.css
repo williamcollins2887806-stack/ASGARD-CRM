@@ -2462,7 +2462,7 @@ html:not([data-theme="dark"]):not(.theme-dark) .telephony-page .call-log-table t
 .telephony-page .tel-report-status--error { background: var(--err, #c8293b); }
 .telephony-page .tel-report-status--pending {
   background: var(--t3);
-  animation: tel-status-pulse 1.2s ease-in-out infinite;
+  animation: none;
 }
 @keyframes tel-status-pulse {
   0%, 100% { opacity: 0.45; }

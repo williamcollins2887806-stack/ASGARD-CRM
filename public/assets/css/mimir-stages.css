@@ -129,7 +129,7 @@
   width: 6px; height: 6px; border-radius: 50%;
   background: currentColor; flex: 0 0 auto;
 }
-.mst-chip--thinking i { animation: mstPulse 1.6s ease-in-out infinite; }
+.mst-chip--thinking i { animation: none; }
 .mst-iconbtn {
   display: grid;
   place-items: center;
@@ -311,7 +311,7 @@
   margin-left: 3px;
   vertical-align: -1px;
   background: var(--gold);
-  animation: mstCaret 1.05s steps(1, end) infinite;
+  animation: mstCaret 1.05s steps(1;
 }
 .mst-side__log {
   flex: 1;

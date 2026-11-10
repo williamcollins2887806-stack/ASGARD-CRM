@@ -87,8 +87,7 @@
 
 /* -- Pool (left sidebar) -- */
 .vpb__pool{background:var(--bg1);border:2px solid var(--brd);border-radius:var(--r-md);padding:var(--sp-3);transition:border-color .3s,background .3s;animation:vpb-fadeUp .4s ease backwards}
-.vpb__pool.is-over{border-color:var(--blue);background:color-mix(in srgb,var(--blue) 3%,var(--bg1));animation:vpb-poolGlow 1.2s ease infinite}
-.vpb__pool-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:var(--sp-2);padding-bottom:var(--sp-2);border-bottom:2px solid color-mix(in srgb,var(--blue) 20%,var(--brd))}
+.vpb__pool.is-over{border-color:var(--blue);background:color-mix(in srgb,var(--blue) 3%,var(--bg1));animation:none;justify-content:space-between;align-items:center;margin-bottom:var(--sp-2);padding-bottom:var(--sp-2);border-bottom:2px solid color-mix(in srgb,var(--blue) 20%,var(--brd))}
 .vpb__pool-title{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--t2)}
 .vpb__pool-badge{background:var(--blue);color:#fff;font-size:11px;font-weight:700;padding:2px 10px;border-radius:6px;min-width:24px;text-align:center;display:inline-block;transition:transform .3s cubic-bezier(.34,1.56,.64,1)}
 .vpb__pool-badge.pop{animation:vpb-countBump .35s cubic-bezier(.34,1.56,.64,1)}
@@ -126,17 +125,12 @@
 /* =============================================
    THE PALLET
    ============================================= */
-.vpb__pallet{position:relative;border-radius:10px;min-height:260px;padding:0;overflow:hidden;transition:transform .3s ease,box-shadow .3s ease;animation:vpb-fadeUp .5s ease backwards}
-.vpb__pallet:hover:not(.is-packed):not(.is-over){animation:vpb-breathe 2.5s ease infinite}
-
-/* -- Wood base texture (CSS only) -- */
-.vpb__pallet-base{position:absolute;inset:0;border-radius:10px;overflow:hidden;background:repeating-linear-gradient(90deg,color-mix(in srgb,var(--gold) 8%,var(--bg1)) 0px,color-mix(in srgb,var(--gold) 5%,var(--bg1)) 2px,color-mix(in srgb,var(--gold) 3%,var(--bg2)) 4px,var(--bg1) 6px,var(--bg1) 58px,color-mix(in srgb,var(--gold) 6%,var(--bg2)) 60px);border:2px dashed color-mix(in srgb,var(--gold) 20%,var(--brd));z-index:0}
+.vpb__pallet{position:relative;border-radius:10px;min-height:260px;padding:0;overflow:hidden;transition:transform .3s ease,box-shadow .3s ease;animation:none;inset:0;border-radius:10px;overflow:hidden;background:repeating-linear-gradient(90deg,color-mix(in srgb,var(--gold) 8%,var(--bg1)) 0px,color-mix(in srgb,var(--gold) 5%,var(--bg1)) 2px,color-mix(in srgb,var(--gold) 3%,var(--bg2)) 4px,var(--bg1) 6px,var(--bg1) 58px,color-mix(in srgb,var(--gold) 6%,var(--bg2)) 60px);border:2px dashed color-mix(in srgb,var(--gold) 20%,var(--brd));z-index:0}
 .vpb__pallet-base::before{content:'';position:absolute;inset:0;background:repeating-linear-gradient(0deg,transparent 0px,transparent 18px,color-mix(in srgb,var(--gold) 4%,transparent) 19px,transparent 20px);opacity:.5;pointer-events:none}
 .vpb__pallet-base::after{content:'';position:absolute;left:8px;right:8px;bottom:8px;height:18px;background:repeating-linear-gradient(90deg,color-mix(in srgb,var(--gold) 12%,var(--bg2)) 0px,color-mix(in srgb,var(--gold) 8%,var(--bg1)) 30%,color-mix(in srgb,var(--gold) 12%,var(--bg2)) 33%,transparent 33.5%,transparent 66%,color-mix(in srgb,var(--gold) 12%,var(--bg2)) 66.5%,color-mix(in srgb,var(--gold) 8%,var(--bg1)) 100%);border-radius:3px;opacity:.6;pointer-events:none}
 
 /* -- Drag-over glow -- */
-.vpb__pallet.is-over{z-index:5;animation:vpb-glowPulse 1s ease infinite}
-.vpb__pallet.is-over .vpb__pallet-base{border-style:solid;border-color:var(--blue);background-blend-mode:screen}
+.vpb__pallet.is-over{z-index:5;animation:none;border-color:var(--blue);background-blend-mode:screen}
 
 /* -- Capacity states -- */
 .vpb__pallet.is-warning .vpb__fill-bar{background:linear-gradient(0deg,var(--warn),var(--gold))}

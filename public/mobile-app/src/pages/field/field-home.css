@@ -8,7 +8,7 @@
 /* ── Сцена (ambient-орбы) ────────────────────────────────────────────────── */
 .fh-scene { position: absolute; inset: 0; z-index: 0; overflow: hidden; pointer-events: none; }
 .fh-orb { position: absolute; border-radius: 50%; filter: blur(46px); opacity: .5;
-  animation: fhFloat 12s ease-in-out infinite; }
+  animation: none; }
 .fh-orb--a { width: 260px; height: 260px; left: -70px; top: -50px; background: var(--acc); }
 .fh-orb--b { width: 220px; height: 220px; right: -90px; top: 240px; background: var(--brand-red); opacity: .22; animation-delay: -5s; }
 .fh-orb--c { width: 240px; height: 240px; left: -70px; bottom: 120px; background: var(--value); opacity: .14; animation-delay: -8s; }
@@ -37,7 +37,7 @@
   background: linear-gradient(100deg, rgba(4,12,32,.5) 0%, rgba(4,12,32,.46) 62%, rgba(4,12,32,.2) 82%, rgba(4,12,32,.04) 100%); }
 .fh-promo__sheen { position: absolute; top: 0; bottom: 0; width: 42%; z-index: 1;
   background: linear-gradient(100deg, transparent, rgba(255,255,255,.28), transparent);
-  animation: fhSheen 4.6s ease-in-out infinite; pointer-events: none; }
+  animation: none; pointer-events: none; }
 .fh-promo__ico { width: 50px; height: 50px; border-radius: 16px; flex-shrink: 0; display: grid; place-items: center;
   background: rgba(255,255,255,.22); position: relative; z-index: 2;
   box-shadow: inset 0 1px 0 rgba(255,255,255,.45), inset 0 -4px 8px rgba(0,0,0,.18); }
@@ -101,7 +101,7 @@
   filter: drop-shadow(0 2px 1px rgba(0,0,0,.2)); }
 .fh-live { display: inline-flex; align-items: center; gap: 7px; }
 .fh-live__dot { width: 8px; height: 8px; border-radius: 50%; background: var(--ok);
-  animation: fhPulse 1.6s ease-out infinite; }
+  animation: none; }
 @keyframes fhPulse { 0% { box-shadow: 0 0 0 0 color-mix(in oklab, var(--ok) 60%, transparent); }
   70% { box-shadow: 0 0 0 9px transparent; } 100% { box-shadow: 0 0 0 0 transparent; } }
 
@@ -124,7 +124,7 @@
 .fh-tile--season .fh-tile__t { color: var(--on-soft-blue); }
 .fh-tile__badge { position: absolute; top: 9px; right: 9px; font-size: 10px; font-weight: 800;
   padding: 3px 8px; border-radius: 999px; background: var(--gold-fill); color: var(--text-on-gold);
-  animation: fhSoft 2.4s ease-in-out infinite; }
+  animation: none; }
 @keyframes fhSoft { 0%,100% { opacity: .8; } 50% { opacity: 1; } }
 
 .fh-qa { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 12px 4px 11px;
@@ -159,7 +159,7 @@
   background: linear-gradient(in oklab 90deg, transparent, var(--acc) 18%, var(--brand-red) 82%, transparent); }
 .fh-brandline::after { content: ''; display: block; height: 100%; width: 40%;
   background: linear-gradient(90deg, transparent, rgba(255,255,255,.75), transparent);
-  animation: fhSheen 3.4s ease-in-out infinite; }
+  animation: none; }
 
 /* ── Контейнер экрана ───────────────────────────────────────────────────── */
 .fh-root { position: relative; min-height: 100dvh; background: var(--bg-primary); }

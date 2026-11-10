@@ -252,17 +252,17 @@ export function AppSplash({ ready = false }) {
         <div style={{
           position: 'absolute', width: 400, height: 400, top: '-18%', left: '-20%', borderRadius: '50%',
           background: 'radial-gradient(circle, color-mix(in srgb, var(--brand-blue, #1E4D8C) 52%, transparent), transparent 68%)',
-          filter: 'blur(56px)', animation: reduceMotion ? 'none' : 'sx-orb 15s ease-in-out infinite',
+          filter: 'blur(56px)', animation: 'none',
         }} />
         <div style={{
           position: 'absolute', width: 330, height: 330, bottom: '-4%', right: '-18%', borderRadius: '50%',
           background: 'radial-gradient(circle, color-mix(in srgb, var(--brand-red, #C8293B) 38%, transparent), transparent 68%)',
-          filter: 'blur(56px)', animation: reduceMotion ? 'none' : 'sx-orb 18s ease-in-out -6s infinite',
+          filter: 'blur(56px)', animation: 'none',
         }} />
         <div style={{
           position: 'absolute', width: 420, height: 300, top: '30%', left: '18%', borderRadius: '50%',
           background: 'radial-gradient(circle, color-mix(in srgb, var(--gold, #c8a84e) 22%, transparent), transparent 70%)',
-          filter: 'blur(60px)', animation: reduceMotion ? 'none' : 'sx-orb 20s ease-in-out -10s infinite',
+          filter: 'blur(60px)', animation: 'none',
         }} />
       </div>
 
@@ -282,7 +282,7 @@ export function AppSplash({ ready = false }) {
                 width: size, height: size, borderRadius: '50%',
                 background: i % 3 === 0 ? '#F2E2A8' : (i % 3 === 1 ? '#C8A84E' : '#FFFFFF'),
                 boxShadow: `0 0 ${4 + (i % 3) * 3}px rgba(206,168,74,.85)`,
-                animation: `sx-sparkRise ${5.5 + (i % 5) * 1.5}s ease-in-out ${(i % 7) * 0.8}s infinite`,
+                animation: 'none',
               }} />
             );
           })}
@@ -294,14 +294,14 @@ export function AppSplash({ ready = false }) {
         position: 'relative', display: 'grid', placeItems: 'center',
         opacity: at(1) ? 1 : 0,
         transform: `scale(${pressed ? 0.97 : (at(1) ? 1 : 0.90)})`,
-        transition: 'opacity 720ms ease-out, transform 900ms cubic-bezier(0.34,1.56,0.64,1)',
+        transition: 'opacity 720ms ease-out, transform 900ms cubic-bezier(0.23,1,0.32,1)',
       }}>
         {/* Свечение под логотипом */}
         <div aria-hidden="true" style={{
           position: 'absolute', width: 208, height: 208, borderRadius: '50%',
           background: 'radial-gradient(circle, rgba(255,236,180,0.30) 0%, color-mix(in srgb, var(--gold, #c8a84e) 30%, transparent) 40%, transparent 70%)',
           filter: 'blur(22px)',
-          animation: reduceMotion ? 'none' : 'sx-core 3.8s ease-in-out infinite',
+          animation: 'none',
         }} />
 
         {/* Тонкое кольцо — единственное, держит композицию */}
@@ -310,7 +310,7 @@ export function AppSplash({ ready = false }) {
             position: 'absolute',
             opacity: at(1) ? 0.75 : 0,
             transition: 'opacity 1000ms ease-out',
-            animation: reduceMotion ? 'none' : 'sx-ringSpin 90s linear infinite',
+            animation: 'none',
           }}>
           <circle cx="108" cy="108" r="99" fill="none" stroke="color-mix(in srgb, var(--gold, #c8a84e) 26%, transparent)" strokeWidth="0.7" />
           <circle cx="108" cy="108" r="90" fill="none" stroke="color-mix(in srgb, var(--gold, #c8a84e) 16%, transparent)" strokeWidth="0.6"
@@ -330,7 +330,7 @@ export function AppSplash({ ready = false }) {
             width: 150,
             height: 'auto',
             filter: 'drop-shadow(0 6px 20px rgba(0,0,0,0.55)) drop-shadow(0 0 24px rgba(200,168,78,0.30))',
-            animation: reduceMotion ? 'none' : 'sx-float 5.5s ease-in-out infinite',
+            animation: 'none',
           }}
         />
       </div>
@@ -396,7 +396,7 @@ export function AppSplash({ ready = false }) {
             <div style={{
               position: 'absolute', top: -10, left: 0, width: 52, height: 22,
               background: 'linear-gradient(90deg, transparent, rgba(255,255,255,.75), transparent)',
-              animation: 'sx-lineSweep 2.8s ease-in-out infinite',
+              animation: 'none',
             }} />
           )}
         </div>

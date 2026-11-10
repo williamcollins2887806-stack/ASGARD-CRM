@@ -196,7 +196,7 @@ function RuneOrbitRing({ size, color = 'var(--value)' }) {
     <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}
       style={{
         position: 'absolute', top: '50%', left: '50%',
-        animation: 'runeOrbit 18s linear infinite',
+        animation: 'none',
         pointerEvents: 'none',
       }}>
       <defs>
@@ -314,7 +314,7 @@ function VikingHeroCard({ profile, runes, xp, level, totalShifts, cosmetics, tit
         <div key={i} style={{
           position: 'absolute', fontSize: 20, color: `color-mix(in oklab, ${accent} 13%, transparent)`,
           top: `${8 + i * 16}%`, ...(i % 2 === 0 ? { left: `${4 + i * 3}%` } : { right: `${4 + i * 3}%` }),
-          animation: `runeFloat ${5 + i * 1.4}s ease-in-out ${i * 0.7}s infinite`,
+          animation: 'none',
           pointerEvents: 'none', fontFamily: 'serif', userSelect: 'none',
         }}>{r}</div>
       ))}
@@ -328,7 +328,7 @@ function VikingHeroCard({ profile, runes, xp, level, totalShifts, cosmetics, tit
           <div style={{
             borderRadius: 22,
             overflow: 'hidden',
-            animation: `${frameAnim} 3s ease-in-out infinite`,
+            animation: 'none',
             /* static glow lives in keyframes — do not put filter here (kills WebGL) */
             boxShadow: hasFrame
               ? `0 0 24px color-mix(in oklab, ${accent} 38%, transparent), 0 0 50px color-mix(in oklab, ${accent} 13%, transparent)`
@@ -384,7 +384,7 @@ function VikingHeroCard({ profile, runes, xp, level, totalShifts, cosmetics, tit
           background: `color-mix(in oklab, ${accent} 9%, transparent)`, border: `1px solid color-mix(in oklab, ${accent} 25%, transparent)`,
           borderRadius: 20, padding: '6px 14px',
         }}>
-          <span style={{ fontSize: 17, fontFamily: 'serif', color: accent, animation: 'rankGlow 2.5s ease-in-out infinite' }}>
+          <span style={{ fontSize: 17, fontFamily: 'serif', color: accent, animation: 'none' }}>
             {rank.rune}
           </span>
           <span style={{ fontSize: 14, fontWeight: 800, color: accent, letterSpacing: .5 }}>{rank.title}</span>
@@ -532,7 +532,7 @@ function Skeleton() {
   return (
     <div style={{ background: 'var(--field-hero-bg)', borderRadius: '0 0 28px 28px', padding: '32px 24px 28px' }}>
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12 }}>
-        <div style={{ width: 120, height: 170, borderRadius: 16, background: 'color-mix(in oklab, var(--text-primary) 6%, transparent)', animation: 'statSlide 1s ease infinite alternate' }} />
+        <div style={{ width: 120, height: 170, borderRadius: 16, background: 'color-mix(in oklab, var(--text-primary) 6%, transparent)', animation: 'none' }} />
         <div style={{ width: 160, height: 16, borderRadius: 8, background: 'color-mix(in oklab, var(--text-primary) 6%, transparent)' }} />
         <div style={{ width: 100, height: 12, borderRadius: 6, background: 'color-mix(in oklab, var(--text-primary) 4%, transparent)' }} />
         <div style={{ display: 'flex', gap: 20, marginTop: 8 }}>

@@ -84,7 +84,7 @@
   height: 40%;\n\
   opacity: .06;\n\
   border-radius: 45% 55% 40% 60% / 60% 40% 55% 45%;\n\
-  animation: sgWave 12s ease-in-out infinite alternate;\n\
+  animation: none;\n\
 }\n\
 .sg-wave:nth-child(1) { background: #c8293b; bottom: -5%; animation-delay: 0s; }\n\
 .sg-wave:nth-child(2) { background: #d4a843; bottom: -10%; animation-delay: -3s; height: 35%; }\n\
@@ -120,7 +120,7 @@
 .sg-logo {\n\
   width: 72px;\n\
   height: 72px;\n\
-  animation: sgFloat 3s ease-in-out infinite;\n\
+  animation: none;\n\
   filter: drop-shadow(0 0 20px rgba(212,168,67,.2));\n\
 }\n\
 .sg-logo img {\n\
@@ -297,7 +297,7 @@
 .sg-splash-logo {\n\
   width: 96px;\n\
   height: 96px;\n\
-  animation: sgFloat 2.5s ease-in-out infinite;\n\
+  animation: none;\n\
   filter: drop-shadow(0 0 30px rgba(212,168,67,.3));\n\
 }\n\
 .sg-splash-logo img {\n\
@@ -319,18 +319,18 @@
 }\n\
 .sg-spinner-ring:nth-child(1) {\n\
   border-top-color: #d4a843;\n\
-  animation: sgSpin 1.2s cubic-bezier(.5,0,.5,1) infinite;\n\
+  animation: sgSpin 1.2s cubic-bezier(.5, 0, .5;\n\
 }\n\
 .sg-spinner-ring:nth-child(2) {\n\
   inset: 4px;\n\
   border-right-color: #c8293b;\n\
-  animation: sgSpin 1.2s cubic-bezier(.5,0,.5,1) infinite reverse;\n\
+  animation: sgSpin 1.2s cubic-bezier(.5, 0, .5;\n\
   animation-delay: -.4s;\n\
 }\n\
 .sg-spinner-ring:nth-child(3) {\n\
   inset: 8px;\n\
   border-bottom-color: #1e4d8c;\n\
-  animation: sgSpin 1.2s cubic-bezier(.5,0,.5,1) infinite;\n\
+  animation: sgSpin 1.2s cubic-bezier(.5, 0, .5;\n\
   animation-delay: -.8s;\n\
 }\n\
 @keyframes sgSpin {\n\
@@ -352,7 +352,7 @@
   color: rgba(212,168,67,.15);\n\
   font-size: 16px;\n\
   letter-spacing: 6px;\n\
-  animation: sgRuneGlow 2s ease-in-out infinite alternate;\n\
+  animation: none;\n\
 }\n\
 @keyframes sgRuneGlow {\n\
   from { opacity: .15; text-shadow: 0 0 5px rgba(212,168,67,.1); }\n\

@@ -811,7 +811,7 @@ function ReferencesSheet({ card, onClose }) {
               <div key={i} style={{
                 background:'rgba(255,255,255,0.04)', borderRadius:10, padding:14,
                 marginBottom:10, height:120,
-                animation:'rdyPulse 1.4s ease-in-out infinite',
+                animation: 'none',
               }}/>
             ))}
             <style>{`@keyframes rdyPulse{0%,100%{opacity:.5}50%{opacity:.9}}`}</style>

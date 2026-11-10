@@ -172,7 +172,7 @@ window.AsgardMailSettingsPage = (function(){
     <div style="width:600px;max-width:95vw;max-height:85vh;background:var(--bg-card);border-radius:6px;border:1px solid var(--border);overflow-y:auto;">
       <div style="padding:16px 20px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;">
         <h3 style="margin:0;color:var(--text-primary);">${existing ? 'Редактирование аккаунта' : 'Новый аккаунт'}</h3>
-        <button class="modal-close" style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:20px;">&times;</button>
+        <button type="button" class="modal-close asg-icon-btn" aria-label="Закрыть"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button>
       </div>
       <div style="padding:20px;display:flex;flex-direction:column;gap:8px;">
         <div style="display:flex;gap:8px;">
@@ -228,14 +228,14 @@ window.AsgardMailSettingsPage = (function(){
         </div>
       </div>
       <div style="padding:12px 20px;border-top:1px solid var(--border);display:flex;justify-content:flex-end;gap:8px;">
-        <button class="modal-close" style="padding:8px 16px;border-radius:6px;border:1px solid var(--border);background:var(--bg-deep);color:var(--text-primary);cursor:pointer;">Отмена</button>
+        <button type="button" class="btn ghost ms-modal-dismiss" style="padding:8px 16px;border-radius:6px;border:1px solid var(--border);background:var(--bg-deep);color:var(--text-primary);cursor:pointer;">Отмена</button>
         <button id="acc-save" style="padding:8px 20px;border-radius:6px;border:none;background:var(--primary);color:#fff;cursor:pointer;font-weight:600;">Сохранить</button>
       </div>
     </div>`;
 
     document.body.appendChild(overlay);
 
-    overlay.querySelectorAll('.modal-close').forEach(b => b.addEventListener('click', () => overlay.remove()));
+    overlay.querySelectorAll('.modal-close, .ms-modal-dismiss').forEach(b => b.addEventListener('click', () => overlay.remove()));
     overlay.addEventListener('click', (e) => { if (e.target === overlay) AsgardUI.oopsBubble(e.clientX, e.clientY); });
 
     // Test IMAP
@@ -387,7 +387,7 @@ window.AsgardMailSettingsPage = (function(){
     <div style="width:480px;max-width:95vw;background:var(--bg-card);border-radius:6px;border:1px solid var(--border);">
       <div style="padding:16px 20px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;">
         <h3 style="margin:0;color:var(--text-primary);">Новое правило</h3>
-        <button class="modal-close" style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:20px;">&times;</button>
+        <button type="button" class="modal-close asg-icon-btn" aria-label="Закрыть"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button>
       </div>
       <div style="padding:20px;display:flex;flex-direction:column;gap:10px;">
         <div>
@@ -410,7 +410,7 @@ window.AsgardMailSettingsPage = (function(){
         <div><label style="font-size:12px;color:var(--text-muted);">Описание</label><input id="rule-desc" style="${inputStyle()}"></div>
       </div>
       <div style="padding:12px 20px;border-top:1px solid var(--border);display:flex;justify-content:flex-end;gap:8px;">
-        <button class="modal-close" style="padding:8px 16px;border-radius:6px;border:1px solid var(--border);background:var(--bg-deep);color:var(--text-primary);cursor:pointer;">Отмена</button>
+        <button type="button" class="btn ghost ms-modal-dismiss" style="padding:8px 16px;border-radius:6px;border:1px solid var(--border);background:var(--bg-deep);color:var(--text-primary);cursor:pointer;">Отмена</button>
         <button id="rule-save" style="padding:8px 20px;border-radius:6px;border:none;background:var(--primary);color:#fff;cursor:pointer;font-weight:600;">Создать</button>
       </div>
     </div>`;
@@ -450,7 +450,7 @@ window.AsgardMailSettingsPage = (function(){
       ],
     }));
 
-    overlay.querySelectorAll('.modal-close').forEach(b => b.addEventListener('click', () => { CRSelect.destroy('rule-type'); CRSelect.destroy('rule-match'); CRSelect.destroy('rule-class'); overlay.remove(); }));
+    overlay.querySelectorAll('.modal-close, .ms-modal-dismiss').forEach(b => b.addEventListener('click', () => { CRSelect.destroy('rule-type'); CRSelect.destroy('rule-match'); CRSelect.destroy('rule-class'); overlay.remove(); }));
     overlay.addEventListener('click', (e) => { if (e.target === overlay) AsgardUI.oopsBubble(e.clientX, e.clientY); });
 
     overlay.querySelector('#rule-save')?.addEventListener('click', async () => {
@@ -483,7 +483,7 @@ window.AsgardMailSettingsPage = (function(){
     <div style="width:480px;max-width:95vw;background:var(--bg-card);border-radius:6px;border:1px solid var(--border);">
       <div style="padding:16px 20px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;">
         <h3 style="margin:0;color:var(--text-primary);">Тест классификации</h3>
-        <button class="modal-close" style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:20px;">&times;</button>
+        <button type="button" class="modal-close asg-icon-btn" aria-label="Закрыть"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button>
       </div>
       <div style="padding:20px;display:flex;flex-direction:column;gap:10px;">
         <div><label style="font-size:12px;color:var(--text-muted);">Email отправителя</label><input id="tc-from" placeholder="test@zakupki.gov.ru" style="${inputStyle()}"></div>
@@ -492,13 +492,13 @@ window.AsgardMailSettingsPage = (function(){
         <div id="tc-result" style="display:none; padding:10px; background:var(--bg-deep); border-radius:6px;"></div>
       </div>
       <div style="padding:12px 20px;border-top:1px solid var(--border);display:flex;justify-content:flex-end;gap:8px;">
-        <button class="modal-close" style="padding:8px 16px;border-radius:6px;border:1px solid var(--border);background:var(--bg-deep);color:var(--text-primary);cursor:pointer;">Закрыть</button>
+        <button type="button" class="btn ghost ms-modal-dismiss" style="padding:8px 16px;border-radius:6px;border:1px solid var(--border);background:var(--bg-deep);color:var(--text-primary);cursor:pointer;">Закрыть</button>
         <button id="tc-run" style="padding:8px 20px;border-radius:6px;border:none;background:var(--secondary);color:#fff;cursor:pointer;font-weight:600;">Проверить</button>
       </div>
     </div>`;
 
     document.body.appendChild(overlay);
-    overlay.querySelectorAll('.modal-close').forEach(b => b.addEventListener('click', () => overlay.remove()));
+    overlay.querySelectorAll('.modal-close, .ms-modal-dismiss').forEach(b => b.addEventListener('click', () => overlay.remove()));
     overlay.addEventListener('click', (e) => { if (e.target === overlay) AsgardUI.oopsBubble(e.clientX, e.clientY); });
 
     overlay.querySelector('#tc-run')?.addEventListener('click', async () => {

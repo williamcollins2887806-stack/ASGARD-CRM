@@ -447,9 +447,7 @@ window.AsgardPush = (function() {
       +     '</div>'
       +   '</div>'
       +   '<div style="text-align:center;padding:8px 0">'
-      +     '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" style="animation:bounce 1.5s ease-in-out infinite"><path d="M12 19V5M5 12l7-7 7 7" stroke="var(--t2)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>'
-      +   '</div>'
-      +   '<style>@keyframes bounce{0%,100%{transform:translateY(0)}50%{transform:translateY(-8px)}}</style>'
+      +     '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" style="animation:100%{transform:translateY(0)}50%{transform:translateY(-8px)}}</style>'
       +   '<button id="btnIOSClose" type="button" style="height:48px;width:100%;border-radius:16px;border:1px solid var(--brd);background:var(--bg3);color:var(--t2);font-size:14px;font-weight:700;cursor:pointer">Понятно</button>'
       + '</div>';
 

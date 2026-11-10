@@ -53,7 +53,7 @@ function FireParticles() {
           height: i % 2 === 0 ? 5 : 4,
           borderRadius: '50%',
           background: ['var(--value)','#FF8C00','#FF4500','var(--value)','#FF6B00','var(--value)','#FF4500'][i],
-          animationName: 'lb-fire',
+          animationName: 'none',
           animationDuration: `${0.7 + i * 0.15}s`,
           animationTimingFunction: 'ease-in-out',
           animationIterationCount: 'infinite',
@@ -153,7 +153,7 @@ function PodiumCard({ player, rank, isSelf, countersActive, onOpen }) {
     }}>
       {rank === 1 && (
         <>
-          <div style={{ position: 'absolute', top: -10, color: 'var(--value-ink)', animation: 'lb-crown-bob 2s ease-in-out infinite' }}>
+          <div style={{ position: 'absolute', top: -10, color: 'var(--value-ink)', animation: 'none' }}>
             <Crown size={22} strokeWidth={2.2} fill="currentColor" aria-hidden />
           </div>
           <FireParticles />
@@ -177,7 +177,7 @@ function PodiumCard({ player, rank, isSelf, countersActive, onOpen }) {
         background: isSelf ? 'color-mix(in oklab, var(--value) 18%, transparent)' : `color-mix(in oklab, ${c} 9%, transparent)`,
         border: `1.5px solid color-mix(in oklab, ${c} 33%, transparent)`,
         boxShadow: rank === 1 ? undefined : undefined,
-        animation: rank === 1 ? 'lb-gold-pulse 2.5s ease-in-out infinite' : 'none',
+        animation: 'none',
         textAlign: 'center',
       }}>
         <p style={{ fontSize: 11, fontWeight: 700, color: isSelf ? 'var(--value)' : 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
@@ -341,7 +341,7 @@ function TournamentBracket({ tournament, myId }) {
     <div>
       {/* Header */}
       <div style={{ textAlign: 'center', marginBottom: 12 }}>
-        <div style={{ fontSize: 16, fontWeight: 800, color: 'var(--value)', animation: 'lb-champion-glow 3s ease-in-out infinite' }}>
+        <div style={{ fontSize: 16, fontWeight: 800, color: 'var(--value)', animation: 'none' }}>
           ⚔️ Битва за Вальхаллу
         </div>
         {weekLabel && (

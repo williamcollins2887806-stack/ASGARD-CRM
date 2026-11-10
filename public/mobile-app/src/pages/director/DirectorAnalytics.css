@@ -979,10 +979,16 @@
   width: 40px;
   height: 40px;
   flex: 0 0 40px;
-  border: 0;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--bg-elevated, var(--bg-surface)) 80%, transparent);
+  border: 1px solid color-mix(in srgb, var(--border-norse, rgba(255,255,255,0.14)) 100%, transparent);
+  border-radius: 8px;
+  background: transparent;
   color: var(--text-secondary);
+  transition: background 140ms var(--ease-smooth-out, cubic-bezier(0.23, 1, 0.32, 1)),
+              color 140ms var(--ease-smooth-out, cubic-bezier(0.23, 1, 0.32, 1)),
+              transform 140ms var(--ease-smooth-out, cubic-bezier(0.23, 1, 0.32, 1));
+}
+.jp-modal-close:active {
+  transform: scale(0.97);
 }
 .jp-modal-kicker {
   display: flex;

@@ -67,7 +67,7 @@ window.AsgardMimir = (function(){
         transform:scale(1.12);
         box-shadow:0 8px 32px rgba(192,57,43,0.5), 0 0 0 4px rgba(245,215,142,0.25);
       }
-      .mimir-fab.has-unread { animation:iphoneFabPulse 4s infinite; }
+      .mimir-fab.has-unread { animation:none; }
       .mimir-fab.is-open { transform:rotate(180deg) scale(0.88); }
       .mimir-fab-emoji { font-size:28px; transition:opacity 0.2s; pointer-events:none; }
       .mimir-fab.is-open .mimir-fab-emoji { opacity:0; }
@@ -326,7 +326,7 @@ window.AsgardMimir = (function(){
       .mimir-typing-dot {
         width:8px; height:8px; border-radius:50%;
         background:rgba(245,215,142,0.55);
-        animation:iphoneDot 1.4s infinite ease-in-out;
+        animation:none;
       }
       .mimir-typing-dot:nth-child(2) { animation-delay:0.15s; }
       .mimir-typing-dot:nth-child(3) { animation-delay:0.3s; }
@@ -365,7 +365,7 @@ window.AsgardMimir = (function(){
       .mimir-streaming-cursor {
         display:inline-block; width:7px; height:15px;
         background:#f5d78e; margin-left:2px;
-        animation:mimirBlink 1s infinite;
+        animation:none;
       }
       @keyframes mimirBlink { 0%,50%{opacity:1;} 51%,100%{opacity:0;} }
 

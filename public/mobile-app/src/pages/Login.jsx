@@ -91,7 +91,7 @@ export default function Login() {
               bottom: '-20px',
               fontSize: r.size,
               opacity: 0,
-              animation: `loginRuneFloat ${r.dur}s ease-in-out ${r.delay}s infinite`,
+              animation: 'none',
             }}
           >
             {r.char}
@@ -107,7 +107,7 @@ export default function Login() {
           transform: mounted
             ? (success ? 'translateY(0) scale(1.05)' : 'translateY(0) scale(1)')
             : 'translateY(24px) scale(0.85)',
-          transition: 'all 0.9s cubic-bezier(0.34, 1.56, 0.64, 1)',
+          transition: 'all 0.9s cubic-bezier(0.23, 1, 0.32, 1)',
         }}
       >
         {/* Glow rings behind logo */}
@@ -117,7 +117,7 @@ export default function Login() {
             style={{
               inset: -28,
               border: '1px solid rgba(200, 41, 59, 0.06)',
-              animation: 'loginRingPulse 4s ease-in-out infinite',
+              animation: 'none',
             }}
           />
           <div
@@ -125,7 +125,7 @@ export default function Login() {
             style={{
               inset: -14,
               border: '1px solid rgba(30, 77, 140, 0.1)',
-              animation: 'loginRingPulse 4s ease-in-out 0.6s infinite',
+              animation: 'none',
             }}
           />
 
@@ -358,7 +358,7 @@ export default function Login() {
             #120a18, #050510, #0a1525, #0d0a20
           );
           background-size: 400% 400%;
-          animation: loginAuroraShift 25s ease infinite;
+          animation: none;
         }
         @keyframes loginAuroraShift {
           0%   { background-position: 0% 50%; }
@@ -372,7 +372,7 @@ export default function Login() {
           position: absolute;
           border-radius: 50%;
           filter: blur(80px);
-          animation: loginOrbDrift 12s ease-in-out infinite;
+          animation: none;
         }
         .login-orb-blue {
           width: 300px; height: 300px;
@@ -428,7 +428,7 @@ export default function Login() {
             #d1c4e9, #e8eaf6, #c5cae9, #e1bee7
           );
           background-size: 400% 400%;
-          animation: loginAuroraShift 25s ease infinite;
+          animation: none;
         }
         .light .login-orb-blue {
           background: radial-gradient(circle, rgba(30,77,140,0.12), transparent 70%);

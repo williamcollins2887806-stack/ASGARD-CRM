@@ -59,10 +59,10 @@ html[data-theme="light"] {
 }
 .po-ready .pulse {
   width: 7px; height: 7px; border-radius: 50%; background: var(--ok-t);
-  box-shadow: 0 0 0 0 var(--glow-ok); animation: poPulse 2s infinite;
+  box-shadow: none; animation: none;
 }
 @keyframes poPulse {
-  0% { box-shadow: 0 0 0 0 var(--glow-ok); }
+  0% { box-shadow: none; }
   70% { box-shadow: 0 0 0 7px transparent; }
   100% { box-shadow: 0 0 0 0 transparent; }
 }

@@ -46,7 +46,7 @@
   position: relative;
   z-index: 1;
   filter: drop-shadow(0 8px 24px color-mix(in oklab, var(--acc) 35%, transparent));
-  animation: fa-breathe 4s ease-in-out infinite;
+  animation: none;
 }
 @keyframes fa-breathe {
   0%, 100% { transform: scale(1); }
@@ -89,7 +89,7 @@
   line-height: 1.6;
   min-height: 52px;
 }
-.fa-cursor { animation: fa-blink .9s step-end infinite; color: var(--acc); font-style: normal; }
+.fa-cursor { animation: none; color: var(--acc); font-style: normal; }
 @keyframes fa-blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
 
 .fa-welcome-bottom {
@@ -324,7 +324,7 @@
   color: var(--text-tertiary);
   text-align: center;
   margin-top: 12px;
-  animation: fa-blink 1.6s ease-in-out infinite;
+  animation: none;
 }
 .fa-error {
   color: var(--danger-ink);

@@ -619,17 +619,17 @@ td .status.gold { background: var(--gold-bg); color: var(--gold); }
 
 .aurora-1 {
   background: radial-gradient(ellipse 50% 35% at 25% 30%, rgba(16,185,129,0.12), transparent 70%);
-  animation: aurora1 14s ease-in-out infinite;
+  animation: none;
 }
 
 .aurora-2 {
   background: radial-gradient(ellipse 55% 30% at 65% 25%, rgba(59,130,246,0.10), transparent 70%);
-  animation: aurora2 18s ease-in-out infinite;
+  animation: none;
 }
 
 .aurora-3 {
   background: radial-gradient(ellipse 40% 40% at 45% 20%, rgba(139,92,246,0.08), transparent 70%);
-  animation: aurora3 22s ease-in-out infinite;
+  animation: none;
 }
 
 @keyframes aurora1 {
@@ -671,7 +671,7 @@ td .status.gold { background: var(--gold-bg); color: var(--gold); }
     radial-gradient(1px 1px at 40% 30%, rgba(255,255,255,0.5), transparent),
     radial-gradient(1px 1px at 60% 50%, rgba(255,255,255,0.3), transparent),
     radial-gradient(1.5px 1.5px at 80% 15%, rgba(255,255,255,0.4), transparent);
-  animation: starTwinkle 5s ease-in-out infinite alternate;
+  animation: none;
 }
 
 @keyframes starTwinkle {
@@ -694,7 +694,7 @@ td .status.gold { background: var(--gold-bg); color: var(--gold); }
   color: #fbbf24;
   font-size: 18px;
   opacity: 0;
-  animation: floatRune 8s ease-in-out infinite;
+  animation: none;
   text-shadow: 0 0 8px rgba(251,191,36,0.4);
   user-select: none;
 }
@@ -748,7 +748,7 @@ td .status.gold { background: var(--gold-bg); color: var(--gold); }
   inset: -4px;
   border-radius: 50%;
   border: 1px solid rgba(251,191,36,0.2);
-  animation: logoRingPulse 3s ease-in-out infinite;
+  animation: none;
 }
 
 @keyframes logoRingPulse {
@@ -793,7 +793,7 @@ td .status.gold { background: var(--gold-bg); color: var(--gold); }
 .welcome-emblem {
   margin: 20px auto;
   max-width: 260px;
-  animation: emblemFloat 6s ease-in-out infinite;
+  animation: none;
 }
 
 @keyframes emblemFloat {
@@ -814,7 +814,7 @@ td .status.gold { background: var(--gold-bg); color: var(--gold); }
 
 /* Rotating rune ring */
 .rune-ring {
-  animation: runeRotate 45s linear infinite;
+  animation: none;
   transform-origin: 150px 150px;
 }
 
@@ -892,13 +892,7 @@ td .status.gold { background: var(--gold-bg); color: var(--gold); }
   z-index: 1;
 }
 
-.welcome-btn-glow {
-  position: absolute;
-  inset: -2px;
-  border-radius: 50px;
-  background: linear-gradient(135deg, transparent, rgba(255,255,255,0.2), transparent);
-  animation: btnGlowSweep 3s ease-in-out infinite;
-}
+.welcome-btn-glow { display: none !important; }
 
 @keyframes btnGlowSweep {
   0% { transform: translateX(-100%) rotate(20deg); }
@@ -1016,7 +1010,7 @@ td .status.gold { background: var(--gold-bg); color: var(--gold); }
 
 .loading-logo {
   margin-bottom: 32px;
-  animation: floatLogo 3s ease-in-out infinite;
+  animation: none;
 }
 
 .loading-logo img {
@@ -1053,18 +1047,18 @@ td .status.gold { background: var(--gold-bg); color: var(--gold); }
 
 .spinner-ring:nth-child(1) {
   border-top-color: var(--blue);
-  animation: spinRing 1.2s cubic-bezier(0.5, 0, 0.5, 1) infinite;
+  animation: spinRing 1.2s cubic-bezier(0.5, 0, 0.5;
 }
 
 .spinner-ring:nth-child(2) {
   border-right-color: var(--blue-l);
-  animation: spinRing 1.2s cubic-bezier(0.5, 0, 0.5, 1) infinite;
+  animation: spinRing 1.2s cubic-bezier(0.5, 0, 0.5;
   animation-delay: -0.4s;
 }
 
 .spinner-ring:nth-child(3) {
   border-bottom-color: var(--gold);
-  animation: spinRing 1.2s cubic-bezier(0.5, 0, 0.5, 1) infinite;
+  animation: spinRing 1.2s cubic-bezier(0.5, 0, 0.5;
   animation-delay: -0.8s;
 }
 
@@ -1100,17 +1094,17 @@ td .status.gold { background: var(--gold-bg); color: var(--gold); }
   font-size: 20px;
   letter-spacing: 4px;
   color: var(--t3);
-  animation: runeGlow 2s ease-in-out infinite alternate;
+  animation: none;
 }
 
 @keyframes runeGlow {
   from {
     opacity: 0.4;
-    text-shadow: 0 0 5px var(--blue-glow);
+    text-shadow: none;
   }
   to {
     opacity: 0.8;
-    text-shadow: 0 0 20px var(--blue), 0 0 40px var(--blue-glow);
+    text-shadow: none;
   }
 }
 
@@ -1126,7 +1120,7 @@ td .status.gold { background: var(--gold-bg); color: var(--gold); }
 .loading-logo img {
   width: 80px;
   height: 80px;
-  animation: pulse 1.5s ease-in-out infinite;
+  animation: none;
 }
 
 @keyframes pulse {
@@ -3973,8 +3967,8 @@ html[data-theme="light"] .watermark {
 .viking-greeting .rune-icon {
   font-size: 28px;
   color: var(--gold);
-  text-shadow: 0 0 12px var(--gold-glow);
-  animation: rune-pulse 3s ease-in-out infinite;
+  text-shadow: none;
+  animation: none;
 }
 
 @keyframes rune-pulse {
@@ -4088,7 +4082,7 @@ html[data-theme="light"] .saga-badge {
   background: rgba(220, 38, 38, 0.2);
   color: var(--err-t);
   border: 1px solid rgba(220, 38, 38, 0.35);
-  animation: urgent-pulse 2s ease-in-out infinite;
+  animation: none;
 }
 
 @keyframes urgent-pulse {
@@ -4578,7 +4572,7 @@ body::after {
     radial-gradient(ellipse 50% 30% at 50% 80%, rgba(139, 92, 246, 0.06), transparent 50%);
   pointer-events: none;
   z-index: -1;
-  animation: meshFloat 20s ease-in-out infinite;
+  animation: none;
 }
 
 @keyframes meshFloat {
@@ -4884,7 +4878,7 @@ input:focus, select:focus, textarea:focus, .inp:focus {
   align-items: center;
   justify-content: center;
   box-shadow: 0 2px 8px rgba(220, 38, 38, 0.4);
-  animation: badgePulse 2s ease-in-out infinite;
+  animation: none;
 }
 
 /* bellcount — НЕ absolute, остаётся в потоке flex-контейнера .bellbtn */
@@ -5033,13 +5027,13 @@ table.asg tr:hover td:first-child {
 }
 
 .toggle.active {
-  background: linear-gradient(135deg, var(--blue), var(--gold));
-  border-color: var(--blue);
+  background: var(--gold, #D4A843);
+  border-color: color-mix(in srgb, var(--gold, #D4A843) 70%, transparent);
 }
 
 .toggle.active::after {
   left: calc(100% - 23px);
-  box-shadow: 0 2px 8px rgba(220, 38, 38, 0.4);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.28);
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────
@@ -6841,7 +6835,7 @@ input[type="file"]::file-selector-button:hover {
   background: var(--gold);
   border-color: var(--gold);
   box-shadow: 0 0 8px rgba(37, 99, 235, 0.4);
-  animation: cash-step-pulse 2s ease-in-out infinite;
+  animation: none;
 }
 
 .cash-step.rejected .cash-step-dot {
@@ -9656,7 +9650,7 @@ html[data-theme="light"] .chat-header {
   right: 0;
   height: 3px;
   background: linear-gradient(90deg, var(--ok), var(--ok-t));
-  animation: callPulse 1.5s ease-in-out infinite;
+  animation: none;
 }
 
 @keyframes callPulse {
@@ -10792,7 +10786,7 @@ body.call-detail-open .asg-main-wrap {
   font-size: 10px;
   font-weight: 700;
   margin-left: auto;
-  animation: badgePulse 2s ease-in-out infinite;
+  animation: none;
 }
 
 @keyframes badgePulse {
@@ -11183,7 +11177,7 @@ body.call-detail-open .asg-main-wrap {
 /* -- Enhanced Missed Call Cards ------------------------------------------- */
 .missed-call-card--new {
   border-left: 3px solid var(--red, #ef4444);
-  animation: missed-pulse 2s ease-in-out 3;
+  animation: none;
 }
 @keyframes missed-pulse {
   0%, 100% { background: var(--bg2, #fff); }
@@ -12351,7 +12345,7 @@ table.reg-table th.reg-th-nosort {
   width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
   background: var(--ok, #3cb371);
   box-shadow: 0 0 0 0 color-mix(in srgb, var(--ok, #3cb371) 55%, transparent);
-  animation: pm-duty-pulse 1.8s ease-out infinite;
+  animation: none;
 }
 .pm-duty-live-tag {
   display: inline-block; padding: 1px 7px; border-radius: 99px; font-size: 10px; font-weight: 800;
@@ -12569,7 +12563,7 @@ table.reg-table th.reg-th-nosort {
 .hub-kpi.alert {
   background: linear-gradient(165deg, rgba(239,68,68,.16), transparent 55%), var(--err-bg);
   border-color: rgba(239,68,68,.45);
-  animation: hub-kpi-pulse 2.4s ease-in-out infinite;
+  animation: none;
 }
 @keyframes hub-kpi-pulse {
   0%,100% { box-shadow: 0 0 0 0 rgba(239,68,68,0); }
@@ -12844,7 +12838,7 @@ table.reg-table tbody tr.reg-row-unread > td:first-child {
 .mbk-hero-pulse {
   position: absolute; inset: -7px; border-radius: 18px;
   border: 1px solid color-mix(in srgb, var(--gold) 30%, transparent);
-  animation: mbk-pulse 3.6s ease-in-out infinite;
+  animation: none;
   pointer-events: none;
 }
 @keyframes mbk-pulse {

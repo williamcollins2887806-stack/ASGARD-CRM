@@ -361,8 +361,7 @@ window.AsgardPersonalKanbanPage = (function () {
 .pk3-btn.pk3-loading{position:relative;color:transparent !important;pointer-events:none}
 .pk3-btn.pk3-loading::after{content:'';position:absolute;left:50%;top:50%;width:14px;height:14px;border-radius:50%;border:2px solid rgba(0,0,0,.18);border-top-color:currentColor;color:#fff;transform:translate(-50%,-50%);animation:pk3-spin .7s linear infinite}
 /* Pulse-эффект при первом нажатии — мгновенное визуальное подтверждение */
-.pk3-btn.pk3-pulse{animation:pk3-pulse .35s ease-out}
-@keyframes pk3-pulse{0%{transform:scale(1)}50%{transform:scale(.96);box-shadow:0 0 0 4px rgba(212,168,67,.35)}100%{transform:scale(1)}}
+.pk3-btn.pk3-pulse{animation: none;box-shadow:0 0 0 4px rgba(212,168,67,.35)}100%{transform:scale(1)}}
 .pk3-drawer-head{padding:18px 24px 12px;border-bottom:1px solid var(--brd-m);background:var(--bg2);backdrop-filter:blur(14px);position:sticky;top:0;z-index:5}
 .pk3-drawer-head .pk3-row1{display:flex;align-items:center;gap:10px;margin-bottom:8px}
 .pk3-drawer-head h2{font-size:17px;flex:1;line-height:1.3;font-family:'Cinzel',Georgia,serif;color:var(--t1);font-weight:700;margin:0}
@@ -2412,7 +2411,7 @@ window.AsgardPersonalKanbanV3 = (function () {
 .pk3-col-addendum .pk3-col-head::after {
   content: ''; position: absolute; inset: 0; pointer-events: none;
   background: radial-gradient(circle at 50% 0%, rgba(212,168,67,.25), transparent 70%);
-  animation: pk3-pulse 2s ease-in-out infinite;
+  animation: none;
 }
 @keyframes pk3-pulse { 0%,100%{opacity:.35} 50%{opacity:.9} }
 .pk3-card-addendum-mark {
@@ -2420,7 +2419,7 @@ window.AsgardPersonalKanbanV3 = (function () {
   background: var(--gold); color: #1a1000;
   font-size: 9px; font-weight: 700;
   padding: 2px 6px; border-radius: 999px;
-  animation: pk3-pulse 1.5s ease-in-out infinite;
+  animation: none;
 }
 /* S-15: scope-toggle для HEAD_TO «Мои ↔ Отдел» */
 .pk3-scope-toggle {
@@ -3398,7 +3397,7 @@ html[data-theme="light"] .pk3-stk-float-bar { background: rgba(255,255,255,.94);
           <span style="font-size:20px;color:var(--gold)">＋</span>
           <h3>Создать заявку вручную</h3>
           <span class="pk3-tag pk3-info">та же форма что приходит с почты</span>
-          <button class="pk3-btn-icon" data-act="close">✕</button>
+          <button class="pk3-btn-icon asg-icon-btn" data-act="close" type="button" aria-label="Закрыть">${_PK3_ICO.close}</button>
         </div>
         <div class="pk3-modal-body">
           <p style="margin-bottom:14px;color:var(--t2);font-size:12.5px">
@@ -3728,7 +3727,7 @@ html[data-theme="light"] .pk3-stk-float-bar { background: rgba(255,255,255,.94);
         <div class="pk3-row1">
           <span class="pk3-badge pk3-${(card.kind || card.entity_kind || '').split('_')[0]}">${esc(card.kindLabel || _kindLabelFromEntity(card.entity_kind))}</span>
           <h2>${esc(card.title || card.work_description || '(без названия)')}</h2>
-          <button class="pk3-btn-icon" id="pk3-drawer-close" title="Закрыть (Esc)">${_PK3_ICO.close}</button>
+          <button class="pk3-btn-icon asg-icon-btn" id="pk3-drawer-close" title="Закрыть (Esc)">${_PK3_ICO.close}</button>
         </div>
         <div class="pk3-meta">
           <span>${_PK3_ICO.clock} ${esc(dateLabel)}</span>
@@ -4194,7 +4193,7 @@ html[data-theme="light"] .pk3-stk-float-bar { background: rgba(255,255,255,.94);
         <div style="padding:14px 18px;border-bottom:1px solid var(--brd-m);display:flex;align-items:center;gap:10px">
           <span style="font-size:18px">👤</span>
           <h3 style="margin:0;font-family:'Cinzel',Georgia,serif;font-size:17px;color:var(--t1);flex:1">Выбрать контрагента</h3>
-          <button class="pk3-btn pk3-ghost pk3-sm" data-act="close">✕</button>
+          <button class="pk3-btn pk3-ghost pk3-sm asg-icon-btn" data-act="close" type="button" aria-label="Закрыть">${_PK3_ICO.close}</button>
         </div>
         <div style="padding:14px 18px;display:flex;gap:8px;border-bottom:1px solid var(--brd-m)">
           <input id="pk3-cust-q" placeholder="Поиск по имени или ИНН (минимум 2 символа)" autofocus
@@ -4273,7 +4272,7 @@ html[data-theme="light"] .pk3-stk-float-bar { background: rgba(255,255,255,.94);
         <div style="padding:14px 18px;border-bottom:1px solid var(--brd-m);display:flex;align-items:center;gap:10px">
           <span style="font-size:18px;color:var(--gold)">＋</span>
           <h3 style="margin:0;font-family:'Cinzel',Georgia,serif;font-size:17px;color:var(--t1);flex:1">Новый контрагент</h3>
-          <button class="pk3-btn pk3-ghost pk3-sm" data-act="close">✕</button>
+          <button class="pk3-btn pk3-ghost pk3-sm asg-icon-btn" data-act="close" type="button" aria-label="Закрыть">${_PK3_ICO.close}</button>
         </div>
         <div style="padding:16px 18px;display:flex;flex-direction:column;gap:9px">
           <div style="display:flex;gap:8px">
@@ -5951,7 +5950,7 @@ html[data-theme="light"] .pk3-stk-float-bar { background: rgba(255,255,255,.94);
           <span style="font-size:20px;color:var(--gold)">✏</span>
           <h3>Редактирование: ${esc(ttl)}</h3>
           <span class="pk3-tag pk3-info">правки доступны Мимиру</span>
-          <button class="pk3-btn-icon" data-act="close" title="Закрыть">✕</button>
+          <button class="pk3-btn-icon asg-icon-btn" data-act="close" type="button" title="Закрыть" aria-label="Закрыть">${_PK3_ICO.close}</button>
         </div>
         <div class="pk3-modal-body" id="pk3-doc-edit-body">
           <div style="padding:38px;text-align:center;color:var(--t2);font-size:13px">
@@ -6720,7 +6719,7 @@ html[data-theme="light"] .pk3-stk-float-bar { background: rgba(255,255,255,.94);
     if (!ptId) return;
     const html = `
       <div class="pk3-modal" style="max-width:400px;height:auto;width:92vw">
-        <div class="pk3-modal-head"><h3>Новая папка</h3><button class="pk3-btn-icon" id="pk3-fld-close" type="button">✕</button></div>
+        <div class="pk3-modal-head"><h3>Новая папка</h3><button class="pk3-btn-icon asg-icon-btn" id="pk3-fld-close" type="button" aria-label="Закрыть">${_PK3_ICO.close}</button></div>
         <div class="pk3-modal-body" style="padding:16px 20px">
           <label style="font-size:12px;color:var(--t3);display:block;margin-bottom:6px">Название папки</label>
           <input type="text" id="pk3-fld-name" class="pk3-inp" maxlength="120" placeholder="Например: Договор, Чертежи…" />
@@ -7306,7 +7305,7 @@ html[data-theme="light"] .pk3-stk-float-bar { background: rgba(255,255,255,.94);
         <div class="pk3-modal-head">
           <span style="font-size:20px">⏰</span>
           <h3>${isEdit ? 'Изменить напоминание' : 'Новое напоминание'}</h3>
-          <button class="pk3-btn-icon" id="pk3-rem-close" type="button">✕</button>
+          <button class="pk3-btn-icon asg-icon-btn" id="pk3-rem-close" type="button" aria-label="Закрыть">${_PK3_ICO.close}</button>
         </div>
         <div class="pk3-modal-body" style="padding:18px 22px">
           <div class="pk3-row" style="margin-bottom:12px">
@@ -8625,7 +8624,7 @@ window.AsgardPKv3Modals = (function () {
             <span style="font-size:20px;color:var(--info)">🚀</span>
             <h3>${esc(title)}</h3>
             <span class="pk3-tag pk3-info" id="pk3-q-tag">${sessionUid ? 'сессия ' + esc(sessionUid.substring(0, 8)) : 'AI ~10 мин'}</span>
-            <button class="pk3-btn-icon" data-act="close">✕</button>
+            <button class="pk3-btn-icon asg-icon-btn" data-act="close" type="button" aria-label="Закрыть">${_PK3_ICO.close}</button>
           </div>
           <div class="pk3-modal-body">
             <div class="pk3-wiz-steps">${_stepHeaderHtml(step)}</div>
@@ -8764,14 +8763,12 @@ html[data-theme="light"] .pk3-bz-stage.is-done{color:#0E6634;background:rgba(18,
   border-color:rgba(18,135,74,.26)}
 html[data-theme="light"] .pk3-bz-stage.is-now{color:var(--gold-h);background:rgba(224,165,38,.14);
   box-shadow:0 0 0 3px rgba(184,132,26,.08)}
-.pk3-bz-stage.is-now i{opacity:1;animation:bzGlow 1.6s ease-in-out infinite}
-
-.pk3-bz-bar{position:relative;height:5px;border-radius:999px;background:var(--bg4);overflow:hidden;margin-bottom:9px}
+.pk3-bz-stage.is-now i{opacity:1;animation:none;height:5px;border-radius:999px;background:var(--bg4);overflow:hidden;margin-bottom:9px}
 .pk3-bz-fill{position:absolute;inset:0;transform-origin:left center;transform:scaleX(0);border-radius:999px;
   background:linear-gradient(90deg,var(--gold-h),var(--gold-l) 58%,var(--gold));will-change:transform}
 .pk3-bz-shine{position:absolute;top:0;bottom:0;left:0;width:34%;
   background:linear-gradient(90deg,transparent,rgba(255,255,255,.5),transparent);
-  animation:bzShimmer 2.4s ease-in-out infinite;mix-blend-mode:overlay}
+  animation: none;mix-blend-mode:overlay}
 
 .pk3-bz-meta{display:flex;align-items:baseline;justify-content:space-between;gap:12px;font-size:11.5px;margin-bottom:16px}
 .pk3-bz-time{font-variant-numeric:tabular-nums;letter-spacing:.03em}
@@ -8789,9 +8786,7 @@ html[data-theme="light"] .pk3-bz-pct{color:var(--gold)}
 .pk3-bz-live-text{margin:0;flex:1;min-width:0;font-size:13.5px;line-height:1.6;color:var(--t1);
   overflow:hidden;display:-webkit-box;-webkit-line-clamp:12;-webkit-box-orient:vertical;word-break:break-word}
 .pk3-bz-live-text.is-stream::after{content:'';display:inline-block;width:5px;height:12px;margin-left:4px;border-radius:1px;
-  background:var(--gold);vertical-align:-2px;animation:bzCaret 1.05s steps(1,end) infinite}
-
-.pk3-bz-more{margin-top:12px;border-top:1px dashed var(--brd-m);padding-top:9px}
+  background:var(--gold);vertical-align:-2px;animation:bzCaret 1.05s steps(1;border-top:1px dashed var(--brd-m);padding-top:9px}
 .pk3-bz-more-btn{display:inline-flex;align-items:center;gap:7px;background:none;border:0;padding:0;
   font:inherit;font-size:11.5px;cursor:pointer}
 .pk3-bz-more-btn:hover{color:var(--bsys-primary-1)}
@@ -10086,7 +10081,7 @@ html[data-theme="light"] .pk3-qsecrow{background:var(--bg3) !important;color:var
           <span style="font-size:20px;color:#A78BFA">🎼</span>
           <h3>Мимир-Кондуктор</h3>
           <span class="pk3-tag pk3-warn" id="pk3-cond-tag">${esc(tagText)}</span>
-          <button class="pk3-btn-icon" data-act="close">✕</button>
+          <button class="pk3-btn-icon asg-icon-btn" data-act="close" type="button" aria-label="Закрыть">${_PK3_ICO.close}</button>
         </div>
         <div class="pk3-modal-body">
           <div style="display:grid;grid-template-columns:2fr 1fr;gap:18px">
@@ -10140,7 +10135,7 @@ html[data-theme="light"] .pk3-qsecrow{background:var(--bg3) !important;color:var
           <div class="pk3-modal-head">
             <span style="font-size:18px;color:var(--gold)">📎</span>
             <h3 style="flex:1;margin:0">Дозагрузить материалы для Кондуктора</h3>
-            <button class="pk3-btn-icon" data-am="close">✕</button>
+            <button class="pk3-btn-icon asg-icon-btn" data-am="close" type="button" aria-label="Закрыть">${_PK3_ICO.close}</button>
           </div>
           <div class="pk3-modal-body">
             <p style="color:var(--t2);font-size:12.5px;margin-bottom:10px">Добавь ТЗ-текст и/или файлы. После «Применить» — Conductor запускается заново с учётом новых материалов.</p>
@@ -10650,7 +10645,7 @@ html[data-theme="light"] .pk3-qsecrow{background:var(--bg3) !important;color:var
         <div class="pk3-modal-head">
           <span style="font-size:20px;color:var(--gold)">📚</span>
           <h3>Эталонные проекты · Мимир нашёл ${items.length}</h3>
-          <button class="pk3-btn-icon" data-act="close">✕</button>
+          <button class="pk3-btn-icon asg-icon-btn" data-act="close" type="button" aria-label="Закрыть">${_PK3_ICO.close}</button>
         </div>
         <div class="pk3-modal-body">
           <p style="margin-bottom:12px;color:var(--t2);font-size:12.5px">База эталонов содержит завершённые работы. По типу «${esc(card.work_type || 'наш профиль')}» найдено ${items.length} совпадений:</p>
@@ -10741,7 +10736,7 @@ html[data-theme="light"] .pk3-qsecrow{background:var(--bg3) !important;color:var
           <span style="font-size:20px;color:var(--gold)">🛠</span>
           <h3>Конструктор ТКП #${esc(tkpId || 'NEW')}</h3>
           <span class="pk3-tag pk3-info">черновик · автосохранение 10с</span>
-          <button class="pk3-btn-icon" data-act="close">✕</button>
+          <button class="pk3-btn-icon asg-icon-btn" data-act="close" type="button" aria-label="Закрыть">${_PK3_ICO.close}</button>
         </div>
         <div class="pk3-modal-body" style="padding:14px 18px">
           <div class="pk3-tkp-layout">
@@ -11104,7 +11099,7 @@ html[data-theme="light"] .pk3-qsecrow{background:var(--bg3) !important;color:var
         <div class="pk3-modal-head">
           <span style="font-size:20px;color:var(--gold)">📧</span>
           <h3>Отправка КП клиенту</h3>
-          <button class="pk3-btn-icon" data-act="close">✕</button>
+          <button class="pk3-btn-icon asg-icon-btn" data-act="close" type="button" aria-label="Закрыть">${_PK3_ICO.close}</button>
         </div>
         <div class="pk3-modal-body">
           <div class="pk3-compose-grid">

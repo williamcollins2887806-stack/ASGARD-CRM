@@ -552,8 +552,8 @@
           backgroundSize: '200% 200%',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           fontSize: '22px',
-          animation: 'mimirAvatarShimmer 2s ease-in-out infinite, mimirThinkBob 2s ease-in-out infinite',
-          boxShadow: '0 0 20px rgba(212,168,67,0.3), 0 0 40px rgba(212,168,67,0.1)',
+          animation: 'none',
+          boxShadow: 'none',
         },
       }, '⚡');
 

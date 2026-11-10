@@ -188,7 +188,7 @@
 
   /* Transitions */
   --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
-  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --ease-spring: cubic-bezier(0.23, 1, 0.32, 1);
   --ease-smooth: cubic-bezier(0.4, 0, 0.2, 1);
   --ease-smooth-out: cubic-bezier(0.22, 1, 0.36, 1);
   --duration-fast: 140ms;
@@ -592,7 +592,7 @@ input, textarea, [contenteditable], .selectable {
   box-shadow: 0 -8px 32px rgba(0, 0, 0, 0.45);
 }
 
-/* Кнопка закрытия шторки: тач-таргет 44×44 по Apple HIG. */
+/* Кнопка закрытия шторки: тач-таргет 44×44, канон asg-icon-btn (steel/gold). */
 .sheet-close {
   display: inline-flex;
   align-items: center;
@@ -600,19 +600,32 @@ input, textarea, [contenteditable], .selectable {
   width: 44px;
   height: 44px;
   margin: -8px -8px 0 0;
-  border: 0;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--text-tertiary) 14%, transparent);
+  border: 1px solid var(--border-norse, rgba(255,255,255,0.12));
+  border-radius: 8px;
+  background: transparent;
   color: var(--text-secondary);
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
+  transition: background 140ms var(--ease-smooth-out, cubic-bezier(0.23, 1, 0.32, 1)),
+              border-color 140ms var(--ease-smooth-out, cubic-bezier(0.23, 1, 0.32, 1)),
+              color 140ms var(--ease-smooth-out, cubic-bezier(0.23, 1, 0.32, 1)),
+              transform 140ms var(--ease-smooth-out, cubic-bezier(0.23, 1, 0.32, 1));
+}
+.sheet-close:hover {
+  color: var(--text-primary);
+  background: color-mix(in srgb, var(--text-tertiary) 12%, transparent);
 }
 .sheet-close:active {
-  background: color-mix(in srgb, var(--text-tertiary) 26%, transparent);
+  transform: scale(0.97);
+  background: color-mix(in srgb, var(--text-tertiary) 18%, transparent);
 }
 .sheet-close:focus-visible {
   outline: 2px solid var(--gold);
   outline-offset: 2px;
+}
+.sheet-close svg {
+  width: 18px;
+  height: 18px;
 }
 
 @keyframes fadeIn {
@@ -663,7 +676,7 @@ input, textarea, [contenteditable], .selectable {
   /* Entrances: strong ease-out (not material ease-in-ish enter) */
   --ease-enter: cubic-bezier(0.23, 1, 0.32, 1);
   --ease-exit: cubic-bezier(0.4, 0, 1, 1);
-  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --ease-spring: cubic-bezier(0.23, 1, 0.32, 1);
   --ease-bounce: cubic-bezier(0.68, -0.55, 0.265, 1.55);
   --ease-smooth-out: cubic-bezier(0.22, 1, 0.36, 1);
   --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
@@ -755,7 +768,7 @@ input, textarea, [contenteditable], .selectable {
     #0a0a1a
   );
   background-size: 400% 400%;
-  animation: northernLights 20s ease infinite;
+  animation: none;
 }
 
 .light .aurora-bg {
@@ -769,7 +782,7 @@ input, textarea, [contenteditable], .selectable {
     #e8eaf6
   );
   background-size: 400% 400%;
-  animation: northernLights 20s ease infinite;
+  animation: none;
 }
 
 /* === Ripple effect === */
@@ -848,7 +861,7 @@ input, textarea, [contenteditable], .selectable {
   font-size: 16px;
   color: var(--gold);
   pointer-events: none;
-  animation: runeFloat 4s ease-in-out infinite;
+  animation: none;
 }
 
 /* === Bounce dot animation (PIN) === */
@@ -1240,7 +1253,7 @@ input, textarea, [contenteditable], .selectable {
 
 /* Online status pulse */
 .online-pulse {
-  animation: onlinePulse 2s ease-in-out infinite;
+  animation: none;
 }
 @keyframes onlinePulse {
   0%, 100% { box-shadow: 0 0 0 0 rgba(48, 209, 88, 0.4); }

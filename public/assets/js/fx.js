@@ -420,11 +420,11 @@ window.AsgardFX = (function(){
         @keyframes fxShake { 0%, 100% { transform: translateX(0); } 20%, 60% { transform: translateX(-5px); } 40%, 80% { transform: translateX(5px); } }
         
         /* Pulse */
-        .fx-pulse { animation: fxPulse 2s infinite; }
+        .fx-pulse { animation: none; }
         @keyframes fxPulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
         
         /* Glow */
-        .fx-glow { animation: fxGlow 2s infinite; }
+        .fx-glow { animation: none; }
         @keyframes fxGlow { 0%, 100% { box-shadow: 0 0 5px rgba(245, 215, 142, 0.3); } 50% { box-shadow: 0 0 20px rgba(245, 215, 142, 0.6); } }
         
         /* Карточки с hover эффектом */

@@ -41,7 +41,7 @@ window.MimirForms = (function() {
         transition:none;
       }
       .mimir-form-btn.pulsing::after {
-        animation:mimirBtnShimmer 3s ease infinite;
+        animation:none;
       }
       @keyframes mimirBtnShimmer {
         0%{left:-100%} 50%{left:100%} 100%{left:100%}
@@ -52,7 +52,7 @@ window.MimirForms = (function() {
         0%,100%{box-shadow:0 2px 12px rgba(192,57,43,.25)}
         50%{box-shadow:0 2px 24px rgba(212,168,67,.45)}
       }
-      .mimir-form-btn.pulsing { animation:mimirFormPulse 2.5s ease infinite }
+      .mimir-form-btn.pulsing { animation: none; }
 
       /* ═══ Spinner ═══ */
       @keyframes mimirFormSpin { to{transform:rotate(360deg)} }
@@ -93,7 +93,7 @@ window.MimirForms = (function() {
       @keyframes mimirCursorBlink { 0%,100%{opacity:1} 50%{opacity:0} }
       .mimir-typewriter-cursor::after {
         content:'|';color:#D4A843;font-weight:700;
-        animation:mimirCursorBlink .6s ease infinite;
+        animation:none;
         margin-left:1px;
       }
 

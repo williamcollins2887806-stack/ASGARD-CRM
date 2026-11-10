@@ -15,7 +15,7 @@ export function AsgardLogo({ size = 'md', animate = true, className = '' }) {
       style={{
         width: px,
         height: px,
-        animation: animate ? 'goldGlowPulse 3s ease-in-out infinite' : 'none',
+        animation: 'none',
       }}
     >
       <img

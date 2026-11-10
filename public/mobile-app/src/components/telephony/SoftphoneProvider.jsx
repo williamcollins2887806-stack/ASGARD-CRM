@@ -60,7 +60,7 @@ function IncomingSheet({ incoming, onAnswer, onReject, answering }) {
               width: 96,
               height: 96,
               fontSize: 30,
-              animation: 'pulseGold 1.8s ease-in-out infinite',
+              animation: 'none',
               background: 'linear-gradient(145deg, color-mix(in srgb, var(--gold) 40%, var(--bg-elevated)), var(--bg-elevated))',
               color: 'var(--text-primary)',
             }}
@@ -100,7 +100,7 @@ function IncomingSheet({ incoming, onAnswer, onReject, answering }) {
               minWidth: 104,
               minHeight: 104,
               borderRadius: 999,
-              animation: answering ? 'none' : 'telAnswerPulse 1.8s ease-in-out infinite',
+              animation: 'none',
               background: 'linear-gradient(180deg, color-mix(in srgb, var(--green) 48%, var(--bg-primary)), color-mix(in srgb, var(--green-dim) 35%, var(--bg-primary)))',
               color: 'var(--green)',
               boxShadow: '0 10px 28px color-mix(in srgb, var(--green-dim) 40%, transparent)',

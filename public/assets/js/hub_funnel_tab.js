@@ -153,7 +153,7 @@ window.AsgardHubFunnel = (function () {
       '<div class="hub-funnel-sheet-h">' +
       '<div><div class="hub-funnel-sheet-title">' + esc(item.title || item.customer_name || 'Заявка') + '</div>' +
       '<div class="muted" style="font-size:12px">#' + esc(item.id) + ' · ' + esc(item.source_label || item.kind || '') + '</div></div>' +
-      '<button type="button" class="hub-funnel-sheet-x" data-sheet-close="1" aria-label="Закрыть">×</button>' +
+      '<button type="button" class="hub-funnel-sheet-x asg-icon-btn" data-sheet-close="1" aria-label="Закрыть"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button>' +
       '</div>' +
       '<div class="hub-funnel-sheet-body">' +
       '<p class="hub-funnel-sheet-text">' + esc(item.work_description || item.work_title || '—') + '</p>' +

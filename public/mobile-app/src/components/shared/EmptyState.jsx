@@ -50,7 +50,7 @@ export function EmptyState({
           className="absolute inset-[-4px] rounded-3xl"
           style={{
             border: `1.5px solid color-mix(in srgb, ${iconColor} 15%, transparent)`,
-            animation: 'pulseGold 3s ease-in-out infinite',
+            animation: 'none',
           }}
         />
       </div>

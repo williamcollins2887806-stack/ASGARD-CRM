@@ -236,7 +236,7 @@
               <div class="bc-drawer__title">Корзина бригады</div>
               <div class="bc-drawer__sub"><b id="bc_drawer_n">0</b> человек</div>
             </div>
-            <button type="button" class="bc-drawer__close" id="bc_drawer_close" aria-label="Закрыть">✕</button>
+            <button type="button" class="bc-drawer__close asg-icon-btn" id="bc_drawer_close" aria-label="Закрыть"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button>
           </div>
           <div class="bc-drawer__body" id="bc_drawer_body"></div>
           <div class="bc-drawer__foot" id="bc_drawer_foot"></div>

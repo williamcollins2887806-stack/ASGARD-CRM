@@ -53,7 +53,7 @@ export default function Welcome() {
               bottom: '-24px',
               fontSize: r.size,
               opacity: 0,
-              animation: `welcomeRuneDrift ${r.dur}s ease-in-out ${r.delay}s infinite`,
+              animation: 'none',
             }}
           >
             {r.char}
@@ -72,7 +72,7 @@ export default function Welcome() {
           style={{
             opacity: mounted ? 1 : 0,
             transform: mounted ? 'translateY(0) scale(1)' : 'translateY(30px) scale(0.8)',
-            transition: 'all 1s cubic-bezier(0.34, 1.56, 0.64, 1)',
+            transition: 'all 1s cubic-bezier(0.23, 1, 0.32, 1)',
           }}
         >
           {/* Pulse rings */}
@@ -81,7 +81,7 @@ export default function Welcome() {
             style={{
               inset: -32,
               border: '1px solid rgba(200,41,59,0.06)',
-              animation: 'loginRingPulse 4s ease-in-out infinite',
+              animation: 'none',
             }}
           />
           <div
@@ -89,11 +89,11 @@ export default function Welcome() {
             style={{
               inset: -18,
               border: '1px solid rgba(30,77,140,0.1)',
-              animation: 'loginRingPulse 4s ease-in-out 0.8s infinite',
+              animation: 'none',
             }}
           />
 
-          <div className="relative" style={{ animation: 'breatheGlow 4s ease-in-out infinite' }}>
+          <div className="relative" style={{ animation: 'none' }}>
             <img
               src={import.meta.env.BASE_URL + 'asgard-logo.png'}
               alt="ASGARD"
@@ -231,7 +231,7 @@ export default function Welcome() {
             #120a18, #050510, #0a1525, #0d0a20
           );
           background-size: 400% 400%;
-          animation: welcomeAuroraShift 25s ease infinite;
+          animation: none;
         }
         @keyframes welcomeAuroraShift {
           0%   { background-position: 0% 50%; }
@@ -244,7 +244,7 @@ export default function Welcome() {
           position: absolute;
           border-radius: 50%;
           filter: blur(80px);
-          animation: welcomeOrbDrift 14s ease-in-out infinite;
+          animation: none;
         }
         .welcome-orb-blue {
           width: 320px; height: 320px;

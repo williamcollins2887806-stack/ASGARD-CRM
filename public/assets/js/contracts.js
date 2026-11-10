@@ -856,10 +856,10 @@ window.AsgardContractsPage = (function(){
       /* Toggle switch */
       .cm-toggle { display:flex;align-items:center;gap:10px;cursor:pointer;user-select:none;padding:9px 14px;border-radius:8px;border:1px solid var(--brd);transition:all .15s;white-space:nowrap }
       .cm-toggle:hover { border-color:var(--t3) }
-      .cm-toggle.active { border-color:#3b82f6;background:rgba(59,130,246,.08) }
-      .cm-toggle-track { width:36px;height:20px;border-radius:10px;background:var(--bg4);position:relative;transition:background .2s;flex-shrink:0 }
-      .cm-toggle.active .cm-toggle-track { background:#3b82f6 }
-      .cm-toggle-thumb { position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;background:#fff;transition:transform .2s;box-shadow:0 1px 3px rgba(0,0,0,.3) }
+      .cm-toggle.active { border-color:color-mix(in srgb,var(--gold,#D4A843) 55%,transparent);background:color-mix(in srgb,var(--gold,#D4A843) 10%,transparent) }
+      .cm-toggle-track { width:36px;height:20px;border-radius:999px;background:var(--asg-sw-off,var(--bg4));position:relative;transition:background 220ms var(--ease-out,cubic-bezier(0.23,1,0.32,1));flex-shrink:0 }
+      .cm-toggle.active .cm-toggle-track { background:var(--gold,#D4A843) }
+      .cm-toggle-thumb { position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;background:#fff;transition:transform 220ms var(--ease-out,cubic-bezier(0.23,1,0.32,1)),width 140ms var(--ease-out,cubic-bezier(0.23,1,0.32,1));box-shadow:0 1px 2px rgba(0,0,0,.28) }
       .cm-toggle.active .cm-toggle-thumb { transform:translateX(16px) }
       .cm-toggle-text { font-size:13px;color:var(--t2) }
 
@@ -911,7 +911,7 @@ window.AsgardContractsPage = (function(){
       @keyframes ncmFieldFill { from{opacity:.3;transform:translateX(-8px)} to{opacity:1;transform:translateX(0)} }
       @keyframes ncmGoldenFlash { 0%{box-shadow:0 0 0 0 rgba(212,168,67,.4)} 50%{box-shadow:0 0 12px 3px rgba(212,168,67,.3)} 100%{box-shadow:none} }
       @keyframes ncmShimmer { 0%{background-position:-200% 0} 100%{background-position:200% 0} }
-      .ncm-field-filled { animation:ncmFieldFill .3s ease,ncmGoldenFlash .8s ease .2s }
+      .ncm-field-filled { animation:ncmFieldFill .3s ease; }
       .ncm-shimmer-bar { height:3px;border-radius:2px;background:linear-gradient(90deg,transparent,rgba(212,168,67,.6),transparent);background-size:200% 100%;animation:ncmShimmer 1.5s ease;margin:8px 0 }
 
       /* ═══ WOW: Mimir button in customer modal ═══ */
@@ -919,7 +919,7 @@ window.AsgardContractsPage = (function(){
       .ncm-mimir-btn:hover { transform:translateY(-1px);box-shadow:0 4px 20px rgba(192,57,43,.4) }
       .ncm-mimir-btn:disabled { opacity:.7;cursor:wait;transform:none }
       @keyframes ncmMimirPulse { 0%,100%{box-shadow:0 2px 12px rgba(192,57,43,.3)} 50%{box-shadow:0 2px 20px rgba(212,168,67,.5)} }
-      .ncm-mimir-btn.pulsing { animation:ncmMimirPulse 2s ease infinite }
+      .ncm-mimir-btn.pulsing { animation: none; box-shadow: 0 2px 8px rgba(0,0,0,.25); }
 
       /* ═══ WOW: ЕГРЮЛ badge ═══ */
       .ncm-egrjul-badge { display:inline-flex;align-items:center;gap:6px;padding:6px 12px;border-radius:8px;font-size:12px;font-weight:600;animation:ncmFieldFill .4s ease }

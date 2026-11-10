@@ -119,7 +119,7 @@ window.AsgardTasksAdminPage = (function() {
         <div class="modal-content modal-lg">
           <div class="modal-header">
             <h3 id="taskModalTitle">Создать задачу</h3>
-            <button class="modal-close" onclick="AsgardTasksAdminPage.closeModal()">&times;</button>
+            <button class="modal-close asg-icon-btn" type="button" aria-label="Закрыть" onclick="AsgardTasksAdminPage.closeModal()"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button>
           </div>
           <div class="modal-body">
             <form id="taskForm" onsubmit="return AsgardTasksAdminPage.submitTask(event)">
@@ -182,7 +182,7 @@ window.AsgardTasksAdminPage = (function() {
         <div class="modal-content modal-lg">
           <div class="modal-header">
             <h3 id="viewTaskTitle">Задача</h3>
-            <button class="modal-close" onclick="AsgardTasksAdminPage.closeViewModal()">&times;</button>
+            <button class="modal-close asg-icon-btn" type="button" aria-label="Закрыть" onclick="AsgardTasksAdminPage.closeViewModal()"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button>
           </div>
           <div class="modal-body" id="viewTaskBody">
           </div>

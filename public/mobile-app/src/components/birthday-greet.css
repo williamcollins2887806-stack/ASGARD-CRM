@@ -306,7 +306,7 @@
   font-style: italic;
   color: var(--mbd-gold-l);
   padding: 18px 8px;
-  animation: mbd-pulse 1.7s ease-in-out infinite;
+  animation: none;
 }
 @keyframes mbd-pulse {
   0%, 100% { opacity: 0.5; }

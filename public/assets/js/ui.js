@@ -126,7 +126,7 @@ window.AsgardUI = (function(){
         <div class="toast-title">${esc(ttitle)}</div>
         ${mtxt ? `<div class="toast-msg">${esc(mtxt)}</div>` : ''}
       </div>
-      <button class="toast-close" type="button" aria-label="Закрыть">×</button>
+      <button class="toast-close asg-icon-btn" type="button" aria-label="Закрыть"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button>
       <div class="toast-progress" style="animation-duration:${dur}ms"></div>
     `;
 
@@ -240,11 +240,11 @@ window.AsgardUI = (function(){
     actions.className = "cr-m__header-actions";
 
     const fullBtn = document.createElement("button");
-    fullBtn.className = "cr-m__fullscreen-btn";
+    fullBtn.className = "cr-m__fullscreen-btn asg-icon-btn";
     fullBtn.id = "modalFull";
     fullBtn.title = "На весь экран";
     fullBtn.type = "button";
-    fullBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>';
+    fullBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>';
     fullBtn.addEventListener("click", ()=>{
       modal.classList.toggle("cr-m--fullscreen");
       modal.classList.toggle("fullscreen");
@@ -252,11 +252,11 @@ window.AsgardUI = (function(){
     actions.appendChild(fullBtn);
 
     const closeBtn = document.createElement("button");
-    closeBtn.className = "cr-m__close";
+    closeBtn.className = "cr-m__close asg-icon-btn";
     closeBtn.id = "modalClose";
     closeBtn.title = "Закрыть";
     closeBtn.type = "button";
-    closeBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
+    closeBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>';
     // D-247: передаём ИМЕННО свой overlay. При `addEventListener('click', hideModal)` первым
     // аргументом приходил MouseEvent, из-за чего hideModal падал на `$(".cr-m", target)`
     // («e.querySelector is not a function»). Сам hideModal теперь тоже нормализует аргумент.

@@ -42,7 +42,7 @@
 .ph-dot--ring {
   background: var(--ok-t);
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--ok-t) 40%, transparent);
-  animation: ph-pulse 1.35s ease infinite;
+  animation: none;
 }
 .ph-dot--incall {
   background: var(--blue-l);
@@ -171,7 +171,7 @@ body.theme-dark .ph-menu-item__ico {
   to { opacity: 1; transform: translateY(0) scale(1); }
 }
 .ph-card--incoming-pulse .ph-card-inner {
-  animation: ph-incoming-pulse 1.4s ease-in-out infinite;
+  animation: none;
 }
 @keyframes ph-incoming-pulse {
   0%, 100% { box-shadow: 0 32px 72px rgba(16, 28, 48, 0.36), 0 0 0 0 color-mix(in srgb, var(--ok-t) 0%, transparent); }
@@ -248,7 +248,7 @@ body.theme-dark .ph-card-inner {
   background: linear-gradient(145deg, color-mix(in srgb, var(--ok-t) 35%, var(--bg4)), var(--bg4));
   border: 1px solid color-mix(in srgb, var(--ok-t) 35%, var(--brd));
   flex-shrink: 0;
-  animation: ph-avatar-ring 1.6s ease infinite;
+  animation: none;
 }
 @keyframes ph-avatar-ring {
   0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--ok-t) 40%, transparent); }
@@ -1408,7 +1408,7 @@ body.theme-dark .ph-seg__btn.is-active {
   font-size: 28px;
   font-weight: 700;
 }
-.ph-dp-avatar.is-ring { animation: ph-dp-ring 1.4s ease-out infinite; }
+.ph-dp-avatar.is-ring { animation: none; }
 .ph-dp-avatar.is-live { box-shadow: 0 0 0 3px color-mix(in srgb, var(--hg-online, var(--ok)) 55%, transparent); }
 .ph-dp-avatar.is-held { box-shadow: 0 0 0 3px color-mix(in srgb, var(--gold, var(--hg-accent)) 55%, transparent); }
 /* Несохранённый номер → иконка трубки вместо случайных цифр («55»). */

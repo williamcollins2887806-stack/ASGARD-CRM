@@ -185,7 +185,7 @@
   border: 1px solid color-mix(in oklab, var(--text-primary) 14%, transparent); color: var(--text-primary);
   box-shadow: 0 6px 16px color-mix(in oklab, var(--bg-primary) 35%, transparent);
 }
-.pp-moves.low { border-color: color-mix(in oklab, var(--danger) 65%, transparent); color: var(--danger-ink); animation: ppPulseSoft 0.9s ease infinite; }
+.pp-moves.low { border-color: color-mix(in oklab, var(--danger) 65%, transparent); color: var(--danger-ink); animation: none; }
 /* Светлая тема: тёмная подложка + красный текст = 2.38:1. Фон светлый, текст тёмный. */
 .light .pp-moves {
   background: linear-gradient(135deg, #ffffff, #eef2f8);
@@ -215,7 +215,7 @@
 .pp-cell.hl {
   z-index: 2;
   box-shadow: 0 0 0 2px var(--gold), 0 0 22px color-mix(in oklab, var(--value) 55%, transparent);
-  animation: ppHl 0.9s ease infinite;
+  animation: none;
 }
 .pp-cell.ghost {
   box-shadow: inset 0 0 0 2px color-mix(in oklab, var(--acc) 70%, transparent);
@@ -246,7 +246,7 @@
   content: '❄'; position: absolute; inset: 0; display: grid; place-items: center;
   font-size: 18px; opacity: 0.55; pointer-events: none; z-index: 4;
   text-shadow: 0 0 8px #7dd3fc;
-  animation: ppIceShine 1.6s ease-in-out infinite;
+  animation: none;
 }
 
 .pp-svg { width: 100%; height: 100%; display: block; pointer-events: none; position: relative; z-index: 2; }
@@ -259,7 +259,7 @@
 .pp-pipe-outer.flowing { stroke: #0369a1; }
 .pp-pipe-mid.flowing {
   stroke: #7dd3fc; stroke-dasharray: 10 8;
-  animation: ppFlowDash 0.55s linear infinite;
+  animation: none;
   filter: drop-shadow(0 0 8px color-mix(in oklab, var(--acc) 90%, transparent));
 }
 .pp-pipe-inner.flowing { stroke: var(--text-primary); opacity: 1; }
@@ -272,7 +272,7 @@
   height: 22%;
   border-radius: 50%;
   background: radial-gradient(circle, var(--text-primary) 0%, color-mix(in oklab, var(--acc) 90%, transparent) 40%, transparent 70%);
-  animation: ppDrop 0.55s linear infinite;
+  animation: none;
   pointer-events: none;
   z-index: 4;
 }
@@ -314,7 +314,7 @@
   box-shadow: 0 0 18px color-mix(in oklab, var(--acc) 85%, transparent), inset 0 0 10px color-mix(in oklab, var(--text-primary) 22%, transparent);
 }
 .pp-cell.src-live {
-  animation: ppSrcPulse 1.15s ease-in-out infinite;
+  animation: none;
 }
 @keyframes ppSrcPulse {
   0%, 100% { box-shadow: 0 0 0 0 color-mix(in oklab, var(--acc) 0%, transparent); }
@@ -334,7 +334,7 @@
 .pp-obstacle {
   position: absolute; inset: 0; display: grid; place-items: center;
   font-size: 20px; pointer-events: none; z-index: 6;
-  animation: ppObsPulse 1.4s ease-in-out infinite;
+  animation: none;
   filter: drop-shadow(0 0 8px color-mix(in oklab, var(--bg-primary) 50%, transparent));
 }
 @keyframes ppObsPulse { 50% { transform: scale(1.12); } }
@@ -416,7 +416,7 @@
   width: 72px; height: 56px; margin: 4px auto 8px; border-radius: 10px 10px 6px 6px;
   background: linear-gradient(160deg, #d4a017, var(--value));
   box-shadow: 0 8px 20px color-mix(in oklab, var(--value) 35%, transparent), inset 0 2px 0 color-mix(in oklab, var(--text-primary) 35%, transparent);
-  position: relative; animation: ppChest 1.2s ease infinite;
+  position: relative; animation: none;
 }
 .pp-chest::before {
   content: 'ᚱ'; position: absolute; inset: 0; display: grid; place-items: center;

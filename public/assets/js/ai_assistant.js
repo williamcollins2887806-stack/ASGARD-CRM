@@ -252,7 +252,7 @@ window.AsgardAI = (function(){
         height: 8px;
         background: var(--t3);
         border-radius: 50%;
-        animation: aiTyping 1.4s infinite;
+        animation: none;
       }
       
       .ai-typing span:nth-child(2) { animation-delay: 0.2s; }

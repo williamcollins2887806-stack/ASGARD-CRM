@@ -275,9 +275,9 @@ export function BottomSheet({ open, onClose, children, title, footer, maxHeight 
             type="button"
             onClick={close}
             aria-label="Закрыть"
-            className="sheet-close shrink-0"
+            className="sheet-close asg-icon-btn shrink-0"
           >
-            <X size={20} strokeWidth={2.5} />
+            <X size={18} strokeWidth={2} />
           </button>
         </div>
         </div>

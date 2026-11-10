@@ -174,14 +174,14 @@ function HistoryDetail({ workId, onBack }) {
           <div className="rounded-2xl p-6 relative overflow-hidden" style={{
             background: 'linear-gradient(135deg, var(--bg-surface) 0%, #16213e 40%, #0f3460 100%)',
             backgroundSize: '200% 200%',
-            animation: 'fieldHistGradShift 8s ease infinite',
+            animation: 'none',
             border: '1px solid color-mix(in oklab, var(--value) 15%, transparent)',
             boxShadow: '0 8px 32px color-mix(in oklab, var(--bg-primary) 30%, transparent)',
           }}>
             {/* ASGARD watermark */}
             <div style={{ position: 'absolute', right: '-8px', top: '50%', transform: 'translateY(-50%)',
               fontSize: '4.5rem', fontWeight: 900, letterSpacing: '6px', pointerEvents: 'none',
-              animation: 'fieldHistPulse 4s ease infinite',
+              animation: 'none',
               color: 'color-mix(in oklab, var(--text-primary) 4%, transparent)',
             }}>ASGARD</div>
 

@@ -140,7 +140,7 @@ window.AsgardMango = (function(){
           <span class="call-toggle-label">Приём звонков</span>
         </div>
         <label class="call-toggle-switch">
-          <input type="checkbox" id="callAcceptToggle" ${status.accepting ? 'checked' : ''} ${!settings.enabled ? 'disabled' : ''}/>
+          <input type="checkbox" class="no-cr-chk" id="callAcceptToggle" ${status.accepting ? 'checked' : ''} ${!settings.enabled ? 'disabled' : ''}/>
           <span class="call-toggle-slider"></span>
         </label>
         ${!settings.enabled ? '<div class="call-toggle-hint">Телефония не настроена</div>' : ''}
@@ -194,10 +194,10 @@ window.AsgardMango = (function(){
           left: 0;
           right: 0;
           bottom: 0;
-          background-color: var(--bg-elevated);
+          background-color: var(--asg-sw-off, var(--bg-elevated));
           border: 1px solid var(--line);
-          border-radius: 6px;
-          transition: background var(--dur-press, 140ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), border-color var(--dur-press, 140ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1));
+          border-radius: 999px;
+          transition: background 220ms var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), border-color 220ms var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1));
         }
         
         .call-toggle-slider:before {
@@ -209,13 +209,13 @@ window.AsgardMango = (function(){
           bottom: 3px;
           background-color: #fff;
           border-radius: 50%;
-          transition: transform var(--dur-press, 140ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1));
-          box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+          transition: transform 220ms var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), width 140ms var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1));
+          box-shadow: 0 1px 2px rgba(0,0,0,0.28);
         }
         
         .call-toggle-switch input:checked + .call-toggle-slider {
-          background: linear-gradient(135deg, var(--green), var(--ok));
-          border-color: var(--green);
+          background: var(--gold, #D4A843);
+          border-color: color-mix(in srgb, var(--gold, #D4A843) 70%, transparent);
         }
         
         .call-toggle-switch input:checked + .call-toggle-slider:before {
@@ -250,12 +250,6 @@ window.AsgardMango = (function(){
           height: 8px;
           background: var(--green);
           border-radius: 50%;
-          animation: callPulse 2s infinite;
-        }
-        
-        @keyframes callPulse {
-          0%, 100% { opacity: 1; transform: scale(1); }
-          50% { opacity: 0.5; transform: scale(1.2); }
         }
       </style>
     `;
@@ -340,12 +334,12 @@ window.AsgardMango = (function(){
           border-radius: 6px;
           padding: 20px;
           min-width: 320px;
-          box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5), 0 0 30px rgba(34, 197, 94, 0.3);
-          animation: callGlow 1.5s ease-in-out infinite;
+          box-shadow: 0 10px 28px rgba(0, 0, 0, 0.45);
+          animation: none;
         }
         
         @keyframes callGlow {
-          0%, 100% { box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5), 0 0 30px rgba(34, 197, 94, 0.3); }
+          0%, 100% { box-shadow: 0 10px 28px rgba(0, 0, 0, 0.45); }
           50% { box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5), 0 0 50px rgba(34, 197, 94, 0.5); }
         }
         
@@ -365,7 +359,7 @@ window.AsgardMango = (function(){
           align-items: center;
           justify-content: center;
           font-size: 28px;
-          animation: callRing 0.5s ease-in-out infinite;
+          animation: none;
         }
         
         @keyframes callRing {

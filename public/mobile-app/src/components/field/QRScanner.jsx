@@ -63,7 +63,7 @@ export default function QRScanner({ onScan, onClose, title = 'Сканирова
           <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
             <div className="relative" style={{ width: 240, height: 240 }}>
               <div className="absolute inset-0 rounded-2xl" style={{ border: '3px solid rgba(240,200,80,.9)', boxShadow: '0 0 0 9999px rgba(0,0,0,.45)' }} />
-              <div className="absolute left-0 right-0 h-0.5" style={{ background: '#F0C850', animation: 'scanline 2s linear infinite', boxShadow: '0 0 10px #F0C850' }} />
+              <div className="absolute left-0 right-0 h-0.5" style={{ background: '#F0C850', animation: 'scanline 2s linear infinite', boxShadow: 'none' }} />
             </div>
           </div>
           <div className="absolute bottom-6 inset-x-0 text-center text-white/70 text-sm">Наведите на QR-код</div>

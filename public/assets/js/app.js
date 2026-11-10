@@ -782,7 +782,7 @@ try{
     <div class="bellpop" id="bellPop" style="display:none">
       <div class="bellpop-head">
         <div><b>Воронья почта</b></div>
-        <button class="xbtn" id="bellClose" type="button" aria-label="Закрыть"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button>
+        <button class="xbtn asg-icon-btn" id="bellClose" type="button" aria-label="Закрыть"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button>
       </div>
       <div class="bellpop-list" id="bellList"></div>
       <div class="bellpop-foot">
@@ -1612,7 +1612,7 @@ var _setupPinKeypad = null;
     overlay.style.background = 'linear-gradient(135deg, var(--bg1) 0%, var(--bg2) 50%, var(--bg3) 100%)';
     var q = LOADING_QUOTES[Math.floor(Math.random() * LOADING_QUOTES.length)];
     overlay.innerHTML = '<div style="text-align:center;padding:20px;">'
-      + '<img src="' + ASSETS_BASE + 'img/logo.png" style="width:80px;height:80px;border-radius:20px;margin-bottom:24px;animation:pulse 2s ease-in-out infinite;" onerror="this.style.display=\'none\'">'
+      + '<img src="' + ASSETS_BASE + 'img/logo.png" style="width:80px;height:80px;border-radius:20px;margin-bottom:24px;animation:none;" onerror="this.style.display=\'none\'">'
       + '<div style="position:relative;width:60px;height:60px;margin:0 auto 24px;">'
       + '<div style="position:absolute;inset:0;border:3px solid var(--brd);border-top-color:#e2b340;border-radius:50%;animation:spin 1s linear infinite;"></div>'
       + '<div style="position:absolute;inset:6px;border:3px solid var(--brd);border-bottom-color:#4fc3f7;border-radius:50%;animation:spin 1.5s linear infinite reverse;"></div>'

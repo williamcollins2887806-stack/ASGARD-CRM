@@ -734,7 +734,7 @@ const SHOP_CSS = `
   box-shadow:0 3px 0 var(--value),0 4px 12px color-mix(in oklab, var(--value) 20%, transparent)}
 .fshop-card-buy.can:active{box-shadow:0 1px 0 var(--value);transform:translateY(2px) scale(.98)}
 .fshop-card-buy.can::after{content:'';position:absolute;top:0;left:-100%;width:40%;height:100%;
-  background:linear-gradient(90deg,transparent,color-mix(in oklab, var(--text-primary) 20%, transparent),transparent);animation:fshop-shine 3s infinite}
+  background:linear-gradient(90deg,transparent,color-mix(in oklab, var(--text-primary) 20%, transparent),transparent);animation:none}
 @keyframes fshop-shine{0%,100%{left:-100%}50%{left:150%}}
 
 /* ═══ LOCKED — только надпись, без затемнения ═══ */
@@ -771,7 +771,7 @@ const SHOP_CSS = `
 .fshop-modal-glow.digital{background:color-mix(in oklab, var(--acc) 20%, transparent)}
 .fshop-modal-glow.privilege{background:color-mix(in oklab, var(--acc) 20%, transparent)}
 .fshop-modal-glow.cosmetic{background:color-mix(in oklab, var(--ok) 20%, transparent)}
-.fshop-modal-emoji{position:relative;z-index:2;font-size:56px;line-height:100px;animation:fshop-mPop .5s cubic-bezier(.34,1.56,.64,1)}
+.fshop-modal-emoji{position:relative;z-index:2;font-size:56px;line-height:100px;animation:fshop-mPop .5s cubic-bezier(.23,1,.32,1)}
 @keyframes fshop-mPop{0%{transform:scale(0) rotate(-10deg)}60%{transform:scale(1.15) rotate(3deg)}100%{transform:scale(1) rotate(0)}}
 .fshop-modal-rarity{display:inline-block;padding:3px 14px;border-radius:20px;font-size:9px;font-weight:800;
   letter-spacing:.1em;text-transform:uppercase;margin-bottom:6px}
@@ -798,7 +798,7 @@ const SHOP_CSS = `
   background:linear-gradient(135deg,var(--gold-fill),var(--gold-fill));color:var(--text-on-gold);
   box-shadow:0 5px 0 var(--gold-fill),0 6px 20px color-mix(in oklab, var(--gold-fill) 20%, transparent);transition: background-color var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), color var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), border-color var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), box-shadow var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), opacity var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), transform var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1));box-shadow:0 1px 0 var(--value)}
 .fshop-modal-confirm::after{content:'';position:absolute;top:0;left:-100%;width:50%;height:100%;
-  background:linear-gradient(90deg,transparent,color-mix(in oklab, var(--text-primary) 15%, transparent),transparent);animation:fshop-shine 3s infinite}
+  background:linear-gradient(90deg,transparent,color-mix(in oklab, var(--text-primary) 15%, transparent),transparent);animation:none}
 .fshop-modal-cancel{display:block;width:100%;margin-top:8px;padding:12px;border-radius:12px;border:none;
   font-size:13px;font-weight:700;color:var(--fshop-t3);background:color-mix(in oklab, var(--text-primary) 4%, transparent);cursor:pointer;transition: background-color var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), color var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), border-color var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), box-shadow var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), opacity var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), transform var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1));inset:0;z-index:300;background:color-mix(in oklab, var(--bg-primary) 0%, transparent);pointer-events:none;transition:background .3s}
 .fshop-success-ov.on{background:color-mix(in oklab, var(--bg-primary) 70%, transparent);pointer-events:auto;backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px)}
@@ -809,7 +809,7 @@ const SHOP_CSS = `
   border:1px solid color-mix(in oklab, var(--value) 15%, transparent);padding:28px 24px;box-shadow:0 20px 60px color-mix(in oklab, var(--bg-primary) 50%, transparent);text-align:center}
 .fshop-success-check{width:72px;height:72px;margin:0 auto 16px;border-radius:50%;
   background:linear-gradient(135deg,var(--fshop-green),#2a9d5e);display:flex;align-items:center;justify-content:center;
-  box-shadow:0 6px 20px color-mix(in oklab, var(--ok) 30%, transparent);animation:fshop-checkBounce .6s cubic-bezier(.34,1.56,.64,1)}
+  box-shadow:0 6px 20px color-mix(in oklab, var(--ok) 30%, transparent);animation:fshop-checkBounce .6s cubic-bezier(.23,1,.32,1)}
 @keyframes fshop-checkBounce{0%{transform:scale(0)}60%{transform:scale(1.2)}100%{transform:scale(1)}}
 .fshop-success-title{font-size:20px;font-weight:800;color:var(--fshop-gold);margin-bottom:4px}
 .fshop-success-desc{font-size:13px;color:var(--fshop-t2);margin-bottom:16px;line-height:1.5}

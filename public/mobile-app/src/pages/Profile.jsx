@@ -233,12 +233,34 @@ function InfoRow({ icon: Icon, label, value, onClick, last }) {
 function ToggleSwitch({ active }) {
   return (
     <div
-      className="w-[42px] h-[26px] rounded-full relative shrink-0"
-      style={{ background: active ? 'var(--gold)' : 'var(--bg-elevated)', transition: 'background 250ms ease' }}
+      className="asg-switch shrink-0"
+      data-on={active ? 'true' : 'false'}
+      aria-checked={active}
+      role="switch"
+      style={{
+        width: 44,
+        height: 24,
+        borderRadius: 999,
+        position: 'relative',
+        background: active ? 'var(--gold)' : 'var(--bg-elevated)',
+        border: '1px solid color-mix(in srgb, var(--border-norse, rgba(255,255,255,0.14)) 100%, transparent)',
+        transition: 'background 220ms var(--ease-smooth-out, cubic-bezier(0.23, 1, 0.32, 1))',
+      }}
     >
       <div
-        className="absolute top-[3px] w-5 h-5 rounded-full bg-white"
-        style={{ left: active ? 19 : 3, transition: 'left 250ms var(--ease-spring)', boxShadow: '0 1px 3px rgba(0,0,0,0.2)' }}
+        aria-hidden="true"
+        style={{
+          position: 'absolute',
+          top: 2,
+          left: 2,
+          width: 20,
+          height: 20,
+          borderRadius: 999,
+          background: '#fff',
+          boxShadow: '0 1px 2px rgba(0,0,0,0.28)',
+          transform: active ? 'translateX(20px)' : 'translateX(0)',
+          transition: 'transform 220ms var(--ease-smooth-out, cubic-bezier(0.23, 1, 0.32, 1))',
+        }}
       />
     </div>
   );

@@ -8,7 +8,7 @@
 .fs-root { position: relative; min-height: 100dvh; background: var(--bg-primary); }
 .fs-scene { position: absolute; inset: 0; z-index: 0; overflow: hidden; pointer-events: none; }
 .fs-orb { position: absolute; border-radius: 50%; filter: blur(46px); opacity: .45;
-  animation: fhFloat 12s ease-in-out infinite; }
+  animation: none; }
 .fs-orb--a { width: 240px; height: 240px; left: -80px; top: -60px; background: var(--acc); }
 .fs-orb--b { width: 200px; height: 200px; right: -80px; top: 260px; background: var(--brand-red); opacity: .2; animation-delay: -5s; }
 .fs-content { position: relative; z-index: 5; padding: max(env(safe-area-inset-top), 14px) 16px max(env(safe-area-inset-bottom), 24px); }

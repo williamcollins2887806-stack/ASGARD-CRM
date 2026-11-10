@@ -48,8 +48,7 @@ const WHEEL_CSS = `
 .wn-g1{width:300px;height:300px;top:-50px;left:-50px;background:var(--blue)}
 .wn-g2{width:250px;height:250px;bottom:-30px;right:-60px;background:var(--purple)}
 .wn-g3{width:200px;height:200px;top:40%;left:50%;transform:translateX(-50%);background:var(--gold);opacity:.08}
-.wn-stars{position:absolute;inset:0}.wn-s{position:absolute;background:var(--text-primary);border-radius:50%;animation:wnTw 3s ease-in-out infinite alternate}
-@keyframes wnTw{0%{opacity:.1;transform:scale(.8)}100%{opacity:.5;transform:scale(1.3)}}
+.wn-stars{position:absolute;inset:0}.wn-s{position:absolute;background:var(--text-primary);border-radius:50%;animation:none;transform:scale(.8)}100%{opacity:.5;transform:scale(1.3)}}
 .wn-page{position:relative;z-index:5;display:flex;flex-direction:column;height:100%;min-height:0;max-width:430px;margin:0 auto;overflow:hidden}
 /* Нижний блок (кнопка+награды) фиксируется снизу; центральная зона (викинг+рулетка) сжимается. */
 .wn-bottom{flex-shrink:0;position:relative;z-index:11}
@@ -69,15 +68,12 @@ const WHEEL_CSS = `
 .wn-lvl-fill::after{content:'';position:absolute;top:1px;left:4px;right:4px;height:4px;border-radius:3px;background:color-mix(in oklab, var(--text-primary) 30%, transparent)}
 .wn-lvl-text{font-size:10px;color:var(--t3);font-weight:600;white-space:nowrap}
 .wn-streak{display:flex;align-items:center;gap:8px;margin:8px 16px 0;padding:10px 14px;background:var(--card);border-radius:16px;border:1px solid color-mix(in oklab, var(--text-primary) 4%, transparent)}
-.wn-fire{font-size:28px;filter:drop-shadow(0 0 8px color-mix(in oklab, var(--danger) 50%, transparent));animation:wnFlame .8s ease-in-out infinite alternate}
-@keyframes wnFlame{0%{transform:scale(1) rotate(-3deg)}100%{transform:scale(1.1) rotate(3deg)}}
-.wn-streak-info{flex:1}.wn-streak-title{font-size:13px;font-weight:700}
+.wn-fire{font-size:28px;filter:drop-shadow(0 0 8px color-mix(in oklab, var(--danger) 50%, transparent));animation:none;font-weight:700}
 .wn-dots{display:flex;gap:4px;margin-top:5px}
 .wn-dot{width:100%;height:7px;border-radius:4px;background:color-mix(in oklab, var(--text-primary) 6%, transparent)}
 .wn-dot-on{background:linear-gradient(90deg,var(--gold-d),var(--gold));position:relative}
 .wn-dot-on::after{content:'';position:absolute;top:1px;left:2px;right:2px;height:3px;border-radius:2px;background:color-mix(in oklab, var(--text-primary) 30%, transparent)}
-.wn-dot-now{border:1.5px solid var(--gold);animation:wnDotP 1.5s ease-in-out infinite}
-@keyframes wnDotP{0%,100%{box-shadow:0 0 3px var(--gold-d)}50%{box-shadow:0 0 10px var(--gold)}}
+.wn-dot-now{border:1.5px solid var(--gold);animation:100%{box-shadow:0 0 3px var(--gold-d)}50%{box-shadow:0 0 10px var(--gold)}}
 .wn-mult{padding:4px 10px;border-radius:10px;font-size:12px;font-weight:800;background:linear-gradient(135deg,#B91C2C,#8E1220);color:#ffffff;box-shadow:0 2px 8px color-mix(in oklab, var(--danger) 30%, transparent)}
 .wn-viking-area{position:relative;z-index:15;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;margin-top:4px;height:196px;min-height:0;flex-shrink:0;pointer-events:none}
 .wn-viking{position:relative;width:160px;height:160px;display:flex;align-items:center;justify-content:center}
@@ -138,11 +134,9 @@ box-shadow:inset 0 0 32px color-mix(in oklab, var(--text-primary) 8%, transparen
 .wn-highlight{position:absolute;top:50%;left:0;right:0;height:66px;transform:translateY(-50%);z-index:4;
   border-top:2px solid color-mix(in oklab, var(--value) 65%, transparent);border-bottom:2px solid color-mix(in oklab, var(--value) 65%, transparent);
   background:linear-gradient(90deg,transparent,color-mix(in oklab, var(--value) 16%, transparent),transparent);pointer-events:none;
-  box-shadow:0 0 28px color-mix(in oklab, var(--value) 22%, transparent);animation:wnHi 1.8s ease-in-out infinite}
-@keyframes wnHi{0%,100%{opacity:.85}50%{opacity:1}}
+  box-shadow:0 0 28px color-mix(in oklab, var(--value) 22%, transparent);animation:100%{opacity:.85}50%{opacity:1}}
 .wn-item{display:flex;align-items:center;gap:14px;height:66px;padding:0 20px;border-bottom:1px solid color-mix(in oklab, var(--text-primary) 4%, transparent)}
-.wn-di-icon.legendary{background:color-mix(in oklab, var(--value) 14%, transparent);border:1px solid color-mix(in oklab, var(--value) 35%, transparent);box-shadow:0 0 16px color-mix(in oklab, var(--value) 20%, transparent);animation:wnLeg 1.4s ease-in-out infinite}
-@keyframes wnLeg{0%,100%{filter:brightness(1)}50%{filter:brightness(1.25)}}
+.wn-di-icon.legendary{background:color-mix(in oklab, var(--value) 14%, transparent);border:1px solid color-mix(in oklab, var(--value) 35%, transparent);box-shadow:0 0 16px color-mix(in oklab, var(--value) 20%, transparent);animation:100%{filter:brightness(1)}50%{filter:brightness(1.25)}}
 .wn-frame::before{content:'ᚠ';position:absolute;top:10px;left:14px;font-size:15px;color:color-mix(in oklab, var(--value) 28%, transparent)}
 .wn-frame::after{content:'ᚱ';position:absolute;top:10px;right:14px;font-size:15px;color:color-mix(in oklab, var(--value) 28%, transparent)}
 .wn-vp-top{position:absolute;top:0;left:0;right:0;height:50px;z-index:5;background:linear-gradient(180deg,color-mix(in oklab, var(--bg-primary) 95%, transparent),transparent);pointer-events:none}
@@ -152,7 +146,7 @@ box-shadow:inset 0 0 32px color-mix(in oklab, var(--text-primary) 8%, transparen
 .light .wn-vp-bot{background:linear-gradient(0deg,color-mix(in oklab, #efeae0 96%, transparent),transparent)}
 .wn-strip{position:absolute;left:0;right:0;z-index:2;will-change:transform}
 .wn-ptr{position:absolute;top:50%;transform:translateY(-50%);z-index:6;width:14px;height:20px;
-  animation:wnPtr 1.4s ease-in-out infinite;filter:drop-shadow(0 0 6px color-mix(in oklab, var(--value) 45%, transparent))}
+  animation:none;filter:drop-shadow(0 0 6px color-mix(in oklab, var(--value) 45%, transparent))}
 @keyframes wnPtr{0%,100%{transform:translateY(-50%) scale(1)}50%{transform:translateY(-50%) scale(1.14)}}
 .wn-ptr-l{left:-1px}.wn-ptr-r{right:-1px}
 .wn-di-icon{font-size:30px;width:44px;height:44px;border-radius:12px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
@@ -161,8 +155,7 @@ box-shadow:inset 0 0 32px color-mix(in oklab, var(--text-primary) 8%, transparen
 .wn-di-icon.common{background:color-mix(in oklab, var(--ok) 8%, transparent);border:1px solid color-mix(in oklab, var(--ok) 15%, transparent)}
 .wn-di-icon.rare{background:color-mix(in oklab, var(--acc) 8%, transparent);border:1px solid color-mix(in oklab, var(--acc) 15%, transparent)}
 .wn-di-icon.epic{background:color-mix(in oklab, var(--acc) 8%, transparent);border:1px solid color-mix(in oklab, var(--acc) 15%, transparent)}
-.wn-di-icon.legendary{background:color-mix(in oklab, var(--value) 14%, transparent);border:1px solid color-mix(in oklab, var(--value) 35%, transparent);box-shadow:0 0 16px color-mix(in oklab, var(--value) 20%, transparent);animation:wnLeg 1.4s ease-in-out infinite}
-.wn-di-name{font-size:14px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--t1)}
+.wn-di-icon.legendary{background:color-mix(in oklab, var(--value) 14%, transparent);border:1px solid color-mix(in oklab, var(--value) 35%, transparent);box-shadow:0 0 16px color-mix(in oklab, var(--value) 20%, transparent);animation:none;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--t1)}
 .wn-di-desc{font-size:11px;color:var(--t3);margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .wn-di-tag{flex-shrink:0;padding:3px 10px;border-radius:8px;font-size:10px;font-weight:700}
 .wn-di-tag.rare{background:color-mix(in oklab, var(--acc) 10%, transparent);color:var(--blue)}
@@ -173,12 +166,9 @@ box-shadow:inset 0 0 32px color-mix(in oklab, var(--text-primary) 8%, transparen
   font-size:17px;font-weight:800;color:#ffffff;cursor:pointer;position:relative;overflow:hidden;
   background:linear-gradient(135deg,#B91C2C,#8E1220 55%,#6E4E0A);box-shadow:0 6px 0 #6E1220,0 8px 25px color-mix(in oklab, var(--danger) 30%, transparent);transition: background-color var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), color var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), border-color var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), box-shadow var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), opacity var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)), transform var(--dur-menu, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1));box-shadow:0 2px 0 #6E1220}
 .wn-btn-off{opacity:.35;pointer-events:none}
-.wn-btn::after{content:'';position:absolute;top:0;left:-100%;width:40%;height:100%;background:linear-gradient(90deg,transparent,color-mix(in oklab, var(--text-primary) 10%, transparent),transparent);animation:wnShine 3s infinite}
-@keyframes wnShine{0%,100%{left:-100%}50%{left:150%}}
-.wn-btn-pulse{animation:wnBtnP 2s ease-in-out infinite}
-@keyframes wnBtnP{0%,100%{box-shadow:0 6px 0 var(--danger),0 8px 25px color-mix(in oklab, var(--danger) 30%, transparent)}50%{box-shadow:0 6px 0 var(--danger),0 8px 35px color-mix(in oklab, var(--danger) 45%, transparent)}}
+.wn-btn::after{content:'';position:absolute;top:0;left:-100%;width:40%;height:100%;background:linear-gradient(90deg,transparent,color-mix(in oklab, var(--text-primary) 10%, transparent),transparent);animation:100%{box-shadow:0 6px 0 var(--danger), 0 8px 25px color-mix(in oklab, var(--danger) 30%, transparent)}50%{box-shadow:0 6px 0 var(--danger), 0 8px 35px color-mix(in oklab, var(--danger) 45%, transparent)}}
 /* Заблокировано и «спины кончились» — нейтральная плашка, не путается с активным красным CTA */
-.wn-btn-disabled{background:linear-gradient(135deg,#3a3a44,#26262e)!important;box-shadow:0 6px 0 #16161c,0 8px 18px color-mix(in oklab, var(--bg-primary) 35%, transparent)!important;opacity:.75}
+.wn-btn-disabled{background:linear-gradient(135deg, #3a3a44, #26262e)!important;box-shadow:0 6px 0 #16161c,0 8px 18px color-mix(in oklab, var(--bg-primary) 35%, transparent)!important;opacity:.75}
 /* Светлая тема: тёмная «заглушка» + тёмный --text-primary = 1.51:1 (нечитаемо).
    В светлой теме это светло-серая кнопка с тёмным текстом. */
 .light .wn-btn-disabled{background:linear-gradient(135deg,#d5d5da,#c2c2c9)!important;box-shadow:0 6px 0 #b0b0b8,0 8px 18px color-mix(in oklab, var(--text-primary) 12%, transparent)!important;color:#5c5c62!important;opacity:1}
@@ -190,9 +180,7 @@ box-shadow:inset 0 0 32px color-mix(in oklab, var(--text-primary) 8%, transparen
 .wn-lc-i{font-size:22px;display:block;margin-bottom:3px}
 .wn-lc-n{font-size:8px;color:var(--t3);line-height:1.2}
 .wn-lc.leg{border-color:color-mix(in oklab, var(--value) 20%, transparent);background:linear-gradient(180deg,color-mix(in oklab, var(--value) 8%, transparent),var(--card))}
-.wn-lc.leg .wn-lc-i{animation:wnLG 2s ease-in-out infinite alternate}
-@keyframes wnLG{0%{filter:brightness(1)}100%{filter:brightness(1.3) drop-shadow(0 0 4px var(--gold))}}
-.wn-lc.epc{border-color:color-mix(in oklab, var(--acc) 20%, transparent);background:linear-gradient(180deg,color-mix(in oklab, var(--acc) 6%, transparent),var(--card))}
+.wn-lc.leg .wn-lc-i{animation:var(--acc) 20%, transparent);background:linear-gradient(180deg,color-mix(in oklab, var(--acc) 6%, transparent),var(--card))}
 .wn-lc.rar{border-color:color-mix(in oklab, var(--acc) 15%, transparent);background:linear-gradient(180deg,color-mix(in oklab, var(--acc) 5%, transparent),var(--card))}
 .wn-fx{position:absolute;inset:0;z-index:150;pointer-events:none;opacity:0}
 .wn-fx-flash{background:radial-gradient(circle at 50% 50%,color-mix(in oklab, var(--value) 35%, transparent),transparent 70%);animation:wnFxO .5s forwards}
@@ -230,9 +218,7 @@ box-shadow:inset 0 0 32px color-mix(in oklab, var(--text-primary) 8%, transparen
 .wn-rw-btn.rare{background:linear-gradient(180deg,var(--acc),#2a60cc);box-shadow:0 5px 0 #1a4099}
 .wn-rw-btn.epic{background:linear-gradient(180deg,var(--acc),var(--acc));box-shadow:0 5px 0 var(--acc)}
 .wn-rw-btn.legendary{background:linear-gradient(135deg,var(--red),var(--gold));box-shadow:0 5px 0 var(--gold-d)}
-.wn-rw-btn::after{content:'';position:absolute;top:0;left:-100%;width:50%;height:100%;background:linear-gradient(90deg,transparent,color-mix(in oklab, var(--text-primary) 12%, transparent),transparent);animation:wnShine 3s infinite}
-.wn-shake{animation:wnShake .2s ease}
-@keyframes wnShake{0%,100%{transform:translateX(0)}20%{transform:translateX(-4px)}40%{transform:translateX(4px)}60%{transform:translateX(-2px)}80%{transform:translateX(2px)}}
+.wn-rw-btn::after{content:'';position:absolute;top:0;left:-100%;width:50%;height:100%;background:linear-gradient(90deg,transparent,color-mix(in oklab, var(--text-primary) 12%, transparent),transparent);animation:100%{transform:translateX(0)}20%{transform:translateX(-4px)}40%{transform:translateX(4px)}60%{transform:translateX(-2px)}80%{transform:translateX(2px)}}
 `;
 
 // ═══ AUDIO UTILITIES ═══
