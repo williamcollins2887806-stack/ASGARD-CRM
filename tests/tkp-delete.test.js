@@ -99,6 +99,17 @@ check('реестр: кнопка удаления и подтверждение
 check('реестр: кнопка только автору или админу', () => {
   assert.ok(/function canDeleteTkp/.test(PAGE), 'нет проверки прав на фронте');
   assert.ok(/canDeleteTkp\(i\) \?/.test(PAGE), 'кнопка показывается всем');
+  // КРИТИЧНО: в auth.js экспорт называется getAuth(), а не getUser().
+  // С getUser() проверка молча возвращала пустого пользователя, и кнопка
+  // не показывалась НИКОМУ, хотя весь остальной код был на месте.
+  assert.ok(/AsgardAuth\.getAuth/.test(PAGE), 'used getUser — такого метода нет в auth.js');
+  assert.ok(!/AsgardAuth\.getUser/.test(PAGE), 'остался несуществующий getUser()');
+});
+
+check('карточка: удаление только автору или админу (getAuth)', () => {
+  assert.ok(/_canDeleteTkpRow\(t\) \?/.test(KANBAN), 'кнопка в карточке показывается всем');
+  assert.ok(/AsgardAuth\.getAuth/.test(KANBAN), 'в карточке используется getUser вместо getAuth');
+  assert.ok(!/AsgardAuth\.getUser/.test(KANBAN), 'в карточке остался несуществующий getUser()');
 });
 
 check('карточка канбана: кнопка удаления и обработчик', () => {
@@ -110,7 +121,6 @@ check('карточка канбана: кнопка удаления и обр�
 check('карточка: удаление только автору или админу', () => {
   assert.ok(/_canDeleteTkpRow\(t\) \?/.test(KANBAN), 'кнопка в карточке показывается всем');
 });
-
 const failed = results.filter((r) => !r.ok);
 console.log('\nитог: ' + (results.length - failed.length) + ' PASS, ' + failed.length + ' FAIL');
 process.exit(failed.length ? 1 : 0);

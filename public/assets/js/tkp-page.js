@@ -513,10 +513,16 @@ window.AsgardTkpPage = (function() {
   /** Может ли текущий пользователь удалить это ТКП (автор или администратор). */
   function canDeleteTkp(row) {
     try {
-      const u = (window.AsgardAuth && window.AsgardAuth.getUser && window.AsgardAuth.getUser()) || {};
+      // В auth.js экспорт называется getAuth(), а НЕ getUser(). Прежний вызов
+      // молча возвращал {} → роль пустая → кнопка удаления не показывалась
+      // НИКОМУ, хотя код и роут были на месте (найдено 10.11.2026).
+      const auth = (window.AsgardAuth && window.AsgardAuth.getAuth
+        && window.AsgardAuth.getAuth()) || {};
+      const u = auth.user || {};
       const role = String(u.role || '');
-      // Админ удаляет любое ТКП; остальные — только свои черновики/ТКП.
-      if (role === 'ADMIN') return true;
+      const roles = Array.isArray(u.roles) ? u.roles : [];
+      // Админ удаляет любое ТКП; остальные — только свои.
+      if (role === 'ADMIN' || roles.indexOf('ADMIN') >= 0) return true;
       return row && row.author_id != null && Number(row.author_id) === Number(u.id);
     } catch (_) {
       return false;

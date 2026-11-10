@@ -5013,8 +5013,14 @@ html[data-theme="light"] .pk3-stk-float-bar { background: rgba(255,255,255,.94);
   /** Может ли текущий пользователь удалить ТКП из карточки (автор или админ). */
   function _canDeleteTkpRow(t) {
     try {
-      const u = (window.AsgardAuth && window.AsgardAuth.getUser && window.AsgardAuth.getUser()) || {};
-      if (String(u.role || '') === 'ADMIN') return true;
+      // В auth.js экспорт — getAuth(), а не getUser(). Прежний вызов молча
+      // давал пустого пользователя, и кнопка не показывалась никому.
+      const auth = (window.AsgardAuth && window.AsgardAuth.getAuth
+        && window.AsgardAuth.getAuth()) || {};
+      const u = auth.user || {};
+      const role = String(u.role || '');
+      const roles = Array.isArray(u.roles) ? u.roles : [];
+      if (role === 'ADMIN' || roles.indexOf('ADMIN') >= 0) return true;
       return t && t.author_id != null && Number(t.author_id) === Number(u.id);
     } catch (_) {
       return false;
