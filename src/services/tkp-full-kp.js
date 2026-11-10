@@ -1,4 +1,4 @@
-'use strict';
+﻿'use strict';
 
 /**
  * Полное коммерческое предложение (шаблон «Ника») — DOCX (docxtemplater)
@@ -185,13 +185,47 @@ function posVal(row, ...keys) {
   return '';
 }
 
-function calcTotals(full, vatPct) {
+/**
+ * Итоги КП.
+ *
+ * ВАЖНО: у полного КП позиции лежат в `full.apparatus`, а у КОРОТКОГО — в
+ * `items.items` (их строит from-card/ai-draft). Раньше функция суммировала
+ * только `full.apparatus`, поэтому короткое КП печатало «ИТОГО 0,00» и
+ * «Цена предложения 0,00 руб.» — фирменный бланк с пустой таблицей сумм
+ * (верификатор 10.11.2026). Теперь источник зависит от того, что есть.
+ *
+ * @param {object} full — payload полного КП (может быть пустым)
+ * @param {number} vatPct
+ * @param {object} [itemsPayload] — `items` ТКП ({ items: [...] }), для короткого
+ */
+function calcTotals(full, vatPct, itemsPayload) {
   const vat = vatPct != null ? Number(vatPct) : 22;
+  const src = full || {};
   let subtotal = 0;
-  for (const row of full.apparatus || []) {
+  let counted = 0;
+  for (const row of src.apparatus || []) {
     subtotal += Number(row.amount_no_vat) || 0;
+    counted += 1;
   }
-  subtotal += Number(full.transport_amount) || 0;
+  subtotal += Number(src.transport_amount) || 0;
+
+  // Фолбэки, если полного payload нет (короткое КП): явный subtotal, затем
+  // сумма клиентских позиций, затем цена из карточки ТКП.
+  if (!counted) {
+    const ip = itemsPayload || {};
+    const rows = Array.isArray(ip.items) ? ip.items : [];
+    const itemsSum = rows.reduce((s, it) => {
+      const q = Number(it.qty) || 0;
+      const p = Number(it.price) || 0;
+      const t = it.total != null ? Number(it.total) : q * p;
+      return s + (Number.isFinite(t) ? t : 0);
+    }, 0);
+    const explicit = Number(ip.subtotal);
+    if (Number.isFinite(explicit) && explicit > 0) subtotal = explicit;
+    else if (itemsSum > 0) subtotal = itemsSum;
+    else if (Number(src.total_sum) > 0) subtotal = Number(src.total_sum);
+  }
+
   // НДС в ЦЕЛЫХ копейках — та же формула, что vatFromBase в tkp-ai-draft
   // и в модалке. Иначе на 0,08 % баз документ печатал 145 880,95 при
   // сохранённых 145 880,96 (расхождение на копейку в клиентском файле).
@@ -228,7 +262,7 @@ function buildFullKpHtml(tkp, opts = {}) {
   const full = getFullPayload(tkp);
   const cj = parseItems(tkp);
   const vatPct = cj.vat_pct != null ? cj.vat_pct : 22;
-  const totals = calcTotals(full, vatPct);
+  const totals = calcTotals(full, vatPct, cj);
   const L = resolveTableLabels(tkp);
 
   const num = tkp.tkp_number || ('АС-' + tkp.id);
@@ -461,7 +495,7 @@ function buildFullKpTemplateData(tkp, company = {}, opts = {}) {
   const full = getFullPayload(tkp);
   const cj = parseItems(tkp);
   const vatPct = cj.vat_pct != null ? Number(cj.vat_pct) : 22;
-  const totals = calcTotals(full, vatPct);
+  const totals = calcTotals(full, vatPct, cj);
   const cond = full.conditions || {};
   const companyName = company.name || company.name_short || 'ООО «АСГАРД-Сервис»';
   const priceSummary = cond.price_summary
@@ -855,7 +889,11 @@ async function htmlToPdf(html) {
  */
 async function generateFullKpPdfBuffer(tkp, opts = {}) {
   const company = await resolveCompany(opts.company);
+  // `variant` ОБЯЗАН доезжать до сборки DOCX: иначе PDF короткого КП печатал
+  // полный документ, и Word с PDF одного КП расходились (верификатор
+  // 10.11.2026). Один шаблон, разное наполнение — но выбор должен доходить.
   const docxBuf = generateFullKpDocxBuffer(tkp, company, {
+    variant: opts.variant === 'classic' ? 'classic' : 'full',
     stamp: !!opts.stamp,
     signature: !!opts.signature
   });

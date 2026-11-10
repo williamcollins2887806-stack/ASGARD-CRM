@@ -215,13 +215,18 @@ async function buildSmetaFromStage(db, tenderId, rj) {
     if (!CREW_LABEL[code]) continue;
     const cnt = Number(c.count) || 0;
     if (!(cnt > 0)) continue;
+    // ИТР и специалист ОТ работают ОДНУ смену в сутки, сколько бы смен ни было
+    // на объекте. Без явного замка режим объекта (2–3 смены) множил их тоже:
+    // ИТР задваивался, +179 025 ₽ себестоимости за 10 суток (верификатор
+    // 10.11.2026). Остальные роли смены НЕ прибиваем — иначе правка
+    // «Смен в сутки» в просчёте перестаёт влиять на строки бригады.
+    const ITR_LIKE = code === 'itr' || code === 'safety';
     crew.push({
       code,
       role: CREW_LABEL[code],
       count: cnt,
-      // Смены НЕ прибиваем: иначе правка «Смен в сутки» в просчёте не влияла
-      // на строки бригады (баг 10.11.2026). Режим задаёт params.shifts_per_day.
-      shifts_per_day: null,
+      shifts_per_day: ITR_LIKE ? 1 : null,
+      shifts_locked: ITR_LIKE ? true : undefined,
       hours_per_shift: Number(params.shift_hours) || 12
     });
   }

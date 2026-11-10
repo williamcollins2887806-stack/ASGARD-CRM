@@ -564,15 +564,38 @@ function buildClientItems(draft) {
       RU_WORD('Изолировщик'),
       RU_WORD('Химик'),
       RU_WORD('ПТО'),
-      RU_WORD('СИЗ')
+      RU_WORD('СИЗ'),
+      RU_WORD('Водитель'),
+      RU_WORD('Машинист'),
+      RU_WORD('Стропальщик')
     ].join('|')
     + ')',
     'i'
   );
 
-  const visible = items.filter((i) => i && i.name && !INTERNAL_RE.test(String(i.name)));
+  // ── Фильтр по СМЫСЛУ строки, а не по названию ────────────────────────────
+  // Ручной список названий неполон по определению: добавят новую роль в
+  // CREW_ROLES — она снова утечёт («Водитель» 192 500 ₽ уходил отдельной
+  // строкой заказчику, верификатор 10.11.2026). Поэтому решаем по данным:
+  //   • секция A — персонал (это наша себестоимость труда);
+  //   • crewRole/role_code — признак роли бригады.
+  // Название оставляем вторым фильтром для старых черновиков без секций.
+  const ROLE_CODES = new Set([
+    'itr', 'master', 'worker', 'safety', 'observer', 'chemist', 'pto',
+    'welder', 'insulator', 'assembler', 'driver'
+  ]);
+  const isInternalRow = (i) => {
+    if (!i) return false;
+    const sec = String(i.section || '').toUpperCase();
+    if (sec === 'A') return true;
+    const role = String(i.crewRole || i.role_code || i.role || '').toLowerCase();
+    if (role && (ROLE_CODES.has(role) || /чел[·\-\s]?смен/.test(String(i.unit || '')))) return true;
+    return INTERNAL_RE.test(String(i.name || ''));
+  };
+
+  const visible = items.filter((i) => i && i.name && !isInternalRow(i));
   const hiddenCost = items
-    .filter((i) => i && i.name && INTERNAL_RE.test(String(i.name)))
+    .filter((i) => i && i.name && isInternalRow(i))
     .reduce((s, i) => s + (Number(i.total) || 0), 0);
 
   // 1. Видимые позиции с наценкой.
