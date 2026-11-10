@@ -871,6 +871,12 @@ async function generateDv(p) {
   // Собираем итоговую ДВ: поля-описания из первого круга, позиции — все.
   const dv = Object.assign({}, firstDv, { positions: allPositions });
 
+  // Считаем валидные позиции ДО сверки полноты: `checkCompleteness` получает
+  // это число параметром. Раньше строка `const validFound = ...` стояла ниже
+  // вызова и модуль падал с «Cannot access 'validFound' before initialization»
+  // — весь разбор ДВ обрывался (найдено 10.11.2026).
+  const validFound = countValidPositions(allPositions);
+
   // ── Роль «объёмы» из dv-agents: проверка полноты ──────────────────────────
   // Модуль ролей (dv-agents) держит три раздельных промпта и функцию сверки
   // «сколько строк перечня увидели — сколько позиций выписали». Здесь
@@ -921,7 +927,6 @@ async function generateDv(p) {
   //
   // Точную сверку даёт review_hint с конкретными числами: РП видит
   // «найдено 400 строк, в разборе 353» и решает сам.
-  const validFound = countValidPositions(allPositions);
   const exhaustedRounds = rounds >= MAX_ROUNDS && lastAdded > 0;
 
   // Ожидание: что сказала модель, а что видит сетка — берём БОЛЬШЕЕ.

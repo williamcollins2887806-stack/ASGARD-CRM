@@ -817,6 +817,18 @@ window.AsgardRpCalcModal = (function () {
         '<p class="muted">Модуль техплана не загружен — обновите страницу.</p></div></div>';
     }
     const plan = ui.readPlan(rj, est);
+    // Сохраняем строки МТР, которые РП уже добавил в этой сессии: перерисовка
+    // модалки (переключение вкладки, нажатие кнопки) не должна их затирать.
+    // Раньше каждое перерисовывание брало план заново, и правки МТР исчезали
+    // до автосейва (баг 10.11.2026).
+    if (state.techPlan && Array.isArray(state.techPlan.mtr) && state.techPlan.mtr.length
+        && (!Array.isArray(plan.mtr) || !plan.mtr.length)) {
+      plan.mtr = state.techPlan.mtr;
+    }
+    if (state.techPlan && Array.isArray(state.techPlan.crew) && state.techPlan.crew.length
+        && (!Array.isArray(plan.crew) || !plan.crew.length)) {
+      plan.crew = state.techPlan.crew;
+    }
     state.techPlan = plan;
     return '<div class="rp-calc-panel' + active + '" data-panel="tech">' +
       '<p class="rp-calc-hint">Сроки, состав бригады и перечень МТР. Это то, что уходит в ТКП ' +
@@ -1635,7 +1647,12 @@ window.AsgardRpCalcModal = (function () {
       if (plan.schedule) {
         if (Number(plan.schedule.work_days) > 0) est.params.work_days = Number(plan.schedule.work_days);
         if (Number(plan.schedule.shift_hours) > 0) est.params.shift_hours = Number(plan.schedule.shift_hours);
-        if (Number(plan.schedule.shift_mode) > 0) est.params.shifts_per_day = Number(plan.schedule.shift_mode);
+        // '24/7' — валидный режим, но Number('24/7') = NaN, поэтому прежняя
+        // проверка `Number(...) > 0` молча выбрасывала его, и смены оставались
+        // дефолтными. Понимаем и строку '24/7' (это 2 смены по 12 часов).
+        const sm = String(plan.schedule.shift_mode == null ? '' : plan.schedule.shift_mode).trim();
+        const modeNum = sm === '24/7' ? 2 : Number(sm);
+        if (Number.isFinite(modeNum) && modeNum > 0) est.params.shifts_per_day = modeNum;
         if (Number(plan.schedule.trip_count) > 0) est.params.trip_count = Number(plan.schedule.trip_count);
         if (plan.schedule.start_plan) {
           est.meta = est.meta || {};

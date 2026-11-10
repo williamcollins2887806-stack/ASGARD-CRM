@@ -120,6 +120,10 @@ function normalizeCrew(crew) {
       count: Math.max(0, num(c.count, 0)),
       unit: String(c.unit || 'чел·смен'),
       shifts_per_day: num(c.shifts_per_day, 0) > 0 ? num(c.shifts_per_day) : null,
+      // Признак «смены роли заданы человеком»: только тогда они перебивают
+      // режим объекта. Машинное заполнение (из анализа) флаг не ставит, иначе
+      // правка «Смен в сутки» переставала доезжать до строк бригады.
+      shifts_locked: c.shifts_locked === true || num(c.shifts_locked, 0) > 0,
       hours_per_shift: num(c.hours_per_shift, 0) > 0 ? num(c.hours_per_shift) : null,
       rate: (c.rate != null && c.rate !== '') ? num(c.rate) : null,
       source: c.source === 'hire' ? 'hire' : 'staff',
@@ -130,6 +134,104 @@ function normalizeCrew(crew) {
     });
   });
   return out;
+}
+
+/**
+ * Нормализация перечня работ из ведомости (ДВ / calc_plan.positions).
+ *
+ * ── Зачем это отдельный вход ────────────────────────────────────────────────
+ * Движок сметы собирал себестоимость из бригады и срока: ФОТ = люди × сутки ×
+ * ставка. Объём работ в деньгах не участвовал вообще, поэтому тендер на 600
+ * позиций и тендер на 6 позиций при одинаковой бригаде давали одну и ту же
+ * цену — «600 позиций за 10 млн». Смета обязана расти от объёма работ.
+ *
+ * Каждая строка ведомости несёт либо готовые трудозатраты (дни × люди), либо
+ * объём с единицей и норму. Трудозатраты и есть мера объёма: чем больше работ,
+ * тем больше чел·смен, и тем больше себестоимость.
+ *
+ * Поля строки:
+ *   name, unit, volume — что и сколько делаем;
+ *   people, days      — сколько людей и суток на позицию (из плана Мимира);
+ *   labor_hours       — если заказчик дал готовую трудоёмкость (чел·ч);
+ *   norm_code, volume_source — откуда цифра (доказательство, а не догадка).
+ */
+function normalizeWorks(works) {
+  if (!Array.isArray(works)) return [];
+  const out = [];
+  works.forEach((w, i) => {
+    if (!w) return;
+    const name = String(w.name || w.work || w.description || '').trim();
+    if (!name) return;
+    const people = num(w.people, 0);
+    const days = num(w.days, 0);
+    const laborHours = num(w.labor_hours, 0);
+    const volume = w.volume != null && w.volume !== '' ? num(w.volume) : null;
+    // Без объёма, трудозатрат и людей позиция не даёт ни срока, ни денег —
+    // она остаётся справочной строкой, а не молчаливым нулём в смете.
+    out.push({
+      id: String(w.id || ('w_' + (i + 1))),
+      code: String(w.code || ('W' + (i + 1))),
+      name: name.slice(0, 300),
+      unit: String(w.unit || '').trim(),
+      volume,
+      people: people > 0 ? people : null,
+      days: days > 0 ? days : null,
+      labor_hours: laborHours > 0 ? laborHours : null,
+      norm_code: w.norm_code ? String(w.norm_code) : null,
+      volume_source: w.volume_source ? String(w.volume_source) : null,
+      approved: !!w.approved
+    });
+  });
+  return out;
+}
+
+/**
+ * Блок «Перечень работ по ведомости» — секция W.
+ *
+ * Почему справочный блок, а не деньги: себестоимость уже считается по ролям и
+ * сроку (A1–A6), где срок = люди × сутки из плана. Если добавить работы ещё и
+ * отдельной строкой с ценой, объём задвоится. Здесь важны доказательность и
+ * сходимость: РП и ТО видят состав работ, объём, источник объёма, людей и сутки
+ * — и могут сверить, что именно этот объём превратился в этот срок и эту цену.
+ */
+function applyWorksRows(rows, works) {
+  const list = Array.isArray(rows) ? rows.slice() : [];
+  // Убираем прежний блок W: он собирается заново из актуального перечня.
+  for (let i = list.length - 1; i >= 0; i -= 1) {
+    const r = list[i];
+    if (r && (r.id === 'sec_w' || String(r.section) === 'W')) list.splice(i, 1);
+  }
+  if (!Array.isArray(works) || !works.length) return list;
+
+  const block = [{ id: 'sec_w', kind: 'section', section: 'W', name: 'W. Перечень работ по ведомости (справочно, объём задаёт срок)' }];
+  works.forEach((w) => {
+    const days = num(w.days, 0);
+    const people = num(w.people, 0);
+    const laborHours = num(w.labor_hours, 0) || (people > 0 && days > 0 ? people * days * 8 : 0);
+    const parts = [];
+    if (w.volume != null) parts.push(`${w.volume} ${w.unit || ''}`.trim());
+    if (people > 0 && days > 0) parts.push(`${people} чел × ${days} сут`);
+    else if (laborHours > 0) parts.push(`${Math.round(laborHours)} чел·ч`);
+    if (w.volume_source) parts.push(`источник: ${w.volume_source}`);
+    if (w.norm_code) parts.push(`норма ${w.norm_code}`);
+    if (w.labor_hours > 0 && people > 0 && days > 0) {
+      parts.push(`трудоёмкость заказчика: ${Math.round(w.labor_hours)} чел·ч`);
+    }
+    block.push({
+      id: 'w_' + w.id,
+      kind: 'info',
+      section: 'W',
+      code: w.code,
+      name: w.name,
+      unit: w.unit || '',
+      qty: w.volume,
+      price: null,
+      sum: null,
+      note: parts.join(' · '),
+      editable: { name: true, qty: true, note: true }
+    });
+  });
+  return list.concat(block);
 }
 
 function normalizeMtr(mtr) {
@@ -191,11 +293,13 @@ function crewRate(c, p) {
 /** Сколько человек в смене по техплану (для СИЗ/пайковых и подписей). */
 function crewPerShift(crew, p) {
   if (!crew || !crew.length) return num(p.workers_per_shift) + num(p.masters_per_shift);
-  const shifts = num(p.shifts_per_day) || 1;
+  // Сумма людей по ролям. Раньше здесь было `count × (s / shifts)`: при
+  // shifts_per_day = 3 и роли с shifts_per_day = 2 получалось 6 × (2/3) = 4,
+  // то есть численность «сжималась» и человеко-часы физически не могли вырасти.
+  // Человек в смене — это человек в смене; режим влияет на сутки, не на людей.
   let total = 0;
   crew.forEach((c) => {
-    const s = c.shifts_per_day || shifts;
-    total += num(c.count) * (s / shifts);
+    total += num(c.count);
   });
   return total;
 }
@@ -292,8 +396,23 @@ function applyTechPlanRows(rows, crew, mtr, p) {
     const byRole = {};
     crew.forEach((c) => {
       if (!c.role_code) return;
-      byRole[c.role_code] = c;
+      // Одна роль может прийти несколькими строками (по бригадам). Суммируем
+      // людей, иначе «2 бригады по 4 слесаря» превращались в одну бригаду 4.
+      if (byRole[c.role_code]) {
+        byRole[c.role_code] = {
+          ...byRole[c.role_code],
+          count: num(byRole[c.role_code].count) + num(c.count),
+          shifts_per_day: byRole[c.role_code].shifts_per_day || c.shifts_per_day
+        };
+      } else {
+        byRole[c.role_code] = Object.assign({}, c);
+      }
     });
+
+    // Режим из шапки техплана. Правка «Смен в сутки» должна доезжать до строк A,
+    // даже если в crew[] лежит старое значение: пока РП не задал смены роли ЯВНО
+    // (флаг shifts_locked), действует режим объекта.
+    const headerShifts = num(p.shifts_per_day) || 1;
 
     // A1–A4: подставить количество и ставку из техплана.
     list.forEach((r) => {
@@ -305,7 +424,10 @@ function applyTechPlanRows(rows, crew, mtr, p) {
       if (!roleCode) return;
       const c = byRole[roleCode];
       if (!c) return;
-      const roleShifts = c.shifts_per_day || shifts;
+      // Явно заданные смены роли уважаем; иначе режим объекта (см. выше).
+      const roleShifts = (c.shifts_locked && num(c.shifts_per_day) > 0)
+        ? num(c.shifts_per_day)
+        : headerShifts;
       const perRoleDays = days * roleShifts;
       const qty = num(c.count) * perRoleDays;
       r.qty = Math.round(qty * 1000) / 1000;
@@ -318,15 +440,25 @@ function applyTechPlanRows(rows, crew, mtr, p) {
 
     // Дополнительные роли — новыми строками после A3.
     const extra = crew.filter((c) => c.role_code
-      && ['welder', 'insulator', 'assembler', 'observer', 'driver'].includes(c.role_code));
+      && ['welder', 'insulator', 'assembler', 'observer', 'driver', 'chemist', 'pto'].includes(c.role_code));
     if (extra.length) {
       const present = new Set(list.map((r) => r && r.crewRole).filter(Boolean));
       const a3Idx = list.findIndex((r) => r && String(r.code) === 'A3');
       const insertAt = a3Idx >= 0 ? a3Idx + 1 : list.findIndex((r) => r && String(r.section) === 'A');
       const fresh = [];
-      extra.forEach((c, i) => {
+      // Одна строка на роль, даже если бригад несколько.
+      const byExtra = {};
+      extra.forEach((c) => {
+        if (!byExtra[c.role_code]) byExtra[c.role_code] = Object.assign({}, c, { count: 0 });
+        byExtra[c.role_code].count += num(c.count);
+        if (c.shifts_locked && num(c.shifts_per_day) > 0) {
+          byExtra[c.role_code].shifts_locked = true;
+          byExtra[c.role_code].shifts_per_day = num(c.shifts_per_day);
+        }
+      });
+      Object.values(byExtra).forEach((c, i) => {
         if (present.has(c.role_code)) return;
-        const roleShifts = c.shifts_per_day || shifts;
+        const roleShifts = (c.shifts_locked && num(c.shifts_per_day) > 0) ? num(c.shifts_per_day) : headerShifts;
         fresh.push({
           id: 'a_crew_' + c.role_code,
           kind: 'line',
@@ -693,6 +825,10 @@ function recalcAsgardSmeta(estimate) {
   est.crew = normalizeCrew(est.crew);
   est.mtr = normalizeMtr(est.mtr);
   est.schedule = normalizeSchedule(est.schedule, p);
+  // Перечень работ из ведомости. Деньги идут через роли (A) и срок — работы
+  // задают СРОК (люди × сутки), а не вторую себестоимость. Поэтому строки
+  // ведомости справочные (kind: 'info'), в суммы не входят.
+  est.works = normalizeWorks(est.works);
 
   if (!Array.isArray(est.rows) || !est.rows.length) {
     est.rows = skeletonRows();
@@ -700,6 +836,7 @@ function recalcAsgardSmeta(estimate) {
     est.rows = mergeSkeletonRows(est.rows);
   }
   est.rows = applyTechPlanRows(est.rows, est.crew, est.mtr, p);
+  est.rows = applyWorksRows(est.rows, est.works);
 
   // Даты работ: план начала + примерный срок → расчётное окончание (для письма/Excel/модалки).
   const meta = (est.meta && typeof est.meta === 'object') ? est.meta : {};
@@ -829,8 +966,16 @@ function recalcAsgardSmeta(estimate) {
 
   // Чел-смены: сколько человеко-смен оплачено на проекте (рабочие + мастера, по сменам и суткам).
   // Без этой величины «прибыль на чел/смену» показать нечем — она и есть знаменатель.
-  const personShifts = num(p.work_days) * num(p.shifts_per_day)
-    * (num(p.workers_per_shift) + num(p.masters_per_shift));
+  //
+  // Источник — строки A1–A3 после applyTechPlanRows, то есть `count × сутки × смены`
+  // из РЕАЛЬНОЙ бригады. Раньше считали от `params.workers_per_shift`, а строки — от
+  // `crew[]`: при правке смены знаменатель менялся, а строки A стояли на месте,
+  // и «человеко-смены не пересчитываются» (баг 10.11.2026).
+  const personShifts = (est.rows || []).reduce((s, r) => {
+    if (!r || r.kind !== 'line' || String(r.section) !== 'A') return s;
+    if (r.crewRole !== 'worker' && r.crewRole !== 'master') return s;
+    return s + num(r.qty);
+  }, 0);
   const profitPerPersonShift = personShifts > 0
     ? Math.round(netProfit / personShifts * 100) / 100
     : null;
@@ -1177,6 +1322,7 @@ root.AsgardSmeta = {
   addDaysIso,
   normalizeCrew,
   normalizeMtr,
+  normalizeWorks,
   normalizeSchedule,
   classifyMobileRole,
   describeTechPlan,

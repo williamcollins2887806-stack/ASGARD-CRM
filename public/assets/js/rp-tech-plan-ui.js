@@ -95,6 +95,21 @@
       man_hours_total: (est.totals && est.totals.man_hours != null) ? est.totals.man_hours : null
     };
 
+    // ── МТР не должен теряться ──────────────────────────────────────────────
+    // tech_json мог быть сохранён раньше, чем в нём появился МТР (сборка сметы
+    // из анализа писала mtr: []). Тогда вкладка «Бригада и МТР» показывала
+    // «Перечень не заполнен», хотя ведомость материалов уже лежала в смете.
+    // Пустой список в отчёте — не приговор: берём из сметы/отчёта.
+    if (!plan.mtr.length) {
+      const fallback = Array.isArray(est.mtr) ? est.mtr
+        : (Array.isArray(rj.mtr) ? rj.mtr
+          : (Array.isArray(rj.mtr_suggestions) ? rj.mtr_suggestions : []));
+      if (fallback.length) plan.mtr = fallback;
+    }
+    if (!plan.crew.length && Array.isArray(est.crew) && est.crew.length) {
+      plan.crew = est.crew;
+    }
+
     // Фолбэк: если техплана нет, но смета посчитана — показываем то, что
     // реально есть в параметрах, а не пустоту. Пустые поля РП не заполнит.
     if (!plan.crew.length && est.params) {
@@ -416,15 +431,30 @@
     base.schedule.work_days = num(base.schedule.work_days, 0) || null;
     base.schedule.trip_count = num(base.schedule.trip_count, 0) || 1;
     base.schedule.shift_hours = num(base.schedule.shift_hours, 0) || 12;
-    base.schedule.shift_mode = String(num(base.schedule.shift_mode, 0) || '');
+    // `shift_mode` — это '1' | '2' | '3' | '24/7'. Через `num()` значение
+    // '24/7' превращалось в '' и молча терялось (круглосуточный режим
+    // становился «смен не задано»). Нормализуем строкой.
+    {
+      const raw = String(base.schedule.shift_mode == null ? '' : base.schedule.shift_mode).trim();
+      if (raw === '24/7') base.schedule.shift_mode = '24/7';
+      else {
+        const n = num(raw, 0);
+        base.schedule.shift_mode = (n >= 1 && n <= 3) ? String(Math.round(n)) : '';
+      }
+    }
 
     base.crew = base.crew.map((c) => {
       const code = txt(c.role_code);
+      const rawShifts = num(c.shifts_per_day, 0);
       return Object.assign({}, c, {
         role_code: code,
         role: roleLabel(code, c.role),
         count: num(c.count, 0),
-        shifts_per_day: num(c.shifts_per_day, 0) || null
+        shifts_per_day: rawShifts || null,
+        // РП вписал число в колонку «Смены» — значит это осознанный выбор роли.
+        // Без флага правка режима объекта перебивала бы введённое значение,
+        // а с ним — наоборот, режим не доезжал до строки (баг 10.11.2026).
+        shifts_locked: rawShifts > 0 ? true : undefined
       });
     }).filter((c) => c.count > 0 || c.role_code);
 

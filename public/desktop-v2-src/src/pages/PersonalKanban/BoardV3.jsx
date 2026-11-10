@@ -1800,16 +1800,11 @@ function SendV3({ card, onClose, onSent }) {
  * Сохраняется в block_data.items[] и block_data.vat_pct через onChange.
  * ═══════════════════════════════════════════════════════════════════════════ */
 function SmetaTableEditable({ block, onChange }) {
-  const DEFAULT_ITEMS = [
-    { name: 'Подготовка',         unit: 'шт',     qty: 1,  price: 28500  },
-    { name: 'Основные работы',    unit: 'м²',     qty: 42, price: 14500  },
-    { name: 'Контроль качества',  unit: 'точек',  qty: 16, price: 3000   },
-    { name: 'Логистика',          unit: 'компл',  qty: 1,  price: 144000 },
-    { name: 'Реагенты',           unit: 'компл',  qty: 1,  price: 370500 },
-  ];
+  // Демо-строки убраны (10.11.2026): при пустой смете в предпросмотр и в сам
+  // ТКП попадали выдуманные позиции с выдуманными суммами. Пусто — значит пусто.
   const data = block.block_data || {};
-  const items = (Array.isArray(data.items) && data.items.length) ? data.items : DEFAULT_ITEMS;
-  const vatPct = data.vat_pct != null ? Number(data.vat_pct) : 20;
+  const items = Array.isArray(data.items) ? data.items : [];
+  const vatPct = data.vat_pct != null ? Number(data.vat_pct) : 22;
 
   function update(newItems, newVat) {
     onChange({

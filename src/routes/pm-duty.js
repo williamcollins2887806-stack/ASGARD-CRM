@@ -208,7 +208,9 @@ async function buildSmetaFromStage(db, tenderId, rj) {
       code,
       role: CREW_LABEL[code],
       count: cnt,
-      shifts_per_day: Number(params.shifts_per_day) || 2,
+      // Смены НЕ прибиваем: иначе правка «Смен в сутки» в просчёте не влияла
+      // на строки бригады (баг 10.11.2026). Режим задаёт params.shifts_per_day.
+      shifts_per_day: null,
       hours_per_shift: Number(params.shift_hours) || 12
     });
   }
@@ -232,13 +234,47 @@ async function buildSmetaFromStage(db, tenderId, rj) {
   if (!params.shifts_per_day) params.shifts_per_day = 2;
   if (!params.shift_hours) params.shift_hours = 12;
 
+  // ── МТР: материалы и оборудование ────────────────────────────────────────
+  // Было жёстко `mtr: []` — и в смету, и через неё в tech_json уезжал пустой
+  // перечень, хотя модель анализа уже вернула `mtr_suggestions`. Из-за этого
+  // на проде у ВСЕХ 10 закрытых просчётов `tech_json.mtr = 0`, и ТО видел
+  // «Перечень не заполнен» на каждом тендере.
+  //
+  // Приоритет: план просчёта → ведомость МТР сессии → предложения анализа.
+  const mtr = (() => {
+    const fromPlan = Array.isArray(st.calc && st.calc.mtr) ? st.calc.mtr : [];
+    if (fromPlan.length) return fromPlan;
+    const fromState = Array.isArray(st.mtr) ? st.mtr : [];
+    if (fromState.length) return fromState;
+    const fromReport = Array.isArray(rj.mtr) ? rj.mtr
+      : (Array.isArray(rj.mtr_suggestions) ? rj.mtr_suggestions : []);
+    return fromReport;
+  })();
+
   const meta = {
     template: 'asgard_v1',
     // rows не задаём: asgard-smeta возьмёт свой скелет и заполнит его
     // ценами из params + техпланом (crew) — это канон, а не самодельные строки.
     params,
     crew,
-    mtr: [],
+    mtr,
+    // Перечень работ из ведомости: он задаёт объём, из которого выведен срок.
+    // Без него смета не отличала тендер на 6 позиций от тендера на 600.
+    works: calc.map((c) => {
+      const dv = byId.get(String(c.position_id)) || {};
+      return {
+        id: c.id || c.position_id || null,
+        name: c.name || dv.name || 'Работа',
+        unit: dv.unit || null,
+        volume: Number(dv.volume) || null,
+        people: Number(c.people) || null,
+        days: Number(c.days) || null,
+        labor_hours: Number(dv.labor_hours) || null,
+        norm_code: (dv.norm && dv.norm.code) || null,
+        volume_source: dv.volume_source || null,
+        approved: !!c.approved
+      };
+    }),
     schedule: {
       duration_days: workDays,
       crews: Number((st.calc && st.calc.crews) || 0) || 1,

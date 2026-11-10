@@ -211,7 +211,6 @@ function buildMtr(aiEstimate) {
   const ai = (aiEstimate && typeof aiEstimate === 'object') ? aiEstimate : {};
   const tp = (ai.tech_plan && typeof ai.tech_plan === 'object') ? ai.tech_plan : {};
   const out = [];
-
   const add = (name, qty, extra) => {
     if (!txt(name)) return;
     out.push(Object.assign({
@@ -238,6 +237,26 @@ function buildMtr(aiEstimate) {
       purpose: txt(m.purpose),
       price: m.price != null ? num(m.price) : null,
       note: txt(m.note)
+    });
+  });
+
+  // ── mtr_suggestions: контракт модели анализа ─────────────────────────────
+  // Модель на этапе анализа возвращает материалы/оборудование в `mtr_suggestions`
+  // (промпт PROMPT-dv-v1 просит именно это поле). Нормализатор их сохраняет, но
+  // buildMtr читал только `ai_meta.*` — контракт не совпадал, и перечень МТР
+  // терялся на переходе «анализ → просчёт». Теперь это равноправный источник.
+  arr(ai.mtr_suggestions).forEach((m) => {
+    if (!m) return;
+    const name = m.name || m.item;
+    if (!txt(name)) return;
+    if (out.some((x) => normName(x.name) === normName(name))) return;
+    add(name, m.qty || m.quantity, {
+      unit: txt(m.unit) || 'шт',
+      purpose: txt(m.purpose),
+      // 'typical' — типовой расходник, 'doc' — из документов тендера.
+      // Для сметы оба означают закупку; склад подберётся matchWarehouse.
+      source: 'purchase',
+      note: txt(m.source === 'typical' ? 'типовой расходник' : 'из документов')
     });
   });
 
@@ -458,8 +477,12 @@ function applyToSmeta(est, plan) {
   if (p.schedule && num(p.schedule.shift_hours, 0) > 0) {
     src.params = Object.assign({}, src.params || {}, { shift_hours: num(p.schedule.shift_hours) });
   }
-  if (p.schedule && num(p.schedule.shift_mode, 0) > 0) {
-    src.params = Object.assign({}, src.params || {}, { shifts_per_day: num(p.schedule.shift_mode) });
+  // `shift_mode` бывает '24/7', а num('24/7') = 0 — режим молча терялся.
+  // Понимаем и строку, и число (см. normalizeShiftMode в движке сметы).
+  const shiftModeRaw = String((p.schedule && p.schedule.shift_mode) == null ? '' : p.schedule.shift_mode).trim();
+  const shiftModeNum = shiftModeRaw === '24/7' ? 2 : num(shiftModeRaw, 0);
+  if (shiftModeNum > 0) {
+    src.params = Object.assign({}, src.params || {}, { shifts_per_day: shiftModeNum });
   }
   // GAP-10: даты работ → meta (письмо / Excel / модалка)
   const start = txt(p.schedule && (p.schedule.start_plan || p.schedule.work_start_plan));

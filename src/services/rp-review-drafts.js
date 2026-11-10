@@ -331,7 +331,14 @@ function mapMimirToReportFields(phase, estimate, chatMd) {
     try {
       const techSvc = require('./rp-tech-plan');
       techPlan = techSvc.buildTechPlan({
-        estimate: { ai_meta: estimate.ai_meta || {}, schedule: estimate.schedule, crew: estimate.crew },
+        estimate: {
+          ai_meta: estimate.ai_meta || {},
+          // МТР приходит отдельным полем модели анализа (см. PROMPT-dv-v1).
+          mtr_suggestions: estimate.mtr_suggestions
+            || (estimate.ai_meta && estimate.ai_meta.mtr_suggestions),
+          schedule: estimate.schedule,
+          crew: estimate.crew
+        },
         smeta: {},
         stock: null,
         ctx: {},
@@ -391,6 +398,8 @@ function mapMimirToReportFields(phase, estimate, chatMd) {
       equipment_needed: estimate.ai_meta.equipment_needed || estimate.equipment_needed,
       equipment_status: estimate.ai_meta.equipment_status || estimate.equipment_status,
       tech_plan: estimate.ai_meta.tech_plan || estimate.tech_plan,
+      // Контракт модели анализа: материалы приходят отдельным полем.
+      mtr_suggestions: estimate.ai_meta.mtr_suggestions || estimate.mtr_suggestions,
       warehouse: estimate.warehouse
     })
     : estimate;

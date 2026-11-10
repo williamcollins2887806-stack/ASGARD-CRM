@@ -2856,17 +2856,82 @@ module.exports = async function routesWithExtensions(fastify, options) {
     //   • заполняем ещё и описание/сроки/оплату из той же сметы.
     let smetaPrefill = null;
     let estimateSource = null;
+
+    // ── 3a. ПРИОРИТЕТ: готовый просчёт РП ───────────────────────────────────
+    // Кнопка «Создать ТКП» в канбане раньше вообще не читала `report_json`:
+    // ТКП собиралось из `tkp_quick_sessions.estimate_draft`, а такой сессии у
+    // дежурного РП нет (просчёт сделан в карточке тендера, не в Quick-wizard).
+    // Итог — пустые позиции и демо-заглушка в предпросмотре.
+    //
+    // Теперь источник истины — закрытый просчёт: цена без НДС, работы из ДВ и
+    // техплан. Positionы для заказчика строит тот же код, что и «ТКП через ИИ»
+    // (tkp-ai-draft), поэтому цифры в документе совпадают с карточкой.
+    if (tenderId) {
+      try {
+        const reviewQ = await db.query(
+          `SELECT id, work_price, work_price_ex_vat, report_json, tech_json, is_final, analysis_finalized_at
+             FROM tender_rp_reviews
+            WHERE tender_id = $1
+            ORDER BY (analysis_finalized_at IS NOT NULL) DESC, updated_at DESC NULLS LAST, id DESC
+            LIMIT 1`,
+          [tenderId]
+        );
+        const review = reviewQ.rows[0];
+        if (review) {
+          const aiDraft = require('../services/tkp-ai-draft');
+          const pricing = aiDraft.readPricing(review, { id: tenderId });
+          if (pricing && pricing.priceNoVat > 0) {
+            const techPlan = aiDraft.readTechPlan(review, pricing);
+            const workNames = aiDraft.collectWorkNames(pricing, review);
+            const summaryName = aiDraft.pickWorkTitle(prefill.subject)
+              || workNames[0]
+              || 'Выполнение работ по техническому заданию';
+            // Полное КП — разбивка по работам и МТР; короткое — одна сводная строка.
+            const clientItems = kpVariant === 'full'
+              ? aiDraft.buildItemizedClientItems({ pricing, techPlan, workNames })
+              : aiDraft.buildClientItems(pricing, { summaryName });
+            const subtotal = clientItems.reduce((s, i) => s + (Number(i.total) || 0), 0);
+            if (clientItems.length && subtotal > 0) {
+              smetaPrefill = {
+                items: clientItems,
+                vat_pct: pricing.vatPct || 22,
+                subtotal,
+                total_with_vat: _vatTotals(subtotal, pricing.vatPct || 22).total
+              };
+              estimateSource = 'rp_review';
+              // Шапка ТКП из просчёта: сроки, оплата, предмет.
+              if (!prefill.deadline && pricing.durationDays > 0) {
+                prefill.deadline = new Date(Date.now() + Number(pricing.durationDays) * 86400000)
+                  .toISOString().slice(0, 10);
+              }
+              if (!prefill.work_description && pricing.scope) {
+                prefill.work_description = String(pricing.scope).slice(0, 4000);
+              }
+            }
+          }
+        }
+      } catch (e) {
+        request.log.warn({ err: e.message }, '[tkp from-card] rp_review prefill skipped');
+      }
+    }
+
+    // ── 3b. Фолбэк: черновик Quick-сметы ────────────────────────────────────
+    // Нужен для заявок без просчёта (пре-тендер, работа) и как страховка,
+    // если по тендеру просчёт ещё не закрыт.
+    if (!smetaPrefill) {
     try {
+      // Без фильтра по автору: черновик сметы мог собрать дежурный РП или
+      // коллега — ТКП всё равно должно подхватить готовые позиции, а не
+      // показать «Итого 0 ₽» и демо-строки.
       const q = await db.query(
         `SELECT estimate_draft, status, chat_messages
            FROM tkp_quick_sessions
-          WHERE author_id = $1
-            AND estimate_draft IS NOT NULL
-            AND ( (pre_tender_id IS NOT NULL AND pre_tender_id = $2)
-               OR (tender_id     IS NOT NULL AND tender_id     = $3) )
+          WHERE estimate_draft IS NOT NULL
+            AND ( (pre_tender_id IS NOT NULL AND pre_tender_id = $1)
+               OR (tender_id     IS NOT NULL AND tender_id     = $2) )
           ORDER BY finalized_at DESC NULLS LAST, updated_at DESC NULLS LAST, id DESC
           LIMIT 1`,
-        [request.user.id, preTenderId, tenderId]
+        [preTenderId, tenderId]
       );
       if (q.rows[0] && q.rows[0].estimate_draft) {
         const ed = typeof q.rows[0].estimate_draft === 'string'
@@ -2885,7 +2950,7 @@ module.exports = async function routesWithExtensions(fastify, options) {
         }
 
         const subtotal = clientItems.reduce((s, i) => s + (Number(i.total) || 0), 0);
-        const vatPct = Number(ed.vat_pct) || 20;
+        const vatPct = Number(ed.vat_pct) || 22;
 
         if (clientItems.length) {
           smetaPrefill = {
@@ -2913,6 +2978,7 @@ module.exports = async function routesWithExtensions(fastify, options) {
     } catch (e) {
       console.warn('[tkp from-card] estimate prefill failed:', e.message);
     }
+    }
 
     // 4) RBAC: PM может создать ТКП только для своего тендера
     try {
@@ -2936,15 +3002,36 @@ module.exports = async function routesWithExtensions(fastify, options) {
       if (existing.rows[0]) {
         // D-302: если у черновика другой формат КП — обновляем его под выбор
         // пользователя, а не возвращаем молча «чужой» вариант.
+        // Антидубль: если формат КП сменили, черновик обязан пересобраться под
+        // выбор пользователя. Раньше обновлялся только `kp_variant`, а блоки
+        // оставались от прошлого формата — и «полное КП» печаталось как смета.
         const ex = existing.rows[0];
-        if (ex.kp_variant !== kpVariant) {
+        if (ex.kp_variant !== kpVariant || (ex.template_kind || template_kind) !== template_kind) {
           try {
-            await db.query('UPDATE tkp SET kp_variant = $1, updated_at = NOW() WHERE id = $2',
-              [kpVariant, ex.id]);
+            await db.query('UPDATE tkp SET kp_variant = $1, template_kind = $2, updated_at = NOW() WHERE id = $3',
+              [kpVariant, template_kind, ex.id]);
             ex.kp_variant = kpVariant;
+            ex.template_kind = template_kind;
           } catch (_) {}
         }
-        return { item: ex, template_kind: ex.template_kind || template_kind, blocks_created: 0, reused: true };
+        let blocks = [];
+        try {
+          const br = await db.query(
+            `SELECT block_key, block_data FROM tkp_blocks
+              WHERE tkp_id = $1 AND is_active = TRUE
+              ORDER BY block_order ASC, id ASC`,
+            [ex.id]
+          );
+          blocks = br.rows;
+        } catch (_) { blocks = []; }
+        return {
+          item: ex,
+          tkp_id: ex.id,
+          blocks,
+          template_kind: ex.template_kind || template_kind,
+          blocks_created: 0,
+          reused: true
+        };
       }
     } catch (_) { /* не критично, идём в insert */ }
 
@@ -2992,7 +3079,7 @@ module.exports = async function routesWithExtensions(fastify, options) {
 
       // Итог считаем из строк — чтобы «Итого» не расходилось с таблицей.
       const initialSubtotal = scopeRows.reduce((s, i) => s + (Number(i.total) || 0), 0);
-      const initialVatPct = (smetaPrefill && smetaPrefill.vat_pct) || 20;
+      const initialVatPct = (smetaPrefill && smetaPrefill.vat_pct) || 22;
       const initialItems = JSON.stringify({
         items: scopeRows,
         vat_pct: initialVatPct,
@@ -3092,7 +3179,33 @@ module.exports = async function routesWithExtensions(fastify, options) {
       });
     } catch (_) {}
 
-    return { item: newTkp, template_kind, blocks_created: _defaultBlocksForKind(template_kind).length };
+    // Контракт ответа: фронт канбана (vanilla и React v2) читает `tkp_id` и
+    // `blocks`, а бэкенд отдавал только `item`. Из-за этого предпросмотр
+    // подставлял демо-позиции, а «Сохранить/Прикрепить» молча не работали:
+    // `if (!tkpId) return`. Отдаём оба написания, сохраняя `item` для старых
+    // вызывающих.
+    let blocks = [];
+    try {
+      const br = await db.query(
+        `SELECT block_key, block_data, is_active
+           FROM tkp_blocks
+          WHERE tkp_id = $1 AND is_active = TRUE
+          ORDER BY block_order ASC, id ASC`,
+        [newTkp.id]
+      );
+      blocks = br.rows.map((b) => ({
+        block_key: b.block_key,
+        block_data: b.block_data
+      }));
+    } catch (_) { blocks = []; }
+
+    return {
+      item: newTkp,
+      tkp_id: newTkp.id,
+      blocks,
+      template_kind,
+      blocks_created: _defaultBlocksForKind(template_kind).length
+    };
   });
 
   // ─────────────────────────────────────────────────────────────────────────────
@@ -3757,7 +3870,34 @@ async function _renderTkpPdfBuffer(fastify, tkp, opts) {
   ).catch(() => ({ rows: [] }));
   const blocks = blocksRes.rows || [];
 
-  if (blocks.length > 0) {
+  if (blocks.length > 0 && tkp.kp_variant === 'full') {
+    // ── Выбранное «Полное КП» главнее блоков ────────────────────────────────
+    // Раньше блоки проверялись первыми, а `from-card` создаёт их всегда — то
+    // есть выбор формата в канбане не действовал вообще: и «короткое», и
+    // «полное» печатались одной блочной вёрсткой со сметой в теле. Теперь
+    // явный выбор пользователя имеет приоритет, блоки — фолбэк.
+    try {
+      const synth = Object.assign({}, tkp);
+      const smetaBlock = blocks.find((x) => x.block_key === 'smeta');
+      if (smetaBlock && smetaBlock.block_data) {
+        let sd = smetaBlock.block_data;
+        if (typeof sd === 'string') { try { sd = JSON.parse(sd); } catch (_) { sd = {}; } }
+        synth.items = JSON.stringify({
+          items: Array.isArray(sd.items) ? sd.items : [],
+          vat_pct: sd.vat_pct != null ? sd.vat_pct : 22,
+          subtotal: sd.subtotal || null,
+          total_with_vat: sd.total_with_vat || null
+        });
+      }
+      buffer = await generateTkpPdfKit(synth, db, pdfOpts);
+      renderedFrom = 'full';
+    } catch (err) {
+      fastify.log.warn(`[TKP pdf] full КП failed, fallback to blocks: ${err.message}`);
+      buffer = null;
+    }
+  }
+
+  if (!buffer && blocks.length > 0) {
     try {
       const html = _renderBlocksHtml(tkp, blocks);
       if (pdfGenerator && pdfGenerator.htmlToPdfBuffer) {

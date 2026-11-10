@@ -533,8 +533,17 @@ window.AsgardPersonalKanbanPage = (function () {
 .pk3-btn.pk3-sm{padding:5px 10px;font-size:12px}
 
 /* === MODALS (5 штук) === */
-.pk3-modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:500;display:none;align-items:center;justify-content:center;backdrop-filter:blur(6px);padding:30px}
-.pk3-modal-overlay.pk3-show{display:flex}
+.pk3-modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:500;display:none;align-items:center;justify-content:center;backdrop-filter:blur(6px);padding:30px;opacity:0}
+.pk3-modal-overlay.pk3-show,.pk3-modal-overlay.show,.pk3-modal-overlay.is-leaving{display:flex}
+.pk3-modal-overlay.pk3-show,.pk3-modal-overlay.show{animation:pk3-overlay-in var(--dur-modal-in,220ms) var(--ease-out,cubic-bezier(0.23,1,0.32,1)) forwards}
+.pk3-modal-overlay.pk3-show .pk3-modal,.pk3-modal-overlay.show .pk3-modal{animation:pk3-panel-in var(--dur-modal-in,220ms) var(--ease-out,cubic-bezier(0.23,1,0.32,1)) forwards}
+.pk3-modal-overlay.is-leaving{animation:pk3-overlay-out var(--dur-modal-out,180ms) var(--ease-out,cubic-bezier(0.23,1,0.32,1)) forwards;pointer-events:none}
+.pk3-modal-overlay.is-leaving .pk3-modal{animation:pk3-panel-out var(--dur-modal-out,180ms) var(--ease-out,cubic-bezier(0.23,1,0.32,1)) forwards}
+@keyframes pk3-overlay-in{from{opacity:0}to{opacity:1}}
+@keyframes pk3-overlay-out{from{opacity:1}to{opacity:0}}
+@keyframes pk3-panel-in{from{opacity:0;transform:translateY(12px) scale(0.97)}to{opacity:1;transform:translateY(0) scale(1)}}
+@keyframes pk3-panel-out{from{opacity:1;transform:translateY(0) scale(1)}to{opacity:0;transform:translateY(10px) scale(0.98)}}
+@media (prefers-reduced-motion:reduce){.pk3-modal-overlay.pk3-show,.pk3-modal-overlay.show,.pk3-modal-overlay.is-leaving,.pk3-modal-overlay.pk3-show .pk3-modal,.pk3-modal-overlay.show .pk3-modal,.pk3-modal-overlay.is-leaving .pk3-modal{animation-duration:0.01ms!important}}
 .pk3-modal{background:var(--bg1);border:1px solid var(--brd);border-radius:16px;width:92vw;max-width:1100px;height:88vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 20px 50px rgba(0,0,0,.55)}
 .pk3-modal-head{padding:14px 22px;border-bottom:1px solid var(--brd-m);display:flex;align-items:center;gap:11px;background:var(--bg2)}
 .pk3-modal-head h3{font-family:'Cinzel',Georgia,serif;font-size:16px;color:var(--t1);flex:1;margin:0;font-weight:700}
@@ -2668,9 +2677,32 @@ window.AsgardPersonalKanbanV3 = (function () {
 .pk3-modal-overlay {
   position: fixed; inset: 0; background: rgba(0,0,0,0.7); z-index: 1200;
   display: none; align-items: center; justify-content: center; padding: 28px;
-  backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px); opacity: 0;
 }
-.pk3-modal-overlay.show { display: flex; }
+.pk3-modal-overlay.show, .pk3-modal-overlay.pk3-show, .pk3-modal-overlay.is-leaving { display: flex; }
+.pk3-modal-overlay.show, .pk3-modal-overlay.pk3-show {
+  animation: pk3-overlay-in var(--dur-modal-in, 220ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)) forwards;
+}
+.pk3-modal-overlay.show .pk3-modal, .pk3-modal-overlay.pk3-show .pk3-modal {
+  animation: pk3-panel-in var(--dur-modal-in, 220ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)) forwards;
+}
+.pk3-modal-overlay.is-leaving {
+  animation: pk3-overlay-out var(--dur-modal-out, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)) forwards;
+  pointer-events: none;
+}
+.pk3-modal-overlay.is-leaving .pk3-modal {
+  animation: pk3-panel-out var(--dur-modal-out, 180ms) var(--ease-out, cubic-bezier(0.23, 1, 0.32, 1)) forwards;
+}
+@keyframes pk3-overlay-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes pk3-overlay-out { from { opacity: 1; } to { opacity: 0; } }
+@keyframes pk3-panel-in { from { opacity: 0; transform: translateY(12px) scale(0.97); } to { opacity: 1; transform: translateY(0) scale(1); } }
+@keyframes pk3-panel-out { from { opacity: 1; transform: translateY(0) scale(1); } to { opacity: 0; transform: translateY(10px) scale(0.98); } }
+@media (prefers-reduced-motion: reduce) {
+  .pk3-modal-overlay.show, .pk3-modal-overlay.pk3-show, .pk3-modal-overlay.is-leaving,
+  .pk3-modal-overlay.show .pk3-modal, .pk3-modal-overlay.pk3-show .pk3-modal, .pk3-modal-overlay.is-leaving .pk3-modal {
+    animation-duration: 0.01ms !important;
+  }
+}
 .pk3-modal {
   background: var(--bg1); border: 1px solid var(--brd); border-radius: 14px;
   width: 92vw; max-width: 1100px; height: 88vh;
@@ -3438,7 +3470,14 @@ html[data-theme="light"] .pk3-stk-float-bar { background: rgba(255,255,255,.94);
       </div>
     `;
     document.body.appendChild(overlay);
-    overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
+    const dismissCreateOverlay = () => {
+      if (overlay._pk3Closing) return;
+      overlay._pk3Closing = true;
+      overlay.classList.remove('show', 'pk3-show');
+      overlay.classList.add('is-leaving');
+      setTimeout(() => { try { overlay.remove(); } catch (_) {} }, 250);
+    };
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) dismissCreateOverlay(); });
 
     // Автозаполнение по ИНН: сперва НАША карточка контрагента (с контактами),
     // затем — DaData (findById) как fallback для названия/адреса новых клиентов.
@@ -3506,7 +3545,7 @@ html[data-theme="light"] .pk3-stk-float-bar { background: rgba(255,255,255,.94);
 
     overlay.querySelectorAll('[data-act]').forEach(b => b.addEventListener('click', async () => {
       const a = b.dataset.act;
-      if (a === 'close') return overlay.remove();
+      if (a === 'close') return dismissCreateOverlay();
       if (a === 'create') {
         const $f = (id) => overlay.querySelector('#' + id);
         const customer  = $f('pk3mc-customer').value.trim();
@@ -3565,8 +3604,8 @@ html[data-theme="light"] .pk3-stk-float-bar { background: rgba(255,255,255,.94);
           if (notes && r.data.kanban_card_id) {
             api(`/api/personal-kanban/cards/${r.data.kanban_card_id}/notes`, { method: 'POST', body: { body: notes } }).catch(() => {});
           }
-          toast('✅ Создано', `Заявка #${r.data.id} в колонке «📥 Новые»`, 'ok');
-          overlay.remove();
+          toast('Создано', `Заявка №${r.data.id} в колонке «Новые»`, 'ok');
+          dismissCreateOverlay();
           _v3LoadAndRender();
         } else {
           b.disabled = false; b.textContent = '✅ Создать заявку';
@@ -3575,7 +3614,7 @@ html[data-theme="light"] .pk3-stk-float-bar { background: rgba(255,255,255,.94);
       }
     }));
 
-    const escHandler = (e) => { if (e.key === 'Escape') { overlay.remove(); document.removeEventListener('keydown', escHandler); } };
+    const escHandler = (e) => { if (e.key === 'Escape') { dismissCreateOverlay(); document.removeEventListener('keydown', escHandler); } };
     document.addEventListener('keydown', escHandler);
   }
 
@@ -5831,10 +5870,17 @@ html[data-theme="light"] .pk3-stk-float-bar { background: rgba(255,255,255,.94);
       </div>
     `;
     document.body.appendChild(overlay);
+    const dismissDocOverlay = () => {
+      if (overlay._pk3Closing) return;
+      overlay._pk3Closing = true;
+      overlay.classList.remove('show', 'pk3-show');
+      overlay.classList.add('is-leaving');
+      setTimeout(() => { try { overlay.remove(); } catch (_) {} }, 250);
+    };
     overlay.addEventListener('click', (e) => {
-      if (e.target === overlay) overlay.remove();
+      if (e.target === overlay) dismissDocOverlay();
       const closer = e.target.closest && e.target.closest('[data-act="close"]');
-      if (closer) overlay.remove();
+      if (closer) dismissDocOverlay();
     });
 
     // 1. Загружаем JSON-представление документа.
@@ -5927,9 +5973,9 @@ html[data-theme="light"] .pk3-stk-float-bar { background: rgba(255,255,255,.94);
         const ok = await _sendFeedbackToMimir(card, feedback);
         if (ok) {
           toast('Отправлено', 'Мимир пересчитывает в фоне — обнови карту через минуту.', 'ok');
-          overlay.remove();
+          dismissDocOverlay();
         } else {
-          toast('Не отправилось', 'Не нашёл активной Quick/Conductor сессии для карты. Запусти 🚀 Quick или 🎩 Кондуктора.', 'err');
+          toast('Не отправилось', 'Не нашёл активной Quick/Кондуктор сессии для карты. Запусти Quick или Кондуктора.', 'err');
           sndBtn.disabled = false; sndBtn.textContent = '✉ Отправить Мимиру';
         }
       } catch (e) {
@@ -7477,7 +7523,12 @@ html[data-theme="light"] .pk3-stk-float-bar { background: rgba(255,255,255,.94);
   }
   function _closeTopModal() {
     const top = _modalStack.pop();
-    if (top) try { top.remove(); } catch (_) {}
+    if (!top) return;
+    if (top._pk3Closing) return;
+    top._pk3Closing = true;
+    top.classList.remove('show', 'pk3-show');
+    top.classList.add('is-leaving');
+    setTimeout(() => { try { top.remove(); } catch (_) {} }, 250);
   }
   function _closeAllModals() {
     while (_modalStack.length) _closeTopModal();
@@ -7552,8 +7603,17 @@ window.AsgardPKv3Modals = (function () {
     const st = document.createElement('style');
     st.id = 'asg-pk3-quick-fallback-styles';
     st.textContent = `
-.pk3-modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.72);z-index:20100;display:none;align-items:center;justify-content:center;padding:28px;backdrop-filter:blur(6px)}
-.pk3-modal-overlay.show{display:flex!important}
+.pk3-modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.72);z-index:20100;display:none;align-items:center;justify-content:center;padding:28px;backdrop-filter:blur(6px);opacity:0}
+.pk3-modal-overlay.show,.pk3-modal-overlay.pk3-show,.pk3-modal-overlay.is-leaving{display:flex!important}
+.pk3-modal-overlay.show,.pk3-modal-overlay.pk3-show{animation:pk3-overlay-in var(--dur-modal-in,220ms) var(--ease-out,cubic-bezier(0.23,1,0.32,1)) forwards}
+.pk3-modal-overlay.show .pk3-modal,.pk3-modal-overlay.pk3-show .pk3-modal{animation:pk3-panel-in var(--dur-modal-in,220ms) var(--ease-out,cubic-bezier(0.23,1,0.32,1)) forwards}
+.pk3-modal-overlay.is-leaving{animation:pk3-overlay-out var(--dur-modal-out,180ms) var(--ease-out,cubic-bezier(0.23,1,0.32,1)) forwards;pointer-events:none}
+.pk3-modal-overlay.is-leaving .pk3-modal{animation:pk3-panel-out var(--dur-modal-out,180ms) var(--ease-out,cubic-bezier(0.23,1,0.32,1)) forwards}
+@keyframes pk3-overlay-in{from{opacity:0}to{opacity:1}}
+@keyframes pk3-overlay-out{from{opacity:1}to{opacity:0}}
+@keyframes pk3-panel-in{from{opacity:0;transform:translateY(12px) scale(0.97)}to{opacity:1;transform:translateY(0) scale(1)}}
+@keyframes pk3-panel-out{from{opacity:1;transform:translateY(0) scale(1)}to{opacity:0;transform:translateY(10px) scale(0.98)}}
+@media (prefers-reduced-motion:reduce){.pk3-modal-overlay.show,.pk3-modal-overlay.pk3-show,.pk3-modal-overlay.is-leaving,.pk3-modal-overlay.show .pk3-modal,.pk3-modal-overlay.pk3-show .pk3-modal,.pk3-modal-overlay.is-leaving .pk3-modal{animation-duration:0.01ms!important}}
 .pk3-modal{background:var(--bg1,#16161f);border:1px solid var(--brd,#333);border-radius:14px;width:92vw;max-width:1100px;height:88vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 24px 60px rgba(0,0,0,.6);color:var(--t1,#e8e8f0)}
 .pk3-modal-head{padding:14px 20px;border-bottom:1px solid var(--brd-m,#2a2a35);display:flex;align-items:center;gap:10px}
 .pk3-modal-head h3{font-size:16px;flex:1;margin:0}
@@ -7670,14 +7730,27 @@ window.AsgardPKv3Modals = (function () {
     };
     document.addEventListener('keydown', onKey);
     overlay._closeFn = () => {
+      if (overlay._pk3Closing) return;
+      overlay._pk3Closing = true;
       document.removeEventListener('keydown', onKey);
       _pk3StackDrop(overlay);
-      try { overlay.remove(); } catch (_) {}
+      overlay.classList.remove('show', 'pk3-show');
+      overlay.classList.add('is-leaving');
+      setTimeout(() => { try { overlay.remove(); } catch (_) {} }, 250);
     };
     return overlay;
   }
   function close(overlay) {
     if (overlay && overlay._closeFn) overlay._closeFn();
+  }
+  function leavePk3Overlay(overlay) {
+    if (!overlay || !overlay.classList) return;
+    if (overlay._closeFn) { overlay._closeFn(); return; }
+    if (overlay._pk3Closing) return;
+    overlay._pk3Closing = true;
+    overlay.classList.remove('show', 'pk3-show');
+    overlay.classList.add('is-leaving');
+    setTimeout(() => { try { overlay.remove(); } catch (_) {} }, 250);
   }
 
   // ── Helpers общие для Quick / Conductor ──────────────────────────────
@@ -10776,18 +10849,17 @@ html[data-theme="light"] .pk3-qsecrow{background:var(--bg3) !important;color:var
     if (blocks.find(b => b.key === 'smeta')) {
       const smetaBlock = blocks.find(b => b.key === 'smeta');
       // Excel-style редактируемая таблица. Позиции в block_data.items, ставка в block_data.vat_pct.
-      const items = (smetaBlock.block_data && Array.isArray(smetaBlock.block_data.items) && smetaBlock.block_data.items.length)
+      //
+      // Демо-строки УБРАНЫ (10.11.2026). Раньше при пустой смете подставлялись
+      // «Подготовка 28 500», «Основные работы 42 × 14 500» и т.п. — выдуманные
+      // цифры попадали в предпросмотр и через автосейв в сам ТКП. Заказчик мог
+      // получить документ с несуществующими работами и суммами. Пусто — значит
+      // пусто, и это видно.
+      const items = (smetaBlock.block_data && Array.isArray(smetaBlock.block_data.items))
         ? smetaBlock.block_data.items
-        : [
-          { name: 'Подготовка',         unit: 'шт',     qty: 1,  price: 28500  },
-          { name: 'Основные работы',    unit: 'м²',     qty: 42, price: 14500  },
-          { name: 'Контроль качества',  unit: 'точек', qty: 16, price: 3000   },
-          { name: 'Логистика',          unit: 'компл',  qty: 1,  price: 144000 },
-          { name: 'Реагенты',           unit: 'компл',  qty: 1,  price: 370500 },
-        ];
+        : [];
       const vatPct = (smetaBlock.block_data && smetaBlock.block_data.vat_pct != null)
         ? Number(smetaBlock.block_data.vat_pct) : 22;
-      // Сохраняем дефолты обратно в blocks для autosave (если пусто).
       if (!smetaBlock.block_data || !Array.isArray(smetaBlock.block_data.items)) {
         smetaBlock.block_data = { items, vat_pct: vatPct };
       }

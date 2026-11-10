@@ -1099,7 +1099,21 @@ function normalizeCalcPlan(ai, opts) {
    * Если и на максимуме бригад в окно не влезаем — срок честно остаётся
    * больше окна с предупреждением. Подгонять цифру нельзя.
    */
-  const totalCrewDays = positions.reduce((s, p) => s + (Number(p.days) || 0), 0);
+  // ── Трудоёмкость плана: люди × сутки ──────────────────────────────────────
+  // Было: `totalCrewDays = Σ days` — то есть 10 позиций по 5 человек и по одним
+  // суткам давали 10 «бригадо-суток» вместо 50 чел·суток. Срок и, как следствие,
+  // себестоимость не зависели от того, сколько людей реально нужно.
+  //
+  // Теперь считаем в двух мерах:
+  //   • personDays — человеко-сутки (people × days), реальный объём труда;
+  //   • crewDays   — бригадо-сутки (days × бригад на позицию), из них срок.
+  // Бригад на позицию = ceil(people / CREW_SIZE): если нужно 12 человек, это
+  // три бригады по 5, а не одна, которая «растянется». Так и объём, и срок
+  // растут от позиций, и малая бригада не даёт заниженный срок.
+  const personDays = positions.reduce(
+    (s, p) => s + Math.max(1, Number(p.people) || 1) * Math.max(0, Number(p.days) || 0),
+    0
+  );
   const windowDays = Number(opts && opts.window_days) > 0 ? Number(opts.window_days) : null;
 
   // ── Трудоёмкость из ТЗ: срок считаем по часам, а не по нормам ────────────
@@ -1131,27 +1145,32 @@ function normalizeCalcPlan(ai, opts) {
     })
     : null;
 
-  /**
-   * Состав одной бригады: 1 мастер + 4 слесаря = 5 человек. Это рабочая
-   * единица, а не «сколько модель написала в people». Раньше брали максимум
-   * people по позициям и умножали на бригады — выходило «2 бригады по 10»,
-   * хотя по факту это 4 бригады по 5.
-   */
+  // ── Бригады и срок ────────────────────────────────────────────────────────
+  // Бригада — рабочая единица: 1 мастер + до 4 слесарей (CREW_SIZE).
   const CREW_SIZE = Math.max(2, Number(opts && opts.crew_size) || 5);
   const maxWorkersPerCrew = Math.max(1, CREW_SIZE - 1);
-
-  // Сколько бригад максимум: считаем по людям, а не по настройке постов.
   const maxCrews = Math.max(2, Number(opts && opts.max_crews) || 6);
 
+  // Бригадо-сутки: сколько бригад одновременно занято на позиции × её сутки.
+  // 12 человек на 2 суток = 3 бригады × 2 сут = 6 бригадо-суток.
+  const crewDays = positions.reduce((s, p) => {
+    const people = Math.max(1, Number(p.people) || 1);
+    const days = Math.max(0, Number(p.days) || 0);
+    return s + Math.ceil(people / CREW_SIZE) * days;
+  }, 0);
+
+  // Сколько бригад ставим: чтобы уложиться в окно заказчика (если оно есть).
   let crews = 1;
   if (windowDays) {
-    crews = Math.ceil(totalCrewDays / windowDays);
+    crews = Math.ceil(crewDays / windowDays);
     crews = Math.min(Math.max(crews, 1), maxCrews);
   } else {
-    crews = totalCrewDays > 90 ? maxCrews : (totalCrewDays > 30 ? Math.min(2, maxCrews) : 1);
+    crews = crewDays > 90 ? maxCrews : (crewDays > 30 ? Math.min(2, maxCrews) : 1);
   }
 
-  const rawDays = crews > 0 ? totalCrewDays / crews : totalCrewDays;
+  // Срок = бригадо-сутки / число бригад. Работы делятся между бригадами
+  // поровну и идут параллельно, поэтому срок падает с ростом числа бригад.
+  const rawDays = crews > 0 ? crewDays / crews : crewDays;
   const workDays = Math.round(rawDays * 100) / 100;
 
   // Бригады: в каждой 1 мастер + до 4 слесарей. На все бригады — один ИТР.
@@ -1228,7 +1247,10 @@ function normalizeCalcPlan(ai, opts) {
     // наблюдающий, химик, ПТО). Это уходит в техплан и в смету.
     crew: crewRows,
     crew_breakdown: crewList,
-    total_crew_days: Math.round(totalCrewDays * 100) / 100,
+    // `total_crew_days` — историческое имя, но смысл теперь бригадо-сутки:
+    // от них считается срок (crewDays / число бригад). Человеко-сутки — отдельно.
+    total_crew_days: Math.round(crewDays * 100) / 100,
+    person_days: Math.round(personDays * 100) / 100,
     window_days: windowDays,
     fits_window: windowDays ? fitsWindow : null,
     // Сумма бригад по всем позициям — не «люди на объекте», а объём работ.
