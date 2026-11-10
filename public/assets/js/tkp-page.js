@@ -153,6 +153,18 @@ window.AsgardTkpPage = (function() {
       '.tkp-tbl-btn{display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:6px;border:1px solid var(--brd);background:transparent;color:var(--t1);cursor:pointer;transition:all .15s;padding:0}' +
       '.tkp-tbl-btn:hover{border-color:var(--blue);color:var(--blue);background:rgba(30,77,140,0.06)}' +
       '.tkp-tbl-btn svg{width:15px;height:15px;stroke:currentColor}' +
+      // Компактные действия в таблице: три значка + меню «⋯».
+      '.tkp-actions{white-space:nowrap;text-align:right}' +
+      '.tkp-more{position:relative;display:inline-block}' +
+      '.tkp-more__menu{position:absolute;right:0;top:calc(100% + 4px);z-index:60;min-width:190px;' +
+        'background:var(--bg1);border:1px solid var(--brd);border-radius:10px;padding:5px;' +
+        'box-shadow:0 12px 32px rgba(0,0,0,.32);display:flex;flex-direction:column;gap:2px}' +
+      '.tkp-more__menu[hidden]{display:none}' +
+      '.tkp-more__menu button{display:block;width:100%;text-align:left;padding:8px 10px;border:0;background:transparent;' +
+        'color:var(--t1);font-size:12.5px;border-radius:7px;cursor:pointer;white-space:nowrap}' +
+      '.tkp-more__menu button:hover{background:var(--bg3);color:var(--blue)}' +
+      '.tkp-more__menu button.is-danger{color:var(--err-t,#c0392b)}' +
+      '.tkp-more__menu button.is-danger:hover{background:rgba(192,57,43,.1);color:var(--err-t,#c0392b)}' +
 
       // ── PDF Dialog (compact) ──
       '.pdf-dlg{padding:4px 0}' +
@@ -442,16 +454,25 @@ window.AsgardTkpPage = (function() {
           '<td style="text-align:right">' + (i.total_sum ? fmt(i.total_sum) : '—') + '</td>' +
           '<td><span style="color:' + st.color + ';font-weight:600">' + st.label + '</span></td>' +
           '<td>' + (i.created_at ? new Date(i.created_at).toLocaleDateString('ru-RU') : '') + '</td>' +
-          '<td style="white-space:nowrap">' +
+          '<td class="tkp-actions">' +
+            // Компактно: три частых действия значками, остальное — в меню «⋯».
+            // Семь кнопок в ряд выглядели громоздко и растягивали таблицу.
             '<button class="tkp-tbl-btn" data-action="edit" data-id="' + i.id + '" title="Редактировать"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>' +
-            '<button class="tkp-tbl-btn" data-action="copy" data-id="' + i.id + '" title="Копировать ТКП"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg></button>' +
             '<button class="tkp-tbl-btn" data-action="pdf" data-id="' + i.id + '" title="Скачать PDF"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14,2 14,8 20,8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg></button>' +
-            '<button class="tkp-tbl-btn" data-action="excel" data-id="' + i.id + '" title="Скачать Excel" style="color:#1B7340"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14,2 14,8 20,8"/><line x1="9" y1="13" x2="15" y2="19"/><line x1="15" y1="13" x2="9" y2="19"/></svg></button>' +
             '<button class="tkp-tbl-btn" data-action="send" data-id="' + i.id + '" title="Отправить"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 2L11 13"/><path d="M22 2L15 22 11 13 2 9z"/></svg></button>' +
-            '<button class="tkp-tbl-btn" data-action="decision" data-id="' + i.id + '" title="Решение клиента" style="color:var(--blue)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg></button>' +
-            // Удаление: автор или администратор. Права проверяет сервер, кнопку
-            // показываем только тем, кому она реально сработает.
-            (canDeleteTkp(i) ? '<button class="tkp-tbl-btn" data-action="delete" data-id="' + i.id + '" title="Удалить ТКП" style="color:var(--err-t, #c0392b)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3,6 5,6 21,6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a2 2 0 012-2h2a2 2 0 012 2v2"/></svg></button>' : '') +
+            '<div class="tkp-more">' +
+              '<button type="button" class="tkp-tbl-btn tkp-more__btn" data-more="' + i.id + '" title="Ещё действия">' +
+                '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="5" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="12" cy="19" r="1.6"/></svg>' +
+              '</button>' +
+              '<div class="tkp-more__menu" data-more-menu="' + i.id + '" hidden>' +
+                '<button type="button" data-action="copy" data-id="' + i.id + '">Копировать</button>' +
+                '<button type="button" data-action="excel" data-id="' + i.id + '">Скачать Excel</button>' +
+                '<button type="button" data-action="decision" data-id="' + i.id + '">Решение клиента</button>' +
+                (canDeleteTkp(i)
+                  ? '<button type="button" class="is-danger" data-action="delete" data-id="' + i.id + '">Удалить ТКП</button>'
+                  : '') +
+              '</div>' +
+            '</div>' +
           '</td></tr>';
       }).join('') : '<tr><td colspan="10" style="text-align:center;padding:24px;color:var(--t3)">Нет ТКП по выбранным фильтрам</td></tr>') +
       '</tbody></table></div>';
@@ -508,6 +529,27 @@ window.AsgardTkpPage = (function() {
     el.querySelectorAll('[data-action="delete"]').forEach(function(b) {
       b.addEventListener('click', function() { confirmDeleteTkp(b.dataset.id); });
     });
+
+    // ── Меню «⋯» ──────────────────────────────────────────────────────────────
+    // Одно открытое меню за раз; клик вне таблицы закрывает. Без этого меню
+    // оставалось висеть поверх соседних строк после навигации.
+    el.querySelectorAll('[data-more]').forEach(function(btn) {
+      btn.addEventListener('click', function(ev) {
+        ev.stopPropagation();
+        const id = btn.getAttribute('data-more');
+        el.querySelectorAll('[data-more-menu]').forEach(function(m) {
+          if (m.getAttribute('data-more-menu') !== id) m.hidden = true;
+        });
+        const menu = el.querySelector('[data-more-menu="' + id + '"]');
+        if (menu) menu.hidden = !menu.hidden;
+      });
+    });
+    if (!el._tkpMoreBound) {
+      el._tkpMoreBound = true;
+      document.addEventListener('click', function() {
+        el.querySelectorAll('[data-more-menu]').forEach(function(m) { m.hidden = true; });
+      });
+    }
   }
 
   /** Может ли текущий пользователь удалить это ТКП (автор или администратор). */

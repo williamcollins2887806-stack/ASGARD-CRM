@@ -103,7 +103,11 @@ check('реестр: кнопка удаления и подтверждение
 
 check('реестр: кнопка только автору или админу', () => {
   assert.ok(/function canDeleteTkp/.test(PAGE), 'нет проверки прав на фронте');
-  assert.ok(/canDeleteTkp\(i\) \?/.test(PAGE), 'кнопка показывается всем');
+  assert.ok(/canDeleteTkp\(i\)/.test(PAGE), 'права не проверяются при рендере строки');
+  // Кнопка удаления теперь в меню «⋯», но условие показа осталось тем же.
+  assert.ok(/canDeleteTkp\(i\)\s*\n?\s*\?\s*'<button[^']*is-danger[^']*data-action="delete"/.test(PAGE)
+    || /canDeleteTkp\(i\)[\s\S]{0,160}data-action="delete"/.test(PAGE),
+    'кнопка удаления не привязана к правам');
   // КРИТИЧНО: в auth.js экспорт называется getAuth(), а не getUser().
   // С getUser() проверка молча возвращала пустого пользователя, и кнопка
   // не показывалась НИКОМУ, хотя весь остальной код был на месте.
