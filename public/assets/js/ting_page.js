@@ -1279,7 +1279,15 @@
         if (desktopNoPrevCam) {
           stream = await navigator.mediaDevices.getUserMedia({ video: false, audio: true });
         } else {
-          stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+          /* Максимум качества сразу: без явного разрешения браузер отдаёт
+             640×480, и этот же трек уходит в звонок. «ideal» безопасен —
+             слабая камера просто вернёт свой максимум. */
+          const hd = { width: { ideal: 3840 }, height: { ideal: 2160 }, frameRate: { ideal: 30 } };
+          try {
+            stream = await navigator.mediaDevices.getUserMedia({ video: hd, audio: true });
+          } catch (_) {
+            stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+          }
         }
       } catch (_) {
         /* Камера занята/запрещена — всё равно берём микрофон для эквалайзера */
@@ -1557,21 +1565,23 @@
     const usable = cams.filter((c) => c.score > -50);
     const list = [];
     const bestId = usable[0] && usable[0].deviceId ? usable[0].deviceId : '';
-    /* 1080p первым: «идеал» не ломает слабые камеры (браузер отдаст что есть),
-       но на нормальной камере даёт честный FULL HD вместо замыленного 720p.
-       Дальше — 720p и мягкие варианты как раньше. */
+    /* 4K первым: «ideal» не ломает слабые камеры (браузер отдаст что есть),
+       но 4K-камера на ТВ/ноуте даёт настоящее 4K, а не растянутое 720p.
+       Дальше — 1440p/1080p/720p и мягкие варианты. */
+    const steps = [
+      { width: { ideal: 3840 }, height: { ideal: 2160 } },
+      { width: { ideal: 2560 }, height: { ideal: 1440 } },
+      { width: { ideal: 1920 }, height: { ideal: 1080 } },
+      { width: { ideal: 1280 }, height: { ideal: 720 } }
+    ];
     if (bestId) {
-      list.push({
-        deviceId: { ideal: bestId },
-        width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: { ideal: 30 }
-      });
-      list.push({
-        deviceId: { ideal: bestId },
-        width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 }
+      steps.forEach((s) => {
+        list.push({ deviceId: { ideal: bestId }, width: s.width, height: s.height, frameRate: { ideal: 30 } });
       });
     }
-    list.push({ width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: { ideal: 30 } });
-    list.push({ width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 } });
+    steps.forEach((s) => {
+      list.push({ width: s.width, height: s.height, frameRate: { ideal: 30 } });
+    });
     list.push({ frameRate: { ideal: 30 } });
     list.push(true);
     /* VGA — только fallback. */
@@ -1671,6 +1681,26 @@
   }
 
   /**
+   * Реальное разрешение живого трека. Лобби/превью часто открывает камеру
+   * «как получится» (video: true → 640×480). Если такой трек переиспользовать
+   * в звонке, энкодер h1080 растягивает его и зритель видит 360–480p.
+   * Порог 720p: ниже — переоткрываем камеру с явным пресетом.
+   */
+  function previewTrackIsHd(track) {
+    try {
+      if (!track || typeof track.getSettings !== 'function') return false;
+      const s = track.getSettings() || {};
+      const w = Number(s.width) || 0;
+      const h = Number(s.height) || 0;
+      /* Порог 720p: ниже — переоткрываем камеру с явным пресетом. 4K-камеры
+         проходят сюда с большим запасом. */
+      return w >= 1280 && h >= 720;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /**
    * Камера: getUserMedia ПЕРВЫМ, публикация готового трека.
    * Корень отказа в PWA на Windows: getUserMedia висит, пока не нажмут
    * в диалоге разрешения, а диалог уходит за окно приложения.
@@ -1706,11 +1736,13 @@
     } catch (_) { /* */ }
 
     let stoppedLive = false;
-    /* Переиспользуем live preview MST, если есть — без второго getUserMedia. */
+    /* Переиспользуем live preview MST, ТОЛЬКО если он реально HD. Лобби исторически
+       открывало камеру без требований к разрешению (video: true → 640×480), и этот
+       же трек уходил в звонок: h1080-энкодер растягивал 480p → «144/360p» на ТВ. */
     let reusedMst = null;
     if (state.previewStream) {
       const vt = state.previewStream.getVideoTracks()[0];
-      if (vt && vt.readyState === 'live') {
+      if (vt && vt.readyState === 'live' && previewTrackIsHd(vt)) {
         reusedMst = vt;
         try { state.previewStream.getAudioTracks().forEach((t) => { try { t.stop(); } catch (_) { /* */ } }); } catch (_) { /* */ }
         state.previewStream = null;
@@ -1766,6 +1798,8 @@
           if (LK.VideoPresets.h180) layers.push(LK.VideoPresets.h180);
           if (LK.VideoPresets.h360) layers.push(LK.VideoPresets.h360);
           if (LK.VideoPresets.h720) layers.push(LK.VideoPresets.h720);
+          if (LK.VideoPresets.h1080) layers.push(LK.VideoPresets.h1080);
+          if (LK.VideoPresets.h1440) layers.push(LK.VideoPresets.h1440);
           if (layers.length) {
             pubOpts.videoSimulcastLayers = layers;
             pubOpts.simulcast = true;
@@ -1777,6 +1811,14 @@
         15000,
         'Timeout starting video source'
       );
+      /* Фактическое разрешение публикации — в консоль, чтобы «360p» больше
+         не диагностировать на глаз. */
+      try {
+        const s = (track && track.mediaStreamTrack && typeof track.mediaStreamTrack.getSettings === 'function')
+          ? track.mediaStreamTrack.getSettings() : {};
+        console.info('[Ting] published camera', (s.width || '?') + 'x' + (s.height || '?'),
+          'fps', s.frameRate || '?');
+      } catch (_) { /* */ }
       state.camOn = room.localParticipant.isCameraEnabled === true;
       return true;
     } catch (e) {
@@ -3085,13 +3127,15 @@
         if (LK.VideoPresets.h180) layers.push(LK.VideoPresets.h180);
         if (LK.VideoPresets.h360) layers.push(LK.VideoPresets.h360);
         if (LK.VideoPresets.h720) layers.push(LK.VideoPresets.h720);
+        if (LK.VideoPresets.h1080) layers.push(LK.VideoPresets.h1080);
+        if (LK.VideoPresets.h1440) layers.push(LK.VideoPresets.h1440);
         opts.publishDefaults = {
           simulcast: true,
           videoSimulcastLayers: layers,
-          /* 1080p-битрейт: при 720p-энкодинге «дорогая» картинка упиралась
-             в ~1.7 Мбит/с и мылилась даже на быстром интернете. */
-          videoEncoding: (LK.VideoPresets.h1080 && LK.VideoPresets.h1080.encoding)
-            || (LK.VideoPresets.h720 && LK.VideoPresets.h720.encoding) || undefined
+          /* 4K-битрейт, если камера/канал тянут; иначе остаётся 1080p. Слои
+             дают слабому зрителю низкий ярус — подстройка под скорость. */
+          videoEncoding: (LK.VideoPresets.h2160 && LK.VideoPresets.h2160.encoding)
+            || (LK.VideoPresets.h1080 && LK.VideoPresets.h1080.encoding) || undefined
         };
       }
     } catch (_) { /* */ }
@@ -3099,23 +3143,97 @@
   }
 
   /**
-   * Поднять качество видео у ЗРИТЕЛЯ для одной публикации.
-   * Вызывается ровно один раз при подписке (TrackSubscribed), а не после
-   * каждой перерисовки: повторные setVideoQuality(HIGH) гоняют лишний
-   * трафик и добавляют задержку видео.
+   * Лестница качества видео у ЗРИТЕЛЯ: HIGH → MEDIUM → LOW по фактическому
+   * качеству соединения. Задача — «лучшая картинка, но сама проседает под
+   * скорость». Форсировать HIGH навсегда нельзя: на слабом канале это даёт
+   * фризы и дропы, поэтому шагаем вниз, а при восстановлении — обратно вверх.
+   *
+   * Ключ — identity участника: у одного человека может быть несколько
+   * публикаций (камера + экран), лестницу ведём на каждую отдельно.
    */
-  function bumpPublicationQuality(pub) {
-    /* При adaptiveStream HIGH конфликтует с setVideoDimensions — не форсим. */
-    try {
-      if (typeof window !== 'undefined' && window.innerWidth <= 820) return;
-    } catch (_) { /* */ }
+  const videoQualityLadder = new Map(); // key -> 'high' | 'medium' | 'low'
+  const videoQualityStep = { high: 'medium', medium: 'low', low: 'low' };
+  const videoQualityStepUp = { low: 'medium', medium: 'high', high: 'high' };
+
+  function qualityEnum(level) {
+    const LK = window.LivekitClient;
+    if (!LK || !LK.VideoQuality) return undefined;
+    if (level === 'low') return LK.VideoQuality.LOW;
+    if (level === 'medium') return LK.VideoQuality.MEDIUM;
+    return LK.VideoQuality.HIGH;
+  }
+
+  function applyVideoQuality(pub, level) {
     const LK = window.LivekitClient;
     if (!pub || !LK || !LK.VideoQuality) return;
     try {
       if (pub.kind && pub.kind !== 'video') return;
-      if (typeof pub.setVideoQuality === 'function') {
-        pub.setVideoQuality(LK.VideoQuality.HIGH);
+      if (typeof pub.setVideoQuality !== 'function') return;
+      pub.setVideoQuality(qualityEnum(level));
+    } catch (_) { /* */ }
+  }
+
+  function publicationQualityKey(pub, participant) {
+    const id = (participant && participant.identity) || '';
+    const sid = (pub && (pub.trackSid || (pub.track && pub.track.sid))) || '';
+    return id + '|' + sid;
+  }
+
+  /** Стартовая ступень: лучшее качество, дальше решает связь. */
+  function startPublicationQuality(pub, participant) {
+    /* adaptiveStream сам выбирает слой по размеру тайла — не мешаем. */
+    try {
+      if (typeof window !== 'undefined' && window.innerWidth <= 820) return;
+    } catch (_) { /* */ }
+    const key = publicationQualityKey(pub, participant);
+    if (!key || key === '|') return;
+    videoQualityLadder.set(key, 'high');
+    applyVideoQuality(pub, 'high');
+  }
+
+  /**
+   * Реакция на качество связи. LiveKit отдаёт одно значение на участника,
+   * поэтому при ухудшении опускаем ВСЕ его видео-публикации, при
+   * восстановлении — поднимаем на ступень (не сразу в HIGH, чтобы не
+   * раскачивать канал).
+   */
+  function tuneQualityForConnection(room, quality, participant) {
+    const id = participant && participant.identity;
+    if (!room || !id) return;
+    const q = String(quality || '').replace(/^ConnectionQuality\./, '').toLowerCase();
+    const remote = room.remoteParticipants && room.remoteParticipants.get
+      ? room.remoteParticipants.get(id)
+      : null;
+    const pubs = [];
+    const collect = (p) => {
+      if (!p || !p.videoTrackPublications) return;
+      p.videoTrackPublications.forEach((pub) => { if (pub) pubs.push(pub); });
+    };
+    collect(remote);
+    if (!pubs.length) return;
+
+    pubs.forEach((pub) => {
+      const key = publicationQualityKey(pub, { identity: id });
+      const cur = videoQualityLadder.get(key) || 'high';
+      let next = cur;
+      if (q === 'excellent') next = videoQualityStepUp[cur];
+      else if (q === 'good') next = cur;            // держим текущую ступень
+      else if (q === 'poor') next = videoQualityStep[cur];
+      else if (q === 'lost') next = 'low';
+      else next = cur;
+      if (next !== cur) {
+        videoQualityLadder.set(key, next);
+        applyVideoQuality(pub, next);
+        console.info('[Ting] quality', id.slice(0, 12), q, cur, '→', next);
       }
+    });
+  }
+
+  function bumpPublicationQuality(pub, participant) {
+    startPublicationQuality(pub, participant);
+    /* Тайл мог появиться/переехать — в режиме низкой скорости сразу скрываем. */
+    try {
+      if (window.TingRoomCore && TingRoomCore.lowSpeed) TingRoomCore.lowSpeed.refreshTiles();
     } catch (_) { /* */ }
   }
 
@@ -3139,6 +3257,15 @@
       if (p && p.identity) want.add(p.identity);
     });
     const map = collectTilesMap();
+    /* Режим низкой скорости: новые/переехавшие тайлы тоже должны быть скрыты. */
+    try {
+      if (window.TingRoomCore && TingRoomCore.lowSpeed) {
+        TingRoomCore.lowSpeed.setLocalIdFn(function () {
+          return (room.localParticipant && room.localParticipant.identity) || state.myIdentity;
+        });
+        TingRoomCore.lowSpeed.refreshTiles();
+      }
+    } catch (_) { /* */ }
     let removed = 0;
     Object.keys(map).forEach((id) => {
       if (!want.has(id)) {
@@ -3197,7 +3324,7 @@
           syncRemoteAudio(room);
           return;
         }
-        bumpPublicationQuality(pub);
+        bumpPublicationQuality(pub, participant);
         const id = participant && participant.identity;
         const tile = id && document.querySelector('#ting-stage .ting-tile[data-id="' + id + '"], #ting-filmstrip .ting-tile[data-id="' + id + '"]');
         if (tile && track && track.kind === 'video') {
@@ -3251,7 +3378,7 @@
             if (lp) applyTileMuteState(lp.identity || state.myIdentity, { mic: !state.micOn });
             return;
           }
-          bumpPublicationQuality(pub);
+          bumpPublicationQuality(pub, participant);
           const id = lp && lp.identity;
           const tile = id && document.querySelector('#ting-stage .ting-tile[data-id="' + id + '"], #ting-filmstrip .ting-tile[data-id="' + id + '"]');
           if (tile && pub && pub.track && pub.track.kind === 'video') {
@@ -3437,9 +3564,25 @@
         room.on(LK.RoomEvent.ConnectionQualityChanged, (quality, participant) => {
           try {
             const local = room.localParticipant;
-            if (participant && local && participant.identity !== local.identity) return;
-            const q = (quality && quality.toString) ? quality.toString() : String(quality || '');
-            state.connQuality = q.replace(/^ConnectionQuality\./, '').toLowerCase();
+            const isRemote = !!(participant && local && participant.identity !== local.identity);
+            const qRaw = (quality && quality.toString) ? quality.toString() : String(quality || '');
+            const qNorm = qRaw.replace(/^ConnectionQuality\./, '').toLowerCase();
+            /* Режим низкой скорости: скрываем видео КОНКРЕТНОГО участника
+               с плохим каналом (id обязателен), своё — только сигналим. */
+            const who = (participant && participant.identity) || null;
+            if (isRemote) {
+              tuneQualityForConnection(room, quality, participant);
+              try {
+                if (window.TingRoomCore && TingRoomCore.lowSpeed) TingRoomCore.lowSpeed.note(qNorm, who);
+              } catch (_) { /* */ }
+              return;
+            }
+            /* Свой канал плохой — нас плохо видят. Видео своё не скрываем. */
+            try {
+              if (window.TingRoomCore && TingRoomCore.lowSpeed) TingRoomCore.lowSpeed.note(qNorm, null);
+            } catch (_) { /* */ }
+            const q = qRaw;
+            state.connQuality = qNorm;
             const el = qs('#ting-quality');
             if (el || state.view === 'room') {
               if (state.view === 'room' && !el) {

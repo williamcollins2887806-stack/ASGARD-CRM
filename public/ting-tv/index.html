@@ -5,14 +5,14 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="ting-tv" content="1" />
   <title>Тинг Переговорка</title>
-  <link rel="icon" type="image/svg+xml" href="/assets/img/ting-logo.svg?v=20.28.498" />
-  <link rel="stylesheet" href="/assets/css/design-tokens.css?v=20.28.498" />
-  <link rel="stylesheet" href="/assets/css/ting.css?v=20.28.498" />
-  <link rel="stylesheet" href="/assets/css/ting-tv.css?v=20.28.498" />
-  <script src="/assets/vendor/livekit-client.umd.min.js?v=20.28.498"></script>
-  <script src="/assets/js/ting_icons.js?v=20.28.498"></script>
-  <script src="/assets/js/ting_common.js?v=20.28.498"></script>
-  <script src="/assets/js/ting_room_core.js?v=20.28.498"></script>
+  <link rel="icon" type="image/svg+xml" href="/assets/img/ting-logo.svg?v=20.28.499" />
+  <link rel="stylesheet" href="/assets/css/design-tokens.css?v=20.28.499" />
+  <link rel="stylesheet" href="/assets/css/ting.css?v=20.28.499" />
+  <link rel="stylesheet" href="/assets/css/ting-tv.css?v=20.28.499" />
+  <script src="/assets/vendor/livekit-client.umd.min.js?v=20.28.499"></script>
+  <script src="/assets/js/ting_icons.js?v=20.28.499"></script>
+  <script src="/assets/js/ting_common.js?v=20.28.499"></script>
+  <script src="/assets/js/ting_room_core.js?v=20.28.499"></script>
 </head>
 <body class="ting-tv">
   <div class="ttv-screen" id="startView">
@@ -403,20 +403,39 @@
     } catch (_) { /* */ }
   }
 
-  /* Публикация камеры: 1080p по возможности, но без падения на слабых камерах
-     (h1080 → h720 → дефолт). На ТВ «пиксели» были именно из-за жёсткого h720. */
+  /* Публикация камеры: максимум качества, которое реально тянет камера.
+     Камеры на ТВ бывают 4K, поэтому лестница 4K → 1440p → 1080p → 720p:
+     берём первый пресет, который устройство отдало, и НЕ растягиваем слабое.
+     Реальное разрешение пишем в консоль — иначе «сколько на самом деле»
+     приходится угадывать. */
+  function cameraPresets(LK) {
+    var out = [];
+    try {
+      if (LK.VideoPresets) {
+        ['h2160', 'h1440', 'h1080', 'h720'].forEach(function (k) {
+          if (LK.VideoPresets[k] && LK.VideoPresets[k].resolution) out.push(LK.VideoPresets[k]);
+        });
+      }
+    } catch (_) { /* */ }
+    if (!out.length) out.push(null);
+    return out;
+  }
+
+  function logPublishedCamera(track) {
+    try {
+      var mst = track && (track.mediaStreamTrack || track);
+      var s = mst && typeof mst.getSettings === 'function' ? mst.getSettings() : {};
+      if (s && s.width) console.info('[TingTV] camera', s.width + 'x' + s.height, 'fps', s.frameRate || '?');
+    } catch (_) { /* */ }
+  }
+
   async function enableLocalCamera(lkRoom) {
     var LK = window.LivekitClient;
     var busyRe = /NotReadable|Device in use|Could not start|AbortError|Permission|Timeout starting video|Timed out|Overconstrained|publication promise/i;
     stopPreview();
     await unpublishLocalCamera(lkRoom);
     await new Promise(function (r) { setTimeout(r, 400); });
-    var presets = [];
-    try {
-      if (LK.VideoPresets && LK.VideoPresets.h1080) presets.push(LK.VideoPresets.h1080);
-      if (LK.VideoPresets && LK.VideoPresets.h720) presets.push(LK.VideoPresets.h720);
-    } catch (_) { /* */ }
-    if (!presets.length) presets.push(null);
+    var presets = cameraPresets(LK);
     var lastErr = null;
     for (var p = 0; p < presets.length; p++) {
       var preset = presets[p];
@@ -433,6 +452,7 @@
             var pubOpts = {};
             try { if (LK.Track && LK.Track.Source) pubOpts.source = LK.Track.Source.Camera; } catch (_) { /* */ }
             await withTimeout(lkRoom.localParticipant.publishTrack(track, pubOpts), 15000, 'Timeout starting video source');
+            logPublishedCamera(track);
             return true;
           }
           var camOpts = {};
@@ -533,14 +553,34 @@
     } catch (_) { /* */ }
   }
 
+  /* Разрешение превью/захвата. 4K — только если камера его реально отдаёт;
+     браузер сам понизит до возможного (ideal, не exact). */
+  var CAPTURE_RES = (function () {
+    try {
+      var LK = window.LivekitClient;
+      if (LK && LK.VideoPresets) {
+        if (LK.VideoPresets.h2160) return LK.VideoPresets.h2160.resolution;
+        if (LK.VideoPresets.h1440) return LK.VideoPresets.h1440.resolution;
+        if (LK.VideoPresets.h1080) return LK.VideoPresets.h1080.resolution;
+      }
+    } catch (_) { /* */ }
+    return { width: 1920, height: 1080 };
+  })();
+
   async function ensurePreview() {
     stopPreview();
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) return;
-    /* ideal, не exact: на ТВ deviceId часто протухает после перезагрузки WebView */
+    /* ideal, не exact: на ТВ deviceId часто протухает после перезагрузки WebView.
+       Разрешение максимальное из возможных — камеры на ТВ бывают 4K. */
+    var hdVideo = {
+      width: { ideal: CAPTURE_RES.width },
+      height: { ideal: CAPTURE_RES.height },
+      frameRate: { ideal: 30 }
+    };
     var constraints = {
       audio: state.micDeviceId ? { deviceId: { ideal: state.micDeviceId } } : true,
       video: state.camOn
-        ? (state.camDeviceId ? { deviceId: { ideal: state.camDeviceId } } : true)
+        ? (state.camDeviceId ? { deviceId: { ideal: state.camDeviceId }, width: hdVideo.width, height: hdVideo.height, frameRate: hdVideo.frameRate } : hdVideo)
         : false
     };
     try {
@@ -557,13 +597,13 @@
       }
       await refreshDevices();
     } catch (e) {
-      /* Сброс протухшего deviceId и повтор без привязки */
+      /* Сброс протухшего deviceId и повтор без привязки (HD сохраняем) */
       state.camDeviceId = '';
       state.micDeviceId = '';
       try {
         state.previewStream = await navigator.mediaDevices.getUserMedia({
           audio: true,
-          video: state.camOn
+          video: state.camOn ? hdVideo : false
         });
         state.previewStream.getAudioTracks().forEach(function (tr) { tr.enabled = state.micOn; });
         var v2 = qs('previewVideo');
@@ -586,7 +626,7 @@
         await refreshDevices();
       } catch (__){
         try {
-          state.previewStream = await navigator.mediaDevices.getUserMedia({ audio: false, video: true });
+          state.previewStream = await navigator.mediaDevices.getUserMedia({ audio: false, video: hdVideo });
           await refreshDevices();
         } catch (___){
           state.micOn = false;
@@ -632,6 +672,12 @@
   function attachTrack(track, id, name, isLocal) {
     var stage = qs('stage');
     if (!stage || !track) return;
+    /* Диагностика качества: какое разрешение реально пришло в тайл. */
+    try {
+      var ms = track && track.mediaStreamTrack;
+      var st = ms && typeof ms.getSettings === 'function' ? ms.getSettings() : null;
+      if (st) console.info('[TingTV] track', (st.width || '?') + 'x' + (st.height || '?'), String(name || id).slice(0, 24));
+    } catch (_) { /* */ }
     var tile = stage.querySelector('[data-id="' + id + '"]') || document.querySelector('#filmstrip [data-id="' + id + '"]');
     if (!tile) {
       tile = document.createElement('div');
@@ -996,6 +1042,15 @@
       if (!seen[id]) tile.remove();
     });
     syncRemoteAudio(state.room);
+    /* Низкая скорость: тайлы пересобрались — снова прячем видео. */
+    try {
+      if (window.TingRoomCore && TingRoomCore.lowSpeed) {
+        TingRoomCore.lowSpeed.setLocalIdFn(function () {
+          return (state.room && state.room.localParticipant && state.room.localParticipant.identity);
+        });
+        TingRoomCore.lowSpeed.refreshTiles();
+      }
+    } catch (_) { /* */ }
     relayout();
     if (state.peopleOpen) renderPeople();
   }
@@ -1015,6 +1070,9 @@
 
   async function teardown() {
     state.intentionalLeave = true;
+    try {
+      if (window.TingRoomCore && TingRoomCore.lowSpeed) TingRoomCore.lowSpeed.reset();
+    } catch (_) { /* */ }
     if (state.lobbyPoll) { clearInterval(state.lobbyPoll); state.lobbyPoll = null; }
     if (state.timerId) { clearInterval(state.timerId); state.timerId = null; }
     stopPreview();
@@ -1046,15 +1104,13 @@
     showDock();
 
     /* ТВ: фиксированный большой стейдж — adaptive выкл (иначе thrash при relayout).
-       Качество: ТВ смотрит на большом экране, поэтому публикуем h1080 (если камера
-       тянет) и явно просим HIGH-слой у каждой подписки. Раньше h720 + дефолтный
-       слой давали «пиксели» даже на быстром канале. */
+       Качество: камеры на ТВ бывают 4K — публикуем максимум (h2160), а слои
+       simulcast дают зрителю выбор: быстрый канал берёт 4K, слабый — ниже.
+       Это и есть «авто-подстройка под скорость» на уровне транспорта. */
     var roomOpts = {
       adaptiveStream: false,
       dynacast: true,
-      videoCaptureDefaults: (LK.VideoPresets && LK.VideoPresets.h1080)
-        ? { resolution: LK.VideoPresets.h1080.resolution, frameRate: 30 }
-        : undefined
+      videoCaptureDefaults: { resolution: CAPTURE_RES, frameRate: 30 }
     };
     try {
       if (LK.VideoPresets) {
@@ -1062,11 +1118,13 @@
         if (LK.VideoPresets.h180) layers.push(LK.VideoPresets.h180);
         if (LK.VideoPresets.h360) layers.push(LK.VideoPresets.h360);
         if (LK.VideoPresets.h720) layers.push(LK.VideoPresets.h720);
+        if (LK.VideoPresets.h1080) layers.push(LK.VideoPresets.h1080);
+        if (LK.VideoPresets.h1440) layers.push(LK.VideoPresets.h1440);
         roomOpts.publishDefaults = {
           simulcast: true,
           videoSimulcastLayers: layers,
-          videoEncoding: (LK.VideoPresets.h1080 && LK.VideoPresets.h1080.encoding)
-            || (LK.VideoPresets.h720 && LK.VideoPresets.h720.encoding) || undefined
+          videoEncoding: (LK.VideoPresets.h2160 && LK.VideoPresets.h2160.encoding)
+            || (LK.VideoPresets.h1080 && LK.VideoPresets.h1080.encoding) || undefined
         };
       }
     } catch (_) { /* */ }
@@ -1162,6 +1220,35 @@
       });
     }
     var tvSpeakerTimer = null;
+    if (LK.RoomEvent.ConnectionQualityChanged) {
+      next.on(LK.RoomEvent.ConnectionQualityChanged, function (quality, participant) {
+        var q = String((quality && quality.toString && quality.toString()) || quality || '')
+          .replace(/^ConnectionQuality\./, '').toLowerCase();
+        /* Зал: показываем видео только тех, у кого канал тянет; у остальных
+           плитка остаётся с аватаром. Своё видео не трогаем. */
+        try {
+          if (window.TingRoomCore && TingRoomCore.lowSpeed) {
+            TingRoomCore.lowSpeed.setLocalIdFn(function () {
+              return next.localParticipant && next.localParticipant.identity;
+            });
+            var isSelf = !participant || (next.localParticipant && participant.identity === next.localParticipant.identity);
+            TingRoomCore.lowSpeed.note(q, isSelf ? null : (participant && participant.identity));
+          }
+        } catch (_) { /* */ }
+        if (participant) {
+          try {
+            if (LK.VideoQuality && participant.videoTrackPublications) {
+              participant.videoTrackPublications.forEach(function (pub) {
+                if (!pub || !pub.track || typeof pub.setVideoQuality !== 'function') return;
+                if (q === 'poor' || q === 'lost') pub.setVideoQuality(LK.VideoQuality.LOW);
+                else if (q === 'excellent') pub.setVideoQuality(LK.VideoQuality.HIGH);
+                else pub.setVideoQuality(LK.VideoQuality.MEDIUM);
+              });
+            }
+          } catch (_) { /* */ }
+        }
+      });
+    }
     if (LK.RoomEvent.ActiveSpeakersChanged) {
       next.on(LK.RoomEvent.ActiveSpeakersChanged, function (speakers) {
         var nextId = (speakers && speakers[0] && speakers[0].identity) || null;

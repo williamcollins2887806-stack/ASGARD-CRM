@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <title>Ting — проверка баннера низкой скорости</title>
+  <link rel="stylesheet" href="/assets/css/design-tokens.css" />
+  <link rel="stylesheet" href="/assets/css/ting.css" />
+  <style>
+    body { margin: 0; background: #07080b; }
+    /* Классы — как в боевой CRM, чтобы баннер садился в .ting-stage-wrap. */
+    .probe-room {
+      position: relative; height: 100vh; display: grid;
+      grid-template-rows: auto 1fr auto; background: #050608;
+    }
+    .probe-top { display: flex; gap: 12px; align-items: center; padding: 12px 18px; }
+    .probe-dock { padding: 12px; display: flex; gap: 10px; justify-content: center; }
+    .ting-stage .ting-tile { min-height: 0; }
+  </style>
+</head>
+<body>
+  <div class="ting-room probe-room">
+    <div class="probe-top">
+      <strong style="color:#f3e7c8">Тинг · тест баннера</strong>
+      <span class="ting-quality-chip" id="q">Отлично</span>
+    </div>
+    <div class="ting-stage-wrap">
+      <div class="ting-stage g6" id="stage"></div>
+    </div>
+    <div class="probe-dock">
+      <button class="ting-btn ting-btn-primary" id="badBtn">Плохо у одного</button>
+      <button class="ting-btn" id="allBadBtn">Плохо у всех</button>
+      <button class="ting-btn" id="goodBtn">Восстановить связь</button>
+    </div>
+  </div>
+
+  <script src="/assets/js/ting_room_core.js"></script>
+  <script>
+    (function () {
+      var stage = document.getElementById('stage');
+      var names = ['Андросов', 'Смирнова', 'Кузнецов', 'Петров', 'Волкова', 'Соколов'];
+      names.forEach(function (n, i) {
+        var tile = document.createElement('div');
+        tile.className = 'ting-tile';
+        tile.setAttribute('data-id', 'p' + i);
+        /* Реальная структура CRM: аватар-плейсхолдер ПОД видео. */
+        tile.innerHTML =
+          '<div class="ting-tile-ph tone-' + (i % 6) + '">' +
+            '<div class="ting-avatar tone-' + (i % 6) + '">' + n.slice(0, 1) + '</div>' +
+          '</div>' +
+          '<video playsinline autoplay muted></video>' +
+          '<span class="ting-tile-lbl">' + n + '</span>';
+        stage.appendChild(tile);
+      });
+      /* «Своё» видео не должно скрываться. */
+      var me = document.createElement('div');
+      me.className = 'ting-tile is-self';
+      me.setAttribute('data-id', 'me');
+      me.innerHTML = '<div class="ting-avatar tone-0">Я</div><div class="ting-tile-name">Вы</div>';
+      stage.appendChild(me);
+      me.style.display = 'none'; /* 6 плиток ровно, «я» только для проверки класса */
+
+      TingRoomCore.lowSpeed.setLocalIdFn(function () { return 'me'; });
+
+      var q = document.getElementById('q');
+      /* Кнопки воспроизводят адресную логику: плохо только у одного участника. */
+      document.getElementById('badBtn').addEventListener('click', function () {
+        q.textContent = 'Слабо';
+        q.className = 'ting-quality-chip q-poor';
+        TingRoomCore.lowSpeed.note('poor', 'p1');
+      });
+      document.getElementById('goodBtn').addEventListener('click', function () {
+        q.textContent = 'Отлично';
+        q.className = 'ting-quality-chip q-excellent';
+        TingRoomCore.lowSpeed.note('excellent', 'p1');
+      });
+      document.getElementById('allBadBtn').addEventListener('click', function () {
+        ['p0', 'p1', 'p2', 'p3', 'p4', 'p5'].forEach(function (id) {
+          TingRoomCore.lowSpeed.note('poor', id);
+        });
+      });
+
+      window.__probe = {
+        active: function () { return TingRoomCore.lowSpeed.isActive(); },
+        hiddenTiles: function () {
+          return document.querySelectorAll('.ting-tile.is-video-hidden').length;
+        },
+        hiddenIds: function () { return TingRoomCore.lowSpeed.hiddenIds(); },
+        bannerVisible: function () {
+          var b = document.querySelector('.ting-net-banner');
+          return !!(b && b.classList.contains('is-visible'));
+        },
+        bannerText: function () {
+          var t = document.querySelector('.ting-net-banner .ting-net-text');
+          return t ? t.textContent : '';
+        }
+      };
+    })();
+  </script>
+</body>
+</html>

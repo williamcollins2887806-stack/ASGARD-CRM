@@ -16,8 +16,8 @@
       if (t === 'light' || t === 'dark') document.documentElement.setAttribute('data-theme', t);
     } catch (e) {}
   </script>
-  <link rel="stylesheet" href="/assets/css/design-tokens.css?v=20.28.498" />
-  <link rel="stylesheet" href="/assets/css/ting.css?v=20.28.498" />
+  <link rel="stylesheet" href="/assets/css/design-tokens.css?v=20.28.499" />
+  <link rel="stylesheet" href="/assets/css/ting.css?v=20.28.499" />
   <style>
     html, body { margin: 0; min-height: 100%; }
     .hidden { display: none !important; }
@@ -48,10 +48,10 @@
       backdrop-filter: blur(12px);
     }
   </style>
-  <script src="/assets/vendor/livekit-client.umd.min.js?v=20.28.498"></script>
-  <script src="/assets/js/ting_icons.js?v=20.28.498"></script>
-  <script src="/assets/js/ting_common.js?v=20.28.498"></script>
-  <script src="/assets/js/ting_room_core.js?v=20.28.498"></script>
+  <script src="/assets/vendor/livekit-client.umd.min.js?v=20.28.499"></script>
+  <script src="/assets/js/ting_icons.js?v=20.28.499"></script>
+  <script src="/assets/js/ting_common.js?v=20.28.499"></script>
+  <script src="/assets/js/ting_room_core.js?v=20.28.499"></script>
 </head>
 <body class="ting-guest">
   <div class="g-screen" id="lobby">
@@ -395,7 +395,13 @@
         }
         if (previewVideo) previewVideo.srcObject = null;
       }
-      function releasePreviewKeepVideoTrack() {
+      function trackIsHd(track) {
+        try {
+          if (!track || typeof track.getSettings !== 'function') return false;
+          var s = track.getSettings() || {};
+          return (Number(s.width) || 0) >= 1280 && (Number(s.height) || 0) >= 720;
+        } catch (_) { return false; }
+      }      function releasePreviewKeepVideoTrack() {
         var stream = previewStream;
         if (previewVideo) {
           try { previewVideo.srcObject = null; } catch (_) { /* */ }
@@ -407,7 +413,13 @@
           videoTrack = stream.getVideoTracks()[0] || null;
           previewStream = null;
         }
-        return videoTrack && videoTrack.readyState === 'live' ? videoTrack : null;
+        /* HD-гейт: суб-HD preview нельзя публиковать — иначе растянутые «360p». */
+        if (!videoTrack || videoTrack.readyState !== 'live') return null;
+        if (!trackIsHd(videoTrack)) {
+          try { videoTrack.stop(); } catch (_) { /* */ }
+          return null;
+        }
+        return videoTrack;
       }
       function withTimeout(promise, ms, label) {
         var t = null;
@@ -421,12 +433,16 @@
       async function enableLocalCamera(lkRoom) {
         var LK = window.LivekitClient;
         var busyRe = /NotReadable|Device in use|Could not start|AbortError|Permission|Timeout starting video|Timed out|Overconstrained/i;
-        /* 1080p по возможности: на быстром канале 720p-дефолт давал «мыло». */
+        /* Максимум качества: 4K первым, иначе 1080p. «ideal» безопасен —
+           слабая камера вернёт свой предел, а не упадёт. */
         var presetOpts = {};
         try {
-          if (LK && LK.VideoPresets && LK.VideoPresets.h1080) {
-            presetOpts.resolution = LK.VideoPresets.h1080.resolution;
-            presetOpts.frameRate = LK.VideoPresets.h1080.frameRate || 30;
+          if (LK && LK.VideoPresets) {
+            var pref = LK.VideoPresets.h2160 || LK.VideoPresets.h1080;
+            if (pref && pref.resolution) {
+              presetOpts.resolution = pref.resolution;
+              presetOpts.frameRate = pref.frameRate || 30;
+            }
           }
         } catch (_) { /* */ }
         async function tryPublishMst(mst) {
@@ -449,6 +465,8 @@
               if (LK.VideoPresets.h180) layers.push(LK.VideoPresets.h180);
               if (LK.VideoPresets.h360) layers.push(LK.VideoPresets.h360);
               if (LK.VideoPresets.h720) layers.push(LK.VideoPresets.h720);
+              if (LK.VideoPresets.h1080) layers.push(LK.VideoPresets.h1080);
+              if (LK.VideoPresets.h1440) layers.push(LK.VideoPresets.h1440);
               if (layers.length) { opts.simulcast = true; opts.videoSimulcastLayers = layers; }
             }
           } catch (_) { /* */ }
@@ -525,17 +543,40 @@
       async function ensurePreview() {
         try {
           stopPreview();
+          /* Максимум качества: 4K-камеры отдают 4K, слабые — свой предел.
+             Без явного разрешения камера отдаёт 640×480 → «мыло». */
+          var hdVideo = { facingMode: 'user', width: { ideal: 3840 }, height: { ideal: 2160 }, frameRate: { ideal: 30 } };
           previewStream = await navigator.mediaDevices.getUserMedia({
             audio: true,
-            video: localVideo ? { facingMode: 'user' } : false
+            video: localVideo ? hdVideo : false
           });
           previewStream.getAudioTracks().forEach(function (t) { t.enabled = localAudio; });
           previewVideo.srcObject = previewStream;
           syncPreviewUi();
+          logPreviewResolution();
         } catch (_) {
-          localVideo = false;
-          syncPreviewUi();
+          /* Камера не тянет HD — берём как есть, только не теряем микрофон. */
+          try {
+            previewStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: localVideo ? true : false });
+            previewStream.getAudioTracks().forEach(function (t) { t.enabled = localAudio; });
+            previewVideo.srcObject = previewStream;
+            syncPreviewUi();
+            logPreviewResolution();
+          } catch (__) {
+            localVideo = false;
+            syncPreviewUi();
+          }
         }
+      }
+
+      /** Диагностика: видно в консоли, какое разрешение реально отдаёт камера. */
+      function logPreviewResolution() {
+        try {
+          var vt = previewStream && previewStream.getVideoTracks()[0];
+          if (!vt || typeof vt.getSettings !== 'function') return;
+          var s = vt.getSettings() || {};
+          console.info('[Ting guest] preview', (s.width || '?') + 'x' + (s.height || '?'), vt.label || '');
+        } catch (_) { /* */ }
       }
 
       function renderPeople() {
@@ -1207,13 +1248,15 @@
             if (LKp.VideoPresets.h180) layers.push(LKp.VideoPresets.h180);
             if (LKp.VideoPresets.h360) layers.push(LKp.VideoPresets.h360);
             if (LKp.VideoPresets.h720) layers.push(LKp.VideoPresets.h720);
-            if (LKp.VideoPresets.h1080) {
+            if (LKp.VideoPresets.h1080) layers.push(LKp.VideoPresets.h1080);
+            if (LKp.VideoPresets.h1440) layers.push(LKp.VideoPresets.h1440);
+            if (LKp.VideoPresets.h2160) {
               roomOpts.publishDefaults = {
                 simulcast: true,
                 videoSimulcastLayers: layers,
-                videoEncoding: LKp.VideoPresets.h1080.encoding
+                videoEncoding: LKp.VideoPresets.h2160.encoding
               };
-              roomOpts.videoCaptureDefaults = { resolution: LKp.VideoPresets.h1080.resolution };
+              roomOpts.videoCaptureDefaults = { resolution: LKp.VideoPresets.h2160.resolution };
             }
           }
         } catch (_) { /* */ }
@@ -1290,8 +1333,9 @@
         }
         if (window.LivekitClient.RoomEvent.ConnectionQualityChanged) {
           next.on(window.LivekitClient.RoomEvent.ConnectionQualityChanged, function (quality, participant) {
+            var isSelf = false;
             try {
-              if (participant && next.localParticipant && participant.identity !== next.localParticipant.identity) return;
+              isSelf = !participant || (next.localParticipant && participant.identity === next.localParticipant.identity);
             } catch (_) { /* */ }
             var name = quality;
             if (quality && typeof quality === 'object' && quality.constructor) {
@@ -1304,7 +1348,13 @@
               else if (quality === CQ.Poor || quality === 'poor') name = 'poor';
               else if (quality === CQ.Lost || quality === 'lost') name = 'lost';
             }
-            setQualityChip(name);
+            if (isSelf) setQualityChip(name);
+            /* Низкая скорость: видео скрываем ТОЛЬКО у участника с плохим каналом. */
+            try {
+              if (window.TingRoomCore && TingRoomCore.lowSpeed) {
+                TingRoomCore.lowSpeed.note(name, isSelf ? null : (participant && participant.identity));
+              }
+            } catch (_) { /* */ }
           });
         }
         if (window.LivekitClient.RoomEvent.Reconnecting) {

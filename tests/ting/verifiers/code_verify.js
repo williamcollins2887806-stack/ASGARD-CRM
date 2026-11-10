@@ -203,12 +203,61 @@ check('C64_tv_mic_publish_verified',
   && /createLocalAudioTrack/.test(tingTv)
   && /prefsSet\(PREF_MIC, ''\)/.test(tingTv),
   'TV mic: проверка публикации + фолбэк без deviceId');
-check('C65_video_1080p_high',
-  /VideoPresets\.h1080/.test(tingTv)
+check('C65_video_max_with_auto',
+  /VideoPresets\.h2160/.test(tingTv)
+  && /cameraPresets/.test(tingTv)
   && /VideoQuality\.HIGH/.test(tingTv)
-  && /VideoPresets\.h1080/.test(tingPage)
-  && /VideoPresets\.h1080/.test(guest),
-  'h1080 пресет + HIGH-подписка на ТВ/CRM/госте');
+  && /VideoQuality\.MEDIUM/.test(tingTv)
+  && /VideoPresets\.h2160/.test(tingPage)
+  && /VideoPresets\.h2160/.test(guest)
+  && /ideal: 3840/.test(tingPage),
+  '4K (h2160) с автопонижением: пресеты 2160→1440→1080→720 + HIGH/MEDIUM/LOW');
+/* C66: корень «144/360p». Лобби открывало камеру как `video: true` (640×480),
+   и этот же трек публиковался в звонок — энкодер h1080 растягивал 480p.
+   Теперь preview обязан быть HD, а суб-HD трек не переиспользуется. */
+const hdRe = /(?:width:\s*\{\s*ideal:\s*(?:1280|1920|2560|3840)\s*\}|ideal:\s*(?:1280|1920|2560|3840))/;
+check('C66_preview_hd_gate',
+  /function previewTrackIsHd/.test(tingPage)
+  && /previewTrackIsHd\(vt\)/.test(tingPage)
+  && hdRe.test(tingPage)
+  && /function trackIsHd/.test(guest)
+  && /trackIsHd\(videoTrack\)/.test(guest)
+  && /width: hdVideo\.width/.test(tingTv)
+  && /ideal: CAPTURE_RES\.width/.test(tingTv),
+  'preview с явным разрешением + суб-HD трек не публикуется (CRM/гость/ТВ)');
+/* C67: качество адаптируется под канал: HIGH→MEDIUM→LOW по связи,
+   а не жёсткий HIGH навсегда (на слабом канале это фризы). */
+const core = fs.readFileSync(path.join(root, 'public/assets/js/ting_room_core.js'), 'utf8');
+check('C67_quality_auto_ladder',
+  /videoQualityLadder/.test(tingPage)
+  && /qualityEnum/.test(tingPage)
+  && /tuneQualityForConnection/.test(tingPage)
+  && /VideoQuality\.MEDIUM/.test(tingPage)
+  && /ConnectionQualityChanged/.test(tingPage)
+  && /VideoQuality\.MEDIUM/.test(tingTv),
+  'лестница HIGH/MEDIUM/LOW по ConnectionQuality (CRM + ТВ)');
+/* C68: низкая скорость — скрытие видео АДРЕСНО (только у участника с плохим
+   каналом), баннер, автовосстановление. Раньше пряталось у всех — это баг. */
+check('C68_low_speed_banner',
+  /noteConnectionQuality/.test(core)
+  && /hiddenIds/.test(core)
+  && /LOW_SPEED_DOWN_MS/.test(core)
+  && /LOW_SPEED_UP_MS/.test(core)
+  && /ting-net-banner/.test(core)
+  && /is-video-hidden/.test(core)
+  && /ting-net-banner/.test(tingCss)
+  && /is-video-hidden/.test(tingCss)
+  && /lowSpeed/.test(guest)
+  && /lowSpeed/.test(tingTv),
+  'адресное скрытие видео + баннер + автовозврат (3 поверхности)');
+/* C69: скрытие адресное — общий «выключить всем» недопустим. */
+check('C69_low_speed_is_per_participant',
+  /noteConnectionQuality\(q, id\)/.test(core)
+  && /hiddenIds\[id\]/.test(core)
+  && /TingRoomCore\.lowSpeed\.note\(qNorm, who\)/.test(tingPage)
+  && /isSelf \? null : \(participant && participant\.identity\)/.test(guest)
+  && /isSelf \? null : \(participant && participant\.identity\)/.test(tingTv),
+  'качество приходит per-participant, id передаётся во всех трёх поверхностях');
 
 const fail = checks.filter((c) => !c.pass);
 const md = [
