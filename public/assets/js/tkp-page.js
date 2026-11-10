@@ -158,6 +158,31 @@ window.AsgardTkpPage = (function() {
       // из-за разной высоты кнопок строки «ехали» (жалоба 10.11.2026).
       '.tkp-actions{white-space:nowrap;text-align:right;vertical-align:middle;width:1%}' +
       '.tkp-actions .tkp-tbl-btn{vertical-align:middle}' +
+      // ── Таблица реестра: карточка вместо «голой» сетки ──────────────────
+      '.tkp-table-card{background:var(--bg1);border:1px solid var(--brd);border-radius:14px;overflow:hidden}' +
+      '.tkp-table{border-collapse:separate;border-spacing:0;width:100%}' +
+      '.tkp-table thead th{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--t3);' +
+        'font-weight:600;padding:11px 14px;background:var(--bg2);border-bottom:1px solid var(--brd);white-space:nowrap}' +
+      '.tkp-table tbody td{padding:12px 14px;border-bottom:1px solid var(--brd);vertical-align:middle;font-size:13px}' +
+      '.tkp-table tbody tr:last-child td{border-bottom:0}' +
+      '.tkp-table tbody tr:hover td{background:var(--bg2)}' +
+      '.tkp-table .c-id{width:52px;color:var(--t3);font-variant-numeric:tabular-nums}' +
+      '.tkp-table .c-num{white-space:nowrap;color:var(--t2);font-size:12.5px}' +
+      '.tkp-table .c-sum{text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums;font-weight:600}' +
+      '.tkp-table .c-date{white-space:nowrap}' +
+      '.tkp-table .c-actions{width:1%}' +
+      '.tkp-table .c-cust{max-width:230px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}' +
+      '.tkp-subject{display:inline;line-height:1.35}' +
+      '.tkp-muted{color:var(--t3);font-size:12.5px}' +
+      '.tkp-empty{text-align:center;padding:32px !important;color:var(--t3)}' +
+      '.tkp-badge{display:inline-block;padding:1px 7px;border-radius:99px;font-size:10px;font-weight:700;vertical-align:middle}' +
+      '.tkp-badge--ai{background:rgba(212,168,67,.16);color:var(--gold-l,var(--gold))}' +
+      // Бейджи статусов: единая «пилюля» — аккуратнее крашеного текста.
+      '.tkp-status{display:inline-block;padding:3px 9px;border-radius:99px;font-size:11.5px;font-weight:600;white-space:nowrap}' +
+      '.tkp-status--draft{background:rgba(212,168,67,.14);color:var(--gold-l,var(--gold))}' +
+      '.tkp-status--ok{background:rgba(39,174,96,.14);color:#27ae60}' +
+      '.tkp-status--err{background:rgba(192,57,43,.14);color:var(--err-t,#c0392b)}' +
+      '.tkp-status--info{background:rgba(30,77,140,.14);color:var(--blue)}' +
       '.tkp-more__menu{position:fixed;z-index:9999;min-width:200px;' +
         'background:var(--bg1);border:1px solid var(--brd);border-radius:10px;padding:5px;' +
         'box-shadow:0 14px 38px rgba(0,0,0,.38);display:flex;flex-direction:column;gap:2px}' +
@@ -383,14 +408,31 @@ window.AsgardTkpPage = (function() {
 
   function _cdBadge(decision) {
     const d = CLIENT_DECISION_MAP[decision];
-    return d ? '<span style="color:' + d.color + ';font-size:11px;font-weight:600">' + esc(d.label) + '</span>' : '—';
+    if (!d) return '<span class="tkp-muted">—</span>';
+    const tone = /принят|соглас/i.test(d.label) ? 'ok'
+      : /отказ|отклон/i.test(d.label) ? 'err' : 'info';
+    return '<span class="tkp-status tkp-status--' + tone + '">' + esc(d.label) + '</span>';
+  }
+
+  /** Бейдж статуса ТКП: «пилюля» вместо крашеного текста. */
+  function _statusBadge(st) {
+    const label = (st && st.label) || '—';
+    const tone = /чернов/i.test(label) ? 'draft'
+      : /утвержд|отправл|принято|соглас/i.test(label) ? 'ok'
+        : /отклон|отмен|проигр/i.test(label) ? 'err' : 'info';
+    return '<span class="tkp-status tkp-status--' + tone + '">' + esc(label) + '</span>';
   }
 
   function renderTkpPage(el) {
     const fLinkType = (el.querySelector('#fTkpLinkType') || {}).value || '';
     const fDecision = (el.querySelector('#fTkpDecision') || {}).value || '';
     const fStatus   = (el.querySelector('#fTkpStatus')   || {}).value || '';
-
+    // Индекс строк по id: меню «⋯» открывается в body, поэтому ему нужен
+    // сам ряд (для проверки прав на удаление), а не только id.
+    window.__tkpRowsById = {};
+    (_tkpAllItems || []).forEach(function (row) {
+      if (row && row.id != null) window.__tkpRowsById[String(row.id)] = row;
+    });
     const items = _tkpAllItems.filter(function(i) {
       if (fLinkType && i.link_type !== fLinkType) return false;
       if (fDecision && i.client_decision !== fDecision) return false;
@@ -433,51 +475,39 @@ window.AsgardTkpPage = (function() {
         '</div>' +
       '</div>' +
       filtersHtml +
-      '<div class="tbl-wrap"><table class="data-table"><thead><tr>' +
-        '<th>№</th><th>Номер</th><th>Название</th><th>Заказчик</th>' +
-        '<th>Источник</th><th>Решение клиента</th>' +
-        '<th>Сумма</th><th>Статус</th><th>Дата</th><th></th>' +
+      '<div class="tkp-table-card"><div class="tbl-wrap"><table class="data-table tkp-table"><thead><tr>' +
+        '<th class="c-id">№</th><th>Номер</th><th>Название</th><th>Заказчик</th>' +
+        '<th>Источник</th><th>Решение</th>' +
+        '<th class="c-sum">Сумма</th><th>Статус</th><th>Дата</th><th class="c-actions"></th>' +
       '</tr></thead><tbody>' +
       (items.length ? items.map(function(i) {
         const st = STATUS_MAP[i.status] || STATUS_MAP.draft;
         const ltLabel = LINK_TYPE_MAP[i.link_type] || '';
         // ИИ-черновик: бейдж, чтобы ТО отличало сгенерированное от ручного.
         const aiBadge = i.source === 'ai_tender'
-          ? ' <span title="Сформировано через ИИ по просчёту РП" style="display:inline-block;padding:1px 6px;border-radius:99px;background:rgba(212,168,67,.18);color:#8a6415;font-size:10px;font-weight:700;vertical-align:middle">ИИ</span>'
+          ? ' <span class="tkp-badge tkp-badge--ai" title="Сформировано через ИИ по просчёту РП">ИИ</span>'
           : '';
         return '<tr>' +
-          '<td>' + i.id + '</td>' +
-          '<td>' + esc(i.tkp_number || '—') + '</td>' +
-          '<td>' + esc(i.subject || i.title || '') + aiBadge + '</td>' +
-          '<td>' + esc(i.customer_name || i.tender_customer || '—') + '</td>' +
-          '<td style="font-size:11px;color:var(--t3)">' + esc(ltLabel || '—') + '</td>' +
+          '<td class="c-id">' + i.id + '</td>' +
+          '<td class="c-num">' + esc(i.tkp_number || '—') + '</td>' +
+          '<td class="c-subject"><span class="tkp-subject">' + esc(i.subject || i.title || '') + '</span>' + aiBadge + '</td>' +
+          '<td class="c-cust">' + esc(i.customer_name || i.tender_customer || '—') + '</td>' +
+          '<td><span class="tkp-muted">' + esc(ltLabel || '—') + '</span></td>' +
           '<td>' + _cdBadge(i.client_decision) + '</td>' +
-          '<td style="text-align:right">' + (i.total_sum ? fmt(i.total_sum) : '—') + '</td>' +
-          '<td><span style="color:' + st.color + ';font-weight:600">' + st.label + '</span></td>' +
-          '<td>' + (i.created_at ? new Date(i.created_at).toLocaleDateString('ru-RU') : '') + '</td>' +
+          '<td class="c-sum">' + (i.total_sum ? fmt(i.total_sum) : '<span class="tkp-muted">—</span>') + '</td>' +
+          '<td>' + _statusBadge(st) + '</td>' +
+          '<td class="c-date"><span class="tkp-muted">' + (i.created_at ? new Date(i.created_at).toLocaleDateString('ru-RU') : '—') + '</span></td>' +
           '<td class="tkp-actions">' +
             // Компактно: три частых действия значками, остальное — в меню «⋯».
-            // Семь кнопок в ряд выглядели громоздко и растягивали таблицу.
             '<button class="tkp-tbl-btn" data-action="edit" data-id="' + i.id + '" title="Редактировать"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>' +
             '<button class="tkp-tbl-btn" data-action="pdf" data-id="' + i.id + '" title="Скачать PDF"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14,2 14,8 20,8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg></button>' +
             '<button class="tkp-tbl-btn" data-action="send" data-id="' + i.id + '" title="Отправить"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 2L11 13"/><path d="M22 2L15 22 11 13 2 9z"/></svg></button>' +
             '<button type="button" class="tkp-tbl-btn tkp-more__btn" data-more="' + i.id + '" title="Ещё действия">' +
               '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="5" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="12" cy="19" r="1.6"/></svg>' +
             '</button>' +
-            // Меню уходит в <body> при открытии: обёртка таблицы имеет
-            // overflow-x:auto, и абсолютное меню обрезалось её краем
-            // («открывается внутри и под страницу», 10.11.2026).
-            '<template data-more-tpl="' + i.id + '">' +
-              '<button type="button" data-action="copy" data-id="' + i.id + '">Копировать</button>' +
-              '<button type="button" data-action="excel" data-id="' + i.id + '">Скачать Excel</button>' +
-              '<button type="button" data-action="decision" data-id="' + i.id + '">Решение клиента</button>' +
-              (canDeleteTkp(i)
-                ? '<button type="button" class="is-danger" data-action="delete" data-id="' + i.id + '">Удалить ТКП</button>'
-                : '') +
-            '</template>' +
           '</td></tr>';
-      }).join('') : '<tr><td colspan="10" style="text-align:center;padding:24px;color:var(--t3)">Нет ТКП по выбранным фильтрам</td></tr>') +
-      '</tbody></table></div>';
+      }).join('') : '<tr><td colspan="10" class="tkp-empty">Нет ТКП по выбранным фильтрам</td></tr>') +
+      '</tbody></table></div></div>';
 
     ['fTkpLinkType', 'fTkpDecision', 'fTkpStatus'].forEach(function(id) {
       var sel = el.querySelector('#' + id);
@@ -535,11 +565,34 @@ window.AsgardTkpPage = (function() {
     // ── Меню «⋯»: портал в <body> ────────────────────────────────────────────
     // Обёртка таблицы имеет `overflow-x: auto`, поэтому абсолютное меню
     // обрезалось краем и уезжало под страницу. Открываем его в body и
-    // позиционируем по кнопке — тогда оно всегда поверх, независимо от
-    // скролла и границ контейнера.
+    // позиционируем по кнопке.
+    //
+    // Собираем содержимое В JS, а не через <template> в ячейке: тег внутри
+    // <td> давал лишний строчный блок — над кнопками появлялась полоса,
+    // и строки разъезжались (жалоба 10.11.2026).
     function closeTkpMore() {
       const m = document.getElementById('tkpMoreMenu');
       if (m) m.remove();
+    }
+    function buildTkpMenu(row, id) {
+      const menu = document.createElement('div');
+      menu.id = 'tkpMoreMenu';
+      menu.className = 'tkp-more__menu';
+      menu.setAttribute('data-for', id);
+      const add = (label, action, danger) => {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.textContent = label;
+        if (action) b.setAttribute('data-action', action);
+        b.setAttribute('data-id', id);
+        if (danger) b.className = 'is-danger';
+        menu.appendChild(b);
+      };
+      add('Копировать', 'copy');
+      add('Скачать Excel', 'excel');
+      add('Решение клиента', 'decision');
+      if (canDeleteTkp(row)) add('Удалить ТКП', 'delete', true);
+      return menu;
     }
     el.querySelectorAll('[data-more]').forEach(function(btn) {
       btn.addEventListener('click', function(ev) {
@@ -551,13 +604,8 @@ window.AsgardTkpPage = (function() {
         closeTkpMore();
         if (existing && wasFor === id) return; // повторный клик закрывает
 
-        const tpl = el.querySelector('[data-more-tpl="' + id + '"]');
-        if (!tpl) return;
-        const menu = document.createElement('div');
-        menu.id = 'tkpMoreMenu';
-        menu.className = 'tkp-more__menu';
-        menu.setAttribute('data-for', id);
-        menu.innerHTML = tpl.innerHTML;
+        const row = (window.__tkpRowsById || {})[id] || null;
+        const menu = buildTkpMenu(row || { id: Number(id) }, id);
         document.body.appendChild(menu);
 
         // Позиция: под кнопкой, при нехватке места — над ней. Правый край
