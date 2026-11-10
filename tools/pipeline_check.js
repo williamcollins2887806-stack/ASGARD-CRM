@@ -190,6 +190,19 @@ function note(section, name, detail) {
     bad('3. Позиции', 'сумма позиций ≠ сумме счёта', drifted.map((x) => `#${x.id}: ${x.items_sum} vs ${x.amount}`).join('; '));
   }
 
+  // ═══ 3b. ДОСТАВКА ══════════════════════════════════════════════════════
+  // V483: заявки в работе, где про доставку ничего не известно. Это WARN, а не
+  // FAIL: отсутствие упоминания доставки в счёте — нормальный случай, просто
+  // бухгалтерия должна уточнить, за чей счёт. Плашку «доставка?» видит человек.
+  const noDelivery = await q(`
+      SELECT pi.id, pi.amount, pi.supplier_name
+        FROM payment_invoices pi
+       WHERE pi.status IN ('awaiting_dir','pending_payment')
+         AND pi.delivery_payer IS NULL`);
+  if (!noDelivery.length) ok('3b. Доставка', 'у всех заявок в работе указано, за чей счёт доставка', '0 неуточнённых');
+  else note('3b. Доставка', 'заявки с неуточнённой доставкой',
+    noDelivery.map((x) => `#${x.id} (${x.amount})`).join(', '));
+
   // ═══ 4. НДС ════════════════════════════════════════════════════════════
   const vatGtGross = await one(`SELECT count(*)::int n FROM doc_registry
       WHERE deleted_at IS NULL AND amount_gross > 0 AND vat_amount > amount_gross + 0.01`);

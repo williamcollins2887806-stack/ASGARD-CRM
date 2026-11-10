@@ -843,6 +843,32 @@ html[data-theme="light"] .dh-table tbody tr.is-selected.is-traffic-green {
 .dh-obs-pill {
   letter-spacing: 0.02em;
 }
+/* V483: «за чей счёт доставка» — такая же маленькая плашка, как ОБС.
+   Стоит в ячейке суммы сразу после неё, поэтому не должна раздувать строку. */
+.dh-deliv {
+  margin-left: 6px;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  cursor: help;
+}
+/* На узких экранах реестр и так плотный — оставляем только смысл, без рамки. */
+@media (max-width: 720px) {
+  .dh-deliv { margin-left: 4px; font-size: 10px; }
+}
+/* V483: плашка способа подписания акта сверки. Под статусом, отдельной строкой —
+   чтобы «получен» и «ЭДО» читались как два разных факта, а не один. */
+.dh-acts-ch {
+  margin-top: 3px;
+}
+.dh-recon-ch {
+  cursor: pointer;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 750;
+  font-family: inherit;
+}
+.dh-recon-ch:hover { filter: brightness(1.08); }
+.dh-recon-ch:focus-visible { outline: 2px solid var(--brd); outline-offset: 1px; }
 .dh-obs-letter {
   cursor: default;
 }

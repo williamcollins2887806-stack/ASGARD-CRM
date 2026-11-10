@@ -32,6 +32,31 @@ window.AsgardPaymentBuh = (function () {
   const niceDate = (d) => (d ? String(d).slice(0, 10).split('-').reverse().join('.') : '');
 
   /**
+   * V483: подпись «за чей счёт доставка» для очереди бухгалтерии.
+   * Бухгалтерия проводит платёж — она должна видеть, входит ли доставка в сумму
+   * счёта или её оплачивают отдельно, не открывая карточку реестра.
+   * @param {object} it позиция партии (pi.*)
+   * @returns {string} HTML или пустая строка
+   */
+  function deliveryBadge(it) {
+    const v = String((it && (it.delivery_payer || it.invoice_delivery_payer)) || '');
+    const note = String((it && (it.delivery_payer_note || it.invoice_delivery_payer_note)) || '').trim();
+    if (!v) {
+      return `<span class="pbuh__deliv is-warn" title="В счёте про доставку ничего не сказано — уточните у поставщика: входит в стоимость, за наш счёт отдельно или за счёт поставщика">доставка?</span>`;
+    }
+    if (v === 'none') return '';
+    const MAP = {
+      included: ['is-ok', 'доставка в цене', 'Доставка входит в стоимость счёта'],
+      ours_separate: ['is-warn', 'доставка отдельно', 'Доставка за наш счёт — оплачивается отдельно'],
+      supplier: ['is-mut', 'доставка поставщика', 'Доставка за счёт поставщика, нам не выставляется'],
+      other: ['is-mut', 'доставка: иное', note || 'Особые условия доставки']
+    };
+    const m = MAP[v];
+    if (!m) return '';
+    return `<span class="pbuh__deliv ${m[0]}" title="${esc(m[2])}">${esc(m[1])}</span>`;
+  }
+
+  /**
    * Экран оплаты партии. Показывает только согласованные счета (pending_payment);
    * ждущие решения директора — отдельной пометкой, оплатить их нельзя.
    * @param {number} batchId
@@ -62,6 +87,7 @@ window.AsgardPaymentBuh = (function () {
             ${it.vat_amount ? ' · НДС ' + money2(it.vat_amount) : ''}
             ${it.contract_basis_number ? ' · дог. ' + esc(it.contract_basis_number) : ''}
             ${it.items_sum_mismatch ? ' · <span style="color:#b42828;font-weight:600">позиции ≠ сумма</span>' : ''}
+            ${deliveryBadge(it) ? ' · ' + deliveryBadge(it) : ''}
           </div>
           ${isPayable && (req.bik || req.rs) ? `<div class="pbuh__req">
             ${req.bik ? `<button type="button" class="pbuh__copy" data-copy="${esc(req.bik)}">БИК ${esc(req.bik)}</button>` : ''}

@@ -50,6 +50,18 @@ window.AsgardPaymentBatch = (function () {
 
   const STATUS_LABEL = { upload: 'Загрузка', ocr: 'Распознавание', ready: 'Готов', error: 'Ошибка' };
   const TAB_LABEL = { main: 'Счёт', terms: 'Условия', review: 'Проверка' };
+  /**
+   * V483: подписи «за чей счёт доставка» для экрана согласования.
+   * Директор видит их в блоке «Что увидит директор» рядом с суммой — иначе
+   * непонятно, входит ли доставка в согласуемую сумму или мы платим её ещё раз.
+   */
+  const DELIVERY_LABEL = {
+    included: 'входит в стоимость счёта (за наш счёт)',
+    ours_separate: 'за наш счёт, оплачиваем отдельно',
+    supplier: 'за счёт поставщика',
+    other: 'иное — см. карточку счёта',
+    none: 'доставки нет'
+  };
 
   let S = null;
   /** @type {{items:Array,activeIdx:number,tab:string,sent:boolean,zoom:number,draftsShown:boolean}} */
@@ -476,8 +488,7 @@ window.AsgardPaymentBatch = (function () {
   }
 
   /** Склонение для счётчиков: 1 счёт / 2 счёта / 5 счетов. */
-  function plural(n, one, few, many) {
-    const a = Math.abs(Number(n) || 0) % 100;
+  function plural(n, one, few, many) {    const a = Math.abs(Number(n) || 0) % 100;
     const b = a % 10;
     if (a > 10 && a < 20) return many;
     if (b > 1 && b < 5) return few;
@@ -572,6 +583,30 @@ window.AsgardPaymentBatch = (function () {
           </label>
           ${field('Сумма НДС', 'vat_amount', f.vat_amount, 'number', { min: 0, step: '0.01', help: vatHint(f) })}
         </div>
+      </div>
+
+      <!-- V483: за чей счёт доставка. Спрашиваем здесь, в «Условиях», потому что
+           это условие поставки, а не сумма. Без ответа в реестре висит «доставка?». -->
+      <div class="pbm-sec">
+        <div class="pbm-sec__h"><span>Доставка</span>${f.delivery_payer
+          ? '<span class="pbm-conf is-ok">указано</span>'
+          : '<span class="pbm-conf is-warn">не уточнено</span>'}</div>
+        <div class="pbm-grid">
+          <label class="pbm-f">
+            <span class="pbm-f__l">За чей счёт доставка</span>
+            <select class="pbm-in" data-f="delivery_payer">
+              <option value="" ${!f.delivery_payer ? 'selected' : ''}>— уточнить —</option>
+              <option value="included" ${f.delivery_payer === 'included' ? 'selected' : ''}>Входит в стоимость счёта (за наш счёт)</option>
+              <option value="ours_separate" ${f.delivery_payer === 'ours_separate' ? 'selected' : ''}>За наш счёт, отдельно</option>
+              <option value="supplier" ${f.delivery_payer === 'supplier' ? 'selected' : ''}>За счёт поставщика</option>
+              <option value="none" ${f.delivery_payer === 'none' ? 'selected' : ''}>Доставки нет</option>
+              <option value="other" ${f.delivery_payer === 'other' ? 'selected' : ''}>Иное</option>
+            </select>
+          </label>
+          ${f.delivery_payer === 'other'
+            ? field('Что именно', 'delivery_payer_note', f.delivery_payer_note, 'text', { help: 'Коротко: чьи условия' })
+            : ''}
+        </div>
       </div>`;
   }
 
@@ -584,7 +619,10 @@ window.AsgardPaymentBatch = (function () {
       ['Срок оплаты', f.payment_due_at || 'не указан'],
       ['Тип оплаты', f.pay_timing === 'deferred' ? 'отложенная' : 'сразу после согласования'],
       ['Основание', f.contract_number || f.basis_type || '—'],
-      ['Объект', f.work_hint || '—']
+      ['Объект', f.work_hint || '—'],
+      // V483: директор согласовывает сумму — он должен видеть, входит ли в неё
+      // доставка. Иначе непонятно, платим мы за неё ещё раз или нет.
+      ['Доставка', DELIVERY_LABEL[String(f.delivery_payer || '')] || 'не уточнено']
     ];
     const ready = f.supplier_name && f.supplier_name !== 'Распознаётся…' && Number(f.amount) > 0;
     return `
@@ -764,10 +802,13 @@ window.AsgardPaymentBatch = (function () {
     let tmr = null;
     let items = [];
 
-    const paint = () => {
-      if (!items.length) { drop.hidden = true; drop.innerHTML = ''; return; }
+    const paint = (q) => {
+      const query = String(q || inp.value || '').trim();
+      const digits = query.replace(/\D/g, '');
+      const isInn = /^\d+$/.test(query) && (digits.length === 10 || digits.length === 12);
+      if (!items.length && query.length < 2) { drop.hidden = true; drop.innerHTML = ''; return; }
       drop.hidden = false;
-      drop.innerHTML = items.map((c, i) => {
+      let html = items.map((c, i) => {
         const docs = Number(c.docs_count) || 0;
         const ctr = Number(c.contracts_count) || 0;
         return `<button type="button" class="pbm-cp__item" data-ci="${i}">
@@ -777,6 +818,21 @@ window.AsgardPaymentBatch = (function () {
           </span>
         </button>`;
       }).join('');
+      // Самозанятый / новый контрагент: в базе пусто — даём явную строку «создать».
+      if (!items.length && query.length >= 2) {
+        const label = isInn
+          ? (digits.length === 12
+            ? ('Создать самозанятого · ИНН ' + digits)
+            : ('Создать по ИНН ' + digits))
+          : ('Использовать: ' + query);
+        html += `<button type="button" class="pbm-cp__item" data-create="1">
+          <span class="pbm-cp__name">${esc(label)}</span>
+          <span class="pbm-cp__sub">${isInn && digits.length === 12
+            ? 'не найден в базе — завести как самозанятого / физлицо'
+            : 'не найден в базе — взять введённое как есть'}</span>
+        </button>`;
+      }
+      drop.innerHTML = html;
       drop.querySelectorAll('[data-ci]').forEach((b) => {
         b.onclick = () => {
           const c = items[+b.getAttribute('data-ci')];
@@ -798,18 +854,44 @@ window.AsgardPaymentBatch = (function () {
           renderWork();
         };
       });
+      drop.querySelector('[data-create]')?.addEventListener('click', () => {
+        if (!it.fields) it.fields = {};
+        if (isInn) {
+          const fio = window.prompt(
+            digits.length === 12
+              ? 'ФИО самозанятого (как в счёте)'
+              : 'Наименование контрагента (как в счёте)',
+            ''
+          );
+          if (fio == null) return;
+          const name = String(fio || '').trim();
+          if (!name) { toast('Поставщик', 'Нужно ФИО / название', 'warn'); return; }
+          it.fields.supplier_name = name;
+          it.fields.inn = digits;
+          it.fields.supplier_id = null;
+          it.supplierCard = { name, inn: digits, docs_count: 0, contracts_count: 0 };
+          inp.value = name;
+        } else {
+          it.fields.supplier_name = query;
+          it.fields.supplier_id = null;
+          it.supplierCard = null;
+        }
+        S.dirty = true;
+        items = []; drop.hidden = true;
+        renderWork();
+      });
     };
 
     inp.oninput = () => {
       const q = inp.value.trim();
       clearTimeout(tmr);
-      if (q.length < 2) { items = []; paint(); return; }
+      if (q.length < 2) { items = []; paint(q); return; }
       tmr = setTimeout(async () => {
         try {
           const j = await api('/api/customers/registry-suggest?q=' + encodeURIComponent(q) + '&limit=10');
           items = (j && j.suppliers) || [];
         } catch (_) { items = []; }
-        paint();
+        paint(q);
       }, 220);
     };
     // По Enter / потере фокуса без выбора — фиксируем введённое название как есть.
@@ -1107,6 +1189,10 @@ window.AsgardPaymentBatch = (function () {
         sf_due_at: d.sf_due_at ? String(d.sf_due_at).slice(0, 10) : '',
         service_done_at: d.service_done_at ? String(d.service_done_at).slice(0, 10) : '',
         sf_basis: d.sf_basis || 'invoice',
+        // V483: за чей счёт доставка — иначе пересохранение черновика обнуляло бы
+        // признак, и директор снова не видел бы, входит ли доставка в сумму.
+        delivery_payer: d.delivery_payer || '',
+        delivery_payer_note: d.delivery_payer_note || '',
         comment_text: d.comment_text || ''
       };
       const exists = S.items.some((x) => Number(x.invoiceId) === Number(id));
@@ -1265,7 +1351,12 @@ window.AsgardPaymentBatch = (function () {
         ? f.spend_kind : null,
       sf_due_at: f.sf_due_at || null,
       service_done_at: f.service_done_at || null,
-      sf_basis: ['invoice', 'service'].includes(String(f.sf_basis || '')) ? f.sf_basis : null
+      sf_basis: ['invoice', 'service'].includes(String(f.sf_basis || '')) ? f.sf_basis : null,
+      // V483: за чей счёт доставка. Без этого поле жило только в форме: до
+      // сервера не доезжало, и в реестре у нового счёта всегда висело «доставка?».
+      delivery_payer: ['included', 'ours_separate', 'supplier', 'other', 'none']
+        .includes(String(f.delivery_payer || '')) ? f.delivery_payer : null,
+      delivery_payer_note: f.delivery_payer === 'other' ? (f.delivery_payer_note || null) : null
     };
   }
 

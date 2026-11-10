@@ -64,6 +64,56 @@ const bad = (m) => { fail++; console.log('  FAIL', m); };
   console.log('  year due=' + year.d.due_at);
   (year.d.due_at === '2027-01-15') ? ok('годовой дедлайн 2027-01-15') : bad('year due=' + year.d.due_at);
 
+  // ── V483: «Запросить/Получен» больше НЕ стирает данные акта ────────────
+  // Дефект: comment, file_url и received_at затирались при каждом нажатии,
+  // потому что фронт их не передаёт, а сервер писал пустые значения.
+  console.log('\n=== V483: status не затирает comment/file_url ===');
+  await call('POST', '/doc-registry/reconciliation/comment', {
+    inn: INN, name: tag, year: 2026, quarter: 4, comment: 'заметка бухгалтерии'
+  });
+  const before = (await db.query(
+    `SELECT comment, receive_channel, received_at FROM doc_reconciliation_acts
+      WHERE counterparty_inn=$1 AND period_year=2026 AND period_quarter=4`, [INN])).rows[0];
+  // Повторное «запрошен» без comment/file_url в теле — раньше обнуляло всё.
+  const s3 = await call('POST', '/doc-registry/reconciliation/status', {
+    inn: INN, name: tag, year: 2026, quarter: 4, status: 'requested'
+  });
+  const after = (await db.query(
+    `SELECT comment, receive_channel, received_at FROM doc_reconciliation_acts
+      WHERE counterparty_inn=$1 AND period_year=2026 AND period_quarter=4`, [INN])).rows[0];
+  console.log('  было=' + JSON.stringify(before), '| стало=' + JSON.stringify(after));
+  (s3.st === 200 && after.comment === 'заметка бухгалтерии')
+    ? ok('комментарий акта сохранён при «запрошен»')
+    : bad('комментарий затёрт: ' + JSON.stringify(after && after.comment));
+  (after.received_at && String(after.received_at) === String(before.received_at))
+    ? ok('дата получения не стёрта повторным «запрошен»')
+    : bad('received_at потерян: ' + JSON.stringify(after && after.received_at));
+
+  // ── V483: способ подписания акта ──────────────────────────────────────
+  console.log('\n=== V483: способ подписания акта ===');
+  // 2 документа: ставим ЭДО у обоих → «>50 % ЭДО» даст edo.
+  await db.query(`UPDATE doc_registry SET receive_channel='edo' WHERE id IN ($1,$2)`, [d1, d2]);
+  const chAuto = await call('GET', `/doc-registry/reconciliation/detail?inn=${INN}&year=2026&quarter=4`);
+  (chAuto.d.receive_channel === 'edo')
+    ? ok('авто: 2 из 2 по ЭДО → edo')
+    : bad('авто канал=' + chAuto.d.receive_channel);
+  // Ручное переопределение побеждает.
+  await call('POST', '/doc-registry/reconciliation/comment', {
+    inn: INN, name: tag, year: 2026, quarter: 4, receive_channel: 'original'
+  });
+  const chManual = await call('GET', `/doc-registry/reconciliation/detail?inn=${INN}&year=2026&quarter=4`);
+  (chManual.d.receive_channel === 'original')
+    ? ok('ручной выбор побеждает автоопределение')
+    : bad('ручной канал=' + chManual.d.receive_channel);
+  // Нет данных вовсе → unknown, НЕ original.
+  await db.query(`UPDATE doc_registry SET receive_channel=NULL WHERE id IN ($1,$2)`, [d1, d2]);
+  await db.query(`UPDATE doc_reconciliation_acts SET receive_channel='auto'
+                   WHERE counterparty_inn=$1 AND period_year=2026 AND period_quarter=4`, [INN]);
+  const chNone = await call('GET', `/doc-registry/reconciliation/detail?inn=${INN}&year=2026&quarter=4`);
+  (chNone.d.receive_channel === 'unknown')
+    ? ok('нет данных о канале → unknown')
+    : bad('пустой канал=' + chNone.d.receive_channel);
+
   await db.query(`DELETE FROM doc_registry WHERE id IN ($1,$2)`, [d1, d2]);
   await db.query(`DELETE FROM doc_reconciliation_acts WHERE counterparty_inn=$1`, [INN]);
   console.log('\n────────────────────────────────────────');

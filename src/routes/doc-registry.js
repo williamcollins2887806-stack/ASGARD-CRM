@@ -50,7 +50,9 @@ const WRITE_COLS = [
   'doc_owner_note',
   // V473: способ оплаты и ОБС-счёт. Нужны, чтобы тест и человек могли завести
   // счёт сразу как ОБС (без переключения контура бухгалтерией).
-  'payment_source', 'obs_account_id', 'subcontract_id'
+  'payment_source', 'obs_account_id', 'subcontract_id',
+  // V483: за чей счёт доставка. Правка из карточки реестра — PUT /:id.
+  'delivery_payer', 'delivery_payer_note'
 ];
 
 // D-306c: автор подписи НЕ принимается из тела запроса — только из сессии.
@@ -74,7 +76,13 @@ const JOIN_SQL = `SELECT d.*,
   -- и номер исходящего спрашивают в банке и в переписке; раньше их надо было
   -- открывать в карточке по одному.
   oa.name AS obs_account_name,
-  ol.invoice_number AS obs_letter_number
+  ol.invoice_number AS obs_letter_number,
+  -- V483: за чей счёт доставка. Поле живёт в двух местах: в строке реестра
+  -- (ручной выбор бухгалтерии) и в заявке на оплату (распознавание ИИ + мастер).
+  -- Отдаём ОБА, а плашка читает COALESCE(d, pi): один источник истины выбирается
+  -- на месте, обратной записи нет — иначе две копии разъехались бы.
+  pi.delivery_payer AS invoice_delivery_payer,
+  pi.delivery_payer_note AS invoice_delivery_payer_note
  FROM doc_registry d
  LEFT JOIN works w ON w.id = d.work_id
  LEFT JOIN users uo ON uo.id = d.doc_owner_id
@@ -295,7 +303,9 @@ const TEXT_COLS = new Set([
   'counterparty_name', 'counterparty_email', 'counterparty_phone', 'comment_text',
   'contract_label', 'delivery_note', 'receive_channel', 'reconciliation_note',
   'vitya_state', 'invoice_number', 'onec_id', 'edo_status', 'edo_external_id',
-  'doc_owner_note'
+  'doc_owner_note',
+  // V483: пояснение к «иное» в доставке — свободный текст, чистим как остальные.
+  'delivery_payer_note'
 ]);
 
 /** Рекурсивная очистка строк внутри объектов/массивов (N3). */
@@ -330,6 +340,13 @@ function pickBody(b) {
   // S4: санитайз текстовых полей (из писем/ИИ/ручного ввода) перед записью.
   for (const k of TEXT_COLS) {
     if (out[k] !== undefined && out[k] !== null) out[k] = sanitizeText(out[k]);
+  }
+  // V483: значение доставки — только из белого списка. Иначе CHECK-констрейнт
+  // отклонит UPDATE и весь PUT карточки упадёт 500. Пустая строка = «уточнить».
+  if (out.delivery_payer !== undefined) {
+    const v = out.delivery_payer == null || out.delivery_payer === '' ? null : String(out.delivery_payer);
+    out.delivery_payer = (v && ['included', 'ours_separate', 'supplier', 'other', 'none'].includes(v))
+      ? v : null;
   }
   // N3: вложенные структуры (attachments/closing_json/parsed_json/onec_payload)
   // тоже несут тексты и рендерятся в UI — чистим строки рекурсивно.
@@ -650,6 +667,31 @@ function buildFilters(q, userId, role) {
                AND COALESCE(d.obs_letter_doc_id, 0) = 0
                AND d.obs_letter_status IN ('none','failed')`;
   }
+  // V483: за чей счёт доставка. Уточнение («unknown») — это NULL в ОБОИХ
+  // местах: в строке реестра и в заявке. Читаем через тот же COALESCE, что и
+  // плашка, иначе фильтр показывал бы не то, что видит человек.
+  //
+  // ВАЖНО: подзапрос, а не алиас `pi`. buildFilters используется и в COUNT/KPI,
+  // где JOIN на payment_invoices не подключён — обращение к pi.* дало бы
+  // «missing FROM-clause entry» и 500 на всём реестре.
+  const DELIVERY_VALS = ['included', 'ours_separate', 'supplier', 'other', 'none'];
+  // Связь реестр↔заявка бывает заполнена в ОБЕ стороны: `d.payment_invoice_id`
+  // (ставит ensureRegistryDoc) и `pi.doc_registry_id` (ставит intake). Читаем
+  // обе, иначе счёт, у которого заполнена только обратная ссылка, не попадёт
+  // в фильтр, хотя плашка его значение покажет.
+  const DELIVERY_SQL = `COALESCE(d.delivery_payer,
+    (SELECT pi2.delivery_payer FROM payment_invoices pi2
+      WHERE (pi2.id = d.payment_invoice_id OR pi2.doc_registry_id = d.id)
+        AND COALESCE(pi2.status,'') <> 'rejected'
+      ORDER BY (pi2.id = d.payment_invoice_id) DESC NULLS LAST
+      LIMIT 1))`;
+  const deliv = String(q.delivery || '').toLowerCase();
+  if (deliv === 'unknown') {
+    where += ` AND ${DELIVERY_SQL} IS NULL`;
+  } else if (DELIVERY_VALS.includes(deliv)) {
+    params.push(deliv);
+    where += ` AND ${DELIVERY_SQL} = $${params.length}`;
+  }
   const kpi = (q.kpi || '').toLowerCase();
   if (kpi === 'pay') where += ` AND ${payOver}`;
   else if (kpi === 'sf') where += ` AND ((d.ops_status IN ('wait_sf','wait_closing') AND NOT ${traffic.closingDocSql('d')}) OR (${sfOver}))`;
@@ -953,11 +995,21 @@ module.exports = async function docRegistryRoutes(fastify) {
         COUNT(*) FILTER (WHERE (${tSql}) = 'red')::int AS traffic_red,
         COUNT(*) FILTER (WHERE (${tSql}) = 'blue')::int AS traffic_blue,
         COUNT(*) FILTER (WHERE (${tSql}) = 'yellow')::int AS traffic_yellow,
-        COUNT(*) FILTER (WHERE (${tSql}) = 'green')::int AS traffic_green
+        COUNT(*) FILTER (WHERE (${tSql}) = 'green')::int AS traffic_green,
+        -- V483: очередь на уточнение доставки. Тот же COALESCE, что у плашки и
+        -- фильтра: строка реестра приоритетнее значения из заявки.
+        COUNT(*) FILTER (WHERE d.dir='in' AND COALESCE(d.delivery_payer,
+          (SELECT pi2.delivery_payer FROM payment_invoices pi2
+            WHERE (pi2.id = d.payment_invoice_id OR pi2.doc_registry_id = d.id)
+              AND COALESCE(pi2.status,'') <> 'rejected'
+            ORDER BY (pi2.id = d.payment_invoice_id) DESC NULLS LAST
+            LIMIT 1)) IS NULL
+          AND COALESCE(d.pay_status,'') NOT IN ('paid','n_a')
+          AND COALESCE(d.ops_status,'') <> 'done')::int AS delivery_unknown
        FROM doc_registry d LEFT JOIN works w ON w.id=d.work_id${where}`,
       params
     );
-    return rows[0] || { all: 0, pay: 0, sf: 0, wh: 0, out: 0, no_1c: 0, incomplete: 0, traffic_red: 0, traffic_blue: 0, traffic_yellow: 0, traffic_green: 0 };
+    return rows[0] || { all: 0, pay: 0, sf: 0, wh: 0, out: 0, no_1c: 0, incomplete: 0, traffic_red: 0, traffic_blue: 0, traffic_yellow: 0, traffic_green: 0, delivery_unknown: 0 };
   });
 
   fastify.get('/facets', auth, async (req) => {
@@ -1378,10 +1430,19 @@ module.exports = async function docRegistryRoutes(fastify) {
     const listScope = canUseScopeAll(req.user.role) ? 'all' : (q.scope || 'mine');
     const vis = visibilitySql(p, req.user.role, req.user.id, { scope: listScope });
     // Кандидаты по ИНН.
+    //
+    // V483: вместе с суммами считаем распределение способа получения закрывающих
+    // (ЭДО / скан / оригинал). Нужно, чтобы вывести способ подписания АКТА
+    // сверки по большинству счетов контрагента. Счётчики идут ОДНИМ запросом —
+    // иначе получился бы запрос на каждого контрагента (N+1 на 500 строк).
+    const CH_SQL = `count(*) FILTER (WHERE d.receive_channel = 'edo')::int AS edo_n,
+              count(*) FILTER (WHERE d.receive_channel IN ('scan','original'))::int AS paper_n,
+              count(*) FILTER (WHERE COALESCE(d.receive_channel,'') <> '')::int AS ch_n`;
     const { rows: cands } = await db.query(
       `SELECT d.counterparty_inn AS inn, max(d.counterparty_name) AS name,
               count(*)::int AS docs, sum(d.amount_gross)::numeric AS amount,
-              sum(CASE WHEN d.pay_status IN ('paid','n_a') THEN d.amount_gross ELSE 0 END)::numeric AS paid_sum
+              sum(CASE WHEN d.pay_status IN ('paid','n_a') THEN d.amount_gross ELSE 0 END)::numeric AS paid_sum,
+              ${CH_SQL}
          FROM doc_registry d
         WHERE d.deleted_at IS NULL AND d.dir='in'
           AND COALESCE(d.invoice_date, d.service_done_at) BETWEEN $1::date AND $2::date
@@ -1396,7 +1457,8 @@ module.exports = async function docRegistryRoutes(fastify) {
     const { rows: candsByName } = await db.query(
       `SELECT max(d.counterparty_inn) AS inn, max(d.counterparty_name) AS name,
               count(*)::int AS docs, sum(d.amount_gross)::numeric AS amount,
-              sum(CASE WHEN d.pay_status IN ('paid','n_a') THEN d.amount_gross ELSE 0 END)::numeric AS paid_sum
+              sum(CASE WHEN d.pay_status IN ('paid','n_a') THEN d.amount_gross ELSE 0 END)::numeric AS paid_sum,
+              ${CH_SQL}
          FROM doc_registry d
         WHERE d.deleted_at IS NULL AND d.dir='in'
           AND COALESCE(d.invoice_date, d.service_done_at) BETWEEN $1::date AND $2::date
@@ -1429,17 +1491,29 @@ module.exports = async function docRegistryRoutes(fastify) {
         inn: c.inn || null, name: c.name, docs: c.docs, amount: docsSum, paid_sum: paidSum,
         balance_rub: Math.round((paidSum - docsSum + adj) * 100) / 100,
         due_at: reconSvc.periodDeadline(year, quarter, cfg),
-        status: null, received_at: null
+        status: null, received_at: null,
+        // V483: распределение способа получения закрывающих за период.
+        // Считается здесь, а не отдельным запросом — см. CH_SQL выше.
+        channel_stats: {
+          edo: Number(c.edo_n) || 0,
+          paper: Number(c.paper_n) || 0,
+          defined: Number(c.ch_n) || 0
+        }
       });
     }
     for (const s of saved) {
       const k = s.counterparty_inn || ('name:' + String(s.counterparty_name || '').toLowerCase());
       const cur = byKey.get(k) || {
         inn: s.counterparty_inn, name: s.counterparty_name, docs: 0, amount: 0, paid_sum: 0,
-        balance_rub: Math.round((adjByName.get(String(s.counterparty_name || '').trim().toLowerCase()) || 0) * 100) / 100
+        balance_rub: Math.round((adjByName.get(String(s.counterparty_name || '').trim().toLowerCase()) || 0) * 100) / 100,
+        channel_stats: { edo: 0, paper: 0, defined: 0 }
       };
       cur.due_at = s.due_at || cur.due_at;
       cur.status = s.status; cur.received_at = s.received_at;
+      // V483: комментарий акта и ручной выбор канала. Раньше список их вообще
+      // не отдавал — бухгалтерия видела «пусто», хотя в детали текст был.
+      cur.comment = s.comment || null;
+      cur.receive_channel_override = s.receive_channel || 'auto';
       // file_url отдаём флагом (есть/нет) + имя файла; сам файл — через ACL-прокси по act_id,
       // прямые /uploads/ не авторизованы (см. /reconciliation/:id/file).
       cur.has_file = !!s.file_url;
@@ -1447,6 +1521,21 @@ module.exports = async function docRegistryRoutes(fastify) {
       cur.adjustments_count = Array.isArray(s.manual_adjustments) ? s.manual_adjustments.length : 0;
       cur.act_id = s.id;
       byKey.set(k, cur);
+    }
+    // V483: итоговый способ подписания акта. Приоритет:
+    //   1) ручной выбор бухгалтерии (act.receive_channel <> 'auto');
+    //   2) авто: > 50 % счетов периода получены по ЭДО → 'edo';
+    //   3) канал нигде не заполнен → 'unknown' («канал не задан»), НЕ «оригинал»:
+    //      утверждать про бумагу без единого факта — выдумка;
+    //   4) иначе 'original'.
+    // Функция вынесена наружу, чтобы её же использовать в /detail.
+    for (const cur of byKey.values()) {
+      const st = cur.channel_stats || { edo: 0, paper: 0, defined: 0 };
+      const ov = String(cur.receive_channel_override || 'auto');
+      cur.receive_channel = (ov && ov !== 'auto')
+        ? ov
+        : (st.defined === 0 ? 'unknown' : (st.edo * 2 > st.defined ? 'edo' : 'original'));
+      cur.receive_channel_auto = !(ov && ov !== 'auto');
     }
     return {
       period: { year, quarter, ...reconSvc.periodRange(year, quarter) },
@@ -1483,14 +1572,60 @@ module.exports = async function docRegistryRoutes(fastify) {
     const cfg = await reconSettings();
     // Флаг наличия файла акта + имя — для кнопки скачивания (сам файл через ACL).
     let has_file = false; let file_name = null;
+    let actComment = null; let actChannel = 'auto';
     if (actId) {
-      const fm = await db.query(`SELECT file_url, file_meta FROM doc_reconciliation_acts WHERE id=$1`, [actId]).catch(() => ({ rows: [] }));
-      if (fm.rows[0] && fm.rows[0].file_url) {
-        has_file = true;
-        file_name = (fm.rows[0].file_meta && fm.rows[0].file_meta.name) || null;
+      const fm = await db.query(
+        `SELECT file_url, file_meta, comment, receive_channel FROM doc_reconciliation_acts WHERE id=$1`,
+        [actId]).catch(() => ({ rows: [] }));
+      if (fm.rows[0]) {
+        actComment = fm.rows[0].comment || null;
+        actChannel = fm.rows[0].receive_channel || 'auto';
+        if (fm.rows[0].file_url) {
+          has_file = true;
+          file_name = (fm.rows[0].file_meta && fm.rows[0].file_meta.name) || null;
+        }
       }
     }
-    return { ...detail, act_id: actId, has_file, file_name, due_at: reconSvc.periodDeadline(year, quarter, cfg) };
+    // V483: способ подписания АКТА. Считаем тем же правилом, что и в списке
+    // (/reconciliation): ручной выбор > авто по большинству счетов контрагента
+    // за период > 'unknown', если канал нигде не заполнен. Иначе бухгалтерия
+    // видела бы в списке «ЭДО», а в детали — другое.
+    let channelStats = { edo: 0, paper: 0, defined: 0 };
+    try {
+      // Те же условия периода/видимости, что в списке кандидатов.
+      const { from, to } = reconSvc.periodRange(year, quarter);
+      const cp = [from, to];
+      let filt = '';
+      if (q.inn) { cp.push(q.inn); filt = ` AND d.counterparty_inn = $${cp.length}`; }
+      else if (q.name) { cp.push(String(q.name).trim().toLowerCase()); filt = ` AND lower(trim(d.counterparty_name)) = $${cp.length}`; }
+      const r = await db.query(
+        `SELECT count(*) FILTER (WHERE d.receive_channel='edo')::int AS edo_n,
+                count(*) FILTER (WHERE d.receive_channel IN ('scan','original'))::int AS paper_n,
+                count(*) FILTER (WHERE COALESCE(d.receive_channel,'') <> '')::int AS ch_n
+           FROM doc_registry d
+          WHERE d.deleted_at IS NULL AND d.dir='in'
+            AND COALESCE(d.invoice_date, d.service_done_at) BETWEEN $1::date AND $2::date${filt}`,
+        cp).catch(() => ({ rows: [] }));
+      if (r.rows[0]) {
+        channelStats = {
+          edo: Number(r.rows[0].edo_n) || 0,
+          paper: Number(r.rows[0].paper_n) || 0,
+          defined: Number(r.rows[0].ch_n) || 0
+        };
+      }
+    } catch (_) { /* статистика канала — не блокер детали */ }
+    const receiveChannel = (actChannel && actChannel !== 'auto')
+      ? actChannel
+      : (channelStats.defined === 0 ? 'unknown'
+        : (channelStats.edo * 2 > channelStats.defined ? 'edo' : 'original'));
+    return {
+      ...detail, act_id: actId, has_file, file_name,
+      comment: actComment,
+      receive_channel: receiveChannel,
+      receive_channel_override: actChannel || 'auto',
+      receive_channel_stats: channelStats,
+      due_at: reconSvc.periodDeadline(year, quarter, cfg)
+    };
   });
 
   /** Отметить «запрошен» / «получен» + приложить файл от контрагента. */
@@ -1513,20 +1648,44 @@ module.exports = async function docRegistryRoutes(fastify) {
         ? `SELECT id FROM doc_reconciliation_acts WHERE counterparty_inn=$1 AND period_year=$2 AND period_quarter=$3`
         : `SELECT id FROM doc_reconciliation_acts WHERE lower(trim(counterparty_name))=$1 AND period_year=$2 AND period_quarter=$3`,
       [inn || String(name).trim().toLowerCase(), year, quarter]);
+    // V483 (дефект, найден 10.11.2026): раньше этот обработчик ЗАТИРАЛ данные
+    // акта при каждом нажатии «Запросить»/«Получен»:
+    //   • `comment: sanitizeText(String(b.comment || ''))` — фронт комментарий не
+    //     передаёт вовсе, значит в базе оставалась пустая строка: текст, который
+    //     бухгалтерия написала, молча исчезал;
+    //   • `file_url: b.file_url ? … : null` — то же с загруженным файлом акта:
+    //     нажатие «получен» второй раз обнуляло ссылку на сам акт;
+    //   • `received_at: status==='received' ? … : null` — повторное «запрошен»
+    //     стирало дату получения, то есть отменяло факт получения;
+    //   • `requested_at` перезаписывался текущей датой даже при «получен».
+    // Теперь собираем ТОЛЬКО переданные ключи, а даты не откатываем назад.
     const fields = {
       counterparty_inn: inn, counterparty_name: name, period_year: year, period_quarter: quarter,
-      due_at: dueAt, status,
-      received_at: status === 'received' ? new Date().toISOString() : null,
-      received_by: status === 'received' ? req.user.id : null,
-      // P0 (верификатор 17.10): file_url принимаем ТОЛЬКО если он безопасен (внутри
-      // uploads). Иначе значение вида `uploads/../.env` отравило бы базу и дало
-      // чтение произвольных файлов при скачивании.
-      file_url: b.file_url ? (() => { const p = safeUploadPath(b.file_url); return p ? normPath(b.file_url) : null; })() : null,
-      comment: sanitizeText(String(b.comment || ''), 2000)
+      due_at: dueAt, status
     };
-    // гарантируем, что requested_at выставлен при первом запросе
-    fields.requested_at = b.requested_at || new Date().toISOString().slice(0, 10);
-    fields.requested_by = req.user.id;
+    if (status === 'received') {
+      // Получение фиксируем один раз: повторное нажатие не сдвигает дату.
+      fields.received_at = new Date().toISOString();
+      fields.received_by = req.user.id;
+    }
+    // file_url принимаем ТОЛЬКО если он безопасен (внутри uploads). Иначе
+    // значение вида `uploads/../.env` отравило бы базу и дало чтение
+    // произвольных файлов при скачивании. Не передан ключ — не трогаем вовсе.
+    if (b.file_url !== undefined) {
+      fields.file_url = b.file_url
+        ? (() => { const p = safeUploadPath(b.file_url); return p ? normPath(b.file_url) : null; })()
+        : null;
+    }
+    // Комментарий правим только если ключ реально пришёл в теле.
+    if (b.comment !== undefined) {
+      fields.comment = sanitizeText(String(b.comment || ''), 2000);
+    }
+    // requested_at — дата ПЕРВОГО запроса; повторные нажатия её не сдвигают.
+    if (!existing.rows[0] || status !== 'received') {
+      if (b.requested_at) fields.requested_at = b.requested_at;
+      else if (!existing.rows[0]) fields.requested_at = new Date().toISOString().slice(0, 10);
+      fields.requested_by = req.user.id;
+    }
     let actId;
     if (existing.rows[0]) {
       const set = Object.keys(fields).map((k, i) => `${k}=$${i + 1}`).join(', ');
@@ -1568,6 +1727,87 @@ module.exports = async function docRegistryRoutes(fastify) {
       fastify.log.warn('[doc-registry] recon traffic mark: ' + (e && e.message));
     }
     return { ok: true, act_id: actId, status };
+  });
+
+  /**
+   * V483: комментарий и способ подписания АКТа сверки.
+   *
+   * ЗАЧЕМ отдельный роут. `POST /reconciliation/status` меняет ЖИЗНЕННЫЙ ЦИКЛ
+   * акта (запрошен/получен) и трогает светофор по документам — для правки
+   * заметки это слишком много прав. Здесь только два поля: `comment` и
+   * `receive_channel`; статус, файл и даты не касаемся.
+   *
+   * body: { inn?, name?, year, quarter, comment?, receive_channel? }
+   *   receive_channel: 'auto' | 'edo' | 'scan' | 'original'
+   *   'auto' — вернуть автоопределение по большинству счетов контрагента.
+   *
+   * Активно НЕ создаёт акт без need: если акта нет, а пришёл только комментарий
+   * (или канал) — создаём запись, иначе писать некуда. Статус у новой записи
+   * остаётся 'planned': написать заметку ≠ запросить акт.
+   */
+  fastify.post('/reconciliation/comment', auth, async (req, reply) => {
+    if (!RECON_ROLES.has(String(req.user.role || '').toUpperCase())) {
+      return reply.code(403).send({ error: 'Доступно бухгалтерии, офису и директорам' });
+    }
+    const b = req.body || {};
+    const year = parseInt(b.year, 10);
+    const quarter = parseInt(b.quarter, 10) || 0;
+    if (!year) return reply.code(400).send({ error: 'year обязателен' });
+    const inn = b.inn || null;
+    const name = b.name || null;
+    if (!inn && !name) return reply.code(400).send({ error: 'inn или name обязательны' });
+
+    const fields = {
+      counterparty_inn: inn,
+      counterparty_name: name,
+      period_year: year,
+      period_quarter: quarter
+    };
+    if (b.comment !== undefined) {
+      // Пустая строка — законное значение: «стёрли заметку».
+      fields.comment = sanitizeText(String(b.comment || ''), 2000);
+    }
+    if (b.receive_channel !== undefined) {
+      const ch = String(b.receive_channel || '').toLowerCase();
+      if (!['auto', 'edo', 'scan', 'original'].includes(ch)) {
+        return reply.code(400).send({ error: "receive_channel: 'auto' | 'edo' | 'scan' | 'original'" });
+      }
+      fields.receive_channel = ch;
+    }
+    if (fields.comment === undefined && fields.receive_channel === undefined) {
+      return reply.code(400).send({ error: 'Нечего сохранять: нужен comment или receive_channel' });
+    }
+
+    const existing = await db.query(
+      inn
+        ? `SELECT id FROM doc_reconciliation_acts WHERE counterparty_inn=$1 AND period_year=$2 AND period_quarter=$3`
+        : `SELECT id FROM doc_reconciliation_acts WHERE lower(trim(counterparty_name))=$1 AND period_year=$2 AND period_quarter=$3`,
+      [inn || String(name).trim().toLowerCase(), year, quarter]);
+
+    let actId;
+    if (existing.rows[0]) {
+      const keys = Object.keys(fields);
+      const set = keys.map((k, i) => `${k}=$${i + 1}`).join(', ');
+      const { rows } = await db.query(
+        `UPDATE doc_reconciliation_acts SET ${set}, updated_at=NOW()
+          WHERE id=$${keys.length + 1} RETURNING id, comment, receive_channel`,
+        [...Object.values(fields), existing.rows[0].id]);
+      actId = rows[0].id;
+      return { ok: true, act_id: actId, comment: rows[0].comment, receive_channel: rows[0].receive_channel };
+    }
+
+    // Акта ещё нет: создаём со статусом 'planned'. Срок и requested_* НЕ ставим —
+    // заметка не означает, что акт запрошен у контрагента.
+    const insCols = [...Object.keys(fields), 'status', 'receive_channel'];
+    const insVals = [...Object.values(fields), 'planned', fields.receive_channel || 'auto'];
+    const { rows } = await db.query(
+      `INSERT INTO doc_reconciliation_acts (${insCols.join(',')}, created_at, updated_at)
+       VALUES (${insVals.map((_, i) => `$${i + 1}`).join(',')}, NOW(), NOW())
+       RETURNING id, comment, receive_channel`,
+      insVals);
+    actId = rows[0].id;
+    await audit(db, actId, req.user.id, 'recon_note', { inn, name, year, quarter });
+    return { ok: true, act_id: actId, comment: rows[0].comment, receive_channel: rows[0].receive_channel };
   });
 
   /**

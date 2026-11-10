@@ -69,6 +69,8 @@ async function myInvoices(db, user, opts = {}) {
             pi.vat_amount, pi.vat_rate, pi.amount_net,
               pi.spend_kind, pi.sf_due_at, pi.service_done_at, pi.sf_basis,
               pi.counterparty_inn,
+              -- V483: за чей счёт доставка — иначе в «Моих заявках» нечего показать.
+              pi.delivery_payer, pi.delivery_payer_note, pi.delivery_payer_source,
             pi.initiator_intent, pi.pp_number, pi.payee_requisites,
             pi.approval_expires_at, pi.dir_approved_at, pi.buh_acted_at,
             pi.submitted_at, pi.batch_id, pi.created_by,

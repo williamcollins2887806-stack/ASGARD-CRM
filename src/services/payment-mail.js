@@ -1092,6 +1092,11 @@ async function applyInvoiceFields(db, pay, docId) {
                                   END,
               counterparty_inn= COALESCE(NULLIF(d.counterparty_inn,''), $12),
               comment_text    = CASE WHEN COALESCE(TRIM(d.comment_text),'') = '' THEN $13 ELSE d.comment_text END,
+              -- V483: за чей счёт доставка. Правило то же, что у comment_text:
+              -- заполняем ПУСТОЕ. Ручной выбор в реестре не перебиваем заявкой —
+              -- иначе бухгалтерия правила бы одно место, а плашка показывала другое.
+              delivery_payer  = COALESCE(NULLIF(d.delivery_payer,''), $18),
+              delivery_payer_note = COALESCE(NULLIF(d.delivery_payer_note,''), $19),
               updated_at      = NOW()
         WHERE d.id = $1 AND d.deleted_at IS NULL`,
       [docId, spendKind, pay.work_id || null,
@@ -1118,7 +1123,12 @@ async function applyInvoiceFields(db, pay, docId) {
         // $17 — «данные битые» (НДС ≥ суммы). Тогда НДС не пишем и флаг не ставим:
         // иначе карточка = «сумма 5 654, НДС 0, has_vat=true» и Doc Hub дорисует
         // НДС, которого нет.
-        calc.miscalc]
+        calc.miscalc,
+        // V483: $18/$19 — доставка. Значение валидируем: в заявке CHECK-констрейнт
+        // уже не пустил бы мусор, но защищаемся и здесь (заявки бывали старые).
+        pay.delivery_payer && ['included', 'ours_separate', 'supplier', 'other', 'none']
+          .includes(String(pay.delivery_payer)) ? pay.delivery_payer : null,
+        pay.delivery_payer_note ? String(pay.delivery_payer_note).slice(0, 200) : null]
     );
 
     // Причины «неполноты» пересчитываются ПО ФАКТУ после переноса. Раньше

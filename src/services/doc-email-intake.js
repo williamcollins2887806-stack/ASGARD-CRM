@@ -1169,10 +1169,12 @@ async function intakeOne(db, { email, attachment, text, userId = null, dryRun = 
            created_by, pay_timing, due_date, basis_type, basis_text, doc_registry_id, source_email_id, source_attachment_id,
            initiator_intent, initiator_note, contract_basis_number, contract_basis_date, contract_missing,
            work_hint, work_id, invoice_number, invoice_date, vat_amount, file_path, file_name,
-           line_items_json, vat_rate, amount_net)
+           line_items_json, vat_rate, amount_net,
+           -- V483: за чей счёт доставка — ИИ уже мог определить её при разборе письма.
+           delivery_payer, delivery_payer_source)
          VALUES ('awaiting_dir','awaiting_dir',$1,$2,$3,true,$4,$5,$6::date,'other',$7,$8,$9,$10,
                  $11,$12,$13,$14::date,$15,$16,$17,$18,$19::date,$20,$21,$22,
-                 $23::jsonb,$24,$25) RETURNING id`,
+                 $23::jsonb,$24,$25,$26,$27) RETURNING id`,
         [parsed.counterparty_name, parsed._supplierId || null, parsed.amount_gross, senderUserId || 1,
           timing, dueDate, basis, docId, emailId, attachmentId,
           intent.intent !== 'none' ? intent.intent : null,
@@ -1193,7 +1195,12 @@ async function intakeOne(db, { email, attachment, text, userId = null, dryRun = 
           JSON.stringify(Array.isArray(parsed.lines) ? parsed.lines : []),
           // Ставка НДС — валидированная (см. invoice-ai-extract: только 0/5/7/10/20/22).
           parsed.vat_rate != null && VAT_OK.includes(Number(parsed.vat_rate)) ? Number(parsed.vat_rate) : null,
-          parsed.amount_net != null ? parsed.amount_net : null]);
+          parsed.amount_net != null ? parsed.amount_net : null,
+          // V483: доставка. Модель отдаёт только included/supplier/null.
+          parsed.delivery_payer && ['included', 'supplier'].includes(String(parsed.delivery_payer))
+            ? parsed.delivery_payer : null,
+          parsed.delivery_payer && ['included', 'supplier'].includes(String(parsed.delivery_payer))
+            ? 'ai' : null]);
       paymentId = insPay.rows[0].id;
       // V406: если согласующий уже ответил «Добро» ДО появления заявки — применяем
       // сохранённое согласие сразу, чтобы заявка не висела несогласованной.

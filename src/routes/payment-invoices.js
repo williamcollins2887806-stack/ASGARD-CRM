@@ -987,6 +987,8 @@ async function routes(fastify) {
          spend_kind, sf_due_at, service_done_at, sf_basis,
          counterparty_inn, comment_text,
          vat_amount, vat_rate, amount_net,
+         -- V483: за чей счёт доставка (ставит мастер или ИИ при распознавании).
+         delivery_payer, delivery_payer_note, delivery_payer_source,
          draft_updated_at
        ) VALUES(
          'draft', $1, $2, $3, $4, $5, $6,
@@ -995,6 +997,7 @@ async function routes(fastify) {
          $19, $20::date, $21::date, $22,
          $23, $24,
          $25::numeric, $26::numeric, $27::numeric,
+         $28, $29, $30,
          NOW()
        ) RETURNING *`,
       [
@@ -1029,7 +1032,13 @@ async function routes(fastify) {
         // PATCH падал по сети), НДС терялся навсегда и счёт уходил с НДС 0.
         b.vat_amount != null ? Number(b.vat_amount) : null,
         b.vat_rate != null ? Number(b.vat_rate) : null,
-        b.amount_net != null ? Number(b.amount_net) : null
+        b.amount_net != null ? Number(b.amount_net) : null,
+        // V483: за чей счёт доставка. Белый список — иначе CHECK отклонит вставку.
+        ['included', 'ours_separate', 'supplier', 'other', 'none'].includes(String(b.delivery_payer || ''))
+          ? b.delivery_payer : null,
+        b.delivery_payer_note ? String(b.delivery_payer_note).slice(0, 200) : null,
+        ['ai', 'manual'].includes(String(b.delivery_payer_source || ''))
+          ? b.delivery_payer_source : (b.delivery_payer ? 'manual' : null)
       ]
     );
     const pay = rows[0];
@@ -1220,6 +1229,14 @@ async function routes(fastify) {
       setIf('contract_basis_number', parsed.contract_basis.number);
     }
     if (!pay.work_hint && parsed.work_hint) setIf('work_hint', parsed.work_hint);
+    // V483: за чей счёт доставка. Только «добираем пустое»: если человек уже
+    // выбрал вариант вручную — распознавание его не перебивает, даже если ИИ
+    // увидел в счёте другое. Источник помечаем 'ai', чтобы UI мог показать
+    // «распознано, проверьте».
+    if (!pay.delivery_payer && parsed.delivery_payer) {
+      setIf('delivery_payer', parsed.delivery_payer, '::text');
+      setIf('delivery_payer_source', 'ai', '::text');
+    }
 
     // Поставщик по ИНН (если он есть и это не наш ИНН — D-319).
     // D-322 (заказчик 21.10.2026): «если поставщика нет — пусть он заводит
@@ -1471,11 +1488,21 @@ async function routes(fastify) {
       && (pay.status === 'awaiting_dir'
         || pay.status === 'pending_payment'
         || pay.payment_status === 'pending_payment');
-    if (pay.status !== 'draft' && !canFixLines) {
+    // V483 (заказчик 10.11.2026): «за чей счёт доставка» уточняет бухгалтерия —
+    // обычно уже ПОСЛЕ отправки директору, когда счёт прочитан и вопрос возник.
+    // Поэтому этот один признак (и его пояснение) разрешаем править не в
+    // черновике — как и позиции. Ничего денежного здесь нет: сумму, НДС и
+    // контрагента по-прежнему менять нельзя, счёт не возвращается в черновик.
+    const DELIVERY_KEYS = ['delivery_payer', 'delivery_payer_note'];
+    const deliveryOnly = bodyKeys.length > 0 && bodyKeys.every((k) => DELIVERY_KEYS.includes(k));
+    const canFixDelivery = deliveryOnly
+      && ['draft', 'awaiting_dir', 'pending_payment'].includes(String(pay.status || ''));
+    if (pay.status !== 'draft' && !canFixLines && !canFixDelivery) {
       return reply.code(409).send({
         error: 'Счёт уже отправлен — правка недоступна',
         hint: 'Согласованный счёт меняется через корректировку у бухгалтерии. '
-          + 'Исключение: можно поправить только позиции, если сумма позиций не сходится с итогом.'
+          + 'Исключения: можно поправить позиции (если сумма позиций не сходится с итогом) '
+          + 'и «за чей счёт доставка».'
       });
     }
 
@@ -1493,6 +1520,10 @@ async function routes(fastify) {
       // `comment_text` уже есть в списке выше — второй раз добавлять нельзя:
       // PostgreSQL падает с 42601 «multiple assignments to same column».
       'counterparty_inn',
+      // V483: за чей счёт доставка. Отдельного правила в цикле не нужно —
+      // ниже валидируется белым списком, а право править после отправки даёт
+      // canFixDelivery выше.
+      'delivery_payer', 'delivery_payer_note',
       'line_items_json'];
     const sets = [];
     const params = [];
@@ -1508,11 +1539,31 @@ async function routes(fastify) {
     for (const k of FIELDS) {
       if (b[k] === undefined) continue;
       if (canFixLines && k !== 'line_items_json') continue;
+      // При правке «только доставка» после отправки — остальные поля не трогаем,
+      // иначе через этот путь можно было бы подменить сумму согласованного счёта.
+      if (canFixDelivery && !DELIVERY_KEYS.includes(k)) continue;
       // Белый список видов расхода: мусорное значение сломало бы CHECK-констрейнт.
       if (k === 'spend_kind' && b[k] != null && !['work', 'warehouse', 'office', 'other'].includes(String(b[k]))) {
         continue;
       }
       if (k === 'sf_basis' && b[k] != null && !['invoice', 'service'].includes(String(b[k]))) {
+        continue;
+      }
+      // V483: доставка — белый список значений. Пустая строка = «уточнить»
+      // (NULL), это законное действие: бухгалтерия сняла ошибочный выбор.
+      if (k === 'delivery_payer') {
+        const v = b[k] == null || b[k] === '' ? null : String(b[k]);
+        if (v !== null && !['included', 'ours_separate', 'supplier', 'other', 'none'].includes(v)) continue;
+        params.push(v);
+        sets.push(`${k}=$${params.length}`);
+        // Источник помечаем ручным — чтобы распознавание не перезаписало выбор.
+        params.push(v ? 'manual' : null);
+        sets.push(`delivery_payer_source=$${params.length}`);
+        continue;
+      }
+      if (k === 'delivery_payer_note') {
+        params.push(b[k] ? String(b[k]).slice(0, 200) : null);
+        sets.push(`${k}=$${params.length}`);
         continue;
       }
       if (k === 'line_items_json') {
@@ -1795,6 +1846,11 @@ async function routes(fastify) {
              vat_rate = COALESCE($9, vat_rate),
              amount_net = COALESCE($10, amount_net),
              contract_basis_number = COALESCE(NULLIF($8,''), contract_basis_number),
+             -- V483: доставка — добираем только пустое (ручной выбор не перебиваем).
+             delivery_payer = COALESCE(NULLIF($11,''), delivery_payer),
+             delivery_payer_source = CASE
+               WHEN delivery_payer IS NULL AND NULLIF($11,'') IS NOT NULL THEN 'ai'
+               ELSE delivery_payer_source END,
              updated_at = NOW()
            WHERE id=$1`,
           [id, parsed.amount_gross || 0, parsed.counterparty_name || '',
@@ -1802,7 +1858,8 @@ async function routes(fastify) {
             parsed.payment_due_at || null, parsed.vat_amount != null ? parsed.vat_amount : null,
             (parsed.contract_basis && parsed.contract_basis.number) || '',
             parsed.vat_rate != null ? parsed.vat_rate : null,
-            parsed.amount_net != null ? parsed.amount_net : null]).catch(() => {});
+            parsed.amount_net != null ? parsed.amount_net : null,
+            parsed.delivery_payer || '']).catch(() => {});
       } catch (_) { /* запись полей — не блокер */ }
       return {
         ok: true,
@@ -1821,6 +1878,9 @@ async function routes(fastify) {
           invoice_date: parsed.invoice_date || null,
           payment_due_at: parsed.payment_due_at || null,
           contract_number: (parsed.contract_basis && parsed.contract_basis.number) || null,
+          // V483: за чей счёт доставка — чтобы форма распознавания показала
+          // результат сразу, не дожидаясь перезагрузки карточки.
+          delivery_payer: parsed.delivery_payer || null,
           bank_name: parsed.bank_name || null,
           bik: parsed.bik || null,
           rs: parsed.rs || null,

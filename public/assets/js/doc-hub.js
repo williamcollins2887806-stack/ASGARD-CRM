@@ -113,6 +113,8 @@ window.AsgardDocHubPage = (function () {
     // (АГПЗ → Пираев / Михайлушкин / Тумаева). Фильтр без справочника.
     facetOwnerNotes: [],
     facetIncomplete: false,
+    // V483: фильтр «за чей счёт доставка». '' | 'unknown' | 'included' | …
+    facetDelivery: '',
     quarter: '',
     year: '',
     // Сортировка реестра (заказчик 19.10.2026: «где фильтр по дате внесения?»).
@@ -458,11 +460,13 @@ window.AsgardDocHubPage = (function () {
     } catch (_) { /* ignore */ }
 
     // 2) DaData / ЕГРЮЛ
+    let dadataHit = false;
     try {
       if (isDigits && (query.length === 10 || query.length === 12)) {
         const d = await dhCustomerFetch('/api/customers/lookup/' + query);
         const s = d && d.suggestion;
         if (s && s.name) {
+          dadataHit = true;
           out.push({
             value: s.name, label: s.name,
             sublabel: 'ИНН ' + (s.inn || query) + ' · ЕГРЮЛ',
@@ -474,6 +478,7 @@ window.AsgardDocHubPage = (function () {
         for (const s of (d && d.suggestions) || []) {
           const name = (s && s.name) || '';
           if (!name) continue;
+          dadataHit = true;
           // не дублируем то, что уже есть в нашей базе тем же ИНН
           if (s.inn && out.some((x) => normDigits(x.inn) === normDigits(s.inn))) continue;
           out.push({
@@ -485,7 +490,40 @@ window.AsgardDocHubPage = (function () {
       }
     } catch (_) { /* DaData недоступна — остаются локальные */ }
 
-    // Наши контрагенты — всегда выше ЕГРЮЛ
+    // 3) Самозанятый / физлицо / ИП без карточки в ЕГРЮЛ.
+    // Раньше подсказка молчала → скрытое counterparty_name пустое → «не внесён
+    // контрагент». Даём явную строку «создать вручную».
+    const hasLocal = out.some((x) => x._crm || x._source === 'dadata');
+    if (!hasLocal && !dadataHit) {
+      if (isDigits && (query.length === 10 || query.length === 12)) {
+        const isPerson = query.length === 12;
+        const label = isPerson
+          ? ('Самозанятый / физлицо · ИНН ' + query)
+          : ('Контрагент по ИНН ' + query + ' (нет в ЕГРЮЛ)');
+        out.push({
+          value: label,
+          label,
+          sublabel: isPerson
+            ? 'не найден в ЕГРЮЛ — создать карточку самозанятого'
+            : 'не найден в ЕГРЮЛ — создать карточку вручную',
+          inn: query,
+          email: '', phone: '',
+          _source: isPerson ? 'manual_se' : 'manual',
+          _needsName: true
+        });
+      } else if (!isDigits && query.length >= 3) {
+        out.push({
+          value: query,
+          label: query,
+          sublabel: 'создать вручную (самозанятый / физлицо / ИП — укажите ИНН рядом)',
+          inn: '',
+          email: '', phone: '',
+          _source: 'manual'
+        });
+      }
+    }
+
+    // Наши контрагенты — всегда выше ЕГРЮЛ / ручных
     out.sort((a, b) => (b._crm ? 1 : 0) - (a._crm ? 1 : 0) || (b.docs_count || 0) - (a.docs_count || 0));
     return out;
   }
@@ -542,30 +580,81 @@ window.AsgardDocHubPage = (function () {
       }).catch(() => {});
     }
 
-    // Новый контрагент из ЕГРЮЛ — предложить создать карточку
-    if (opts.askCreate && item._source === 'dadata' && inn) {
-      dhPromptCreateCustomer({ inn, name, email, phone });
+    // Новый контрагент из ЕГРЮЛ или ручной (самозанятый) — предложить создать карточку
+    if (opts.askCreate && (item._source === 'dadata' || item._source === 'manual_se' || item._source === 'manual') && inn) {
+      dhPromptCreateCustomer({
+        inn, name, email, phone,
+        isSelfEmployed: item._source === 'manual_se',
+        needsName: !!item._needsName
+      });
+    } else if (opts.askCreate && item._source === 'manual' && !inn) {
+      // ФИО без ИНН: карточку создадим после заполнения поля ИНН (ниже / на Next).
+      toast('Контрагент', 'Укажите ИНН самозанятого / физлица в поле рядом — без него карточку не создать', 'warn');
     }
   }
 
   /** Подтверждение создания карточки контрагента (+ POST /api/customers). */
-  async function dhPromptCreateCustomer({ inn, name, email, phone }) {
-    const exists = await dhCustomerFetch('/api/customers/' + inn).catch(() => null);
-    if (exists && exists.customer) return; // уже есть карточка
+  async function dhPromptCreateCustomer({ inn, name, email, phone, isSelfEmployed, needsName }) {
+    const cleanInn = normDigits(inn);
+    if (!cleanInn || (cleanInn.length !== 10 && cleanInn.length !== 12)) {
+      toast('Контрагент', 'Нужен корректный ИНН (10 или 12 цифр)', 'warn');
+      return null;
+    }
+    const exists = await dhCustomerFetch('/api/customers/' + cleanInn).catch(() => null);
+    if (exists && exists.customer) return exists.customer;
+
+    let displayName = String(name || '').trim();
+    // Выбор «Самозанятый · ИНН …» без ФИО — спрашиваем имя, иначе в карточке
+    // останется техническая подпись.
+    if (needsName || /^самозанятый\s*\/\s*физлицо/i.test(displayName) || /^контрагент по инн/i.test(displayName)) {
+      const typed = window.prompt(
+        isSelfEmployed
+          ? 'ФИО самозанятого (как в счёте), например: СМУЛЬКО АЛЕКСЕЙ СЕРГЕЕВИЧ'
+          : 'Наименование контрагента (как в счёте)',
+        ''
+      );
+      if (typed == null) return null;
+      displayName = String(typed || '').trim();
+      if (!displayName) {
+        toast('Контрагент', 'Без ФИО / названия карточку не создать', 'warn');
+        return null;
+      }
+      // Протащим ФИО в мастер, чтобы счёт сохранился с нормальным именем.
+      const form = document.getElementById('dhWizForm');
+      const d = state.wizDraft;
+      if (d) d.counterparty_name = displayName;
+      const nm = form && form.querySelector('#dhWizCpName');
+      if (nm) nm.value = displayName;
+      try {
+        if (typeof CRAutocomplete !== 'undefined' && CRAutocomplete.setValue) {
+          CRAutocomplete.setValue('dhWizCp', displayName);
+        }
+      } catch (_) { /* */ }
+    }
+
     const ok = await confirm('Создать контрагента?',
-      `${name}\nИНН ${inn}\n\nКарточки с таким ИНН нет в базе. Создать?`);
-    if (!ok) return;
+      `${displayName}\nИНН ${cleanInn}`
+      + (isSelfEmployed || cleanInn.length === 12 ? '\n(самозанятый / физлицо — в ЕГРЮЛ может не быть)' : '')
+      + '\n\nКарточки с таким ИНН нет в базе. Создать?');
+    if (!ok) return null;
     try {
       const r = await fetch('/api/customers', {
         method: 'POST',
         headers: authHeaders(true),
-        body: JSON.stringify({ inn, name, email: email || null, phone: phone || null })
+        body: JSON.stringify({
+          inn: cleanInn,
+          name: displayName,
+          email: email || null,
+          phone: phone || null
+        })
       });
       const j = await r.json().catch(() => null);
       if (!r.ok) throw new Error((j && (j.error || j.message)) || ('HTTP ' + r.status));
-      toast('Контрагент', 'Карточка создана: ' + name, 'ok');
+      toast('Контрагент', 'Карточка создана: ' + displayName, 'ok');
+      return j && j.customer;
     } catch (e) {
       toast('Контрагент', e.message || 'Не удалось создать карточку', 'err');
+      return null;
     }
   }
 
@@ -1205,6 +1294,8 @@ window.AsgardDocHubPage = (function () {
     // «||» — разделитель, чтобы запятая в ФИО не ломала фильтр.
     if (state.facetOwnerNotes && state.facetOwnerNotes.length) p.set('owner_note', state.facetOwnerNotes.join('||'));
     if (state.facetIncomplete || state.kpi === 'incomplete') p.set('incomplete', '1');
+    // V483: фильтр «за чей счёт доставка» ('unknown' = не уточнено).
+    if (state.facetDelivery) p.set('delivery', state.facetDelivery);
     if (state.kpi === 'pay') p.set('kpi', 'pay');
     if (state.kpi === 'sf') p.set('kpi', 'sf');
     if (state.kpi === 'wh') p.set('kpi', 'wh');
@@ -1709,6 +1800,54 @@ window.AsgardDocHubPage = (function () {
 
     return `<div class="dh-obs-row">${obsPill}${subPill}${letterPill}</div>`;
   }
+  /**
+   * V483: маленькая плашка «за чей счёт доставка».
+   *
+   * ЗАЧЕМ (заказчик 10.11.2026): «что бы люди понимали за чей счёт доставка».
+   * Бухгалтерия и директор решают по деньгам, глядя на строку реестра, — значит
+   * ответ должен быть в самой строке, а не в карточке на пять кликов.
+   *
+   * Показываем ТОЛЬКО у живых строк: у оплаченных и закрытых вопрос уже решён,
+   * а лишние плашки превращают реестр в шум (решение 24.10.2026 про серые бейджи).
+   *
+   * Значение читаем как COALESCE(d.delivery_payer, pi.delivery_payer) — ту же
+   * копию, что и SQL-фильтр, иначе фильтр и глаза видели бы разное:
+   *   • d.delivery_payer        — ручной выбор в карточке реестра;
+   *   • invoice_delivery_payer  — из заявки (ИИ при распознавании / мастер).
+   *
+   * @param {object} row строка реестра
+   * @returns {string} HTML плашки либо пустая строка
+   */
+  function deliveryPill(row) {
+    if (!row || row.dir === 'out') return '';
+    // Уже нечего уточнять: оплачено/закрыто/архив — вопрос снят.
+    const closed = row.pay_status === 'paid' || row.pay_status === 'n_a'
+      || String(row.ops_status || '') === 'done'
+      || row.payment_invoice_status === 'paid';
+    const payer = String(row.delivery_payer || row.invoice_delivery_payer || '');
+    const note = String(row.delivery_payer_note || row.invoice_delivery_payer_note || '').trim();
+    // Откуда значение: 'ai' — распознано, стоит проверить глазами.
+    const fromAi = row.payment_invoice_status && !row.delivery_payer
+      && row.invoice_delivery_payer;
+
+    if (closed && payer) return '';
+    if (!payer) {
+      if (closed) return '';
+      return `<span class="dh-pill dh-pill--warn dh-deliv" title="В счёте про доставку ничего нет. Уточните: входит в стоимость, за наш счёт отдельно или за счёт поставщика">доставка?</span>`;
+    }
+    if (payer === 'none') return '';
+    const MAP = {
+      included: { cls: 'info', text: 'доставка в цене', hint: 'Доставка входит в стоимость счёта — платим внутри суммы' },
+      ours_separate: { cls: 'warn', text: 'доставка отдельно', hint: 'Доставка за наш счёт, оплачивается отдельно от счёта' },
+      supplier: { cls: 'muted', text: 'доставка поставщика', hint: 'Доставка за счёт поставщика — в сумму счёта не входит и нам не выставляется' },
+      other: { cls: 'muted', text: 'доставка: иное', hint: note || 'Особые условия доставки — подробности в карточке' }
+    };
+    const m = MAP[payer];
+    if (!m) return '';
+    const title = (fromAi ? 'Распознано из счёта, проверьте. ' : '') + m.hint;
+    return `<span class="dh-pill dh-pill--${m.cls} dh-deliv" title="${esc(title)}">${esc(m.text)}</span>`;
+  }
+
   function qaIcons() {
     // V413: премиум-иконки (заказчик 19.10.2026: «системные иконки и кнопки,
     // не красиво и не премиально»). Единая сетка 18×18, stroke-width 1.7,
@@ -1808,7 +1947,7 @@ window.AsgardDocHubPage = (function () {
         <td class="dh-col-recv">${receiveCell(r)}</td>
         <td class="dh-col-purpose">${purposeFlags(r)}</td>
         <td class="dh-col-owners">${ownersCell(r)}</td>
-        <td class="dh-col-amount dh-money" title="${esc(moneyFine(r.amount_gross))}">${money(r.amount_gross)}${obsBadges(r)}</td>
+        <td class="dh-col-amount dh-money" title="${esc(moneyFine(r.amount_gross))}">${money(r.amount_gross)}${obsBadges(r)}${deliveryPill(r)}</td>
         <td class="dh-col-attach">${attachCell(r)}</td>
         <td class="dh-col-vat">${vatCell(r)}</td>
         <td class="dh-col-pay">${payCell(r)}</td>
@@ -2019,6 +2158,19 @@ window.AsgardDocHubPage = (function () {
           <span>Статус</span>
           <select id="dhFacetOps">${opts}</select>
         </label>
+        <!-- V483: за чей счёт доставка — фильтр по значению признака. -->
+        <label class="dh-facet">
+          <span>Доставка</span>
+          <select id="dhFacetDelivery">
+            <option value="" ${!state.facetDelivery ? 'selected' : ''}>Все</option>
+            <option value="unknown" ${state.facetDelivery === 'unknown' ? 'selected' : ''}>Нужно уточнить</option>
+            <option value="included" ${state.facetDelivery === 'included' ? 'selected' : ''}>Входит в стоимость</option>
+            <option value="ours_separate" ${state.facetDelivery === 'ours_separate' ? 'selected' : ''}>За наш счёт отдельно</option>
+            <option value="supplier" ${state.facetDelivery === 'supplier' ? 'selected' : ''}>За счёт поставщика</option>
+            <option value="other" ${state.facetDelivery === 'other' ? 'selected' : ''}>Иное</option>
+            <option value="none" ${state.facetDelivery === 'none' ? 'selected' : ''}>Доставки нет</option>
+          </select>
+        </label>
         <label class="dh-facet dh-facet--sort">
           <span>Сортировка</span>
           <select id="dhSort">
@@ -2109,6 +2261,8 @@ window.AsgardDocHubPage = (function () {
                 <input id="dhSearch" type="search" placeholder="Номер, поставщик, объект, договор…" value="${esc(state.q)}" />
               </div>
               <button class="dh-chip ${state.facetIncomplete || state.kpi === 'incomplete' ? 'is-on' : ''}" type="button" id="dhChipIncomplete">Неполные <span class="n">${kpiVal('incomplete')}</span></button>
+              <!-- V483: одной кнопкой — очередь на уточнение доставки. -->
+              <button class="dh-chip ${state.facetDelivery === 'unknown' ? 'is-on' : ''}" type="button" id="dhChipDelivery" title="Счета, где про доставку ничего не известно: нужно уточнить, за чей она счёт">Доставка? <span class="n">${kpiVal('delivery_unknown')}</span></button>
               <label class="dh-scope">
                 <input type="checkbox" id="dhScopeAll" ${scopeAll ? 'checked' : ''} ${canScopeAll() ? '' : 'disabled title="Доступно офис-менеджеру, бухгалтерии и директорам"'}/> Показать все
               </label>
@@ -2213,6 +2367,9 @@ window.AsgardDocHubPage = (function () {
       purpose_asgard: false,
       purpose_consumables: false,
       receive_channel: '',
+      // V483: за чей счёт доставка. Пусто = «уточнить» (плашка спросит).
+      delivery_payer: '',
+      delivery_payer_note: '',
       parsed_json: '',
       file: null
     };
@@ -2229,6 +2386,8 @@ window.AsgardDocHubPage = (function () {
       'spend_kind', 'payment_due_at', 'sf_due_at', 'work_id',
       'payment_kind', 'sf_basis', 'service_done_at',
       'doc_owner_id', 'pm_id',
+      // V483: за чей счёт доставка — поле шага 3 и пояснение для «иное».
+      'delivery_payer', 'delivery_payer_note',
       'comment_text', 'parsed_json', 'receive_channel'];
     for (const k of strFields) {
       if (fd.has(k)) d[k] = String(fd.get(k) ?? '');
@@ -2319,7 +2478,7 @@ window.AsgardDocHubPage = (function () {
           <label>Контрагент *</label>
           <input type="hidden" name="counterparty_name" id="dhWizCpName" value="${esc(d.counterparty_name)}" />
           <div id="dhWizCpMount" class="dh-cra-host"></div>
-          <div class="dh-help">Начните вводить название или ИНН — подскажем из базы и ЕГРЮЛ</div>
+          <div class="dh-help">Название, ФИО или ИНН. Самозанятого нет в ЕГРЮЛ — выберите «создать вручную» и укажите ФИО</div>
         </div>
         <div class="dh-grid2">
           <div class="dh-field"><label>ИНН</label><input name="counterparty_inn" id="dhWizInn" value="${esc(d.counterparty_inn || '')}" placeholder="XXXXXXXXXX" /></div>
@@ -2403,6 +2562,22 @@ window.AsgardDocHubPage = (function () {
             <option value="scan" ${d.receive_channel === 'scan' ? 'selected' : ''}>скан</option>
             <option value="original" ${d.receive_channel === 'original' ? 'selected' : ''}>оригинал</option>
           </select>
+        </div>
+        <!-- V483: за чей счёт доставка. Вопрос задаётся ВСЕГДА: пустое поле
+             означает «не уточнили», и в реестре будет висеть плашка «доставка?». -->
+        <div class="dh-field"><label>За чей счёт доставка <span class="dh-help" title="Если доставки нет — выберите «доставки нет»">(важно для суммы)</span></label>
+          <select name="delivery_payer" id="dhWizDelivery">
+            <option value="" ${!d.delivery_payer ? 'selected' : ''}>— уточнить позже —</option>
+            <option value="included" ${d.delivery_payer === 'included' ? 'selected' : ''}>Входит в стоимость счёта (за наш счёт)</option>
+            <option value="ours_separate" ${d.delivery_payer === 'ours_separate' ? 'selected' : ''}>За наш счёт, оплачиваем отдельно</option>
+            <option value="supplier" ${d.delivery_payer === 'supplier' ? 'selected' : ''}>За счёт поставщика</option>
+            <option value="none" ${d.delivery_payer === 'none' ? 'selected' : ''}>Доставки нет</option>
+            <option value="other" ${d.delivery_payer === 'other' ? 'selected' : ''}>Иное</option>
+          </select>
+        </div>
+        <div class="dh-field" id="dhWizDeliveryNoteWrap" ${d.delivery_payer === 'other' ? '' : 'hidden'}>
+          <label>Что именно с доставкой <span class="dh-help">(обязательно для «иное»)</span></label>
+          <input name="delivery_payer_note" maxlength="200" value="${esc(d.delivery_payer_note || '')}" placeholder="Например: доставка по тарифу ТК, оплачивает заказчик" />
         </div>
         <div class="dh-grid2">
           <div class="dh-field"><label>Срок оплаты</label><input type="date" name="payment_due_at" value="${esc((d.payment_due_at || '').slice(0, 10))}" /></div>
@@ -2550,12 +2725,37 @@ window.AsgardDocHubPage = (function () {
         // Скрытые поля браузер не валидирует (required на hidden не работает) — проверяем сами
         if (state.wizStep === 2) {
           const d2 = state.wizDraft || {};
+          // Свободный ввод в autocomplete раньше не попадал в hidden counterparty_name
+          // (только выбор из списка) — самозанятый «не находился» и шаг блокировался.
+          try {
+            const typed = (typeof CRAutocomplete !== 'undefined' && CRAutocomplete.getValue)
+              ? String(CRAutocomplete.getValue('dhWizCp') || '').trim()
+              : '';
+            if (typed && !String(d2.counterparty_name || '').trim()) {
+              d2.counterparty_name = typed;
+              const nm = form.querySelector('#dhWizCpName');
+              if (nm) nm.value = typed;
+            }
+          } catch (_) { /* */ }
+          const innTyped = normDigits(form.querySelector('#dhWizInn')?.value || d2.counterparty_inn || '');
+          if (innTyped) d2.counterparty_inn = innTyped;
           const miss = [];
           if (!String(d2.invoice_number || '').trim()) miss.push('№ счёта');
           if (!String(d2.invoice_date || '').trim()) miss.push('дата счёта');
           if (!String(d2.counterparty_name || '').trim()) miss.push('контрагент');
           if (!(Number(d2.amount_gross) > 0)) miss.push('сумма');
           if (miss.length) { toast('Заполните', miss.join(', '), 'warn'); return; }
+          // Если есть ИНН 12 цифр и карточки ещё нет — предложим создать самозанятого.
+          if (innTyped.length === 12) {
+            dhPromptCreateCustomer({
+              inn: innTyped,
+              name: d2.counterparty_name,
+              email: d2.counterparty_email || '',
+              phone: d2.counterparty_phone || '',
+              isSelfEmployed: true,
+              needsName: false
+            }).catch(() => {});
+          }
         } else if (!form.reportValidity()) return;
         state.wizStep = Math.min(4, state.wizStep + 1);
         paintWizard(container);
@@ -2693,6 +2893,16 @@ window.AsgardDocHubPage = (function () {
     // Destroy previous CRSelect instances (step 3)
     if (window.CRSelect) {
       ['dhWizWork', 'dhWizDocOwner', 'dhWizPm'].forEach((cid) => { try { CRSelect.destroy(cid); } catch (_) {} });
+    }
+
+    // V483: пояснение к «иное» в доставке показываем только для этого варианта.
+    const wizDeliv = form.querySelector('#dhWizDelivery');
+    if (wizDeliv) {
+      wizDeliv.onchange = () => {
+        const wrap = form.querySelector('#dhWizDeliveryNoteWrap');
+        if (wrap) wrap.hidden = wizDeliv.value !== 'other';
+        if (state.wizDraft) state.wizDraft.delivery_payer = wizDeliv.value;
+      };
     }
 
     // spend_kind cards (step 3)
@@ -3010,6 +3220,9 @@ window.AsgardDocHubPage = (function () {
       purpose_asgard: !!d.purpose_asgard,
       purpose_consumables: !!d.purpose_consumables,
       receive_channel: d.receive_channel || null,
+      // V483: за чей счёт доставка из мастера.
+      delivery_payer: d.delivery_payer || null,
+      delivery_payer_note: d.delivery_payer === 'other' ? (d.delivery_payer_note || null) : null,
       parsed_json: parsed,
       ops_status: 'draft'
     };
@@ -3304,6 +3517,33 @@ window.AsgardDocHubPage = (function () {
               : '<span class="dh-pill dh-pill--muted">нужно запросить</span>';
         const actsBadge = (it.adjustments_count || 0) > 0
           ? `<span class="dh-flag is-on" title="Взаимозачётов: ${it.adjustments_count}">↔ ${it.adjustments_count}</span>` : '';
+        // V483: способ подписания акта — по большинству счетов контрагента.
+        // Бухгалтерия должна видеть ЗАРАНЕЕ, в каком виде пойдёт акт, иначе
+        // каждый раз выясняет у контрагента заново. Плашка кликабельна: клик =
+        // подтверждение смены способа (только у тех, кто ведёт акты).
+        const ch = String(it.receive_channel || 'unknown');
+        const st2 = it.receive_channel_stats || { edo: 0, paper: 0, defined: 0 };
+        const chStatTxt = ch === 'unknown'
+          ? 'У счетов контрагента за период способ получения не указан — выберите вручную'
+          : `ЭДО у ${st2.edo} из ${st2.defined} счетов за период`
+            + (it.receive_channel_auto ? ' · выбрано автоматически' : ' · выбрано вручную');
+        const chMap = {
+          edo: ['ok', 'ЭДО'],
+          original: ['muted', 'оригинал'],
+          scan: ['info', 'скан'],
+          unknown: ['warn', 'канал?']
+        };
+        const chm = chMap[ch] || chMap.unknown;
+        const chPill = canReconAct()
+          ? `<button type="button" class="dh-pill dh-pill--${chm[0]} dh-recon-ch" data-ch-inn="${esc(String(it.inn || ''))}" data-ch-name="${esc(it.name || '')}" title="${esc(chStatTxt)}. Нажмите, чтобы сменить способ подписания">${esc(chm[1])}</button>`
+          : `<span class="dh-pill dh-pill--${chm[0]}" title="${esc(chStatTxt)}">${esc(chm[1])}</span>`;
+        // V483: комментарий к акту. Кнопка по образцу строки реестра: заполненный
+        // комментарий подсвечен, чтобы не терялся среди пустых.
+        const cmtBtn = `<button type="button" class="dh-cmt-btn${it.comment ? ' is-filled' : ''}" data-act-cmt="1"
+          data-cmt-inn="${esc(String(it.inn || ''))}" data-cmt-name="${esc(it.name || '')}"
+          data-cmt-text="${esc(it.comment || '')}"
+          title="${it.comment ? esc(String(it.comment).slice(0, 80)) : 'Комментарий к акту сверки'}"
+          aria-label="Комментарий к акту сверки">${qaIcons().cmt}</button>`;
         const fileBtn = it.has_file
           ? `<a class="dh-btn dh-btn--ghost dh-btn--sm" href="/api/doc-registry/reconciliation/${it.act_id}/file" target="_blank" rel="noopener" title="Файл акта от контрагента">${esc((it.file_name || 'файл').slice(0, 14))}</a>`
           : '';
@@ -3312,9 +3552,10 @@ window.AsgardDocHubPage = (function () {
           <td>${it.docs || 0}</td>
           <td class="dh-money">${it.amount ? money(it.amount) : '—'}</td>
           <td><div class="dh-stack"><span class="a">${fmtDate(it.due_at) || '—'}</span>${overdue ? '<span class="b dh-money--err">срок прошёл</span>' : ''}</div></td>
-          <td>${st}</td>
+          <td>${st}<div class="dh-acts-ch">${chPill}</div></td>
           <td class="dh-money dh-money--${balCls}">${esc(balTxt)}</td>
           <td class="dh-actions"><div class="dh-qa">
+            ${cmtBtn}
             <button type="button" data-act="detail" data-inn="${esc(String(it.inn || ''))}" data-name="${esc(it.name || '')}" title="Детали и баланс">${qaIcons().open}</button>
             ${fileBtn}
             ${it.received_at ? '' : `<button type="button" data-act="requested" data-inn="${esc(String(it.inn || ''))}" data-name="${esc(it.name || '')}" title="Запросить акт у контрагента">↗</button>`}
@@ -3362,6 +3603,26 @@ window.AsgardDocHubPage = (function () {
           } catch (e) { toast('Ошибка', e.message || 'не удалось', 'err'); }
         });
       });
+
+      // V483: смена способа подписания акта. Подтверждение обязательно — это
+      // необратимо меняет то, как контрагент подписывает документ, и ошибкой
+      // легко отправить ЭДО тем, кто работает только на бумаге.
+      host.querySelectorAll('[data-ch-inn],[data-ch-name]').forEach((b) => {
+        b.addEventListener('click', () => {
+          const inn = b.getAttribute('data-ch-inn');
+          const name = b.getAttribute('data-ch-name');
+          openReconChannelModal(inn, name, y, q);
+        });
+      });
+
+      // V483: комментарий к акту сверки.
+      host.querySelectorAll('[data-act-cmt]').forEach((b) => {
+        b.addEventListener('click', () => {
+          const inn = b.getAttribute('data-cmt-inn');
+          const name = b.getAttribute('data-cmt-name');
+          openReconCommentModal(inn, name, y, q, b.getAttribute('data-cmt-text') || '');
+        });
+      });
     } catch (e) {
       host.innerHTML = `<div class="dh-empty"><div class="dh-empty__t">Не удалось загрузить</div><p>${esc(e.message || '')}</p></div>`;
     }
@@ -3392,6 +3653,109 @@ window.AsgardDocHubPage = (function () {
       } catch (e) { toast('Ошибка', e.message || 'не удалось загрузить', 'err'); }
     };
     inp.click();
+  }
+
+  /**
+   * V483: комментарий к акту сверки.
+   *
+   * ЗАЧЕМ (заказчик 10.11.2026): «комментарии в актах сверки — добавить
+   * комментарии как у счёта, только для актов сверки».
+   *
+   * Отличие от комментария счёта: здесь заметка живёт на АКТЕ (один на
+   * контрагента за период), а не на строке реестра. Поэтому уходит в
+   * `POST /reconciliation/comment`, который правит только comment/channel и
+   * НЕ трогает статус акта — иначе «написал заметку» означало бы «запросил акт».
+   */
+  function openReconCommentModal(inn, name, year, quarter, existing) {
+    const host = document.getElementById('dhModal');
+    if (!host) return;
+    host.hidden = false;
+    host.innerHTML = `
+      <div class="dh-modal__card">
+        <header class="dh-modal__head"><h2>Комментарий к акту · ${esc(name || ('ИНН ' + inn))}</h2>
+          <button type="button" class="dh-modal__x" id="dhAcX" aria-label="Закрыть">✕</button></header>
+        <div class="dh-modal__body">
+          <p class="dh-hint">${esc(periodLabel(year, quarter))}. Заметка видна в списке актов и в детали.</p>
+          <label class="dh-field"><span>Комментарий</span>
+            <textarea class="input" id="dhAcText" rows="4" maxlength="2000"
+              placeholder="Например: акт подписан со стороны контрагента, оригинал выслан почтой 12.11">${esc(existing || '')}</textarea></label>
+        </div>
+        <footer class="dh-modal__foot">
+          <button type="button" class="dh-btn dh-btn--ghost" id="dhAcCancel">Отмена</button>
+          <button type="button" class="dh-btn dh-btn--primary" id="dhAcSave">Сохранить</button>
+        </footer>
+      </div>`;
+    const close = () => { host.hidden = true; host.innerHTML = ''; };
+    host.querySelector('#dhAcX').onclick = close;
+    host.querySelector('#dhAcCancel').onclick = close;
+    host.querySelector('#dhAcSave').onclick = async () => {
+      const text = host.querySelector('#dhAcText').value.trim();
+      try {
+        await api('/reconciliation/comment', {
+          method: 'POST',
+          body: JSON.stringify({ inn: inn || null, name, year, quarter, comment: text })
+        });
+        toast('Акт сверки', text ? 'Комментарий сохранён' : 'Комментарий очищен', 'ok');
+        close();
+        renderActsTab();
+      } catch (e) { toast('Ошибка', e.message || 'не удалось сохранить', 'err'); }
+    };
+  }
+
+  /**
+   * V483: смена способа подписания акта с подтверждением.
+   *
+   * Почему подтверждение: способ определяет, как контрагент подписывает акт.
+   * Ошибочно переключить на ЭДО того, кто работает только на бумаге, — значит
+   * получить спорный документ. Поэтому клик по плашке = вопрос, а не действие.
+   */
+  function openReconChannelModal(inn, name, year, quarter) {
+    const host = document.getElementById('dhModal');
+    if (!host) return;
+    const OPTS = [
+      ['edo', 'ЭДО', 'Акт подписывается электронно'],
+      ['original', 'оригинал', 'Бумажный оригинал с подписью и печатью'],
+      ['scan', 'скан', 'Скан с подписью, оригинал позже'],
+      ['auto', 'автоматически', 'По большинству счетов контрагента за период (>50 % ЭДО → ЭДО)']
+    ];
+    host.hidden = false;
+    host.innerHTML = `
+      <div class="dh-modal__card">
+        <header class="dh-modal__head"><h2>Как подписываем акт · ${esc(name || ('ИНН ' + inn))}</h2>
+          <button type="button" class="dh-modal__x" id="dhChX" aria-label="Закрыть">✕</button></header>
+        <div class="dh-modal__body">
+          <p class="dh-hint">${esc(periodLabel(year, quarter))}. Выбор сохранится для акта этого периода.</p>
+          ${OPTS.map(([v, t, s]) => `
+            <label class="dh-check" style="display:flex;gap:8px;align-items:flex-start;margin:8px 0">
+              <input type="radio" name="dhChPick" value="${v}" style="margin-top:3px">
+              <span><strong>${esc(t)}</strong><br><span class="dh-muted">${esc(s)}</span></span>
+            </label>`).join('')}
+        </div>
+        <footer class="dh-modal__foot">
+          <button type="button" class="dh-btn dh-btn--ghost" id="dhChCancel">Отмена</button>
+          <button type="button" class="dh-btn dh-btn--primary" id="dhChSave">Применить</button>
+        </footer>
+      </div>`;
+    const close = () => { host.hidden = true; host.innerHTML = ''; };
+    host.querySelector('#dhChX').onclick = close;
+    host.querySelector('#dhChCancel').onclick = close;
+    host.querySelector('#dhChSave').onclick = async () => {
+      const picked = host.querySelector('input[name="dhChPick"]:checked');
+      if (!picked) { toast('Способ подписания', 'Выберите вариант', 'err'); return; }
+      const ch = picked.value;
+      const label = (OPTS.find((o) => o[0] === ch) || [ch, ch])[1];
+      // Подтверждение — отдельным шагом: действие меняет юридический вид акта.
+      if (!confirm(`Сменить способ подписания акта «${name || ('ИНН ' + inn)}» на «${label}»?`)) return;
+      try {
+        await api('/reconciliation/comment', {
+          method: 'POST',
+          body: JSON.stringify({ inn: inn || null, name, year, quarter, receive_channel: ch })
+        });
+        toast('Акт сверки', 'Способ подписания: ' + label, 'ok');
+        close();
+        renderActsTab();
+      } catch (e) { toast('Ошибка', e.message || 'не удалось сохранить', 'err'); }
+    };
   }
 
   /** Модалка добавления взаимозачёта (ручная корректировка баланса). */
@@ -3455,6 +3819,16 @@ window.AsgardDocHubPage = (function () {
           <td class="dh-actions">${canReconAct() ? `<button type="button" class="dh-btn dh-btn--ghost dh-btn--sm" data-adj-remove="${i}" title="Удалить взаимозачёт">✕</button>` : ''}</td>
         </tr>`).join('') : '<tr><td colspan="4" class="dh-muted">Взаимозачётов нет</td></tr>';
       const actFile = !!d.act_id;
+      // V483: комментарий и способ подписания акта — прямо в детали, без
+      // открытия отдельной модалки: бухгалтерия читает документы и тут же
+      // записывает, о чём договорились с контрагентом.
+      const chVal = String(d.receive_channel || 'unknown');
+      const chLabel = ({ edo: 'ЭДО', original: 'оригинал', scan: 'скан', unknown: 'канал не задан' })[chVal] || chVal;
+      const chStats = d.receive_channel_stats || { edo: 0, paper: 0, defined: 0 };
+      const chHint = chVal === 'unknown'
+        ? 'У счетов контрагента за период способ получения не указан'
+        : `ЭДО у ${chStats.edo} из ${chStats.defined} счетов за период`
+          + ((!d.receive_channel_override || d.receive_channel_override === 'auto') ? ' · автоматически' : ' · вручную');
       host.innerHTML = `
         <div class="dh-card">
           <div class="dh-card__head"><h2>${esc(name || ('ИНН ' + inn))} · ${esc(periodLabel(year, quarter))}</h2>
@@ -3468,6 +3842,35 @@ window.AsgardDocHubPage = (function () {
             <span class="dh-muted">· оплаты ${money(d.paidSum)} − документы ${money(d.docsSum)}${adj.length ? ` + взаимозачёты ${money(adj.reduce((s, x) => s + (Number(x.amount) || 0), 0))}` : ''}</span>
           </div>
         </div>
+        <!-- V483: акт сверки — комментарий и способ подписания.
+             Раньше этих полей не было в UI вообще: comment в базе существовал,
+             но фронт его не показывал и не передавал, а способ подписания
+             выясняли в переписке. -->
+        <div class="dh-card">
+          <div class="dh-card__head"><h2>Акт сверки</h2>
+            <span class="dh-pill dh-pill--${chVal === 'edo' ? 'ok' : chVal === 'unknown' ? 'warn' : 'muted'}"
+              title="${esc(chHint)}">${esc(chLabel)}</span>
+          </div>
+          <div class="dh-section__b">
+            <div class="dh-field">
+              <label>Способ подписания <span class="dh-help">${esc(chHint)}</span></label>
+              <select id="dhActChannel" ${canReconAct() ? '' : 'disabled'}>
+                <option value="auto" ${(!d.receive_channel_override || d.receive_channel_override === 'auto') ? 'selected' : ''}>Автоматически (по большинству счетов)</option>
+                <option value="edo" ${d.receive_channel_override === 'edo' ? 'selected' : ''}>ЭДО</option>
+                <option value="original" ${d.receive_channel_override === 'original' ? 'selected' : ''}>Оригинал</option>
+                <option value="scan" ${d.receive_channel_override === 'scan' ? 'selected' : ''}>Скан</option>
+              </select>
+            </div>
+            <div class="dh-field">
+              <label>Комментарий к акту</label>
+              <textarea id="dhActComment" rows="3" maxlength="2000" ${canReconAct() ? '' : 'disabled'}
+                placeholder="Например: акт подписан контрагентом, оригинал выслан почтой 12.11">${esc(d.comment || '')}</textarea>
+            </div>
+            ${canReconAct() ? `<div class="dh-field">
+              <button type="button" class="dh-btn dh-btn--primary" id="dhActSave">Сохранить акт</button>
+            </div>` : ''}
+          </div>
+        </div>
         <div class="dh-card">
           <div class="dh-card__head"><h2>Взаимозачёты</h2>
             ${canReconAct() ? '<button type="button" class="dh-btn dh-btn--ghost dh-btn--sm" id="dhAdjAdd">＋ Добавить</button>' : ''}
@@ -3478,6 +3881,23 @@ window.AsgardDocHubPage = (function () {
           </table></div>
         </div>`;
       host.querySelector('#dhAdjAdd')?.addEventListener('click', () => openAdjModal(inn, name, year, quarter));
+      // V483: сохранение комментария и способа подписания акта одним действием.
+      host.querySelector('#dhActSave')?.addEventListener('click', async () => {
+        const ch = host.querySelector('#dhActChannel')?.value || 'auto';
+        const cmt = host.querySelector('#dhActComment')?.value || '';
+        try {
+          await api('/reconciliation/comment', {
+            method: 'POST',
+            body: JSON.stringify({
+              inn: inn || null, name, year, quarter,
+              comment: cmt, receive_channel: ch
+            })
+          });
+          toast('Акт сверки', 'Сохранено', 'ok');
+          renderActDetail(inn, name, year, quarter);
+          renderActsTab();
+        } catch (e) { toast('Ошибка', e.message || 'не удалось сохранить', 'err'); }
+      });
       host.querySelectorAll('[data-adj-remove]').forEach((b) => b.addEventListener('click', async () => {
         const idx = parseInt(b.getAttribute('data-adj-remove'), 10);
         try {
@@ -4233,7 +4653,7 @@ window.AsgardDocHubPage = (function () {
               <div class="dh-drawer__amt" data-qa="drawer-amt">${esc(grossTxt)}</div>
               ${sourceBadge(row)}
             </div>
-            <button type="button" class="dh-drawer__close" id="dhDrawerClose" aria-label="Закрыть">✕</button>
+            <button type="button" class="dh-drawer__close asg-icon-btn" id="dhDrawerClose" aria-label="Закрыть"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button>
           </header>
           <div class="dh-drawer__body">
             ${correctionBanner(row)}
@@ -4357,6 +4777,23 @@ window.AsgardDocHubPage = (function () {
                   <label class="dh-check"><input type="checkbox" id="drPurpCust" ${row.purpose_customer ? 'checked' : ''}/> На объект заказчика</label>
                   <label class="dh-check"><input type="checkbox" id="drPurpAsg" ${row.purpose_asgard ? 'checked' : ''}/> Собственность АСГАРД</label>
                   <label class="dh-check"><input type="checkbox" id="drPurpCons" ${row.purpose_consumables ? 'checked' : ''}/> Расходники</label>
+                </div>
+                <!-- V483: за чей счёт доставка. Плашка в реестре читает именно
+                     это поле (приоритетнее значения из заявки), поэтому здесь
+                     ответ бухгалтерии и живёт. -->
+                <div class="dh-field"><label>За чей счёт доставка <span class="dh-help">(видно плашкой в реестре)</span></label>
+                  <select id="drDelivery">
+                    <option value="" ${!row.delivery_payer ? 'selected' : ''}>— уточнить —</option>
+                    <option value="included" ${row.delivery_payer === 'included' ? 'selected' : ''}>Входит в стоимость счёта (за наш счёт)</option>
+                    <option value="ours_separate" ${row.delivery_payer === 'ours_separate' ? 'selected' : ''}>За наш счёт, оплачиваем отдельно</option>
+                    <option value="supplier" ${row.delivery_payer === 'supplier' ? 'selected' : ''}>За счёт поставщика</option>
+                    <option value="none" ${row.delivery_payer === 'none' ? 'selected' : ''}>Доставки нет</option>
+                    <option value="other" ${row.delivery_payer === 'other' ? 'selected' : ''}>Иное</option>
+                  </select>
+                </div>
+                <div class="dh-field" id="drDeliveryNoteWrap" ${row.delivery_payer === 'other' ? '' : 'hidden'}>
+                  <label>Что именно с доставкой <span class="dh-help">(обязательно для «иное»)</span></label>
+                  <input id="drDeliveryNote" maxlength="200" value="${esc(row.delivery_payer_note || '')}" placeholder="Например: доставка по тарифу ТК, оплачивает заказчик" />
                 </div>
               </div>
             </div>
@@ -4708,6 +5145,17 @@ window.AsgardDocHubPage = (function () {
         };
       });
 
+      // V483: пояснение к «иное» в доставке — раскрываем только для этого варианта.
+      // Без обязательности: пустое пояснение при «иное» допустимо, но плашка
+      // в реестре тогда покажет нейтральное «доставка: иное».
+      const drDeliv = d.querySelector('#drDelivery');
+      if (drDeliv) {
+        drDeliv.onchange = () => {
+          const wrap = d.querySelector('#drDeliveryNoteWrap');
+          if (wrap) wrap.hidden = drDeliv.value !== 'other';
+        };
+      }
+
       // Closing rows: add + delete
       const addClosingRow = (pre) => {
         const list = d.querySelector('#drClosingList');
@@ -4764,6 +5212,12 @@ window.AsgardDocHubPage = (function () {
             ? null
             : (parseInt((window.CRSelect ? CRSelect.getValue('drWork') : null) || d.querySelector('#drWorkId')?.value) || null),
           receive_channel: d.querySelector('#drReceive')?.value || null,
+          // V483: за чей счёт доставка. Пояснение шлём только для «иное» —
+          // иначе в базе останется мусорный текст от прошлого выбора.
+          delivery_payer: d.querySelector('#drDelivery')?.value || null,
+          delivery_payer_note: (d.querySelector('#drDelivery')?.value === 'other'
+            ? (d.querySelector('#drDeliveryNote')?.value || '').trim() || null
+            : null),
           purpose_customer: !!d.querySelector('#drPurpCust')?.checked,
           purpose_asgard: !!d.querySelector('#drPurpAsg')?.checked,
           purpose_consumables: !!d.querySelector('#drPurpCons')?.checked,
@@ -5157,6 +5611,7 @@ window.AsgardDocHubPage = (function () {
       state.facetPms = dhMultiSelectValue('dhFacetPms');
       state.facetOwnerNotes = dhMultiSelectValue('dhFacetNotes');
       state.facetIncomplete = !!root.querySelector('#dhFacetIncomplete')?.checked;
+      state.facetDelivery = root.querySelector('#dhFacetDelivery')?.value || '';
       state.paymentSource = root.querySelector('#dhFacetPaySource')?.value || '';
       state.obsLetterMissing = !!root.querySelector('#dhFacetObsMissing')?.checked;
       state.year = root.querySelector('#dhFacetYear')?.value || '';
@@ -5177,6 +5632,8 @@ window.AsgardDocHubPage = (function () {
     });
     root.querySelector('#dhFacetOps')?.addEventListener('change', apply);
     root.querySelector('#dhFacetIncomplete')?.addEventListener('change', apply);
+    // V483: смена фильтра доставки — сразу перезапрос.
+    root.querySelector('#dhFacetDelivery')?.addEventListener('change', apply);
     // D-378: способ оплаты и «без письма ОБС». Дефект от верификатора
     // 25.10.2026 — контролы рендерились, но обработчиков не было, и выбор
     // ни к чему не приводил: фильтр не применялся.
@@ -5366,6 +5823,12 @@ window.AsgardDocHubPage = (function () {
     root.querySelector('#dhChipIncomplete')?.addEventListener('click', async () => {
       state.facetIncomplete = !state.facetIncomplete;
       state.kpi = state.facetIncomplete ? 'incomplete' : 'all';
+      await refresh();
+    });
+    // V483: очередь «уточнить доставку». Это фильтр (state.facetDelivery), а не
+    // KPI: серверный kpi-набор менять не нужно, логика уже есть в buildFilters.
+    root.querySelector('#dhChipDelivery')?.addEventListener('click', async () => {
+      state.facetDelivery = state.facetDelivery === 'unknown' ? '' : 'unknown';
       await refresh();
     });
     root.querySelectorAll('#dhKpis [data-kpi]').forEach((btn) => {
@@ -5760,6 +6223,11 @@ window.AsgardDocHubPage = (function () {
     });
     const inc = document.getElementById('dhFacetIncomplete');
     if (inc) inc.checked = state.facetIncomplete || state.kpi === 'incomplete';
+    // V483: чип и селект доставки должны отражать состояние после перерисовки.
+    const deliv = document.getElementById('dhFacetDelivery');
+    if (deliv) deliv.value = state.facetDelivery || '';
+    const dchip = document.getElementById('dhChipDelivery');
+    if (dchip) dchip.classList.toggle('is-on', state.facetDelivery === 'unknown');
   }
 
   async function paint(layoutFn) {
@@ -5818,6 +6286,7 @@ window.AsgardDocHubPage = (function () {
     state.facetCounterparty = '';
     state.facetOps = '';
     state.facetIncomplete = false;
+    state.facetDelivery = '';
     state.quarter = '';
     state.year = '';
     state.view = 'registry';
