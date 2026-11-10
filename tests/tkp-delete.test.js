@@ -86,6 +86,11 @@ check('запрет: ТКП со счётом не удаляется', () => {
 });
 
 check('удаление в транзакции', () => {
+  // Пул берётся как db.pool: у обёртки базы нет метода connect().
+  // С `db.connect()` роут падал TypeError → маскировался в 500, и удаление
+  // не работало вообще (прод, 10.11.2026).
+  assert.ok(/db\.pool\.connect\(\)/.test(deleteBlock), 'нет db.pool.connect() — упадёт');
+  assert.ok(!/await db\.connect\(\)/.test(deleteBlock), 'остался несуществующий db.connect()');
   assert.ok(/BEGIN/.test(deleteBlock) && /COMMIT/.test(deleteBlock) && /ROLLBACK/.test(deleteBlock),
     'нет транзакции — половина привязок может остаться');
 });

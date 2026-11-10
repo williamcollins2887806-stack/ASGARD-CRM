@@ -770,7 +770,11 @@ async function routes(fastify, options) {
 
     const removed = { blocks: 0, documents: 0, review_links: 0, pre_tender_links: 0, quick_sessions: 0, file: false };
 
-    const client = await db.connect();
+    // Транзакция: пул берётся как `db.pool`, а НЕ `db` — у обёртки базы нет
+    // метода connect(). С `db.connect()` роут падал с TypeError, ответ
+    // маскировался в 500 «Не удалось выполнить операцию», и удаление ТКП
+    // не работало (найдено 10.11.2026).
+    const client = await db.pool.connect();
     try {
       await client.query('BEGIN');
 
