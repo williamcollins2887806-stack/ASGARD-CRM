@@ -126,24 +126,40 @@ function chunkText(text, opts = {}) {
     for (let i = 0; i < starts.length; i += 1) {
       const from = starts[i];
       const to = i + 1 < starts.length ? starts[i + 1] : lines.length;
-      const body = lines.slice(from, to);
-      // Раздел может быть огромным — тогда режем его по строкам.
-      if (body.length <= maxLines && body.join('\n').length <= maxChars) {
-        pushChunk(from, to, boundaries[i].title, true);
-      } else {
-        for (let s = from; s < to; s += maxLines) {
-          pushChunk(s, Math.min(s + maxLines, to), boundaries[i].title, true);
-        }
-      }
+      // Дробим раздел по ЛИМИТУ СИМВОЛОВ, а не только по строкам: у длинных
+      // строк 120 строк легко дают 60 тыс. символов, и модель снова получает
+      // огромный ответ на 5 минут. Внутри куска держим ещё и потолок строк.
+      pushRange(from, to, boundaries[i].title, { maxChars, maxLines, lines, header, pushChunk });
     }
     return chunks;
   }
 
   // ── Границ нет: режем по числу строк ───────────────────────────────────
-  for (let from = 0; from < lines.length; from += maxLines) {
-    pushChunk(from, Math.min(from + maxLines, lines.length), null, true);
-  }
+  pushRange(0, lines.length, null, { maxChars, maxLines, lines, header, pushChunk });
   return chunks;
+}
+
+/**
+ * Нарезает диапазон строк на порции по лимитам символов И строк.
+ * Гарантия: каждая порция не больше maxChars (кроме одной длинной строки).
+ */
+function pushRange(from, to, title, ctx) {
+  const { maxChars, maxLines, lines, header, pushChunk } = ctx;
+  let start = from;
+  while (start < to) {
+    let end = start;
+    let chars = 0;
+    while (end < to) {
+      const lineLen = lines[end].length + 1;
+      // Стоп по символам или по строкам — что наступит раньше.
+      if (end > start && (chars + lineLen > maxChars || (end - start) >= maxLines)) break;
+      chars += lineLen;
+      end += 1;
+    }
+    if (end === start) end = start + 1; // одна очень длинная строка
+    pushChunk(start, end, title, true);
+    start = end;
+  }
 }
 
 /**
