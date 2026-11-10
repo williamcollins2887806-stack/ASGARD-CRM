@@ -428,10 +428,13 @@ function summarizeDays(days) {
     crm_minutes: crm,
     delta_minutes: credited - norm,    // отрицательное = недоработка
     days_counted: counted,
+    // Часы НЕ округляем до десятых: Math.round(delta/6)/10 превращал −5 мин
+    // в «−0,1 ч», а +220 мин — в «+3,7 ч». Итог должен сходиться с суммой
+    // дней, поэтому отдаём точные минуты, а форматирует пусть фронт.
     norm_hours: Math.round(norm / 6) / 10,
     credited_hours: Math.round(credited / 6) / 10,
     worked_hours: Math.round(worked / 6) / 10,
-    delta_hours: Math.round((credited - norm) / 6) / 10,
+    delta_hours: Math.round(((credited - norm) / 60) * 100) / 100,
     office_hours: Math.round(office / 6) / 10,
     crm_hours: Math.round(crm / 6) / 10
   };

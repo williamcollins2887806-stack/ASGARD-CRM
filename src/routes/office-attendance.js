@@ -640,10 +640,20 @@ module.exports = async function (fastify, options) {
     const ownerUserId = (owner[0] && owner[0].user_id) || null;
 
     const calendar = await officeHours.loadCalendar(db, from, to);
+    // Дубли staff_plan на один день (на проде бывает 2–3 отметки за день):
+    // берём МАКСИМУМ часов, а не «последнюю строку» — иначе детализация
+    // расходится со сводкой по человеку (DISTINCT ON ... ORDER BY id DESC).
     const { rows: planRows } = await db.query(
       `SELECT DISTINCT ON (date) date::text AS date, status_code FROM staff_plan
         WHERE staff_id = $1 AND date >= $2::date AND date <= $3::date
-        ORDER BY date, id DESC`,
+        ORDER BY date,
+                 CASE lower(btrim(status_code))
+                   WHEN 'оф' THEN 1 WHEN 'уд' THEN 2 WHEN 'об' THEN 3
+                   WHEN 'км' THEN 4 WHEN 'пг' THEN 5 WHEN 'уч' THEN 6
+                   WHEN 'ск' THEN 7 WHEN 'нп' THEN 8
+                   WHEN 'бн' THEN 9 WHEN 'сс' THEN 10 WHEN 'вх' THEN 11
+                   ELSE 12
+                 END`,
       [staffId, from, to]
     );
     const planMap = new Map(planRows.map((r) => [String(r.date).slice(0, 10), r.status_code]));

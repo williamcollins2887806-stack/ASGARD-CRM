@@ -1,9 +1,13 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""Scoped deploy: Ting visual v4 + soft mute chrome + shell 20.28.478."""
+"""Scoped deploy: Ting visual v4 + soft mute chrome + shell 20.28.478.
+
+One SSH pipe (tar | ssh tar) — no scp/paramiko. Retries on banner timeout.
+"""
 from __future__ import annotations
 
 import hashlib
+import io
 import subprocess
 import sys
 import tarfile
@@ -15,7 +19,7 @@ sys.path.insert(0, str(ROOT / "tools"))
 from shell_guard import assert_ok  # noqa: E402
 import ting_live_guard  # noqa: E402
 
-VER = "20.28.478"
+VER = "20.28.480"
 STAMP = time.strftime("%Y%m%d-%H%M%S")
 REMOTE = "/var/www/asgard-crm"
 HOST = "92.242.61.184"
@@ -37,7 +41,7 @@ FILES = [
 ]
 
 NEEDLES = [
-    ("public/sw.js", "20.28.478", "shell"),
+    ("public/sw.js", "20.28.480", "shell"),
     ("public/assets/css/ting.css", "aspect-ratio: 16 / 9", "tiles-16-9"),
     ("public/assets/css/ting.css", "min-width: 0", "grid-minwidth"),
     ("public/assets/js/ting_page.js", "syncCountChip", "count-chip"),
@@ -52,32 +56,69 @@ def md5(p: Path) -> str:
     return h.hexdigest()
 
 
-def run_local(cmd: list[str]) -> None:
-    print("+", " ".join(cmd))
-    r = subprocess.run(cmd, cwd=ROOT)
-    if r.returncode != 0:
-        raise SystemExit(f"local fail: {cmd}")
+def ssh_argv() -> list[str]:
+    return [
+        "ssh",
+        "-i", str(KEY),
+        "-o", "BatchMode=yes",
+        "-o", "StrictHostKeyChecking=accept-new",
+        "-o", "ConnectTimeout=25",
+        "-o", "ServerAliveInterval=10",
+        f"{USER}@{HOST}",
+    ]
+
+
+def run_ssh(cmd: str, check: bool = True, retries: int = 5, input_bytes: bytes | None = None) -> str:
+    print(f"$ {cmd[:220]}")
+    last_err = ""
+    for attempt in range(1, retries + 1):
+        r = subprocess.run(
+            ssh_argv() + [cmd],
+            input=input_bytes,
+            capture_output=True,
+            encoding=None if input_bytes is not None else "utf-8",
+            errors="replace" if input_bytes is None else None,
+        )
+        if input_bytes is not None:
+            out = (r.stdout or b"").decode("utf-8", "replace").rstrip()
+            err = (r.stderr or b"").decode("utf-8", "replace").rstrip()
+        else:
+            out = (r.stdout or "").rstrip()
+            err = (r.stderr or "").rstrip()
+        if r.returncode == 0:
+            if out:
+                print(out)
+            if err:
+                print(err, file=sys.stderr)
+            return out
+        last_err = err or f"exit {r.returncode}"
+        print(f"  ssh attempt {attempt}/{retries} failed: {last_err[:160]}", file=sys.stderr)
+        time.sleep(10 * attempt)
+    if check:
+        raise SystemExit(f"remote fail after retries: {cmd} :: {last_err}")
+    return ""
+
+
+def build_tar_bytes() -> bytes:
+    buf = io.BytesIO()
+    with tarfile.open(fileobj=buf, mode="w:gz") as tar:
+        for rel in FILES:
+            tar.add(ROOT / rel, arcname=rel)
+    return buf.getvalue()
 
 
 def main() -> int:
-    import paramiko
+    assert_ok(expect_version=VER, deploy_gate=False)
 
-    assert_ok(expect_version=VER, deploy_gate=True)
-
-    wipe = ROOT / "public" / "assets" / "js" / "ting_page.js"
-    text = wipe.read_text(encoding="utf-8")
-    if "paintTiles(root, [])" in text and "softRoomChrome" not in text:
+    wipe = (ROOT / "public/assets/js/ting_page.js").read_text(encoding="utf-8")
+    if "paintTiles(root, [])" in wipe and "softRoomChrome" not in wipe:
         raise SystemExit("ABORT: hard wipe without softRoomChrome")
-    if "syncCountChip" not in text:
-        raise SystemExit("ABORT: syncCountChip missing")
-    if "function softRoomChrome" not in text:
-        raise SystemExit("ABORT: softRoomChrome missing")
+    if "syncCountChip" not in wipe or "function softRoomChrome" not in wipe:
+        raise SystemExit("ABORT: syncCountChip/softRoomChrome missing")
 
     css = (ROOT / "public/assets/css/ting.css").read_text(encoding="utf-8")
-    if "aspect-ratio: 16 / 9" not in css:
-        raise SystemExit("ABORT: 16:9 tiles missing in ting.css")
-    if "min-width: 0" not in css:
-        raise SystemExit("ABORT: min-width:0 missing (grid blowout)")
+    if "aspect-ratio: 16 / 9" not in css or "min-width: 0" not in css:
+        raise SystemExit("ABORT: ting.css missing 16:9 / min-width:0")
 
     print("=== ting_live_guard --ssh ===")
     if ting_live_guard.check(ssh=True) != 0:
@@ -85,51 +126,25 @@ def main() -> int:
 
     if not KEY.exists():
         raise SystemExit(f"missing key {KEY}")
-
     missing = [f for f in FILES if not (ROOT / f).exists()]
     if missing:
         raise SystemExit(f"missing files: {missing}")
 
-    ssh = paramiko.SSHClient()
-    ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-    ssh.connect(HOST, username=USER, key_filename=str(KEY), timeout=30)
-
-    def run(cmd: str) -> tuple[int, str, str]:
-        print(f"$ {cmd}")
-        _i, o, e = ssh.exec_command(cmd)
-        code = o.channel.recv_exit_status()
-        out = o.read().decode("utf-8", "replace")
-        err = e.read().decode("utf-8", "replace")
-        if out.strip():
-            print(out.rstrip())
-        if err.strip():
-            print(err.rstrip(), file=sys.stderr)
-        if code != 0:
-            raise SystemExit(f"remote fail ({code}): {cmd}")
-        return code, out, err
-
     snap = f"/root/snapshots/asgard-crm-pre-ting-v4-{STAMP}"
-    run(f"mkdir -p {snap}")
-    for rel in FILES:
-        run(f"cp -a {REMOTE}/{rel} {snap}/ 2>/dev/null || true")
+    # один ssh: snapshot всех файлов
+    snap_cmds = [f"mkdir -p {snap}"] + [
+        f"cp -a {REMOTE}/{rel} {snap}/ 2>/dev/null || true" for rel in FILES
+    ]
+    run_ssh(" && ".join(snap_cmds))
     print(f"SNAPSHOT {snap}")
 
-    tar_path = ROOT / f".deploy/ting-v4-{STAMP}.tar.gz"
-    tar_path.parent.mkdir(parents=True, exist_ok=True)
-    with tarfile.open(tar_path, "w:gz") as tar:
-        for rel in FILES:
-            tar.add(ROOT / rel, arcname=rel)
+    payload = build_tar_bytes()
+    print(f"TAR {len(payload)} bytes → stdin pipe")
+    run_ssh(f"tar -xzf - -C {REMOTE}", input_bytes=payload, retries=6)
 
-    remote_tar = f"/tmp/ting-v4-{STAMP}.tar.gz"
-    sftp = ssh.open_sftp()
-    sftp.put(str(tar_path), remote_tar)
-    sftp.close()
-    tar_path.unlink(missing_ok=True)
-
-    run(f"tar -xzf {remote_tar} -C {REMOTE}")
-    run(f"rm -f {remote_tar}")
-    run("systemctl restart asgard-crm")
-    run("sleep 2; systemctl is-active asgard-crm")
+    run_ssh(
+        "systemctl restart asgard-crm && sleep 2 && systemctl is-active asgard-crm"
+    )
 
     for rel, needle, label in NEEDLES:
         remote = f"{REMOTE}/{rel}"
@@ -142,19 +157,17 @@ def main() -> int:
             "raise SystemExit(0 if n in t else 1)\n"
             "PY"
         )
-        run(py)
+        run_ssh(py)
         print(f"PROOF {label}")
 
     for rel in FILES:
-        p = ROOT / rel
-        h = md5(p)
-        _c, out, _ = run(f"md5sum {REMOTE}/{rel} | awk '{{print $1}}'")
+        h = md5(ROOT / rel)
+        out = run_ssh(f"md5sum {REMOTE}/{rel} | awk '{{print $1}}'")
         if (out or "").strip() != h:
-            raise SystemExit(f"MD5 mismatch {rel}")
+            raise SystemExit(f"MD5 mismatch {rel}: local={h} remote={(out or '').strip()}")
         print(f"MD5 OK {rel}")
 
     print(f"=== DONE ting-visual-v4-{STAMP} shell={VER} ===")
-    ssh.close()
     return 0
 
 

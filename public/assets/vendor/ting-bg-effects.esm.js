@@ -36714,7 +36714,7 @@ var ProcessorWrapper = class _ProcessorWrapper {
     }
     this.processedTrack = this.capturedStream.getVideoTracks()[0];
     this.processingEnabled = true;
-    this.frameCallback = (frame) => {
+    this.frameCallback = async (frame) => {
       if (!this.processingEnabled || !frame) {
         frame.close();
         return;
@@ -36739,10 +36739,10 @@ var ProcessorWrapper = class _ProcessorWrapper {
         }
       };
       try {
-        this.transformer.transform(frame, controller);
+        await this.transformer.transform(frame, controller);
       } catch (e3) {
         this.log.error("Error in transform:", e3);
-        frame.close();
+        try { frame.close(); } catch (_) {}
       }
     };
     this.startRenderLoop();
@@ -36810,7 +36810,13 @@ var ProcessorWrapper = class _ProcessorWrapper {
           if (videoElement.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) {
             const frame = new VideoFrame(videoElement);
             if (this.frameCallback) {
-              this.frameCallback(frame);
+              const _p = this.frameCallback(frame);
+              if (_p && typeof _p.then === "function") {
+                _p.catch((e3) => {
+                  this.log.error("Error in frameCallback:", e3);
+                  try { frame.close(); } catch (_) {}
+                });
+              }
             } else {
               frame.close();
             }
@@ -37571,11 +37577,11 @@ var BackgroundProcessor = class extends VideoTransformer {
     var _a3, _b2, _c, _d, _e2, _f, _g, _h2;
     await super.init({ outputCanvas, inputElement: inputVideo });
     const fileSet = await Xo.forVisionTasks(
-      (_b2 = (_a3 = this.options.assetPaths) == null ? void 0 : _a3.tasksVisionFileSet) != null ? _b2 : `/assets/vendor/mediapipe`
+      (_b2 = (_a3 = this.options.assetPaths) == null ? void 0 : _a3.tasksVisionFileSet) != null ? _b2 : `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${dependencies["@mediapipe/tasks-vision"]}/wasm`
     );
     this.imageSegmenter = await Uh.createFromOptions(fileSet, {
       baseOptions: {
-        modelAssetPath: (_d = (_c = this.options.assetPaths) == null ? void 0 : _c.modelAssetPath) != null ? _d : "/assets/vendor/mediapipe/selfie_segmenter.tflite",
+        modelAssetPath: (_d = (_c = this.options.assetPaths) == null ? void 0 : _c.modelAssetPath) != null ? _d : "https://storage.googleapis.com/mediapipe-models/image_segmenter/selfie_segmenter/float16/latest/selfie_segmenter.tflite",
         delegate: "GPU",
         ...this.options.segmenterOptions
       },
@@ -37719,6 +37725,7 @@ var BackgroundProcessor = class extends VideoTransformer {
   }
 };
 var DEFAULT_BLUR_RADIUS = 10;
+var supportsBackgroundProcessors = () => BackgroundProcessor.isSupported && ProcessorWrapper.isSupported;
 var BackgroundProcessorWrapper = class extends ProcessorWrapper {
   get mode() {
     const options = this.transformer.options;
@@ -37869,5 +37876,6 @@ var VirtualBackground = (imagePath, segmenterOptions, onFrameProcessed, processo
 };
 export {
   BackgroundBlur,
-  VirtualBackground
+  VirtualBackground,
+  supportsBackgroundProcessors
 };

@@ -583,8 +583,14 @@ module.exports = async function directorAnalyticsRoutes(fastify) {
       const wItems = wRows.map((r) => {
         const b = workBucket(r.work_status);
         const contract = Number(r.contract_value || 0);
-        const cost = r.cost_fact != null ? Number(r.cost_fact)
-          : (r.cost_plan != null ? Number(r.cost_plan) : null);
+        // cost_fact заполнен у 18 из 41 и бывает абсурден (контракт 353 млн,
+        // «факт» 1,46 млн → маржа 99,6 %). Факт берём, только если он похож
+        // на правду (≥10 % контракта); иначе показываем план и помечаем это.
+        const fact = r.cost_fact != null ? Number(r.cost_fact) : null;
+        const plan = r.cost_plan != null ? Number(r.cost_plan) : null;
+        const factUsable = fact != null && fact > 0 && contract > 0 && fact >= contract * 0.1;
+        const cost = factUsable ? fact : (plan != null && plan > 0 ? plan : (fact != null ? fact : null));
+        const costBasis = factUsable ? 'fact' : (plan != null && plan > 0 ? 'plan' : (fact != null ? 'fact' : null));
         const marginPct = (cost != null && contract > 0)
           ? Math.round(((contract - cost) / contract) * 1000) / 10 : null;
         const daysLeft = daysLeftOf(r.end_plan);
@@ -597,6 +603,7 @@ module.exports = async function directorAnalyticsRoutes(fastify) {
           bucket: b,
           contract_value: contract || null,
           margin_pct: marginPct,
+          margin_basis: costBasis,
           days_left: daysLeft,
           schedule_light: light,
           paid,
@@ -613,6 +620,8 @@ module.exports = async function directorAnalyticsRoutes(fastify) {
       const avgMargin = margins.length
         ? Math.round(margins.reduce((s, v) => s + v, 0) / margins.length * 10) / 10
         : null;
+      // Сколько маржей посчитано по плану, а не по факту — подпись на экране.
+      const marginPlanCount = portfolio.filter((x) => x.margin_basis === 'plan').length;
       const riskCount = portfolio.filter((x) => x.schedule_light === 'err' || x.schedule_light === 'warn'
         || (x.margin_pct != null && x.margin_pct < 20)).length;
       const wAttn = portfolio
@@ -706,6 +715,7 @@ module.exports = async function directorAnalyticsRoutes(fastify) {
           archive: wArch.length,
           contract_sum: contractSum,
           avg_margin: avgMargin,
+          margin_plan_count: marginPlanCount,
           paid_sum: paidSum,
           risk_count: riskCount,
           by_bucket: [
@@ -794,6 +804,24 @@ module.exports = async function directorAnalyticsRoutes(fastify) {
       params.push(Math.min(parseInt(request.query.limit, 10) || 200, 500));
       const limitIdx = params.length;
 
+      // Фронт давно шлёт &sort=, сервер его игнорировал: реестр всегда был
+      // отсортирован по сроку возрастанию, то есть первыми шли самые старые
+      // (при period=all — 200 строк с истёкшим сроком, 158 из них закрытые).
+      const sortQ = String(request.query.sort || '').trim();
+      const CLOSED_SQL = "('выиграли','проиграли','отмена','подались')";
+      let orderBy;
+      if (sortQ === 'sum') {
+        orderBy = 'COALESCE(t.submission_price, t.tender_price) DESC NULLS LAST, t.id DESC';
+      } else if (sortQ === 'created') {
+        orderBy = 't.created_at DESC NULLS LAST, t.id DESC';
+      } else if (sortQ === 'status') {
+        orderBy = 't.registry_status ASC, t.docs_deadline ASC NULLS LAST';
+      } else {
+        // По умолчанию: живые впереди закрытых, внутри живых — ближайший срок.
+        orderBy = 'CASE WHEN t.registry_status IN ' + CLOSED_SQL + ' THEN 1 ELSE 0 END,'
+          + ' t.docs_deadline ASC NULLS LAST, t.id DESC';
+      }
+
       const { rows } = await db.query(`
         SELECT
           t.id, t.tender_title, t.customer_name, t.customer_inn,
@@ -818,7 +846,7 @@ module.exports = async function directorAnalyticsRoutes(fastify) {
         WHERE t.archived_at IS NULL
           AND (${p.clause})
           AND (${statusClause})
-        ORDER BY t.docs_deadline NULLS LAST, t.id DESC
+        ORDER BY ${orderBy}
         LIMIT $${limitIdx}
       `, params);
 

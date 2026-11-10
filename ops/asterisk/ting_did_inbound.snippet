@@ -1,0 +1,16 @@
+; =============================================================================
+; Ting dial-in: ОТДЕЛЬНЫЙ DID (не основной CRM 74993223062).
+;
+; 1) В Mango заведите второй номер только для Тинга.
+; 2) Вставьте ниже ПЕРЕД exten => _X. в [from-mango-inbound]
+;    (см. extensions_asgard.conf). DNIS приходит цифрами без +.
+; 3) dialplan reload
+; 4) settings/env: thing_dialin_number = этот номер, thing_dialin_enabled=true
+;    Запрещено писать номер в settings без этой ветки.
+;
+; Пример (замените 7499XXXXXXX на реальный Ting-DID):
+; exten => 7499XXXXXXX,1,NoOp(Ting DID inbound ${CALLERID(num)})
+;  same => n,Goto(from-ting-dialin,s,1)
+;
+; Внутренний тест без DID: набрать 7888 с softphone CRM.
+; =============================================================================

@@ -76,6 +76,15 @@ def main() -> int:
 
     shell_guard.assert_ok(base_dir=str(ROOT), expect_version=VER, deploy_gate=True)
 
+    # Не ронять CRM mid-call: LiveKit SFU жив, API/token мрут → 502 у всех в комнате.
+    print("=== 0b. ting_live_guard ===")
+    import ting_live_guard  # noqa: E402
+    if ting_live_guard.check() != 0:
+        raise SystemExit(
+            "ting_live_guard: есть live-комнаты — файлы можно лить отдельно, "
+            "но systemctl restart asgard-crm запрещён"
+        )
+
     key = load_pkey(SSH_KEY)
     ssh = paramiko.SSHClient()
     ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
