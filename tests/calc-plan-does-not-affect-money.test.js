@@ -34,13 +34,14 @@ function check(name, ok, detail) {
 
 // 1. Движок принимает объём работ отдельным входом.
 const recalcStart = SRC.indexOf('function recalcAsgardSmeta');
-const recalcBody = SRC.slice(recalcStart, recalcStart + 3600);
+// Окно шире: движок вырос (works + вывод срока), и `est.rows` появляется
+// дальше прежних 3600 символов.
+const recalcBody = SRC.slice(recalcStart, recalcStart + 8000);
 const engineInputs = ['est.rows', 'est.crew', 'est.mtr', 'est.schedule', 'est.works'];
 const missing = engineInputs.filter((k) => !new RegExp(k.replace('.', '\\.') + '\\b').test(recalcBody));
 check('движок сметы берёт строки, бригаду, МТР, сроки, параметры и работы',
   recalcStart >= 0 && missing.length === 0,
   missing.length ? 'не найдено в recalcAsgardSmeta: ' + missing.join(', ') : 'все входы на месте');
-
 // 2. Объём работ реально меняет себестоимость.
 const base = {
   params: { work_days: 10, shifts_per_day: 2, shift_hours: 12 },
@@ -53,15 +54,27 @@ check('срок из объёма работ влияет на себестои�
   b.totals.cost > a.totals.cost * 2,
   `${a.totals.cost} → ${b.totals.cost} при сроке 10 → 40`);
 
-// 3. Перечень работ не задваивает деньги (справочный блок W).
+// 3. Работы не задваивают деньги: они ПОДМЕНЯЮТ срок, а не добавляют строки.
+//    Раньше тест требовал равенства cost с works и без — это фиксировало
+//    прежний дефект «объём не влияет на деньги». Теперь проверяем, что
+//    cost(works) == cost(work_days = срок из works), т.е. двойного счёта нет.
+const derived = smeta.deriveWorkDaysFromWorks(
+  [{ people: 5, days: 2 }], { crew_size: 5, crews: 1 }
+);
 const withWorks = smeta.recalcAsgardSmeta(Object.assign({}, base, {
   works: [{ name: 'Чистка АВО', unit: 'м2', volume: 350, people: 5, days: 2 }]
 }));
-check('перечень работ справочный и не задваивает себестоимость',
-  withWorks.totals.cost === a.totals.cost,
-  `${a.totals.cost} vs ${withWorks.totals.cost}`);
+const byParams = smeta.recalcAsgardSmeta(Object.assign({}, base, {
+  params: { work_days: derived.work_days, shifts_per_day: 2, shift_hours: 12 }
+}));
+check('перечень работ не задваивает себестоимость',
+  Math.abs(withWorks.totals.cost - byParams.totals.cost) < 1,
+  `works=${withWorks.totals.cost} vs params(${derived.work_days} сут)=${byParams.totals.cost}`);
 check('перечень работ виден в смете отдельным блоком',
   withWorks.rows.some((r) => r.section === 'W' && /Чистка АВО/.test(String(r.name))));
+check('блок W остаётся справочным (не line-строки)',
+  withWorks.rows.filter((r) => r.section === 'W').every((r) => r.kind === 'info' || r.kind === 'section'),
+  'в блоке W появились денежные строки');
 
 // 4. Модалка при закрытии анализа передаёт работы в смету.
 check('смета из анализа передаёт works из плана',

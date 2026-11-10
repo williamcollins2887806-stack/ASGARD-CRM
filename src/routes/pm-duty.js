@@ -158,7 +158,23 @@ async function buildSmetaFromStage(db, tenderId, rj) {
   const st = (rows[0] && rows[0].stage_state) || {};
   const calc = (st.calc && st.calc.positions) || [];
   const dvPositions = Array.isArray(st.positions) ? st.positions : [];
-  if (!calc.length) return null;
+  // Работы из уже посчитанной сметы — фолбэк, когда плана просчёта нет.
+  // Раньше здесь стоял `if (!calc.length) return null`, и фолбэк ниже был
+  // недостижим: у тендеров без calc_plan (2157, 2158) смета не пересобиралась
+  // вовсе, и объём работ снова не участвовал в деньгах (10.11.2026).
+  const prevWorks = Array.isArray(rj && rj.asgard_smeta && rj.asgard_smeta.works)
+    ? rj.asgard_smeta.works
+    : [];
+  const prevCrew = Array.isArray(rj && rj.asgard_smeta && rj.asgard_smeta.crew)
+    ? rj.asgard_smeta.crew
+    : [];
+  const numS = (v) => {
+    const n = Number(v);
+    return Number.isFinite(n) ? n : 0;
+  };
+  const canBuildFromWorks = !calc.length
+    && prevWorks.some((w) => w && (numS(w.days) > 0 || numS(w.labor_hours) > 0));
+  if (!calc.length && !canBuildFromWorks) return null;
 
   // Индекс позиций ДВ по id: из него берём наименование, объём, единицу и
   // источник объёма. Без него падал `byId is not defined` — исключение
@@ -193,6 +209,9 @@ async function buildSmetaFromStage(db, tenderId, rj) {
   //   params   — ставки и налоги из настроек;
   //   rows     — оставляем пустым, чтобы asgard-smeta взял СВОЙ скелет.
   const planCrew = Array.isArray(st.calc && st.calc.crew) ? st.calc.crew : [];
+  // Фолбэк: плана нет, но бригада уже есть в прошлой смете — берём её,
+  // иначе смета не соберётся (без бригады движок отказывается).
+  const crewSource = planCrew.length ? planCrew : prevCrew;
   const workDays = Number((st.calc && st.calc.work_days) || 0) || null;
   const crews = Number((st.calc && st.calc.crews) || 0) || 1;
 
@@ -210,8 +229,8 @@ async function buildSmetaFromStage(db, tenderId, rj) {
     pto: 'ПТО / приёмка'
   };
   const crew = [];
-  for (const c of planCrew) {
-    const code = String(c.role_code || '').toLowerCase();
+  for (const c of crewSource) {
+    const code = String(c.role_code || c.code || '').toLowerCase();
     if (!CREW_LABEL[code]) continue;
     const cnt = Number(c.count) || 0;
     if (!(cnt > 0)) continue;
@@ -246,6 +265,11 @@ async function buildSmetaFromStage(db, tenderId, rj) {
   // meta.work_duration_days, поэтому 5 и 20 суток давали ОДНУ цену —
   // стоимость не зависела от длительности работ.
   // workDays объявлен выше (там же, где planCrew) — не дублируем.
+  //
+  // ВАЖНО: если план дал срок, пишем его. Если плана нет, а работы есть —
+  // НЕ трогаем params.work_days: срок выведет движок из works
+  // (deriveWorkDaysFromWorks) и запишет туда же. Иначе число из старой
+  // сметы перебивало бы объём работ — ровно тот дефект, что чиним.
   if (workDays) params.work_days = Math.max(1, Math.round(workDays));
   if (!params.shifts_per_day) params.shifts_per_day = 2;
   if (!params.shift_hours) params.shift_hours = 12;

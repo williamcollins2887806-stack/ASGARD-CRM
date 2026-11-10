@@ -88,14 +88,17 @@ check('смены 2→3 пересчитывают person_shifts и man_hours', 
     `person_shifts не выросли: ${a.totals.person_shifts} → ${b.totals.person_shifts}`);
   assert.ok(b.totals.man_hours > a.totals.man_hours,
     `man_hours не выросли: ${a.totals.man_hours} → ${b.totals.man_hours}`);
-  // Инвариант: человеко-смены = сумма количеств по строкам секции A
-  // (это те смены, за которые платим в ФОТ). Раньше считали только
-  // рабочих и мастеров, и знаменатель расходился со сметой.
-  const aSum = (est) => est.rows
-    .filter((r) => r.kind === 'line' && r.section === 'A')
+  // Инвариант: человеко-смены = смены ролей бригады (tech_from='crew').
+  // Склад (A5) и дорога (A6) идут в person_shifts_other: у них другая ставка,
+  // и в знаменателе KPI «прибыль на чел·смену» их быть не должно.
+  const crewShifts = (est) => est.rows
+    .filter((r) => r.kind === 'line' && r.section === 'A' && r.tech_from === 'crew')
     .reduce((s, r) => s + (Number(r.qty) || 0), 0);
-  assert.strictEqual(b.totals.person_shifts, aSum(b),
-    `person_shifts ${b.totals.person_shifts} ≠ Σ строк A ${aSum(b)}`);
+  assert.strictEqual(b.totals.person_shifts, crewShifts(b),
+    `person_shifts ${b.totals.person_shifts} ≠ смен бригады ${crewShifts(b)}`);
+  assert.strictEqual(b.totals.person_shifts_all_a,
+    b.totals.person_shifts + b.totals.person_shifts_other,
+    'all_a ≠ crew + other');
 });
 
 check('явно заданные смены роли перебивают режим объекта', () => {
@@ -118,11 +121,18 @@ check('перечень работ попадает в смету справоч
 });
 
 check('блок W не входит в себестоимость', () => {
-  const a = smeta.recalcAsgardSmeta(estFor(10, 2));
-  const b = estFor(10, 2);
-  b.works = [{ name: 'Чистка АВО', unit: 'м2', volume: 350, people: 5, days: 2 }];
-  const c = smeta.recalcAsgardSmeta(b);
-  assert.strictEqual(c.totals.cost, a.totals.cost, 'перечень работ задвоил себестоимость');
+  // Строки W всегда справочные (kind: 'info'), поэтому их сумма в cost
+  // не попадает. А вот срок из works — попадает (это и есть новое правило),
+  // поэтому сравниваем не «cost равен», а «W не даёт денег».
+  const withWorks = estFor(10, 2);
+  withWorks.works = [{ name: 'Чистка АВО', unit: 'м2', volume: 350, people: 5, days: 2 }];
+  const c = smeta.recalcAsgardSmeta(withWorks);
+  const wLines = c.rows.filter((r) => r.section === 'W' && r.kind === 'line');
+  assert.strictEqual(wLines.length, 0, 'в блоке W появились денежные строки: ' + wLines.length);
+  const wSum = c.rows
+    .filter((r) => r.section === 'W')
+    .reduce((s, r) => s + (Number(r.sum) || 0), 0);
+  assert.strictEqual(wSum, 0, 'блок W добавил сумму в смету: ' + wSum);
 });
 
 const failed = results.filter((r) => !r.ok);

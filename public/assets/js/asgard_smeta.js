@@ -261,6 +261,63 @@ function normalizeMtr(mtr) {
   return out;
 }
 
+/**
+ * Срок из перечня работ — единственная формула на весь проект.
+ *
+ * ── Зачем ──────────────────────────────────────────────────────────────────
+ * Раньше срок брался из `params.work_days`, а `works[]` ехали рядом как
+ * справка: тендер на 6 позиций и на 600 при одной бригаде давали одну цену.
+ * Теперь, если в работах есть трудозатраты, срок выводится ИЗ НИХ.
+ *
+ * Формула совпадает с `normalizeCalcPlan` (mimir-tender-stages.js), чтобы
+ * план и смета не разъезжались:
+ *   • crewDays = Σ ceil(people / CREW_SIZE) × days  — бригадо-сутки;
+ *   • если у строки только labor_hours: ceil(labor_hours / (shift_hours × shifts));
+ *   • work_days = crewDays / crews.
+ *
+ * Возвращает null, если трудозатрат в работах нет — тогда срок берётся из
+ * параметров, как раньше. Ничего не выдумываем.
+ *
+ * @param {Array} works — нормализованный перечень работ
+ * @param {object} opts — { crew_size, crews, shift_hours, shifts_per_day }
+ * @returns {{work_days:number, crew_days:number, source:string}|null}
+ */
+function deriveWorkDaysFromWorks(works, opts) {
+  const list = Array.isArray(works) ? works : [];
+  if (!list.length) return null;
+  const o = opts || {};
+  const crewSize = Math.max(2, num(o.crew_size, 0) || 5);
+  const shiftHours = num(o.shift_hours, 0) || 12;
+  const shiftsPerDay = num(o.shifts_per_day, 0) || 1;
+  const crews = Math.max(1, num(o.crews, 0) || 1);
+
+  let crewDays = 0;
+  let hasLabor = false;
+  for (const w of list) {
+    if (!w) continue;
+    const people = num(w.people, 0);
+    const days = num(w.days, 0);
+    const laborHours = num(w.labor_hours, 0);
+    if (days > 0 && people > 0) {
+      crewDays += Math.ceil(people / crewSize) * days;
+      hasLabor = true;
+    } else if (days > 0) {
+      // Сутки известны, людей нет: одна бригада последовательно.
+      crewDays += days;
+      hasLabor = true;
+    } else if (laborHours > 0) {
+      crewDays += Math.ceil(laborHours / (shiftHours * shiftsPerDay));
+      hasLabor = true;
+    }
+  }
+  if (!hasLabor || !(crewDays > 0)) return null;
+  return {
+    work_days: Math.round((crewDays / crews) * 100) / 100,
+    crew_days: Math.round(crewDays * 100) / 100,
+    source: 'works'
+  };
+}
+
 function normalizeSchedule(schedule, params) {
   const s = (schedule && typeof schedule === 'object') ? schedule : {};
   const trips = Array.isArray(s.trips)
@@ -277,6 +334,9 @@ function normalizeSchedule(schedule, params) {
     // оказывался с work_days: null — карточка просчёта показывала «срок не
     // задан», хотя срок посчитан и лежит в params (найдено 09.11.2026).
     work_days: num(s.work_days, 0) || num(params && params.work_days, 0) || null,
+    // Число бригад — делитель для вывода срока из работ. Раньше поле
+    // отбрасывалось, и формула срока не могла учесть параллельные бригады.
+    crews: num(s.crews, 0) || num(params && params.crews, 0) || null,
     trip_count: num(s.trip_count, 0) || num(params && params.trip_count, 0) || null,
     shift_mode: normalizeShiftMode(s.shift_mode) || normalizeShiftMode(params && params.shifts_per_day) || '',
     shift_hours: num(s.shift_hours, 0) || num(params && params.shift_hours, 0) || null,
@@ -321,6 +381,12 @@ function classifyMobileRole(rawRole) {
   if (/изолировщ|термоизол/.test(s)) return 'insulator';
   if (/монтажник|сборщик/.test(s)) return 'assembler';
   if (/водител/.test(s)) return 'driver';
+  // Химик и ПТО раньше не распознавались: роль приходила текстом, код
+  // оставался пустым, и строка бригады отбрасывалась — химик работал, но в
+  // ФОТ его не было. Порядок важен: «ПТО / приёмка» не должна падать в
+  // worker, поэтому проверки стоят ДО /слесар|рабоч/.
+  if (/химик|реагент|дозиметр/.test(s)) return 'chemist';
+  if (/пто|при[её]мк|скрытых работ/.test(s)) return 'pto';
   if (/охрана труда|высот|промбезопасн|промышленн|специалист по от/.test(s)) return 'safety';
   if (/мастер|бригадир|прораб|начальник участка/.test(s)) return 'master';
   if (/итр|инженер|менеджер|руководител/.test(s)) return 'itr';
@@ -411,6 +477,19 @@ function applyTechPlanRows(rows, crew, mtr, p) {
         byRole[c.role_code] = Object.assign({}, c);
       }
     });
+
+    // ── Уборка осиротевших строк ролей ──────────────────────────────────────
+    // Строки A3.x создаются для дополнительных ролей, но никогда не удалялись:
+    // если РП убирал химика из бригады, строка с его деньгами оставалась в
+    // себестоимости. Проверено: cost до и после удаления химика совпадал.
+    // Чистим только строки, созданные из crew[] (tech_from='crew').
+    for (let i = list.length - 1; i >= 0; i -= 1) {
+      const r = list[i];
+      if (!r || r.kind !== 'line' || String(r.section) !== 'A') continue;
+      if (r.tech_from !== 'crew' || !r.crewRole) continue;
+      if (byRole[r.crewRole]) continue;
+      list.splice(i, 1);
+    }
 
     // Режим из шапки техплана. Правка «Смен в сутки» должна доезжать до строк A,
     // даже если в crew[] лежит старое значение: пока РП не задал смены роли ЯВНО
@@ -833,6 +912,30 @@ function recalcAsgardSmeta(estimate) {
   // ведомости справочные (kind: 'info'), в суммы не входят.
   est.works = normalizeWorks(est.works);
 
+  // ── Срок: работы главнее параметров ───────────────────────────────────────
+  // Если в работах есть трудозатраты, срок выводится из них и перезаписывает
+  // params/schedule. Иначе остаётся прежний срок из параметров. Расхождение
+  // фиксируем в totals, чтобы РП видел подмену, а не молчаливую цифру.
+  const derived = deriveWorkDaysFromWorks(est.works, {
+    crew_size: num(est.schedule && est.schedule.crew_size, 0),
+    crews: num((est.schedule && est.schedule.crews), 0) || num(p.crews, 0) || 1,
+    shift_hours: num(p.shift_hours, 0),
+    shifts_per_day: num(p.shifts_per_day, 0)
+  });
+  if (derived) {
+    const prevDays = num(p.work_days, 0);
+    p.work_days = derived.work_days;
+    est.params.work_days = derived.work_days;
+    if (est.schedule) est.schedule.work_days = derived.work_days;
+    est.work_days_source = 'works';
+    est.work_days_conflict = (prevDays > 0 && Math.abs(prevDays - derived.work_days) > 0.01)
+      ? { params: prevDays, works: derived.work_days, applied: derived.work_days, crew_days: derived.crew_days }
+      : null;
+  } else {
+    est.work_days_source = 'params';
+    est.work_days_conflict = null;
+  }
+
   if (!Array.isArray(est.rows) || !est.rows.length) {
     est.rows = skeletonRows();
   } else {
@@ -979,7 +1082,17 @@ function recalcAsgardSmeta(estimate) {
   // Фолбэк на параметры обязателен: сметы, собранные по параметрам (без
   // структурной бригады, см. composeFromRecomputed), иначе получали 0 и теряли
   // KPI «прибыль на чел·смену» в модалке, письме директору и тексте сметы.
+  // Человеко-смены бригады на объекте — ТОЛЬКО строки, собранные из crew[].
+  // Раньше брали всю секцию A, и в знаменатель KPI «прибыль на чел·смену»
+  // попадали «Подготовка на складе» (A5) и «Дни дороги» (A6) — это не смены
+  // на объекте и у них другая ставка. Дорожные и складские смены считаем
+  // отдельно, чтобы расхождение было видно, а не «сходилось» любой ценой.
   const personShiftsFromRows = (est.rows || []).reduce((s, r) => {
+    if (!r || r.kind !== 'line' || String(r.section) !== 'A') return s;
+    if (r.tech_from !== 'crew') return s;
+    return s + num(r.qty);
+  }, 0);
+  const personShiftsAllA = (est.rows || []).reduce((s, r) => {
     if (!r || r.kind !== 'line' || String(r.section) !== 'A') return s;
     return s + num(r.qty);
   }, 0);
@@ -987,6 +1100,8 @@ function recalcAsgardSmeta(estimate) {
     ? personShiftsFromRows
     : (num(p.work_days) * num(p.shifts_per_day)
       * (num(p.workers_per_shift) + num(p.masters_per_shift)));
+  // «Прочие» смены: подготовка на складе + дни дороги. Справочно.
+  const personShiftsOther = Math.max(0, Math.round((personShiftsAllA - personShiftsFromRows) * 1000) / 1000);
   const profitPerPersonShift = personShifts > 0
     ? Math.round(netProfit / personShifts * 100) / 100
     : null;
@@ -1015,6 +1130,11 @@ function recalcAsgardSmeta(estimate) {
   const crewHeadcount = (est.crew || []).reduce((s, c) => s + num(c.count), 0) || peoplePerShift;
 
   const totalsMap = {
+    // Откуда взят срок и было ли расхождение с параметрами — чтобы РП видел
+    // подмену цифры, а не принимал её на веру.
+    work_days: num(p.work_days, 0) || null,
+    work_days_source: est.work_days_source || 'params',
+    work_days_conflict: est.work_days_conflict || null,
     fot, fot_tax: fotTax, fot_tax_base: fotTaxBase, personnel, current, travel, transport, materials,
     equipment_purchase: equipmentPurchase,
     equipment_rental: equipmentRental,
@@ -1028,6 +1148,8 @@ function recalcAsgardSmeta(estimate) {
     income_tax_amount: incomeTaxAmount,
     net_profit: netProfit,
     person_shifts: personShifts,
+    person_shifts_all_a: personShiftsAllA,
+    person_shifts_other: personShiftsOther,
     man_hours: manHours,
     crew_headcount: crewHeadcount,
     crew_roles: (est.crew || []).length,
@@ -1351,6 +1473,7 @@ root.AsgardSmeta = {
   normalizeCrew,
   normalizeMtr,
   normalizeWorks,
+  deriveWorkDaysFromWorks,
   normalizeSchedule,
   classifyMobileRole,
   describeTechPlan,
