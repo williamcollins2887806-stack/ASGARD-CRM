@@ -667,6 +667,10 @@ async function routes(fastify, options) {
     let sendEvent = null;
     let sseKeepalive = null;
     const analyzeStartedAt = Date.now();
+    // Последний содержательный шаг: heartbeat повторяет его, а не «жду модель»
+    // без числа. Иначе на длинной порции UI показывает только секунды.
+    let lastStep = { step: 'start', message: 'Старт анализа', pct: 1 };
+    let livePositions = 0;
     if (wantStream) {
       reply.hijack();
       reply.raw.writeHead(200, {
@@ -685,16 +689,28 @@ async function routes(fastify, options) {
       sseKeepalive = setInterval(() => {
         try {
           reply.raw.write(`: ping ${Date.now()}\n\n`);
+          // Не просто секунды: повторяем последний шаг и накопленные позиции,
+          // чтобы на длинной порции было видно, что разбор не стоит.
+          const secs = Math.round((Date.now() - analyzeStartedAt) / 1000);
           sendEvent({
             type: 'heartbeat',
-            step: 'wait',
-            message: `Модель ещё считает… ${Math.round((Date.now() - analyzeStartedAt) / 1000)} с`
+            step: lastStep.step,
+            pct: lastStep.pct,
+            positions: livePositions || lastStep.positions || null,
+            message: `[${secs} с] ${lastStep.message}`
+              + (livePositions ? ` Уже собрано ${livePositions} поз.` : '')
           });
         } catch (_) {}
       }, 8000);
       sendEvent({ type: 'start', step: 'start', message: 'Старт анализа: собираю документы и историю.', pct: 1 });
     }
-    const emit = (ev) => { if (sendEvent) sendEvent(Object.assign({ type: 'progress' }, ev || {})); };
+    const emit = (ev) => {
+      if (!ev) return;
+      // Запоминаем содержательный шаг для heartbeat. Служебные ping не в счёт.
+      if (ev.message) lastStep = { step: ev.step || lastStep.step, message: ev.message, pct: ev.pct != null ? ev.pct : lastStep.pct };
+      if (Number(ev.positions) > 0) livePositions = Number(ev.positions);
+      if (sendEvent) sendEvent(Object.assign({ type: 'progress' }, ev));
+    };
     const endStream = () => {
       if (sseKeepalive) clearInterval(sseKeepalive);
       sseKeepalive = null;

@@ -23,13 +23,16 @@
  */
 
 /** Максимум символов в одной порции. */
-const MAX_CHARS = 24000;
+const MAX_CHARS = 9000;
 
 /** Максимум строк в порции. */
-const MAX_LINES = 200;
+const MAX_LINES = 120;
 
 /** Минимум строк, чтобы порция имела смысл. */
-const MIN_LINES = 30;
+const MIN_LINES = 15;
+
+/** Сколько первых строк повторять в каждой порции как шапку таблицы. */
+const HEADER_LINES = 8;
 
 /**
  * Признак строки-заголовка раздела.
@@ -86,14 +89,20 @@ function chunkText(text, opts = {}) {
   }
 
   const chunks = [];
-  const pushChunk = (from, to, title) => {
+  // Шапка таблицы: колонки «наименование / объём / ед. изм.» обычно стоят в
+  // первых строках документа. Без неё модель в порции 5 не понимает, где
+  // объём, — повторяем шапку в каждой порции.
+  const header = lines.slice(0, Math.min(HEADER_LINES, lines.length)).join('\n');
+
+  const pushChunk = (from, to, title, withHeader) => {
     const body = lines.slice(from, to).join('\n');
     if (!body.trim()) return;
     chunks.push({
       index: chunks.length,
       fromLine: from + 1,
       toLine: to,
-      text: body,
+      // Шапку добавляем только к продолжениям: в первую порцию она уже входит.
+      text: withHeader && from > 0 ? `${header}\n...\n${body}` : body,
       title: title || ('строки ' + (from + 1) + '–' + to)
     });
   };
@@ -120,10 +129,10 @@ function chunkText(text, opts = {}) {
       const body = lines.slice(from, to);
       // Раздел может быть огромным — тогда режем его по строкам.
       if (body.length <= maxLines && body.join('\n').length <= maxChars) {
-        pushChunk(from, to, boundaries[i].title);
+        pushChunk(from, to, boundaries[i].title, true);
       } else {
         for (let s = from; s < to; s += maxLines) {
-          pushChunk(s, Math.min(s + maxLines, to), boundaries[i].title);
+          pushChunk(s, Math.min(s + maxLines, to), boundaries[i].title, true);
         }
       }
     }
@@ -132,7 +141,7 @@ function chunkText(text, opts = {}) {
 
   // ── Границ нет: режем по числу строк ───────────────────────────────────
   for (let from = 0; from < lines.length; from += maxLines) {
-    pushChunk(from, Math.min(from + maxLines, lines.length), null);
+    pushChunk(from, Math.min(from + maxLines, lines.length), null, true);
   }
   return chunks;
 }

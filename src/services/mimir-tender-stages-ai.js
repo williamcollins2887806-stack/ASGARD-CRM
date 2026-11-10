@@ -739,10 +739,14 @@ async function generateDv(p) {
     const perChunk = [];
     for (let ci = 0; ci < chunks.length; ci += 1) {
       const ch = chunks[ci];
+      // Прогресс по порциям: важно показывать, сколько их всего и сколько уже
+      // собрано — на 20 порциях без этого UI снова выглядит зависшим.
+      const chunkPct = 12 + Math.round((ci / Math.max(chunks.length, 1)) * 55);
       emit({
         step: 'chunk_wait',
-        message: `Порция ${ci + 1}/${chunks.length}: «${String(ch.title || 'раздел').slice(0, 60)}» (стр. ${ch.fromLine}–${ch.toLine}) — жду модель…`,
-        pct: 12 + Math.round((ci / Math.max(chunks.length, 1)) * 55),
+        message: `Порция ${ci + 1}/${chunks.length}: «${String(ch.title || 'раздел').slice(0, 50)}» `
+          + `(стр. ${ch.fromLine}–${ch.toLine}) — жду модель…`,
+        pct: chunkPct,
         chunk: ci + 1,
         chunks: chunks.length,
         positions: allPositions.length
@@ -757,7 +761,7 @@ async function generateDv(p) {
               + `строки ${ch.fromLine}–${ch.toLine}). Не бери позиции из других частей.\n\n`
               + ch.text
           }],
-          maxTokens: 64000,
+          maxTokens: 16000,
           temperature: 0,
           expectJson: true
         });
