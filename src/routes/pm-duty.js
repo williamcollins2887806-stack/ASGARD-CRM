@@ -358,9 +358,9 @@ async function buildSmetaFromStage(db, tenderId, rj) {
 
   try {
     const sm = asgardSmeta.recalcAsgardSmeta(meta);
-    // Позиции ДВ кладём отдельным блоком перечня — чтобы РП видел состав работ,
-    // но в суммы они не лезут (kind:'info' по канону блока F).
-    if (sm) {
+    // Если есть план просчёта — склеиваем с ДВ. Если плана нет — НЕ затираем
+    // works пустым calc.map([]): иначе объём из meta.works (срок/деньги) пропадает.
+    if (sm && calc.length) {
       sm.works = calc.map((c) => {
         const dv = byId.get(String(c.position_id)) || {};
         return {
@@ -924,6 +924,9 @@ async function routes(fastify) {
     const duty = await getCurrentDuty(db);
     const isDuty = !!(duty && Number(duty.pm_user_id) === Number(userId));
 
+    // closed_at: момент реального закрытия из лога (finalize / finalize_analysis).
+    // Нельзя брать rev.updated_at — после финала его бампят вложения/правки ТО,
+    // и архив ложно красит «просрочен» (Афипский НПЗ #2134: финал 05.11, update 09.11).
     const baseSelect = `
       SELECT t.*, rev.decision, rev.is_final, rev.id AS review_id, rev.updated_at AS review_updated_at,
              rev.analysis_finalized_at, rev.analysis_owner_user_id,
@@ -939,7 +942,15 @@ async function routes(fastify) {
                WHEN t.calculator_user_id IS NOT NULL AND cb.name IS NOT NULL THEN 'Назначил ТО'
                WHEN t.registry_status = 'рассмотрение' THEN 'Дежурная очередь'
                ELSE '—'
-             END AS queue_source
+             END AS queue_source,
+             COALESCE(
+               (SELECT MAX(l.created_at) FROM tender_rp_review_log l
+                 WHERE l.review_id = rev.id AND l.action = 'finalize'),
+               (SELECT MAX(l.created_at) FROM tender_rp_review_log l
+                 WHERE l.review_id = rev.id AND l.action = 'finalize_analysis'),
+               rev.analysis_finalized_at,
+               rev.updated_at
+             ) AS closed_at
       FROM tenders t
       LEFT JOIN tender_rp_reviews rev ON rev.tender_id = t.id
       LEFT JOIN users calc ON calc.id = COALESCE(rev.calculator_user_id, t.calculator_user_id)
@@ -1790,6 +1801,22 @@ async function reviewRoutes(fastify) {
     const enriched = enrichReviewRow(review, userMap);
     if (review.analysis_owner_user_id) {
       enriched.analysis_owner_name = userMap[review.analysis_owner_user_id] || null;
+    }
+    // Дата реального закрытия из лога — для тона дедлайна в архиве/read-only.
+    try {
+      const closedRes = await db.query(`
+        SELECT COALESCE(
+          (SELECT MAX(l.created_at) FROM tender_rp_review_log l
+            WHERE l.review_id = $1 AND l.action = 'finalize'),
+          (SELECT MAX(l.created_at) FROM tender_rp_review_log l
+            WHERE l.review_id = $1 AND l.action = 'finalize_analysis'),
+          $2::timestamptz,
+          $3::timestamptz
+        ) AS closed_at
+      `, [review.id, review.analysis_finalized_at || null, review.updated_at || null]);
+      enriched.closed_at = closedRes.rows[0]?.closed_at || null;
+    } catch (_) {
+      enriched.closed_at = review.analysis_finalized_at || review.updated_at || null;
     }
     const rj = parseReportJson(review.report_json);
     const thread_unread = await loadThreadUnreadCount(db, tenderId, userId);

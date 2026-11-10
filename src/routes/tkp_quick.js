@@ -1221,6 +1221,20 @@ async function routes(fastify, options) {
         );
         if (review) {
           const rj = rpDrafts.parseJson(review.report_json);
+          // МТР из stage_state: раньше finalize тащил только ДВ/план, и вкладка
+          // «Бригада и МТР» оставалась пустой после API-прогона без UI.
+          const mtrSuggest = Array.isArray(cur.state.mtr_suggestions) ? cur.state.mtr_suggestions : [];
+          const mtrFromState = Array.isArray(cur.state.mtr) ? cur.state.mtr : [];
+          const mtrList = (mtrFromState.length ? mtrFromState : mtrSuggest)
+            .filter((x) => x && x.name)
+            .map((x) => ({
+              name: String(x.name).trim().slice(0, 200),
+              qty: Number(x.qty) > 0 ? Number(x.qty) : null,
+              unit: String(x.unit || '').trim().slice(0, 20),
+              note: String(x.purpose || x.note || '').trim().slice(0, 200),
+              purpose: String(x.purpose || '').trim().slice(0, 200),
+              source: String(x.source || '').toLowerCase() === 'typical' ? 'typical' : 'doc'
+            }));
           const next = Object.assign({}, rj, {
             scope: rj.scope || scope,
             volume_summary: rj.volume_summary || scope,
@@ -1230,11 +1244,20 @@ async function routes(fastify, options) {
             stage_version: cur.version,
             decision: 'submit'
           });
+          if (mtrList.length) {
+            next.mtr_suggestions = mtrList;
+            if (!Array.isArray(next.mtr) || !next.mtr.length) next.mtr = mtrList;
+          }
           await db.query(
             `UPDATE tender_rp_reviews SET report_json = $1::jsonb, updated_at = NOW() WHERE id = $2`,
             [JSON.stringify(next), review.id]
           );
-          reportPatch = { scope: next.scope, positions: positions.length, plan_rows: plan.length };
+          reportPatch = {
+            scope: next.scope,
+            positions: positions.length,
+            plan_rows: plan.length,
+            mtr: mtrList.length
+          };
         }
       }
 

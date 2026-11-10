@@ -168,11 +168,20 @@ window.AsgardRpCalcModal = (function () {
     });
   }
 
-  function deadlineTone(deadline) {
+  // Открытые — к сегодня. Закрытые — к дате закрытия (статус на момент финала).
+  function deadlineTone(deadline, opts) {
+    const closed = !!(opts && (opts.closed || opts.is_final));
     if (!deadline) return { cls: 'none', label: 'Срок не указан' };
-    const d = new Date(String(deadline).slice(0, 10) + 'T23:59:59');
+    const day = String(deadline).slice(0, 10);
+    let asOfMs = Date.now();
+    if (closed && opts && opts.asOf) {
+      const raw = String(opts.asOf);
+      const parsed = new Date(/T/.test(raw) ? raw : (raw.slice(0, 10) + 'T23:59:59'));
+      if (Number.isFinite(parsed.getTime())) asOfMs = parsed.getTime();
+    }
+    const d = new Date(day + 'T23:59:59');
     if (!Number.isFinite(d.getTime())) return { cls: 'none', label: fmtDate(deadline) };
-    const days = Math.ceil((d.getTime() - Date.now()) / 86400000);
+    const days = Math.ceil((d.getTime() - asOfMs) / 86400000);
     if (days < 0) return { cls: 'over', label: 'Просрочен · ' + fmtDate(deadline) };
     if (days <= 2) return { cls: 'hot', label: 'Горит · ' + fmtDate(deadline) };
     return { cls: 'ok', label: 'До ' + fmtDate(deadline) };
@@ -691,7 +700,12 @@ window.AsgardRpCalcModal = (function () {
 
   function renderShell(state) {
     const t = state.tender || {};
-    const dl = deadlineTone(t.docs_deadline);
+    const rev = state.review || {};
+    const closed = !!rev.is_final;
+    const dl = deadlineTone(t.docs_deadline, {
+      closed: closed,
+      asOf: rev.closed_at || rev.analysis_finalized_at || rev.updated_at || null
+    });
     const est = state.estimate || {};
     const totals = est.totals || {};
     const tab = state.tab || 'inputs';

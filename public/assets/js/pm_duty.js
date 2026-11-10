@@ -121,12 +121,20 @@ window.AsgardPmDutyPage = (function () {
     return 'Новый';
   }
 
-  function deadlineTone(docsDeadline) {
+  // Открытые — относительно сегодня. Закрытые (Архив) — относительно даты
+  // закрытия: видно, ушли ли в просрочку / горели / закрыли в сроке.
+  // KPI «просрочено» закрытые всё равно не считает (см. queueKpis).
+  function deadlineTone(docsDeadline, opts) {
+    const closed = !!(opts && (opts.closed || opts.is_final));
     if (!docsDeadline) return { cls: 'pm-duty-dl--none', label: 'без срока' };
     const d = String(docsDeadline).slice(0, 10);
-    const today = isoDate();
-    if (d < today) return { cls: 'pm-duty-dl--over', label: 'просрочен' };
-    const soon = addDays(today, 3);
+    const asOfRaw = closed && opts && opts.asOf ? opts.asOf : null;
+    const asOf = asOfRaw ? String(asOfRaw).slice(0, 10) : isoDate();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(asOf)) {
+      return { cls: 'pm-duty-dl--none', label: closed ? 'закрыт' : 'без срока' };
+    }
+    if (d < asOf) return { cls: 'pm-duty-dl--over', label: 'просрочен' };
+    const soon = addDays(asOf, 3);
     if (d <= soon) return { cls: 'pm-duty-dl--hot', label: 'горит' };
     return { cls: 'pm-duty-dl--ok', label: 'в сроке' };
   }
@@ -445,10 +453,13 @@ window.AsgardPmDutyPage = (function () {
       let hot = 0;
       let drafts = 0;
       items.forEach((row) => {
+        // Закрытые отчёты не входят в «просрочено / горят» — иначе Архив
+        // раздувает KPI по историческим docs_deadline.
+        if (row.is_final) return;
         const d = row.docs_deadline ? String(row.docs_deadline).slice(0, 10) : '';
         if (d && d < today) overdue += 1;
         else if (d && d <= addDays(today, 3)) hot += 1;
-        if (row.review_id && !row.analysis_finalized_at && !row.is_final) drafts += 1;
+        if (row.review_id && !row.analysis_finalized_at) drafts += 1;
       });
       return { total: items.length, overdue, hot, drafts };
     }
@@ -578,7 +589,11 @@ window.AsgardPmDutyPage = (function () {
           || (isPreview && tab === 'analysis')
           || (tab === 'analysis' && !canReport);
         const src = queueSourceLabel(row, tab);
-        const tone = deadlineTone(row.docs_deadline);
+        const tone = deadlineTone(row.docs_deadline, {
+          closed: !!row.is_final,
+          // closed_at из лога finalize; updated_at после финала врёт (бампы).
+          asOf: row.closed_at || row.analysis_finalized_at || row.review_updated_at || null
+        });
         let actionBtn = '';
         if (canReport && !isPreview) {
           actionBtn = '<button type="button" class="btn mini duty-report" data-id="' + row.id + '">Отчёт</button>';
@@ -589,14 +604,15 @@ window.AsgardPmDutyPage = (function () {
         const pillCls = row.is_final ? ' ok' : ((st === 'Нужен просчёт' || st === 'Черновик') ? ' warn' : '');
         const needCalcTag = (row.needs_calc || st === 'Нужен просчёт')
           ? ' <span class="pm-duty-need-calc-tag">Нужен просчёт</span>' : '';
+        const showUrgency = !row.is_final;
         return '<article class="pm-duty-row ' + tone.cls + (isPreview ? ' is-preview' : '') + '" style="--i:' + idx + '">' +
           '<div class="pm-duty-row-id">#' + row.id + '</div>' +
           '<div class="pm-duty-row-main">' +
             '<div class="pm-duty-row-title">' + esc(row.customer_name || '—') +
               needCalcTag +
               (isPreview ? ' <span class="pm-duty-preview-tag">просмотр</span>' : '') +
-              (row.deadline_hot ? ' <span class="pm-duty-hot-tag">дедлайн ≤2д</span>' : '') +
-              (row.stale_idle && !row.deadline_hot ? ' <span class="pm-duty-stale-tag">без движения 24ч+</span>' : '') +
+              (showUrgency && row.deadline_hot ? ' <span class="pm-duty-hot-tag">дедлайн ≤2д</span>' : '') +
+              (showUrgency && row.stale_idle && !row.deadline_hot ? ' <span class="pm-duty-stale-tag">без движения 24ч+</span>' : '') +
             '</div>' +
             '<div class="pm-duty-row-sub muted">' + esc(row.tender_title || '') + '</div>' +
             '<div class="pm-duty-row-meta">' +
