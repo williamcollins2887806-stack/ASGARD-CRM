@@ -334,7 +334,33 @@ async function _buildQuickCtx(opts, onProgress) {
 function _buildQuickUserMessage(opts) {
   const { tz_text, customer_name, customer_inn, customer_data, attachments_text, tender_id } = opts;
 
+  // ── Разделяем «ТЗ из письма» и «описание от РП» ─────────────────────────
+  // РП может дописать своё описание в мастере Quick (поле «Дополнительное
+  // описание работы») — эндпоинт /text дописывает его в tz_text с маркером.
+  // Раньше этот текст лежал в хвосте ТЗ, после сотен тысяч символов OCR, и
+  // модель фактически его не учитывала. По требованию РП (10.11.2026) его
+  // описание и его файлы идут ПЕРВЫМИ и с явным приоритетом.
+  const MANUAL_MARK = '— Дополнение от РП —';
+  let requestTz = String(tz_text || '').trim();
+  let manualDesc = '';
+  const mi = requestTz.indexOf(MANUAL_MARK);
+  if (mi >= 0) {
+    manualDesc = requestTz.slice(mi + MANUAL_MARK.length).trim();
+    requestTz = requestTz.slice(0, mi).trim();
+  }
+
   const parts = [];
+
+  // 1. Описание от РП — самое первое и с приоритетом.
+  if (manualDesc) {
+    parts.push('═══ ОПИСАНИЕ РАБОТЫ ОТ РП (ПРИОРИТЕТ №1) ═══');
+    parts.push('Это описание составил инженер, который ведёт тендер. Оно уточняет и '
+      + 'дополняет документы. Если оно расходится с ТЗ/ВОР — следуй ему, а расхождение '
+      + 'отметь в risks. Объёмы и состав работ бери отсюда в первую очередь.');
+    parts.push(String(manualDesc).slice(0, 100000));
+    parts.push('');
+  }
+
   if (tender_id) {
     parts.push(`Это запрос быстрого ТКП (Quick) по тендеру #${tender_id}. Используй данные тендера и вложения; не считай «работу без тендера».`);
   } else {
@@ -373,7 +399,10 @@ function _buildQuickUserMessage(opts) {
 
   parts.push('');
   parts.push('═══ ТЕХНИЧЕСКОЕ ЗАДАНИЕ (из тела письма) ═══');
-  parts.push(String(tz_text || '').trim() || '(текст ТЗ не передан — опирайся только на вложения)');
+  // requestTz уже очищено от блока описания РП — иначе текст инженера
+  // попадал бы в промпт дважды (как приоритет и как «ТЗ из письма»),
+  // и модель путалась, что считать документом заказчика.
+  parts.push(requestTz || '(текст ТЗ не передан — опирайся только на вложения)');
 
   parts.push('');
   parts.push('Сформируй просчёт по правилам из системного промпта. Верни СТРОГО JSON.');
@@ -1418,5 +1447,7 @@ module.exports = {
   saveDocsToCard,
   _xlsxFromEstimateDraft,
   // D-304: позиции ТКП для заказчика (с наценкой, без внутренних статей).
-  buildClientItems
+  buildClientItems,
+  // Сборка user-сообщения для модели (порядок контекста: описание РП первым).
+  _buildQuickUserMessage
 };

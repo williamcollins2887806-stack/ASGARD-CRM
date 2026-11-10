@@ -1702,6 +1702,12 @@ async function routes(fastify, options) {
       files_parsed: filesParsed,
       used_ocr: usedOcr,
       from_tender_cache: fromTenderCache,
+      // Файл добавлен РП вручную через /upload (а не подтянут из письма).
+      // Нужен, чтобы его текст ВСЕГДА шёл в промпт с приоритетом: при большом
+      // кэше тендера вложения сессии раньше заменялись на «имя + ссылка на кэш»,
+      // и содержимое файла РП терялось.
+      source: 'manual',
+      added_by_rp: true,
       table_positions: tablePositions,
       table_per_sheet: tablePerSheet,
       warnings,
@@ -1974,24 +1980,40 @@ async function routes(fastify, options) {
         });
       }
 
-      // Если кэш тендера достаточный — не дублируем OCR вложения (экономия токенов)
+      // Если кэш тендера достаточный — не дублируем OCR вложения (экономия токенов).
+      //
+      // ВАЖНО: это касается только файлов ИЗ ПИСЬМА/ТЕНДЕРА. Файлы, которые РП
+      // добавил руками в мастере Quick, обязаны попасть в промпт ВСЕГДА: их нет
+      // в кэше тендера, и раньше при большом кэше в промпт уходило лишь имя
+      // файла («текст взят из кэша тендера»), то есть его содержимое терялось
+      // полностью (найдено 10.11.2026).
+      const isManualFile = (a) => String(a && a.source || '') === 'manual'
+        || String(a && a.added_by_rp || '') === 'true';
+      const manualWithText = withText.filter(isManualFile);
+      const tenderAttWithText = withText.filter((a) => !isManualFile(a));
+
       let attachmentsText = '';
       let docsInPrompt = 0;
+      const manualText = manualWithText
+        .map((a) => `[${a.filename}]\n${a.ocr_text}`)
+        .join('\n\n---\n\n');
+
       if (tenderDocsText.length >= TENDER_CACHE_MIN_CHARS) {
-        const names = withText.map(a => a.filename).filter(Boolean).slice(0, 5).join(', ');
-        attachmentsText = tenderDocsText + (names
-          ? `\n\n[Вложения сессии: ${names} — текст взят из кэша тендера]`
-          : '');
-        docsInPrompt = tenderDocsCount;
+        const names = tenderAttWithText.map((a) => a.filename).filter(Boolean).slice(0, 5).join(', ');
+        attachmentsText = [manualText, tenderDocsText].filter(Boolean).join('\n\n---\n\n');
+        if (names) {
+          attachmentsText += `\n\n[Вложения тендера: ${names} — текст взят из кэша тендера]`;
+        }
+        docsInPrompt = tenderDocsCount + manualWithText.length;
       } else {
         const sessionAttText = withText
-          .map(a => `[${a.filename}]\n${a.ocr_text}`)
+          .map((a) => `[${a.filename}]\n${a.ocr_text}`)
           .join('\n\n---\n\n');
         attachmentsText = [tenderDocsText, sessionAttText].filter(Boolean).join('\n\n---\n\n');
         docsInPrompt = tenderDocsCount + withText.length;
-        if (attachmentsText.length > ATTACH_CHARS_CAP) {
-          attachmentsText = attachmentsText.slice(0, ATTACH_CHARS_CAP);
-        }
+      }
+      if (attachmentsText.length > ATTACH_CHARS_CAP) {
+        attachmentsText = attachmentsText.slice(0, ATTACH_CHARS_CAP);
       }
       sendEvent({
         type: 'progress',

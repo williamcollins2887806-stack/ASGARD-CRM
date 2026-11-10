@@ -1012,8 +1012,27 @@ window.AsgardRpCalcModal = (function () {
       '</div></div>';
   }
 
-  function renderInputs(state) {
-    const est = state.estimate || {};
+  /** Список файлов, добавленных РП: имя, размер, статус OCR, удаление. */
+  function extraFilesHtml(state) {
+    const list = Array.isArray(state.extraFiles) ? state.extraFiles : [];
+    if (!list.length) {
+      return '<p class="muted" style="font-size:12px">Файлы не добавлены. Если ТЗ неполное — приложите его сюда.</p>';
+    }
+    return list.map(function (f, i) {
+      const status = f.status === 'uploading' ? 'загрузка…'
+        : f.status === 'error' ? 'ошибка'
+          : (f.ocrChars ? 'распознано ' + Math.round(f.ocrChars / 1000) + ' тыс. симв.'
+            : 'без текста');
+      const cls = f.status === 'error' ? ' is-err' : (f.status === 'uploading' ? ' is-busy' : '');
+      return '<div class="rp-calc-extra-file' + cls + '">' +
+        '<span class="rp-calc-extra-file__name">📎 ' + esc(f.name || 'file') + '</span>' +
+        '<span class="rp-calc-extra-file__meta">' + esc(status) + '</span>' +
+        '<button type="button" class="btn mini ghost" data-rp-extra-del="' + i + '" title="Убрать">✕</button>' +
+        '</div>';
+    }).join('');
+  }
+
+  function renderInputs(state) {    const est = state.estimate || {};
     const meta = est.meta || {};
     const p = est.params || {};
     const sm = S();
@@ -1044,6 +1063,28 @@ window.AsgardRpCalcModal = (function () {
 
     return '<div class="rp-calc-panel' + active + '" data-panel="inputs">' +
       '<p class="rp-calc-hint">Метаданные, описание для директора и параметры бригады. Параметры пересчитывают смету.</p>' +
+      // ── Данные от РП ────────────────────────────────────────────────────────
+      // РП может уточнить то, чего нет в документах: свободное описание работ
+      // и свои файлы (ТЗ, ведомость, паспорт оборудования). Мимир читает это
+      // ПЕРВЫМ, до документов тендера, и расхождения отмечает в рисках.
+      // Раньше эти поля жили только в мастере Quick — из карточки просчёта их
+      // не было видно (задача Димы 10.11.2026).
+      '<div class="rp-calc-card"><div class="rp-calc-card__head">Данные от РП — Мимир читает в первую очередь</div>' +
+      '<p class="rp-calc-hint">Если в ТЗ нет объёмов или оно неполное — опишите работу здесь и приложите свои документы. ' +
+      'Это дополняет ТЗ, а не заменяет его.</p>' +
+      '<div class="rp-calc-field" style="margin-bottom:10px"><label>Дополнительное описание работы</label>' +
+      '<textarea class="inp" rows="4" data-rp-extra="manual_tz" maxlength="100000" ' +
+      'placeholder="Опишите вкратце, что делаем: аппараты, объёмы, метод, ограничения. AI прочитает это вместе с приложенными документами.">' +
+      esc(state.manualTz || '') + '</textarea>' +
+      '<div class="rp-calc-hint">До 100 000 символов. Добавляется к ТЗ из документов, приоритет — выше документов.</div></div>' +
+      '<div class="rp-calc-card__head" style="border:0;padding-top:0">Свои файлы ТЗ</div>' +
+      '<div class="rp-calc-extra-files" data-rp-extra-files>' + extraFilesHtml(state) + '</div>' +
+      '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">' +
+      '<button type="button" class="btn mini" data-rp-act="extra-add">📎 Добавить файл(ы)</button>' +
+      '<span class="muted" style="font-size:11px;align-self:center">PDF / DOCX / XLSX / JPG / PNG</span>' +
+      '<input type="file" data-rp-extra-input multiple hidden ' +
+      'accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png,.webp,.txt,.csv,.zip,.rar,.7z"/>' +
+      '</div></div>' +
       '<div class="rp-calc-card"><div class="rp-calc-card__head">Объект и условия</div>' +
       '<div class="rp-calc-grid">' +
       field('customer', 'Заказчик', meta.customer || state.tender.customer_name || '') +
@@ -1394,6 +1435,10 @@ window.AsgardRpCalcModal = (function () {
       stock: [],
       // Смета из снимка анализа — источник кнопки «Взять расчёт из анализа».
       analysisSmeta: initial.analysisSmeta || null,
+      // Данные от РП: свободное описание + свои файлы. Уходят в расчёт Мимира
+      // с приоритетом выше документов тендера.
+      manualTz: initial.manualTz || '',
+      extraFiles: [],
       saving: false,
       savedAt: null,
       busy: false,
@@ -2290,8 +2335,34 @@ window.AsgardRpCalcModal = (function () {
           else if (act === 'take-analysis-smeta') takeAnalysisSmeta();
           else if (act === 'start-skeleton') startSkeleton();
           else if (act === 'open-mimir') openMimirQuick();
+          else if (act === 'extra-add') pickExtraFiles();
           else if (act === 'demo-draft') toast('Демо', 'Черновик сохранён локально (без API)', 'ok');
           else if (act === 'demo-send') openSendPreview();
+        });
+      });
+
+      // ── Данные от РП ─────────────────────────────────────────────────────
+      // Свободное описание: сохраняется в state и уходит в расчёт первым.
+      const manualEl = root.querySelector('[data-rp-extra="manual_tz"]');
+      if (manualEl) {
+        manualEl.addEventListener('input', function () {
+          state.manualTz = manualEl.value;
+          scheduleAutosave();
+        });
+      }
+      const extraInput = root.querySelector('[data-rp-extra-input]');
+      if (extraInput) {
+        extraInput.addEventListener('change', function () {
+          uploadExtraFiles(Array.prototype.slice.call(extraInput.files || []));
+          extraInput.value = '';
+        });
+      }
+      root.querySelectorAll('[data-rp-extra-del]').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+          const idx = Number(btn.getAttribute('data-rp-extra-del'));
+          if (!Number.isInteger(idx)) return;
+          state.extraFiles.splice(idx, 1);
+          paint();
         });
       });
     }
@@ -2325,9 +2396,113 @@ window.AsgardRpCalcModal = (function () {
       scheduleAutosave();
     }
 
+    /**
+     * Quick-сессия для данных от РП.
+     *
+     * Файлы и описание принимает Мимир-Quick (у него уже есть OCR, разбор
+     * архивов и привязка к тендеру). Поэтому из просчёта мы поднимаем ту же
+     * сессию, что использует мастер Quick, и пишем в неё — иначе пришлось бы
+     * дублировать весь конвейер извлечения текста.
+     */
+    let rpSessionUid = null;
+    let rpSessionBusy = null;
+
+    function ensureRpSession() {
+      if (rpSessionUid) return Promise.resolve(rpSessionUid);
+      if (rpSessionBusy) return rpSessionBusy;
+      const tenderId = state.tender && state.tender.id;
+      if (!tenderId) return Promise.resolve(null);
+      rpSessionBusy = fetch('/api/tenders/' + tenderId + '/rp-review/start-quick', {
+        method: 'POST',
+        headers: {
+          Authorization: 'Bearer ' + authToken(),
+          'Content-Type': 'application/json',
+          Accept: 'application/json'
+        },
+        body: JSON.stringify({ phase: 'calc' })
+      }).then(function (r) {
+        return r.json().catch(function () { return {}; });
+      }).then(function (d) {
+        rpSessionUid = (d && (d.session_uid || (d.session && d.session.session_uid))) || null;
+        return rpSessionUid;
+      }).catch(function () { return null; }).then(function (v) {
+        rpSessionBusy = null;
+        return v;
+      });
+      return rpSessionBusy;
+    }
+
+    /** Отправить описание РП в сессию (дополнением, не заменой). */
+    function pushManualTz() {
+      const text = String(state.manualTz || '').trim();
+      if (!text) return Promise.resolve(false);
+      return ensureRpSession().then(function (uid) {
+        if (!uid) return false;
+        return fetch('/api/tkp-quick/sessions/' + encodeURIComponent(uid) + '/text', {
+          method: 'POST',
+          headers: {
+            Authorization: 'Bearer ' + authToken(),
+            'Content-Type': 'application/json',
+            Accept: 'application/json'
+          },
+          body: JSON.stringify({ text: text, mode: 'append' })
+        }).then(function (r) { return r.ok; }).catch(function () { return false; });
+      });
+    }
+
+    /** Выбор файлов РП. */
+    function pickExtraFiles() {
+      const root = getRoot();
+      const input = root && root.querySelector('[data-rp-extra-input]');
+      if (input) input.click();
+    }
+
+    /** Загрузка файлов РП в ту же Quick-сессию (OCR там же). */
+    function uploadExtraFiles(files) {
+      if (!files || !files.length) return;
+      files.forEach(function (file) {
+        state.extraFiles.push({ name: file.name, size: file.size, status: 'uploading' });
+      });
+      paint();
+      ensureRpSession().then(function (uid) {
+        if (!uid) {
+          state.extraFiles.forEach(function (f) { if (f.status === 'uploading') f.status = 'error'; });
+          paint();
+          toast('Файлы', 'Не удалось открыть сессию Мимира', 'err');
+          return;
+        }
+        const jobs = files.map(function (file, i) {
+          const idx = state.extraFiles.length - files.length + i;
+          const fd = new FormData();
+          fd.append('file', file, file.name);
+          return fetch('/api/tkp-quick/sessions/' + encodeURIComponent(uid) + '/upload', {
+            method: 'POST',
+            headers: { Authorization: 'Bearer ' + authToken() },
+            body: fd
+          }).then(function (r) { return r.json().catch(function () { return {}; }); })
+            .then(function (d) {
+              const rec = state.extraFiles[idx];
+              if (!rec) return;
+              if (d && (d.ok || d.ocr_chars != null)) {
+                rec.status = 'ok';
+                rec.ocrChars = Number(d.ocr_chars) || 0;
+                rec.filename = d.filename || rec.name;
+              } else {
+                rec.status = 'error';
+                rec.error = (d && (d.message || d.error)) || 'не распознано';
+              }
+            })
+            .catch(function (e) {
+              const rec = state.extraFiles[idx];
+              if (rec) { rec.status = 'error'; rec.error = String((e && e.message) || e); }
+            });
+        });
+        return Promise.all(jobs).then(function () { paint(); });
+      });
+    }
+
     /** Опциональный расчёт Мимиром из просчёта: результат сразу применяется к смете. */
-    function openMimirQuick() {
-      if (!window.AsgardMimirQuick || typeof AsgardMimirQuick.openForRpReview !== 'function') {
+    function openMimirQuick() {      if (!window.AsgardMimirQuick || typeof AsgardMimirQuick.openForRpReview !== 'function') {
         toast('Мимир', 'Модуль ещё не загружен — обновите страницу', 'err');
         return;
       }
@@ -2336,6 +2511,11 @@ window.AsgardRpCalcModal = (function () {
         phase: 'calc',
         tender: state.tender,
         isFinalOwner: true,
+        // Данные от РП уходят в сессию ДО расчёта: описание и файлы, которые
+        // он добавил в карточке просчёта, должны попасть в промпт первыми.
+        prepareSession: function () {
+          return pushManualTz();
+        },
         onApplied: function (result) {
           const patch = (result && result.field_patch) || {};
           if (patch.asgard_smeta) {

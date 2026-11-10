@@ -9502,6 +9502,11 @@ html[data-theme="light"] .pk3-qsecrow{background:var(--bg3) !important;color:var
         step = 1;
         running = false;
         rerender();
+        // Данные от РП (описание из карточки просчёта) дописываем в сессию
+        // ПЕРЕД расчётом: это приоритетный контекст, он должен быть в промпте.
+        try {
+          if (typeof opts.onBeforeCalculate === 'function') await opts.onBeforeCalculate(sessionUid);
+        } catch (_) { /* не блокируем расчёт из-за подготовки */ }
         // Сразу busy на шаге «AI читает» — иначе между rerender и _doCalculate пустота
         _setBusy('Мимир анализирует ТЗ', 'обычно 2–5 мин на большой пакет — не закрывай окно');
         _doCalculate();

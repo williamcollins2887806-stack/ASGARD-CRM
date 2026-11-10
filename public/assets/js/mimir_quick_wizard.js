@@ -80,6 +80,7 @@ window.AsgardMimirQuick = (function () {
       mode: 'rp_review',
       phase,
       isFinalOwner: !!p.isFinalOwner,
+      onBeforeCalculate: typeof p.prepareSession === 'function' ? p.prepareSession : null,
       startSession: async function (body) {
         const r = await api('/api/tenders/' + tenderId + '/rp-review/start-quick', {
           method: 'POST',
