@@ -486,8 +486,38 @@ function isPositionSourceRole(role) {
   return /vor|act|spec|estimate|ведомость|акт|дефектн|спецификац|смет/.test(r);
 }
 
-function docsToText(documents, limit = 400000) {  const list = Array.isArray(documents) ? documents : [];
+/**
+ * Подсказка по графику заездов для промпта.
+ *
+ * Модель читает документы сама — но если график лежит отдельным файлом или
+ * таблицей, детерминированный разбор помогает не пропустить месяцы. Формат
+ * человеческий: месяцы, даты, цитаты. Если ничего не нашли — так и пишем,
+ * чтобы модель не считала, что подсказка есть.
+ */
+function formatVisitHints(hints) {
+  const h = hints || {};
+  const visits = Array.isArray(h.visits) ? h.visits : [];
+  const months = Array.isArray(h.months) ? h.months : [];
+  const lines = [];
+  if (h.mode && h.mode !== 'unknown') {
+    lines.push(`режим по тексту: ${h.mode === 'continuous' ? 'один непрерывный заезд' : 'несколько выездов'}`);
+  }
+  if (h.explicit_trip_count) lines.push(`явно указано выездов: ${h.explicit_trip_count}`);
+  if (months.length) {
+    const names = require('./schedule-extract');
+    lines.push('месяцы в тексте: ' + months.map((m) => names.monthName(m)).join(', '));
+  }
+  for (const v of visits.slice(0, 12)) {
+    lines.push(`- ${v.label || ''}`.trim()
+      + (v.start || v.end ? ` (${[v.start, v.end].filter(Boolean).join('…')})` : '')
+      + (v.quote ? ` · «${String(v.quote).slice(0, 120)}»` : ''));
+  }
+  if (h.continuous_signal) lines.push('признак непрерывных работ: есть (остановка / без перерыва)');
+  if (!lines.length) return '(графика в тексте не найдено — определяй по документам сам)';
+  return lines.join('\n');
+}
 
+function docsToText(documents, limit = 400000) {  const list = Array.isArray(documents) ? documents : [];
   // ── Отсев мусора и копий (замечание РП 06.11.2026) ─────────────────────────
   // Раньше в промпт шли договоры, наши ТКП, шаблоны и по 5 копий одного ТЗ
   // из разных архивов: 1,3 млн символов, из них 60–70 % без объёмов.
@@ -587,14 +617,38 @@ function docsToText(documents, limit = 400000) {  const list = Array.isArray(doc
 async function generateDv(p) {
   const o = p || {};
   const catalog = o.catalog || { categories: [], rates: [] };
+  // Прогресс для SSE/UI: шаги с числами, без «думаю…».
+  // Caller (stage/analyze) передаёт onProgress({step,message,pct,...}).
+  const t0 = Date.now();
+  const emit = (ev) => {
+    if (typeof o.onProgress !== 'function') return;
+    try {
+      o.onProgress(Object.assign({
+        type: 'progress',
+        elapsed_sec: Math.round((Date.now() - t0) / 1000)
+      }, ev || {}));
+    } catch (_) { /* UI не должен валить разбор */ }
+  };
 
   const tzText = String(o.tz_text || '(ТЗ текстом не задано)').slice(0, 40000);
   const docsText = docsToText(o.documents) || '(документов с текстом нет)';
+  const docCount = Array.isArray(o.documents) ? o.documents.filter((d) => d && String(d.text || d.ocr_text || '').trim()).length : 0;
+  emit({
+    step: 'prepare',
+    message: `Готовлю разбор: документов с текстом — ${docCount}, ТЗ — ${tzText.length.toLocaleString('ru-RU')} симв.`,
+    pct: 3,
+    docs: docCount,
+    tz_chars: tzText.length
+  });
   const system = promptLoader.buildPrompt('PROMPT-dv-v1.md', {
     catalog: catalogForPrompt(catalog),
     tz_text: tzText,
     documents_text: docsText,
-    history_block: o.history_block || '(истории нет)'
+    history_block: o.history_block || '(истории нет)',
+    // Подсказка по графику: детерминированный разбор периодов из документов.
+    // Модель решает сама (график бывает в любом виде), но эта подсказка
+    // страхует от пропуска месяцев и явно показывает найденные цитаты.
+    visit_hints: formatVisitHints(o.visit_hints)
   });
 
   let user = 'Составь ведомость объёмов по этим данным. Верни ТОЛЬКО JSON по схеме.';
@@ -619,6 +673,15 @@ async function generateDv(p) {
   const expected = estimateExpectedForSelection(o.documents);
   const expectedMin = expected.estimate;
   const expectedRows = expected.rows;
+  emit({
+    step: 'expect',
+    message: expectedRows > 0
+      ? `Ориентир по документам: ~${expectedRows} строк перечня (оценка сетки).`
+      : 'Сетка не нашла таблицу объёмов — ориентир даст модель по тексту.',
+    pct: 8,
+    expected_rows: expectedRows,
+    expected_min: expectedMin
+  });
   // Заполняется из первого ответа модели (source_positions_count).
   let modelSaidPositions = 0;
 
@@ -666,8 +729,24 @@ async function generateDv(p) {
   const useChunks = chunks.length > 1;
 
   if (useChunks) {
+    emit({
+      step: 'chunks',
+      message: `Большая ведомость: режу на ${chunks.length} порций (чтобы модель не обрезала ответ).`,
+      pct: 12,
+      chunks: chunks.length,
+      countable_chars: countableText.length
+    });
     const perChunk = [];
-    for (const ch of chunks) {
+    for (let ci = 0; ci < chunks.length; ci += 1) {
+      const ch = chunks[ci];
+      emit({
+        step: 'chunk_wait',
+        message: `Порция ${ci + 1}/${chunks.length}: «${String(ch.title || 'раздел').slice(0, 60)}» (стр. ${ch.fromLine}–${ch.toLine}) — жду модель…`,
+        pct: 12 + Math.round((ci / Math.max(chunks.length, 1)) * 55),
+        chunk: ci + 1,
+        chunks: chunks.length,
+        positions: allPositions.length
+      });
       let chRes;
       try {
         chRes = await o.aiProvider.complete({
@@ -683,25 +762,57 @@ async function generateDv(p) {
           expectJson: true
         });
       } catch (_) {
+        emit({
+          step: 'chunk_fail',
+          message: `Порция ${ci + 1}/${chunks.length} не ответила — пропускаю.`,
+          pct: 12 + Math.round(((ci + 1) / Math.max(chunks.length, 1)) * 55)
+        });
         continue;
       }
       const chParsed = safeJson(chRes && chRes.text);
       if (!chParsed) continue;
       const chDv = stages.normalizeDv(chParsed, catalog);
       if (!firstDv) firstDv = chDv;
+      const gotChunk = (chDv.positions || []).length;
       perChunk.push(chDv.positions || []);
       rounds += 1;
       const said = Number(chParsed.source_positions_count);
       if (Number.isFinite(said) && said > 0) modelSaidPositions += Math.round(said);
+      const interim = chunker.mergeChunkPositions(perChunk);
+      emit({
+        step: 'chunk_done',
+        message: `Порция ${ci + 1}/${chunks.length}: +${gotChunk} поз. Собрано сейчас ${interim.length}.`,
+        pct: 12 + Math.round(((ci + 1) / Math.max(chunks.length, 1)) * 55),
+        chunk: ci + 1,
+        chunks: chunks.length,
+        positions: interim.length,
+        chunk_positions: gotChunk
+      });
     }
     // Склейка с удалением повторов на стыках порций.
     allPositions.push(...chunker.mergeChunkPositions(perChunk));
     lastAdded = allPositions.length;
+    emit({
+      step: 'chunks_merged',
+      message: `Склеил порции: ${allPositions.length} уникальных позиций.`,
+      pct: 70,
+      positions: allPositions.length
+    });
   }
 
   for (let round = 0; round < MAX_ROUNDS; round += 1) {
     // Порционный разбор уже собрал позиции — обычный цикл не нужен.
     if (useChunks && allPositions.length) break;
+    emit({
+      step: 'round_wait',
+      message: round === 0
+        ? 'Отправил ведомость в модель — жду полный JSON (это может занять несколько минут)…'
+        : `Добор раунд ${round + 1}/${MAX_ROUNDS}: уже ${allPositions.length} поз., прошу продолжить…`,
+      pct: 15 + Math.min(50, round * 8),
+      round: round + 1,
+      rounds_max: MAX_ROUNDS,
+      positions: allPositions.length
+    });
     let res;
     try {
       res = await o.aiProvider.complete({
@@ -719,6 +830,7 @@ async function generateDv(p) {
         reasoning: { enabled: false }
       });
     } catch (e) {
+      emit({ step: 'error', message: 'Модель недоступна: ' + e.message, pct: null });
       return { ok: false, error: 'Модель недоступна: ' + e.message };
     }
     rounds += 1;
@@ -778,6 +890,23 @@ async function generateDv(p) {
     }
     const got = added;
     lastAdded = added;
+    {
+      const orient = Math.max(modelSaidPositions || 0, expectedRows || 0);
+      emit({
+        step: 'round_done',
+        message: `Раунд ${round + 1}: +${added} новых (всего ${allPositions.length}`
+          + (orient ? `, ориентир ${orient}` : '')
+          + ')'
+          + (finishedByLength ? ' — ответ обрезан, буду добирать' : ''),
+        pct: 20 + Math.min(55, Math.round((allPositions.length / Math.max(orient || allPositions.length || 1, 1)) * 55)),
+        round: round + 1,
+        positions: allPositions.length,
+        added,
+        truncated: !!finishedByLength,
+        model_said: modelSaidPositions || null,
+        expected_rows: expectedRows || null
+      });
+    }
 
     // ── Условие выхода: полнота, а не «ответ валиден» ────────────────────
     // Дефект 07.11: раньше выход был по `!parsed._salvaged`, то есть валидный
@@ -939,6 +1068,18 @@ async function generateDv(p) {
   const grossShortfall = expectedFinal > 0 && validFound < expectedFinal * 0.5;
   const incomplete = lastTruncated || exhaustedRounds || grossShortfall;
 
+  emit({
+    step: 'dv_ready',
+    message: incomplete
+      ? `Разбор неполный: ${validFound} позиций` + (expectedFinal ? ` из ~${expectedFinal}` : '') + '. Проверьте ведомость.'
+      : `Разбор готов: ${validFound} позиций с объёмом` + (allPositions.length !== validFound ? ` (всего строк ${allPositions.length})` : '') + '.',
+    pct: 85,
+    positions: allPositions.length,
+    valid_positions: validFound,
+    expected_rows: expectedFinal,
+    incomplete: !!incomplete
+  });
+
   return {
     ok: true,
     dv,
@@ -1002,9 +1143,15 @@ async function generateCalcPlan(p) {
 
   const system = promptLoader.buildPrompt('PROMPT-calc-plan-v1.md', {
     positions: positions.map((x, i) =>
-      `${i + 1}. ${x.name} — ${x.volume} ${x.unit} · ${x.category_code}.${x.method_code || '—'}` +
-      (x.tech_equip ? `\n   технология: ${x.tech_equip}` : '') +
-      (Array.isArray(x.objects) && x.objects.length
+      `${i + 1}. [${x.id || ('p' + (i + 1))}] ${x.name} — ${x.volume} ${x.unit}`
+      + ` · ${x.category_code}.${x.method_code || '—'}`
+      + (x.period || x.period_start
+        ? `\n   срок/заезд: ${x.period || ''}`
+          + (x.period_start ? ` (${x.period_start}` + (x.period_end ? `…${x.period_end}` : '') + ')' : '')
+          + (x.visit_id ? ` · visit=${x.visit_id}` : '')
+        : '')
+      + (x.tech_equip ? `\n   технология: ${x.tech_equip}` : '')
+      + (Array.isArray(x.objects) && x.objects.length
         ? `\n   аппараты: ${x.objects.map((ob) => ob.tag || ob.type).filter(Boolean).join(', ')}` : '')
     ).join('\n'),
     tech_equip: positions.map((x) => x.tech_equip).filter(Boolean).join('; ') || '(не задана)',
@@ -1014,7 +1161,7 @@ async function generateCalcPlan(p) {
     max_parallel_posts: String(o.maxParallelPosts || 2)
   });
 
-  const user = 'Разложи работы по аппаратам: люди, сроки, оборудование и источник каждой цифры. Только JSON.';
+  const user = 'Разложи работы по аппаратам и ЗАЕЗДАМ: люди, сроки, оборудование, trip_count/visits и источник каждой цифры. Только JSON.';
 
   let res;
   try {
@@ -1042,7 +1189,9 @@ async function generateCalcPlan(p) {
   const plan = stages.normalizeCalcPlan(parsed, {
     max_parallel_posts: o.maxParallelPosts,
     // Окно дат нужно, чтобы подобрать число бригад под график заказчика.
-    window_days: o.dateWindow
+    window_days: o.dateWindow,
+    // Периоды ДВ → число заездов (сентябрь ≠ декабрь), если модель не дала trip_count.
+    dv_positions: positions
   });
   return {
     ok: true,

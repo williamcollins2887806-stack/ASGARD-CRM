@@ -1125,7 +1125,69 @@ window.AsgardRpCalcModal = (function () {
       '<table class="rp-calc-params"><thead><tr>' +
       '<th>Параметр</th><th>Значение</th><th>Ед.</th><th>Примечание</th>' +
       '</tr></thead><tbody>' + (paramRows || '<tr><td colspan="4" class="muted">AsgardSmeta не загружен</td></tr>') +
-      '</tbody></table></div></div>';
+      '</tbody></table></div>' + renderVisitsCard(state) + '</div>';
+  }
+
+  /**
+   * Разбивка по заездам в просчёте.
+   *
+   * Дорога, проживание, пайковые и мобилизация умножаются на число выездов.
+   * РП должен видеть, из чего сложилось это число: график пришёл из анализа,
+   * и здесь его можно проверить и поправить (trip_count в параметрах).
+   * Если режим не подтверждён на анализе — честно предупреждаем.
+   */
+  function renderVisitsCard(state) {
+    const est = state.estimate || {};
+    const params = est.params || {};
+    const rj = parseReportJson(state.review && state.review.report_json);
+    const vp = rj.visit_plan || null;
+    const trips = Number(params.trip_count) || (vp && Number(vp.trip_count)) || 0;
+
+    // Разбивка заездов лежит в смете (report_json.asgard_smeta.schedule.trips),
+    // иначе — в visit_plan анализа.
+    const rjSmeta = (rj && rj.asgard_smeta) || null;
+    const schedule = (rjSmeta && rjSmeta.schedule)
+      || (est && est.schedule)
+      || {};
+    const list = (Array.isArray(schedule.trips) && schedule.trips.length
+      ? schedule.trips
+      : (vp && Array.isArray(vp.visits) ? vp.visits : []));
+
+    const unconfirmed = !!(params.visit_mode_unconfirmed
+      || (vp && vp.unconfirmed));
+
+    if (!trips && !list.length && !unconfirmed) return '';
+
+    let rows = '';
+    if (list.length) {
+      rows = list.map(function (t, i) {
+        const label = t.label || ('Заезд ' + (i + 1));
+        const dates = [t.from || t.period_start, t.to || t.period_end]
+          .filter(Boolean).join(' — ') || 'даты не указаны';
+        const days = t.days != null ? t.days : t.work_days;
+        return '<tr><td>' + (i + 1) + '</td><td>' + esc(label) + '</td>' +
+          '<td>' + esc(dates) + '</td>' +
+          '<td>' + esc(days != null ? days : '—') + '</td></tr>';
+      }).join('');
+    }
+
+    return '<div class="rp-calc-card rp-calc-visits">' +
+      '<div class="rp-calc-card__head">Заезды на объект' +
+        '<span class="rp-calc-visits__count">' + (trips || 1) + ' выезд(ов)</span>' +
+      '</div>' +
+      (unconfirmed
+        ? '<div class="rp-calc-visits__warn">Режим заездов не подтверждён на анализе. ' +
+          'Дорога, проживание и пайковые посчитаны по ' + (trips || 1) +
+          ' выезд(ам). Проверьте число выездов в параметрах расчёта.</div>'
+        : '') +
+      '<p class="rp-calc-hint">Дорога, проживание, пайковые и мобилизация умножаются ' +
+      'на число выездов. Число меняется в параметре «Число выездов бригады».</p>' +
+      (rows
+        ? '<table class="rp-calc-visits__table"><thead><tr>' +
+          '<th>#</th><th>Заезд</th><th>Период</th><th>Дней работ</th>' +
+          '</tr></thead><tbody>' + rows + '</tbody></table>'
+        : '') +
+      '</div>';
   }
 
   function field(key, label, value) {

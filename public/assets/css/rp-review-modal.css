@@ -1023,7 +1023,7 @@
    так таблица остаётся таблицей, но всё правится на месте. */
 .rp-dv-row {
   display: grid;
-  grid-template-columns: 28px minmax(0, 1fr) 148px 108px 30px;
+  grid-template-columns: 28px minmax(0, 1fr) 148px 108px 146px 30px;
   align-items: center;
   gap: 10px;
   padding: 9px 10px;
@@ -1123,6 +1123,129 @@
   .rp-dv-row { grid-template-columns: 24px minmax(0, 1fr) 30px; row-gap: 6px; }
   .rp-dv-row__qty { grid-column: 2 / 3; }
   .rp-dv-row__foul { grid-column: 2 / 3; }
+  .rp-dv-row__period { grid-column: 2 / 3; }
   .rp-dv-row__del { grid-column: 3 / 4; grid-row: 1 / 2; opacity: 1; }
   .rp-dv-row__src { grid-column: 1 / -1; }
+}
+
+/* Поле периода в строке ДВ: одна и та же работа в разные месяцы — разные
+   строки и разные заезды, поэтому срок стоит рядом с объёмом. */
+.rp-dv-field--period { font-size: 11.5px; color: var(--t2); }
+
+/* ══ График заездов (Гант) ════════════════════════════════════════════════
+   Показывает, кто и когда едет на объект. Денег здесь нет: только режим,
+   даты, позиции, дни работ, люди и человеко-часы. Стоимость считает просчёт. */
+.rp-visit-plan {
+  margin: 0 0 14px; padding: 14px 16px; border-radius: 12px;
+  background: var(--bg2, rgba(255,255,255,.02));
+  border: 1px solid var(--brd-m, rgba(255,255,255,.07));
+}
+.rp-visit-plan__head {
+  display: flex; align-items: flex-start; justify-content: space-between;
+  gap: 12px; flex-wrap: wrap; margin-bottom: 10px;
+}
+.rp-visit-plan__head strong { font-size: 13.5px; color: var(--t1); }
+.rp-visit-plan__sub {
+  display: block; margin-top: 2px;
+  font-size: 11px; color: var(--t3); font-weight: 400;
+}
+.rp-visit-plan__metrics {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  font-size: 11.5px; color: var(--t2);
+}
+.rp-visit-plan__metrics b { color: var(--t1); font-weight: 700; }
+.rp-visit-plan__mode {
+  padding: 3px 10px; border-radius: 999px; font-size: 11px; font-weight: 700;
+  letter-spacing: .02em; border: 1px solid transparent;
+}
+.rp-visit-plan__mode--continuous {
+  background: var(--ok-bg, rgba(34,197,94,.12)); color: var(--ok-t, #4ade80);
+  border-color: rgba(34,197,94,.28);
+}
+.rp-visit-plan__mode--visits {
+  background: rgba(59,130,246,.12); color: #93c5fd;
+  border-color: rgba(59,130,246,.28);
+}
+.rp-visit-plan__mode--unknown {
+  background: var(--warn-bg, rgba(234,179,8,.12)); color: var(--warn-t, #facc15);
+  border-color: rgba(234,179,8,.3);
+}
+.rp-visit-plan__warn {
+  margin: 0 0 10px; padding: 11px 13px; border-radius: 9px;
+  background: var(--warn-bg, rgba(234,179,8,.1));
+  border-left: 2px solid var(--warn, #eab308);
+  font-size: 12px; line-height: 1.55; color: var(--warn-t, #facc15);
+}
+.rp-visit-plan__warn-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 9px; }
+.rp-visit-plan__btn {
+  border: 1px solid var(--brd-m, rgba(255,255,255,.12)); background: transparent;
+  color: var(--t1); border-radius: 7px; padding: 5px 11px;
+  font: inherit; font-size: 11.5px; cursor: pointer;
+  transition: background .15s ease, border-color .15s ease;
+}
+.rp-visit-plan__btn:hover { background: var(--bg3, rgba(255,255,255,.05)); border-color: var(--accent, #3b82f6); }
+.rp-visit-plan__conflicts {
+  margin: 0 0 10px; padding: 0 0 0 18px;
+  font-size: 11.5px; line-height: 1.5; color: var(--t3);
+}
+.rp-visit-plan__empty { font-size: 12px; color: var(--t3); }
+
+/* Сетка Ганта: колонка подписи + полосы по месяцам. */
+.rp-visit-grid {
+  display: grid; grid-template-columns: minmax(150px, 220px) minmax(0, 1fr);
+  gap: 8px; align-items: center; margin-bottom: 6px;
+  font-size: 10.5px; color: var(--t3); text-transform: uppercase;
+  letter-spacing: .08em;
+}
+.rp-visit-grid__months { display: flex; }
+.rp-visit-grid__months span {
+  flex: 1 1 0; min-width: 0; text-align: center;
+  border-left: 1px dashed var(--brd-m, rgba(255,255,255,.07));
+  padding: 0 2px;
+}
+.rp-visit-row {
+  display: grid; grid-template-columns: minmax(150px, 220px) minmax(0, 1fr);
+  gap: 8px; align-items: center;
+  padding: 8px 0; border-top: 1px solid var(--brd-m, rgba(255,255,255,.05));
+}
+.rp-visit-row__label { display: flex; align-items: baseline; gap: 7px; min-width: 0; }
+.rp-visit-row__num {
+  font-size: 10.5px; font-weight: 700; color: var(--t3);
+  flex: 0 0 auto; min-width: 14px;
+}
+.rp-visit-row__name {
+  font-size: 12.5px; font-weight: 600; color: var(--t1);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.rp-visit-row__dates {
+  font-size: 10.5px; color: var(--t3); white-space: nowrap;
+  overflow: hidden; text-overflow: ellipsis;
+}
+.rp-visit-row__track { position: relative; min-height: 24px; }
+.rp-visit-row__cells {
+  position: absolute; inset: 0; display: flex; pointer-events: none;
+}
+.rp-visit-row__cells i {
+  flex: 1 1 0; min-width: 0;
+  border-left: 1px dashed var(--brd-m, rgba(255,255,255,.06));
+}
+.rp-visit-bar {
+  position: relative; z-index: 1; height: 22px; border-radius: 6px;
+  display: flex; align-items: center; justify-content: center;
+  background: linear-gradient(135deg, rgba(212,168,67,.85), rgba(184,139,46,.75));
+  color: #1a1206; font-size: 10.5px; font-weight: 700;
+  box-shadow: 0 1px 4px rgba(0,0,0,.25);
+}
+.rp-visit-row__stats {
+  grid-column: 2 / -1; display: flex; gap: 12px; flex-wrap: wrap;
+  font-size: 11px; color: var(--t3); padding-bottom: 2px;
+}
+.rp-visit-row__stats b { color: var(--t2); font-weight: 700; }
+.rp-visit-row__gap { color: var(--warn-t, #facc15); }
+
+@media (max-width: 720px) {
+  .rp-visit-grid { grid-template-columns: 1fr; }
+  .rp-visit-grid__label { display: none; }
+  .rp-visit-row { grid-template-columns: 1fr; gap: 4px; }
+  .rp-visit-row__stats { grid-column: 1 / -1; }
 }

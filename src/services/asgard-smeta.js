@@ -414,6 +414,9 @@ function describeTechPlan(est) {
   return {
     work_days: sch.work_days != null ? num(sch.work_days) : null,
     trip_count: sch.trip_count != null ? num(sch.trip_count) : null,
+    // Разбивка по заездам: даты и дни каждого выезда. Просчёт показывает её
+    // рядом с дорогой/проживанием, чтобы было видно, за что умножено.
+    trips: Array.isArray(sch.trips) ? sch.trips : [],
     shift_mode: sch.shift_mode || '',
     shift_hours: sch.shift_hours != null ? num(sch.shift_hours) : null,
     start_plan: sch.start_plan || null,

@@ -274,6 +274,32 @@ async function buildSmetaFromStage(db, tenderId, rj) {
   if (!params.shifts_per_day) params.shifts_per_day = 2;
   if (!params.shift_hours) params.shift_hours = 12;
 
+  // ── Заезды: сколько раз бригада едет на объект ───────────────────────────
+  // График заездов собирается на АНАЛИЗЕ (visit_plan) и живёт в report_json
+  // и в состоянии сессии. Именно он говорит, один это непрерывный заезд или
+  // 2–10 выездов. От trip_count зависят дорога, проживание, пайковые и
+  // мобилизация — asgard-smeta умножает их на число выездов.
+  //
+  // Приоритет: правка РП в просчёте (params.trip_count) → visit_plan →
+  // план просчёта → 1. Молча подставлять 1 нельзя: на тендер с 4 выездами
+  // это занижает дорогу и проживание вчетверо.
+  const reportVisitPlan = (rj && rj.visit_plan) || null;
+  const stateVisitPlan = (st && st.visit_plan) || null;
+  const visitPlan = reportVisitPlan || stateVisitPlan || null;
+  const planTrips = Number(st.calc && st.calc.trip_count) || 0;
+  const visitTrips = Number(visitPlan && visitPlan.trip_count) || 0;
+  const currentTrips = Number(params.trip_count) || 0;
+  // Ручная правка РП в модалке просчёта главнее автоматики: если в параметрах
+  // уже стоит число, отличное от автоматического, — оставляем его.
+  const tripCount = currentTrips > 0 && (!visitTrips || currentTrips !== visitTrips)
+    ? currentTrips
+    : (visitTrips || planTrips || currentTrips || 1);
+  params.trip_count = Math.max(1, Math.round(tripCount));
+  if (visitPlan && visitPlan.unconfirmed) {
+    // Режим не подтверждён — не выдумываем, но помечаем смету, чтобы РП видел.
+    params.visit_mode_unconfirmed = true;
+  }
+
   // ── МТР: материалы и оборудование ────────────────────────────────────────
   // Было жёстко `mtr: []` — и в смету, и через неё в tech_json уезжал пустой
   // перечень, хотя модель анализа уже вернула `mtr_suggestions`. Из-за этого
@@ -346,7 +372,18 @@ async function buildSmetaFromStage(db, tenderId, rj) {
       duration_days: workDays,
       crews: Number((st.calc && st.calc.crews) || 0) || 1,
       shifts_per_day: params.shifts_per_day,
-      shift_hours: params.shift_hours
+      shift_hours: params.shift_hours,
+      // Число выездов и сами заезды — чтобы смета показывала разбивку,
+      // а не только итог. trips[] из visit_plan: даты и дни каждого заезда.
+      trip_count: params.trip_count,
+      trips: (Array.isArray(visitPlan && visitPlan.visits) ? visitPlan.visits : [])
+        .map((v) => ({
+          from: v.period_start || null,
+          to: v.period_end || null,
+          days: Number(v.work_days) || 0,
+          label: v.label || null
+        }))
+        .filter((t) => t.days > 0 || t.from || t.to)
     },
     meta: {
       work_duration_days: workDays,

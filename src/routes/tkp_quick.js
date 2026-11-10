@@ -660,6 +660,64 @@ async function routes(fastify, options) {
     const stagesAi = require('../services/mimir-tender-stages-ai');
     const aiProvider = require('../services/ai-provider');
 
+    // SSE: UI/скрипт шлёт Accept: text/event-stream или body.stream=true.
+    // Без стрима — старый JSON (prod-rerun / API). Со стримом — шаги с числами.
+    const wantStream = b.stream === true
+      || String(request.headers.accept || '').includes('text/event-stream');
+    let sendEvent = null;
+    let sseKeepalive = null;
+    const analyzeStartedAt = Date.now();
+    if (wantStream) {
+      reply.hijack();
+      reply.raw.writeHead(200, {
+        'Content-Type': 'text/event-stream; charset=utf-8',
+        'Cache-Control': 'no-cache, no-transform',
+        Connection: 'keep-alive',
+        'X-Accel-Buffering': 'no'
+      });
+      sendEvent = (data) => {
+        try {
+          reply.raw.write(`data: ${JSON.stringify(Object.assign({
+            elapsed_sec: Math.round((Date.now() - analyzeStartedAt) / 1000)
+          }, data || {}))}\n\n`);
+        } catch (_) {}
+      };
+      sseKeepalive = setInterval(() => {
+        try {
+          reply.raw.write(`: ping ${Date.now()}\n\n`);
+          sendEvent({
+            type: 'heartbeat',
+            step: 'wait',
+            message: `Модель ещё считает… ${Math.round((Date.now() - analyzeStartedAt) / 1000)} с`
+          });
+        } catch (_) {}
+      }, 8000);
+      sendEvent({ type: 'start', step: 'start', message: 'Старт анализа: собираю документы и историю.', pct: 1 });
+    }
+    const emit = (ev) => { if (sendEvent) sendEvent(Object.assign({ type: 'progress' }, ev || {})); };
+    const endStream = () => {
+      if (sseKeepalive) clearInterval(sseKeepalive);
+      sseKeepalive = null;
+    };
+    const finishOk = (payload) => {
+      if (wantStream) {
+        sendEvent(Object.assign({ type: 'result' }, payload));
+        endStream();
+        try { reply.raw.end(); } catch (_) {}
+        return;
+      }
+      return payload;
+    };
+    const finishErr = (code, payload) => {
+      if (wantStream) {
+        sendEvent(Object.assign({ type: 'error', status: code }, payload));
+        endStream();
+        try { reply.raw.end(); } catch (_) {}
+        return;
+      }
+      return reply.code(code).send(payload);
+    };
+
     try {
       // Документы сессии + кэш OCR тендера (если есть) — тот же путь, что у расчёта.
       const attachments = Array.isArray(session.tz_attachments) ? session.tz_attachments : [];
@@ -701,9 +759,11 @@ async function routes(fastify, options) {
               LIMIT 200`,
             [session.tender_id]
           );
-          const known = new Set(documents.map((d) => d.original_name));
+          const known = new Set(documents.map((d) => String(d.original_name || '').toLowerCase().trim()));
           for (const r of rows) {
-            if (known.has(r.original_name)) continue;
+            const key = String(r.original_name || '').toLowerCase().trim();
+            if (known.has(key)) continue;
+            known.add(key);
             documents.push({
               original_name: r.original_name,
               text: r.ocr_text,
@@ -717,6 +777,56 @@ async function routes(fastify, options) {
         } catch (_) { /* кэш OCR необязателен */ }
       }
 
+      // ── Дедуп документов по имени ─────────────────────────────────────────
+      // На #2138 в БД лежит по 6 копий каждого файла (1453/1595/1607/1619/1630/1641
+      // и т.д.) — их плодит повторная загрузка архива. Раньше они все уходили
+      // в анализ: бюджет промпта тратился на копии, а модель видела «шесть ТЗ»
+      // и могла считать позиции дважды. Оставляем ОДИН документ на имя:
+      // с самым длинным OCR (копии иногда распознаны хуже) и большим счётом строк.
+      // Разные документы с одинаковым именем не склеиваем: сравнение по имени
+      // идёт вместе с размером текста — если тексты различаются сильнее чем на
+      // 15 %, это другой документ, оставляем оба.
+      const byName = new Map();
+      const deduped = [];
+      let duplicatesDropped = 0;
+      for (const d of documents) {
+        const key = String(d.original_name || '').toLowerCase().trim();
+        const textLen = String(d.text || '').length;
+        const prev = byName.get(key);
+        if (!prev) {
+          const entry = Object.assign({}, d, { _len: textLen });
+          byName.set(key, entry);
+          deduped.push(entry);
+          continue;
+        }
+        const prevLen = prev._len || 0;
+        const sameDoc = textLen > 0 && prevLen > 0
+          ? Math.abs(textLen - prevLen) / Math.max(textLen, prevLen) <= 0.15
+          : true;
+        if (!sameDoc) {
+          // Одно имя — разные документы (например, две редакции ТЗ).
+          const entry = Object.assign({}, d, { _len: textLen });
+          deduped.push(entry);
+          continue;
+        }
+        // Копия: берём более полный текст и больший структурный счёт.
+        duplicatesDropped += 1;
+        if (textLen > prevLen
+          || (textLen === prevLen && (Number(d.table_positions) || 0) > (Number(prev.table_positions) || 0))) {
+          Object.assign(prev, d, { _len: textLen });
+        }
+      }
+      documents = deduped.map(({ _len, ...rest }) => rest);
+      if (duplicatesDropped) {
+        emit({
+          step: 'docs_dedup',
+          message: `Копии документов схлопнуты: убрано ${duplicatesDropped}, в разбор ${documents.length}.`,
+          pct: 4,
+          docs: documents.length,
+          duplicates_dropped: duplicatesDropped
+        });
+      }
+
       const tzText = String(b.tz_text || session.tz_text || '').trim();
 
       // 1. Срок и режим работ из ТЗ и документов — ДО preflight.
@@ -725,6 +835,8 @@ async function routes(fastify, options) {
       const scheduleSvc = require('../services/schedule-extract');
       const allText = tzText + '\n' + documents.map((d) => d.text || '').join('\n');
       const sched = scheduleSvc.extractSchedule(allText);
+      // Периоды/заезды — детерминированная подсказка модели и страховка.
+      const visitHints = scheduleSvc.extractVisitPeriods(allText);
       if (process.env.DBG_SCHED) {
         request.log.info({
           docs: documents.length,
@@ -764,7 +876,6 @@ async function routes(fastify, options) {
           required_before: 'calc'
         }]
         : [];
-
       // Останавливаемся только на НАСТОЯЩИХ пробелах (нет ТЗ, нет объёмов).
       // Срок — неблокирующий: он нужен перед просчётом, а не перед разбором.
       if (!pf.ok) {
@@ -773,15 +884,25 @@ async function routes(fastify, options) {
         const saved = await stageSvc.saveStage(db, request.params.uid, {
           stage: 'clarify', state, expectedVersion: b.expected_version
         });
-        return {
+        return finishOk({
           ok: false,
           stage: 'clarify',
           gaps,
           state: saved.state,
           version: saved.version,
           schedule: sched
-        };
+        });
       }
+
+      emit({
+        step: 'docs',
+        message: `Документов в разбор: ${documents.length}`
+          + (documents.length
+            ? ` (${documents.reduce((n, d) => n + String(d.text || '').length, 0).toLocaleString('ru-RU')} симв.)`
+            : ''),
+        pct: 5,
+        docs: documents.length
+      });
 
       // 2. Каталог норм и ДВ через модель.
       const catalog = await workNorms.loadCatalog(db);
@@ -807,6 +928,14 @@ async function routes(fastify, options) {
         }
       }
       if (!historyBlock) historyBlock = '(истории по заказчику нет)';
+      emit({
+        step: 'history',
+        message: historyCount > 0
+          ? `История заказчика: ${historyCount} прошлых позиций.`
+          : 'Истории по заказчику нет — разбор только по текущим документам.',
+        pct: 7,
+        history_count: historyCount
+      });
 
       const gen = await stagesAi.generateDv({
         db,
@@ -814,11 +943,15 @@ async function routes(fastify, options) {
         tz_text: tzText,
         documents,
         history_block: historyBlock,
-        catalog
+        catalog,
+        // Подсказка по графику: модель решает сама, но если промолчит —
+        // у нас есть детерминированный разбор периодов из документов.
+        visit_hints: visitHints,
+        onProgress: emit
       });
 
       if (!gen.ok) {
-        return reply.code(502).send({ ok: false, error: gen.error, raw: gen.raw || null });
+        return finishErr(502, { ok: false, error: gen.error, raw: gen.raw || null });
       }
 
       // 3. Паспортное обогащение: если объём не задан, но марка аппарата
@@ -826,8 +959,13 @@ async function routes(fastify, options) {
       // Требование РП 07.11: отсутствие ВОР не должно быть блокером —
       // бывает только ТЗ, и объёмы надо вывести из оборудования.
       // Незнакомые марки ищем веб-поиском. Всё найденное помечается
-      // confidence: low и требует подтверждения РП.
-      let passportEnriched = 0;
+      // confidence: low и требует подтверждения РП.      let passportEnriched = 0;
+      emit({
+        step: 'passport',
+        message: `Проверяю паспорта оборудования по ${(gen.dv.positions || []).length} позициям…`,
+        pct: 88,
+        positions: (gen.dv.positions || []).length
+      });
       try {
         const passport = require('../services/equipment-passport');
         const res = await passport.enrichPositions(gen.dv.positions, {
@@ -838,6 +976,14 @@ async function routes(fastify, options) {
         passportEnriched = res.enriched;
       } catch (e) {
         request.log.warn({ err: e }, 'паспортное обогащение не выполнено');
+      }
+      if (passportEnriched) {
+        emit({
+          step: 'passport_done',
+          message: `По паспорту добрал объём у ${passportEnriched} позиций.`,
+          pct: 90,
+          passport_enriched: passportEnriched
+        });
       }
 
       // 4. Норма-превью по каждой позиции + привязка к технологии.
@@ -873,6 +1019,43 @@ async function routes(fastify, options) {
         positions.push(enriched);
       }
 
+      // ── График заездов ──────────────────────────────────────────────────
+      // Режим решает модель по документам (график в любом виде), страхует
+      // детерминированный разбор, а сомнение уходит РП вопросом. Здесь же
+      // считаются дни/люди/чел·ч на каждый заезд — БЕЗ денег.
+      let visitPlan = null;
+      try {
+        const visitSvc = require('../services/visit-plan');
+        visitPlan = visitSvc.buildVisitPlan({
+          positions,
+          text: allText,
+          modelPlan: {
+            schedule_mode: gen.dv.schedule_mode || null,
+            visits: gen.dv.visits || [],
+            trip_count: gen.dv.trip_count || null
+          },
+          schedule: sched
+        });
+        emit({
+          step: 'visits',
+          message: visitPlan.mode === 'visits'
+            ? `График: ${visitPlan.trip_count} заезд(ов)`
+              + (visitPlan.totals && visitPlan.totals.work_days
+                ? `, ~${visitPlan.totals.work_days} дн. работ` : '')
+              + '.'
+            : visitPlan.mode === 'continuous'
+              ? 'График: один непрерывный заезд.'
+              : 'График работ не определён — нужен ответ РП.',
+          pct: 92,
+          visit_mode: visitPlan.mode,
+          trip_count: visitPlan.trip_count,
+          visits: visitPlan.visits.length,
+          unconfirmed: visitPlan.unconfirmed
+        });
+      } catch (e) {
+        request.log.warn({ err: e }, 'график заездов не собран');
+      }
+
       const state = stageSvc.normalizeState({
         gaps: pf.gaps.map((g) => ({ ...g, resolved: true })),
         positions,
@@ -901,6 +1084,10 @@ async function routes(fastify, options) {
         // Срок и режим работ — тоже часть анализа, нужны перед просчётом.
         schedule: sched || null,
         schedule_days: (sched && sched.days) || null,
+        // График заездов: режим, заезды, дни/люди/чел·ч. Без денег.
+        visit_plan: visitPlan || null,
+        visit_mode: visitPlan ? visitPlan.mode : null,
+        trip_count: visitPlan ? visitPlan.trip_count : null,
         // ── Диагностика полноты разбора ────────────────────────────────────
         // Раньше эти поля уходили ТОЛЬКО в ответ API и не сохранялись: после
         // перезагрузки модалки невозможно было понять, 353 позиции в ведомости
@@ -920,9 +1107,50 @@ async function routes(fastify, options) {
         stage: 'dv', state, expectedVersion: b.expected_version
       });
 
+      // ── Режим заездов не подтверждён → неблокирующий вопрос РП ──────────
+      // Анализ не останавливаем: объёмы уже разобраны. Но если непонятно,
+      // едем один раз или 2–10 выездов, просчёт получит выдуманные дорогу и
+      // проживание. Поэтому пробел уходит в карточку, а не в догадку.
+      let visitGapAdded = false;
+      if (visitPlan && visitPlan.unconfirmed) {
+        try {
+          const cur = await stageSvc.loadStage(db, request.params.uid);
+          const hasGap = (cur.state.gaps || []).some((g) => g && g.id === 'schedule_mode' && !g.resolved);
+          if (!hasGap) {
+            const gap = {
+              id: 'schedule_mode',
+              kind: 'schedule',
+              blocking: false,
+              label: 'Режим заездов на объект',
+              why: 'В документах не найден график работ: непонятно, один это непрерывный заезд '
+                + 'или несколько выездов. От этого зависят дорога, проживание и мобилизация в просчёте.',
+              hint: 'Назовите: один непрерывный заезд или сколько выездов планируется (2, 3, 4…).',
+              required_before: 'calc',
+              options: [
+                { value: 'continuous', label: 'Один непрерывный заезд' },
+                { value: 'visits', label: 'Несколько выездов (укажу число)' }
+              ]
+            };
+            const nextState = stageSvc.normalizeState(Object.assign({}, cur.state, {
+              gaps: (cur.state.gaps || []).concat([gap])
+            }));
+            await stageSvc.saveStage(db, request.params.uid, {
+              stage: 'dv', state: nextState
+            });
+            visitGapAdded = true;
+            emit({
+              step: 'visit_gap',
+              message: 'Режим заездов не подтверждён — добавил вопрос РП в карточку.',
+              pct: 95
+            });
+          }
+        } catch (e) {
+          request.log.warn({ err: e }, 'пробел schedule_mode не добавлен');
+        }
+      }
+
       // Чек-лист анализа: заполняем то, на что Мимир может ответить по
-      // документам (плановость, отклонения по объёмам, допуски, доступ).
-      // Дефект 07.11: у всех 14 тендеров чек-лист был пуст, а без него
+      // документам (плановость, отклонения по объёмам, допуски, доступ).      // Дефект 07.11: у всех 14 тендеров чек-лист был пуст, а без него
       // анализ нельзя финализировать — фаза calc не наступала, и обучение
       // справочника не пополнялось. Вопросы для звонка заказчику Мимир
       // не выдумывает: пустое остаётся РП.
@@ -948,7 +1176,14 @@ async function routes(fastify, options) {
         );
       }
 
-      return {
+      emit({
+        step: 'save',
+        message: `Сохраняю разбор: ${(saved.state.positions || []).length} позиций…`,
+        pct: 96,
+        positions: (saved.state.positions || []).length
+      });
+
+      return finishOk({
         ok: true,
         stage: saved.stage,
         state: saved.state,
@@ -1000,15 +1235,21 @@ async function routes(fastify, options) {
         salvaged: !!gen.salvaged,
         // Срок и режим работ: РП видит, что нашлось в ТЗ и документах.
         schedule: sched,
+        // График заездов: что определили и что требует подтверждения.
+        visit_plan: visitPlan || null,
+        visit_mode: visitPlan ? visitPlan.mode : null,
+        trip_count: visitPlan ? visitPlan.trip_count : null,
+        visit_conflicts: visitPlan ? visitPlan.conflicts : [],
+        visit_gap_added: visitGapAdded,
         // История заказчика: видно, подтянулась ли и сколько прошлых тендеров.
         history_found: historyCount > 0,
         history_count: historyCount,
         documents: documents.map((d) => ({ original_name: d.original_name, text_len: String(d.text || '').length })),
         model: gen.model
-      };
+      });
     } catch (e) {
       request.log.error({ err: e }, 'stage/analyze failed');
-      return reply.code(500).send({ ok: false, error: e.message });
+      return finishErr(500, { ok: false, error: e.message });
     }
   });
 
@@ -1113,6 +1354,29 @@ async function routes(fastify, options) {
       const mergedState = stageSvc.normalizeState(
         Object.assign({}, cur.state, { calc: planForSave }));
 
+      // Заезды: план обязан их унаследовать, иначе просчёт потеряет число
+      // выездов и посчитает дорогу/проживание как за один приезд. План
+      // (generateCalcPlan) уже возвращает trip_count/visits — приоритет за
+      // ним, иначе берём график из анализа.
+      if (!mergedState.visit_plan && cur.state.visit_plan) {
+        mergedState.visit_plan = cur.state.visit_plan;
+      }
+      if (planForSave.trip_count || planForSave.visits) {
+        const vp = Object.assign({}, mergedState.visit_plan || {}, {
+          mode: (Array.isArray(planForSave.visits) && planForSave.visits.length) || Number(planForSave.trip_count) > 1
+            ? 'visits' : ((mergedState.visit_plan && mergedState.visit_plan.mode) || 'continuous'),
+          trip_count: Number(planForSave.trip_count) > 0
+            ? Math.round(Number(planForSave.trip_count))
+            : (Number((mergedState.visit_plan || {}).trip_count) || 1),
+          visits: Array.isArray(planForSave.visits) && planForSave.visits.length
+            ? planForSave.visits
+            : ((mergedState.visit_plan && mergedState.visit_plan.visits) || [])
+        });
+        mergedState.visit_plan = vp;
+        mergedState.trip_count = vp.trip_count;
+        mergedState.visit_mode = vp.mode;
+      }
+
       // ── Обучение справочника ────────────────────────────────────────────
       // Просчёт — это и есть факт: посчитали по норме X, получили Y суток.
       // Каждый такой расчёт уточняет норму. Раньше это происходило только
@@ -1163,6 +1427,9 @@ async function routes(fastify, options) {
         stage: saved.stage,
         stage_advanced: stageAdvanced,
         plan: gen.plan,
+        // Заезды: план вернул trip_count/visits, просчёт возьмёт их.
+        visit_plan: mergedState.visit_plan || null,
+        trip_count: mergedState.trip_count || null,
         date_window: windowCheck,
         calibration,
         // Сколько норм уточнено по этому просчёту — РП видит, что справочник
@@ -1244,6 +1511,18 @@ async function routes(fastify, options) {
             stage_version: cur.version,
             decision: 'submit'
           });
+          // График заездов: едет из анализа, чтобы просчёт взял trip_count.
+          const vp = cur.state.visit_plan
+            || (cur.state.calc && cur.state.calc.visits ? {
+              mode: 'visits',
+              trip_count: cur.state.calc.trip_count || (cur.state.calc.visits || []).length,
+              visits: cur.state.calc.visits
+            } : null);
+          if (vp) {
+            next.visit_plan = vp;
+            next.visit_mode = vp.mode || null;
+            next.trip_count = vp.trip_count || 1;
+          }
           if (mtrList.length) {
             next.mtr_suggestions = mtrList;
             if (!Array.isArray(next.mtr) || !next.mtr.length) next.mtr = mtrList;

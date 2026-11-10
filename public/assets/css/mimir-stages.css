@@ -1040,3 +1040,22 @@
   .mst-skel { animation: none; }
   .mst-tech__chev { transition: none; }
 }
+\n
+/* ── Прогресс анализа ────────────────────────────────────────────────────
+   Полоса процента и счётчик позиций рядом с живой строкой. Нужна, чтобы
+   большой разбор (10-15 минут) не выглядел зависанием. */
+.mst-side__meter { padding: 0 14px 10px; flex: 0 0 auto; }
+.mst-side__meter-bar {
+  height: 4px; border-radius: 999px; overflow: hidden;
+  background: var(--bg3); border: 1px solid var(--brd-m);
+}
+.mst-side__meter-bar i {
+  display: block; height: 100%; width: 0;
+  background: linear-gradient(90deg, var(--gold), color-mix(in srgb, var(--gold) 55%, var(--ok)));
+  transition: width .35s ease;
+}
+.mst-side__meter-meta {
+  display: flex; justify-content: space-between; gap: 8px;
+  margin-top: 5px; font-size: 10.5px; color: var(--t3);
+  font-variant-numeric: tabular-nums;
+}

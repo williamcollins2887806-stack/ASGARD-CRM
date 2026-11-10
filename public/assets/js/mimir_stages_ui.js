@@ -155,6 +155,13 @@
               <button type="button" class="mst-iconbtn mst-side__toggle" data-act="toggle-side" aria-label="Свернуть панель">⌃</button>
             </div>
             <div class="mst-side__live"><p data-live>Мимир ждёт команды.</p></div>
+            <div class="mst-side__meter" data-meter hidden>
+              <div class="mst-side__meter-bar"><i data-meter-fill style="width:0%"></i></div>
+              <div class="mst-side__meter-meta">
+                <span data-meter-pct>0%</span>
+                <span data-meter-pos></span>
+              </div>
+            </div>
             <div class="mst-side__log" data-log></div>
           </aside>
         </div>
@@ -992,6 +999,35 @@
     p.classList.toggle('is-stream', !!streaming);
   }
 
+  /**
+   * Полоса прогресса анализа.
+   *
+   * Раньше был только текст «Читаю документы…» и таймер: на большой
+   * ведомости это 10–15 минут тишины. Теперь шаг присылает процент, число
+   * найденных позиций и режим заездов — РП видит, что работа идёт.
+   */
+  function setMeter(pct, positions, visitMode) {
+    if (!_el) return;
+    const box = q('[data-meter]');
+    if (!box) return;
+    const n = Number(pct);
+    if (!Number.isFinite(n)) return;
+    box.hidden = false;
+    const clamped = Math.max(0, Math.min(100, Math.round(n)));
+    const fill = box.querySelector('[data-meter-fill]');
+    const pctEl = box.querySelector('[data-meter-pct]');
+    const posEl = box.querySelector('[data-meter-pos]');
+    if (fill) fill.style.width = clamped + '%';
+    if (pctEl) pctEl.textContent = clamped + '%';
+    if (posEl) {
+      const bits = [];
+      if (positions != null) bits.push(positions + ' поз.');
+      if (visitMode === 'continuous') bits.push('один заезд');
+      else if (visitMode === 'visits') bits.push('несколько заездов');
+      posEl.textContent = bits.join(' · ');
+    }
+  }
+
   function startTimer() {
     if (!_el) return;
     const started = Date.now();
@@ -1164,7 +1200,16 @@
         render();
         setLive('Читаю документы и вытаскиваю объёмы…', true);
         if (typeof opts.onAnalyze === 'function') {
-          const res = await opts.onAnalyze({ tz_text: tz });
+          const res = await opts.onAnalyze({ tz_text: tz }, function (evt) {
+            // Прогресс анализа приходит потоком: шаги с числами вместо
+            // молчаливого ожидания. Пишем в «Ход работы» и в живую строку.
+            if (!evt || !evt.message) return;
+            if (evt.pct != null) setMeter(evt.pct, evt.positions, evt.visit_mode);
+            setLive(evt.message, evt.type !== 'start' && evt.step !== 'dv_ready');
+            if (evt.step !== 'heartbeat' && evt.type !== 'start') {
+              pushLog(evt.message);
+            }
+          });
           if (res && res.state) { s.state = res.state; s.stage = res.stage || 'dv'; }
           if (res && res.attachments) s.attachments = res.attachments;
           if (res && res.checklist) s.checklist = res.checklist;

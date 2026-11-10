@@ -290,4 +290,176 @@ function parseRuDate(s) {
   return Number.isNaN(d.getTime()) ? null : d;
 }
 
-module.exports = { extractSchedule, extractMode, kindOf, toDays };
+// ── Периоды заездов ────────────────────────────────────────────────────────
+/**
+ * Месяцы в русском тексте. Система НЕ должна знать, где заказчик написал
+ * график: это может быть ВОР, отдельный файл «График работ», приложение к ТЗ,
+ * таблица Excel или просто фраза «работы в сентябре и декабре». Поэтому
+ * ищем месяцы по тексту и группируем их в периоды. Это ПОДСКАЗКА модели:
+ * решает она, но если промолчит — у нас есть детерминированный ответ.
+ */
+const MONTHS = [
+  ['январ', 1], ['феврал', 2], ['март', 3], ['апрел', 4], ['ма', 5],
+  ['июн', 6], ['июл', 7], ['август', 8], ['сентябр', 9], ['октябр', 10],
+  ['ноябр', 11], ['декабр', 12]
+];
+
+function monthFromWord(w) {
+  const s = String(w || '').toLowerCase();
+  // «май»/«мая» — короткий корень, проверяем отдельно, чтобы не совпасть
+  // с «март»/«мая» внутри других слов.
+  if (/^ма[йяею]$/.test(s) || /^мае$/.test(s)) return 5;
+  for (const [stem, num] of MONTHS) {
+    if (stem === 'ма') continue;
+    if (s.startsWith(stem)) return num;
+  }
+  return null;
+}
+
+/**
+ * Явные периоды работ: месяцы, диапазоны дат, упоминания выездов/заездов.
+ *
+ * Возвращает:
+ *   { mode, visits: [{label, month, year, start, end, quote}], months: Set, quotes }
+ * mode: 'continuous' | 'visits' | 'unknown'
+ */
+function extractVisitPeriods(text) {
+  const t = String(text || '');
+  if (!t.trim()) return { mode: 'unknown', visits: [], months: [], quotes: [] };
+
+  const lower = t.toLowerCase();
+  const visits = [];
+  const monthsFound = new Set();
+  const quotes = [];
+
+  // 1. Диапазоны дат с месяцем-словом или числом: «01.09.2027–30.09.2027»,
+  //    «сентябрь–декабрь 2027».
+  const rangeRe = /(\d{1,2}[.\-/]\d{1,2}[.\-/]\d{4})\s*(?:[-–—]|по|до)\s*(\d{1,2}[.\-/]\d{1,2}[.\-/]\d{4})/g;
+  let m;
+  while ((m = rangeRe.exec(t)) !== null) {
+    const around = t.slice(Math.max(0, m.index - 120), m.index + m[0].length + 120);
+    // Пропускаем подачу заявок/извещения — это не работы.
+    if (/заявк|извещени|редакци|публикац|подач[аиу]|окончани[ея]\s+подачи/i.test(around)) continue;
+    if (!/(график|период|срок|выполнени|работ|выезд|заезд|остановк)/i.test(around)) continue;
+    const a = parseRuDate(m[1]);
+    const b = parseRuDate(m[2]);
+    if (!a || !b || b < a) continue;
+    visits.push({
+      label: m[0].replace(/\s+/g, ' ').trim(),
+      month: a.getMonth() + 1,
+      year: a.getFullYear(),
+      start: isoDate(a),
+      end: isoDate(b),
+      quote: around.replace(/\s+/g, ' ').trim().slice(0, 200)
+    });
+  }
+
+  // 2. Месяцы словами: «в сентябре», «сентябрь 2027», «сентябрь и декабрь».
+  const monthRe = /(январ[а-яё]*|феврал[а-яё]*|март[а-яё]*|апрел[а-яё]*|ма[йяею]|июн[а-яё]*|июл[а-яё]*|август[а-яё]*|сентябр[а-яё]*|октябр[а-яё]*|ноябр[а-яё]*|декабр[а-яё]*)(?:\s+(\d{4}))?/gi;
+  let mm;
+  const monthHits = [];
+  while ((mm = monthRe.exec(lower)) !== null) {
+    const num = monthFromWord(mm[1]);
+    if (!num) continue;
+    const around = lower.slice(Math.max(0, mm.index - 100), mm.index + mm[0].length + 100);
+    // Месяцы гарантии/хранения/оплаты — не график работ.
+    if (/гарант|годност|хранени|оплат|заявк|подач[аиу]|уведомлени|рассмотрени/i.test(around)) continue;
+    monthHits.push({
+      month: num,
+      year: mm[2] ? Number(mm[2]) : null,
+      index: mm.index,
+      quote: t.slice(Math.max(0, mm.index - 60), mm.index + mm[0].length + 60)
+        .replace(/\s+/g, ' ').trim().slice(0, 200)
+    });
+    monthsFound.add(num);
+  }
+  // Месяцы, упомянутые без диапазона, становятся отдельными периодами.
+  const seenMonthKey = new Set(visits.map((v) => `${v.year || ''}-${v.month}`));
+  for (const h of monthHits) {
+    const key = `${h.year || ''}-${h.month}`;
+    if (seenMonthKey.has(key)) continue;
+    seenMonthKey.add(key);
+    const label = `${monthName(h.month)}${h.year ? ' ' + h.year : ''}`;
+    visits.push({
+      label,
+      month: h.month,
+      year: h.year,
+      // Дата внутри месяца: начало и конец, чтобы график мог рисовать полосу.
+      start: h.year ? `${h.year}-${String(h.month).padStart(2, '0')}-01` : null,
+      end: h.year ? lastDayOfMonth(h.year, h.month) : null,
+      quote: h.quote
+    });
+  }
+
+  // 3. Явное число выездов/заездов: «4 выезда», «2 заезда бригады».
+  const tripRe = /(\d+)\s*(?:выезд[а-яё]*|заезд[а-яё]*)/gi;
+  let tr;
+  let explicitTripCount = null;
+  while ((tr = tripRe.exec(t)) !== null) {
+    const n = Number(tr[1]);
+    if (n > 0 && n <= 60) explicitTripCount = n;
+  }
+
+  // 4. Режим.
+  const continuousSignal = /(остановочн[а-яё]*\s+ремонт|во\s+время\s+остановк|в\s+период\s+остановк|непрерывн[а-яё]*\s+(?:работ|выполнени)|без\s+перерыв|единовременн[а-яё]*\s+выезд|одн[а-яё]*\s+выезд)/i.test(t);
+  const visitsSignal = /(график[а-яё]*\s+(?:работ|заездов|выездов)|поэтапн[а-яё]*|по\s+месяцам|ежемесячн[а-яё]*|в\s+несколько\s+(?:этапов|заездов|выездов))/i.test(t);
+
+  let mode = 'unknown';
+  const uniqueVisits = dedupeVisits(visits);
+  if (uniqueVisits.length >= 2) mode = 'visits';
+  else if (continuousSignal && uniqueVisits.length <= 1) mode = 'continuous';
+  else if (explicitTripCount && explicitTripCount >= 2) mode = 'visits';
+  else if (continuousSignal) mode = 'continuous';
+  else if (visitsSignal && uniqueVisits.length >= 1) mode = 'visits';
+
+  return {
+    mode,
+    visits: uniqueVisits,
+    months: [...monthsFound].sort((a, b) => a - b),
+    explicit_trip_count: explicitTripCount,
+    continuous_signal: continuousSignal,
+    visits_signal: visitsSignal,
+    quotes: uniqueVisits.map((v) => v.quote).filter(Boolean).slice(0, 8)
+  };
+}
+
+function dedupeVisits(list) {
+  const out = [];
+  const seen = new Set();
+  for (const v of list) {
+    const key = `${v.year || ''}-${v.month || ''}-${v.start || ''}-${v.end || ''}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(v);
+  }
+  return out.sort((a, b) => {
+    if (a.start && b.start) return a.start.localeCompare(b.start);
+    return (a.month || 0) - (b.month || 0);
+  });
+}
+
+function isoDate(d) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+function lastDayOfMonth(year, month) {
+  const d = new Date(year, month, 0);
+  return isoDate(d);
+}
+
+const MONTH_NAMES = ['январь', 'февраль', 'март', 'апрель', 'май', 'июнь',
+  'июль', 'август', 'сентябрь', 'октябрь', 'ноябрь', 'декабрь'];
+
+function monthName(m) {
+  return MONTH_NAMES[Number(m) - 1] || String(m);
+}
+
+module.exports = {
+  extractSchedule,
+  extractMode,
+  extractVisitPeriods,
+  kindOf,
+  toDays,
+  monthName,
+  monthFromWord
+};

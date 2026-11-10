@@ -119,6 +119,17 @@ function normalizeState(raw) {
   // МТР из анализа: без этого поля перечень терялся на записи состояния.
   out.mtr_suggestions = Array.isArray(out.mtr_suggestions) ? out.mtr_suggestions : [];
   if (out.calc && !Array.isArray(out.calc.mtr)) out.calc.mtr = [];
+  // График заездов: без явного сохранения терялся при normalizeState, и
+  // просчёт получал trip_count = 1 вместо реального числа выездов.
+  if (!out.visit_plan || typeof out.visit_plan !== 'object') out.visit_plan = null;
+  if (out.visit_plan && !Array.isArray(out.visit_plan.visits)) out.visit_plan.visits = [];
+  if (!['continuous', 'visits', 'unknown'].includes(String(out.visit_mode))) {
+    out.visit_mode = out.visit_plan ? out.visit_plan.mode || null : null;
+  }
+  out.trip_count = Number(out.trip_count) > 0
+    ? Number(out.trip_count)
+    : (out.visit_plan && Number(out.visit_plan.trip_count) > 0
+      ? Number(out.visit_plan.trip_count) : null);
   return out;
 }
 
@@ -361,6 +372,36 @@ function guessCategory(p) {
 function isFinitePositive(v) {
   const n = Number(v);
   return Number.isFinite(n) && n > 0;
+}
+
+/** Мягкая дата из ответа модели: ISO / ДД.ММ.ГГГГ / ГГГГ-ММ → YYYY-MM-DD или null. */
+function normalizeLooseDate(v) {
+  const s = String(v || '').trim();
+  if (!s) return null;
+  const iso = s.match(/^(\d{4})-(\d{2})(?:-(\d{2}))?/);
+  if (iso) return `${iso[1]}-${iso[2]}-${iso[3] || '01'}`;
+  const ru = s.match(/^(\d{1,2})[./](\d{1,2})[./](\d{4})$/);
+  if (ru) {
+    return `${ru[3]}-${ru[2].padStart(2, '0')}-${ru[1].padStart(2, '0')}`;
+  }
+  return null;
+}
+
+/**
+ * Сколько заездов следует из периодов позиций ДВ.
+ * Одинаковая мойка в сентябре и декабре → два заезда, а не один.
+ */
+function deriveVisitCount(positions) {
+  const list = Array.isArray(positions) ? positions : [];
+  const keys = new Set();
+  for (const p of list) {
+    if (!p) continue;
+    const k = String(
+      p.visit_id || p.period || p.period_start || p.when || p.timing || ''
+    ).toLowerCase().replace(/\s+/g, ' ').trim();
+    if (k) keys.add(k);
+  }
+  return keys.size > 0 ? keys.size : 1;
 }
 
 /**
@@ -723,7 +764,9 @@ function countRowsByUnits(texts) {
  * Теперь в ключ входят:
  *   • название (нормализованное, без кавычек);
  *   • объём и единица;
- *   • ТЕГ аппарата из objects («Т-1», «РВС-5000», «К-2»).
+ *   • ТЕГ аппарата из objects («Т-1», «РВС-5000», «К-2»);
+ *   • СРОК / период (сентябрь ≠ декабрь): одна и та же мойка в разные месяцы
+ *     — это РАЗНЫЕ позиции и разные заезды, их нельзя схлопывать.
  *
  * @param {object} p — позиция ДВ
  * @returns {string}
@@ -746,7 +789,18 @@ function dupKey(p) {
     .join(',');
   const vol = o.volume == null ? '—' : String(o.volume).trim();
   const unit = String(o.unit || '').toLowerCase().trim();
-  return `${name}|${vol}|${unit}|${tag}`;
+  // Период заезда: «сентябрь 2027», «март», «2027-09», visit_id.
+  // Без него сентябрь и декабрь схлопывались в одну строку, и график
+  // заездов (trip_count) терял реальные выезды.
+  const period = String(
+    o.period || o.when || o.timing || o.schedule_window
+      || o.period_start || o.visit_id || o.visit || ''
+  )
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 80);
+  return `${name}|${vol}|${unit}|${tag}|${period}`;
 }
 
 /**
@@ -935,6 +989,14 @@ function normalizeDv(ai, catalog) {
       // разным аппаратам. Без этого поля дедупликация схлопывала их в одну,
       // и позиции терялись (D-дефект: dupKey не видел тег).
       objects: posObjects,
+      // ── Когда делаем (график заездов) ───────────────────────────────────
+      // Одна мойка в сентябре и та же в декабре — две позиции. Поле period
+      // держит человеческий ярлык («сентябрь 2027»), period_start/end —
+      // ISO-даты если есть, visit_id связывает позиции одного заезда.
+      period: String(p.period || p.when || p.timing || '').trim().slice(0, 80) || null,
+      period_start: normalizeLooseDate(p.period_start || p.start_date || p.date_from),
+      period_end: normalizeLooseDate(p.period_end || p.end_date || p.date_to),
+      visit_id: String(p.visit_id || p.visit || '').trim().slice(0, 40) || null,
       approved: !!p.approved,
       rp_note: p.rp_note || null,
       needs_classification: problems.length > 0,
@@ -960,6 +1022,22 @@ function normalizeDv(ai, catalog) {
   return {
     decision_recommend: ['go', 'no_go', 'need_info'].includes(raw.decision_recommend)
       ? raw.decision_recommend : 'need_info',
+    // ── График заездов (ответ модели) ───────────────────────────────────────
+    // Модель читает график в ЛЮБОМ виде: ВОР, отдельный файл, пункт ТЗ,
+    // таблица, фраза «в сентябре и декабре». Единого шаблона нет, поэтому
+    // режим и заезды просит именно модель, а schedule-extract страхует.
+    schedule_mode: ['continuous', 'visits', 'unknown'].includes(String(raw.schedule_mode))
+      ? String(raw.schedule_mode) : null,
+    visits: (Array.isArray(raw.visits) ? raw.visits : [])
+      .filter((v) => v && typeof v === 'object')
+      .map((v, i) => ({
+        id: String(v.id || `v${i + 1}`).slice(0, 40),
+        label: String(v.label || v.period || `Заезд ${i + 1}`).slice(0, 80),
+        period_start: normalizeLooseDate(v.period_start || v.start),
+        period_end: normalizeLooseDate(v.period_end || v.end),
+        position_ids: Array.isArray(v.position_ids) ? v.position_ids.map(String) : []
+      })),
+    trip_count: Number(raw.trip_count) > 0 ? Math.round(Number(raw.trip_count)) : null,
     // ── МТР: модель предлагает расходники по документам ──────────────────
     // Промпт просит `mtr_suggestions`, модалка анализа их ждёт и раскладывает
     // в техплан, но ЭТА функция их выбрасывала: РП видел «Перечень не
@@ -1241,6 +1319,26 @@ function normalizeCalcPlan(ai, opts) {
   // уходит в смету тем же значением: `schedule.work_days = params.work_days`.
   const finalWorkDays = (laborSchedule ? laborSchedule.days : workDays) || null;
 
+  // Заезды: модель может дать trip_count / visits; иначе считаем по периодам
+  // позиций (сентябрь ≠ декабрь). Это кормит asgard_smeta.params.trip_count —
+  // дорога, проживание, мобилизация умножаются на число выездов.
+  const modelTrips = Number(raw.trip_count) > 0 ? Math.round(Number(raw.trip_count)) : 0;
+  const fromPositions = deriveVisitCount(
+    (opts && opts.dv_positions) || list.map((p) => ({
+      visit_id: p.visit_id, period: p.period, period_start: p.period_start, when: p.when
+    }))
+  );
+  const tripCount = Math.max(1, modelTrips || fromPositions || 1);
+  const visits = Array.isArray(raw.visits)
+    ? raw.visits.filter((v) => v && (v.id || v.period || v.label)).map((v, i) => ({
+      id: String(v.id || `v${i + 1}`).slice(0, 40),
+      label: String(v.label || v.period || v.id || `Заезд ${i + 1}`).slice(0, 80),
+      period_start: normalizeLooseDate(v.period_start || v.start),
+      period_end: normalizeLooseDate(v.period_end || v.end),
+      position_ids: Array.isArray(v.position_ids) ? v.position_ids.map(String) : []
+    }))
+    : [];
+
   return {
     positions,
     // Срок по трудоёмкости заказчика главнее расчёта по позициям: если он дал
@@ -1251,6 +1349,8 @@ function normalizeCalcPlan(ai, opts) {
       ? 'трудоёмкость из ТЗ: ' + laborSchedule.note
       : null,
     road_days: Number(raw.road_days) > 0 ? Number(raw.road_days) : null,
+    trip_count: tripCount,
+    visits,
     people_total: peopleTotal || null,
     crews,
     crew_size: CREW_SIZE,
@@ -1450,6 +1550,7 @@ module.exports = {
   countTableRowsInText,
   countTableRowsDetailed,
   dupKey,
+  deriveVisitCount,
   canTransition,
   isAnalysisStage,
   isCalcStage,

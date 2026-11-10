@@ -198,6 +198,167 @@ window.AsgardRpReviewModal = (function () {
    * @param {object} rj — report_json
    * @param {boolean} isLocked — карточка закрыта (только просмотр)
    */
+  /**
+   * График заездов — «Гант» по месяцам. БЕЗ ДЕНЕГ: только режим, даты,
+   * позиции, дни работ, люди и человеко-часы. Деньги считает просчёт.
+   *
+   * Режим определяет анализ (модель по документам + детерминированная
+   * страховка). Если не определён — показываем баннер и вопрос РП, а не
+   * выдумываем график.
+   */
+  function renderVisitSchedule(rj) {
+    const vp = rj && rj.visit_plan;
+    if (!vp) return '';
+    const visits = Array.isArray(vp.visits) ? vp.visits : [];
+    const mode = String(vp.mode || 'unknown');
+    const totals = vp.totals || {};
+    const conflicts = Array.isArray(vp.conflicts) ? vp.conflicts : [];
+
+    const MODE_LABEL = {
+      continuous: 'Один непрерывный заезд',
+      visits: `${vp.trip_count || visits.length} заезд(ов)`,
+      unknown: 'Режим не определён'
+    };
+    const modeText = MODE_LABEL[mode] || 'Режим не определён';
+
+    // Таймлайн: один месяц — одна колонка. Полоса заезда накрывает месяцы
+    // его периода; без дат — полоса занимает весь ряд с пометкой «без срока».
+    const months = [];
+    const monthKeys = new Set();
+    const addMonth = (key) => {
+      if (!key || !/^\d{4}-\d{2}$/.test(key)) return;
+      if (monthKeys.has(key)) return;
+      monthKeys.add(key);
+      months.push(key);
+    };
+    visits.forEach((v) => {
+      const s = String(v.period_start || '').slice(0, 7);
+      const e = String(v.period_end || '').slice(0, 7);
+      if (s && e && s !== e) {
+        // Заполняем месяцы между началом и концом.
+        const [sy, sm] = s.split('-').map(Number);
+        const [ey, em] = e.split('-').map(Number);
+        let y = sy; let m = sm; let guard = 0;
+        while ((y < ey || (y === ey && m <= em)) && guard < 36) {
+          addMonth(`${y}-${String(m).padStart(2, '0')}`);
+          m += 1; if (m > 12) { m = 1; y += 1; }
+          guard += 1;
+        }
+      } else if (s) {
+        addMonth(s);
+      } else if (e) {
+        addMonth(e);
+      }
+    });
+    months.sort();
+    const MONTH_SHORT = ['янв', 'фев', 'мар', 'апр', 'май', 'июн',
+      'июл', 'авг', 'сен', 'окт', 'ноя', 'дек'];
+    const monthLabel = (key) => {
+      const [y, m] = key.split('-').map(Number);
+      return `${MONTH_SHORT[m - 1]} ${String(y).slice(2)}`;
+    };
+
+    let h = '<section class="rp-visit-plan" data-rp-visit-root="1">' +
+      '<div class="rp-visit-plan__head">' +
+        '<div><strong>График заездов</strong>' +
+          '<span class="rp-visit-plan__sub">кто и когда едет на объект — без денег</span></div>' +
+        '<div class="rp-visit-plan__metrics">' +
+          '<span class="rp-visit-plan__mode rp-visit-plan__mode--' + esc(mode) + '">' +
+            esc(modeText) + '</span>' +
+          (totals.work_days ? '<span><b>' + esc(String(totals.work_days)) + '</b> дн. работ</span>' : '') +
+          (totals.person_hours
+            ? '<span><b>' + esc(String(totals.person_hours)) + '</b> чел·ч</span>' : '') +
+        '</div>' +
+      '</div>';
+
+    // Баннер неопределённости — вопрос РП, а не догадка.
+    if (vp.unconfirmed) {
+      h += '<div class="rp-visit-plan__warn">' +
+        '<b>Режим заездов не подтверждён.</b> В документах нет графика: ' +
+        'непонятно, один это непрерывный заезд или несколько выездов. ' +
+        'От этого зависят дорога, проживание и мобилизация в просчёте.' +
+        '<div class="rp-visit-plan__warn-actions">' +
+          '<button type="button" class="rp-visit-plan__btn" data-rp-visit-mode="continuous">Один непрерывный заезд</button>' +
+          '<button type="button" class="rp-visit-plan__btn" data-rp-visit-mode="visits">Несколько выездов</button>' +
+        '</div>' +
+      '</div>';
+    }
+
+    // Конфликты источников (ТЗ vs ВОР, модель vs документы).
+    if (conflicts.length) {
+      h += '<ul class="rp-visit-plan__conflicts">' +
+        conflicts.map((c) => '<li>' + esc(c.message || '') + '</li>').join('') +
+      '</ul>';
+    }
+
+    if (!visits.length) {
+      h += '<div class="rp-visit-plan__empty">Заездов нет: позиции без сроков.</div></section>';
+      return h;
+    }
+
+    // Шапка таймлайна по месяцам.
+    h += '<div class="rp-visit-grid">' +
+      '<div class="rp-visit-grid__label">Заезд</div>';
+    if (months.length) {
+      h += '<div class="rp-visit-grid__months">' +
+        months.map((m) => '<span>' + esc(monthLabel(m)) + '</span>').join('') +
+      '</div>';
+    }
+    h += '</div>';
+
+    visits.forEach((v, i) => {
+      const s = String(v.period_start || '').slice(0, 7);
+      const e = String(v.period_end || '').slice(0, 7);
+      const spanMonths = months.length ? Math.max(1, monthSpan(s, e, months)) : 0;
+      const startIdx = months.length ? Math.max(0, months.indexOf(s)) : 0;
+
+      h += '<div class="rp-visit-row" data-rp-visit-idx="' + i + '">' +
+        '<div class="rp-visit-row__label">' +
+          '<span class="rp-visit-row__num">' + (i + 1) + '</span>' +
+          '<span class="rp-visit-row__name">' + esc(v.label || 'заезд') + '</span>' +
+          '<span class="rp-visit-row__dates">' +
+            esc([v.period_start, v.period_end].filter(Boolean).join(' — ') || 'даты не указаны') +
+          '</span>' +
+        '</div>';
+
+      if (months.length) {
+        h += '<div class="rp-visit-row__track">' +
+          '<div class="rp-visit-bar" style="grid-column:' + (startIdx + 1) +
+            ' / span ' + spanMonths + '">' +
+            '<span>' + esc(String(v.positions || 0)) + ' поз.</span>' +
+          '</div>' +
+          '<div class="rp-visit-row__cells">' +
+            months.map(() => '<i></i>').join('') +
+          '</div>' +
+        '</div>';
+      }
+
+      h += '<div class="rp-visit-row__stats">' +
+        '<span><b>' + esc(String(v.positions != null ? v.positions : '—')) + '</b> позиц.</span>' +
+        '<span><b>' + esc(v.work_days != null ? String(v.work_days) : '—') + '</b> дн.</span>' +
+        '<span><b>' + esc(v.people_peak != null ? String(v.people_peak) : '—') + '</b> чел.</span>' +
+        '<span><b>' + esc(v.person_hours != null ? String(v.person_hours) : '—') + '</b> чел·ч</span>' +
+        (v.incomplete_positions
+          ? '<span class="rp-visit-row__gap">' + esc(String(v.incomplete_positions)) + ' без нормы</span>'
+          : '') +
+      '</div></div>';
+    });
+
+    h += '</section>';
+    return h;
+  }
+
+  /** Сколько месяцев накрывает период заезда в сетке months. */
+  function monthSpan(startKey, endKey, months) {
+    if (!months.length) return 1;
+    const i = months.indexOf(startKey);
+    const j = months.indexOf(endKey);
+    if (i < 0 && j < 0) return 1;
+    const from = i < 0 ? 0 : i;
+    const to = j < 0 ? from : j;
+    return Math.max(1, to - from + 1);
+  }
+
   function renderDvBlock(rj, isLocked) {
     const positions = Array.isArray(rj && rj.dv_positions) ? rj.dv_positions : [];
     const locked = !!isLocked;
@@ -275,6 +436,8 @@ window.AsgardRpReviewModal = (function () {
             '<div><dt>Отложения</dt><dd><span class="rp-dv-foul ' +
               (foulingCls[p.fouling] || '') + '">' +
               esc(foulingMap[p.fouling] || 'не указаны') + '</span></dd></div>' +
+            '<div><dt>Когда</dt><dd>' +
+              esc(p.period || p.period_start || 'срок не указан') + '</dd></div>' +
           '</dl>' +
           (p.tech_equip
             ? '<div class="rp-dv-card__tech"><span>Чем работаем</span><p>' +
@@ -323,6 +486,12 @@ window.AsgardRpReviewModal = (function () {
             '<option value="medium"' + (p.fouling === 'medium' ? ' selected' : '') + '>средние</option>' +
             '<option value="heavy"' + (p.fouling === 'heavy' ? ' selected' : '') + '>тяжёлые</option>' +
           '</select>' +
+        '</div>' +
+        '<div class="rp-dv-row__period">' +
+          '<input class="rp-dv-field rp-dv-field--period" data-rp-dv-field="period" ' +
+            'value="' + esc(p.period || '') + '" placeholder="когда: сентябрь, IV кв…" ' +
+            'title="Период работ. Одна и та же работа в разные месяцы — разные строки и разные заезды" ' +
+            'aria-label="Период работ"/>' +
         '</div>' +
         '<button type="button" class="rp-dv-row__del" data-rp-dv-act="del" ' +
           'data-rp-dv-idx="' + idx + '" title="Удалить строку" aria-label="Удалить строку">' +
@@ -1000,6 +1169,7 @@ window.AsgardRpReviewModal = (function () {
         }
         // ДВ, технология и звонок — то, что разобрал Мимир. Без них карточка
         // показывала только текст и не давала проверить объёмы.
+        h += renderVisitSchedule(reportJson);
         h += renderDvBlock(reportJson, isLocked);
         h += renderCallBlock(reportJson);
         h += renderTechPlanBlock(reportJson);
@@ -1749,6 +1919,51 @@ window.AsgardRpReviewModal = (function () {
       try { old.ownerDocument.documentElement.scrollTop = scrollTop; } catch (_) {}
     }
 
+    /**
+     * Кнопки подтверждения режима заездов.
+     *
+     * Анализ не гадает: если график в документах не найден, режим остаётся
+     * `unknown` и РП отвечает здесь. Ответ пишется в visit_plan и переводит
+     * смету на правильное число выездов, а не на молчаливую единицу.
+     */
+    function bindVisitSchedule() {
+      const root = document.querySelector('[data-rp-visit-root]');
+      if (!root) return;
+      root.querySelectorAll('[data-rp-visit-mode]').forEach((btn) => {
+        btn.addEventListener('click', async () => {
+          const mode = btn.getAttribute('data-rp-visit-mode');
+          if (!mode) return;
+          let trips = 1;
+          if (mode === 'visits') {
+            const raw = window.prompt('Сколько выездов бригады планируется?', '2');
+            if (raw == null) return;
+            trips = Math.max(2, Number(raw) || 2);
+          }
+          const plan = reportJson.visit_plan || {};
+          reportJson.visit_plan = Object.assign({}, plan, {
+            mode: mode === 'visits' ? 'visits' : 'continuous',
+            trip_count: mode === 'visits' ? trips : 1,
+            unconfirmed: false,
+            confirmed_by: 'rp',
+            conflicts: (plan.conflicts || []).filter((c) => c.kind !== 'mode_unknown')
+          });
+          reportJson.visit_mode = reportJson.visit_plan.mode;
+          reportJson.trip_count = reportJson.visit_plan.trip_count;
+          try {
+            await API.saveRpReview(tender.id, {
+              mode: 'analysis',
+              report_json: reportJson,
+              // work_price не трогаем: на анализе денег нет.
+            });
+            if (d && d.review) review = d.review;
+          } catch (e) {
+            toast('График заездов', 'Не удалось сохранить режим: ' + (e.message || 'ошибка'), 'warn');
+          }
+          rerender();
+        });
+      });
+    }
+
     function bindModal() {
       document.getElementById('rpExit')?.addEventListener('click', hideModal);
 
@@ -1757,6 +1972,7 @@ window.AsgardRpReviewModal = (function () {
       // добавить пропущенную, поправить объём или единицу. Без этого
       // ошибочный разбор запирал бы закрытие анализа.
       bindDvEditing();
+      bindVisitSchedule();
       document.getElementById('rpDirDocsToggle')?.addEventListener('click', () => {
         const panel = document.getElementById('rpDirDocsPanel');
         if (!panel) return;
@@ -1838,20 +2054,56 @@ window.AsgardRpReviewModal = (function () {
                 answered: Object.keys((checklist.checklist && checklist.checklist.answers) || {}).length,
                 total: (checklist.template || []).length
               } : null,
-              onAnalyze: async (payload) => {
+              onAnalyze: async (payload, progress) => {
+                const onProgress = typeof progress === 'function' ? progress : () => {};
+                const token = window.AsgardRegistryApi?._token?.()
+                  || localStorage.getItem('asgard_token') || '';
                 const r = await fetch(
                   `/api/tkp-quick/sessions/${encodeURIComponent(uid)}/stage/analyze`,
                   {
                     method: 'POST',
                     headers: {
                       'Content-Type': 'application/json',
-                      Authorization: 'Bearer ' + (window.AsgardRegistryApi?._token?.() || localStorage.getItem('asgard_token') || '')
+                      Accept: 'text/event-stream',
+                      Authorization: 'Bearer ' + token
                     },
-                    body: JSON.stringify({ tz_text: payload.tz_text })
+                    body: JSON.stringify({ tz_text: payload.tz_text, stream: true })
                   }
                 );
-                const d = await r.json().catch(() => ({}));
-                if (!r.ok || !d.ok) throw new Error(d.error || 'Анализ не удался');
+                // SSE: шаги анализа с числами. Раньше висел один запрос 10–15 мин
+                // без обратной связи — «Мимир думает…» и тишина.
+                let d = null;
+                if (r.ok && r.body && (r.headers.get('content-type') || '').includes('text/event-stream')) {
+                  const reader = r.body.getReader();
+                  const decoder = new TextDecoder();
+                  let buffer = '';
+                  for (;;) {
+                    const chunk = await reader.read();
+                    if (chunk.done) break;
+                    buffer += decoder.decode(chunk.value, { stream: true });
+                    const parts = buffer.split('\n\n');
+                    buffer = parts.pop() || '';
+                    for (const part of parts) {
+                      const line = part.trim();
+                      if (!line.startsWith('data:')) continue;
+                      let evt = null;
+                      try { evt = JSON.parse(line.slice(5)); } catch (_) { continue; }
+                      if (evt.type === 'result') {
+                        d = evt;
+                      } else if (evt.type === 'error') {
+                        throw new Error(evt.error || 'Анализ не удался');
+                      } else {
+                        // start / progress / heartbeat — в ленту этапов.
+                        onProgress(evt);
+                      }
+                    }
+                  }
+                } else {
+                  // Сервер не отдал поток — забираем обычный JSON.
+                  d = await r.json().catch(() => ({}));
+                }
+                if (!d) throw new Error('Анализ не вернул результат');
+                if (!d.ok) throw new Error(d.error || 'Анализ не удался');
 
                 // Заполняем КАРТОЧКУ отчёта из результата анализа: объём, суть,
                 // риски, выполнимость. Раньше карточка оставалась пустой, и было
@@ -1888,6 +2140,21 @@ window.AsgardRpReviewModal = (function () {
                 if (d.found_positions != null) reportJson.found_positions = Number(d.found_positions) || 0;
                 if (d.valid_positions != null) reportJson.valid_positions = Number(d.valid_positions) || 0;
                 if (d.generation_rounds != null) reportJson.generation_rounds = Number(d.generation_rounds) || 1;
+
+                // ── График заездов ──────────────────────────────────────────
+                // Анализ отдаёт режим и заезды (без денег). Кладём в report_json,
+                // чтобы карточка анализа показала Гант, а просчёт взял trip_count
+                // для дороги/проживания/пайковых.
+                if (d.visit_plan) {
+                  reportJson.visit_plan = d.visit_plan;
+                  reportJson.visit_mode = d.visit_plan.mode || null;
+                  reportJson.trip_count = d.visit_plan.trip_count || 1;
+                  reportJson.visit_conflicts = d.visit_plan.conflicts || [];
+                } else if (d.state && d.state.visit_plan) {
+                  reportJson.visit_plan = d.state.visit_plan;
+                  reportJson.visit_mode = d.state.visit_mode || null;
+                  reportJson.trip_count = d.state.trip_count || 1;
+                }
 
                 // ── Материалы и оборудование ────────────────────────────────
                 // Раньше МТР всегда был пуст («Перечень не заполнен»), потому
