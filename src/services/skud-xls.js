@@ -41,16 +41,20 @@ const DEFAULT_ORPHAN_EXTEND_MIN = 180;
 /** «Выход» на следующий день до этого часа — закрытие вчерашней смены. */
 const DEFAULT_NEXT_EARLY_EXIT_BEFORE_HOUR = 6;
 
-const DDMMYYYY_TIME_RE = /^(\d{2})\.(\d{2})\.(\d{4})\s+(\d{2}):(\d{2}):(\d{2})$/;
+// Час в выгрузке СКУД часто без ведущего нуля: «9:07:44», не «09:07:44».
+// Старый \d{2} молча выкидывал все события до 10:00 (Путков 09.11, ~3600 строк
+// в файле 01.07–09.11).
+const DDMMYYYY_TIME_RE = /^(\d{2})\.(\d{2})\.(\d{4})\s+(\d{1,2}):(\d{2}):(\d{2})$/;
 const PERIOD_RE = /период\s+c\s+(\d{2})\.(\d{2})\.(\d{4})[^]*?по\s+(\d{2})\.(\d{2})\.(\d{4})/i;
 
 function pad2(n) { return String(n).padStart(2, '0'); }
 
-/** '26.10.2026 10:23:29' → { iso: '2026-10-26', time: '10:23:29', ts: Date(UTC-подобный) }. */
+/** '26.10.2026 10:23:29' / '09.11.2026 9:07:44' → { iso, time, ts }. */
 function parseStamp(raw) {
   const m = DDMMYYYY_TIME_RE.exec(String(raw || '').trim());
   if (!m) return null;
-  const [, dd, mm, yyyy, hh, mi, ss] = m;
+  const [, dd, mm, yyyy, hhRaw, mi, ss] = m;
+  const hh = pad2(hhRaw);
   return {
     iso: `${yyyy}-${mm}-${dd}`,
     time: `${hh}:${mi}:${ss}`,

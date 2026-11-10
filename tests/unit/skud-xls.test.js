@@ -43,6 +43,14 @@ describe('skud-xls: разбор дат и заголовков', () => {
     expect(s.time).toBe('10:23:29');
   });
 
+  test('parseStamp принимает час без ведущего нуля (выгрузка СКУД)', () => {
+    const s = skud.parseStamp('09.11.2026 9:07:44');
+    expect(s).not.toBeNull();
+    expect(s.iso).toBe('2026-11-09');
+    expect(s.time).toBe('09:07:44');
+    expect(skud.parseStamp('27.08.2026 0:00:55').time).toBe('00:00:55');
+  });
+
   test('parseStamp не ловит подвал «Страница 47 из 47» и пустые строки', () => {
     expect(skud.parseStamp('')).toBeNull();
     expect(skud.parseStamp('Страница 47 из 47')).toBeNull();
