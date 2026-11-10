@@ -65,8 +65,12 @@ check('перечень работ виден в смете отдельным �
 
 // 4. Модалка при закрытии анализа передаёт работы в смету.
 check('смета из анализа передаёт works из плана',
-  /works:\s*calc\.map/.test(PM_DUTY),
+  /works:\s*\(\(\)\s*=>/.test(PM_DUTY),
   'в buildSmetaFromStage нет works из calc.positions');
+check('смета сохраняет работы, если плана нет, а объёмы уже в asgard_smeta.works', () => {
+  assert.ok(/asgard_smeta && rj\.asgard_smeta\.works/.test(PM_DUTY),
+    'нет фолбэка на report_json.asgard_smeta.works — такие тендеры потеряют объём');
+});
 
 // 5. В смету по-прежнему переносится техплан, а не «сырой» calc_plan.
 const techBlock = CALC.slice(CALC.indexOf('function applyTechToEstimate'), CALC.indexOf('function applyTechToEstimate') + 1400);

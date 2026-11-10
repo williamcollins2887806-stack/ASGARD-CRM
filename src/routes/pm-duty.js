@@ -260,21 +260,45 @@ async function buildSmetaFromStage(db, tenderId, rj) {
     mtr,
     // Перечень работ из ведомости: он задаёт объём, из которого выведен срок.
     // Без него смета не отличала тендер на 6 позиций от тендера на 600.
-    works: calc.map((c) => {
-      const dv = byId.get(String(c.position_id)) || {};
-      return {
-        id: c.id || c.position_id || null,
-        name: c.name || dv.name || 'Работа',
-        unit: dv.unit || null,
-        volume: Number(dv.volume) || null,
-        people: Number(c.people) || null,
-        days: Number(c.days) || null,
-        labor_hours: Number(dv.labor_hours) || null,
-        norm_code: (dv.norm && dv.norm.code) || null,
-        volume_source: dv.volume_source || null,
-        approved: !!c.approved
-      };
-    }),
+    works: (() => {
+      // Канонический источник — позиции плана просчёта (calc.positions).
+      // Но у части тендеров плана нет вовсе, а объёмы уже лежат в
+      // `report_json.asgard_smeta.works` (так собрал Мимир на анализе).
+      // Раньше такие тендеры после пересчёта теряли работы полностью:
+      // смета оставалась «от бригады» и объём снова не участвовал.
+      if (calc.length) {
+        return calc.map((c) => {
+          const dv = byId.get(String(c.position_id)) || {};
+          return {
+            id: c.id || c.position_id || null,
+            name: c.name || dv.name || 'Работа',
+            unit: dv.unit || null,
+            volume: Number(dv.volume) || null,
+            people: Number(c.people) || null,
+            days: Number(c.days) || null,
+            labor_hours: Number(dv.labor_hours) || null,
+            norm_code: (dv.norm && dv.norm.code) || null,
+            volume_source: dv.volume_source || null,
+            approved: !!c.approved
+          };
+        });
+      }
+      const prev = Array.isArray(rj.asgard_smeta && rj.asgard_smeta.works)
+        ? rj.asgard_smeta.works
+        : [];
+      return prev.map((w, i) => ({
+        id: w.id || ('w' + (i + 1)),
+        name: w.name || 'Работа',
+        unit: w.unit || null,
+        volume: w.volume != null ? Number(w.volume) : null,
+        people: w.people != null ? Number(w.people) : null,
+        days: w.days != null ? Number(w.days) : null,
+        labor_hours: w.labor_hours != null ? Number(w.labor_hours) : null,
+        norm_code: w.norm_code || null,
+        volume_source: w.volume_source || null,
+        approved: !!w.approved
+      }));
+    })(),
     schedule: {
       duration_days: workDays,
       crews: Number((st.calc && st.calc.crews) || 0) || 1,
