@@ -1431,51 +1431,73 @@ module.exports = async function docRegistryRoutes(fastify) {
     const vis = visibilitySql(p, req.user.role, req.user.id, { scope: listScope });
     // Кандидаты по ИНН.
     //
-    // V483: вместе с суммами считаем распределение способа получения закрывающих
-    // (ЭДО / скан / оригинал). Нужно, чтобы вывести способ подписания АКТА
-    // сверки по большинству счетов контрагента. Счётчики идут ОДНИМ запросом —
-    // иначе получился бы запрос на каждого контрагента (N+1 на 500 строк).
+    // Счётчики способа получения (ЭДО / скан / оригинал) считаются в том же
+    // агрегате ниже — раньше это была отдельная константа CH_SQL.
     //
     // ВАЖНО (найдено 11.11.2026 на проде): `receive_channel` заполняли руками и
     // вразнобой — кроме 'edo' живут 'эдо' (18 счетов), 'оригинал' (2),
     // 'manual' (2). Точное сравнение с 'edo' теряло этих контрагентов: акт
     // получал «канал не задан», хотя по факту бумага/ЭДО известны. Поэтому
     // нормализуем в SQL: lower + срез пробелов.
-    const CH_SQL = `count(*) FILTER (WHERE lower(btrim(COALESCE(d.receive_channel,''))) IN ('edo','эдо'))::int AS edo_n,
-              count(*) FILTER (WHERE lower(btrim(COALESCE(d.receive_channel,''))) IN ('scan','original','скан','оригинал'))::int AS paper_n,
-              count(*) FILTER (WHERE lower(btrim(COALESCE(d.receive_channel,''))) <> '')::int AS ch_n`;
+    // ОДИН агрегат вместо двух запросов (было: «по ИНН» + «по имени» → склейка
+    // в JS). Дефект старой схемы (найден 11.11.2026 по жалобе заказчика «вижу
+    // акты сверки и написано требуется запросить»): у одного контрагента
+    // появлялось ДВА акта — 7 счетов без ИНН давали строку по имени, а счета
+    // с ИНН — отдельную строку по ИНН. Пример с прода: «ООО «ВсеИнструменты.ру»»
+    // 7 счетов без ИНН + те же 3 счета с ИНН 7722753969 → два акта, две суммы,
+    // у одного из них «канал?», хотя у второго ЭДО.
+    //
+    // Правило склейки (осторожное, чтобы НЕ слепить разные юрлица):
+    //   • есть ИНН                    → группа по ИНН (как было);
+    //   • ИНН пуст, а у этого имени
+    //     в периоде РОВНО один ИНН    → приклеиваем к нему (частая ситуация:
+    //                                   счёт пришёл без ИНН, но контрагент
+    //                                   в базе известен);
+    //   • ИНН пуст и имён-тёзок
+    //     несколько (разные ИНН)      → оставляем отдельной группой по имени:
+    //                                   слепить два разных ООО нельзя.
+    // Имя нормализуем (кавычки, регистр, пробелы), иначе «ООО «X»» и «ООО "X"»
+    // снова разъедутся.
+    const NAME_KEY_SQL = `lower(btrim(regexp_replace(COALESCE(d.counterparty_name,''), '["«»]', '', 'g')))`;
     const { rows: cands } = await db.query(
-      `SELECT d.counterparty_inn AS inn, max(d.counterparty_name) AS name,
-              count(*)::int AS docs, sum(d.amount_gross)::numeric AS amount,
-              sum(CASE WHEN d.pay_status IN ('paid','n_a') THEN d.amount_gross ELSE 0 END)::numeric AS paid_sum,
-              ${CH_SQL}
-         FROM doc_registry d
-        WHERE d.deleted_at IS NULL AND d.dir='in'
-          AND COALESCE(d.invoice_date, d.service_done_at) BETWEEN $1::date AND $2::date
-          AND (d.pay_status IN ('paid','n_a') OR d.service_done_at IS NOT NULL)${vis}
-        GROUP BY d.counterparty_inn HAVING d.counterparty_inn IS NOT NULL AND d.counterparty_inn <> ''
-        ORDER BY 4 DESC NULLS LAST LIMIT 500`,
+      `WITH base AS (
+         SELECT d.counterparty_name,
+                d.amount_gross,
+                d.pay_status,
+                d.receive_channel,
+                NULLIF(btrim(COALESCE(d.counterparty_inn,'')), '') AS inn,
+                ${NAME_KEY_SQL} AS name_key
+           FROM doc_registry d
+          WHERE d.deleted_at IS NULL AND d.dir='in'
+            AND COALESCE(d.invoice_date, d.service_done_at) BETWEEN $1::date AND $2::date
+            AND (d.pay_status IN ('paid','n_a') OR d.service_done_at IS NOT NULL)${vis}
+            AND COALESCE(btrim(d.counterparty_name),'') <> ''
+       ),
+       by_name AS (
+         SELECT name_key,
+                count(DISTINCT inn) AS inn_variants,
+                max(inn)            AS the_inn
+           FROM base GROUP BY name_key
+       ),
+       keyed AS (
+         SELECT b.*,
+                CASE WHEN b.inn IS NOT NULL THEN 'inn:' || b.inn
+                     WHEN n.inn_variants = 1 THEN 'inn:' || n.the_inn
+                     ELSE 'name:' || b.name_key END AS grp
+           FROM base b JOIN by_name n ON n.name_key = b.name_key
+       )
+       SELECT CASE WHEN grp LIKE 'inn:%' THEN substr(grp, 5) ELSE NULL END AS inn,
+              max(counterparty_name) AS name,
+              count(*)::int AS docs,
+              sum(amount_gross)::numeric AS amount,
+              sum(CASE WHEN pay_status IN ('paid','n_a') THEN amount_gross ELSE 0 END)::numeric AS paid_sum,
+              count(*) FILTER (WHERE lower(btrim(COALESCE(receive_channel,''))) IN ('edo','эдо'))::int AS edo_n,
+              count(*) FILTER (WHERE lower(btrim(COALESCE(receive_channel,''))) IN ('scan','original','скан','оригинал'))::int AS paper_n,
+              count(*) FILTER (WHERE lower(btrim(COALESCE(receive_channel,''))) <> '')::int AS ch_n
+         FROM keyed GROUP BY grp
+        ORDER BY 3 DESC NULLS LAST LIMIT 500`,
       p
     ).catch(() => ({ rows: [] }));
-    // P2 (верификатор 17.10): контрагенты БЕЗ ИНН раньше выпадали из списка
-    // (HAVING отсекал пустой ИНН) — вкладка была пуста, хотя деталь по имени
-    // работала. Добавляем вторую группу: по нормализованному имени.
-    const { rows: candsByName } = await db.query(
-      `SELECT max(d.counterparty_inn) AS inn, max(d.counterparty_name) AS name,
-              count(*)::int AS docs, sum(d.amount_gross)::numeric AS amount,
-              sum(CASE WHEN d.pay_status IN ('paid','n_a') THEN d.amount_gross ELSE 0 END)::numeric AS paid_sum,
-              ${CH_SQL}
-         FROM doc_registry d
-        WHERE d.deleted_at IS NULL AND d.dir='in'
-          AND COALESCE(d.invoice_date, d.service_done_at) BETWEEN $1::date AND $2::date
-          AND (d.pay_status IN ('paid','n_a') OR d.service_done_at IS NOT NULL)${vis}
-          AND (d.counterparty_inn IS NULL OR d.counterparty_inn = '')
-          AND COALESCE(trim(d.counterparty_name),'') <> ''
-        GROUP BY lower(trim(d.counterparty_name))
-        ORDER BY 4 DESC NULLS LAST LIMIT 500`,
-      p
-    ).catch(() => ({ rows: [] }));
-    for (const c of candsByName) cands.push(c);
     // Сумма взаимозачётов по актам периода — чтобы баланс в СПИСКЕ совпадал
     // с балансом в детали (раньше в списке стояло «—», а внутри были суммы).
     const adjByInn = new Map();
@@ -1487,19 +1509,24 @@ module.exports = async function docRegistryRoutes(fastify) {
       else if (s.counterparty_name) adjByName.set(String(s.counterparty_name).trim().toLowerCase(), Math.round(sum * 100) / 100);
     }
     const byKey = new Map();
+    // Нормализация имени — та же, что в SQL (кавычки, регистр, пробелы). Нужна,
+    // чтобы сохранённый акт находился по кандидату: раньше «ООО «X»» и
+    // «ООО "X"» давали разные ключи → акт терялся и в списке снова появлялось
+    // «требуется запросить», хотя акт уже есть.
+    const nameKey = (v) => String(v || '').toLowerCase().replace(/["«»]/g, '').trim();
     for (const c of cands) {
       const paidSum = Number(c.paid_sum) || 0;
       const docsSum = Number(c.amount) || 0;
       // Ключ: при наличии ИНН — по ИНН, иначе по нормализованному имени (как в saved).
-      const key = c.inn ? c.inn : ('name:' + String(c.name || '').trim().toLowerCase());
-      const adj = adjByInn.get(c.inn) || adjByName.get(String(c.name || '').trim().toLowerCase()) || 0;
+      const key = c.inn ? c.inn : ('name:' + nameKey(c.name));
+      const adj = adjByInn.get(c.inn) || adjByName.get(nameKey(c.name)) || 0;
       byKey.set(key, {
         inn: c.inn || null, name: c.name, docs: c.docs, amount: docsSum, paid_sum: paidSum,
         balance_rub: Math.round((paidSum - docsSum + adj) * 100) / 100,
         due_at: reconSvc.periodDeadline(year, quarter, cfg),
         status: null, received_at: null,
         // V483: распределение способа получения закрывающих за период.
-        // Считается здесь, а не отдельным запросом — см. CH_SQL выше.
+        // Считается в том же агрегате SQL — см. комментарий у NAME_KEY_SQL.
         channel_stats: {
           edo: Number(c.edo_n) || 0,
           paper: Number(c.paper_n) || 0,
@@ -1508,7 +1535,7 @@ module.exports = async function docRegistryRoutes(fastify) {
       });
     }
     for (const s of saved) {
-      const k = s.counterparty_inn || ('name:' + String(s.counterparty_name || '').toLowerCase());
+      const k = s.counterparty_inn || ('name:' + nameKey(s.counterparty_name));
       const cur = byKey.get(k) || {
         inn: s.counterparty_inn, name: s.counterparty_name, docs: 0, amount: 0, paid_sum: 0,
         balance_rub: Math.round((adjByName.get(String(s.counterparty_name || '').trim().toLowerCase()) || 0) * 100) / 100,
@@ -1563,12 +1590,22 @@ module.exports = async function docRegistryRoutes(fastify) {
     // ограничены своей матрицей независимо от scope.
     const reconScope = canUseScopeAll(req.user.role) ? 'all' : (q.scope || 'mine');
     // act_id (если акт уже сохранён) — чтобы учесть взаимозачёты в балансе.
+    // V483: ищем по ИНН, а если его нет — по НОРМАЛИЗОВАННОМУ имени (кавычки,
+    // регистр). Раньше сравнение было точным: акт, сохранённый как «ООО "X"»,
+    // не находился для «ООО «X»» — деталь показывала пустой комментарий и
+    // «канал не задан», хотя акт есть. Тот же нормализатор, что в списке.
     let actId = null;
     if (q.inn) {
       const a = await db.query(`SELECT id FROM doc_reconciliation_acts WHERE counterparty_inn=$1 AND period_year=$2 AND period_quarter=$3`, [q.inn, year, quarter]).catch(() => ({ rows: [] }));
       actId = a.rows[0] ? a.rows[0].id : null;
-    } else if (q.name) {
-      const a = await db.query(`SELECT id FROM doc_reconciliation_acts WHERE lower(trim(counterparty_name))=$1 AND period_year=$2 AND period_quarter=$3`, [String(q.name).trim().toLowerCase(), year, quarter]).catch(() => ({ rows: [] }));
+    }
+    if (!actId && q.name) {
+      const a = await db.query(
+        `SELECT id FROM doc_reconciliation_acts
+          WHERE lower(btrim(regexp_replace(COALESCE(counterparty_name,''), '["«»]', '', 'g')))
+                = lower(btrim(regexp_replace($1::text, '["«»]', '', 'g')))
+            AND period_year=$2 AND period_quarter=$3`,
+        [String(q.name), year, quarter]).catch(() => ({ rows: [] }));
       actId = a.rows[0] ? a.rows[0].id : null;
     }
     const detail = await reconSvc.buildReconciliation(db, {
@@ -1601,9 +1638,22 @@ module.exports = async function docRegistryRoutes(fastify) {
       // Те же условия периода/видимости, что в списке кандидатов.
       const { from, to } = reconSvc.periodRange(year, quarter);
       const cp = [from, to];
+      // V483: группа контрагента — как в списке. Если ИНН известен, берём счета
+      // И ПО ИНН, И по этому имени без ИНН (их склеивает список) — иначе канал в
+      // детали считался бы только по счетам с ИНН, а в списке — по всем, и
+      // плашки «ЭДО»/«оригинал» расходились бы.
       let filt = '';
-      if (q.inn) { cp.push(q.inn); filt = ` AND d.counterparty_inn = $${cp.length}`; }
-      else if (q.name) { cp.push(String(q.name).trim().toLowerCase()); filt = ` AND lower(trim(d.counterparty_name)) = $${cp.length}`; }
+      if (q.inn) {
+        cp.push(q.inn);
+        filt = ` AND (d.counterparty_inn = $${cp.length} OR (NULLIF(btrim(COALESCE(d.counterparty_inn,'')),'') IS NULL
+                   AND lower(btrim(regexp_replace(COALESCE(d.counterparty_name,''), '["«»]', '', 'g')))
+                       = (SELECT min(lower(btrim(regexp_replace(COALESCE(counterparty_name,''), '["«»]', '', 'g'))))
+                            FROM doc_registry WHERE counterparty_inn = $${cp.length})))`;
+      } else if (q.name) {
+        cp.push(String(q.name));
+        filt = ` AND lower(btrim(regexp_replace(COALESCE(d.counterparty_name,''), '["«»]', '', 'g')))
+                   = lower(btrim(regexp_replace($${cp.length}::text, '["«»]', '', 'g')))`;
+      }
       const r = await db.query(
         `SELECT count(*) FILTER (WHERE lower(btrim(COALESCE(d.receive_channel,''))) IN ('edo','эдо'))::int AS edo_n,
                 count(*) FILTER (WHERE lower(btrim(COALESCE(d.receive_channel,''))) IN ('scan','original','скан','оригинал'))::int AS paper_n,

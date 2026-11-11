@@ -32,6 +32,11 @@ const bad = (m) => { fail++; console.log('  FAIL', m); };
   };
   const INN = '9700000001';
   const tag = 'RECON-' + Date.now();
+  // Тест должен быть воспроизводимым: остатки прошлого прогона (тот же ИНН за
+  // тот же период) иначе попадают в сверку и ломают ожидаемые 2 документа и
+  // баланс -4000. Чистим ПЕРЕД прогоном, а не только в конце.
+  await db.query(`DELETE FROM doc_registry WHERE counterparty_inn=$1`, [INN]);
+  await db.query(`DELETE FROM doc_reconciliation_acts WHERE counterparty_inn=$1`, [INN]);
   // два документа за 2026 Q4: один оплачен, один с услугой
   const d1 = (await db.query(
     `INSERT INTO doc_registry(dir, counterparty_name, counterparty_inn, invoice_number, invoice_date, amount_gross, pay_status, doc_owner_id, created_by, updated_by, currency)
