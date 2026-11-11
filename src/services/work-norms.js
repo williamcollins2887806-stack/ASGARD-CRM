@@ -74,12 +74,43 @@ async function loadCatalog(db, { category } = {}) {
     globals: globals.map,
     globalsRows: globals.rows,
     categories,
-    rates,
+    // Нормы с вычисленным базисом: params_json.norm_basis, а если его нет —
+    // по calc_kind. Без этого защита от двойного счёта потерь мертва: она
+    // работает только когда флаг передан, а передавать его было некому
+    // (все вызовы шли без norm_basis — нашёл верификатор).
+    rates: rates.map((r) => Object.assign({}, r, {
+      norm_basis: resolveNormBasis(r)
+    })),
     coeffs,
     chemistry,
     equipment,
     experiences
   };
+}
+
+/**
+ * Базис нормы: содержит ли она внутрисменные потери.
+ *
+ * gross_12h      — норма посчитана с коэффициентом (k_irv): потери ВНУТРИ.
+ * gross_calendar — норма в календарных сутках: смены её не сокращают.
+ * net_productive — норма «чистая»: потери нужно добавлять.
+ *
+ * Явное поле params_json.norm_basis главнее: его ставит миграция V487 и
+ * может переопределить человек через админку.
+ *
+ * @param {object} rate — строка work_norm_rates
+ * @returns {'gross_12h'|'gross_calendar'|'net_productive'}
+ */
+function resolveNormBasis(rate) {
+  const r = rate || {};
+  const explicit = r.params_json && r.params_json.norm_basis;
+  if (explicit === 'gross_12h' || explicit === 'gross_calendar' || explicit === 'net_productive') {
+    return explicit;
+  }
+  const kind = String(r.calc_kind || '');
+  if (kind === 'min_per_unit') return 'gross_12h';
+  if (kind === 'days_per_unit' || kind === 'fixed_days') return 'gross_calendar';
+  return 'net_productive';
 }
 
 const CALC_KIND_LABELS = {
@@ -3182,6 +3213,7 @@ async function applyNormPatchFromSmetaEdit(db, body, user) {
 }
 
 module.exports = {
+  resolveNormBasis,
   loadGlobals,
   loadCatalog,
   previewCalc,

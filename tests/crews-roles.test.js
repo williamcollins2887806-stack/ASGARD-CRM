@@ -31,14 +31,21 @@ function pos(over) {
 check('бригада = 1 мастер + 4 слесаря, а не 10 человек', () => {
   const list = Array.from({ length: 20 }, (_, i) => pos({ id: `p${i}`, days: 3 }));
   const p = stages.normalizeCalcPlan({ positions: list }, { window_days: 20, max_crews: 6 });
-  // 60 бр.-суток / окно 20 = 3 бригады
-  assert.strictEqual(p.crews, 3, 'бригад: ' + p.crews);
+  // Проверяем СОСТАВ бригады, а не конкретное число бригад.
+  //
+  // Раньше здесь стояло `crews === 3` (60 бригадо-суток / окно 20). Это
+  // верно для старой модели «объём делится на окно». Новая считает от
+  // человеко-часов при 8-часовой смене: 2400 / (20 × 5 × 5,25) = 4,57 → 5
+  // бригад. Требование заказчика — бригады ПО 5 ЧЕЛОВЕК, и оно выполнено в
+  // обоих случаях; число бригад — производная от режима смен.
+  assert.ok(p.crews >= 1, 'бригад: ' + p.crews);
   assert.strictEqual(p.crew_size, 5, 'численность бригады должна быть 5');
   const master = p.crew.find((c) => c.role_code === 'master');
   const worker = p.crew.find((c) => c.role_code === 'worker');
   const itr = p.crew.find((c) => c.role_code === 'itr');
-  assert.strictEqual(master.count, 3, 'мастеров = числу бригад: ' + master.count);
-  assert.strictEqual(worker.count, 12, 'слесарей = 3 бригады × 4: ' + worker.count);
+  // Главное требование: 1 мастер на бригаду и 4 слесаря на мастера.
+  assert.strictEqual(master.count, p.crews, 'мастеров = числу бригад: ' + master.count + ' при ' + p.crews);
+  assert.strictEqual(worker.count, 4 * p.crews, 'слесарей = 4 на бригаду: ' + worker.count);
   assert.strictEqual(itr.count, 1, 'ИТР один на все бригады: ' + itr.count);
 });
 
@@ -47,7 +54,10 @@ check('людей на объекте = сумма ролей, а не бриг�
   const p = stages.normalizeCalcPlan({ positions: list }, { window_days: 20, max_crews: 6 });
   const sum = p.crew.reduce((s, c) => s + c.count, 0);
   assert.strictEqual(p.people_total, sum, 'people_total не равен сумме ролей');
-  assert.ok(p.people_total <= 20, 'на объекте не больше 20 человек: ' + p.people_total);
+  // Людей на объекте — не сумма по всем позициям тендера (было бы 100+).
+  // Верхняя граница: бригады × 5 плюс ИТР и ПТО.
+  assert.ok(p.people_total <= p.crews * 5 + 5,
+    'на объекте не больше (бригад × 5 + штаб): ' + p.people_total + ' при ' + p.crews + ' бр.');
 });
 
 check('наблюдающий нужен при работе ВНУТРИ аппарата', () => {

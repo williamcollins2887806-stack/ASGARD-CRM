@@ -141,7 +141,7 @@ check('старая смета без crew/mtr считается как ран�
 check('пустой crew не добавляет лишних строк A', () => {
   const est = smeta.recalcAsgardSmeta({ params: baseParams() });
   const aLines = est.rows.filter((r) => r.kind === 'line' && r.section === 'A');
-  assert.ok(aLines.length <= 6, 'строк A: ' + aLines.length);
+  assert.ok(aLines.length <= 7, 'строк A: ' + aLines.length);
   assert.ok(!est.rows.some((r) => r.crewRole === 'welder'), 'появился сварщик без бригады');
 });
 

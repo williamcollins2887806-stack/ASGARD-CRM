@@ -18,6 +18,7 @@
 const promptLoader = require('./prompt-loader');
 const stages = require('./mimir-tender-stages');
 const docRole = require('./doc-role');
+const excelStructure = require('./excel-structure');
 
 // Что ушло в промпт на последнем вызове — для журнала анализа.
 // module-level: вызовы последовательные, гонки нет.
@@ -241,18 +242,19 @@ function countValidPositions(positions) {
  */
 function estimateExpectedForSelection(documents) {
   const list = Array.isArray(documents) ? documents : [];
+  // Сколько строк реально в документе — считаем ДВУМЯ путями и берём больший.
+  //
+  // Путь 1 (структурный): `parsed.stats.positions` из excel-structure — точный
+  // счёт по СЕТКЕ ЯЧЕЕК. В БД таблица лежит CSV-склейкой, поэтому структуру
+  // приходится разбирать заново (structureOf), но это единственный источник,
+  // который знает про 675 строк формы 2138: `documents.table_positions`
+  // в этой базе = 0, потому что .xls читался через LibreOffice без сетки.
+  let structuredRows = 0;
   try {
-    // Источник числа позиций — СТРУКТУРА файла, посчитанная парсером.
-    //
-    // История вопроса (13 проходов верификатора): сначала считали строки
-    // таблицы по тексту с единицами — ломались шапки, «м», «компл», docx,
-    // csv. Потом по нумерации 1..N — ломались разделы с перезапуском, рваная
-    // нумерация и колонка «Кол-во». Любая текстовая эвристика ошибочна:
-    // после рендера в строку не отличить номер от объёма.
-    //
-    // Теперь число берётся из documents.table_positions — оно посчитано
-    // парсером по СЕТКЕ ЯЧЕЕК (ExcelJS/SheetJS), где структура цела.
-    // Здесь только складываем по документам-источникам перечня.
+    structuredRows = buildStructuredInput(list).rows;
+  } catch (_) { structuredRows = 0; }
+
+  try {
     let docRole = null;
     try { docRole = require('./doc-role'); } catch (_) { docRole = null; }
 
@@ -366,9 +368,43 @@ function estimateExpectedForSelection(documents) {
       }
     }
 
-    // Берём больший: недооценка опаснее переоценки — она маскирует недобор.
-    const finalEstimate = Math.max(estimate, textEstimate);
-    return { rows: finalEstimate, estimate: finalEstimate };
+    // ── Согласование источников ────────────────────────────────────────────
+    // Было `Math.max(...)`: один завышенный источник портил результат всегда
+    // (подстроки «в т.ч.» давали 672 при 336 реальных).
+    //
+    // Простой «берём структурный» тоже неверен: структурный счёт умеет
+    // ЗАНИЖАТЬ (пропущенная шапка, нестандартная вёрстка) — это тест
+    // «занижённый структурный счёт не маскирует недобор».
+    //
+    // Работающее правило — МЕДИАНА по доступным источникам. Она устойчива к
+    // одному выбросу в любую сторону: при 42 / 300 / 300 даёт 300, при
+    // 336 / 672 / 336 — 336. Максимум брал выброс, структурный брал
+    // занижение; медиана не берёт ни то, ни другое.
+    const structuredEst = estimate;   // сумма структурных по документам
+    const candidates = [structuredEst, textEstimate, structuredRows].filter((x) => x > 0);
+    let finalEstimate = 0;
+    let estimateConflict = null;
+    if (candidates.length) {
+      const sorted = candidates.slice().sort((a, b) => a - b);
+      finalEstimate = sorted[Math.floor(sorted.length / 2)];
+      const maxV = sorted[sorted.length - 1];
+      const minV = sorted[0];
+      if (minV > 0 && maxV / minV > 1.5) {
+        estimateConflict = {
+          structured: structuredEst,
+          text: textEstimate,
+          structured_rows: structuredRows,
+          applied: finalEstimate,
+          reason: 'источники расходятся более чем в 1,5 раза — взята медиана'
+        };
+      }
+    }
+    return {
+      rows: finalEstimate,
+      estimate: finalEstimate,
+      structured: structuredRows,
+      estimate_conflict: estimateConflict
+    };
   } catch (_) {
     // Оценка — вспомогательная: если упала, работаем без порога.
     return { rows: 0, estimate: 0 };
@@ -610,6 +646,333 @@ function docsToText(documents, limit = 2500000) {  const list = Array.isArray(do
   return parts.join('\n\n');
 }
 
+// ── Структурный вход: таблица вместо CSV-сырья ──────────────────────────────
+/**
+ * ПОЧЕМУ ЭТО ОТДЕЛЬНЫЙ ПОТОК (тендер 2138, 11.11.2026)
+ *
+ * Ведомость «7. Форма тендерного предложения» — 675 позиций в 7 приложениях,
+ * 49 периодов. В БД её текст лежит CSV-склейкой листов: 787 строк вида
+ * `1,1,,теплообменник оборотной воды 2104L,1-Б,иловые отложения,...,апрель,,,,`.
+ *
+ * Раньше в промпт уходили ДВА представления одних и тех же данных: эта CSV-
+ * простыня и блок `excel-structure.toPromptText()`. CSV доминировал по объёму
+ * и выглядел «сырьём для анализа», поэтому модель вела себя как аналитик:
+ * вернула 6–7 агрегатов по листам («Гидродинамическая чистка… — 1 143 958 п.м»)
+ * вместо 675 строк, суммы не совпали с файлом, а периоды потерялись полностью
+ * (`period: null` у всех).
+ *
+ * Теперь у Excel один источник — структура: колонки определены по заголовкам,
+ * строка таблицы = позиция. CSV в промпт не попадает вообще.
+ */
+const SPREADSHEET_EXT = /\.(xlsx|xlsm|xls|csv)$/i;
+
+/** Разобранная структура документа: WeakMap по объекту, чтобы не парсить дважды. */
+const _structureCache = new WeakMap();
+
+/** Это табличный файл (по имени или по уже готовой структуре от парсера)? */
+function isSpreadsheetDoc(d) {
+  if (!d || typeof d !== 'object') return false;
+  if (d.structure && Array.isArray(d.structure.positions)) return true;
+  const name = String(d.original_name || d.filename || d.name || '');
+  return SPREADSHEET_EXT.test(name);
+}
+
+/**
+ * Текст похож на выгрузку таблицы (CSV или `=== Лист ===` + CSV)?
+ *
+ * Нужен как дешёвый фильтр: не гонять XLSX.read по каждой .docx и по
+ * псевдотаблицам вида `| 1 | Очистка | м3 | 10 |` (они идут текстовым путём).
+ */
+function looksLikeSpreadsheetText(text) {
+  const s = String(text || '');
+  if (!s) return false;
+  if (/^=== .+ ===$/m.test(s)) return true;
+  const lines = s.split(/\r?\n/).slice(0, 80);
+  if (!lines.length) return false;
+  let csvish = 0;
+  for (const ln of lines) if ((ln.match(/,/g) || []).length >= 2) csvish += 1;
+  return csvish >= 5 && csvish / lines.length >= 0.5;
+}
+
+/** Строка структуры в формате `toPromptText` — одна табличная строка = одна позиция. */
+function structureLine(it) {
+  const o = it || {};
+  return [
+    o.name || '—',
+    o.volume != null ? String(o.volume) : '—',
+    o.unit || '—',
+    o.zone || '—',
+    o.fouling || '—',
+    o.period || '—',
+    o.clean_count != null ? String(o.clean_count) : '—'
+  ].join(' | ');
+}
+
+/**
+ * Компактный блок структуры для промпта.
+ *
+ * `excel-structure.toPromptText` режет список на 900 позициях и дописывает
+ * служебную строку «… ещё N позиций (обрезано)». На больших ведомостях эта
+ * строка оставалась в СЕРЕДИНЕ данных и прямо говорила модели, что дальше
+ * ничего нет — ровно та потеря, из-за которой разбор был неполным.
+ *
+ * Здесь служебная пометка снимается, а остаток дописывается строками того же
+ * формата: каждая строка самодостаточна, шапка ей не нужна.
+ */
+function structurePromptText(parsed) {
+  const p = parsed || {};
+  const list = Array.isArray(p.positions) ? p.positions : [];
+  let text = excelStructure.toPromptText(p);
+  // Снимаем пометку обрезки: она врёт, потому что ниже идёт полный хвост.
+  text = text.replace(/\n?… ещё \d+ позиций \(обрезано\)/g, '');
+  if (list.length > 900) {
+    const tail = list.slice(900).map(structureLine).join('\n');
+    text += '\n' + tail;
+  }
+  return text;
+}
+
+/**
+ * Разбирает CSV-выгрузку листов в структуру через `excel-structure`.
+ *
+ * Вход — текст, который уже лежит в БД (`ocr_text`): `=== <лист> ===` плюс
+ * `sheet_to_csv` этого листа. Здесь он снова превращается в сетку ячеек,
+ * потому что без сетки колонки не сопоставить по заголовкам.
+ */
+function parseSpreadsheetText(text) {
+  const src = String(text || '');
+  const XLSX = require('xlsx');
+  const bodies = [];
+  const parts = src.split(/^=== (.+?) ===[ \t]*$/m);
+  if (parts.length >= 3) {
+    for (let i = 1; i < parts.length; i += 2) {
+      bodies.push({ name: String(parts[i]).trim() || ('Лист' + ((i + 1) / 2)), text: parts[i + 1] || '' });
+    }
+  } else {
+    bodies.push({ name: 'Лист1', text: src });
+  }
+
+  const wb = { SheetNames: [], Sheets: {} };
+  for (const b of bodies) {
+    let aoa = [];
+    try {
+      const one = XLSX.read(b.text, { type: 'string', raw: false, cellText: true });
+      const ws = one.Sheets[one.SheetNames[0]];
+      aoa = XLSX.utils.sheet_to_json(ws, { header: 1, blankrows: false, defval: '', raw: false });
+    } catch (_) {
+      continue;
+    }
+    if (!Array.isArray(aoa) || !aoa.length) continue;
+    // Имя листа может повторяться в выгрузке — второй такой же не затираем.
+    let name = b.name;
+    let n = 2;
+    while (wb.Sheets[name]) { name = `${b.name} (${n})`; n += 1; }
+    wb.SheetNames.push(name);
+    wb.Sheets[name] = { _aoa: aoa };
+  }
+  if (!wb.SheetNames.length) return null;
+
+  // parseWorkbook ждёт объект XLSX с utils.sheet_to_json — отдаём сетку как есть.
+  const shim = { utils: { sheet_to_json: (sheet) => sheet._aoa } };
+  const parsed = excelStructure.parseWorkbook(shim, wb);
+  return parsed && parsed.stats && parsed.stats.positions > 0 ? parsed : null;
+}
+
+/** Структура документа (или null). Кэш на объекте документа. */
+function structureOf(d) {
+  if (!d || typeof d !== 'object') return null;
+  if (_structureCache.has(d)) return _structureCache.get(d);
+  let parsed = null;
+  if (d.structure && Array.isArray(d.structure.positions)) {
+    parsed = d.structure;
+  } else if (isSpreadsheetDoc(d)) {
+    const text = String(d.text || d.ocr_text || '');
+    if (looksLikeSpreadsheetText(text)) {
+      try { parsed = parseSpreadsheetText(text); } catch (_) { parsed = null; }
+    }
+  }
+  _structureCache.set(d, parsed);
+  return parsed;
+}
+
+/**
+ * Собирает структурный вход по всем табличным документам.
+ *
+ * Копии одного перечня (несколько загрузок одного файла, «Форма» и «Дефектная
+ * ведомость» с теми же объёмами) считаем ОДИН раз — иначе 675 строк превратятся
+ * в 4050 и модель получит противоречивые данные.
+ *
+ * @returns {{entries:Array, text:string, rows:number, periods:number}}
+ */
+function buildStructuredInput(documents) {
+  const list = Array.isArray(documents) ? documents : [];
+  const entries = [];
+  // Копии одного файла (на 2138 их по 6 штук) парсить шесть раз незачем:
+  // у них то же имя и та же длина текста. Отсекаем ДО XLSX.read — иначе
+  // структурный разбор становился самой долгой частью подготовки промпта.
+  const seenCopies = new Set();
+  for (const d of list) {
+    if (!d || typeof d !== 'object') continue;
+    const copyKey = String(d.original_name || d.filename || d.name || '')
+      + '|' + String(d.text || d.ocr_text || '').length;
+    const parsed = structureOf(d);
+    if (!parsed) continue;
+    if (seenCopies.has(copyKey)) continue;
+    seenCopies.add(copyKey);
+    const name = String(d.original_name || d.filename || d.name || 'документ');
+    const dup = entries.find((e) => {
+      const a = (e.parsed.positions || []).length;
+      const b = (parsed.positions || []).length;
+      const smaller = Math.min(a, b);
+      const bigger = Math.max(a, b);
+      if (!bigger) return false;
+      // Копия одного файла — это такой же перечень: размеры отличаются на
+      // единицы процентов. Сравниваем только сопоставимые по размеру.
+      if (smaller / bigger >= 0.85) {
+        try { return excelStructure.compareLists(e.parsed.positions, parsed.positions).sameList; } catch (_) { return false; }
+      }
+      // Вложенный перечень (дефектная ведомость = Прил_1) — тоже копия, но
+      // ТОЛЬКО когда он большой: у маленького приложения (4–5 позиций)
+      // подпись «объём+период+единица» случайно совпадает с чужими строками,
+      // и потерять его молча дороже, чем продублировать несколько строк.
+      if (smaller < 20) return false;
+      try {
+        const cmp = excelStructure.compareLists(e.parsed.positions, parsed.positions);
+        return cmp.ratio >= 0.99;
+      } catch (_) { return false; }
+    });
+    if (dup) continue;
+    entries.push({ name, parsed });
+  }
+
+  const blocks = entries.map((e) => {
+    const n = Number(e.parsed.stats && e.parsed.stats.positions) || 0;
+    return `=== ${e.name} — ТАБЛИЦА, разобрана по клеткам (строк ${n}) ===\n`
+      + structurePromptText(e.parsed);
+  });
+
+  return {
+    entries,
+    text: blocks.join('\n\n'),
+    rows: entries.reduce((s, e) => s + (Number(e.parsed.stats && e.parsed.stats.positions) || 0), 0),
+    periods: entries.reduce((s, e) => s + (Number(e.parsed.stats && e.parsed.stats.periods) || 0), 0)
+  };
+}
+
+/**
+ * Текст документов БЕЗ табличных: ТЗ, письма, договоры — контекст, а не данные.
+ *
+ * CSV таблиц сюда не попадает: он уже превращён в структуру. Если структуру
+ * разобрать не удалось (незнакомый формат), сырой текст остаётся — лучше
+ * показать его с пометкой, чем потерять объёмы совсем.
+ */
+function freeDocsToText(documents, limit) {
+  const list = (Array.isArray(documents) ? documents : []).filter((d) => {
+    if (!d) return false;
+    return !(isSpreadsheetDoc(d) && structureOf(d));
+  });
+  return docsToText(list, limit);
+}
+
+/**
+ * Нарезка структурного блока ПО СТРОКАМ ТАБЛИЦЫ.
+ *
+ * Нужна только когда расчётный ответ не влезает в предел модели (тысячи
+ * позиций). Резать структуру по строкам можно точно: каждая строка
+ * самодостаточна, шапка таблицы модели уже не нужна — колонки подписаны
+ * в самой строке.
+ */
+function chunkStructureRows(structured, maxRows) {
+  const out = [];
+  const limit = Math.max(20, Number(maxRows) || 250);
+  const entries = (structured && Array.isArray(structured.entries)) ? structured.entries : [];
+  for (const e of entries) {
+    const list = (e.parsed && Array.isArray(e.parsed.positions)) ? e.parsed.positions : [];
+    for (let from = 0; from < list.length; from += limit) {
+      const slice = list.slice(from, from + limit);
+      out.push({
+        index: out.length,
+        fromLine: from + 1,
+        toLine: from + slice.length,
+        title: `${e.name}, строки ${from + 1}–${from + slice.length}`,
+        text: slice.map(structureLine).join('\n')
+      });
+    }
+  }
+  return out;
+}
+
+/**
+ * Запас по числу позиций при расчёте лимита выхода.
+ *
+ * `ai-call-budget` считает 50 токенов на позицию — это оценка для короткой
+ * строки. У ведомости 2138 позиция длиннее (наименование, цех, отложения,
+ * период), и ответ обрывался на `finish_reason=length`. 15 % запаса дают
+ * 675 позициям ~43 тыс. токенов вместо 37,7 тыс.
+ */
+const BUDGET_POSITION_MARGIN = 1.15;
+
+/** Ожидание для токен-бюджета: с запасом, но не ноль. */
+function budgetPositions(expectedRows, modelSaid) {
+  const n = Math.max(Number(expectedRows) || 0, Number(modelSaid) || 0);
+  if (!(n > 0)) return 0;
+  return Math.ceil(n * BUDGET_POSITION_MARGIN);
+}
+
+/** Текст запроса пользователя — один и тот же во всех раундах первого вызова. */
+const DV_USER_PROMPT = 'Перенеси строки таблицы в JSON ПОСТРОЧНО: одна строка = одна позиция. '
+  + 'Не суммируй и не объединяй. Верни ТОЛЬКО JSON по схеме.';
+
+/**
+ * Собирает вход промпта ДВ: структура (главные данные) + свободный текст (контекст).
+ *
+ * Вынесено из `generateDv` отдельной функцией, чтобы тест проверял РЕАЛЬНУЮ
+ * сборку промпта, а не её копию в тесте.
+ *
+ * @param {object} p
+ * @param {Array} p.documents
+ * @param {string} [p.tz_text]
+ * @param {object} [p.catalog]
+ * @param {string} [p.history_block]
+ * @param {object} [p.visit_hints]
+ * @param {string} [p.warehouse_text]
+ * @param {boolean} [p.omitStructure] — не вставлять полную таблицу (режим порций:
+ *   строки придут в сообщении пользователя, иначе модель видит их дважды)
+ * @returns {{system:string, user:string, structureText:string, freeText:string,
+ *            structured:object, tzText:string}}
+ */
+function buildDvPrompt(p) {
+  const o = p || {};
+  const catalog = o.catalog || { categories: [], rates: [] };
+  const tzText = String(o.tz_text || '(ТЗ текстом не задано)').slice(0, 300000);
+  const structured = buildStructuredInput(o.documents);
+  const structureText = o.omitStructure
+    ? '(таблица объёмов передана фрагментом в сообщении — разбирай ТОЛЬКО его)'
+    : (structured.text || '(таблиц с объёмами не найдено — работай по тексту ниже)');
+  const freeText = freeDocsToText(o.documents) || '(документов с текстом нет)';
+
+  const system = promptLoader.buildPrompt('PROMPT-dv-v1.md', {
+    catalog: catalogForPrompt(catalog),
+    // Порядок в шаблоне: СНАЧАЛА структура (это данные для переноса),
+    // потом свободный текст (контекст: ТЗ, письма, условия).
+    structure_text: structureText,
+    documents_text: freeText,
+    tz_text: tzText,
+    history_block: o.history_block || '(истории нет)',
+    visit_hints: formatVisitHints(o.visit_hints),
+    warehouse_text: String(o.warehouse_text || '(данных по складу нет)')
+  });
+
+  return {
+    system,
+    user: DV_USER_PROMPT,
+    structureText,
+    freeText,
+    structured,
+    tzText
+  };
+}
+
 /**
  * Генерирует ведомость объёмов (ДВ).
  *
@@ -638,30 +1001,39 @@ async function generateDv(p) {
     } catch (_) { /* UI не должен валить разбор */ }
   };
 
-  const tzText = String(o.tz_text || '(ТЗ текстом не задано)').slice(0, 300000);
-  const docsText = docsToText(o.documents) || '(документов с текстом нет)';
   const docCount = Array.isArray(o.documents) ? o.documents.filter((d) => d && String(d.text || d.ocr_text || '').trim()).length : 0;
+
+  // ── Два потока входа: структура (данные) и свободный текст (контекст) ────
+  // См. комментарий у buildStructuredInput: CSV таблиц в промпт НЕ идёт.
+  const prompt = buildDvPrompt({
+    documents: o.documents,
+    tz_text: o.tz_text,
+    catalog,
+    history_block: o.history_block,
+    visit_hints: o.visit_hints,
+    warehouse_text: o.warehouse_text
+  });
+  const tzText = prompt.tzText;
+  const system = prompt.system;
+  const structured = prompt.structured;
+  const structureText = prompt.structureText;
+
   emit({
     step: 'prepare',
-    message: `Готовлю разбор: документов с текстом — ${docCount}, ТЗ — ${tzText.length.toLocaleString('ru-RU')} симв.`,
+    message: `Готовлю разбор: документов с текстом — ${docCount}`
+      + (structured.rows > 0
+        ? `, из них таблица объёмов — ${structured.rows} строк (${structured.periods} периодов)`
+        : '')
+      + `, ТЗ — ${tzText.length.toLocaleString('ru-RU')} симв.`,
     pct: 3,
     docs: docCount,
+    structure_rows: structured.rows,
+    structure_periods: structured.periods,
+    prompt_chars: system.length,
     tz_chars: tzText.length
   });
-  const system = promptLoader.buildPrompt('PROMPT-dv-v1.md', {
-    catalog: catalogForPrompt(catalog),
-    tz_text: tzText,
-    documents_text: docsText,
-    history_block: o.history_block || '(истории нет)',
-    // Подсказка по графику: детерминированный разбор периодов из документов.
-    // Модель решает сама (график бывает в любом виде), но эта подсказка
-    // страхует от пропуска месяцев и явно показывает найденные цитаты.
-    visit_hints: formatVisitHints(o.visit_hints),
-    // Реальные остатки склада. Модель обязана опираться на них в МТР.
-    warehouse_text: String(o.warehouse_text || '(данных по складу нет)')
-  });
 
-  let user = 'Составь ведомость объёмов по этим данным. Верни ТОЛЬКО JSON по схеме.';
+  let user = prompt.user;
 
   // ── Сколько позиций ожидаем ────────────────────────────────────────────────
   // Детектор недобора: отличить «модель закончила» от «модель сдалась».
@@ -716,43 +1088,35 @@ async function generateDv(p) {
   // Обрезка в ПОСЛЕДНЕМ раунде — именно она означает, что разбор оборван.
   let lastTruncated = false;
 
-  // ── Большая ведомость: режем на порции ДО обращения к модели ────────────
-  // На 673 строках модель отдавала от 1 до 353 позиций: ответ не влезал в
-  // лимит токенов и обрывался в случайном месте. Режем по естественным
-  // границам (цех, раздел) и разбираем порции отдельно — тогда каждый ответ
-  // короткий, а склейка даёт полный список.
+  // ── Нарезка: по СТРОКАМ СТРУКТУРЫ, а не по символам CSV ─────────────────
+  // На 675 позициях ответ — ~43 тыс. токенов. Пока это влезает в предел модели
+  // (128k у дефолтной), режем не надо: один вызов без потерь на стыках.
+  //
+  // Если всё же не влезает — режем СТРУКТУРУ по строкам таблицы. CSV
+  // (`countableText`) больше не участвует: он в промпт не идёт, и нарезка по
+  // нему давала порции, которых в промпте нет.
   const chunker = require('./dv-chunker');
-  const sourceText = `${tzText}\n${docsText}`;
-  // Нарезка нужна только на РЕАЛЬНО больших документах. Порог по символам:
-  // меньше него модель справляется одним ответом, и нарезка лишь добавила бы
-  // вызовы и стоимость. 60 000 символов — примерно 15 тыс. токенов.
-  //
-  // ВАЖНО: считаем только перечни, не ТЗ. В ТЗ тысячи нумерованных пунктов
-  // требований, и их «порции» модель посчитает позициями, раздув ожидание
-  // в разы (найдено на тесте: 3000 вместо 300).
-  const countableText = (Array.isArray(o.documents) ? o.documents : [])
-    .filter((d) => d && isVolumeListDoc(String(d.doc_role || d.role || ''), String(d.original_name || d.name || '')))
-    .map((d) => String(d.text || d.ocr_text || ''))
-    .join('\n');
-  // Нарезка — ТОЛЬКО когда ответ не влезает в предел модели.
-  //
-  // Раньше порог был по символам (60k), и большая ведомость резалась всегда —
-  // хотя контекст 1M принимает её целиком, а режется она из-за размера ОТВЕТА.
-  // На 675 позициях это давало ~30 порций, и позиции терялись на стыках.
   const budget = require('./ai-call-budget');
   const callPlan = budget.planCall({
-    expectedPositions: Math.max(expectedRows || 0, modelSaidPositions || 0),
-    chars: countableText.length,
+    expectedPositions: budgetPositions(expectedRows, modelSaidPositions),
+    // Считаем ОБЪЁМ ПРОМПТА, а не CSV: именно он уходит в контекст.
+    chars: system.length + user.length,
     model: o.model
   });
-  const chunks = callPlan.chunk ? chunker.chunkText(countableText) : [];
+  // Порция ≈ столько строк, чтобы ответ заведомо влез в предел модели.
+  const rowsPerChunk = callPlan.output.modelCap >= 128000
+    ? 250
+    : Math.max(40, Math.floor(callPlan.output.modelCap / 120));
+  const chunks = callPlan.chunk ? chunkStructureRows(structured, rowsPerChunk) : [];
   const useChunks = chunks.length > 1;
-  if (!callPlan.chunk && countableText.length > 0) {
+  if (!callPlan.chunk) {
     emit({
       step: 'single_call',
       message: `Ведомость влезает одним вызовом: ~${callPlan.output.needed} токенов ответа `
         + `при пределе ${callPlan.output.modelCap}.`
-        + (countableText.length > 60000 ? ' Без нарезки — значит без потерь на стыках.' : ''),
+        + (callPlan.output.modelCap >= callPlan.output.needed
+          ? ' Без нарезки — значит без потерь на стыках.'
+          : ''),
       pct: 12,
       single_call: true,
       needed_tokens: callPlan.output.needed,
@@ -768,12 +1132,27 @@ async function generateDv(p) {
   }
 
   if (useChunks) {
+    // Полная таблица в системном промпте + строки порции в сообщении = модель
+    // видит одни и те же данные дважды и путается, из какой части брать.
+    // Поэтому для режима порций системный промпт собирается БЕЗ полной таблицы.
+    const chunkPrompt = buildDvPrompt({
+      documents: o.documents,
+      tz_text: o.tz_text,
+      catalog,
+      history_block: o.history_block,
+      visit_hints: o.visit_hints,
+      warehouse_text: o.warehouse_text,
+      omitStructure: true
+    });
+    const chunkSystem = chunkPrompt.system;
     emit({
       step: 'chunks',
-      message: `Большая ведомость: режу на ${chunks.length} порций (чтобы модель не обрезала ответ).`,
+      message: `Большая ведомость: режу на ${chunks.length} порций по строкам таблицы `
+        + `(чтобы модель не обрезала ответ).`,
       pct: 12,
       chunks: chunks.length,
-      countable_chars: countableText.length
+      structure_rows: structured.rows,
+      rows_per_chunk: rowsPerChunk
     });
     const perChunk = [];
     for (let ci = 0; ci < chunks.length; ci += 1) {
@@ -793,16 +1172,18 @@ async function generateDv(p) {
       let chRes;
       try {
         chRes = await o.aiProvider.complete({
-          system,
+          system: chunkSystem,
           messages: [{
             role: 'user',
-            content: `Разбери ТОЛЬКО этот фрагмент ведомости (${ch.title}, `
-              + `строки ${ch.fromLine}–${ch.toLine}). Не бери позиции из других частей.\n\n`
+            content: `Перенеси ВСЕ строки этой порции таблицы в JSON — по одной позиции на строку. `
+              + `Ничего не суммируй, ничего не пропускай. Порция: ${ch.title} `
+              + `(строки ${ch.fromLine}–${ch.toLine}).\n\n`
               + ch.text
           }],
+          // Лимит — под размер порции, а не общий: иначе ответ снова режется.
           maxTokens: Math.min(64000, Math.max(16000,
             budget.outputLimit({
-              expectedPositions: expectedRows || 0,
+              expectedPositions: Math.ceil(ch.text.split('\n').length * BUDGET_POSITION_MARGIN),
               model: o.model
             }).limit)),
           temperature: 0,
@@ -871,7 +1252,9 @@ async function generateDv(p) {
         // возможностей модели. Было жёстко 64000, и на 675 позициях ответ
         // обрывался (34k нужно только на массив).
         maxTokens: budget.outputLimit({
-          expectedPositions: Math.max(expectedRows || 0, modelSaidPositions || 0),
+          // Запас 15 %: у ведомости позиция длиннее, чем 50 токенов из оценки
+          // ai-call-budget, и без запаса ответ обрывался по length.
+          expectedPositions: budgetPositions(expectedRows, modelSaidPositions),
           model: o.model
         }).limit,
         // temperature 0 — ОБЯЗАТЕЛЬНО для разбора ведомости.
@@ -1248,7 +1631,11 @@ async function generateCalcPlan(p) {
     // Режим заездов: при нескольких выездах бригада едет последовательно,
     // и число бригад нельзя размножать по объёму (иначе 6 заездов за 16 дней).
     visit_mode: o.visitMode || null,
-    trip_count: o.tripCount || null
+    trip_count: o.tripCount || null,
+    // Базис нормы: gross-норма уже содержит внутрисменные потери, вычитать их
+    // повторно нельзя. Определяем по коду нормы из каталога — иначе защита
+    // от двойного счёта остаётся мёртвой (нашёл верификатор).
+    norm_basis: resolvePlanNormBasis(parsed, o.catalog, o.normBasis)
   });
   return {
     ok: true,
@@ -1257,6 +1644,43 @@ async function generateCalcPlan(p) {
     provider: res.provider || null,
     tokens: res.usage || null
   };
+}
+
+/**
+ * Базис нормы для плана расчёта.
+ *
+ * Модель возвращает позиции с кодом нормы, но без флага базиса. Сам флаг
+ * живёт в каталоге (`params_json.norm_basis`, а если пусто — по `calc_kind`).
+ * Собираем по всем позициям: если базисы одинаковые — он один, если
+ * разные — `null` (план возьмёт net_productive и добавит потери, что
+ * безопаснее занижения).
+ *
+ * @param {object} parsed — ответ модели (positions с rate_code/method_code)
+ * @param {object} catalog — loadCatalog()
+ * @param {string} [explicit] — если вызывающий знает базис точно
+ * @returns {string|null}
+ */
+function resolvePlanNormBasis(parsed, catalog, explicit) {
+  if (explicit === 'gross_12h' || explicit === 'gross_calendar' || explicit === 'net_productive') {
+    return explicit;
+  }
+  const rates = (catalog && Array.isArray(catalog.rates)) ? catalog.rates : [];
+  if (!rates.length) return null;
+  const byCode = new Map();
+  for (const r of rates) {
+    if (r && r.code) byCode.set(String(r.code), r);
+  }
+  const list = (parsed && Array.isArray(parsed.positions)) ? parsed.positions : [];
+  const seen = new Set();
+  for (const p of list) {
+    const code = String((p && (p.rate_code || p.norm_code || p.code)) || '');
+    if (!code) continue;
+    const r = byCode.get(code);
+    if (r && r.norm_basis) seen.add(r.norm_basis);
+  }
+  if (seen.size === 1) return [...seen][0];
+  // Разные базисы в одной смете: берём осторожный (потери добавим).
+  return null;
 }
 
 /** Предпросмотр калибровки справочника: что изменится после сохранения. */
@@ -1303,6 +1727,14 @@ module.exports = {
   buildCalibrationPreview,
   catalogForPrompt,
   docsToText,
+  // Сборка входа ДВ: структура + свободный текст. Экспортируется, чтобы тест
+  // проверял реальную сборку промпта, а не её копию.
+  buildDvPrompt,
+  buildStructuredInput,
+  parseSpreadsheetText,
+  structurePromptText,
+  chunkStructureRows,
+  estimateExpectedForSelection,
   lastSelection: () => lastSelection,
   safeJson,
   volumeKeyFor

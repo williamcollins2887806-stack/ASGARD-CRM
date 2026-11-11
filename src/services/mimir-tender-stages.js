@@ -920,6 +920,9 @@ function normalizeDv(ai, catalog) {
     // (тендер 2143 Hi Pro — только трудоёмкость в минутах).
     if (unitLooksLikeLabor) {
       // Не проблема. Ниже считаем по часам.
+      // Но РП должен видеть, что цифра в объёме — это ТРУДОЁМКОСТЬ, а не
+      // объём: иначе «50 чел·ч» выглядит как потерянный объём.
+      problems.push('в объёме указана трудоёмкость (чел·ч), а не объём — считаем по часам');
     }
     if (!unit) problems.push('единица не указана');
     if (!cat) problems.push('категория не определена');
@@ -959,6 +962,10 @@ function normalizeDv(ai, catalog) {
       // пересчёта (толщина, плотность), чтобы РП мог их поправить.
       measured_unit: unit || null,
       measured_value: isFinitePositive(volume) && !unitLooksLikeLabor ? volume : null,
+      // Трудоёмкость из поля объёма: сохраняем отдельно, чтобы не потерять
+      // часы заказчика. volume при этом остаётся null — это НЕ объём.
+      labor_hours_input: unitLooksLikeLabor && isFinitePositive(volume) ? volume : null,
+      is_labor_input: !!unitLooksLikeLabor,
       conversion_params: {
         thickness_mm: Number(p.thickness_mm) > 0 ? Number(p.thickness_mm) : null,
         density_t_m3: Number(p.density_t_m3) > 0 ? Number(p.density_t_m3) : null,
@@ -1157,6 +1164,18 @@ function normalizeCalcPlan(ai, opts) {
       // Признаки условий работ: определяют наблюдающего и спецроли.
       work_scope: p.work_scope || null,
       hazard: Array.isArray(p.hazard) ? p.hazard : null,
+      // Описание работ: по нему crew-plan отличает химию от механики.
+      // Без переноса этих полей «кислота с ингибитором» терялась, и химик
+      // добавлялся только если реагент угадывался в НАЗВАНИИ позиции —
+      // а названия бывают обезличенными («Поз. 108-С»).
+      tech_equip: p.tech_equip || p.equipment_note || null,
+      method_name: p.method_name || null,
+      category_name: p.category_name || null,
+      category_code: p.category_code || null,
+      foul_type: p.foul_type || p.fouling || null,
+      // Базис нормы: gross-норма уже содержит внутрисменные потери.
+      // Без переноса флаг теряется, и потери вычитаются повторно.
+      norm_basis: p.norm_basis || (p.norm && p.norm.norm_basis) || null,
       crew_locked: !!p.crew_locked,
       objects: Number(p.objects) > 0 ? Number(p.objects) : null,
       parallel_group: p.parallel_group != null ? String(p.parallel_group) : '0',
@@ -1332,7 +1351,13 @@ function normalizeCalcPlan(ai, opts) {
   // resolveSchedule считает: work_days = MH / (crew_size × C × h_net × s).
   // В заездах работы последовательны: параллелить можно только по фронтам
   // (числу аппаратов), а не «виртуальными» бригадами.
-  const shiftHoursOpt = Number(opts && opts.shift_hours) > 0 ? Number(opts.shift_hours) : 12;
+  // Часы смены: из явного opts, иначе из позиций, иначе 12.
+  // Раньше бралось только из opts: позиции с shift_hours=8 считались по 12,
+  // и C выходил меньше нужного (занижали бригады и завышали срок).
+  const shiftHoursFromPositions = positions.reduce((m, p) => Math.max(m, Number(p.shift_hours) || 0), 0);
+  const shiftHoursOpt = Number(opts && opts.shift_hours) > 0
+    ? Number(opts.shift_hours)
+    : (shiftHoursFromPositions || 12);
   // Смены уже определены выше (shiftsPerDayOpt) — здесь только часы смены.
   // Фронты: сколько бригад может работать ОДНОВРЕМЕННО. Если объекты в
   // позициях не заданы, `fronts_known: false` — это НЕ «один аппарат»,
@@ -1345,6 +1370,24 @@ function normalizeCalcPlan(ai, opts) {
     manual: Number(opts && opts.fronts_manual) || null
   });
   const frontsKnown = frontsExplicit || objectsMax > 0 || Number(opts && opts.fronts_manual) > 0;
+
+  // ── Базис нормы: передаётся из каталога, а не гадается ────────────────────
+  // gross_12h (8 норм min_per_unit) уже содержит внутрисменные потери в
+  // коэффициенте k_irv. Если вычесть их ЕЩЁ РАЗ, срок вырастет, а деньги
+  // уедут. Защита была написана, но флаг никто не передавал — и она
+  // оставалась мёртвой на реальном контуре.
+  //
+  // Берём базис по позициям: если у всех норм одинаковый — он и есть; если
+  // разные — считаем «net_productive» (осторожнее: потери добавим), а
+  // расхождение отмечаем, чтобы РП видел.
+  const bases = positions
+    .map((p) => p.norm_basis || (p.norm && p.norm.norm_basis))
+    .filter(Boolean);
+  const uniqBases = [...new Set(bases)];
+  const normBasis = uniqBases.length === 1
+    ? uniqBases[0]
+    : (uniqBases.length === 0 ? ((opts && opts.norm_basis) || 'net_productive') : 'net_productive');
+  const normBasisMixed = uniqBases.length > 1;
 
   const scheduleResolved = scheduleModel.resolveSchedule({
     mh: manHours,
@@ -1359,7 +1402,7 @@ function normalizeCalcPlan(ai, opts) {
     fronts_known: frontsKnown,
     max_crews: maxCrews,
     available_crews: Number(opts && opts.available_crews) || null,
-    norm_basis: opts && opts.norm_basis
+    norm_basis: normBasis
   });
 
 // Срок от бригадо-суток остаётся как справочный (его сверяет work_days_check),
