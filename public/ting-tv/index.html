@@ -5,15 +5,15 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="ting-tv" content="1" />
   <title>Тинг Переговорка</title>
-  <link rel="icon" type="image/svg+xml" href="/assets/img/ting-logo.svg?v=20.28.522" />
-  <link rel="stylesheet" href="/assets/css/design-tokens.css?v=20.28.522" />
-  <link rel="stylesheet" href="/assets/css/ting.css?v=20.28.522" />
-  <link rel="stylesheet" href="/assets/css/ting-tv.css?v=20.28.522" />
-  <script src="/assets/vendor/livekit-client.umd.min.js?v=20.28.522"></script>
-  <script src="/assets/js/ting_icons.js?v=20.28.522"></script>
-  <script src="/assets/js/ting_common.js?v=20.28.522"></script>
-  <script src="/assets/js/ting_media_profile.js?v=20.28.522"></script>
-  <script src="/assets/js/ting_room_core.js?v=20.28.522"></script>
+  <link rel="icon" type="image/svg+xml" href="/assets/img/ting-logo.svg?v=20.28.523" />
+  <link rel="stylesheet" href="/assets/css/design-tokens.css?v=20.28.523" />
+  <link rel="stylesheet" href="/assets/css/ting.css?v=20.28.523" />
+  <link rel="stylesheet" href="/assets/css/ting-tv.css?v=20.28.523" />
+  <script src="/assets/vendor/livekit-client.umd.min.js?v=20.28.523"></script>
+  <script src="/assets/js/ting_icons.js?v=20.28.523"></script>
+  <script src="/assets/js/ting_common.js?v=20.28.523"></script>
+  <script src="/assets/js/ting_media_profile.js?v=20.28.523"></script>
+  <script src="/assets/js/ting_room_core.js?v=20.28.523"></script>
 </head>
 <body class="ting-tv">
   <div class="ttv-screen" id="startView">
@@ -515,6 +515,63 @@
     } catch (_) { /* */ }
   }
 
+  /* ── Телеметрия ТВ ───────────────────────────────────────────────────────
+     Раньше телек не отправлял метрики вообще: в thing_client_metrics за
+     7 дней не было ни одной строки с ТВ, и любые выводы о нём делались
+     «на глаз». Здесь тот же формат, что у гостя, но surface='tv'.
+     packets_lost шлём ДЕЛЬТОЙ между сэмплами: накопительный счётчик давал
+     одинаковое число в каждой строке и вводил в заблуждение. */
+  var tvMetrics = { timer: null, buf: [], lastLost: null, lastTs: 0 };
+
+  function tvSampleMetrics(room) {
+    try {
+      if (!room || !window.TingMediaProfile) return;
+      var pcs = window.TingMediaProfile.peerConnections(room);
+      window.TingMediaProfile.collectStats(pcs.pub, pcs.sub).then(function (s) {
+        if (!s) return;
+        /* packetsLost уже приходит дельтой из общего модуля — не трогаем. */
+        tvMetrics.buf.push(s);
+        if (tvMetrics.buf.length > 60) tvMetrics.buf.splice(0, tvMetrics.buf.length - 60);
+      }).catch(function () { /* */ });
+    } catch (_) { /* */ }
+  }
+
+  function tvFlushMetrics() {
+    try {
+      if (!tvMetrics.buf.length || !state.slug) return;
+      var batch = tvMetrics.buf.splice(0, tvMetrics.buf.length);
+      fetch('/api/thing/public/' + encodeURIComponent(state.slug) + '/client-log', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          identity: state.identity || '',
+          surface: 'tv',
+          device_class: 'tv',
+          samples: batch
+        }),
+        keepalive: true
+      }).catch(function () { /* офлайн — не критично */ });
+    } catch (_) { /* */ }
+  }
+
+  function tvStartMetrics(room) {
+    tvStopMetrics();
+    tvSampleMetrics(room);
+    tvMetrics.timer = setInterval(function () {
+      if (state.room !== room) { tvStopMetrics(); return; }
+      tvSampleMetrics(room);
+      if (tvMetrics.buf.length >= 12) tvFlushMetrics();
+    }, 5000);
+  }
+
+  function tvStopMetrics() {
+    if (tvMetrics.timer) {
+      try { clearInterval(tvMetrics.timer); } catch (_) { /* */ }
+      tvMetrics.timer = null;
+    }
+    tvFlushMetrics();
+  }
+
   /* ── Сбор ФАКТОВ через getStats (D-186) ──────────────────────────────────
      Без этих цифр любой тюнинг — гадание. Ключевые вопросы, на которые
      отвечает лог:
@@ -977,10 +1034,23 @@
         video.muted = !!isLocal;
         hardenVideo(video);
         tile.insertBefore(video, tile.firstChild);
+      } else {
+        /* Перевключение камеры публикует НОВЫЙ трек, а прежний остаётся в
+           videoTrackPublications. Без отцепки они складываются в один <video>,
+           и участник видит «два экрана себя». Помним привязанный трек на самом
+           элементе и отцепляем именно его. */
+        try {
+          var prev = video.__tingTrack;
+          if (prev && prev !== track && typeof prev.detach === 'function') {
+            prev.detach(video);
+          }
+        } catch (_) { /* */ }
+        try { video.srcObject = null; } catch (_) { /* */ }
       }
       try { track.attach(video); } catch (_) {
         try { video.srcObject = new MediaStream([track.mediaStreamTrack]); } catch (__){ /* */ }
       }
+      try { video.__tingTrack = track; } catch (_) { /* */ }
       /* autoplay — только намерение. На Android TV WebView ролик без явного
          play() не стартует и остаётся серый значок «плей». */
       try { video.play().catch(function () {}); } catch (_) { /* */ }
@@ -1200,12 +1270,18 @@
   function micIsPublishing(room) {
     var info = micPublication(room);
     if (!info.pub) return false;
-    /* НЕ опираемся на isMicrophoneEnabled: SDK определяет его как наличие
-       публикации с source === Microphone. Когда трек создан напрямую
-       (new LocalAudioTrack), source может быть unknown, и геттер врёт
-       «микрофон выключен» при живом треке в эфире. Судим по факту:
-       живой mediaStreamTrack и не заглушён. */
-    return info.live || info.pub.isMuted !== true;
+    /* Порядок важен: isMuted проверяем ПЕРВЫМ.
+       isMicrophoneEnabled не годится — SDK ищет публикацию с source ===
+       Microphone, а трек, созданный напрямую (new LocalAudioTrack), может
+       иметь source unknown, и геттер врёт «выключен» при живом микрофоне.
+       Но и mediaStreamTrack.readyState здесь не решает: после mute() он
+       остаётся 'live' (enabled=false), поэтому проверка «живой трек ИЛИ не
+       заглушён» всегда истинна и мьют не виден. Сначала mute, потом трек. */
+    try {
+      if (info.pub.isMuted === true) return false;
+      if (info.pub.track && info.pub.track.isMuted === true) return false;
+    } catch (_) { /* */ }
+    return info.live || !!info.pub.track;
   }
 
   async function publishMicOnce(room, useDevice) {
@@ -1412,15 +1488,9 @@
     }
     var vid = Core.pickVideoTrack ? Core.pickVideoTrack(p) : null;
     if (vid) {
-      /* Уже подписанные публикации (тайл создан после подписки) — тоже HIGH. */
-      try {
-        var LKq = window.LivekitClient;
-        p.videoTrackPublications.forEach(function (pub) {
-          if (pub && pub.track && LKq && LKq.VideoQuality && typeof pub.setVideoQuality === 'function') {
-            pub.setVideoQuality(LKq.VideoQuality.HIGH);
-          }
-        });
-      } catch (_) { /* */ }
+      /* Ручной setVideoQuality убран: при adaptiveStream SDK его запрещает и
+         молча игнорирует (в консоли «cannot change video track settings»).
+         Слой выбирает адаптив по размеру плитки. */
       attachTrack(vid, tileId, name, isLocal);
     }
     else {
@@ -1486,6 +1556,7 @@
     } catch (_) { /* */ }
     if (state.lobbyPoll) { clearInterval(state.lobbyPoll); state.lobbyPoll = null; }
     if (state.timerId) { clearInterval(state.timerId); state.timerId = null; }
+    tvStopMetrics();
     stopPreview();
     var lk = state.room;
     state.room = null;
@@ -1510,6 +1581,8 @@
     show('room');
     qs('roomTitle').textContent = (creds.room && (creds.room.title || creds.room.slug)) || state.slug || 'Тинг';
     startTimer();
+    /* Телеметрия ТВ: без неё о телеке знаем только по жалобам. */
+    tvStartMetrics(next);
     paintIcons();
     /* Док показываем на входе и запускаем 10-секундный таймер. */
     showDock();
@@ -1520,7 +1593,10 @@
        эфир и САМ перестаёт принимать (подтверждено логами LiveKit:
        top HIGH 3840x2160 @ 8 Мбит/с). Потолок — 720p/1.7 Мбит/с. */
     var roomOpts = {
-      adaptiveStream: false,
+      /* adaptiveStream: ТВ сам просит слой по размеру плитки. Ручной HIGH
+         ниже убран — SDK запрещает менять качество при adaptive и молча
+         игнорировал вызов, а каждая плитка тянула 720p даже в полосе. */
+      adaptiveStream: true,
       dynacast: true,
       /* Аудиозахват по умолчанию: без этих флагов WebView отдаёт «сырой»
          микрофон — эхо и писк при близко стоящих устройствах. */
@@ -1540,7 +1616,9 @@
          было корнем «360p». ТВ и раньше был настроен правильно, теперь просто
          берёт профиль из одного места. */
       if (window.TingMediaProfile) {
-        roomOpts.publishDefaults = window.TingMediaProfile.buildPublishDefaults(LK, { maxHeight: 720 });
+        /* simulcast:false — телевизор отдаёт один слой, экономим два энкодера
+           на кадр. Зрители получают тот же 720p верхним слоем. */
+        roomOpts.publishDefaults = window.TingMediaProfile.buildPublishDefaults(LK, { maxHeight: 720, simulcast: false });
         diag('CODEC requested=' + roomOpts.publishDefaults.videoCodec
           + ' h264Caps=' + window.TingMediaProfile.h264Supported());
       }
@@ -1550,14 +1628,8 @@
     var bumpRoster = function () { syncRosterTiles(); };
     next.on(LK.RoomEvent.TrackSubscribed, function (track, publication, participant) {
       if (track && track.kind === 'audio') { syncRemoteAudio(next); return; }
-      /* ТВ смотрит на большой панели: всегда тянем HIGH-слой (если публикация
-         его отдала), иначе LiveKit держит первый/низкий слой → «пиксели». */
-      try {
-        if (publication && track && track.kind === 'video' && LK.VideoQuality
-            && typeof publication.setVideoQuality === 'function') {
-          publication.setVideoQuality(LK.VideoQuality.HIGH);
-        }
-      } catch (_) { /* */ }
+      /* Ручной setVideoQuality здесь тоже убран — см. комментарий в
+         ensureParticipantTile: при adaptiveStream он игнорируется. */
       /* D-185: задержка воспроизведения. Это НЕ опция Room — только метод
          трека, и единицы СЕКУНДЫ (0.15 = 150 мс). Меньше буфер — быстрее реакция;
          на плохом канале поднимем по freezeCount (см. statsLoop). */
@@ -1660,18 +1732,9 @@
             TingRoomCore.lowSpeed.note(q, isSelf ? null : (participant && participant.identity));
           }
         } catch (_) { /* */ }
-        if (participant) {
-          try {
-            if (LK.VideoQuality && participant.videoTrackPublications) {
-              participant.videoTrackPublications.forEach(function (pub) {
-                if (!pub || !pub.track || typeof pub.setVideoQuality !== 'function') return;
-                if (q === 'poor' || q === 'lost') pub.setVideoQuality(LK.VideoQuality.LOW);
-                else if (q === 'excellent') pub.setVideoQuality(LK.VideoQuality.HIGH);
-                else pub.setVideoQuality(LK.VideoQuality.MEDIUM);
-              });
-            }
-          } catch (_) { /* */ }
-        }
+        /* Ручной лестницы качества здесь больше нет: при adaptiveStream SDK
+           блокирует setVideoQuality. Плохой канал обрабатывает lowSpeed —
+           он скрывает видео участника и показывает баннер. */
       });
     }
     if (LK.RoomEvent.ActiveSpeakersChanged) {

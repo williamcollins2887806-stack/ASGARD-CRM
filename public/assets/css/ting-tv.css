@@ -56,8 +56,11 @@ html, body.ting-tv {
   border: 1px solid var(--ttv-line);
   border-radius: 28px;
   padding: clamp(22px, 2.8vh, 40px) clamp(28px, 3vw, 48px);
-  backdrop-filter: blur(18px);
-  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.45);
+  /* backdrop-filter убран: размытие области под карточкой пересчитывается
+     на каждый кадр, если под ней играет видео. На ТВ это самый дорогой
+     эффект. Плотный фон даёт тот же вид без работы на кадр. */
+  background: rgba(12, 14, 18, 0.96);
+  box-shadow: none;
 }
 
 .ttv-brand {
@@ -463,14 +466,27 @@ html, body.ting-tv {
   min-height: 0;
   border-radius: 18px;
 }
-.ttv-stage.hall-g3 > .ttv-tile.is-gallery,
+/* Пропорция ячейки решает, чем ограничивать плитку.
+   g3: ячейка 2.1:1 (шире кадра) — ограничивает ВЫСОТА, иначе плитка выше строки.
+   g4/g5: ячейка 1.57:1 (уже кадра) — ограничивает ШИРИНА, иначе плитка шире
+   ячейки, и max-width ломает 16:9 (было 1.568 и 1.247). */
+.ttv-stage.hall-g3 > .ttv-tile.is-gallery {
+  position: relative;
+  aspect-ratio: 16 / 9;
+  height: 100%;
+  width: auto;
+  max-width: 100%;
+  min-width: 0;
+  min-height: 0;
+  border-radius: 14px;
+}
 .ttv-stage.hall-g4 > .ttv-tile.is-gallery,
 .ttv-stage.hall-g5 > .ttv-tile.is-gallery {
   position: relative;
   aspect-ratio: 16 / 9;
-  width: auto;
-  height: 100%;
-  max-width: 100%;
+  width: 100%;
+  height: auto;
+  max-height: 100%;
   min-width: 0;
   min-height: 0;
   border-radius: 14px;
@@ -551,7 +567,8 @@ html, body.ting-tv {
 }
 .ttv-tile.is-speaking {
   border-color: var(--ttv-gold);
-  box-shadow: 0 0 0 2px rgba(200, 168, 78, 0.22), 0 0 20px var(--ttv-gold-glow);
+  /* Без box-shadow: тень вокруг плитки перерисовывается на каждом кадре
+     видео. Рамка справляется с той же задачей бесплатно. */
 }
 .ttv-stage.hall-wait::after {
   content: 'Ожидание участников';
@@ -618,9 +635,10 @@ html, body.ting-tv {
   display: flex; gap: 16px; align-items: center;
   padding: 14px 22px;
   border-radius: 999px;
-  background: rgba(12, 14, 18, 0.88);
+  background: rgba(12, 14, 18, 0.96);
   border: 1px solid var(--ttv-line);
-  backdrop-filter: blur(16px);
+  /* backdrop-filter убран: док висит над сценой, и размытие пересчитывалось
+     на каждый кадр видео под ним. */
 }
 .ttv-dock-btn {
   width: var(--ttv-dock); height: var(--ttv-dock);

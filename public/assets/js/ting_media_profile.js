@@ -84,9 +84,13 @@
    */
   function buildPublishDefaults(LK, opts) {
     var profile = buildPublishProfile(LK, opts);
+    /* simulcast по умолчанию включён (CRM и гость на нём). ТВ отключает:
+       телевизор отдаёт один поток, три энкодера на кадр его душат, а зрителям
+       всё равно уходит верхний слой. */
+    var simulcast = !(opts && opts.simulcast === false);
     var defaults = {
-      simulcast: true,
-      videoSimulcastLayers: profile.layers,
+      simulcast: simulcast,
+      videoSimulcastLayers: simulcast ? profile.layers : [],
       /* Картинка важнее fps: при просадке режем кадры, а не разрешение.
          Читается из publish-опций, не из videoEncoding. */
       degradationPreference: 'maintain-resolution',
@@ -120,6 +124,8 @@
    * Читаем ОБА pc: outbound-метрики (энкодер) есть только у publisher,
    * inbound (потери/фризы) — у subscriber.
    */
+  var lastPacketsLost = null;
+
   async function collectStats(pubPc, subPc) {
     var out = {
       width: null, height: null, fps: null, bitrateKbps: null,
@@ -163,7 +169,16 @@
     if (subReport) {
       subReport.forEach(function (s) {
         if (s.type === 'inbound-rtp' && s.kind === 'video') {
-          if (num(s.packetsLost)) out.packetsLost = s.packetsLost;
+          /* packetsLost в WebRTC — НАКОПИТЕЛЬНЫЙ счётчик. Раньше он уходил
+             как есть, и в каждой строке стояло одно и то же число (915 у
+             user_1), из-за чего метрика выглядела грозно, но ничего не
+             показывала. Шлём дельту между сэмплами: именно она говорит,
+             теряем ли пакеты СЕЙЧАС. */
+          if (num(s.packetsLost)) {
+            var prevLost = lastPacketsLost;
+            lastPacketsLost = s.packetsLost;
+            out.packetsLost = prevLost == null ? null : Math.max(0, s.packetsLost - prevLost);
+          }
           if (num(s.jitter)) out.jitterMs = Math.round(s.jitter * 1000);
           if (num(s.freezeCount)) out.freezeCount = s.freezeCount;
           if (out.width == null && num(s.frameWidth)) out.width = s.frameWidth;

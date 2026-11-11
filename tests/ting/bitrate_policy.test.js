@@ -53,8 +53,8 @@ check('ТВ: использует общий профиль (три слоя, п
   /* D-192: локальная копия профиля удалена — теперь из ting_media_profile.js.
      Три слоя (q/h/f) и потолок 720p проверяются там же, на общем модуле. */
   assert(/TingMediaProfile/.test(tv), 'ТВ не использует общий модуль');
-  assert(/buildPublishDefaults\(LK,\s*\{\s*maxHeight:\s*720\s*\}\)/.test(tv),
-    'ТВ не задаёт потолок 720p');
+  assert(/buildPublishDefaults\(LK,\s*\{\s*maxHeight:\s*720,\s*simulcast:\s*false\s*\}\)/.test(tv),
+    'ТВ не задаёт потолок 720p / не выключает simulcast');
   const moduleSrc = fs.readFileSync(path.join(root, 'public/assets/js/ting_media_profile.js'), 'utf8');
   const pushes = (moduleSrc.match(/layers\.push/g) || []).length;
   assert(pushes === 3, 'в общем модуле не три слоя, а ' + pushes);
@@ -433,10 +433,24 @@ check('ТВ: видео стартует явным play() после attach', (
 check('ТВ: микрофон судится по публикации, а не по isMicrophoneEnabled', () => {
   const i = tv.indexOf('function micIsPublishing');
   assert(i > 0, 'micIsPublishing не найден');
-  const seg = tv.slice(i, i + 600);
+  /* Комментарии выкидываем: в них встречаются те же слова, и проверка
+     «mute раньше liveness» ложно проходила бы по тексту комментария. */
+  const seg = tv.slice(i, i + 1100).replace(/\/\*[\s\S]*?\*\//g, '');
   assert(!/isMicrophoneEnabled === false/.test(seg),
     'micIsPublishing всё ещё отвергает живой трек по isMicrophoneEnabled');
-  assert(/info\.live/.test(seg), 'micIsPublishing не смотрит на живой mediaStreamTrack');
+  /* Ищем именно проверку ПУБЛИКАЦИИ: `info.pub.isMuted`. Простой поиск
+     'isMuted === true' находил подстроку внутри 'track.isMuted === true',
+     и тест ложно проходил при удалённой проверке публикации. */
+  const muteIdx = seg.indexOf('info.pub.isMuted === true');
+  const trackMuteIdx = seg.indexOf('track.isMuted === true');
+  const liveIdx = seg.indexOf('info.live');
+  assert(muteIdx > 0, 'micIsPublishing не проверяет isMuted публикации');
+  /* Обе проверки обязательны: публикация может не нести isMuted, а трек —
+     нести. Одна без другой оставляет путь, где мьют невидим. */
+  assert(trackMuteIdx > 0, 'micIsPublishing не проверяет isMuted трека');
+  assert(liveIdx > 0, 'micIsPublishing не проверяет живой трек');
+  assert(muteIdx < liveIdx, 'проверка isMuted стоит ПОСЛЕ liveness — она мёртвая');
+  assert(trackMuteIdx < liveIdx, 'проверка mute трека стоит после liveness');
 });
 
 check('ТВ: audioCaptureDefaults с AEC/NS/AGC', () => {
@@ -501,19 +515,97 @@ check('Эффекты фона удалены (UI и загрузка проце
   assert(!/data-bg=/.test(g), 'у гостя остались кнопки фонов');
 });
 
-/* Плитки галереи ТВ не растягиваются: ширину задаёт контейнерный расчёт,
-   а не width:100% (иначе плитка шире ячейки, а object-fit:cover добивает кадр). */
+/* Плитки галереи ТВ держат 16:9 во всех режимах. Стратегия разная:
+   g3 ограничиваем по высоте (ячейка шире кадра), g4/g5 по ширине (уже). */
 check('ТВ: галерея 16:9 без растяжения, видео contain', () => {
   const css = fs.readFileSync(path.join(root, 'public/assets/css/ting-tv.css'), 'utf8')
     .replace(/\/\*[\s\S]*?\*\//g, '');
-  assert(!/\.ttv-stage\.hall-dual > \.ttv-tile\.is-gallery\s*\{[^}]*?[^-]width:\s*100%/.test(css),
-    'hall-dual снова растягивает плитку (width:100%)');
-  assert(!/\.ttv-stage\.hall-g[345] > \.ttv-tile\.is-gallery[^{]*\{[^}]*?[^-]width:\s*100%/.test(css),
-    'hall-g3/g4/g5 снова растягивают плитку (width:100%)');
-  assert(/\.ttv-stage\.hall-dual > \.ttv-tile\.is-gallery\s*\{[^}]*aspect-ratio:\s*16\s*\/\s*9/.test(css),
-    'hall-dual потерял 16:9');
+  /* g4/g5: ширина ячейки, высота из aspect-ratio. height:100% здесь сломал бы. */
+  const g45 = /\.ttv-stage\.hall-g4[^{]*\{[^}]*aspect-ratio:\s*16\s*\/\s*9[^}]*width:\s*100%[^}]*height:\s*auto/.test(css);
+  assert(g45, 'g4/g5 не держат пару width:100% + height:auto');
+  assert(!/\.ttv-stage\.hall-g4[^{]*\{[^}]*max-width:\s*100%/.test(css),
+    'g4/g5 вернули max-width — он ломает 16:9');
+  /* g3: ячейка шире кадра, ограничивает высота. */
+  const g3 = /\.ttv-stage\.hall-g3[^{]*\{[^}]*aspect-ratio:\s*16\s*\/\s*9[^}]*height:\s*100%[^}]*width:\s*auto/.test(css);
+  assert(g3, 'g3 не ограничивает плитку по высоте');
   assert(/\.ttv-tile video\s*\{[^}]*object-fit:\s*contain/.test(css),
     'видео снова cover — лицо обрезается');
+});
+
+/* ===== Раунд 4: ТВ-стабильность ===== */
+
+/* Телеметрия ТВ: раньше её не было вообще, и о телеке знали только по
+   жалобам. Проверяем, что отправка существует и помечена surface='tv'. */
+check('ТВ: отправляет телеметрию с surface=tv', () => {
+  assert(/function tvStartMetrics/.test(tv), 'нет tvStartMetrics');
+  assert(/surface:\s*'tv'/.test(tv), 'метрики ТВ не помечены surface=tv');
+  assert(/tvStartMetrics\(next\)/.test(tv), 'tvStartMetrics не вызывается при входе');
+  assert(/tvStopMetrics\(\)/.test(tv), 'метрики ТВ не гасятся при выходе');
+});
+
+/* adaptiveStream: при нём SDK блокирует ручной setVideoQuality. Если
+   выключить adaptive, а ручные вызовы не вернуть — плитки будут тянуть
+   слой по умолчанию; если вернуть ручные при adaptive — они игнорируются
+   с предупреждением. Пара должна быть согласована. */
+check('ТВ: adaptiveStream включён и ручных setVideoQuality нет', () => {
+  assert(/adaptiveStream:\s*true/.test(tv), 'adaptiveStream не включён на ТВ');
+  const code = tv.replace(/\/\*[\s\S]*?\*\//g, '');
+  assert(!/\.setVideoQuality\s*\(/.test(code),
+    'на ТВ остались ручные setVideoQuality — при adaptive они игнорируются');
+});
+
+/* packetsLost — накопительный счётчик. Если слать как есть, в каждой строке
+   одно и то же число (было 915 у user_1), и метрика бесполезна. */
+check('packets_lost шлётся дельтой, а не накопительно', () => {
+  const mod = fs.readFileSync(path.join(root, 'public/assets/js/ting_media_profile.js'), 'utf8');
+  assert(/lastPacketsLost/.test(mod), 'нет учёта предыдущего значения packetsLost');
+  assert(/s\.packetsLost - prevLost/.test(mod), 'packetsLost не переводится в дельту');
+});
+
+/* Эхо: звук удалённого участника идёт из <audio>-sink. Если <video> тоже
+   звучит, один голос играет дважды с рассинхроном. Проверяем КОНКРЕТНОЕ
+   место создания удалённого видео в TrackSubscribed. */
+check('Удалённое видео приглушено (нет двойного звука)', () => {
+  const crm = fs.readFileSync(path.join(root, 'public/assets/js/ting_page.js'), 'utf8');
+  const i = crm.indexOf('RoomEvent.TrackSubscribed');
+  assert(i > 0, 'обработчик TrackSubscribed не найден');
+  /* Комментарии выкидываем — иначе проверка читает текст, а не код. */
+  const seg = crm.slice(i, i + 1600).replace(/\/\*[\s\S]*?\*\//g, '');
+  const vIdx = seg.indexOf('v.playsInline = true');
+  assert(vIdx > 0, 'создание видео в TrackSubscribed не найдено');
+  const near = seg.slice(vIdx, vIdx + 700);
+  assert(/v\.muted = true/.test(near), 'удалённое видео снова звучит — двойной звук');
+  assert(!/v\.muted = false/.test(near), 'удалённое видео снова muted=false');
+});
+
+/* Модалка выхода: раньше закрывалась только кнопкой. */
+check('Модалка выхода закрывается по фону и Escape', () => {
+  const crm = fs.readFileSync(path.join(root, 'public/assets/js/ting_page.js'), 'utf8');
+  assert(/if \(ev\.target === modal\) \{ closeHostEnd\(\); return; \}/.test(crm),
+    'клик по затемнению не закрывает модалку');
+  assert(/Escape/.test(crm) && /document\.addEventListener\('keydown', onKey\)/.test(crm),
+    'Escape не закрывает модалку');
+});
+
+/* Фантомный участник: сверка состава комнаты с плитками. */
+check('Реконсиляция плиток с составом комнаты', () => {
+  const crm = fs.readFileSync(path.join(root, 'public/assets/js/ting_page.js'), 'utf8');
+  assert(/function reconcileTilesWithRoom/.test(crm), 'нет reconcileTilesWithRoom');
+  assert(/startRosterReconcileLoop/.test(crm), 'нет периодической сверки');
+  assert(/30000/.test(crm), 'сверка не раз в 30 секунд');
+});
+
+/* Живой muted-трек не подменяется аватаром: иначе на ноуте «камера
+   выключена», хотя видео есть. */
+check('trackIsLive отдаёт живой трек даже при isMuted', () => {
+  const core = fs.readFileSync(path.join(root, 'public/assets/js/ting_room_core.js'), 'utf8');
+  const i = core.indexOf('function trackIsLive');
+  assert(i > 0, 'trackIsLive не найден');
+  const seg = core.slice(i, i + 700);
+  const mediaIdx = seg.indexOf('mediaTrackLive(pub.track)');
+  const muteIdx = seg.indexOf('isMuted === true');
+  assert(mediaIdx > 0 && muteIdx > 0, 'нет проверок трека/mute');
+  assert(mediaIdx < muteIdx, 'mute проверяется ДО трека — живой трек снова гаснет');
 });
 
 console.log('\n=== ' + (n + fails.length) + ' checks, ' + n + ' PASS, ' + fails.length + ' FAIL ===');

@@ -29,6 +29,7 @@ const FILES = [
   'public/ting/index.html',
   'public/assets/js/ting_page.js',
   'public/assets/js/ting_media_profile.js',
+  'public/assets/js/ting_room_core.js',
   'public/assets/css/ting-tv.css',
   'tests/ting/join_window.behavior.test.js',
   'tests/ting/bitrate_policy.test.js'
@@ -337,11 +338,11 @@ const MUTANTS = [
     to: ''
   },
   {
-    name: 'ТВ: микрофон снова отвергается по isMicrophoneEnabled',
+    name: 'ТВ: micIsPublishing снова отвергает по isMicrophoneEnabled',
     file: TV,
     anchor: 'function micIsPublishing',
-    from: 'return info.live || info.pub.isMuted !== true;',
-    to: "if (room.localParticipant.isMicrophoneEnabled === false) return false;\n    return info.live || info.pub.isMuted !== true;"
+    from: 'return info.live || !!info.pub.track;',
+    to: "if (room.localParticipant.isMicrophoneEnabled === false) return false;\n    return info.live || !!info.pub.track;"
   },
   {
     name: 'ТВ: audioCaptureDefaults убран (нет AEC/NS)',
@@ -372,11 +373,67 @@ const MUTANTS = [
     to: '<button type="button" class="ting-more-item" data-bg="blur">Размытие</button>'
   },
   {
-    name: 'ТВ: плитка галереи снова растягивается (width:100%)',
+    name: 'ТВ: g4/g5 вернули max-width (ломает 16:9)',
     file: 'public/assets/css/ting-tv.css',
-    anchor: '.ttv-stage.hall-dual > .ttv-tile.is-gallery',
-    from: 'width: calc(50% - 6px);',
-    to: 'width: 100%;'
+    anchor: '.ttv-stage.hall-g4 > .ttv-tile.is-gallery',
+    from: 'max-height: 100%;',
+    to: 'max-width: 100%; height: 100%;'
+  },
+  {
+    name: 'ТВ: g3 ограничен по ширине вместо высоты (плитка вылезает)',
+    file: 'public/assets/css/ting-tv.css',
+    anchor: '.ttv-stage.hall-g3 > .ttv-tile.is-gallery',
+    from: 'height: 100%;\n  width: auto;',
+    to: 'width: 100%;\n  height: auto;'
+  },
+  {
+    name: 'ТВ: micIsPublishing снова проверяет liveness ДО mute',
+    file: TV,
+    anchor: 'function micIsPublishing',
+    from: 'if (info.pub.isMuted === true) return false;',
+    to: '/* mutant: mute check removed */'
+  },
+  {
+    name: 'ТВ: вторая проверка mуте тоже убрана (кнопка залипает)',
+    file: TV,
+    anchor: 'function micIsPublishing',
+    from: 'if (info.pub.track && info.pub.track.isMuted === true) return false;',
+    to: '/* mutant: track mute check removed */'
+  },
+  {
+    name: 'ТВ: adaptiveStream выключен (ручной HIGH вернётся)',
+    file: TV,
+    anchor: 'var roomOpts = {',
+    from: 'adaptiveStream: true,',
+    to: 'adaptiveStream: false,'
+  },
+  {
+    name: 'ТВ: simulcast снова включён (два лишних энкодера)',
+    file: TV,
+    anchor: 'buildPublishDefaults(LK',
+    from: '{ maxHeight: 720, simulcast: false }',
+    to: '{ maxHeight: 720 }'
+  },
+  {
+    name: 'удалённое видео снова звучит (двойной звук)',
+    file: 'public/assets/js/ting_page.js',
+    anchor: 'RoomEvent.TrackSubscribed',
+    from: 'v.muted = true;',
+    to: 'v.muted = false;'
+  },
+  {
+    name: 'модалка выхода не закрывается по фону',
+    file: 'public/assets/js/ting_page.js',
+    anchor: 'const closeHostEnd = () => {',
+    from: "if (ev.target === modal) { closeHostEnd(); return; }",
+    to: ''
+  },
+  {
+    name: 'телеметрия ТВ не отправляется',
+    file: TV,
+    anchor: 'tvStartMetrics(next);',
+    from: 'tvStartMetrics(next);',
+    to: ''
   }
 ];
 

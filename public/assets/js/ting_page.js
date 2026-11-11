@@ -106,12 +106,12 @@
     pageBound: false,
     mediaToggleBusy: false,
     intentionalLeave: false,
+    rosterReconcileTimer: null,
     chatOpen: false,
     handRaised: false,
     raisedHands: {},
     reactions: [],
-    blurOn: false,
-    bgPreset: 'none', /* поля оставлены для совместимости; эффектов фона больше нет */
+    /* Поля фона удалены вместе с эффектами: пресетов больше нет. */
     devices: { mics: [], cams: [] },
     audioDeviceId: '',
     videoDeviceId: '',
@@ -1091,19 +1091,31 @@
     </div>`;
     // Modal lives on document.body (above stage). root.onclick does not see it —
     // wire acts here so cancel/confirm always work (CRM + harness).
+    const closeHostEnd = () => {
+      try { modal.remove(); } catch (_) { /* */ }
+      try { document.removeEventListener('keydown', onKey); } catch (_) { /* */ }
+    };
+    const onKey = (ev) => {
+      if (ev.key === 'Escape' || ev.key === 'Esc') closeHostEnd();
+    };
     modal.addEventListener('click', (ev) => {
+      /* Клик по затемнению (не по карточке) — закрыть. Раньше это не работало:
+         обработчик ловил только [data-act] внутри модалки, и «крестик» /
+         фон не реагировали — модалка «открывается, но не закрывается». */
+      if (ev.target === modal) { closeHostEnd(); return; }
       const btn = ev.target && ev.target.closest ? ev.target.closest('[data-act]') : null;
       if (!btn || !modal.contains(btn)) return;
       const act = btn.getAttribute('data-act');
       if (act === 'host-end-cancel') {
-        modal.remove();
+        closeHostEnd();
         return;
       }
       if (act === 'host-end-confirm') {
-        modal.remove();
+        closeHostEnd();
         leaveRoom(true);
       }
     });
+    document.addEventListener('keydown', onKey);
     document.body.appendChild(modal);
   }
 
@@ -2227,13 +2239,6 @@
 
   /* Загрузчик процессоров фона удалён: он тянул MediaPipe wasm и ронял FPS. */
 
-  function localCamPublication() {
-    const room = state.lkRoom;
-    if (!room || !room.localParticipant) return null;
-    const pubs = Array.from(room.localParticipant.videoTrackPublications.values());
-    return pubs.find((p) => p.track && !/screen/i.test(String(p.source || ''))) || null;
-  }
-
   async function refreshDeviceList() {
     try {
       if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) return;
@@ -3242,8 +3247,53 @@
    * новый участник — ensureCrmParticipantTile (не paintTiles).
    * Leave/join никогда не remount'ит чужие video (T-WIPE-01).
    */
-  function syncCrmRoster(room) {
-    if (!room || !state.pageBound) return;
+  /**
+   * Фантомные плитки. Если собеседник ушёл до того, как мы подписались на
+   * ParticipantDisconnected, или связь оборвалась на уровне ICE, событие
+   * выхода не приходит и плитка остаётся навсегда — «зал ещё в комнате»,
+   * хотя его там нет. Сверяем DOM с фактическим составом комнаты.
+   * @returns {number} сколько плиток убрали
+   */
+  function reconcileTilesWithRoom(room) {
+    const r = room || state.lkRoom;
+    if (!r || !state.pageBound) return 0;
+    const live = new Set();
+    try {
+      if (r.localParticipant && r.localParticipant.identity) live.add(r.localParticipant.identity);
+      r.remoteParticipants.forEach((p) => { if (p && p.identity) live.add(p.identity); });
+    } catch (_) { return 0; }
+    if (!live.size) return 0;
+    let removed = 0;
+    /* Только по реальным плиткам: служебный __overflow не трогаем. */
+    Array.from(document.querySelectorAll('#ting-stage .ting-tile[data-id], #ting-filmstrip .ting-tile[data-id]'))
+      .forEach((tile) => {
+        const id = tile.getAttribute('data-id');
+        if (!id || id === '__overflow') return;
+        if (live.has(id)) return;
+        try { tile.remove(); removed += 1; } catch (_) { /* */ }
+      });
+    if (removed) {
+      try { if (state.layout === 'speaker') relayoutTiles(); } catch (_) { /* */ }
+    }
+    return removed;
+  }
+
+  function startRosterReconcileLoop() {
+    stopRosterReconcileLoop();
+    state.rosterReconcileTimer = setInterval(() => {
+      if (!state.pageBound || !state.lkRoom) return;
+      try { reconcileTilesWithRoom(state.lkRoom); } catch (_) { /* */ }
+    }, 30000);
+  }
+
+  function stopRosterReconcileLoop() {
+    if (state.rosterReconcileTimer) {
+      try { clearInterval(state.rosterReconcileTimer); } catch (_) { /* */ }
+      state.rosterReconcileTimer = null;
+    }
+  }
+
+  function syncCrmRoster(room) {    if (!room || !state.pageBound) return;
     syncRemoteAudio(room);
     const stage = qs('#ting-stage');
     if (!stage) {
@@ -3308,6 +3358,7 @@
       if (tok.room) state.room = unwrapRoom(tok);
       if (tok.join_token) state.joinToken = tok.join_token;
       state.pageBound = true;
+      startRosterReconcileLoop();
       const bumpRoster = () => {
         if (!state.pageBound || state.lkRoom !== room) return;
         syncCrmRoster(room);
@@ -3336,7 +3387,12 @@
           let v = tile.querySelector('video');
           if (!v) {
             v = document.createElement('video');
-            v.playsInline = true; v.autoplay = true; v.muted = false;
+            v.playsInline = true; v.autoplay = true;
+            /* muted: звук удалённого участника играет отдельный <audio> в
+               скрытом sink (syncRemoteAudio). Если <video> тоже звучит, один
+               голос идёт двумя путями с рассинхроном — на слух это эхо, даже
+               когда рядом никого нет. */
+            v.muted = true;
             v.controls = false;
             try { v.disablePictureInPicture = true; } catch (_) { /* */ }
             tile.insertBefore(v, tile.firstChild);
@@ -3625,6 +3681,10 @@
           state.reconnecting = false;
           const el = qs('.ting-reconnect');
           if (el) try { el.remove(); } catch (_) { /* */ }
+          /* Фантомный участник: если собеседник ушёл до нашей подписки на
+             события, ParticipantDisconnected не приходит и его плитка висит
+             вечно. Сверяем фактический состав и убираем лишние. */
+          try { reconcileTilesWithRoom(room); } catch (_) { /* */ }
           if (state.pageBound && state.lkRoom === room) {
             syncRemoteAudio(room);
             /* Soft: reattach в живые плитки; paint только если сцены нет (T-WIPE-03). */
@@ -3947,6 +4007,7 @@
       clearTimeout(state.tokenRefreshTimer);
       state.tokenRefreshTimer = null;
     }
+    stopRosterReconcileLoop();
     TingSound.play('end');
     state.activeSpeakerId = null;
     state.swapPrimary = false;

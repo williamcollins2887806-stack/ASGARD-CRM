@@ -16,8 +16,8 @@ const VENDOR = path.join(ROOT, 'public', 'assets', 'vendor');
 const GATE = path.join(__dirname, 'verify_vendor_bundles.js');
 
 const CASES = [
-  { file: 'livekit-track-processors.esm.js', kind: 'ESM', poison: '\nexport const broken = ;\n' },
-  { file: 'jssip.min.js', kind: 'классический', poison: '\nfunction broken( { return 1; }\n' },
+  { file: 'fixture-esm', kind: 'ESM', poison: '\nexport const broken = ;\n' },
+  { file: 'fixture-classic', kind: 'классический', poison: '\nfunction broken( { return 1; }\n' },
 ];
 
 function gateFails() {
@@ -31,20 +31,27 @@ function gateFails() {
 
 let failures = 0;
 for (const c of CASES) {
-  const p = path.join(VENDOR, c.file);
-  const backup = fs.readFileSync(p, 'utf8');
+  /* Фикстура, а не реальный файл: раньше тест правил боевой бандл и
+     восстанавливал его. Когда livekit-track-processors.esm.js удалили
+     (виртуальные фоны отключены), чтение падало с ENOENT — тест ломался
+     не по делу. Теперь создаём временный файл нужного класса прямо здесь. */
+  const fixture = c.kind === 'ESM'
+    ? 'export const ok = 1;\n'
+    : '(function (root) { root.Ok = {}; })(typeof self !== "undefined" ? self : this);\n';
+  const p = path.join(VENDOR, `__fixture_${process.pid}.js`);
+  fs.writeFileSync(p, fixture, 'utf8');
   let caught = false;
   try {
-    fs.writeFileSync(p, backup + c.poison, 'utf8');
+    fs.writeFileSync(p, fixture + c.poison, 'utf8');
     caught = gateFails();
   } finally {
-    fs.writeFileSync(p, backup, 'utf8');
+    try { fs.unlinkSync(p); } catch (_) { /* */ }
   }
-  const restored = fs.readFileSync(p, 'utf8') === backup;
-  const ok = caught && restored;
+  const cleaned = !fs.existsSync(p);
+  const ok = caught && cleaned;
   if (!ok) failures += 1;
-  console.log(`${ok ? 'PASS' : 'FAIL'}  битый ${c.kind} (${c.file}) пойман: ${caught ? 'ДА' : 'НЕТ'}`
-    + `, файл восстановлен: ${restored ? 'ДА' : 'НЕТ'}`);
+  console.log(`${ok ? 'PASS' : 'FAIL'}  битый ${c.kind} пойман: ${caught ? 'ДА' : 'НЕТ'}`
+    + `, фикстура удалена: ${cleaned ? 'ДА' : 'НЕТ'}`);
 }
 
 console.log(failures ? `\nИТОГ: FAIL — ${failures}` : '\nИТОГ: OK — оба класса дефектов ловятся');

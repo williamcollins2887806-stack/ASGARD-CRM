@@ -252,14 +252,20 @@ check('C66_preview_hd_gate',
 /* C67: качество адаптируется под канал: HIGH→MEDIUM→LOW по связи,
    а не жёсткий HIGH навсегда (на слабом канале это фризы). */
 const core = fs.readFileSync(path.join(root, 'public/assets/js/ting_room_core.js'), 'utf8');
+/* C67: лестница качества. В CRM она осталась (adaptive выключен). На ТВ
+   ручная лестница УБРАНА намеренно: при adaptiveStream SDK блокирует
+   setVideoQuality, и вызовы молча игнорировались. Плохой канал на ТВ
+   обрабатывает lowSpeed — скрывает видео и показывает баннер. */
 check('C67_quality_auto_ladder',
   /videoQualityLadder/.test(tingPage)
   && /qualityEnum/.test(tingPage)
   && /tuneQualityForConnection/.test(tingPage)
   && /VideoQuality\.MEDIUM/.test(tingPage)
   && /ConnectionQualityChanged/.test(tingPage)
-  && /VideoQuality\.MEDIUM/.test(tingTv),
-  'лестница HIGH/MEDIUM/LOW по ConnectionQuality (CRM + ТВ)');
+  /* На ТВ — adaptive, а не ручная лестница. */
+  && /adaptiveStream:\s*true/.test(tingTv)
+  && !/setVideoQuality/.test(tingTv.replace(/\/\*[\s\S]*?\*\//g, '')),
+  'CRM: ручная лестница; ТВ: adaptiveStream без ручных setVideoQuality');
 /* C68: низкая скорость — скрытие видео АДРЕСНО (только у участника с плохим
    каналом), баннер, автовосстановление. Раньше пряталось у всех — это баг. */
 check('C68_low_speed_banner',
@@ -323,25 +329,32 @@ check('C74_tv_mic_by_publication',
   (() => {
     const i = tingTv.indexOf('function micIsPublishing');
     if (i < 0) return false;
-    const block = tingTv.slice(i, i + 600);
+    const block = tingTv.slice(i, i + 900);
+    /* Порядок критичен: isMuted ДО liveness. Иначе ветка «живой трек» всегда
+       истинна (readyState остаётся 'live' после mute) и мьют невидим. */
+    const mute = block.indexOf('isMuted === true');
+    const live = block.indexOf('info.live');
     return !/isMicrophoneEnabled === false/.test(block)
-      && /info\.live/.test(block);
+      && mute > 0 && live > 0 && mute < live;
   })()
   && /audioCaptureDefaults/.test(tingTv)
   && !/new LK\.LocalAudioTrack\(mst, undefined, false\)/.test(tingTv),
-  'TV: micIsPublishing по публикации + audioCaptureDefaults + чистый конструктор');
-/* C75: плитки галереи ТВ не растягиваются (было width:100% + height:auto →
-   грид подрезал, cover добивал → «как в масштабе»). */
+  'TV: micIsPublishing (mute до liveness) + audioCaptureDefaults + чистый конструктор');
+/* C75: плитки галереи. Стратегия зависит от пропорции ячейки:
+   g3 — ячейка шире кадра, ограничивает высота; g4/g5 — уже, ограничивает
+   ширина. Один общий рецепт ломает одну из групп (было 1.568 в g4 и 1.247
+   в g5 при норме 1.778). */
 check('C75_tv_gallery_no_stretch',
   (() => {
     /* Комментарии не считаем: в них встречается описание старого дефекта. */
     const css = tingTvCss.replace(/\/\*[\s\S]*?\*\//g, '');
-    return !/\.ttv-stage\.hall-dual > \.ttv-tile\.is-gallery\s*\{[^}]*?[^-]width:\s*100%/.test(css)
-      && !/\.ttv-stage\.hall-g[345] > \.ttv-tile\.is-gallery[^{]*\{[^}]*?[^-]width:\s*100%/.test(css)
-      && /\.ttv-stage\.hall-dual > \.ttv-tile\.is-gallery\s*\{[^}]*aspect-ratio:\s*16\s*\/\s*9/.test(css)
+    const g45 = /\.ttv-stage\.hall-g4[^{]*\{[^}]*aspect-ratio:\s*16\s*\/\s*9[^}]*width:\s*100%[^}]*height:\s*auto/.test(css);
+    const g3 = /\.ttv-stage\.hall-g3[^{]*\{[^}]*aspect-ratio:\s*16\s*\/\s*9[^}]*height:\s*100%[^}]*width:\s*auto/.test(css);
+    return g45 && g3
+      && !/\.ttv-stage\.hall-g4[^{]*\{[^}]*max-width:\s*100%/.test(css)
       && /\.ttv-tile video\s*\{[^}]*object-fit:\s*contain/.test(css);
   })(),
-  'TV: галерея 16:9 без width:100%, видео contain (лицо не обрезано)');
+  'TV: g3 по высоте, g4/g5 по ширине, видео contain (лицо не обрезано)');
 
 const fail = checks.filter((c) => !c.pass);
 const md = [

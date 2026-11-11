@@ -13,13 +13,23 @@
 
   /**
    * Для UI: muted-камера = нет трека → аватар, не пустой <video> (broken-media).
-   * mediaTrackLive — только когда isMuted !== true (краткие SFU-гонки без mute).
+   *
+   * ВАЖНО: isMuted в LiveKit означает не только «камера физически выключена»,
+   * но и «слой приостановлен» (adaptive/полоса/цензура даунлинка). На ТВ с его
+   * потерями публикация мигает в muted постоянно, и старая проверка
+   * (`isMuted → null`) гасила плитку на каждом такого всплеске: на ноуте это
+   * выглядело как «камера выключена» и серый значок.
+   *
+   * Поэтому решаем по треку: если mediaStreamTrack живой — отдаём его, а
+   * приглушённость показываем классом. null — только когда трека реально нет.
    */
   function trackIsLive(pub) {
     if (!pub || !pub.track) return null;
     try {
-      if (pub.isMuted === true || pub.track.isMuted === true) return null;
       if (mediaTrackLive(pub.track)) return pub.track;
+    } catch (_) { /* */ }
+    try {
+      if (pub.isMuted === true || pub.track.isMuted === true) return null;
     } catch (_) { /* */ }
     return pub.track;
   }

@@ -179,15 +179,16 @@ async function measure(url) {
     /* Второй замер: галерея. Раньше galleryRatio всегда был null, потому что
        в сцене не было плиток .is-gallery — то есть «как в масштабе» не
        проверялось вообще. */
-    const galleryCases = ['hall-dual', 'hall-g3'];
+    const galleryCases = ['hall-dual', 'hall-g3', 'hall-g4', 'hall-g5'];
     const galleryResults = [];
+    const galleryCount = { 'hall-dual': 2, 'hall-g3': 9, 'hall-g4': 12, 'hall-g5': 15 };
     for (const mode of galleryCases) {
       await send('Runtime.evaluate', {
         expression: `(() => {
           const stage = document.getElementById('stage');
           if (!stage) return 'no stage';
           stage.className = 'ttv-stage ${mode}';
-          const n = '${mode}' === 'hall-dual' ? 2 : 6;
+          const n = ${galleryCount[mode]};
           stage.innerHTML = '';
           for (let i = 0; i < n; i++) {
             const t = document.createElement('div');
