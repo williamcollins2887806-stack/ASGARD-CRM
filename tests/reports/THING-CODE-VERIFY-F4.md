@@ -1,6 +1,6 @@
 # THING-CODE-VERIFY-F4
 
-at: 2026-11-10T16:10:12.365Z
+at: 2026-11-11T13:15:00.261Z
 result: VERIFIED (69/69)
 
 | ID | PASS | Evidence |
@@ -69,7 +69,7 @@ result: VERIFIED (69/69)
 | C62_incall_credit_hidden | PASS | ting-incall hides .credit + fixed room shell |
 | C63_ting_pages_assets_versioned | PASS | ting/ + ting-tv/: каждый /assets/* с ?v=, bump версионирует обе страницы |
 | C64_tv_mic_publish_verified | PASS | TV mic: проверка публикации + фолбэк без deviceId |
-| C65_video_max_with_auto | PASS | 4K (h2160) с автопонижением: пресеты 2160→1440→1080→720 + HIGH/MEDIUM/LOW |
+| C65_video_720_cap_h264 | PASS | общий профиль: потолок 720p, H264 с проверкой, без двух кодеков, во всех поверхностях |
 | C66_preview_hd_gate | PASS | preview с явным разрешением + суб-HD трек не публикуется (CRM/гость/ТВ) |
 | C67_quality_auto_ladder | PASS | лестница HIGH/MEDIUM/LOW по ConnectionQuality (CRM + ТВ) |
 | C68_low_speed_banner | PASS | адресное скрытие видео + баннер + автовозврат (3 поверхности) |
