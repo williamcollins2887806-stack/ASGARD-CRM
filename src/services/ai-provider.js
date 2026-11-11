@@ -110,7 +110,7 @@ let OPENAI_MODEL = process.env.OPENAI_MODEL || MODEL_DEFAULT;
 // больших тендеров: ответ обрывался на середине массива позиций
 // (тендер 2133, 553 тыс. символов документов). Провайдер принимает
 // и больше; явный maxTokens в вызове всё равно главнее.
-const AI_MAX_TOKENS = parseInt(process.env.AI_MAX_TOKENS || '32000', 10);
+const AI_MAX_TOKENS = parseInt(process.env.AI_MAX_TOKENS || '64000', 10);
 const AI_TEMPERATURE = parseFloat(process.env.AI_TEMPERATURE || '0.6');
 const AI_TIMEOUT_MS = parseInt(process.env.AI_TIMEOUT_MS || '600000', 10); // 600 sec = 10 мин. Sonnet 4.6 с 1M контекстом и большим thinking может думать долго на сложных просчётах.
 
@@ -729,12 +729,43 @@ async function complete({ system, messages, maxTokens, temperature, tools, plugi
   };
   // C5: необязательный внешний потолок времени. Внутренний AI_TIMEOUT_MS = 10 мин —
   // для интерактивных вызовов (suggest-ai ≤60с) слишком долго; caller задаёт timeoutMs.
-  if (timeoutMs && Number.isFinite(timeoutMs) && timeoutMs > 0) {
-    let _t; try {
-      await Promise.race([_call(), new Promise((_, rej) => { _t = setTimeout(() => rej(new Error(`AI timeout after ${timeoutMs}ms`)), timeoutMs); })]);
-    } finally { clearTimeout(_t); }
-  } else {
-    await _call();
+  //
+  // Fallback на уменьшенный выход: провайдер может не принять большой max_tokens
+  // (разные модели, разные лимиты, каталог устарел). Раньше это падало как
+  // bad_request и весь разбор терялся. Теперь пробуем половину, потом четверть.
+  const tryCall = async () => {
+    if (timeoutMs && Number.isFinite(timeoutMs) && timeoutMs > 0) {
+      let _t; try {
+        await Promise.race([_call(), new Promise((_, rej) => { _t = setTimeout(() => rej(new Error(`AI timeout after ${timeoutMs}ms`)), timeoutMs); })]);
+      } finally { clearTimeout(_t); }
+    } else {
+      await _call();
+    }
+  };
+
+  try {
+    await tryCall();
+  } catch (e) {
+    const msg = String((e && e.providerMessage) || (e && e.message) || '').toLowerCase();
+    const looksLikeTokenLimit = /max[_\s-]?tokens|maximum.*tokens|max_tokens.*(too|exceed|large)|context.*length|too many tokens/.test(msg);
+    const current = Number(maxTokens) || AI_MAX_TOKENS;
+    if (!looksLikeTokenLimit || current <= 32000) throw e;
+    let reduced = Math.max(32000, Math.floor(current / 2));
+    let lastErr = e;
+    while (reduced < current) {
+      console.warn(`[AI Provider] max_tokens ${current} отклонён провайдером — повтор с ${reduced}`);
+      try {
+        maxTokens = reduced;
+        await tryCall();
+        lastErr = null;
+        break;
+      } catch (e2) {
+        lastErr = e2;
+        if (reduced <= 32000) break;
+        reduced = Math.max(32000, Math.floor(reduced / 2));
+      }
+    }
+    if (lastErr) throw lastErr;
   }
   result.durationMs = Date.now() - startTime;
   if (_usageTracker && result.usage) _usageTracker.addUsage(result.usage, result._actual_api_id || null);
@@ -751,16 +782,23 @@ async function complete({ system, messages, maxTokens, temperature, tools, plugi
  * @param {number} options.temperature - Температура (0-1)
  * @returns {Promise<Response>} - Raw Response с SSE stream
  */
-async function stream({ system, messages, maxTokens, temperature, model }) {
+async function stream({ system, messages, maxTokens, temperature, model, tools, responseFormat, toolChoice }) {
   await _loadKeysFromDB();
   const provider = AI_PROVIDER;
 
   // Без silent fallback — см. complete() выше: если выбранная модель упала,
   // юзер должен увидеть «модель X недоступна», а не получить тихий swap.
   if (provider === 'anthropic') {
+    // Anthropic tools — другой формат; не выдаём за поддержанное молча.
+    // Инструменты пока поддержаны только на openai-совместимом провайдере.
     return await callAnthropic({ system, messages, maxTokens, temperature, stream: true });
   } else if (provider === 'openai') {
-    return await callOpenAI({ system, messages, maxTokens, temperature, stream: true, model });
+    return await callOpenAI({
+      system, messages, maxTokens, temperature, stream: true, model,
+      // Инструменты дают модели САМОЙ запросить склад и поиск в интернете.
+      // Без них разбор МТР не знает, что есть на складе (mtr = 0).
+      tools, responseFormat, toolChoice
+    });
   } else {
     throw new Error(`Unknown AI provider: ${provider}`);
   }
@@ -830,6 +868,8 @@ async function* parseOpenAIStream(response) {
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
   let buffer = '';
+  // Аккумулятор tool_calls по index: стрим присылает имя и аргументы кусками.
+  const toolAcc = [];
 
   try {
     while (true) {
@@ -867,11 +907,32 @@ async function* parseOpenAIStream(response) {
           if (delta?.content) {
             yield { type: 'text', content: delta.content };
           }
+          // Tool-calling в стриме приходит ДЕЛЬТАМИ: имя и id один раз,
+          // аргументы — кусками JSON. Без сборки модель «просит склад», а
+          // вызов теряется, и в промпт уходит пустой ответ (mtr = 0).
+          if (Array.isArray(delta?.tool_calls)) {
+            for (const tc of delta.tool_calls) {
+              const idx = Number.isFinite(tc.index) ? tc.index : 0;
+              if (!toolAcc[idx]) {
+                toolAcc[idx] = { id: tc.id || null, type: 'function', function: { name: '', arguments: '' } };
+              }
+              const acc = toolAcc[idx];
+              if (tc.id) acc.id = tc.id;
+              if (tc.function?.name) acc.function.name += tc.function.name;
+              if (tc.function?.arguments) acc.function.arguments += tc.function.arguments;
+            }
+          }
 
           if (event.choices?.[0]?.finish_reason) {
+            const reason = event.choices[0].finish_reason;
+            // Перед done отдаём собранные вызовы — одной пачкой.
+            const calls = toolAcc.filter(Boolean);
+            if (calls.length) {
+              yield { type: 'tool_calls', toolCalls: calls };
+            }
             yield {
               type: 'done',
-              stopReason: event.choices[0].finish_reason,
+              stopReason: reason,
               usage: { inputTokens: 0, outputTokens: 0 }
             };
           }

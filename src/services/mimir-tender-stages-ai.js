@@ -289,8 +289,16 @@ function estimateExpectedForSelection(documents) {
         || /techn|тз|техническ|задани/.test(String(role || '').toLowerCase());
       const usable = (isSource || structured > 0) && !isTzDoc;
       if (!usable) continue;
-      if (structured <= 0) continue;
-      docs.push({ name, structured, signature: textSignature(text) });
+      // Дефект 675 → 318: документ с таблицей объёмов отбрасывался, если
+      // структурный счётчик не сработал (нестандартная вёрстка, .xls без
+      // table_positions). Теперь при structured = 0 пробуем текстовый счёт
+      // по строкам — он грубее, но видит то, что сетка пропустила.
+      let rows = structured;
+      if (rows <= 0) {
+        try { rows = docRole.countVolumeRows(text); } catch (_) { rows = 0; }
+      }
+      if (rows <= 0) continue;
+      docs.push({ name, structured: rows, signature: textSignature(text) });
     }
 
     // ── Согласование двух источников ──────────────────────────────────────
@@ -517,7 +525,7 @@ function formatVisitHints(hints) {
   return lines.join('\n');
 }
 
-function docsToText(documents, limit = 400000) {  const list = Array.isArray(documents) ? documents : [];
+function docsToText(documents, limit = 2500000) {  const list = Array.isArray(documents) ? documents : [];
   // ── Отсев мусора и копий (замечание РП 06.11.2026) ─────────────────────────
   // Раньше в промпт шли договоры, наши ТКП, шаблоны и по 5 копий одного ТЗ
   // из разных архивов: 1,3 млн символов, из них 60–70 % без объёмов.
@@ -630,7 +638,7 @@ async function generateDv(p) {
     } catch (_) { /* UI не должен валить разбор */ }
   };
 
-  const tzText = String(o.tz_text || '(ТЗ текстом не задано)').slice(0, 40000);
+  const tzText = String(o.tz_text || '(ТЗ текстом не задано)').slice(0, 300000);
   const docsText = docsToText(o.documents) || '(документов с текстом нет)';
   const docCount = Array.isArray(o.documents) ? o.documents.filter((d) => d && String(d.text || d.ocr_text || '').trim()).length : 0;
   emit({
@@ -726,9 +734,38 @@ async function generateDv(p) {
     .filter((d) => d && isVolumeListDoc(String(d.doc_role || d.role || ''), String(d.original_name || d.name || '')))
     .map((d) => String(d.text || d.ocr_text || ''))
     .join('\n');
-  const CHUNK_THRESHOLD = 60000;
-  const chunks = countableText.length > CHUNK_THRESHOLD ? chunker.chunkText(countableText) : [];
+  // Нарезка — ТОЛЬКО когда ответ не влезает в предел модели.
+  //
+  // Раньше порог был по символам (60k), и большая ведомость резалась всегда —
+  // хотя контекст 1M принимает её целиком, а режется она из-за размера ОТВЕТА.
+  // На 675 позициях это давало ~30 порций, и позиции терялись на стыках.
+  const budget = require('./ai-call-budget');
+  const callPlan = budget.planCall({
+    expectedPositions: Math.max(expectedRows || 0, modelSaidPositions || 0),
+    chars: countableText.length,
+    model: o.model
+  });
+  const chunks = callPlan.chunk ? chunker.chunkText(countableText) : [];
   const useChunks = chunks.length > 1;
+  if (!callPlan.chunk && countableText.length > 0) {
+    emit({
+      step: 'single_call',
+      message: `Ведомость влезает одним вызовом: ~${callPlan.output.needed} токенов ответа `
+        + `при пределе ${callPlan.output.modelCap}.`
+        + (countableText.length > 60000 ? ' Без нарезки — значит без потерь на стыках.' : ''),
+      pct: 12,
+      single_call: true,
+      needed_tokens: callPlan.output.needed,
+      model_cap: callPlan.output.modelCap
+    });
+  } else if (callPlan.chunk) {
+    emit({
+      step: 'chunk_plan',
+      message: `Нужна нарезка: ${callPlan.reason}.`,
+      pct: 12,
+      chunk_reason: callPlan.reason
+    });
+  }
 
   if (useChunks) {
     emit({
@@ -763,7 +800,11 @@ async function generateDv(p) {
               + `строки ${ch.fromLine}–${ch.toLine}). Не бери позиции из других частей.\n\n`
               + ch.text
           }],
-          maxTokens: 16000,
+          maxTokens: Math.min(64000, Math.max(16000,
+            budget.outputLimit({
+              expectedPositions: expectedRows || 0,
+              model: o.model
+            }).limit)),
           temperature: 0,
           expectJson: true
         });
@@ -826,7 +867,13 @@ async function generateDv(p) {
         messages: [{ role: 'user', content: user }],
         // Поднято с 32000: 673 позиции дефектной ведомости 2138 — это ~34 тыс.
         // токенов, и при 32000 ответ обрезался на середине массива.
-        maxTokens: 64000,
+        // Лимит выхода — расчётный: под ожидаемое число позиций, в пределах
+        // возможностей модели. Было жёстко 64000, и на 675 позициях ответ
+        // обрывался (34k нужно только на массив).
+        maxTokens: budget.outputLimit({
+          expectedPositions: Math.max(expectedRows || 0, modelSaidPositions || 0),
+          model: o.model
+        }).limit,
         // temperature 0 — ОБЯЗАТЕЛЬНО для разбора ведомости.
         // Было 0.15: при повторном запуске на том же документе модель давала
         // то 1, то 353 позиции. Разбор перечня — не творческая задача, здесь

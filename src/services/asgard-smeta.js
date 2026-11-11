@@ -15,6 +15,18 @@ const DEFAULT_PARAMS = {
   trip_count: 1,
   // Длина смены в часах. Нужна для человеко-часов в техплане; на деньги не влияет.
   shift_hours: 12,
+  // ── Потери времени (расчётная модель v2) ────────────────────────────────
+  // Уровень B: структурные потери, которых нет в норме. Считаются отдельной
+  // строкой «Непроизводственные операции», а не прячутся в коэффициенте.
+  apparatus_count: 0,
+  zone_count: 0,
+  permit_count: 0,
+  move_intra_h: 0.67,
+  reloc_inter_zone_h: 4,
+  permit_setup_h: 1,
+  hookup_h: 1,
+  // Версия расчётной формулы: 1 = старая (срок от модели), 2 = новая (MH).
+  calc_formula_version: 1,
   rate_worker: 5500,
   rate_master: 7000,
   rate_itr: 10000,
@@ -43,6 +55,14 @@ const PARAM_LABELS = [
   { key: 'road_days', label: 'Дни дороги (в одну сторону)', unit: 'дн', note: 'туда+обратно × trip_count' },
   { key: 'mob_days', label: 'Дни мобилизации/демоб.', unit: 'дн', note: 'на выезд' },
   { key: 'trip_count', label: 'Число выездов бригады', unit: 'шт', note: '' },
+  // Потери B: структурные, отдельной строкой «Непроизводственные операции».
+  { key: 'apparatus_count', label: 'Аппаратов (фронтов)', unit: 'шт', note: 'для переходов и нарядов' },
+  { key: 'zone_count', label: 'Цехов / зон', unit: 'шт', note: 'для перевозов между цехами' },
+  { key: 'permit_count', label: 'Нарядов-допусков', unit: 'шт', note: '0 = по числу аппаратов' },
+  { key: 'move_intra_h', label: 'Переход между аппаратами', unit: 'ч', note: 'на переход' },
+  { key: 'reloc_inter_zone_h', label: 'Перевоз между цехами', unit: 'ч', note: 'на переход' },
+  { key: 'permit_setup_h', label: 'Оформление наряда', unit: 'ч/аппарат', note: '' },
+  { key: 'hookup_h', label: 'Подключение обвязки', unit: 'ч/аппарат', note: '' },
   { key: 'rate_worker', label: 'Ставка рабочего', unit: '₽/смена', note: '' },
   { key: 'rate_master', label: 'Ставка мастера', unit: '₽/смена', note: '' },
   { key: 'rate_itr', label: 'Ставка ИТР/РП', unit: '₽/смена', note: '' },
@@ -670,7 +690,23 @@ function evalQtyExpr(expr, p) {
     // Пайковые: siz_people × (сут на выезд) × выезды; сут = work/trip + road×2 + mob
     meal_person_days: (crew * num(p.shifts_per_day) + 1) * (workPerTrip + num(p.road_days) * 2 + num(p.mob_days)) * trips,
     // Проживание: crew×shifts × (work/trip + mob) × trips
-    lodging_nights: crew * num(p.shifts_per_day) * (workPerTrip + num(p.mob_days)) * trips
+    lodging_nights: crew * num(p.shifts_per_day) * (workPerTrip + num(p.mob_days)) * trips,
+    // Потери B в чел·сменах: часы × люди / производительных часов в смене.
+    // Наценка на них не начисляется отдельно — это труд, ставка рабочего.
+    loss_person_shifts: (() => {
+      const apparatus = num(p.apparatus_count);
+      const zones = num(p.zone_count);
+      const posts = Math.max(1, num(p.crews) || 1);
+      const permits = num(p.permit_count) > 0 ? num(p.permit_count) : apparatus;
+      const moves = apparatus > 0 ? Math.max(0, apparatus - posts) : 0;
+      const relocs = zones > 0 ? Math.max(0, zones - posts) : 0;
+      const hours = moves * num(p.move_intra_h)
+        + relocs * num(p.reloc_inter_zone_h)
+        + permits * num(p.permit_setup_h)
+        + num(p.hookup_count) * num(p.hookup_h);
+      const hNet = num(p.shift_hours) > 0 ? num(p.shift_hours) : 12;
+      return Math.round((hours * crew) / hNet * 100) / 100;
+    })()
   };
   if (Object.prototype.hasOwnProperty.call(map, expr)) return map[expr];
   // Простые выражения a*b*c
@@ -715,6 +751,11 @@ function skeletonRows() {
       qty: 8, priceExpr: 'rate_worker', editable: { qty: true, price: true, name: true } },
     { id: 'a6', kind: 'line', section: 'A', code: 'A6', name: 'Дни дороги', unit: 'чел·смен',
       qtyExpr: 'road_person_days', priceExpr: 'rate_road', editable: { qty: true, price: true, name: true } },
+    // Потери B: наряды, переходы, обвязка, леса, приёмка. Отдельной строкой,
+    // а не коэффициентом в норме — РП видит, за что платит, и может снять.
+    { id: 'a7', kind: 'line', section: 'A', code: 'A7', name: 'Непроизводственные операции (наряды, переходы, обвязка)',
+      unit: 'чел·смен', qtyExpr: 'loss_person_shifts', priceExpr: 'rate_worker', price: 0,
+      editable: { qty: true, price: true, name: true } },
     { id: 'a_fot', kind: 'subtotal', section: 'A', code: 'A_FOT', name: 'ФОТ, итого', sumOf: 'A_lines' },
     { id: 'a_tax', kind: 'rollup', section: 'A', code: 'A_TAX', name: 'Налог / взносы на ФОТ', sumExpr: 'fot_tax' },
     { id: 'a_tot', kind: 'rollup', section: 'A', code: 'A_TOT', name: 'Персонал, итого', sumExpr: 'personnel' },
@@ -924,7 +965,16 @@ function recalcAsgardSmeta(estimate) {
     shift_hours: num(p.shift_hours, 0),
     shifts_per_day: num(p.shifts_per_day, 0)
   });
-  if (derived) {
+  // ── Версия формулы: v2 не перезаписывает срок из работ ──────────────────
+  // В v2 срок считается из MH (schedule-model: work_days = MH / (crew×C×h_net×s)).
+  // Если бы deriveWorkDaysFromWorks его перезаписала, срок падал бы в C раз:
+  // crewDays / crews, где crewDays = Σ days (уже без C).
+  // Поэтому при formula_version = 2 срок из параметров НЕ трогаем, а только
+  // сверяем и пишем конфликт.
+  const formulaVersion = num(est.calc_formula_version, num(p.calc_formula_version, 1)) || 1;
+  const keepParamsDays = formulaVersion >= 2 && num(p.work_days, 0) > 0;
+
+  if (derived && !keepParamsDays) {
     const prevDays = num(p.work_days, 0);
     p.work_days = derived.work_days;
     est.params.work_days = derived.work_days;
@@ -932,6 +982,13 @@ function recalcAsgardSmeta(estimate) {
     est.work_days_source = 'works';
     est.work_days_conflict = (prevDays > 0 && Math.abs(prevDays - derived.work_days) > 0.01)
       ? { params: prevDays, works: derived.work_days, applied: derived.work_days, crew_days: derived.crew_days }
+      : null;
+  } else if (derived && keepParamsDays) {
+    // v2: срок задан извне (resolveSchedule). Только отмечаем расхождение.
+    const prevDays = num(p.work_days, 0);
+    est.work_days_source = 'params';
+    est.work_days_conflict = Math.abs(prevDays - derived.work_days) > prevDays * 0.05
+      ? { params: prevDays, works: derived.work_days, applied: prevDays, crew_days: derived.crew_days, note: 'срок сохранён: formula_version 2' }
       : null;
   } else {
     est.work_days_source = 'params';

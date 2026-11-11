@@ -2263,33 +2263,62 @@ async function callMimirForEstimate(aiProvider, ctx, extraUserMessage = null) {
    * @param {(text:string)=>void} [onReasoning]
    */
   async function _streamOnce(maxTokens, onReasoning) {
-    const resp = await aiProvider.stream({
-      system: systemPrompt,
-      messages,
-      maxTokens,
-      temperature: 0.2
-    });
+    // Инструменты: модель сама запрашивает склад и интернет. Без них она
+    // не знает остатков и выдаёт mtr = 0 при живом складе.
+    const toolDispatcher = require('./tool-dispatcher');
+    const tools = (typeof db !== 'undefined' && db) ? toolDispatcher.TOOLS : null;
+    const workingMessages = messages.slice();
+
     let text = '';
-    let reasoning = '';
     let stopReason = null;
-    for await (const ev of aiProvider.parseStream(resp, 'openai')) {
-      if (ev.type === 'reasoning' && ev.content) {
-        reasoning += ev.content;
-        // D-306: модель думает по-английски, а директор должен видеть русскую
-        // речь. Показываем рассуждения только если они РУССКИЕ; англоязычные
-        // не выводим (перевод «на лету» стоил бы второй вызов на каждый чанк).
-        // D-310: решение — по скользящему окну, иначе короткие чанки без
-        // кириллицы («12 м²», «ГОСТ», суммы) выпадали из потока.
-        try {
-          if (onReasoning && _isRussianReasoning(ev.content, reasoning)) onReasoning(ev.content);
-        } catch (_) {}
-      } else if (ev.type === 'text' && ev.content) {
-        text += ev.content;
-      } else if (ev.type === 'done') {
-        stopReason = ev.stopReason;
+    // До 3 кругов: модель спрашивает склад → получает → уточняет → отвечает.
+    // Больше не нужно: разбор ДВ не исследовательская задача.
+    for (let round = 0; round < 3; round += 1) {
+      const resp = await aiProvider.stream({
+        system: systemPrompt,
+        messages: workingMessages,
+        maxTokens,
+        temperature: 0.2,
+        tools
+      });
+      let roundText = '';
+      let toolCalls = null;
+      for await (const ev of aiProvider.parseStream(resp, 'openai')) {
+        if (ev.type === 'reasoning' && ev.content) {
+          // D-306: модель думает по-английски, а директор должен видеть русскую
+          // речь. Показываем рассуждения только если они РУССКИЕ; англоязычные
+          // не выводим (перевод «на лету» стоил бы второй вызов на каждый чанк).
+          // D-310: решение — по скользящему окну, иначе короткие чанки без
+          // кириллицы («12 м²», «ГОСТ», суммы) выпадали из потока.
+          try {
+            if (onReasoning && _isRussianReasoning(ev.content, roundText)) onReasoning(ev.content);
+          } catch (_) {}
+        } else if (ev.type === 'text' && ev.content) {
+          roundText += ev.content;
+        } else if (ev.type === 'tool_calls' && Array.isArray(ev.toolCalls)) {
+          toolCalls = ev.toolCalls;
+        } else if (ev.type === 'done') {
+          stopReason = ev.stopReason;
+        }
       }
+
+      text += roundText;
+
+      // Модель попросила данные — выполняем и повторяем круг.
+      if (toolCalls && toolCalls.length && tools) {
+        const toolMessages = await toolDispatcher.executeToolCalls({ db, toolCalls });
+        workingMessages.push({
+          role: 'assistant',
+          content: roundText || null,
+          tool_calls: toolCalls
+        });
+        workingMessages.push(...toolMessages);
+        continue;
+      }
+      break;
     }
-    return { text, reasoning, stopReason, model: 'stream', provider: 'routerai' };
+
+    return { text, reasoning: '', stopReason, model: 'stream', provider: 'routerai' };
   }
 
   async function _completeOnce(maxTokens) {

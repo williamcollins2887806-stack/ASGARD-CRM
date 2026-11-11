@@ -11,7 +11,7 @@
   max-width: 980px;
   margin: 0 auto;
   min-height: min(78vh, 720px);
-  color: var(--txt);
+  color: var(--t1);
   font-size: 13.5px;
   line-height: 1.45;
 }
@@ -72,7 +72,7 @@
   font-weight: 800;
   letter-spacing: -.02em;
   line-height: 1.15;
-  color: var(--txt);
+  color: var(--t1);
 }
 
 .rp-calc-hero__sub {
@@ -84,7 +84,7 @@
   color: var(--muted);
 }
 
-.rp-calc-hero__sub b { color: var(--txt); font-weight: 650; }
+.rp-calc-hero__sub b { color: var(--t1); font-weight: 650; }
 
 .rp-calc-hero__side {
   display: flex;
@@ -166,13 +166,13 @@
   transition: background .15s ease, color .15s ease, box-shadow .15s ease, transform .15s ease;
 }
 
-.rp-calc-tab:hover { color: var(--txt); transform: translateY(-1px); }
+.rp-calc-tab:hover { color: var(--t1); transform: translateY(-1px); }
 .rp-calc-tab:active { transform: translateY(0); }
 
 .rp-calc-tab.is-active {
   background: var(--bg);
-  color: var(--txt);
-  box-shadow: 0 1px 3px color-mix(in srgb, var(--txt) 12%, transparent);
+  color: var(--t1);
+  box-shadow: 0 1px 3px color-mix(in srgb, var(--t1) 12%, transparent);
 }
 
 .rp-calc-tab em {
@@ -247,7 +247,7 @@
   box-sizing: border-box;
   background: var(--bg);
   border: 1px solid var(--brd);
-  color: var(--txt);
+  color: var(--t1);
   border-radius: 8px;
   padding: 8px 10px;
   font: inherit;
@@ -272,7 +272,7 @@
   margin-bottom: 2px;
   font-weight: 650;
 }
-.rp-calc-ro .val { color: var(--txt); font-weight: 550; }
+.rp-calc-ro .val { color: var(--t1); font-weight: 550; }
 
 /* ── Params table ───────────────────────────────────────── */
 .rp-calc-params {
@@ -304,7 +304,7 @@
   text-align: right;
   background: color-mix(in srgb, var(--primary) 12%, var(--bg));
   border: 1px solid color-mix(in srgb, var(--primary) 40%, var(--brd));
-  color: var(--txt);
+  color: var(--t1);
   border-radius: 6px;
   padding: 5px 8px;
   font: inherit;
@@ -365,7 +365,7 @@
 .rp-calc-smeta td {
   padding: 6px 8px;
   border-bottom: 1px solid color-mix(in srgb, var(--brd) 65%, transparent);
-  color: var(--txt);
+  color: var(--t1);
   vertical-align: middle;
 }
 
@@ -402,7 +402,7 @@
   text-align: right;
   background: color-mix(in srgb, var(--primary) 12%, var(--bg));
   border: 1px solid color-mix(in srgb, var(--primary) 40%, var(--brd));
-  color: var(--txt);
+  color: var(--t1);
   border-radius: 6px;
   padding: 5px 7px;
   font: inherit;
@@ -417,7 +417,7 @@
   border: 1px solid color-mix(in srgb, var(--gold) 35%, var(--brd));
   border-radius: 6px;
   background: var(--bg);
-  color: var(--txt);
+  color: var(--t1);
   font: inherit;
   font-size: 12px;
 }
@@ -431,7 +431,7 @@
   text-align: left;
   background: transparent;
   border: 1px solid transparent;
-  color: var(--txt);
+  color: var(--t1);
   border-radius: 6px;
   padding: 4px 6px;
   font: inherit;
@@ -470,7 +470,7 @@
   font-size: 16px;
   font-weight: 800;
   font-variant-numeric: tabular-nums;
-  color: var(--txt);
+  color: var(--t1);
 }
 
 .rp-calc-smeta-totals .kpi.is-gold b { color: var(--gold); }
@@ -488,7 +488,7 @@
   font-size: 12px;
   color: var(--muted);
 }
-.rp-calc-smeta-dates b { color: var(--txt); font-weight: 700; }
+.rp-calc-smeta-dates b { color: var(--t1); font-weight: 700; }
 
 /* Справочные строки перечня (блок F): в суммы не входят */
 .rp-calc-smeta tr.rp-calc-line.is-info td { color: var(--muted); }
@@ -542,7 +542,7 @@
 .rp-calc-drop strong {
   display: block;
   margin-bottom: 4px;
-  color: var(--txt);
+  color: var(--t1);
   font-size: 13px;
 }
 
@@ -627,7 +627,7 @@
   position: sticky;
   bottom: 0;
   z-index: 6;
-  box-shadow: 0 -6px 18px color-mix(in srgb, var(--txt) 6%, transparent);
+  box-shadow: 0 -6px 18px color-mix(in srgb, var(--t1) 6%, transparent);
 }
 
 .rp-calc-footer__kpis {
@@ -651,7 +651,7 @@
   font-size: 15px;
   font-weight: 800;
   font-variant-numeric: tabular-nums;
-  color: var(--txt);
+  color: var(--t1);
 }
 
 .rp-calc-footer__kpi.is-gold b { color: var(--gold); }
@@ -689,7 +689,7 @@
 .rp-calc-footer .btn.ghost {
   background: transparent;
   border: 1px solid var(--brd);
-  color: var(--txt);
+  color: var(--t1);
 }
 
 .rp-calc-hint {
@@ -883,11 +883,11 @@ html[data-theme='light'] .rp-calc-approve-toggle input[type='checkbox']:checked 
 .rp-tech-chip {
   display: inline-block; padding: 3px 9px; border-radius: 999px; font-size: 11.5px;
   font-weight: 700; letter-spacing: .01em; white-space: nowrap;
-  color: var(--txt); background: color-mix(in srgb, var(--primary) 12%, transparent);
+  color: var(--t1); background: color-mix(in srgb, var(--primary) 12%, transparent);
   border: 1px solid color-mix(in srgb, var(--primary) 28%, transparent);
 }
 .rp-tech-chip--empty {
-  color: var(--muted, var(--txt)); background: transparent;
+  color: var(--muted, var(--t1)); background: transparent;
   border-style: dashed; font-weight: 600;
 }
 
@@ -902,17 +902,17 @@ html[data-theme='light'] .rp-calc-approve-toggle input[type='checkbox']:checked 
 .rp-tech-h {
   display: flex; align-items: center; justify-content: space-between; gap: 8px;
   font-weight: 800; font-size: 12px; text-transform: uppercase; letter-spacing: .04em;
-  color: var(--muted, var(--txt)); margin-bottom: 8px;
+  color: var(--muted, var(--t1)); margin-bottom: 8px;
 }
 .rp-tech-kv { display: grid; gap: 4px; }
 .rp-tech-kv > div { display: flex; justify-content: space-between; gap: 10px; font-size: 13px; }
-.rp-tech-kv span { color: var(--muted, var(--txt)); }
+.rp-tech-kv span { color: var(--muted, var(--t1)); }
 .rp-tech-kv b { font-variant-numeric: tabular-nums; }
 
 .rp-tech-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
 .rp-tech-table th {
   text-align: left; font-weight: 700; font-size: 11px; text-transform: uppercase;
-  letter-spacing: .03em; color: var(--muted, var(--txt));
+  letter-spacing: .03em; color: var(--muted, var(--t1));
   border-bottom: 1px solid var(--brd); padding: 5px 6px;
 }
 .rp-tech-table td { padding: 5px 6px; border-bottom: 1px solid color-mix(in srgb, var(--brd) 55%, transparent); }
@@ -921,22 +921,22 @@ html[data-theme='light'] .rp-calc-approve-toggle input[type='checkbox']:checked 
 .rp-tech-table--edit input,
 .rp-tech-table--edit select {
   width: 100%; min-width: 72px; padding: 5px 7px; font: inherit; font-size: 12.5px;
-  color: var(--txt); background: var(--bg); border: 1px solid var(--brd); border-radius: 7px;
+  color: var(--t1); background: var(--bg); border: 1px solid var(--brd); border-radius: 7px;
 }
 .rp-tech-table--edit input:focus,
 .rp-tech-table--edit select:focus { outline: 2px solid color-mix(in srgb, var(--primary) 45%, transparent); outline-offset: 1px; }
 
 .rp-tech-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; }
 .rp-tech-f { display: flex; flex-direction: column; gap: 4px; }
-.rp-tech-f > span { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em; color: var(--muted, var(--txt)); }
+.rp-tech-f > span { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em; color: var(--muted, var(--t1)); }
 .rp-tech-f input, .rp-tech-f select {
-  padding: 6px 8px; font: inherit; font-size: 13px; color: var(--txt);
+  padding: 6px 8px; font: inherit; font-size: 13px; color: var(--t1);
   background: var(--bg); border: 1px solid var(--brd); border-radius: 8px;
 }
-.rp-tech-total { margin-top: 8px; font-size: 12.5px; color: var(--muted, var(--txt)); }
-.rp-tech-total b { color: var(--txt); font-variant-numeric: tabular-nums; }
+.rp-tech-total { margin-top: 8px; font-size: 12.5px; color: var(--muted, var(--t1)); }
+.rp-tech-total b { color: var(--t1); font-variant-numeric: tabular-nums; }
 
-.rp-tech-empty, .rp-tech-note { font-size: 12.5px; color: var(--muted, var(--txt)); padding: 6px 2px; }
+.rp-tech-empty, .rp-tech-note { font-size: 12.5px; color: var(--muted, var(--t1)); padding: 6px 2px; }
 .rp-tech-empty { border: 1px dashed var(--brd); border-radius: 10px; padding: 12px; text-align: center; }
 
 .rp-tech-add {
@@ -951,7 +951,7 @@ html[data-theme='light'] .rp-calc-approve-toggle input[type='checkbox']:checked 
 }
 .rp-tech-del:hover { background: color-mix(in srgb, var(--danger) 12%, transparent); border-color: color-mix(in srgb, var(--danger) 35%, transparent); }
 .rp-tech-sug {
-  font-size: 11.5px; color: var(--muted, var(--txt)); margin-top: 3px;
+  font-size: 11.5px; color: var(--muted, var(--t1)); margin-top: 3px;
   display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
 }
 .rp-tech-take {

@@ -36,6 +36,32 @@ const MODEL_EMBED_FALLBACK = 'openai/text-embedding-3-small';
 
 const FALLBACK_CHAIN = [MODEL_DEFAULT, MODEL_FAST, MODEL_LONG];
 
+/**
+ * Предел выходных токенов по модели.
+ *
+ * Зачем: разбор ведомости на 675 позиций — это ~34k токенов только массива
+ * плюс обвязка JSON. При лимите 32k ответ обрывается в finish_reason=length,
+ * и позиции теряются на стыках добора (тендер 2138: 675 → 318).
+ *
+ * Значение — ВЕРХНЯЯ граница модели, а не дефолт запроса: расчётный лимит
+ * берётся как min(этот предел, потребность по числу позиций).
+ */
+const MODEL_MAX_OUTPUT_TOKENS = {
+  [MODEL_DEFAULT]: 128_000,
+  [MODEL_DEFAULT_LEGACY]: 128_000,
+  [MODEL_FAST]: 64_000,
+  [MODEL_LONG]: 128_000,
+};
+
+/** Предел выхода для модели; неизвестная модель → консервативные 32k. */
+function maxOutputTokensFor(modelId) {
+  const id = String(modelId || '').trim();
+  if (MODEL_MAX_OUTPUT_TOKENS[id]) return MODEL_MAX_OUTPUT_TOKENS[id];
+  // Legacy-имена и алиасы нормализуем.
+  const norm = typeof normalizeModelId === 'function' ? normalizeModelId(id) : id;
+  return MODEL_MAX_OUTPUT_TOKENS[norm] || 32_000;
+}
+
 /** Цены RouterAI, ₽ за 1M токенов (каталог routerai.ru, октябрь 2026). */
 const ROUTERAI_PRICES = {
   [MODEL_DEFAULT]: { input: 11, output: 22 },
@@ -185,6 +211,8 @@ module.exports = {
   MODEL_EMBED_PRIMARY,
   MODEL_EMBED_FALLBACK,
   FALLBACK_CHAIN,
+  MODEL_MAX_OUTPUT_TOKENS,
+  maxOutputTokensFor,
   ROUTERAI_PRICES,
   LEGACY_MODEL_MAP,
   LETTER_CONTEXT_BUDGETS,

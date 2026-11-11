@@ -28,6 +28,53 @@ window.AsgardRpReviewModal = (function () {
     { id: 'other', label: 'Другое' }
   ];
 
+  // ── Свёрнутые периоды ДВ ──────────────────────────────────────────────────
+  // 603 позиции и 43 периода: без группировки РП листает весь список, чтобы
+  // найти свой месяц. Свёрнутость хранится за пользователем на сервере
+  // (/api/ui-prefs), иначе после перезагрузки всё снова развёрнуто.
+  const PREFS_KEY = 'collapsed_periods';
+  const collapsedPeriods = new Set();
+  let prefsLoaded = false;
+
+  /** Нормализует подпись периода: «Март - Апрель» → «март - апрель». */
+  function periodKey(label) {
+    return String(label || '').trim().toLowerCase();
+  }
+
+  /** Загружает свёрнутость один раз за сессию модалки. */
+  async function loadCollapsedPrefs() {
+    if (prefsLoaded) return;
+    prefsLoaded = true;
+    try {
+      const r = await fetch('/api/ui-prefs/' + PREFS_KEY, {
+        headers: { 'Authorization': 'Bearer ' + (localStorage.getItem('token') || '') }
+      });
+      if (!r.ok) return;
+      const d = await r.json();
+      const v = d && d.value;
+      if (v && typeof v === 'object') {
+        Object.keys(v).forEach((k) => { if (v[k]) collapsedPeriods.add(k); });
+      }
+    } catch (_) { /* настройки необязательны: без них всё развёрнуто */ }
+  }
+
+  /** Сохраняет ОДИН период, не затирая остальные (merge на сервере). */
+  function saveCollapsed(key, isCollapsed) {
+    const patch = {};
+    patch[key] = !!isCollapsed;
+    if (isCollapsed) collapsedPeriods.add(key); else collapsedPeriods.delete(key);
+    try {
+      fetch('/api/ui-prefs/' + PREFS_KEY + '/merge', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer ' + (localStorage.getItem('token') || '')
+        },
+        body: JSON.stringify({ value: patch })
+      }).catch(() => {});
+    } catch (_) { /* офлайн — состояние останется в памяти вкладки */ }
+  }
+
   const LOG_LABELS = {
     save_draft: 'Черновик сохранён',
     finalize: 'Отчёт закрыт',
@@ -359,6 +406,60 @@ window.AsgardRpReviewModal = (function () {
     return Math.max(1, to - from + 1);
   }
 
+  /**
+   * Группирует позиции ДВ по периоду работ.
+   *
+   * Зачем: на #2138 603 позиции и 43 периода. Одна и та же позиция бывает
+   * «март» и «декабрь» — это РАЗНЫЕ работы, их нельзя схлопывать, но и
+   * плоским списком они нечитаемы. РП открывает свой месяц и видит его целиком:
+   * позиций, работ, человеко-часов, людей.
+   *
+   * Позиции без периода идут в группу «без срока» в КОНЕЦ — это не «мусор»,
+   * а работа, которую надо поставить в график.
+   */
+  function groupPositionsByPeriod(positions) {
+    const groups = new Map();
+    const noPeriod = [];
+    for (const p of positions) {
+      const label = String(p.period || '').trim();
+      if (!label) { noPeriod.push(p); continue; }
+      const k = periodKey(label);
+      if (!groups.has(k)) {
+        groups.set(k, { key: k, label: label, positions: [], works: 0, mh: 0, people: 0, days: 0 });
+      }
+      const g = groups.get(k);
+      g.positions.push(p);
+      const cc = Number(p.clean_count) > 0 ? Number(p.clean_count) : 1;
+      g.works += cc;
+      if (Number(p.mh) > 0) g.mh += Number(p.mh);
+      g.people = Math.max(g.people, Number(p.people) || 0);
+      if (Number(p.days) > 0) g.days += Number(p.days);
+    }
+    const list = [...groups.values()].sort((a, b) => b.works - a.works || a.label.localeCompare(b.label));
+    if (noPeriod.length) {
+      list.push({ key: '__none__', label: 'без срока', positions: noPeriod, works: noPeriod.length, mh: 0, people: 0, days: 0 });
+    }
+    return list;
+  }
+
+  /** Заголовок периода: свёрнут/развёрнут, с подытогами. */
+  function renderPeriodHead(g) {
+    const collapsed = collapsedPeriods.has(g.key);
+    const mhText = g.mh > 0 ? Math.round(g.mh).toLocaleString('ru') + ' чел·ч' : '';
+    const peopleText = g.people > 0 ? g.people + ' чел' : '';
+    return '<button type="button" class="rp-dv-period__head' + (collapsed ? ' is-collapsed' : '') + '"' +
+        ' data-rp-period="' + esc(g.key) + '">' +
+        '<span class="rp-dv-period__chev" aria-hidden="true">' + (collapsed ? '▸' : '▾') + '</span>' +
+        '<span class="rp-dv-period__label">' + esc(g.label) + '</span>' +
+        '<span class="rp-dv-period__metrics">' +
+          '<b>' + g.positions.length + '</b> поз.' +
+          (g.works > g.positions.length ? ' · <b>' + g.works + '</b> работ' : '') +
+          (mhText ? ' · <b>' + mhText + '</b>' : '') +
+          (peopleText ? ' · <b>' + peopleText + '</b>' : '') +
+        '</span>' +
+      '</button>';
+  }
+
   function renderDvBlock(rj, isLocked) {
     const positions = Array.isArray(rj && rj.dv_positions) ? rj.dv_positions : [];
     const locked = !!isLocked;
@@ -398,7 +499,42 @@ window.AsgardRpReviewModal = (function () {
 
     h += '<div class="rp-review-dv-list">';
 
+    // Группировка по периодам: только если периоды реально есть и их больше
+    // одного. На тендере без графика (одна непрерывная работа) плоский список
+    // читается лучше, чем одна группа.
+    const periodGroups = groupPositionsByPeriod(positions);
+    const useGroups = periodGroups.length > 1;
+    if (useGroups) {
+      const collapsedCount = periodGroups.filter((g) => collapsedPeriods.has(g.key)).length;
+      h += '<div class="rp-dv-periods-bar">' +
+          '<span>Группировка по срокам: <b>' + periodGroups.length + '</b> периодов</span>' +
+          '<button type="button" class="rp-dv-periods-toggle" data-rp-periods-all="expand">Развернуть все</button>' +
+          '<button type="button" class="rp-dv-periods-toggle" data-rp-periods-all="collapse">Свернуть все</button>' +
+          (collapsedCount ? '<span class="is-dim">свёрнуто ' + collapsedCount + '</span>' : '') +
+        '</div>';
+    }
+    let lastPeriodKey = null;
+
     positions.forEach((p, idx) => {
+      // ── Заголовок периода при смене группы ────────────────────────────────
+      // Проверяем ДО карточки: заголовок должен стоять над первой позицией
+      // своей группы, а не после неё.
+      if (useGroups) {
+        const pKey = String(p.period || '').trim() ? periodKey(p.period) : '__none__';
+        if (pKey !== lastPeriodKey) {
+          if (lastPeriodKey !== null) h += '</div>'; // закрыть прошлую группу
+          const grp = periodGroups.find((g) => g.key === pKey);
+          if (grp) {
+            h += '<div class="rp-dv-period' +
+                (collapsedPeriods.has(grp.key) ? ' is-collapsed' : '') +
+                '" data-rp-period-group="' + esc(grp.key) + '">';
+            h += renderPeriodHead(grp);
+            h += '<div class="rp-dv-period__body">';
+          }
+          lastPeriodKey = pKey;
+        }
+      }
+
       const objects = Array.isArray(p.objects)
         ? p.objects.map((o) => o.tag || o.type).filter(Boolean) : [];
       const method = [p.category_name, p.method_name].filter(Boolean).join(' · ')
@@ -443,6 +579,17 @@ window.AsgardRpReviewModal = (function () {
             ? '<div class="rp-dv-card__tech"><span>Чем работаем</span><p>' +
               esc(p.tech_equip) + '</p></div>'
             : '<div class="rp-dv-card__tech is-empty"><span>Чем работаем</span><p>не указано</p></div>') +
+          // Человеко-часы — крупно: именно они переводятся в людей и срок.
+          // Выработка мелкой строкой: она нужна для проверки, а не для чтения.
+          (Number(p.mh) > 0
+            ? '<div class="rp-dv-card__lab"><span class="rp-dv-mh">' +
+                Math.round(Number(p.mh)).toLocaleString('ru') + ' чел·ч</span>' +
+                (Number(p.days) > 0
+                  ? '<span class="rp-dv-rate">' + Number(p.days) + ' сут' +
+                    (Number(p.clean_count) > 1 ? ' · ' + p.clean_count + ' чист.' : '') + '</span>'
+                  : '') +
+              '</div>'
+            : '') +
           (src ? '<div class="rp-dv-card__src" title="' + esc(src) + '">' +
             '<span>Источник</span> ' + esc(src) + '</div>' : '') +
           '</article>';
@@ -503,6 +650,9 @@ window.AsgardRpReviewModal = (function () {
           '<span>источник:</span> ' + esc(src) + '</div>' : '') +
         '</div>';
     });
+
+    // Закрываем последнюю группу периода, если группировка включена.
+    if (useGroups && lastPeriodKey !== null) h += '</div>';
 
     h += '</div>';
 
@@ -862,6 +1012,9 @@ window.AsgardRpReviewModal = (function () {
   function open(tender, pms, onSaved, opts) {
     pms = pms || [];
     opts = opts || {};
+    // Свёрнутые периоды ДВ подтягиваем ДО отрисовки, иначе первый рендер
+    // покажет всё развёрнутым и дёрнется после ответа сервера.
+    loadCollapsedPrefs();
     const role = opts.role || '';
     const isTo = role === 'to';
     const isDirector = role === 'director';
@@ -1875,6 +2028,58 @@ window.AsgardRpReviewModal = (function () {
           rerenderDvSection();
         });
       }
+
+      // ── Свёрнутые периоды: клик по заголовку ──────────────────────────────
+      // Состояние уходит на сервер по одному периоду (merge), чтобы два
+      // открытых окна не затирали настройки друг друга.
+      root.querySelectorAll('[data-rp-period]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const key = btn.getAttribute('data-rp-period');
+          if (!key) return;
+          const isCollapsed = collapsedPeriods.has(key);
+          saveCollapsed(key, !isCollapsed);
+          const group = btn.closest('[data-rp-period-group]');
+          if (group) group.classList.toggle('is-collapsed', !isCollapsed);
+          btn.classList.toggle('is-collapsed', !isCollapsed);
+          const chev = btn.querySelector('.rp-dv-period__chev');
+          if (chev) chev.textContent = isCollapsed ? '▾' : '▸';
+        });
+      });
+
+      // Развернуть/свернуть все периоды разом.
+      root.querySelectorAll('[data-rp-periods-all]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const mode = btn.getAttribute('data-rp-periods-all');
+          const collapse = mode === 'collapse';
+          const groups = root.querySelectorAll('[data-rp-period-group]');
+          const patch = {};
+          groups.forEach((g) => {
+            const key = g.getAttribute('data-rp-period-group');
+            if (!key) return;
+            g.classList.toggle('is-collapsed', collapse);
+            const head = g.querySelector('[data-rp-period]');
+            if (head) {
+              head.classList.toggle('is-collapsed', collapse);
+              const chev = head.querySelector('.rp-dv-period__chev');
+              if (chev) chev.textContent = collapse ? '▸' : '▾';
+            }
+            if (collapse) collapsedPeriods.add(key); else collapsedPeriods.delete(key);
+            patch[key] = collapse;
+          });
+          if (Object.keys(patch).length) {
+            try {
+              fetch('/api/ui-prefs/' + PREFS_KEY + '/merge', {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'Authorization': 'Bearer ' + (localStorage.getItem('token') || '')
+                },
+                body: JSON.stringify({ value: patch })
+              }).catch(() => {});
+            } catch (_) {}
+          }
+        });
+      });
 
       // Правка полей — пишем сразу в reportJson.
       root.querySelectorAll('[data-rp-dv-field]').forEach((inp) => {

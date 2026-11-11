@@ -162,6 +162,60 @@ function describe(role, source) {
 }
 
 /**
+ * Есть ли в документе таблица объёмов — независимо от имени файла.
+ *
+ * Зачем: заказчики называют свои ведомости «Форма тендерного предложения»,
+ * «Форма заявки», «Форма спецификации». Правило `форм[аы] → template`
+ * ловило их и выбрасывало из промпта вместе с объёмами (тендер 2138:
+ * 675 позиций в 7 приложениях отброшены как «шаблон», Мимир разобрал 318).
+ *
+ * Признак таблицы — не имя, а содержимое: есть строки с наименованием,
+ * числом и единицей измерения. Порог 8 строк отсекает бланки и шапки.
+ *
+ * @param {string} text
+ * @returns {number} число похожих на строки ведомости строк (0 = не таблица)
+ */
+function countVolumeRows(text) {
+  const src = String(text || '');
+  if (!src.trim()) return 0;
+  const UNIT = '(?:м3|м³|м2|м²|куб\\.?\\s*м|кв\\.?\\s*м|пог\\.?\\s*м|п\\.?\\s*м|п\\.м|шт\\.?|кг|т(?![а-яё])|тонн|компл|Гкал|литр|л(?![а-яё])|км|труб\\w*|пластин\\w*|стык\\w*|аппарат\\w*|секци\\w*)';
+  let rows = 0;
+  for (const line of src.split(/\r?\n/)) {
+    if (line.length < 12 || line.length > 400) continue;
+    // Число + единица рядом — рабочий признак строки ведомости.
+    const hasNumUnit = new RegExp('\\d+(?:[.,]\\d+)?\\s*' + UNIT, 'i').test(line);
+    // Или таблица с разделителем: ячейка-наименование, ячейка-число, ячейка-единица.
+    const cells = line.split(/[|;\t]/).map((s) => s.trim()).filter(Boolean);
+    const cellsUnit = cells.length >= 3
+      && cells.some((s) => new RegExp('^' + UNIT + '$', 'i').test(s))
+      && cells.some((s) => /^\d{1,7}(?:[.,]\d+)?$/.test(s));
+    if (hasNumUnit || cellsUnit) rows += 1;
+  }
+  return rows;
+}
+
+/** Роль «шаблон» при наличии таблицы объёмов — это на самом деле ВОР. */
+function reclassifyByTable(role, text, tablePositions) {
+  if (!role) return role;
+  // Переклассифицируем только тех, кого имя ввело в заблуждение:
+  // «шаблон» (пустой бланк) или «не определено». Смету, договор, ТЗ не трогаем —
+  // у них своя роль и свой вес, даже если внутри встретилась таблица.
+  const suspicious = role.role === 'template' || role.role === 'unknown';
+  if (!suspicious) return role;
+  const structured = Number(tablePositions) || 0;
+  const rows = structured > 0 ? structured : countVolumeRows(text);
+  if (rows < 8) return role;
+  return {
+    role: 'vor',
+    title: ROLES.vor.title,
+    use: ROLES.vor.use,
+    weight: ROLES.vor.weight,
+    source: structured > 0 ? 'table_positions' : 'table_rows',
+    table_rows: rows
+  };
+}
+
+/**
  * Отпечаток содержимого для схлопывания копий.
  * Нормализуем: убираем пробелы, регистр, служебные символы.
  * Один и тот же документ из разных архивов даёт один и тот же хеш.
@@ -238,7 +292,14 @@ function selectForPrompt(documents, opts) {
       continue;
     }
 
-    const role = detectRole({ name, text });
+    const role0 = detectRole({ name, text });
+    // Имя файла «Форма …» не должно выбрасывать ведомость: если внутри есть
+    // таблица объёмов, это ВОР независимо от названия (дефект 675 → 318).
+    const role = reclassifyByTable(
+      role0,
+      text,
+      d.table_positions != null ? d.table_positions : d.tablePositions
+    );
     const useful = role.use || (role.role === 'unknown' && includeUnknown);
 
     const hash = contentHash(text);
@@ -287,7 +348,9 @@ function selectForPrompt(documents, opts) {
       doc_role: role.role,
       doc_role_title: role.title,
       doc_weight: role.weight,
-      doc_role_source: role.source
+      doc_role_source: role.source,
+      // Сколько строк объёма нашли внутри — для журнала (source='table_rows').
+      doc_table_rows: role.table_rows || null
     });
   }
 
@@ -333,5 +396,8 @@ module.exports = {
   contentHash,
   similarity,
   selectForPrompt,
-  describeSelection
+  describeSelection,
+  // Экспорт для тестов и журнала: проверка «это таблица объёмов или бланк».
+  countVolumeRows,
+  reclassifyByTable
 };

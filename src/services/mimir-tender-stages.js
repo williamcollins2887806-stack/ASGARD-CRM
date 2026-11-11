@@ -1151,6 +1151,14 @@ function normalizeCalcPlan(ai, opts) {
       days,
       shifts: Number(p.shifts) > 0 ? Number(p.shifts) : null,
       shift_hours: Number(p.shift_hours) > 0 ? Number(p.shift_hours) : null,
+      // Человеко-часы по норме: если есть, срок считается из инварианта MH,
+      // даже когда модель не дала суток (иначе work_days = null).
+      mh: Number(p.mh) > 0 ? Number(p.mh) : null,
+      // Признаки условий работ: определяют наблюдающего и спецроли.
+      work_scope: p.work_scope || null,
+      hazard: Array.isArray(p.hazard) ? p.hazard : null,
+      crew_locked: !!p.crew_locked,
+      objects: Number(p.objects) > 0 ? Number(p.objects) : null,
       parallel_group: p.parallel_group != null ? String(p.parallel_group) : '0',
       equipment: Array.isArray(p.equipment) ? p.equipment : [],
       source,
@@ -1159,7 +1167,8 @@ function normalizeCalcPlan(ai, opts) {
       approved: !!p.approved,
       problems: [
         !people ? 'не указано число людей' : null,
-        !days ? 'не указан срок' : null,
+        // Срок может быть задан через mh — тогда «не указан срок» не проблема.
+        !days && !(Number(p.mh) > 0) ? 'не указан срок' : null,
         source === 'expert' && !String(p.explain || '').trim() ? 'экспертная оценка без обоснования' : null
       ].filter(Boolean)
     };
@@ -1243,13 +1252,21 @@ function normalizeCalcPlan(ai, opts) {
     : null;
 
   // ── Бригады и срок ────────────────────────────────────────────────────────
-  // Бригада — рабочая единица: 1 мастер + до 4 слесарей (CREW_SIZE).
+  // Раньше здесь было жёстко: состав «1 мастер + 4 слесаря», наблюдающий
+  // «1 на бригаду», ОЗП определялся по слову «аппарат» — и АВО (наружная
+  // чистка) ошибочно получал наблюдающего внутри. Теперь состав выводится
+  // из crew-plan (роли, ОЗП 1:1, hazard), а срок — из schedule-model.
+  const crewPlan = require('./crew-plan');
+  const scheduleModel = require('./schedule-model');
+
   const CREW_SIZE = Math.max(2, Number(opts && opts.crew_size) || 5);
   const maxWorkersPerCrew = Math.max(1, CREW_SIZE - 1);
   const maxCrews = Math.max(2, Number(opts && opts.max_crews) || 6);
+  const masterSpan = Math.max(1, Number(opts && opts.master_span) || 4);
+  const observerRatio = Number(opts && opts.observer_ratio) > 0 ? Number(opts.observer_ratio) : 1;
+  const duplierRatio = Number(opts && opts.duplier_ratio) > 0 ? Number(opts.duplier_ratio) : 1;
 
   // Бригадо-сутки: сколько бригад одновременно занято на позиции × её сутки.
-  // 12 человек на 2 суток = 3 бригады × 2 сут = 6 бригадо-суток.
   const crewDays = positions.reduce((s, p) => {
     const people = Math.max(1, Number(p.people) || 1);
     const days = Math.max(0, Number(p.days) || 0);
@@ -1268,13 +1285,15 @@ function normalizeCalcPlan(ai, opts) {
   const visitsMode = String(opts && opts.visit_mode) === 'visits';
   const tripCountOpt = Number(opts && opts.trip_count) > 0 ? Math.round(Number(opts.trip_count)) : 1;
   let crews = 1;
-  if (windowDays) {
+  // Заезды главнее окна: даже при жёстком дедлайне нельзя размножать бригады
+  // внутри одного аппарата. Параллелить можно только по аппаратам, и это
+  // решает модель через parallel_group — здесь лишь не даём «виртуальным»
+  // бригадам обнулить срок (дефект D7 верификатора 10.11.2026).
+  if (visitsMode) {
+    crews = 1;
+  } else if (windowDays) {
     crews = Math.ceil(crewDays / windowDays);
     crews = Math.min(Math.max(crews, 1), maxCrews);
-  } else if (visitsMode) {
-    // Заезды последовательны: одна бригада на выезд. Размножать её по объёму
-    // нельзя — иначе дорога и проживание считаются на 30 человек вместо 5.
-    crews = 1;
   } else {
     crews = crewDays > 90 ? maxCrews : (crewDays > 30 ? Math.min(2, maxCrews) : 1);
   }
@@ -1284,44 +1303,80 @@ function normalizeCalcPlan(ai, opts) {
   const rawDays = crews > 0 ? crewDays / crews : crewDays;
   const workDays = Math.round(rawDays * 100) / 100;
 
-  // Бригады: в каждой 1 мастер + до 4 слесарей. На все бригады — один ИТР.
+  // ── Состав бригад: роли выводятся из позиций, а не из константы ─────────
+  // crew-plan знает про ОЗП (наблюдающий 1:1 к исполнителям ВНУТРИ аппарата),
+  // газоопасные (дежурный снаружи), огневые (сварщик), реагенты (химик).
+  // Раньше наблюдающий ставился «1 на бригаду», и 5 человек внутри ёмкости
+  // оставались без второго наблюдающего — нарушение 902н.
+  const crewSummary = crewPlan.summarizeCrew({
+    positions: positions.map((p) => ({
+      name: p.name,
+      tech_equip: p.tech_equip,
+      method_name: p.method_name,
+      category_name: p.category_name,
+      work_scope: p.work_scope,
+      hazard: p.hazard,
+      people: p.people,
+      crew_locked: p.crew_locked,
+      mh: p.mh
+    })),
+    crew_span: CREW_SIZE,
+    master_span: masterSpan,
+    observer_ratio: observerRatio,
+    duplier_ratio: duplierRatio
+  });
+
+  // Собираем состав по ролям: базовая бригада × число бригад + спецроли.
+  const roleTotals = new Map();
+  const addRole = (code, role, count, note) => {
+    if (!(count > 0)) return;
+    const cur = roleTotals.get(code) || { role_code: code, role, count: 0, shifts_per_day: null, note };
+    cur.count += count;
+    roleTotals.set(code, cur);
+  };
+
+  const basePeak = crewSummary.base_people_peak || (CREW_SIZE - 1);
+  // На бригаду: мастер + слесари. Мастеров считаем по master_span.
+  const mastersPerCrew = Math.max(1, Math.ceil((basePeak - 1) / masterSpan));
+  addRole('itr', 'ИТР (РП)', 1, 'на все бригады');
+  addRole('master', 'Мастер / бригадир', mastersPerCrew * crews, '');
+  addRole('worker', 'Слесарь', Math.max(1, basePeak - mastersPerCrew) * crews, '');
+
+  // Спецроли — по признакам опасности, найденным в позициях.
+  const specialPeak = new Map();
+  for (const plan of crewSummary.plans) {
+    for (const r of plan.roles) {
+      if (crewPlan.BASE_ROLES.includes(r.role_code)) continue;
+      specialPeak.set(r.role_code, Math.max(specialPeak.get(r.role_code) || 0, r.count));
+    }
+  }
+  for (const [code, count] of specialPeak) {
+    addRole(code, crewPlan.ROLE_LABEL[code] || code, count, 'по признакам работ');
+  }
+
+  // Совместимость: прежние поля observer/chemist считались отдельно. Их
+  // больше нет — роли уже в составе выше. Флаги оставляем для отчёта.
+  const insideWork = crewSummary.inside_any;
+  const chemWork = crewSummary.hazard.includes('chem');
+
+  const crewRows = [...roleTotals.values()];
+  // Раскладка по бригадам — для показа в техплане.
   const crewList = [];
   for (let i = 1; i <= crews; i += 1) {
-    crewList.push([
-      { role_code: 'master', role: 'Мастер / бригадир', count: 1, shifts_per_day: null, note: `бригада ${i}` },
-      { role_code: 'worker', role: 'Слесарь', count: maxWorkersPerCrew, shifts_per_day: null, note: `бригада ${i}` }
-    ]);
-  }
-  const crewRows = [];
-  crewRows.push({ role_code: 'itr', role: 'ИТР (РП)', count: 1, shifts_per_day: null, note: 'на все бригады' });
-  crewRows.push({ role_code: 'master', role: 'Мастер / бригадир', count: crews, shifts_per_day: null, note: '' });
-  crewRows.push({
-    role_code: 'worker', role: 'Слесарь',
-    count: crews * maxWorkersPerCrew, shifts_per_day: null, note: ''
-  });
-
-  // Наблюдающий обязателен при работе ВНУТРИ аппарата (наряд-допуск):
-  // сосуды, котлы, бункеры, каналы. Снаружи не нужен.
-  const insideWork = positions.some((p) => {
-    const t = `${p.name || ''} ${p.tech_equip || ''}`.toLowerCase();
-    return /внутри|внутренн|днищ|бункер|резервуар|ёмкост|емкост|котл|канал|приямк|колодец|аппарат/.test(t);
-  });
-  if (insideWork) {
-    crewRows.push({ role_code: 'observer', role: 'Наблюдающий', count: crews, shifts_per_day: null, note: 'работа внутри аппарата' });
-  }
-
-  // Химик нужен, если работают реагентами (промывка, пассивация, нейтрализация).
-  const chemWork = positions.some((p) => {
-    const t = `${p.name || ''} ${p.tech_equip || ''} ${p.category_code || ''}`.toLowerCase();
-    return /хим|кислот|щелоч|реагент|промыв|пассивац|нейтрализ|cip|ингибитор/.test(t);
-  });
-  if (chemWork) {
-    crewRows.push({ role_code: 'chemist', role: 'Химик', count: 1, shifts_per_day: null, note: 'реагентные работы' });
-  }
-
-  // ПТО / приёмка — на объёмных работах с приёмкой скрытых работ (больше 10 позиций).
-  if (positions.length > 10) {
-    crewRows.push({ role_code: 'pto', role: 'ПТО / приёмка', count: 1, shifts_per_day: null, note: 'приёмка объёмов' });
+    const rows = [
+      { role_code: 'master', role: 'Мастер / бригадир', count: mastersPerCrew, shifts_per_day: null, note: `бригада ${i}` },
+      { role_code: 'worker', role: 'Слесарь', count: Math.max(1, basePeak - mastersPerCrew), shifts_per_day: null, note: `бригада ${i}` }
+    ];
+    for (const [code, count] of specialPeak) {
+      rows.push({
+        role_code: code,
+        role: crewPlan.ROLE_LABEL[code] || code,
+        count,
+        shifts_per_day: null,
+        note: `бригада ${i}`
+      });
+    }
+    crewList.push(rows);
   }
 
   const peopleTotal = crewRows.reduce((s, r) => s + (Number(r.count) || 0), 0);
@@ -1334,10 +1389,50 @@ function normalizeCalcPlan(ai, opts) {
     groups.set(k, Math.round((groups.get(k) || 0) + (Number(p.days) || 0)));
   }
 
-  const manHours = positions.reduce(
-    (s, p) => s + (p.people || 0) * (p.days || 0) * (p.shifts || 2) * (p.shift_hours || 12),
-    0
-  );
+  // Человеко-часы: если у позиции задано mh (норма дала готовые чел·часы),
+  // берём его. Иначе считаем люди × сутки × часы смены. Без первой ветки
+  // позиция «1800 чел·ч без суток» давала mh = 0, и срок не считался вовсе.
+  const manHours = positions.reduce((s, p) => {
+    const direct = Number(p.mh) || Number(p.labor_hours) || 0;
+    if (direct > 0) return s + direct;
+    return s + (p.people || 0) * (p.days || 0) * (p.shifts || 2) * (p.shift_hours || 12);
+  }, 0);
+
+  // ── Срок по инварианту MH (расчётная модель v2) ──────────────────────────
+  // Бригадо-сутки не видят главного: человеко-часы фиксированы, а срок
+  // зависит от того, сколько людей работает ОДНОВРЕМЕННО и сколько смен.
+  // resolveSchedule считает: work_days = MH / (crew_size × C × h_net × s).
+  // В заездах работы последовательны: параллелить можно только по фронтам
+  // (числу аппаратов), а не «виртуальными» бригадами.
+  const shiftHoursOpt = Number(opts && opts.shift_hours) > 0 ? Number(opts.shift_hours) : 12;
+  // Смены берём из позиций: если модель сказала «2 смены по 12 ч», люди
+  // работают 24 ч/сутки, и срок в 2 раза меньше. Раньше здесь жёстко 1,
+  // и план завышал срок вдвое при 24/7 (дефект найден на сверке сметы).
+  const shiftsFromPositions = positions.reduce((m, p) => Math.max(m, Number(p.shifts) || 0), 0);
+  const shiftsPerDayOpt = Number(opts && opts.shifts_per_day) > 0
+    ? Number(opts.shifts_per_day)
+    : (shiftsFromPositions || 1);
+  const frontsResolved = scheduleModel.resolveFronts({
+    objects: Number(opts && opts.fronts) > 0 ? Number(opts.fronts) : (
+      positions.reduce((m, p) => Math.max(m, Number(p.objects) || 0), 0) || null
+    ),
+    manual: Number(opts && opts.fronts_manual) || null
+  });
+
+  const scheduleResolved = scheduleModel.resolveSchedule({
+    mh: manHours,
+    shift_hours: shiftHoursOpt,
+    shifts_per_day: shiftsPerDayOpt,
+    crew_size: CREW_SIZE,
+    trips: Number(opts && opts.trip_count) || 1,
+    mob_days: Number(opts && opts.mob_days) || 0,
+    road_days: Number(opts && opts.road_days) || 0,
+    window_days: windowDays,
+    fronts: frontsResolved.fronts,
+    max_crews: maxCrews,
+    available_crews: Number(opts && opts.available_crews) || null,
+    norm_basis: opts && opts.norm_basis
+  });
 
   const fitsWindow = !!windowDays && workDays <= windowDays;
 
@@ -1347,18 +1442,68 @@ function normalizeCalcPlan(ai, opts) {
   // проде это давало два разных срока у одного тендера (2133: план 1440 ч,
   // смета 2016 ч — 40 % расхождения). Теперь срок плана фиксируется явно и
   // уходит в смету тем же значением: `schedule.work_days = params.work_days`.
-  const finalWorkDays = (laborSchedule ? laborSchedule.days : workDays) || null;
+  // ── Срок: инвариант MH применяется, только если суток НЕТ ────────────────
+  // Если модель дала `days` по позиции, срок уже определён: days × бригад.
+  // Пересчитывать его через человеко-часы нельзя — это двойной счёт и
+  // перезапись расчёта модели. MH здесь работает как СВЕРКА: если два пути
+  // расходятся больше чем на 15 %, РП должен это увидеть.
+  //
+  // Если `days` нет, а есть только объём (mh по норме), тогда инвариант —
+  // единственный способ получить срок.
+  const hasExplicitDays = positions.some((p) => Number(p.days) > 0);
+  const mhWork = positions.reduce(
+    (s, p) => s + (Number(p.people) || 0) * (Number(p.days) || 0) * (Number(p.shift_hours) || 12),
+    0
+  );
+  const mhDays = scheduleResolved.work_days;
 
-  // Заезды: модель может дать trip_count / visits; иначе считаем по периодам
-  // позиций (сентябрь ≠ декабрь). Это кормит asgard_smeta.params.trip_count —
-  // дорога, проживание, мобилизация умножаются на число выездов.
+  let finalWorkDays;
+  let workDaysSource;
+  if (laborSchedule) {
+    finalWorkDays = laborSchedule.days;
+    workDaysSource = 'tz_labor_hours';
+  } else if (hasExplicitDays) {
+    finalWorkDays = workDays || null;
+    workDaysSource = 'crew_days';
+  } else if (mhDays != null && mhDays > 0) {
+    finalWorkDays = mhDays;
+    workDaysSource = 'mh_invariant';
+  } else {
+    finalWorkDays = workDays || null;
+    workDaysSource = 'crew_days';
+  }
+
+  // Сверка двух путей — только когда оба дали число.
+  let workDaysCheck = null;
+  if (hasExplicitDays && mhDays != null && mhDays > 0 && workDays > 0) {
+    const delta = Math.abs(workDays - mhDays) / workDays;
+    workDaysCheck = {
+      crew_days: workDays,
+      mh_invariant: mhDays,
+      delta_pct: Math.round(delta * 1000) / 10,
+      diverged: delta > 0.15
+    };
+  }
+
+  // Заезды: приоритет у РП/анализа — opts.trip_count (это ответ пользователя
+  // или visit_plan), затем ответ модели, затем периоды позиций ДВ
+  // (сентябрь ≠ декабрь). Раньше opts.trip_count применялся только к
+  // work_days_per_trip, а сам trip_count брался из ответа модели: подтверждённые
+  // РП 6 выездов превращались в 1, и дорога/проживание занижались в 6 раз
+  // (дефект D1 верификатора 10.11.2026).
+  const optTrips = Number(opts && opts.trip_count) > 0 ? Math.round(Number(opts.trip_count)) : 0;
   const modelTrips = Number(raw.trip_count) > 0 ? Math.round(Number(raw.trip_count)) : 0;
   const fromPositions = deriveVisitCount(
     (opts && opts.dv_positions) || list.map((p) => ({
       visit_id: p.visit_id, period: p.period, period_start: p.period_start, when: p.when
     }))
   );
-  const tripCount = Math.max(1, modelTrips || fromPositions || 1);
+  const tripCount = Math.max(1, optTrips || modelTrips || fromPositions || 1);
+  // Сколько выездов в самих visits — если модель их перечислила, число берём
+  // оттуда: пустой trip_count при 3 visits оставлял смету на одном выезде.
+  const rawVisitsCount = Array.isArray(raw.visits)
+    ? raw.visits.filter((v) => v && (v.id || v.period || v.label)).length : 0;
+  const finalTripCount = Math.max(tripCount, rawVisitsCount || 0);
   const visits = Array.isArray(raw.visits)
     ? raw.visits.filter((v) => v && (v.id || v.period || v.label)).map((v, i) => ({
       id: String(v.id || `v${i + 1}`).slice(0, 40),
@@ -1388,11 +1533,28 @@ function normalizeCalcPlan(ai, opts) {
       ? 'трудоёмкость из ТЗ: ' + laborSchedule.note
       : null,
     road_days: Number(raw.road_days) > 0 ? Number(raw.road_days) : null,
-    trip_count: tripCount,
+    trip_count: finalTripCount,
     visits,
     people_total: peopleTotal || null,
     crews,
     crew_size: CREW_SIZE,
+    // ── Расчётная модель v2: люди, смены, пик, потери ──────────────────────
+    // Пик одновременно работающих людей — не сумма ролей, а смен × бригад.
+    headcount_shift: scheduleResolved.headcount_shift,
+    headcount_peak: scheduleResolved.headcount_peak,
+    shifts_per_day: scheduleResolved.shifts_per_day,
+    shift_hours: scheduleResolved.shift_hours,
+    h_net: scheduleResolved.h_net,
+    loss_min: scheduleResolved.loss_min,
+    ps: scheduleResolved.ps,
+    fronts: frontsResolved.fronts,
+    fronts_source: frontsResolved.source,
+    work_days_source: workDaysSource,
+    // Сверка двух путей срока: если разошлись больше чем на 15 %, это
+    // сигнал РП, а не повод молча перезаписать одно другим.
+    work_days_check: workDaysCheck,
+    schedule_warnings: scheduleResolved.warnings.concat(frontsResolved.warning ? [frontsResolved.warning] : []),
+    shortfall: scheduleResolved.shortfall,
     // Состав бригад целиком: кто именно нужен (мастер, слесари, ИТР,
     // наблюдающий, химик, ПТО). Это уходит в техплан и в смету.
     crew: crewRows,

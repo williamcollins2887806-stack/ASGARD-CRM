@@ -36,7 +36,11 @@ check('переход назад на пройденный этап разреш
 
 check('из done в просчёт — только отдельным запуском', () => {
   assert.strictEqual(st.canTransition('done', 'calc_plan'), true);
-  assert.strictEqual(st.canTransition('done', 'dv'), false);
+  // Повторный анализ закрытой карточки РАЗРЕШЁН: после TO rework сессия
+  // остаётся на `done`, и analyze падал с 500 «Нельзя перейти с done на dv».
+  // Переразбор нужен для исправления дефектов разбора (прод 10.11.2026).
+  assert.strictEqual(st.canTransition('done', 'dv'), true);
+  assert.strictEqual(st.canTransition('done', 'tech'), true);
 });
 
 check('анализ и просчёт — разные конвейеры: из анализа в план не попасть', () => {
@@ -86,8 +90,10 @@ check('контакт из ТЗ: нет телефона — честный null
   assert.strictEqual(c.phone, null);
 });
 
-check('из nogo выхода нет', () => {
-  assert.strictEqual(st.canTransition('nogo', 'dv'), false);
+check('из nogo есть выход в повторный анализ, но не в просчёт', () => {
+  // Отказ — не тупик: карточку можно переразобрать (rework), но просчёт
+  // запускается только после решения «подаём».
+  assert.strictEqual(st.canTransition('nogo', 'dv'), true);
   assert.strictEqual(st.canTransition('nogo', 'calc_plan'), false);
 });
 

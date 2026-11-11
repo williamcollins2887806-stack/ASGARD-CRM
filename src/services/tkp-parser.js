@@ -289,7 +289,24 @@ async function _extractText(buf, originalName, opts = {}) {  const ext = path.ex
         const csv = XLSX.utils.sheet_to_csv(sheet, { blankrows: false });
         text += String(csv || '').slice(0, MAX_EXTRACT_CHARS - text.length);
       }
-      if (String(text).trim().length >= 20) return { text, usedOcr: false };
+      // Структурный разбор: колонки определяются по заголовкам, а не по индексу.
+      // CSV-склейка теряет «где объём, где цех, где период» — здесь это
+      // восстанавливается и добавляется к тексту отдельным блоком.
+      let structure = null;
+      try {
+        const excelStructure = require('./excel-structure');
+        const parsed = excelStructure.parseWorkbook(XLSX, wb);
+        if (parsed && parsed.stats && parsed.stats.positions > 0) {
+          structure = parsed;
+          const block = excelStructure.toPromptText(parsed);
+          if (block) {
+            text += '\n\n' + block;
+          }
+        }
+      } catch (_) { /* структурный разбор необязателен */ }
+      if (String(text).trim().length >= 20) {
+        return { text, usedOcr: false, structure };
+      }
     } catch (_) { /* нет SheetJS или файл битый */ }
 
     // Запасной путь 2: старый .xls (OLE) через LibreOffice.
@@ -534,7 +551,11 @@ async function extractTextOnly({ buf, originalName, force_ocr, allowOcr }) {
       // (не табличный формат или ошибка) — тогда анализ идёт без порога.
       table_positions,
       table_per_sheet,
-      table_source
+      table_source,
+      // Структурный разбор (колонки по заголовкам): позиции, зоны, периоды.
+      // Нужен, чтобы периоды из документа стали графиком заездов, а не
+      // гадались по остаткам текста.
+      structure: r.structure || null
     };
   } catch (e) {
     return { text: '', usedOcr: false, unsupported: false, error: e.message, ext };

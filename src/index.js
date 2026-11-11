@@ -984,6 +984,9 @@ fastify.register(require('./routes/mimir-conductor'), { prefix: '/api/mimir' });
 fastify.register(require('./routes/mimir-letter'), { prefix: '/api/mimir' });
 fastify.register(require('./routes/hints'), { prefix: '/api' });
 fastify.register(require('./routes/page-view'), { prefix: '/api' });
+// Настройки интерфейса за пользователем: свёрнутые периоды ДВ, колонки.
+// Без сервера состояние живёт только во вкладке и теряется при перезагрузке.
+fastify.register(require('./routes/ui-prefs'), { prefix: '/api/ui-prefs' });
 fastify.register(require('./routes/geo'), { prefix: '/api/geo' });
 fastify.register(require('./routes/email'), { prefix: '/api/email' });
 fastify.register(require('./routes/acts'), { prefix: '/api/acts' });
@@ -2463,6 +2466,24 @@ const start = async () => {
       }
     } catch (imapErr) {
       fastify.log.warn('IMAP mail service init skipped: ' + imapErr.message);
+    }
+
+    // ── Гейт расчётной модели v2 ────────────────────────────────────────────
+    // Шаги расчёта читают work_norm_globals (crew_span, shift_lunch_min…).
+    // Если миграция V487 не накатана, эти ключи = undefined → NaN в сроке и
+    // ФОТ. Лучше громкое предупреждение на старте, чем тихий NaN в смете.
+    try {
+      const scheduleModel = require('./services/schedule-model');
+      const gate = await scheduleModel.assertMigrationsReady(fastify.pg);
+      if (!gate.ok) {
+        fastify.log.error('[calc-v2] work_norm_globals неполные — не хватает: '
+          + (gate.missing || []).join(', ')
+          + '. Расчёт сроков может дать NaN. Примените миграцию V487.');
+      } else {
+        fastify.log.info('[calc-v2] параметры бригады и потерь на месте');
+      }
+    } catch (e) {
+      fastify.log.warn('[calc-v2] проверка миграций пропущена: ' + e.message);
     }
 
     // Start server (short retry on EADDRINUSE — systemd RestartSec handles longer gaps)

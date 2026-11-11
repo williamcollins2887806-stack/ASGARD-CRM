@@ -1047,18 +1047,18 @@ td .status.gold { background: var(--gold-bg); color: var(--gold); }
 
 .spinner-ring:nth-child(1) {
   border-top-color: var(--blue);
-  animation: spinRing 1.2s cubic-bezier(0.5, 0, 0.5;
+  animation: spinRing 1.2s cubic-bezier(0.5, 0, 0.5, 1);
 }
 
 .spinner-ring:nth-child(2) {
   border-right-color: var(--blue-l);
-  animation: spinRing 1.2s cubic-bezier(0.5, 0, 0.5;
+  animation: spinRing 1.2s cubic-bezier(0.5, 0, 0.5, 1);
   animation-delay: -0.4s;
 }
 
 .spinner-ring:nth-child(3) {
   border-bottom-color: var(--gold);
-  animation: spinRing 1.2s cubic-bezier(0.5, 0, 0.5;
+  animation: spinRing 1.2s cubic-bezier(0.5, 0, 0.5, 1);
   animation-delay: -0.8s;
 }
 
@@ -12251,7 +12251,7 @@ table.reg-table th.reg-th-nosort {
 .pm-duty-rating-badge:hover {
   transform: translateY(-2px) scale(1.01);
   border-color: color-mix(in srgb, var(--gold, #c8a84e) 45%, var(--brd));
-  box-shadow: 0 10px 28px color-mix(in srgb, var(--txt) 16%, transparent);
+  box-shadow: 0 10px 28px color-mix(in srgb, var(--t1) 16%, transparent);
 }
 .pm-duty-rating-badge:active { transform: translateY(0) scale(.99); }
 .pm-duty-rating-badge:focus-visible {
@@ -12288,7 +12288,7 @@ table.reg-table th.reg-th-nosort {
 .pm-duty-grade {
   display: inline-flex; align-items: center; justify-content: center;
   width: 26px; height: 26px; border-radius: 8px; font-weight: 800; font-size: 13px;
-  background: var(--bg3); color: var(--txt);
+  background: var(--bg3); color: var(--t1);
 }
 .pm-duty-grade--a { background: color-mix(in srgb, var(--ok, #3cb371) 28%, var(--bg3)); color: var(--ok, #2e8b57); }
 .pm-duty-grade--b { background: color-mix(in srgb, var(--primary, #5b8def) 28%, var(--bg3)); color: var(--primary, #3b6fd8); }
@@ -12310,11 +12310,11 @@ table.reg-table th.reg-th-nosort {
   padding: 9px 15px; border-radius: 9px; font-size: 13px; font-weight: 650; cursor: pointer;
   transition: background .15s ease, color .15s ease, box-shadow .15s ease, transform .15s ease;
 }
-.pm-duty-tab:hover { color: var(--txt); transform: translateY(-1px); }
+.pm-duty-tab:hover { color: var(--t1); transform: translateY(-1px); }
 .pm-duty-tab:active { transform: translateY(0); }
 .pm-duty-tab.is-active {
-  background: var(--bg, #fff); color: var(--txt);
-  box-shadow: 0 1px 3px color-mix(in srgb, var(--txt) 12%, transparent);
+  background: var(--bg, #fff); color: var(--t1);
+  box-shadow: 0 1px 3px color-mix(in srgb, var(--t1) 12%, transparent);
 }
 .pm-duty-tab em {
   display: inline-block; margin-left: 6px; min-width: 18px; padding: 0 6px; border-radius: 99px;
@@ -12379,7 +12379,7 @@ table.reg-table th.reg-th-nosort {
 .pm-duty-row:hover {
   transform: translateY(-1px);
   border-color: color-mix(in srgb, var(--primary, #5b8def) 35%, var(--brd));
-  box-shadow: 0 8px 22px color-mix(in srgb, var(--txt) 10%, transparent);
+  box-shadow: 0 8px 22px color-mix(in srgb, var(--t1) 10%, transparent);
 }
 .pm-duty-row:active { transform: translateY(0); }
 .pm-duty-row.is-preview {
@@ -12424,7 +12424,7 @@ table.reg-table th.reg-th-nosort {
   display: flex; align-items: center; justify-content: center;
   border: 1px solid var(--brd); background: var(--bg3); font-size: 18px; color: var(--gold, #c8a84e);
 }
-.pm-duty-empty h4 { margin: 0 0 6px; color: var(--txt); font-size: 16px; font-weight: 700; }
+.pm-duty-empty h4 { margin: 0 0 6px; color: var(--t1); font-size: 16px; font-weight: 700; }
 .pm-duty-empty p { margin: 0 auto; max-width: 420px; font-size: 13px; line-height: 1.45; }
 .pm-duty-section-head {
   display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 12px;
@@ -12501,7 +12501,7 @@ table.reg-table th.reg-th-nosort {
 .pm-duty-lb-item:hover {
   transform: translateY(-1px);
   border-color: color-mix(in srgb, var(--primary, #5b8def) 40%, var(--brd));
-  box-shadow: 0 6px 16px color-mix(in srgb, var(--txt) 8%, transparent);
+  box-shadow: 0 6px 16px color-mix(in srgb, var(--t1) 8%, transparent);
 }
 .pm-duty-lb-item:active { transform: translateY(0); }
 .pm-duty-lb-rank { font-size: 12px; color: var(--muted); text-align: center; font-weight: 700; }
