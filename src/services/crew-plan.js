@@ -157,12 +157,16 @@ function resolveBaseCrew(p) {
     }
   }
 
-  // Объём: если модель дала `people` — это оценка исполнителей.
+  // Объём: `people` от модели — это ЧИСЛЕННОСТЬ БРИГАДЫ целиком (мастер +
+  // исполнители), а не только исполнители. Иначе 5 человек превращались в
+  // 1 мастера + 5 слесарей = 6, и состав расходился с headcount_shift.
   const people = Number(pos.people) > 0 ? Number(pos.people) : null;
   if (people) {
+    const master = Math.max(1, Math.ceil(people / (masterSpan + 1)));
+    const exec = Math.max(1, people - master);
     return {
-      exec: people,
-      master: Math.max(1, Math.ceil(people / masterSpan)),
+      exec,
+      master,
       source: pos.crew_source || 'model',
       locked: false
     };

@@ -1273,35 +1273,15 @@ function normalizeCalcPlan(ai, opts) {
     return s + Math.ceil(people / CREW_SIZE) * days;
   }, 0);
 
-  // Сколько бригад ставим: чтобы уложиться в окно заказчика (если оно есть).
-  //
-  // ── Заезды: бригады НЕ размножаются от объёма ──────────────────────────
-  // Дефект 10.11 (#2138): 96 бригадо-суток без окна дат давали 6 бригад, срок
-  // 96/6 = 16 суток — «вся работа за 16 дней силами 30 человек». При 6 заездах
-  // это невозможно: бригада едет, работает, уезжает и приезжает снова.
-  // Поэтому в режиме заездов число бригад ограничено тем, сколько реально
-  // работает ОДНОВРЕМЕННО: по умолчанию одна на заезд, больше — только если
-  // окно заказчика не оставляет выбора.
+  // ── Заезды: режим и число выездов ────────────────────────────────────────
+  // Число бригад здесь БОЛЬШЕ НЕ СЧИТАЕТСЯ. Раньше тут жила эвристика
+  // (crewDays > 90 → maxCrews), и она давала свой C, пока resolveSchedule —
+  // свой. В итоге в плане было 30 человек по сроку и 15 по составу.
+  // Теперь C = scheduleResolved.crews (ниже), а бригадо-сутки и срок
+  // пересчитываются от него же.
   const visitsMode = String(opts && opts.visit_mode) === 'visits';
   const tripCountOpt = Number(opts && opts.trip_count) > 0 ? Math.round(Number(opts.trip_count)) : 1;
-  let crews = 1;
-  // Заезды главнее окна: даже при жёстком дедлайне нельзя размножать бригады
-  // внутри одного аппарата. Параллелить можно только по аппаратам, и это
-  // решает модель через parallel_group — здесь лишь не даём «виртуальным»
-  // бригадам обнулить срок (дефект D7 верификатора 10.11.2026).
-  if (visitsMode) {
-    crews = 1;
-  } else if (windowDays) {
-    crews = Math.ceil(crewDays / windowDays);
-    crews = Math.min(Math.max(crews, 1), maxCrews);
-  } else {
-    crews = crewDays > 90 ? maxCrews : (crewDays > 30 ? Math.min(2, maxCrews) : 1);
-  }
 
-  // Срок = бригадо-сутки / число бригад. Работы делятся между бригадами
-  // поровну и идут параллельно, поэтому срок падает с ростом числа бригад.
-  const rawDays = crews > 0 ? crewDays / crews : crewDays;
-  const workDays = Math.round(rawDays * 100) / 100;
 
   // ── Состав бригад: роли выводятся из позиций, а не из константы ─────────
   // crew-plan знает про ОЗП (наблюдающий 1:1 к исполнителям ВНУТРИ аппарата),
@@ -1326,6 +1306,63 @@ function normalizeCalcPlan(ai, opts) {
     duplier_ratio: duplierRatio
   });
 
+  // Человеко-часы: если у позиции задано mh (норма дала готовые чел·часы),
+  // берём его. Иначе считаем люди × сутки × часы смены. Без первой ветки
+  // позиция «1800 чел·ч без суток» давала mh = 0, и срок не считался вовсе.
+  const manHours = positions.reduce((s, p) => {
+    const direct = Number(p.mh) || Number(p.labor_hours) || 0;
+    if (direct > 0) return s + direct;
+    return s + (p.people || 0) * (p.days || 0) * (p.shifts || 2) * (p.shift_hours || 12);
+  }, 0);
+
+  // ── Срок по инварианту MH (расчётная модель v2) ──────────────────────────
+  // Бригадо-сутки не видят главного: человеко-часы фиксированы, а срок
+  // зависит от того, сколько людей работает ОДНОВРЕМЕННО и сколько смен.
+  // resolveSchedule считает: work_days = MH / (crew_size × C × h_net × s).
+  // В заездах работы последовательны: параллелить можно только по фронтам
+  // (числу аппаратов), а не «виртуальными» бригадами.
+  const shiftHoursOpt = Number(opts && opts.shift_hours) > 0 ? Number(opts.shift_hours) : 12;
+  // Смены берём из позиций: если модель сказала «2 смены по 12 ч», люди
+  // работают 24 ч/сутки, и срок в 2 раза меньше. Раньше здесь жёстко 1,
+  // и план завышал срок вдвое при 24/7 (дефект найден на сверке сметы).
+  const shiftsFromPositions = positions.reduce((m, p) => Math.max(m, Number(p.shifts) || 0), 0);
+  const shiftsPerDayOpt = Number(opts && opts.shifts_per_day) > 0
+    ? Number(opts.shifts_per_day)
+    : (shiftsFromPositions || 1);
+  // Фронты: сколько бригад может работать ОДНОВРЕМЕННО. Если объекты в
+  // позициях не заданы, `fronts_known: false` — это НЕ «один аппарат»,
+  // а «данных нет». Разница важна: при неизвестных фронтах окно заказчика
+  // может увеличить число бригад, при известном одном аппарате — нет.
+  const objectsMax = positions.reduce((m, p) => Math.max(m, Number(p.objects) || 0), 0);
+  const frontsExplicit = Number(opts && opts.fronts) > 0;
+  const frontsResolved = scheduleModel.resolveFronts({
+    objects: frontsExplicit ? Number(opts.fronts) : (objectsMax || null),
+    manual: Number(opts && opts.fronts_manual) || null
+  });
+  const frontsKnown = frontsExplicit || objectsMax > 0 || Number(opts && opts.fronts_manual) > 0;
+
+  const scheduleResolved = scheduleModel.resolveSchedule({
+    mh: manHours,
+    shift_hours: shiftHoursOpt,
+    shifts_per_day: shiftsPerDayOpt,
+    crew_size: CREW_SIZE,
+    trips: Number(opts && opts.trip_count) || 1,
+    mob_days: Number(opts && opts.mob_days) || 0,
+    road_days: Number(opts && opts.road_days) || 0,
+    window_days: windowDays,
+    fronts: frontsResolved.fronts,
+    fronts_known: frontsKnown,
+    max_crews: maxCrews,
+    available_crews: Number(opts && opts.available_crews) || null,
+    norm_basis: opts && opts.norm_basis
+  });
+
+// Срок от бригадо-суток остаётся как справочный (его сверяет work_days_check),
+  // но считается от того же C, что и состав.
+  const crewsForDays = Math.max(1, Number(scheduleResolved.crews) || 1);
+  const rawDays = crewDays / crewsForDays;
+  const workDays = Math.round(rawDays * 100) / 100;
+
   // Собираем состав по ролям: базовая бригада × число бригад + спецроли.
   const roleTotals = new Map();
   const addRole = (code, role, count, note) => {
@@ -1335,12 +1372,20 @@ function normalizeCalcPlan(ai, opts) {
     roleTotals.set(code, cur);
   };
 
+  // ── Единственный источник числа бригад — resolveSchedule ────────────────
+  // Было: состав считался по `crews` (эвристика бригадо-суток), а срок — по
+  // C из resolveSchedule. На одном плане получалось 30 человек в сроке и
+  // 15 в составе. Теперь C берётся ТОЛЬКО отсюда, и `crews` ниже равен ему.
+  // Единственный источник числа бригад — resolveSchedule. Состав и срок
+  // считаются от одного C, иначе в плане две разные численности.
+  const crews = Math.max(1, Number(scheduleResolved.crews) || 1);
   const basePeak = crewSummary.base_people_peak || (CREW_SIZE - 1);
   // На бригаду: мастер + слесари. Мастеров считаем по master_span.
   const mastersPerCrew = Math.max(1, Math.ceil((basePeak - 1) / masterSpan));
+  const workersPerCrew = Math.max(1, basePeak - mastersPerCrew);
   addRole('itr', 'ИТР (РП)', 1, 'на все бригады');
   addRole('master', 'Мастер / бригадир', mastersPerCrew * crews, '');
-  addRole('worker', 'Слесарь', Math.max(1, basePeak - mastersPerCrew) * crews, '');
+  addRole('worker', 'Слесарь', workersPerCrew * crews, '');
 
   // Спецроли — по признакам опасности, найденным в позициях.
   const specialPeak = new Map();
@@ -1389,50 +1434,6 @@ function normalizeCalcPlan(ai, opts) {
     groups.set(k, Math.round((groups.get(k) || 0) + (Number(p.days) || 0)));
   }
 
-  // Человеко-часы: если у позиции задано mh (норма дала готовые чел·часы),
-  // берём его. Иначе считаем люди × сутки × часы смены. Без первой ветки
-  // позиция «1800 чел·ч без суток» давала mh = 0, и срок не считался вовсе.
-  const manHours = positions.reduce((s, p) => {
-    const direct = Number(p.mh) || Number(p.labor_hours) || 0;
-    if (direct > 0) return s + direct;
-    return s + (p.people || 0) * (p.days || 0) * (p.shifts || 2) * (p.shift_hours || 12);
-  }, 0);
-
-  // ── Срок по инварианту MH (расчётная модель v2) ──────────────────────────
-  // Бригадо-сутки не видят главного: человеко-часы фиксированы, а срок
-  // зависит от того, сколько людей работает ОДНОВРЕМЕННО и сколько смен.
-  // resolveSchedule считает: work_days = MH / (crew_size × C × h_net × s).
-  // В заездах работы последовательны: параллелить можно только по фронтам
-  // (числу аппаратов), а не «виртуальными» бригадами.
-  const shiftHoursOpt = Number(opts && opts.shift_hours) > 0 ? Number(opts.shift_hours) : 12;
-  // Смены берём из позиций: если модель сказала «2 смены по 12 ч», люди
-  // работают 24 ч/сутки, и срок в 2 раза меньше. Раньше здесь жёстко 1,
-  // и план завышал срок вдвое при 24/7 (дефект найден на сверке сметы).
-  const shiftsFromPositions = positions.reduce((m, p) => Math.max(m, Number(p.shifts) || 0), 0);
-  const shiftsPerDayOpt = Number(opts && opts.shifts_per_day) > 0
-    ? Number(opts.shifts_per_day)
-    : (shiftsFromPositions || 1);
-  const frontsResolved = scheduleModel.resolveFronts({
-    objects: Number(opts && opts.fronts) > 0 ? Number(opts.fronts) : (
-      positions.reduce((m, p) => Math.max(m, Number(p.objects) || 0), 0) || null
-    ),
-    manual: Number(opts && opts.fronts_manual) || null
-  });
-
-  const scheduleResolved = scheduleModel.resolveSchedule({
-    mh: manHours,
-    shift_hours: shiftHoursOpt,
-    shifts_per_day: shiftsPerDayOpt,
-    crew_size: CREW_SIZE,
-    trips: Number(opts && opts.trip_count) || 1,
-    mob_days: Number(opts && opts.mob_days) || 0,
-    road_days: Number(opts && opts.road_days) || 0,
-    window_days: windowDays,
-    fronts: frontsResolved.fronts,
-    max_crews: maxCrews,
-    available_crews: Number(opts && opts.available_crews) || null,
-    norm_basis: opts && opts.norm_basis
-  });
 
   const fitsWindow = !!windowDays && workDays <= windowDays;
 

@@ -162,7 +162,15 @@ function planCrews(p) {
 
   // Физический потолок: не больше фронтов и не больше людей.
   // null в min() даёт 0, поэтому ветвимся явно.
+  // Различаем два случая, которые раньше сливались в fronts = 1:
+  //   • фронты ИЗВЕСТНЫ и равны 1 — это один аппарат, вторая бригада туда
+  //     не встанет физически (жаться до 1 обязательно);
+  //   • фронты НЕИЗВЕСТНЫ (`fronts_known: false`) — данных о числе объектов
+  //     нет. Тогда окно заказчика — законное основание поставить несколько
+  //     бригад, и потолок задаёт max_crews, а не выдуманная единица.
+  const frontsKnown = o.fronts_known !== false;
   const C_phys = C_org == null ? fronts : Math.min(fronts, C_org);
+  const C_capForWindow = frontsKnown ? Math.min(fronts, maxCrews) : maxCrews;
 
   const windowDays = Number(o.window_days) > 0 ? Number(o.window_days) : null;
   // Окно под РАБОТУ: вычитаем дорогу и мобилизацию на все заезды.
@@ -180,20 +188,20 @@ function planCrews(p) {
     const crewDays = mh / (crewSize * hNet * s);
     C = crewDays > 90 ? maxCrews : (crewDays > 30 ? Math.min(2, maxCrews) : 1);
   } else {
-    C = Math.max(1, Math.min(C_need, Math.min(C_phys, maxCrews)));
+    C = Math.max(1, Math.min(C_need, C_capForWindow));
   }
-  C = Math.max(1, Math.min(C, Math.min(C_phys, maxCrews)));
+  C = Math.max(1, Math.min(C, C_capForWindow));
 
-  // Дефицит: нужно больше, чем физически можно.
+  // Дефицит: нужно больше, чем можно поставить.
   let shortfall = null;
-  if (C_need != null && C_need > Math.min(C_phys, maxCrews)) {
+  if (C_need != null && C_need > C_capForWindow) {
     shortfall = {
       C_need,
       C_have: C,
       C_phys,
       C_org,
       W_work: W_work != null ? Math.round(W_work * 10) / 10 : null,
-      message: `в окно не влезаем: нужно ${C_need} бр. при потолке ${Math.min(C_phys, maxCrews)} — `
+      message: `в окно не влезаем: нужно ${C_need} бр. при потолке ${C_capForWindow} — `
         + 'сдвиньте срок, добавьте смен или разбейте на этапы'
     };
   }
@@ -253,7 +261,10 @@ function resolveSchedule(p) {
   const crews = planCrews({
     mh, h_net: caps.h_net, crew_size: crewSize, shifts_per_day: effectiveS,
     window_days: o.window_days, trips, mob_days: o.mob_days, road_days: o.road_days,
-    fronts: o.fronts, max_crews: o.max_crews, available_crews: o.available_crews
+    fronts: o.fronts, max_crews: o.max_crews, available_crews: o.available_crews,
+    // Прокидываем признак: если фронты не заданы вообще, окно может
+    // увеличить число бригад. Если заданы (даже 1) — это физический предел.
+    fronts_known: o.fronts_known !== false
   });
 
   const dailyCapacity = crewSize * crews.C * caps.h_net * effectiveS;
