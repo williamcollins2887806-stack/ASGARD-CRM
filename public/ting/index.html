@@ -16,8 +16,8 @@
       if (t === 'light' || t === 'dark') document.documentElement.setAttribute('data-theme', t);
     } catch (e) {}
   </script>
-  <link rel="stylesheet" href="/assets/css/design-tokens.css?v=20.28.509" />
-  <link rel="stylesheet" href="/assets/css/ting.css?v=20.28.509" />
+  <link rel="stylesheet" href="/assets/css/design-tokens.css?v=20.28.512" />
+  <link rel="stylesheet" href="/assets/css/ting.css?v=20.28.512" />
   <style>
     html, body { margin: 0; min-height: 100%; }
     .hidden { display: none !important; }
@@ -48,39 +48,49 @@
       backdrop-filter: blur(12px);
     }
   </style>
-  <script src="/assets/vendor/livekit-client.umd.min.js?v=20.28.509"></script>
-  <script src="/assets/js/ting_icons.js?v=20.28.509"></script>
-  <script src="/assets/js/ting_common.js?v=20.28.509"></script>
-  <script src="/assets/js/ting_media_profile.js?v=20.28.509"></script>
-  <script src="/assets/js/ting_room_core.js?v=20.28.509"></script>
+  <script src="/assets/vendor/livekit-client.umd.min.js?v=20.28.512"></script>
+  <script src="/assets/js/ting_icons.js?v=20.28.512"></script>
+  <script src="/assets/js/ting_common.js?v=20.28.512"></script>
+  <script src="/assets/js/ting_media_profile.js?v=20.28.512"></script>
+  <script src="/assets/js/ting_room_core.js?v=20.28.512"></script>
   <script>
-    /* D-194: установка Тинга как приложение — закрывает запрос «как у TrueConf»
-       без отдельного exe. Кнопку показываем только когда браузер реально готов
-       установить, иначе это мёртвая кнопка. */
+    /* D-196: установка Тинга как приложение — закрывает запрос «как у TrueConf»
+       без отдельного exe.
+       ВАЖНО: скрипт стоит в <head>, а кнопка — в <body>. Раньше
+       getElementById выполнялся сразу и возвращал null, поэтому обработчик
+       beforeinstallprompt не регистрировался НИКОГДА (кнопка мертва молча).
+       Теперь ждём DOMContentLoaded. */
     (function () {
-      var deferred = null;
-      var btn = document.getElementById('btnInstallApp');
-      if (!btn) return;
-      window.addEventListener('beforeinstallprompt', function (e) {
-        e.preventDefault();
-        deferred = e;
-        btn.classList.remove('hidden');
-      });
-      btn.addEventListener('click', function () {
-        if (!deferred) {
-          var hint = document.getElementById('installHint');
-          if (hint) hint.classList.remove('hidden');
-          return;
-        }
-        deferred.prompt();
-        deferred.userChoice.then(function (r) {
-          if (r && r.outcome === 'accepted') btn.classList.add('hidden');
-          deferred = null;
+      function init() {
+        var deferred = null;
+        var btn = document.getElementById('btnInstallApp');
+        if (!btn) return;
+        var hint = document.getElementById('installHint');
+        window.addEventListener('beforeinstallprompt', function (e) {
+          e.preventDefault();
+          deferred = e;
+          btn.classList.remove('hidden');
         });
-      });
-      window.addEventListener('appinstalled', function () {
-        btn.classList.add('hidden');
-      });
+        btn.addEventListener('click', function () {
+          if (!deferred) {
+            if (hint) hint.classList.remove('hidden');
+            return;
+          }
+          deferred.prompt();
+          deferred.userChoice.then(function (r) {
+            if (r && r.outcome === 'accepted') btn.classList.add('hidden');
+            deferred = null;
+          });
+        });
+        window.addEventListener('appinstalled', function () {
+          btn.classList.add('hidden');
+        });
+      }
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', init);
+      } else {
+        init();
+      }
     })();
   </script>
 </head>
@@ -545,14 +555,14 @@
           var opts = {};
           try {
             if (LK.Track && LK.Track.Source) opts.source = LK.Track.Source.Camera;
-            if (LK.VideoPresets) {
-              var layers = [];
-              if (LK.VideoPresets.h180) layers.push(LK.VideoPresets.h180);
-              if (LK.VideoPresets.h360) layers.push(LK.VideoPresets.h360);
-              if (LK.VideoPresets.h720) layers.push(LK.VideoPresets.h720);
-              if (LK.VideoPresets.h1080) layers.push(LK.VideoPresets.h1080);
-              if (LK.VideoPresets.h1440) layers.push(LK.VideoPresets.h1440);
-              if (layers.length) { opts.simulcast = true; opts.videoSimulcastLayers = layers; }
+            /* D-197: слои из общего модуля — иначе ручной список (5 слоёв)
+               перекрывал потолок 720p на пути явного publishTrack. */
+            if (window.TingMediaProfile) {
+              var prof = window.TingMediaProfile.buildPublishProfile(LK, { maxHeight: 720 });
+              if (prof.layers && prof.layers.length) {
+                opts.simulcast = true;
+                opts.videoSimulcastLayers = prof.layers;
+              }
             }
           } catch (_) { /* */ }
           await withTimeout(lkRoom.localParticipant.publishTrack(localTrack, opts), 8000, 'Timeout starting video source');
@@ -973,6 +983,8 @@
 
       document.getElementById('waitLeave').addEventListener('click', async function () {
         if (pollId) clearInterval(pollId);
+        /* D-195: гасим телеметрию и здесь — выход из зала ожидания. */
+        guestStopMetrics();
         stopPreview();
         await publicLeave();
         show('ended');
@@ -1522,6 +1534,8 @@
           if (intentionalLeave) {
             if (timerId) clearInterval(timerId);
             if (chatPollId) clearInterval(chatPollId);
+            /* D-195: телеметрия гасится на любом пути выхода. */
+            guestStopMetrics();
             setPeopleOpen(false);
             setReconnectUi(false);
             show('ended');
@@ -1550,6 +1564,9 @@
           }
           if (timerId) clearInterval(timerId);
           if (chatPollId) clearInterval(chatPollId);
+          /* D-195: реконнект исчерпан — это тоже выход, телеметрию гасим,
+             иначе интервал снимает getStats по мёртвому PC и шлёт нули. */
+          guestStopMetrics();
           setPeopleOpen(false);
           setReconnectUi(false);
           show('ended');
@@ -1822,6 +1839,10 @@
         tingSound('end');
         intentionalLeave = true;
         activeSpeakerId = null;
+        /* D-195: гасим телеметрию до disconnect. Раньше интервал продолжал
+           крутиться по мёртвому PC, копил нули и раз в 60 с отправлял их —
+           это и портило отчёт качества. */
+        guestStopMetrics();
         if (timerId) clearInterval(timerId);
         if (chatPollId) clearInterval(chatPollId);
         if (tokenRefreshTimer) { clearTimeout(tokenRefreshTimer); tokenRefreshTimer = null; }
@@ -1830,6 +1851,7 @@
         setGuestChatOpen(false);
         await publicLeave();
         if (room) await room.disconnect();
+        room = null;
         show('ended');
       });
     })();

@@ -1,4 +1,4 @@
--- V485 down: убрать телеметрию Тинга
+-- V486 down: убрать телеметрию Тинга
 BEGIN;
 
 DROP VIEW IF EXISTS thing_room_quality;

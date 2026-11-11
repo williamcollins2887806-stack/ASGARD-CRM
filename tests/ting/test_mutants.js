@@ -285,6 +285,39 @@ const MUTANTS = [
     file: THING,
     from: 'INSERT INTO thing_client_metrics',
     to: 'INSERT INTO thing_client_metrics_off'
+  },
+  {
+    name: 'нормализатор превращает null в 0 (отчёт врёт)',
+    file: THING,
+    from: `if (v === null || v === undefined || v === '') return null;`,
+    to: ''
+  },
+  {
+    name: 'кнопка установки без ожидания DOM (мертва)',
+    file: 'public/ting/index.html',
+    anchor: 'btnInstallApp',
+    from: "if (document.readyState === 'loading') {",
+    to: "if (false) {"
+  },
+  {
+    name: 'выход у гостя не гасит телеметрию',
+    file: 'public/ting/index.html',
+    anchor: "document.getElementById('btnLeave')",
+    from: 'guestStopMetrics();',
+    to: ''
+  },
+  {
+    name: 'teardownLive в CRM не гасит телеметрию',
+    file: 'public/assets/js/ting_page.js',
+    anchor: 'async function teardownLive',
+    from: 'stopMetricsLoop();',
+    to: ''
+  },
+  {
+    name: 'publishTrack obhodit potolok 720p (ruchnye 5 sloev)',
+    file: 'public/assets/js/ting_page.js',
+    from: 'pubOpts.videoSimulcastLayers = profile.layers;',
+    to: 'pubOpts.videoSimulcastLayers = [LK.VideoPresets.h180, LK.VideoPresets.h1440];'
   }
 ];
 

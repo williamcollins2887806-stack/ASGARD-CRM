@@ -1534,7 +1534,15 @@ module.exports = async function thingRoutes(fastify) {
           const batch = body.samples.slice(0, 20);
           for (const s of batch) {
             if (!s || typeof s !== 'object') continue;
-            const n = (v) => (Number.isFinite(Number(v)) ? Math.round(Number(v)) : null);
+          /* D-195: нормализация метрик. Было `Number.isFinite(Number(v))`,
+             а `Number(null) === 0` — «нет данных» превращалось в ноль.
+             Отчёт потом показывал min_height=0 и avg_fps=7.5 вместо 720/30:
+             телеметрия врала именно там, где должна доказывать фикс «360p». */
+          const n = (v) => {
+            if (v === null || v === undefined || v === '') return null;
+            const x = Number(v);
+            return Number.isFinite(x) ? Math.round(x) : null;
+          };
             await db.query(
               `INSERT INTO thing_client_metrics
                  (room_id, identity, surface, device_class, limiter, codec,

@@ -218,6 +218,94 @@ check('Медиа: сервер реально пишет метрики в та
   assert(/room_id/.test(seg), 'INSERT без room_id');
 });
 
+/* D-195: телеметрия врала нулями. `Number(null) === 0`, поэтому «нет данных»
+   превращалось в 0, и отчёт показывал min_height=0 вместо реального. */
+check('Медиа: нормализатор не превращает null в 0', () => {
+  const i = server.indexOf('const n = (v) => {');
+  assert(i > 0, 'нормализатор метрик не найден');
+  const seg = server.slice(i, i + 320);
+  assert(/v === null \|\| v === undefined/.test(seg),
+    'нормализатор не отсекает null/undefined до Number()');
+  assert(/Number\.isFinite/.test(seg), 'нормализатор не проверяет конечность');
+  /* Поведенческая проверка: извлекаем функцию и прогоняем. */
+  // eslint-disable-next-line no-new-func
+  const n = new Function('v', seg.slice(seg.indexOf('{') + 1, seg.lastIndexOf('}')) + '; return n(v);');
+  assert(n(null) === null, 'n(null) = ' + n(null) + ', ожидалось null');
+  assert(n(undefined) === null, 'n(undefined) = ' + n(undefined) + ', ожидалось null');
+  assert(n(720) === 720, 'n(720) = ' + n(720));
+});
+
+/* D-196: скрипт установки стоит в <head>, кнопка — в <body>. Без ожидания
+   DOMContentLoaded обработчик beforeinstallprompt не регистрировался никогда.
+   Проверяем ПОВЕДЕНИЕ: извлекаем init-функцию и убеждаемся, что при
+   readyState='loading' она подписывается на DOMContentLoaded, а кнопка
+   берётся ВНУТРИ (после DOM), а не в момент выполнения скрипта. */
+check('PWA: кнопка установки инициализируется после DOM', () => {
+  assert(/id="btnInstallApp"/.test(guest), 'нет кнопки установки в разметке');
+  assert(/beforeinstallprompt/.test(guest), 'нет обработчика beforeinstallprompt');
+  const i = guest.indexOf('function init()');
+  assert(i > 0, 'нет init-функции установки');
+  const seg = guest.slice(i, i + 1400);
+  /* getElementById должен быть ВНУТРИ init, а не на верхнем уровне. */
+  assert(/function init\(\)[\s\S]{0,300}getElementById\('btnInstallApp'\)/.test(seg),
+    'кнопка берётся не внутри init — при выполнении в <head> будет null');
+  /* При loading обязан ждать DOMContentLoaded. */
+  assert(/readyState === 'loading'[\s\S]{0,120}addEventListener\('DOMContentLoaded'/.test(guest),
+    'нет ожидания DOMContentLoaded — кнопка мертва в <head>');
+  /* Иначе — немедленный вызов (скрипт мог выполниться после DOM). */
+  assert(/else \{\s*init\(\);\s*\}/.test(guest) || /else init\(\)/.test(guest),
+    'нет ветки немедленной инициализации');
+});
+
+/* D-195: цикл телеметрии должен гаситься на выходе, иначе он крутится по
+   мёртвому PC, копит нули и отправляет их в отчёт. */
+check('Медиа: явный publishTrack не обходит потолок 720p', () => {
+  /* D-197: CRM и гость собирали пять слоёв вручную и передавали их в
+     publishTrack поверх publishDefaults — SDK брал третий кодинг из
+     фактического захвата (до 4K), и потолок 720p терялся. Верификатор
+     нашёл это как предсуществующий дефект. */
+  const crm = fs.readFileSync(path.join(root, 'public/assets/js/ting_page.js'), 'utf8');
+  const guest2 = fs.readFileSync(path.join(root, 'public/ting/index.html'), 'utf8');
+
+  /* Ручных пятислойных списков быть не должно ни в одном месте. */
+  [['crm', crm], ['guest', guest2]].forEach(([name, src]) => {
+    assert(!/videoSimulcastLayers = layers;/.test(src),
+      name + ': остался ручной список слоёв в publishTrack');
+    assert(!/h1440\)\s*layers\.push|h1440\)\s*opts\.videoSimulcastLayers/.test(src),
+      name + ': h1440 всё ещё попадает в публикацию');
+  });
+
+  /* На пути publishTrack должен использоваться общий профиль, а не
+     самодельный список. Проверяем присваивание именно из profile.layers. */
+  const crmPub = crm.indexOf('publishTrack(track, pubOpts)');
+  assert(crmPub > 0, 'CRM: publishTrack не найден');
+  const crmSeg = crm.slice(Math.max(0, crmPub - 1600), crmPub);
+  assert(/pubOpts\.videoSimulcastLayers = profile\.layers;/.test(crmSeg),
+    'CRM: publishTrack не берёт слои из общего профиля');
+
+  const guestPub = guest2.indexOf('publishTrack(localTrack');
+  assert(guestPub > 0, 'гость: publishTrack не найден');
+  const guestSeg = guest2.slice(Math.max(0, guestPub - 1200), guestPub);
+  assert(/opts\.videoSimulcastLayers = prof\.layers;/.test(guestSeg),
+    'гость: publishTrack не берёт слои из общего профиля');
+});
+
+/* D-195: цикл телеметрии должен гаситься на выходе, иначе он крутится по
+   мёртвому PC, копит нули и отправляет их в отчёт. */
+check('Телеметрия: цикл гасится при выходе (CRM и гость)', () => {
+  const crm = fs.readFileSync(path.join(root, 'public/assets/js/ting_page.js'), 'utf8');
+  assert(/async function teardownLive/.test(crm), 'teardownLive не найден');
+  const tIdx = crm.indexOf('async function teardownLive');
+  const tSeg = crm.slice(tIdx, tIdx + 2200);
+  assert(/stopMetricsLoop\(\)/.test(tSeg), 'CRM: teardownLive не гасит телеметрию');
+  assert(/guestStopMetrics\(\)/.test(guest), 'гость: нет остановки телеметрии');
+  /* Проверяем именно обработчик выхода, а не только определение функции. */
+  const lIdx = guest.indexOf("document.getElementById('btnLeave')");
+  assert(lIdx > 0, 'обработчик выхода не найден');
+  const lSeg = guest.slice(lIdx, lIdx + 900);
+  assert(/guestStopMetrics\(\)/.test(lSeg), 'гость: выход не гасит телеметрию');
+});
+
 console.log('\n=== ' + (n + fails.length) + ' checks, ' + n + ' PASS, ' + fails.length + ' FAIL ===');
 if (fails.length) {
   fails.forEach((f) => console.log(' -', f));

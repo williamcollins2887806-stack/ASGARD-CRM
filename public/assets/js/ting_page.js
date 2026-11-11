@@ -1793,15 +1793,15 @@
          setVideoQuality(HIGH) у зрителя выбирать не из чего — отсюда «пиксели»
          на ноуте при хорошем канале. Слои задаём всегда (кроме screen share). */
       try {
-        if (LK.VideoPresets) {
-          const layers = [];
-          if (LK.VideoPresets.h180) layers.push(LK.VideoPresets.h180);
-          if (LK.VideoPresets.h360) layers.push(LK.VideoPresets.h360);
-          if (LK.VideoPresets.h720) layers.push(LK.VideoPresets.h720);
-          if (LK.VideoPresets.h1080) layers.push(LK.VideoPresets.h1080);
-          if (LK.VideoPresets.h1440) layers.push(LK.VideoPresets.h1440);
-          if (layers.length) {
-            pubOpts.videoSimulcastLayers = layers;
+        /* D-197: НЕ перекрываем профиль вручную. Раньше здесь собирались пять
+           слоёв (h180…h1440) и передавались в publishTrack поверх
+           publishDefaults — SDK брал третий кодинг из фактического захвата
+           (до 4K), то есть потолок 720p терялся именно на этом пути.
+           Теперь слои берём из общего модуля: те же три, что и в defaults. */
+        if (window.TingMediaProfile) {
+          const profile = window.TingMediaProfile.buildPublishProfile(LK, { maxHeight: 720 });
+          if (profile.layers && profile.layers.length) {
+            pubOpts.videoSimulcastLayers = profile.layers;
             pubOpts.simulcast = true;
           }
         }
@@ -4025,6 +4025,9 @@
     stopLiveLoop();
     stopCrmLobbyPoll();
     stopPreview();
+    /* D-195: гасим телеметрию здесь, а не только самопроверкой в тике —
+       иначе после выхода интервал ещё крутился по мёртвому PC. */
+    stopMetricsLoop();
     clearRemoteAudio();
     if (state.timerId) { clearInterval(state.timerId); state.timerId = null; }
     /* Медиа и session рвём сразу — сеть /end|/leave параллельно, UI не ждёт */
