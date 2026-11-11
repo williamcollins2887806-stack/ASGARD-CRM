@@ -311,6 +311,49 @@ def run_checks(base_dir, expect_version=None, deploy_gate=False, mojibake_all=Fa
         rep.info("все критические ассеты есть на диске",
                  "SKIP: нет каталога %s (проверяется только в дереве репозитория)" % assets_dir)
 
+    # Класс D-190: «модалка стала старой».
+    #
+    # Гейт выше проверяет, что все ?v= РАВНЫ версии оболочки. Но он молчит в
+    # другом, более частом случае: файл поправили, версию НЕ подняли — значит
+    # ?v= остался прежним, и браузер отдаст старый файл из кэша (JS/CSS не идут
+    # через Service Worker, nginx отдаёт их как immutable). Именно так правка
+    # модалки письма ОБС могла «не доехать» до пользователя.
+    #
+    # Проверка: если ассет изменён относительно базового коммита (.last-verified
+    # либо HEAD) — его ?v= ОБЯЗАН отличаться от версии в базовом коммите.
+    if os.path.isdir(os.path.join(base_dir, ".git")):
+        lv_path2 = os.path.join(base_dir, "tests", "reports", ".last-verified")
+        lv2 = io.open(lv_path2, encoding="utf-8").read().strip() if os.path.exists(lv_path2) else ""
+        base_ref = lv2 or "HEAD"
+        # База должна существовать в истории, иначе git show упадёт.
+        exists = subprocess.run(["git", "cat-file", "-e", base_ref],
+                                cwd=base_dir, capture_output=True).returncode == 0
+        if exists:
+            changed = set()
+            for args in (["diff", "--name-only", base_ref],
+                         ["diff", "--name-only", "--cached", base_ref]):
+                out = subprocess.run(["git"] + args, cwd=base_dir, capture_output=True,
+                                     encoding="utf-8", errors="replace").stdout
+                changed.update(p.strip() for p in out.splitlines() if p.strip())
+            tracked_assets = [p for p in changed
+                              if p.startswith("public/assets/") and p.endswith((".js", ".css"))]
+            if tracked_assets:
+                old = subprocess.run(["git", "show", "%s:public/index.html" % base_ref],
+                                     cwd=base_dir, capture_output=True, encoding="utf-8",
+                                     errors="replace").stdout
+                stale = []
+                for p in tracked_assets:
+                    rel = p[len("public/"):]
+                    m = re.search(r'(?:src|href)="%s\?v=([0-9A-Za-z.\-]+)"' % re.escape(rel), html)
+                    if not m:
+                        continue  # не подключён в index.html — кэш оболочки ни при чём
+                    mo = re.search(r'(?:src|href)="%s\?v=([0-9A-Za-z.\-]+)"' % re.escape(rel), old)
+                    # Тот же ?v= при изменённом содержимом = старый файл из кэша.
+                    if mo and mo.group(1) == m.group(1):
+                        stale.append(rel)
+                rep.check(not stale, "изменённые ассеты получили новый ?v=",
+                          "не подняли версию: %s" % (", ".join(sorted(stale)[:5]) if stale else "нет"))
+
     if deploy_gate:
         head = subprocess.run(["git", "rev-parse", "HEAD"], cwd=base_dir, capture_output=True,
                               encoding="utf-8", errors="replace").stdout.strip()

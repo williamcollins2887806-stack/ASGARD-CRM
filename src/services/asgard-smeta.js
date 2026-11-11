@@ -21,6 +21,9 @@ const DEFAULT_PARAMS = {
   apparatus_count: 0,
   zone_count: 0,
   permit_count: 0,
+  // V488: «Аппаратов с обвязкой». Формула `loss_person_shifts` умножает это
+  // на hookup_h; без ключа читался undefined и часть «обвязка» всегда давала 0.
+  hookup_count: 0,
   move_intra_h: 0.67,
   reloc_inter_zone_h: 4,
   permit_setup_h: 1,
@@ -62,6 +65,7 @@ const PARAM_LABELS = [
   { key: 'move_intra_h', label: 'Переход между аппаратами', unit: 'ч', note: 'на переход' },
   { key: 'reloc_inter_zone_h', label: 'Перевоз между цехами', unit: 'ч', note: 'на переход' },
   { key: 'permit_setup_h', label: 'Оформление наряда', unit: 'ч/аппарат', note: '' },
+  { key: 'hookup_count', label: 'Аппаратов с обвязкой', unit: 'шт', note: '0 = не учитывать' },
   { key: 'hookup_h', label: 'Подключение обвязки', unit: 'ч/аппарат', note: '' },
   { key: 'rate_worker', label: 'Ставка рабочего', unit: '₽/смена', note: '' },
   { key: 'rate_master', label: 'Ставка мастера', unit: '₽/смена', note: '' },
