@@ -41,6 +41,17 @@
 
         </activity>
 
+        <!-- Зонд звука: отвечает, отдаёт ли UVC-микрофон данные через нативный
+             AudioRecord. Запуск: adb shell am start
+             -n com.asgard.ting.room/.AudioProbeActivity -->
+        <activity
+            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|locale|smallestScreenSize|screenLayout|uiMode|navigation|density"
+            android:name=".AudioProbeActivity"
+            android:label="Зонд микрофона"
+            android:theme="@style/AppTheme.NoActionBarLaunch"
+            android:exported="true"
+            android:screenOrientation="landscape" />
+
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"
