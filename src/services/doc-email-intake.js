@@ -838,11 +838,26 @@ async function intakeOne(db, { email, attachment, text, userId = null, dryRun = 
     }
     // Ищем поставщика по ИНН — чтобы в заявке/модалке были реквизиты для платёжки.
     let supplierId = null;
+    // V483b: ИНН найденной карточки. Нужен, чтобы в заявке/реестре ИНН был всегда,
+    // даже если OCR его в счёте не увидел. Раньше копировались БИК/р-с/банк, а ИНН
+    // — нет: на проде 70 заявок с найденной карточкой имели пустой counterparty_inn.
+    let cardInn = null;
+    // V483b: КАНОНИЧЕСКОЕ имя из карточки CRM. Заказчик 11.11.2026: «название
+    // ооо интернет решения и интернет решения ооо — у нас в СРМ их несколько».
+    // Причина: OCR отдаёт имя как на бумаге («Интернет Решения, ООО»), и оно
+    // писалось в реестр как есть, хотя карточка найдена. Теперь имя берём из
+    // карточки — один контрагент = одно написание во всём реестре.
+    let cardName = null;
     if (parsed.inn) {
       try {
-        const s = await db.query(`SELECT id FROM suppliers WHERE inn=$1 AND deleted_at IS NULL LIMIT 1`, [parsed.inn]);
+        const s = await db.query(
+          `SELECT id, name, inn FROM suppliers WHERE inn=$1 AND deleted_at IS NULL ORDER BY id LIMIT 1`,
+          [parsed.inn]);
         if (s.rows[0]) {
-          supplierId = s.rows[0].id;          // Если в карточке нет банковских реквизитов — заполняем из распознанного
+          supplierId = s.rows[0].id;
+          cardName = String(s.rows[0].name || '').trim() || null;
+          cardInn = String(s.rows[0].inn || '').replace(/\D/g, '') || null;
+          // Если в карточке нет банковских реквизитов — заполняем из распознанного
           // счёта (иначе бухгалтеру нечего копировать в платёжку).
           const patch = [];
           const pv = [];
@@ -867,17 +882,32 @@ async function intakeOne(db, { email, attachment, text, userId = null, dryRun = 
     let supplierMatchNote = null;
     if (!supplierId && parsed.counterparty_name) {
       try {
+        // V483b (жалоба 11.11.2026): здесь была regexp, которая снимала только
+        // ПРЕФИКС «ООО » и кавычки. Написание «Интернет Решения, ООО» (форма
+        // 1С/ЭДО, суффикс) она не понимала → карточка не находилась, хотя она
+        // есть. Теперь сравнение через единый normOrgName: он снимает и префикс,
+        // и СУФФИКС организационной формы, и кавычки, и разницу «Общество с
+        // ограниченной ответственностью» / «ООО».
         const byName = await db.query(
-          `SELECT id, inn FROM suppliers
-            WHERE deleted_at IS NULL
-              AND lower(regexp_replace(trim(name), '^ооо\\s+|^"|"+$', '', 'gi'))
-                = lower(regexp_replace(trim($1), '^ооо\\s+|^"|"+$', '', 'gi'))
-            LIMIT 1`, [parsed.counterparty_name]);
-        if (byName.rows[0]) {
-          supplierId = byName.rows[0].id;
-          const supInn = byName.rows[0].inn;
-          if (supInn && parsed.inn && String(supInn) !== String(parsed.inn)) {
-            supplierMatchNote = `supplier_inn_mismatch: в счёте ${parsed.inn}, в справочнике ${supInn}`;
+          `SELECT id, name, inn FROM suppliers WHERE deleted_at IS NULL AND coalesce(name,'') <> '' LIMIT 2000`);
+        const want = dedupMod.normOrgName(parsed.counterparty_name);
+        if (want && want.length >= 3) {
+          let match = byName.rows.filter((r) => dedupMod.normOrgName(r.name) === want);
+          if (match.length > 1 && parsed.inn) {
+            // Имён-тёзок несколько — берём только при совпадении ИНН, иначе
+            // привяжем чужую карточку и в платёжку уйдут чужие реквизиты.
+            const exact = match.filter(
+              (r) => String(r.inn || '').replace(/\D/g, '') === String(parsed.inn));
+            match = exact;
+          }
+          if (match.length === 1) {
+            supplierId = match[0].id;
+            cardName = String(match[0].name || '').trim() || null;
+            cardInn = String(match[0].inn || '').replace(/\D/g, '') || null;
+            const supInn = match[0].inn;
+            if (supInn && parsed.inn && String(supInn) !== String(parsed.inn)) {
+              supplierMatchNote = `supplier_inn_mismatch: в счёте ${parsed.inn}, в справочнике ${supInn}`;
+            }
           }
         }
       } catch (_) { /* не критично */ }
@@ -885,6 +915,37 @@ async function intakeOne(db, { email, attachment, text, userId = null, dryRun = 
     if (supplierMatchNote) {
       try { parsed._warnings = [...(parsed._warnings || []), supplierMatchNote]; } catch (_) {}
       console.warn('[intake] ' + supplierMatchNote + ' (счёт ' + (parsed.invoice_number || '?') + ')');
+    }
+
+    // V483b: КАНОНИЧЕСКИЕ имя и ИНН из карточки CRM.
+    //
+    // Заказчик 11.11.2026: «когда создаём через почту счёт, он берёт контрагента
+    // не из CRM — например, Интернет Решения: у нас в CRM их несколько с одним
+    // ИНН, но название «ооо интернет решения» и «интернет решения ооо»».
+    //
+    // Причина была не в поиске (карточка id=28 находилась у всех 76 счетов), а в
+    // записи: имя из OCR писалось в реестр КАК ЕСТЬ — отсюда три написания
+    // одного контрагента в одной таблице. Плюс ИНН из карточки не копировался:
+    // 70 заявок имели пустой counterparty_inn при найденной карточке с ИНН.
+    //
+    // Теперь: карточка найдена → имя и ИНН берём ИЗ НЕЁ. Имя из счёта сохраняем
+    // в parse_warnings только если реально расходилось — чтобы факт не потерялся.
+    if (cardName) {
+      const fromOcr = String(parsed.counterparty_name || '').trim();
+      if (fromOcr && fromOcr !== cardName) {
+        try {
+          parsed._warnings = [...(parsed._warnings || []),
+            `counterparty_name_from_card: в счёте «${fromOcr}», в карточке «${cardName}»`];
+        } catch (_) {}
+      }
+      parsed.counterparty_name = cardName;
+    }
+    if (cardInn && !parsed.inn) {
+      parsed.inn = cardInn;
+      try {
+        parsed._warnings = [...(parsed._warnings || []),
+          'inn_from_card: в счёте ИНН не распознан, взят из карточки контрагента'];
+      } catch (_) {}
     }
 
     // D-344 (FAIL верификатора 22.10.2026, п.7): НАШ СОБСТВЕННЫЙ ИНН не может быть
@@ -933,7 +994,12 @@ async function intakeOne(db, { email, attachment, text, userId = null, dryRun = 
              $26,$10,$10,$10,NULL,$11,
              $12,$13,$14,$15::date,$16,$17::date,
              $18,$19,$20,$21,$22,$23,$24::jsonb,$25) RETURNING id`,
-    [parsed.invoice_number, parsed.invoice_date, cpName, parsed.inn, supplierId,
+    // V483b: имя и ИНН берём КАНОНИЧЕСКИЕ (из карточки CRM), если она найдена.
+    // `cpName` посчитан РАНЬШЕ поиска поставщика, поэтому здесь его нельзя
+    // использовать — он содержал имя из OCR как есть, и в реестр снова попало бы
+    // «Интернет Решения, ООО» при карточке «ООО "ИНТЕРНЕТ РЕШЕНИЯ"».
+    [parsed.invoice_number, parsed.invoice_date,
+      tidyOrgName(parsed.counterparty_name || cpName), parsed.inn, supplierId,
       gross, net, vat, parsed.has_vat !== false,
       senderUserId, lowConfidence
         ? 'Требует ручной проверки (не распознаны сумма или контрагент)'
@@ -1175,7 +1241,15 @@ async function intakeOne(db, { email, attachment, text, userId = null, dryRun = 
          VALUES ('awaiting_dir','awaiting_dir',$1,$2,$3,true,$4,$5,$6::date,'other',$7,$8,$9,$10,
                  $11,$12,$13,$14::date,$15,$16,$17,$18,$19::date,$20,$21,$22,
                  $23::jsonb,$24,$25,$26,$27) RETURNING id`,
-        [parsed.counterparty_name, parsed._supplierId || null, parsed.amount_gross, senderUserId || 1,
+        // V483b: имя поставщика в заявке — тоже каноническое.
+    // Раньше `payment_invoices.supplier_name` писался из OCR как есть и больше
+    // никогда не обновлялся, поэтому в реестре стояло «ООО "ИНТЕРНЕТ РЕШЕНИЯ"»
+    // (как в карточке), а в заявке — «Интернет Решения, ООО». Бухгалтерия видела
+    // два разных контрагента для одного счёта.
+    //
+    // `parsed.counterparty_name` уже заменён на имя из карточки выше (блок
+    // V483b «КАНОНИЧЕСКИЕ имя и ИНН»), поэтому здесь достаточно его и брать.
+    [parsed.counterparty_name, parsed._supplierId || null, parsed.amount_gross, senderUserId || 1,
           timing, dueDate, basis, docId, emailId, attachmentId,
           intent.intent !== 'none' ? intent.intent : null,
           intent.matched || null,
