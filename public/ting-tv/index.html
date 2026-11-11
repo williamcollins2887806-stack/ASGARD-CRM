@@ -5,15 +5,15 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="ting-tv" content="1" />
   <title>Тинг Переговорка</title>
-  <link rel="icon" type="image/svg+xml" href="/assets/img/ting-logo.svg?v=20.28.509" />
-  <link rel="stylesheet" href="/assets/css/design-tokens.css?v=20.28.509" />
-  <link rel="stylesheet" href="/assets/css/ting.css?v=20.28.509" />
-  <link rel="stylesheet" href="/assets/css/ting-tv.css?v=20.28.509" />
-  <script src="/assets/vendor/livekit-client.umd.min.js?v=20.28.509"></script>
-  <script src="/assets/js/ting_icons.js?v=20.28.509"></script>
-  <script src="/assets/js/ting_common.js?v=20.28.509"></script>
-  <script src="/assets/js/ting_media_profile.js?v=20.28.509"></script>
-  <script src="/assets/js/ting_room_core.js?v=20.28.509"></script>
+  <link rel="icon" type="image/svg+xml" href="/assets/img/ting-logo.svg?v=20.28.514" />
+  <link rel="stylesheet" href="/assets/css/design-tokens.css?v=20.28.514" />
+  <link rel="stylesheet" href="/assets/css/ting.css?v=20.28.514" />
+  <link rel="stylesheet" href="/assets/css/ting-tv.css?v=20.28.514" />
+  <script src="/assets/vendor/livekit-client.umd.min.js?v=20.28.514"></script>
+  <script src="/assets/js/ting_icons.js?v=20.28.514"></script>
+  <script src="/assets/js/ting_common.js?v=20.28.514"></script>
+  <script src="/assets/js/ting_media_profile.js?v=20.28.514"></script>
+  <script src="/assets/js/ting_room_core.js?v=20.28.514"></script>
 </head>
 <body class="ting-tv">
   <div class="ttv-screen" id="startView">
@@ -447,10 +447,11 @@
     var out = [];
     try {
       if (LK.VideoPresets) {
-        /* D-184: потолок 720p. 4K/1440 отдавали 8 Мбит/с вверх и душили
-           собственный приём на Wi-Fi — это и был «140p у собеседника».
-           1080p допустим как запас, но публикуем не выше h720 по умолчанию. */
-        ['h720', 'h1080'].forEach(function (k) {
+        /* D-197d: РОВНО 720p, без резерва 1080p. Резерв пробивал потолок:
+           SDK строит верхний simulcast-слой из ФАКТИЧЕСКОГО захвата, поэтому
+           при захвате 1080p публиковалось 1920x1080 при битрейте 720p —
+           тот же дефект «мыло + limiter=cpu», что и 4K. */
+        ['h720'].forEach(function (k) {
           if (LK.VideoPresets[k] && LK.VideoPresets[k].resolution) out.push(LK.VideoPresets[k]);
         });
       }
@@ -838,8 +839,9 @@
     try {
       var LK = window.LivekitClient;
       if (LK && LK.VideoPresets) {
+        /* D-197d: только 720p. Резерв h1080 пробивал потолок — верхний слой
+           строится из фактического захвата, а не из списка слоёв. */
         if (LK.VideoPresets.h720) return LK.VideoPresets.h720.resolution;
-        if (LK.VideoPresets.h1080) return LK.VideoPresets.h1080.resolution;
       }
     } catch (_) { /* */ }
     return { width: 1280, height: 720 };

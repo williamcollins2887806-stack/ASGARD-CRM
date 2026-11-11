@@ -259,54 +259,99 @@ check('PWA: кнопка установки инициализируется п�
 
 /* D-195: цикл телеметрии должен гаситься на выходе, иначе он крутится по
    мёртвому PC, копит нули и отправляет их в отчёт. */
-check('Медиа: потолок 720p ограничен В ЗАХВАТЕ (главное)', () => {
-  /* D-197b: SDK строит верхний simulcast-слой из ФАКТИЧЕСКОГО захвата
-     (`new VideoPreset(width, height, videoEncoding)`), а список пресетов
-     обрезается до трёх rid с scaleResolutionDownBy=1 у третьего.
-     Значит качество ограничивает ЗАХВАТ, а не длина списка слоёв.
-     Раньше CRM просил 4K первым — публиковался кадр 4K при битрейте 720p. */
+check('Медиа: потолок 720p — ИНВАРИАНТ захвата, а не список цифр', () => {
+  /* D-197e: прошлая версия проверяла чёрный список {3840,2560,1920} и
+     пропускала 7680x4320 или 4096x2304. Верификатор показал это мутацией.
+     Теперь инвариант: КАЖДОЕ значение ideal в constraints камеры
+     не превышает 1280 по ширине и 720 по высоте — на всех поверхностях.
+     SDK строит верхний simulcast-слой из ФАКТИЧЕСКОГО захвата
+     (`new VideoPreset(width, height, videoEncoding)`), поэтому потолок
+     держится ровно настолько, насколько ограничен захват. */
   const crm = fs.readFileSync(path.join(root, 'public/assets/js/ting_page.js'), 'utf8');
   const guest2 = fs.readFileSync(path.join(root, 'public/ting/index.html'), 'utf8');
   const tv2 = fs.readFileSync(path.join(root, 'public/ting-tv/index.html'), 'utf8');
 
-  /* В CRM в constraints камеры не должно быть 3840/2160/2560/1440. */
-  const ci = crm.indexOf('cameraConstraintsList');
-  assert(ci > 0, 'cameraConstraintsList не найден');
-  const cSeg = crm.slice(ci, ci + 1600);
-  assert(!/ideal:\s*3840|ideal:\s*2560/.test(cSeg),
-    'CRM: захват всё ещё просит 4K/1440 — потолок не работает');
-  assert(/ideal:\s*1280[\s\S]{0,40}ideal:\s*720/.test(cSeg),
-    'CRM: захват не ограничен 720p');
+  const MAX_W = 1280;
+  const MAX_H = 720;
 
-  /* У гостя десктоп не должен просить h2160/h1080 в захвате. */
-  assert(!/h2160 \|\| LK\.VideoPresets\.h1080/.test(guest2),
-    'гость: десктопный захват всё ещё просит 4K/1080p');
-  assert(!/h2160 \|\| LKp\.VideoPresets\.h1080/.test(guest2),
-    'гость: захват всё ещё просит 4K/1080p');
+  /**
+   * Найти все объекты-constraints камеры и проверить каждый ideal.
+   * Ищем пары `width: { ideal: N }` / `height: { ideal: N }` в пределах
+   * одного объекта `{ ... }` — так ловятся ЛЮБЫЕ значения, не только известные.
+   */
+  function checkCaptureInvariant(name, src) {
+    const candidates = [];
+    /* Все одиночные ideal-ширины и ideal-высоты в файле. Камера/скриншот
+       различаем по контексту: ScreenShare не ограничиваем. */
+    const re = /width:\s*\{\s*ideal:\s*(\d+)\s*\}|height:\s*\{\s*ideal:\s*(\d+)\s*\}/g;
+    let m;
+    while ((m = re.exec(src)) !== null) {
+      const value = Number(m[1] || m[2]);
+      const isWidth = !!m[1];
+      /* Контекст: 220 символов до — если рядом ScreenShare/getDisplayMedia,
+         это демонстрация экрана, её потолок другой. */
+      const ctx = src.slice(Math.max(0, m.index - 220), m.index + 80);
+      if (/ScreenShare|DisplayMedia|screenShare/i.test(ctx)) continue;
+      candidates.push({ value, isWidth, ctx: ctx.slice(-90) });
+    }
+    candidates.forEach((c) => {
+      if (c.isWidth && c.value > MAX_W) {
+        throw new Error(name + ': ideal width ' + c.value + ' > ' + MAX_W + ' — потолок захвата нарушен');
+      }
+      if (!c.isWidth && c.value > MAX_H) {
+        throw new Error(name + ': ideal height ' + c.value + ' > ' + MAX_H + ' — потолок захвата нарушен');
+      }
+    });
+    return candidates.length;
+  }
 
-  /* ТВ уже был ограничен — проверяем, что не сломали. */
-  assert(/CAPTURE_RES[\s\S]{0,400}h720/.test(tv2), 'ТВ: потолок захвата 720p потерян');
+  const crmCount = checkCaptureInvariant('CRM', crm);
+  const guestCount = checkCaptureInvariant('гость', guest2);
+  const tvCount = checkCaptureInvariant('ТВ', tv2);
+  assert(crmCount > 0, 'CRM: constraints камеры не найдены — проверка ничего не проверила');
+  assert(guestCount > 0, 'гость: constraints камеры не найдены');
+  /* ТВ использует CAPTURE_RES вместо литералов — проверяем отдельно ниже. */
 
-  /* D-197c: ВСЕ точки getUserMedia должны быть ограничены, включая превью.
-     Превью-трек публикуется как есть (HD-гейт пропускает >=720p), поэтому
-     «4K в превью» = верхний слой 4K. Раньше тест смотрел только
-     cameraConstraintsList и пропускал ensurePreview/startPreview. */
-  const captures = [
-    ['CRM visibility', crm, /getUserMedia\(\{ video: hd, audio: true \}\)/],
-    ['гость ensurePreview', guest2, /var hdVideo = \{ facingMode/]
-  ];
-  [['CRM', crm], ['гость', guest2]].forEach(([name, src]) => {
-    /* Ни в одном объекте-constraint не должно остаться 3840/2160/2560/1440. */
-    const bad = src.match(/ideal:\s*(3840|2560|1920)\b/g) || [];
-    const badH = src.match(/height:\s*\{\s*ideal:\s*(2160|1440|1080)\s*\}/g) || [];
-    assert(bad.length === 0, name + ': в захвате остался 4K/1440 (' + bad.join(', ') + ')');
-    assert(badH.length === 0, name + ': в захвате осталась высота 2160/1440/1080 (' + badH.join(', ') + ')');
-  });
+  /* ТВ: CAPTURE_RES и cameraPresets не должны содержать 1080p/4K.
+     Комментарии вырезаем: в них допустимо объяснять, ПОЧЕМУ резерв убран. */
+  const stripComments = (s) => s
+    .replace(/\/\*[\s\S]*?\*\//g, ' ')
+    .replace(/(^|[^:])\/\/[^\n]*/g, '$1');
 
-  /* HD-гейт должен остаться: он не даёт опубликовать суб-HD превью. */
-  assert(/function trackIsHd/.test(guest2), 'гость: HD-гейт удалён');
-  assert(/trackIsHd\(videoTrack\)/.test(guest2), 'гость: HD-гейт не применяется');
-  assert(/function previewTrackIsHd/.test(crm), 'CRM: HD-гейт удалён');
+  const capIdx = tv2.indexOf('var CAPTURE_RES');
+  assert(capIdx > 0, 'ТВ: CAPTURE_RES не найден');
+  const capSeg = stripComments(tv2.slice(capIdx, capIdx + 500));
+  assert(!/h1080|h1440|h2160/.test(capSeg),
+    'ТВ: CAPTURE_RES содержит резерв 1080p/4K — потолок пробивается');
+  const presetsIdx = tv2.indexOf('function cameraPresets');
+  assert(presetsIdx > 0, 'ТВ: cameraPresets не найден');
+  const presetsSeg = stripComments(tv2.slice(presetsIdx, presetsIdx + 700));
+  assert(!/h1080|h1440|h2160/.test(presetsSeg),
+    'ТВ: cameraPresets содержит 1080p/4K — резервный пресет пробьёт потолок');
+
+  /* HD-гейты должны иметь ПОРОГ, а не просто существовать. */
+  assert(/width\) \|\| 0\) >= 1280/.test(guest2), 'гость: HD-гейт без порога 1280');
+  assert(/height\) \|\| 0\) >= 720/.test(guest2), 'гость: HD-гейт без порога 720');
+  assert(/w >= 1280/.test(crm), 'CRM: HD-гейт без порога 1280');
+  assert(/h >= 720/.test(crm), 'CRM: HD-гейт без порога 720');
+
+  /* Пресет публикации у гостя и CRM тоже не должен подниматься выше 720p:
+     захват ограничен, но если пресет потребует 1080p, браузер может отдать
+     больше при «ideal» (он не гарантирует точное значение). */
+  const guestPreset = guest2.slice(
+    guest2.indexOf('var presetOpts = {}'),
+    guest2.indexOf('var presetOpts = {}') + 900
+  );
+  assert(guestPreset.length > 100, 'гость: блок пресета публикации не найден');
+  assert(!/h2160|h1440|h1080/.test(stripComments(guestPreset)),
+    'гость: пресет публикации просит 1080p/4K');
+
+  const crmPreset = crm.slice(
+    crm.indexOf('function cameraConstraintsList'),
+    crm.indexOf('function cameraConstraintsList') + 1800
+  );
+  assert(!/h2160|h1440|h1080/.test(stripComments(crmPreset)),
+    'CRM: constraints просят 1080p/4K');
 });
 
 /* D-195: цикл телеметрии должен гаситься на выходе, иначе он крутится по
