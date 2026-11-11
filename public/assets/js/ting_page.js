@@ -1282,7 +1282,9 @@
           /* D-197c: потолок захвата 720p. Даже если превью не публикуется,
              ограничение держим единым — иначе одна ветка снова потянет 4K,
              а верхний simulcast-слой строится из ФАКТИЧЕСКОГО захвата. */
-          const hd = { width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 } };
+          /* D-197f: `max` обязателен — без него `ideal` это пожелание, и на
+             камере без режима 720p браузер отдаст 1080p, вернув дефект. */
+          const hd = { width: { ideal: 1280, max: 1280 }, height: { ideal: 720, max: 720 }, frameRate: { ideal: 30 } };
           try {
             stream = await navigator.mediaDevices.getUserMedia({ video: hd, audio: true });
           } catch (_) {
@@ -1572,10 +1574,12 @@
        scaleResolutionDownBy = 1. Поэтому «4K первым» давало публикацию 4K
        при битрейте 720p — мыло и limiter=cpu, ровно жалоба «140–360p».
        Ограничивать надо ЗАХВАТ. */
+    /* D-197f: `max` рядом с `ideal` — иначе камера без режима 720p отдаст
+       больше, и верхний simulcast-слой снова будет 1080p при битрейте 720p. */
     const steps = [
-      { width: { ideal: 1280 }, height: { ideal: 720 } },
-      { width: { ideal: 960 }, height: { ideal: 540 } },
-      { width: { ideal: 640 }, height: { ideal: 360 } }
+      { width: { ideal: 1280, max: 1280 }, height: { ideal: 720, max: 720 } },
+      { width: { ideal: 960, max: 960 }, height: { ideal: 540, max: 540 } },
+      { width: { ideal: 640, max: 640 }, height: { ideal: 360, max: 360 } }
     ];
     if (bestId) {
       steps.forEach((s) => {
@@ -1588,7 +1592,8 @@
     list.push({ frameRate: { ideal: 30 } });
     list.push(true);
     /* VGA — только fallback. */
-    list.push({ width: { ideal: 640 }, height: { ideal: 480 } });
+    /* VGA — только fallback (тоже с max, чтобы не выпрыгнуть выше). */
+    list.push({ width: { ideal: 640, max: 640 }, height: { ideal: 480, max: 480 } });
     usable.forEach((c) => {
       if (!c.deviceId || c.deviceId === bestId) return;
       list.push({ deviceId: { ideal: c.deviceId } });

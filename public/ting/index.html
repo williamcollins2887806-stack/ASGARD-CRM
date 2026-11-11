@@ -16,8 +16,8 @@
       if (t === 'light' || t === 'dark') document.documentElement.setAttribute('data-theme', t);
     } catch (e) {}
   </script>
-  <link rel="stylesheet" href="/assets/css/design-tokens.css?v=20.28.513" />
-  <link rel="stylesheet" href="/assets/css/ting.css?v=20.28.513" />
+  <link rel="stylesheet" href="/assets/css/design-tokens.css?v=20.28.515" />
+  <link rel="stylesheet" href="/assets/css/ting.css?v=20.28.515" />
   <style>
     html, body { margin: 0; min-height: 100%; }
     .hidden { display: none !important; }
@@ -48,11 +48,11 @@
       backdrop-filter: blur(12px);
     }
   </style>
-  <script src="/assets/vendor/livekit-client.umd.min.js?v=20.28.513"></script>
-  <script src="/assets/js/ting_icons.js?v=20.28.513"></script>
-  <script src="/assets/js/ting_common.js?v=20.28.513"></script>
-  <script src="/assets/js/ting_media_profile.js?v=20.28.513"></script>
-  <script src="/assets/js/ting_room_core.js?v=20.28.513"></script>
+  <script src="/assets/vendor/livekit-client.umd.min.js?v=20.28.515"></script>
+  <script src="/assets/js/ting_icons.js?v=20.28.515"></script>
+  <script src="/assets/js/ting_common.js?v=20.28.515"></script>
+  <script src="/assets/js/ting_media_profile.js?v=20.28.515"></script>
+  <script src="/assets/js/ting_room_core.js?v=20.28.515"></script>
   <script>
     /* D-196: установка Тинга как приложение — закрывает запрос «как у TrueConf»
        без отдельного exe.
@@ -648,11 +648,15 @@
            лобби публикуется как есть (HD-гейт пропускает ≥720p), поэтому
            «4K в превью» = верхний simulcast-слой 4K при битрейте 720p,
            то есть ровно «мыло» + limiter=cpu. Раньше здесь стояло 3840x2160. */
-        var hdVideo = { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 } };
+        /* D-197f: `max` обязателен. Без него `ideal` — только пожелание, и на
+           камере без режима 720p браузер вправе отдать 1080p, вернув дефект
+           «1080p при битрейте 720p». `max` не даёт OverconstrainedError
+           (в отличие от `exact`): драйвер просто отдаст уменьшенный кадр. */
+        var hdVideo = { facingMode: 'user', width: { ideal: 1280, max: 1280 }, height: { ideal: 720, max: 720 }, frameRate: { ideal: 30 } };
         try {
           var uaM = navigator.userAgent || '';
           if (/Android|iPhone|iPad|Mobile/i.test(uaM)) {
-            hdVideo = { facingMode: 'user', width: { ideal: 960 }, height: { ideal: 540 }, frameRate: { ideal: 30 } };
+            hdVideo = { facingMode: 'user', width: { ideal: 960, max: 960 }, height: { ideal: 540, max: 540 }, frameRate: { ideal: 30 } };
           }
         } catch (_) { /* */ }
           previewStream = await navigator.mediaDevices.getUserMedia({

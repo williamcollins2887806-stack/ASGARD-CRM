@@ -283,7 +283,7 @@ check('Медиа: потолок 720p — ИНВАРИАНТ захвата, а
     const candidates = [];
     /* Все одиночные ideal-ширины и ideal-высоты в файле. Камера/скриншот
        различаем по контексту: ScreenShare не ограничиваем. */
-    const re = /width:\s*\{\s*ideal:\s*(\d+)\s*\}|height:\s*\{\s*ideal:\s*(\d+)\s*\}/g;
+    const re = /width:\s*\{\s*ideal:\s*(\d+)[^}]*\}|height:\s*\{\s*ideal:\s*(\d+)[^}]*\}/g;
     let m;
     while ((m = re.exec(src)) !== null) {
       const value = Number(m[1] || m[2]);
@@ -311,6 +311,31 @@ check('Медиа: потолок 720p — ИНВАРИАНТ захвата, а
   assert(crmCount > 0, 'CRM: constraints камеры не найдены — проверка ничего не проверила');
   assert(guestCount > 0, 'гость: constraints камеры не найдены');
   /* ТВ использует CAPTURE_RES вместо литералов — проверяем отдельно ниже. */
+
+  /* D-197f: каждый ideal ДОЛЖЕН иметь парный max той же величины.
+     Без `max` браузер вправе отдать больше на камере без режима <=720p.
+     Проверяем инвариантом: для каждого блока `ideal: N` в захвате камеры
+     рядом обязан стоять `max: M`, где M <= N. */
+  function checkMaxPairing(name, src) {
+    const re = /(width|height):\s*\{\s*ideal:\s*(\d+)([^}]*)\}/g;
+    let m;
+    let checked = 0;
+    while ((m = re.exec(src)) !== null) {
+      const ctx = src.slice(Math.max(0, m.index - 220), m.index + 80);
+      if (/ScreenShare|DisplayMedia|screenShare/i.test(ctx)) continue;
+      const ideal = Number(m[2]);
+      const tail = m[3] || '';
+      const maxMatch = /max:\s*(\d+)/.exec(tail);
+      checked += 1;
+      assert(maxMatch, name + ': у ' + m[1] + ' ideal ' + ideal +
+        ' нет max — браузер может отдать больше потолка');
+      const max = Number(maxMatch[1]);
+      assert(max <= ideal, name + ': ' + m[1] + ' max ' + max + ' > ideal ' + ideal);
+    }
+    return checked;
+  }
+  const maxPairs = checkMaxPairing('CRM', crm) + checkMaxPairing('гость', guest2);
+  assert(maxPairs > 0, 'ни одного парного max не найдено — проверка не сработала');
 
   /* ТВ: CAPTURE_RES и cameraPresets не должны содержать 1080p/4K.
      Комментарии вырезаем: в них допустимо объяснять, ПОЧЕМУ резерв убран. */
