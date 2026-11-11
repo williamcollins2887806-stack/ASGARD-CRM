@@ -310,7 +310,11 @@ module.exports = async function (fastify, options) {
                u.id IS NULL
                OR (
                  COALESCE(u.is_active, true) = true
-                 AND COALESCE(u.role, '') NOT IN ('BOT', 'ADMIN', 'FIELD_WORKER')
+                 AND (
+                   COALESCE(u.role, '') NOT IN ('BOT', 'ADMIN', 'FIELD_WORKER')
+                   -- IT/офис вручную: role_tag=office (Манаков / бывший «Айти Константин»)
+                   OR lower(COALESCE(s.role_tag, '')) = 'office'
+                 )
                )
              )
          AND NOT (s.user_id IS NOT NULL AND u.id IS NULL)
@@ -1219,7 +1223,10 @@ async function reopenUnconfirmedDays(db, staffId) {
  */
 async function recountPerson(db, rawName, staffId) {
   const { rows } = await db.query(
-    `SELECT sp.date::text AS date, sp.ts, sp.direction
+    `SELECT sp.date::text AS date,
+            to_char(sp.ts, 'YYYY-MM-DD HH24:MI:SS') AS ts_wall,
+            LOWER(sp.direction) AS direction,
+            sp.event
        FROM skud_punches sp
        JOIN skud_imports si ON si.id = sp.import_id AND si.deleted_at IS NULL
       WHERE sp.raw_person = $1
@@ -1229,58 +1236,56 @@ async function recountPerson(db, rawName, staffId) {
   if (!rows.length) return { written: 0 };
 
   const settings = await officeHours.loadSettings(db);
+  const gap = Number(settings.merge_gap_min) || 60;
   const byDate = new Map();
   for (const r of rows) {
     const date = String(r.date).slice(0, 10);
     if (!byDate.has(date)) byDate.set(date, []);
-    byDate.get(date).push(r);
+    const m = /^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2}):(\d{2})$/.exec(String(r.ts_wall || ''));
+    if (!m) continue;
+    const dir = r.direction === 'вход' || r.direction === 'выход' ? r.direction : null;
+    if (!dir) continue;
+    if (skudXls.TECHNICAL_EVENTS.has(String(r.event || '').trim().toLowerCase())) continue;
+    byDate.get(date).push({
+      ts: Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +m[6]),
+      direction: dir,
+      time: `${m[4]}:${m[5]}:${m[6]}`
+    });
   }
 
+  const dates = [...byDate.keys()].sort();
+  const skipTs = new Set();
   let written = 0;
-  for (const [date, evs] of byDate) {
-    // Пересобираем интервалы тем же алгоритмом, что и парсер, чтобы ручная
-    // привязка давала ровно те же часы, что дал бы автоимпорт.
-    let inside = false;
-    let openedAt = null;
-    const raw = [];
-    for (const e of evs) {
-      const ts = new Date(e.ts).getTime();
-      if (e.direction === 'вход') {
-        if (inside) continue;
-        inside = true; openedAt = ts;
-      } else {
-        if (!inside) continue;
-        inside = false;
-        if (openedAt != null && ts > openedAt) raw.push({ from: openedAt, to: ts });
-        openedAt = null;
-      }
+  for (let i = 0; i < dates.length; i++) {
+    const date = dates[i];
+    const evs = (byDate.get(date) || [])
+      .filter((e) => !skipTs.has(e.ts))
+      .sort((a, b) => a.ts - b.ts);
+    const nextIso = dates[i + 1] || null;
+    const nextIsCalendar = skudXls.isNextCalendarDay(date, nextIso);
+    const nextDayEarlyExits = nextIsCalendar
+      ? (byDate.get(nextIso) || []).filter((e) =>
+        e.direction === 'выход'
+        && new Date(e.ts).getUTCHours() < skudXls.DEFAULT_NEXT_EARLY_EXIT_BEFORE_HOUR)
+      : [];
+    const presence = skudXls.computeDayPresence(evs, {
+      mergeGapMin: gap,
+      dayIso: date,
+      nextDayEarlyExits
+    });
+    if (presence.consumedNextEarly && presence.consumedNextEarly.ts != null) {
+      skipTs.add(presence.consumedNextEarly.ts);
     }
-    let openEnded = false;
-    if (openedAt != null) {
-      const lastTs = new Date(evs[evs.length - 1].ts).getTime();
-      if (lastTs > openedAt) raw.push({ from: openedAt, to: lastTs });
-      openEnded = true;
-    }
-    const gapMs = (Number(settings.merge_gap_min) || 60) * 60000;
-    const merged = [];
-    for (const iv of raw) {
-      const prev = merged[merged.length - 1];
-      if (prev && iv.from - prev.to <= gapMs) prev.to = Math.max(prev.to, iv.to);
-      else merged.push({ ...iv });
-    }
-    const minutes = merged.reduce((s, x) => s + Math.round((x.to - x.from) / 60000), 0);
-    // Время из отчёта — «настенное» (как в СКУД). Колонки first_in/last_out —
-    // timestamp без зоны: пишем локальные компоненты. А jsonb segments
-    // ОБЯЗАН быть в том же формате, что у парсера (ISO), иначе интерфейс
-    // читает его через getUTCHours() и получает сдвиг −3 ч
-    // (верификатор 03.11.2026, остаток P1-5).
-    const segments = merged.map((x) => ({
-      from: isoFromWallClock(x.from),
-      to: isoFromWallClock(x.to),
-      minutes: Math.round((x.to - x.from) / 60000)
+    if (!presence.minutes && !presence.openEnded && !presence.segments.length) continue;
+
+    // segments парсера уже в naive-UTC ms; в JSON — ISO wall-clock (P1-5).
+    const segments = (presence.segments || []).map((sg) => ({
+      from: isoFromWallClock(sg.from),
+      to: isoFromWallClock(sg.to),
+      minutes: sg.minutes
     }));
-    const firstIn = merged.length ? merged[0].from : null;
-    const lastOut = merged.length ? merged[merged.length - 1].to : null;
+    const firstIn = presence.firstIn ? presence.firstIn.ts : null;
+    const lastOut = presence.lastOut ? presence.lastOut.ts : null;
 
     await db.query(
       `INSERT INTO office_hours_daily
@@ -1295,9 +1300,9 @@ async function recountPerson(db, rawName, staffId) {
          skud_missing   = false,
          updated_at     = NOW()`,
       [
-        staffId, date, minutes, openEnded,
-        firstIn ? wallClockStamp(firstIn) : null,
-        lastOut ? wallClockStamp(lastOut) : null,
+        staffId, date, presence.minutes, !!presence.openEnded,
+        firstIn != null ? wallClockStamp(firstIn) : null,
+        lastOut != null ? wallClockStamp(lastOut) : null,
         JSON.stringify(segments)
       ]
     );

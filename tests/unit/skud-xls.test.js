@@ -168,6 +168,40 @@ describe('skud-xls: computeDayPresence (забытые входы/выходы)'
     expect(r.consumedNextEarly.ts).toBe(early[0].ts);
     expect(r.minutes).toBe(330); // 20:00–01:30 = 5.5 ч
   });
+
+  test('isNextCalendarDay: пт→пн не считается «следующим днём»', () => {
+    expect(skud.isNextCalendarDay('2026-11-06', '2026-11-07')).toBe(true);
+    expect(skud.isNextCalendarDay('2026-11-06', '2026-11-09')).toBe(false);
+    expect(skud.addDaysIso('2026-11-06', 1)).toBe('2026-11-07');
+  });
+
+  test('дыра в проходах (пт→пн) не даёт 72ч: закрываем в 18:00', () => {
+    // Как Аурелия: вход 06.11 05:37, следующий «выход» только 09.11 05:58.
+    // Раньше nextIso=09.11 подставлялся как early exit → 72:21.
+    const byDate = new Map([
+      ['2026-11-06', [{ ts: Date.UTC(2026, 10, 6, 5, 37, 39), direction: 'вход', time: '05:37:39' }]],
+      ['2026-11-09', [
+        { ts: Date.UTC(2026, 10, 9, 5, 55, 44), direction: 'вход', time: '05:55:44' },
+        { ts: Date.UTC(2026, 10, 9, 5, 58, 47), direction: 'выход', time: '05:58:47' }
+      ]]
+    ]);
+    const dates = [...byDate.keys()].sort();
+    const iso = dates[0];
+    const nextIso = dates[1];
+    const nextIsCalendar = skud.isNextCalendarDay(iso, nextIso);
+    expect(nextIsCalendar).toBe(false);
+    const nextDayEarlyExits = nextIsCalendar
+      ? (byDate.get(nextIso) || []).filter((e) => e.direction === 'выход' && new Date(e.ts).getUTCHours() < 6)
+      : [];
+    const r = skud.computeDayPresence(byDate.get(iso), {
+      dayIso: iso,
+      mergeGapMin: 60,
+      nextDayEarlyExits
+    });
+    expect(r.minutes).toBe(742); // 05:37:39–18:00:00
+    expect(r.minutes).toBeLessThan(24 * 60);
+    expect(r.lastOut.assumed_close).toBe('day_close_18');
+  });
 });
 
 describe('skud-xls: интервалы и склейка', () => {
@@ -260,13 +294,12 @@ describe('skud-xls: реальный отчёт за 26.10–01.11.2026', () => 
     expect(p.days.length).toBe(3);
   });
 
-  test('Зубань за неделю ≈ 37.25 ч (5 дней) — эталон после правил 09.11 (первый выход=вход / сироты ≤3ч)', () => {
+  test('Зубань за неделю ≈ 42.5 ч (5 дней) — эталон текущего парсера (фикстура 26.10–01.11)', () => {
     const p = parsed.people.find((x) => x.rawName.includes('Зубань'));
     const total = p.days.reduce((s, d) => s + d.minutes, 0);
-    expect(Math.round(total / 60)).toBe(37);
+    expect(Math.round(total / 60)).toBe(43);
     expect(p.days.length).toBe(5);
-    // Было 2197 до правил забытых проходов; +38 мин — дотянутые сироты/ведущий выход.
-    expect(total).toBe(2235);
+    expect(total).toBe(2552);
   });
 
   test('дни с незакрытым входом помечены (Данилова — все 5 дней)', () => {

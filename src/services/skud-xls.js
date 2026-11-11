@@ -49,6 +49,24 @@ const PERIOD_RE = /период\s+c\s+(\d{2})\.(\d{2})\.(\d{4})[^]*?по\s+(\d{2
 
 function pad2(n) { return String(n).padStart(2, '0'); }
 
+/** YYYY-MM-DD + N дней (наивный календарь, без TZ). */
+function addDaysIso(iso, days) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(iso || '').slice(0, 10));
+  if (!m) return null;
+  const dt = new Date(Date.UTC(+m[1], +m[2] - 1, +m[3]));
+  dt.setUTCDate(dt.getUTCDate() + Number(days || 0));
+  return `${dt.getUTCFullYear()}-${pad2(dt.getUTCMonth() + 1)}-${pad2(dt.getUTCDate())}`;
+}
+
+/**
+ * «Ночной выход» учитываем только если nextIso — ровно календарный следующий день.
+ * Иначе при дырке в проходах (пт→пн) открытая смена тянется на 72+ часа
+ * (Аурелия 06.11 05:37 → «выход» 09.11 05:58 = 72:21).
+ */
+function isNextCalendarDay(iso, nextIso) {
+  return !!iso && !!nextIso && addDaysIso(iso, 1) === String(nextIso).slice(0, 10);
+}
+
 /** '26.10.2026 10:23:29' / '09.11.2026 9:07:44' → { iso, time, ts }. */
 function parseStamp(raw) {
   const m = DDMMYYYY_TIME_RE.exec(String(raw || '').trim());
@@ -415,7 +433,8 @@ function parseRows(rows, opts = {}) {
         .filter((e) => !skipTs.has(e.ts))
         .sort((a, b) => a.ts - b.ts);
       const nextIso = dates[i + 1] || null;
-      const nextDayEarlyExits = nextIso
+      const nextIsCalendar = isNextCalendarDay(iso, nextIso);
+      const nextDayEarlyExits = nextIsCalendar
         ? (byDate.get(nextIso) || []).filter((e) =>
           e.direction === 'выход' && wallHourOf(e.ts) < DEFAULT_NEXT_EARLY_EXIT_BEFORE_HOUR)
         : [];
@@ -437,7 +456,7 @@ function parseRows(rows, opts = {}) {
         openEnded: presence.openEnded,
         firstIn: firstIn ? `${iso} ${firstIn.time || hhmm(firstIn.ts)}` : null,
         lastOut: lastOut
-          ? `${(lastOut.assumed_close === 'next_early_exit' && nextIso) ? nextIso : iso} ${lastOut.time || hhmm(lastOut.ts)}`
+          ? `${(lastOut.assumed_close === 'next_early_exit' && nextIsCalendar) ? nextIso : iso} ${lastOut.time || hhmm(lastOut.ts)}`
           : null,
         segments: presence.segments,
         skippedEvents: bucket.skipped,
@@ -554,6 +573,8 @@ module.exports = {
   looksLikeSkudRows,
   friendlyDeviceLabel,
   sha256,
+  addDaysIso,
+  isNextCalendarDay,
   TECHNICAL_EVENTS,
   UNKNOWN_EVENTS,
   DEFAULT_DAY_CLOSE_HOUR,

@@ -221,9 +221,12 @@ window.AsgardOfficeSchedulePage=(function(){
       || nm.startsWith('тест ') || nm.startsWith('test ');
   }
 
-  function isSkippedOfficeUser(u){
+  function isSkippedOfficeUser(u, staffRow){
     if(!u || !u.is_active) return true;
-    if(u.role === 'BOT' || u.role === 'ADMIN' || u.role === 'FIELD_WORKER') return true;
+    // role_tag=office — вручную включённые в график (IT/Айти), даже при ADMIN/FIELD_WORKER
+    const forceOffice = staffRow && String(staffRow.role_tag || '').toLowerCase() === 'office';
+    if(!forceOffice && (u.role === 'BOT' || u.role === 'ADMIN' || u.role === 'FIELD_WORKER')) return true;
+    if(u.role === 'BOT') return true;
     const login = String(u.login || '').toLowerCase();
     if(login.startsWith('test_') || login === 'mimir_bot') return true;
     if(isTestLikeName(u.name)) return true;
@@ -234,12 +237,14 @@ window.AsgardOfficeSchedulePage=(function(){
     const staff = await AsgardDB.all("staff") || [];
     const users = await AsgardDB.all("users") || [];
     const userById = new Map(users.map(u => [u.id, u]));
-    const skipUserIds = new Set(users.filter(isSkippedOfficeUser).map(u => u.id));
     return staff.filter(s => {
       if(isTestLikeName(s.name)) return false;
-      if(s.user_id && skipUserIds.has(s.user_id)) return false;
       // Битая ссылка staff.user_id → несуществующий users (как «ТЕСТ ТЕСТ»)
       if(s.user_id && !userById.has(s.user_id)) return false;
+      if(s.user_id){
+        const u = userById.get(s.user_id);
+        if(isSkippedOfficeUser(u, s)) return false;
+      }
       return true;
     });
   }
@@ -925,7 +930,17 @@ window.AsgardOfficeSchedulePage=(function(){
         });
         btn.addEventListener('contextmenu', async (e)=>{
           e.preventDefault();
+          // «Прочие» без staff_id — раньше уходили в /day?staff_id=0 → 404 «Не удалось загрузить день».
+          if(btn.dataset.extra==="1"){
+            const tip = btn.getAttribute('title') || btn.dataset.extraName || 'Прочие';
+            toast("Прочие · СКУД", tip + " · привяжите ФИО в CRM, чтобы открыть день", "warn");
+            return;
+          }
           const staffId = Number(btn.dataset.staff||0);
+          if(!staffId){
+            toast("Нет сотрудника", "Строка без staff_id — день не открыть", "warn");
+            return;
+          }
           const staffObj = staffSorted.find(s=>s.id===staffId);
           await openDayModal(staffId, btn.dataset.date, staffObj?.name||"");
         });

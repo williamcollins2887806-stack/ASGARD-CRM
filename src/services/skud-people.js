@@ -385,7 +385,9 @@ async function loadExtrasMonth(db, fromIso, toIso, mergeGapMin) {
         .filter((e) => !e.technical && !skipTs.has(e.ts))
         .sort((a, b) => a.ts - b.ts);
       const nextIso = dates[i + 1] || null;
-      const nextDayEarlyExits = nextIso
+      // Только календарный «завтра» — иначе пт→пн даёт 72+ часа уборщице.
+      const nextIsCalendar = skudXls.isNextCalendarDay(date, nextIso);
+      const nextDayEarlyExits = nextIsCalendar
         ? (byDate.get(nextIso) || []).filter((e) =>
           !e.technical
           && e.direction === 'выход'
@@ -408,7 +410,7 @@ async function loadExtrasMonth(db, fromIso, toIso, mergeGapMin) {
         open_ended: !!presence.openEnded,
         first_in: firstIn ? `${date} ${firstIn.time || skudXls._hhmm(firstIn.ts)}` : null,
         last_out: lastOut
-          ? `${(lastOut.assumed_close === 'next_early_exit' && nextIso) ? nextIso : date} ${lastOut.time || skudXls._hhmm(lastOut.ts)}`
+          ? `${(lastOut.assumed_close === 'next_early_exit' && nextIsCalendar) ? nextIso : date} ${lastOut.time || skudXls._hhmm(lastOut.ts)}`
           : null,
         segments: presence.segments
       });
