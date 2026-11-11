@@ -5,15 +5,15 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="ting-tv" content="1" />
   <title>Тинг Переговорка</title>
-  <link rel="icon" type="image/svg+xml" href="/assets/img/ting-logo.svg?v=20.28.516" />
-  <link rel="stylesheet" href="/assets/css/design-tokens.css?v=20.28.516" />
-  <link rel="stylesheet" href="/assets/css/ting.css?v=20.28.516" />
-  <link rel="stylesheet" href="/assets/css/ting-tv.css?v=20.28.516" />
-  <script src="/assets/vendor/livekit-client.umd.min.js?v=20.28.516"></script>
-  <script src="/assets/js/ting_icons.js?v=20.28.516"></script>
-  <script src="/assets/js/ting_common.js?v=20.28.516"></script>
-  <script src="/assets/js/ting_media_profile.js?v=20.28.516"></script>
-  <script src="/assets/js/ting_room_core.js?v=20.28.516"></script>
+  <link rel="icon" type="image/svg+xml" href="/assets/img/ting-logo.svg?v=20.28.518" />
+  <link rel="stylesheet" href="/assets/css/design-tokens.css?v=20.28.518" />
+  <link rel="stylesheet" href="/assets/css/ting.css?v=20.28.518" />
+  <link rel="stylesheet" href="/assets/css/ting-tv.css?v=20.28.518" />
+  <script src="/assets/vendor/livekit-client.umd.min.js?v=20.28.518"></script>
+  <script src="/assets/js/ting_icons.js?v=20.28.518"></script>
+  <script src="/assets/js/ting_common.js?v=20.28.518"></script>
+  <script src="/assets/js/ting_media_profile.js?v=20.28.518"></script>
+  <script src="/assets/js/ting_room_core.js?v=20.28.518"></script>
 </head>
 <body class="ting-tv">
   <div class="ttv-screen" id="startView">
@@ -981,6 +981,9 @@
       try { track.attach(video); } catch (_) {
         try { video.srcObject = new MediaStream([track.mediaStreamTrack]); } catch (__){ /* */ }
       }
+      /* autoplay — только намерение. На Android TV WebView ролик без явного
+         play() не стартует и остаётся серый значок «плей». */
+      try { video.play().catch(function () {}); } catch (_) { /* */ }
       var fb = tile.querySelector('.ttv-av-fallback');
       if (fb) fb.style.display = 'none';
     }
@@ -1142,7 +1145,10 @@
   function syncMicIconFromRoom(room) {
     var lp = room && room.localParticipant;
     if (!lp) return;
-    state.micOn = lp.isMicrophoneEnabled === true;
+    /* Флаг берём по факту публикации, а не по isMicrophoneEnabled:
+       у трека, созданного напрямую, source может отсутствовать, и геттер
+       показывает «выключен» при живом микрофоне. */
+    state.micOn = micIsPublishing(room);
     paintIcons();
   }
 
@@ -1194,8 +1200,11 @@
   function micIsPublishing(room) {
     var info = micPublication(room);
     if (!info.pub) return false;
-    /* Публикация есть; серверный mute мог остаться от прошлого вызова. */
-    try { if (room.localParticipant.isMicrophoneEnabled === false) return false; } catch (_) { /* */ }
+    /* НЕ опираемся на isMicrophoneEnabled: SDK определяет его как наличие
+       публикации с source === Microphone. Когда трек создан напрямую
+       (new LocalAudioTrack), source может быть unknown, и геттер врёт
+       «микрофон выключен» при живом треке в эфире. Судим по факту:
+       живой mediaStreamTrack и не заглушён. */
     return info.live || info.pub.isMuted !== true;
   }
 
@@ -1266,7 +1275,9 @@
       var at = null;
       var LK = window.LivekitClient;
       if (LK && typeof LK.LocalAudioTrack === 'function') {
-        at = new LK.LocalAudioTrack(mst, undefined, false);
+        /* Второй аргумент — sid, третий — служебный флаг SDK, не «не
+           останавливать». Передавали false наугад: убираем. */
+        at = new LK.LocalAudioTrack(mst);
       } else if (LK && typeof LK.createLocalAudioTrack === 'function') {
         releaseStream(opened);
         at = await withTimeout(LK.createLocalAudioTrack(opts), 20000, 'microphone');
@@ -1511,6 +1522,13 @@
     var roomOpts = {
       adaptiveStream: false,
       dynacast: true,
+      /* Аудиозахват по умолчанию: без этих флагов WebView отдаёт «сырой»
+         микрофон — эхо и писк при близко стоящих устройствах. */
+      audioCaptureDefaults: {
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: true
+      },
       videoCaptureDefaults: {
         resolution: (LK.VideoPresets && LK.VideoPresets.h720 && LK.VideoPresets.h720.resolution)
           || { width: 1280, height: 720 },

@@ -13,7 +13,7 @@
     "migrate:backfill": "node tools/backfill_migrations_journal.js",
     "verify:field-tariffs": "node tools/verify_field_tariff_ceilings.js",
     "verify:guards": "node tools/run_guards.js",
-    "verify:ting": "node tests/ting/bitrate_policy.test.js && node tests/ting/join_window.behavior.test.js && node tests/ting/test_mutants.js && node tests/ting/verifiers/code_verify.js && node tests/ting/verifiers/ui_verify.js",
+    "verify:ting": "node tests/ting/bitrate_policy.test.js && node tests/ting/join_window.behavior.test.js && node tests/ting/test_mutants.js && node tests/ting/verifiers/code_verify.js && node tests/ting/verifiers/ui_verify.js && node tests/ting/verifiers/tv_stage_ratio.js",
     "ting:quality": "node tools/ting_quality_report.js",
     "ting:canary": "node tools/ting_canary.js",
     "seed": "node scripts/seed.js",

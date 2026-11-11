@@ -29,6 +29,7 @@ const FILES = [
   'public/ting/index.html',
   'public/assets/js/ting_page.js',
   'public/assets/js/ting_media_profile.js',
+  'public/assets/css/ting-tv.css',
   'tests/ting/join_window.behavior.test.js',
   'tests/ting/bitrate_policy.test.js'
 ];
@@ -319,6 +320,63 @@ const MUTANTS = [
     anchor: 'if (reconnectAttempts < RECONNECT_MAX)',
     from: 'guestStopMetrics();',
     to: ''
+  },
+  /* ===== Регрессы раунда 3 ===== */
+  {
+    name: 'CRM снова ссылается на participant в LocalTrackPublished',
+    file: 'public/assets/js/ting_page.js',
+    anchor: 'RoomEvent.LocalTrackPublished, (pub)',
+    from: 'bumpPublicationQuality(pub, lp);',
+    to: 'bumpPublicationQuality(pub, participant);'
+  },
+  {
+    name: 'ТВ: видео без явного play() (серый плей)',
+    file: TV,
+    anchor: 'track.attach(video)',
+    from: 'video.play().catch(function () {});',
+    to: ''
+  },
+  {
+    name: 'ТВ: микрофон снова отвергается по isMicrophoneEnabled',
+    file: TV,
+    anchor: 'function micIsPublishing',
+    from: 'return info.live || info.pub.isMuted !== true;',
+    to: "if (room.localParticipant.isMicrophoneEnabled === false) return false;\n    return info.live || info.pub.isMuted !== true;"
+  },
+  {
+    name: 'ТВ: audioCaptureDefaults убран (нет AEC/NS)',
+    file: TV,
+    anchor: 'var roomOpts = {',
+    from: 'audioCaptureDefaults: {',
+    to: 'audioCaptureDefaultsDisabled: {'
+  },
+  {
+    name: 'гость: микрофон без AEC/NS/AGC (писк и эхо)',
+    file: 'public/ting/index.html',
+    anchor: 'setMicrophoneEnabled(localAudio, {',
+    from: 'noiseSuppression: true',
+    to: 'noiseSuppression: false'
+  },
+  {
+    name: 'гость: adaptiveStream включён всегда (конфликт с HIGH)',
+    file: 'public/ting/index.html',
+    anchor: 'var roomOpts = {',
+    from: 'adaptiveStream: smallEarly',
+    to: 'adaptiveStream: true'
+  },
+  {
+    name: 'размытие фона вернулось в UI',
+    file: 'public/ting/index.html',
+    anchor: '<div class="ting-more-grid">',
+    from: '<button type="button" class="ting-more-item" data-react="🔥">🔥</button>',
+    to: '<button type="button" class="ting-more-item" data-bg="blur">Размытие</button>'
+  },
+  {
+    name: 'ТВ: плитка галереи снова растягивается (width:100%)',
+    file: 'public/assets/css/ting-tv.css',
+    anchor: '.ttv-stage.hall-dual > .ttv-tile.is-gallery',
+    from: 'width: calc(50% - 6px);',
+    to: 'width: 100%;'
   }
 ];
 

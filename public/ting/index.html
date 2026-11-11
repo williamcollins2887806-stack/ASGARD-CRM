@@ -16,8 +16,8 @@
       if (t === 'light' || t === 'dark') document.documentElement.setAttribute('data-theme', t);
     } catch (e) {}
   </script>
-  <link rel="stylesheet" href="/assets/css/design-tokens.css?v=20.28.515" />
-  <link rel="stylesheet" href="/assets/css/ting.css?v=20.28.515" />
+  <link rel="stylesheet" href="/assets/css/design-tokens.css?v=20.28.518" />
+  <link rel="stylesheet" href="/assets/css/ting.css?v=20.28.518" />
   <style>
     html, body { margin: 0; min-height: 100%; }
     .hidden { display: none !important; }
@@ -48,11 +48,11 @@
       backdrop-filter: blur(12px);
     }
   </style>
-  <script src="/assets/vendor/livekit-client.umd.min.js?v=20.28.515"></script>
-  <script src="/assets/js/ting_icons.js?v=20.28.515"></script>
-  <script src="/assets/js/ting_common.js?v=20.28.515"></script>
-  <script src="/assets/js/ting_media_profile.js?v=20.28.515"></script>
-  <script src="/assets/js/ting_room_core.js?v=20.28.515"></script>
+  <script src="/assets/vendor/livekit-client.umd.min.js?v=20.28.518"></script>
+  <script src="/assets/js/ting_icons.js?v=20.28.518"></script>
+  <script src="/assets/js/ting_common.js?v=20.28.518"></script>
+  <script src="/assets/js/ting_media_profile.js?v=20.28.518"></script>
+  <script src="/assets/js/ting_room_core.js?v=20.28.518"></script>
   <script>
     /* D-196: установка Тинга как приложение — закрывает запрос «как у TrueConf»
        без отдельного exe.
@@ -262,14 +262,6 @@
             <button type="button" class="ting-more-item" data-react="❤️">❤️</button>
             <button type="button" class="ting-more-item" data-react="🔥">🔥</button>
           </div>
-          <div class="ting-more-label">Фон</div>
-          <div class="ting-more-grid ting-bg-grid" id="guestBgGrid">
-            <button type="button" class="ting-more-item on" data-bg="none">Без фона</button>
-            <button type="button" class="ting-more-item" data-bg="blur">Размытие</button>
-            <button type="button" class="ting-more-item" data-bg="office-dusk">Офис</button>
-            <button type="button" class="ting-more-item" data-bg="soft-sky">Небо</button>
-            <button type="button" class="ting-more-item" data-bg="warm-studio">Студия</button>
-          </div>
         </div>
       </div>
       <div class="ting-dock">
@@ -373,16 +365,9 @@
       let intentionalLeave = false;
       let tokenRefreshTimer = null;
       let guestChatOpen = false;
-      let bgPreset = 'none';
-      let guestTrackProcessors = null;
+      /* Виртуальные фоны и размытие удалены: MediaPipe-сегментация на каждом
+         кадре роняла FPS и текла VideoFrame'ами. */
       var RECONNECT_MAX = 3;
-      var GUEST_BG_PRESETS = {
-        none: { label: 'Без фона', url: '' },
-        blur: { label: 'Размытие', url: '__blur__' },
-        'office-dusk': { label: 'Офис', url: '/assets/img/ting-bg/office-dusk.svg' },
-        'soft-sky': { label: 'Небо', url: '/assets/img/ting-bg/soft-sky.svg' },
-        'warm-studio': { label: 'Студия', url: '/assets/img/ting-bg/warm-studio.svg' }
-      };
       function tingSound(kind) {
         if (window.TingCommon && TingCommon.TingSound) TingCommon.TingSound.play(kind);
         else if (window.TingSound) TingSound.play(kind);
@@ -729,9 +714,8 @@
         }
       }
       function syncGuestBgButtons() {
-        document.querySelectorAll('#guestBgGrid [data-bg]').forEach(function (btn) {
-          btn.classList.toggle('on', btn.getAttribute('data-bg') === bgPreset);
-        });
+        /* Эффекты фона удалены вместе с MediaPipe-обработчиками: сегментация
+           на каждом кадре роняла FPS и текла VideoFrame'ами. */
       }
       async function refreshGuestDevices() {
         var micSel = document.getElementById('guestMicSelect');
@@ -759,76 +743,7 @@
           if (curCam) camSel.value = curCam;
         } catch (_) { /* */ }
       }
-      async function loadGuestTrackProcessors() {
-        if (guestTrackProcessors) return guestTrackProcessors;
-        if (window.LivekitTrackProcessors) {
-          guestTrackProcessors = window.LivekitTrackProcessors;
-          return guestTrackProcessors;
-        }
-        try {
-          guestTrackProcessors = await import('/assets/vendor/livekit-track-processors.esm.js');
-          window.LivekitTrackProcessors = guestTrackProcessors;
-          return guestTrackProcessors;
-        } catch (_) {
-          return null;
-        }
-      }
-      function guestLocalCamPub() {
-        if (!room || !room.localParticipant) return null;
-        var pubs = Array.from(room.localParticipant.videoTrackPublications.values());
-        return pubs.find(function (p) {
-          return p.track && !/screen/i.test(String(p.source || ''));
-        }) || null;
-      }
-      async function applyGuestBackground(presetId) {
-        var preset = GUEST_BG_PRESETS[presetId] || GUEST_BG_PRESETS.none;
-        var cam = guestLocalCamPub();
-        if (!cam || !cam.track) {
-          guestToast('Включите камеру');
-          return;
-        }
-        try {
-          if (typeof cam.track.stopProcessor === 'function') {
-            try { await cam.track.stopProcessor(); } catch (_) { /* */ }
-          }
-          bgPreset = presetId;
-          syncGuestBgButtons();
-          if (!preset.url) {
-            guestToast('Фон выключен');
-            return;
-          }
-          var processors = await loadGuestTrackProcessors();
-          if (!processors || typeof cam.track.setProcessor !== 'function') {
-            guestToast('Эффекты фона недоступны в этом браузере');
-            bgPreset = 'none';
-            syncGuestBgButtons();
-            return;
-          }
-          var proc = null;
-          if (preset.url === '__blur__') {
-            if (typeof processors.BackgroundBlur !== 'function') {
-              guestToast('Размытие недоступно');
-              bgPreset = 'none';
-              syncGuestBgButtons();
-              return;
-            }
-            proc = processors.BackgroundBlur(16);
-          } else if (typeof processors.VirtualBackground === 'function') {
-            proc = processors.VirtualBackground(preset.url);
-          } else {
-            guestToast('Виртуальный фон недоступен');
-            bgPreset = 'none';
-            syncGuestBgButtons();
-            return;
-          }
-          await cam.track.setProcessor(proc);
-          guestToast(preset.label);
-        } catch (e) {
-          bgPreset = 'none';
-          syncGuestBgButtons();
-          guestToast((e && e.message) || 'Не удалось сменить фон');
-        }
-      }
+      /* Загрузчик процессоров и наложение фона удалены вместе с эффектами. */
       async function switchGuestDevice(kind, deviceId) {
         if (!room || !deviceId) return;
         try {
@@ -1376,11 +1291,25 @@
            ВАЖНО: 4K/1080p с битрейтом 8 Мбит/с — это ТОЛЬКО для больших экранов
            с гарантированным каналом. На телефоне такой профиль не тянет канал,
            и собеседник видит «140p». Поэтому профиль выбирается по устройству. */
-        var roomOpts = { adaptiveStream: true, dynacast: true };
+        /* adaptiveStream: на десктопе ВЫКЛ — мы сами просим HIGH-слой, а SDK
+           запрещает ручную смену качества при включённом adaptive (в консоли
+           «adaptive stream is enabled, cannot change video track settings»,
+           и качество не настраивалось вовсе). На мобильном — наоборот:
+           пусть адаптив подбирает сам, там тайлы мелкие. */
+        var uaEarly = navigator.userAgent || '';
+        var smallEarly = /Android|iPhone|iPad|Mobile/i.test(uaEarly);
+        var roomOpts = { adaptiveStream: smallEarly, dynacast: true };
+        /* Аудиозахват по умолчанию: AEC/NS/AGC. Без них близко стоящие
+           устройства слышат друг друга — писк и эхо. */
+        roomOpts.audioCaptureDefaults = {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+          voiceIsolation: true
+        };
         try {
           var LKp = window.LivekitClient;
-          var ua = navigator.userAgent || '';
-          var small = /Android|iPhone|iPad|Mobile/i.test(ua);
+          var small = smallEarly;
           /* D-192: профиль из общего модуля. Раньше здесь на десктопе верхним
              слоем стоял 4K-битрейт, а SDK публикует только три rid — 720p и
              1080p выбрасывались, зритель получал 360p. Теперь потолок 720p
@@ -1405,11 +1334,12 @@
           if (track && window.TingMediaProfile) {
             window.TingMediaProfile.attachPlayoutDelay(track, 0.15);
           }
-          /* Зритель на слабом канале не должен «смотреть в мусор»: сразу
-             просим HIGH, а дальше качество решает адаптив. */
+          /* Десктоп: сразу просим HIGH (adaptive выключен, ручной выбор
+             разрешён). На мобильном adaptive включён — SDK сам подберёт слой,
+             ручной вызов там запрещён и молча игнорируется. */
           try {
             var LKq = window.LivekitClient;
-            if (pub && track.kind === 'video' && LKq.VideoQuality
+            if (!smallEarly && pub && track.kind === 'video' && LKq.VideoQuality
                 && typeof pub.setVideoQuality === 'function') {
               pub.setVideoQuality(LKq.VideoQuality.HIGH);
             }
@@ -1610,7 +1540,11 @@
               b.classList.toggle('hidden', !!can);
             });
           }
-          await next.localParticipant.setMicrophoneEnabled(localAudio);
+          await next.localParticipant.setMicrophoneEnabled(localAudio, {
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true
+          });
           if (localVideo) {
             try {
               await enableLocalCamera(next);
@@ -1695,7 +1629,11 @@
       document.getElementById('btnMic').addEventListener('click', async function () {
         if (!room) return;
         localAudio = !localAudio;
-        await room.localParticipant.setMicrophoneEnabled(localAudio);
+        await room.localParticipant.setMicrophoneEnabled(localAudio, {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true
+        });
         tingSound('mic');
         this.classList.toggle('off', !localAudio);
         this.classList.toggle('active', localAudio);
@@ -1782,11 +1720,7 @@
       document.getElementById('guestCamSelect').addEventListener('change', async function () {
         await switchGuestDevice('videoinput', this.value);
       });
-      document.querySelectorAll('#guestBgGrid [data-bg]').forEach(function (btn) {
-        btn.addEventListener('click', async function () {
-          await applyGuestBackground(btn.getAttribute('data-bg') || 'none');
-        });
-      });
+      /* Кнопки виртуального фона убраны из разметки — обработчиков нет. */
       document.getElementById('btnChatMob').addEventListener('click', function () {
         setGuestChatOpen(!guestChatOpen);
       });

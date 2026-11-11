@@ -407,6 +407,115 @@ check('Телеметрия: цикл гасится при выходе (CRM и
     'гость: ветка исчерпания реконнекта не гасит телеметрию');
 });
 
+/* ===== Регрессы раунда 3 ===== */
+
+/* participant в LocalTrackPublished: его там нет — ReferenceError рвал
+   обработчик и оставлял меню висеть. */
+check('CRM: LocalTrackPublished не ссылается на participant', () => {
+  const crm = fs.readFileSync(path.join(root, 'public/assets/js/ting_page.js'), 'utf8');
+  const i = crm.indexOf('RoomEvent.LocalTrackPublished, (pub)');
+  assert(i > 0, 'обработчик LocalTrackPublished не найден');
+  const seg = crm.slice(i, i + 1600);
+  assert(!/bumpPublicationQuality\(pub,\s*participant\)/.test(seg),
+    'в LocalTrackPublished остался participant (ReferenceError)');
+  assert(/bumpPublicationQuality\(pub,\s*lp\)/.test(seg),
+    'LocalTrackPublished не передаёт localParticipant');
+});
+
+/* ТВ: autoplay без play() не стартует в Android WebView — серый «плей». */
+check('ТВ: видео стартует явным play() после attach', () => {
+  assert(/track\.attach\(video\)/.test(tv), 'attach(video) не найден');
+  assert(/video\.play\(\)\.catch/.test(tv), 'нет явного play() — возможен серый плей');
+});
+
+/* Микрофон ТВ: опираться на isMicrophoneEnabled нельзя — у трека, созданного
+   напрямую, source может быть unknown, и геттер врёт «выключен». */
+check('ТВ: микрофон судится по публикации, а не по isMicrophoneEnabled', () => {
+  const i = tv.indexOf('function micIsPublishing');
+  assert(i > 0, 'micIsPublishing не найден');
+  const seg = tv.slice(i, i + 600);
+  assert(!/isMicrophoneEnabled === false/.test(seg),
+    'micIsPublishing всё ещё отвергает живой трек по isMicrophoneEnabled');
+  assert(/info\.live/.test(seg), 'micIsPublishing не смотрит на живой mediaStreamTrack');
+});
+
+check('ТВ: audioCaptureDefaults с AEC/NS/AGC', () => {
+  const i = tv.indexOf('var roomOpts = {');
+  assert(i > 0, 'roomOpts не найден');
+  const seg = tv.slice(i, i + 900);
+  /* Проверяем реальный ключ, а не упоминание: мутация «переименовать ключ»
+     должна ловиться. */
+  const k = seg.indexOf('audioCaptureDefaults:');
+  assert(k > 0, 'в roomOpts нет ключа audioCaptureDefaults');
+  const block = seg.slice(k, k + 300);
+  assert(/echoCancellation:\s*true/.test(block), 'audioCaptureDefaults без echoCancellation');
+  assert(/noiseSuppression:\s*true/.test(block), 'audioCaptureDefaults без noiseSuppression');
+  assert(/autoGainControl:\s*true/.test(block), 'audioCaptureDefaults без autoGainControl');
+});
+
+check('ТВ: конструктор LocalAudioTrack без выдуманного 3-го аргумента', () => {
+  assert(!/new LK\.LocalAudioTrack\(mst, undefined, false\)/.test(tv),
+    'третий аргумент конструктора вернулся');
+});
+
+/* Гость: без AEC/NS близко стоящие устройства слышат друг друга (писк). */
+check('Гость: микрофон публикуется с AEC/NS/AGC', () => {
+  assert(!/setMicrophoneEnabled\(localAudio\);/.test(guest),
+    'гость публикует микрофон без настроек (писк и эхо)');
+  /* КАЖДЫЙ вызов setMicrophoneEnabled обязан нести полный набор флагов —
+     иначе одна забытая ветка возвращает эхо. */
+  const calls = guest.split('setMicrophoneEnabled(').slice(1);
+  assert(calls.length >= 2, 'вызовов setMicrophoneEnabled меньше двух');
+  calls.forEach((seg, i) => {
+    const body = seg.slice(0, 260);
+    assert(/echoCancellation:\s*true/.test(body), 'вызов #' + (i + 1) + ': нет echoCancellation');
+    assert(/noiseSuppression:\s*true/.test(body), 'вызов #' + (i + 1) + ': нет noiseSuppression');
+    assert(/autoGainControl:\s*true/.test(body), 'вызов #' + (i + 1) + ': нет autoGainControl');
+  });
+  /* И дефолты комнаты — для путей, которые публикуют через SDK. */
+  const i = guest.indexOf('audioCaptureDefaults');
+  assert(i > 0, 'у гостя нет audioCaptureDefaults');
+  const block = guest.slice(i, i + 260);
+  assert(/echoCancellation:\s*true/.test(block), 'audioCaptureDefaults без echoCancellation');
+  assert(/noiseSuppression:\s*true/.test(block), 'audioCaptureDefaults без noiseSuppression');
+});
+
+/* adaptiveStream запрещает ручную смену качества — на десктопе просим HIGH,
+   значит adaptive там должен быть выключен. */
+check('Гость: adaptive и ручной HIGH не конфликтуют', () => {
+  assert(/adaptiveStream:\s*smallEarly/.test(guest),
+    'adaptiveStream не привязан к типу устройства');
+  assert(/!smallEarly\s*&&\s*pub/.test(guest),
+    'ручной HIGH не защищён от adaptive');
+});
+
+/* Размытие/виртуальные фоны отключены: MediaPipe ронял FPS и тёк кадрами. */
+check('Эффекты фона удалены (UI и загрузка процессоров)', () => {
+  const strip = (s) => s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/<!--[\s\S]*?-->/g, '');
+  const crm = strip(fs.readFileSync(path.join(root, 'public/assets/js/ting_page.js'), 'utf8'));
+  const g = strip(guest);
+  assert(!/TING_BG_PRESETS/.test(crm), 'в CRM остались пресеты фона');
+  assert(!/VirtualBackground/.test(crm), 'в CRM остался VirtualBackground');
+  assert(!/ting-bg-effects/.test(crm), 'CRM всё ещё грузит бандл эффектов');
+  assert(!/guestBgGrid/.test(g), 'у гостя осталась сетка фонов');
+  assert(!/data-bg=/.test(g), 'у гостя остались кнопки фонов');
+});
+
+/* Плитки галереи ТВ не растягиваются: ширину задаёт контейнерный расчёт,
+   а не width:100% (иначе плитка шире ячейки, а object-fit:cover добивает кадр). */
+check('ТВ: галерея 16:9 без растяжения, видео contain', () => {
+  const css = fs.readFileSync(path.join(root, 'public/assets/css/ting-tv.css'), 'utf8')
+    .replace(/\/\*[\s\S]*?\*\//g, '');
+  assert(!/\.ttv-stage\.hall-dual > \.ttv-tile\.is-gallery\s*\{[^}]*?[^-]width:\s*100%/.test(css),
+    'hall-dual снова растягивает плитку (width:100%)');
+  assert(!/\.ttv-stage\.hall-g[345] > \.ttv-tile\.is-gallery[^{]*\{[^}]*?[^-]width:\s*100%/.test(css),
+    'hall-g3/g4/g5 снова растягивают плитку (width:100%)');
+  assert(/\.ttv-stage\.hall-dual > \.ttv-tile\.is-gallery\s*\{[^}]*aspect-ratio:\s*16\s*\/\s*9/.test(css),
+    'hall-dual потерял 16:9');
+  assert(/\.ttv-tile video\s*\{[^}]*object-fit:\s*contain/.test(css),
+    'видео снова cover — лицо обрезается');
+});
+
 console.log('\n=== ' + (n + fails.length) + ' checks, ' + n + ' PASS, ' + fails.length + ' FAIL ===');
 if (fails.length) {
   fails.forEach((f) => console.log(' -', f));

@@ -111,7 +111,7 @@
     raisedHands: {},
     reactions: [],
     blurOn: false,
-    bgPreset: 'none',
+    bgPreset: 'none', /* поля оставлены для совместимости; эффектов фона больше нет */
     devices: { mics: [], cams: [] },
     audioDeviceId: '',
     videoDeviceId: '',
@@ -981,18 +981,13 @@
     </div></div>`;
   }
 
-  const TING_BG_PRESETS = [
-    { id: 'none', label: 'Без фона', url: '' },
-    { id: 'blur', label: 'Размытие', url: '__blur__' },
-    { id: 'office-dusk', label: 'Офис', url: '/assets/img/ting-bg/office-dusk.svg' },
-    { id: 'soft-sky', label: 'Небо', url: '/assets/img/ting-bg/soft-sky.svg' },
-    { id: 'warm-studio', label: 'Студия', url: '/assets/img/ting-bg/warm-studio.svg' }
-  ];
+  /* Виртуальные фоны и размытие убраны: MediaPipe-сегментация на каждом
+     кадре роняла FPS и текла VideoFrame'ами (stalls в WebGL). Камера
+     публикуется напрямую, без процессоров. */
 
   function moreSheetHtml() {
     if (!state.moreOpen) return '';
     const handOn = !!state.handRaised;
-    const bg = state.bgPreset || 'none';
     const mics = (state.devices && state.devices.mics) || [];
     const cams = (state.devices && state.devices.cams) || [];
     const micOpts = mics.map((d) =>
@@ -1000,9 +995,6 @@
     ).join('');
     const camOpts = cams.map((d) =>
       `<option value="${esc(d.deviceId)}"${state.videoDeviceId === d.deviceId ? ' selected' : ''}>${esc(d.label || 'Камера')}</option>`
-    ).join('');
-    const bgBtns = TING_BG_PRESETS.map((p) =>
-      `<button type="button" class="ting-more-item${bg === p.id ? ' on' : ''}" data-act="bg-preset" data-bg="${esc(p.id)}">${esc(p.label)}</button>`
     ).join('');
     return `<div class="ting-more-sheet" id="ting-more-sheet" role="dialog" aria-label="Ещё">
       <div class="ting-more-head"><strong>Ещё</strong><button type="button" class="ting-icon-btn" data-act="toggle-more" aria-label="Закрыть">×</button></div>
@@ -1021,8 +1013,6 @@
         <button type="button" class="ting-more-item" data-act="react" data-emoji="❤️">❤️</button>
         <button type="button" class="ting-more-item" data-act="react" data-emoji="🔥">🔥</button>
       </div>
-      <div class="ting-more-label">Фон</div>
-      <div class="ting-more-grid ting-bg-grid">${bgBtns}</div>
     </div>`;
   }
 
@@ -2235,24 +2225,7 @@
     setTimeout(() => { try { el.remove(); } catch (_) { /* */ } }, 2200);
   }
 
-  async function loadTrackProcessors() {
-    if (window.LivekitTrackProcessors) return window.LivekitTrackProcessors;
-    if (window.TrackProcessors) return window.TrackProcessors;
-    /* D-184: раньше грузился vendor/livekit-track-processors.esm.js, который
-       содержит `import 'livekit-client'` и `import '@mediapipe/tasks-vision'`.
-       В браузере таких модулей нет → import падал, а ошибка проглатывалась
-       в catch → «Эффекты фона недоступны в этом браузере».
-       Теперь это самодостаточный бандл (tools/build_ting_bg_effects.js):
-       зависимости внутри, wasm и модель — локальные, без CDN. */
-    try {
-      const mod = await import('/assets/vendor/ting-bg-effects.esm.js');
-      window.LivekitTrackProcessors = mod;
-      return mod;
-    } catch (e) {
-      console.warn('[Ting] bg effects bundle failed', e && e.name, e && e.message);
-      return null;
-    }
-  }
+  /* Загрузчик процессоров фона удалён: он тянул MediaPipe wasm и ронял FPS. */
 
   function localCamPublication() {
     const room = state.lkRoom;
@@ -2289,65 +2262,10 @@
     }
   }
 
-  async function applyBackgroundPreset(presetId) {
-    const room = state.lkRoom;
-    if (!room || !room.localParticipant) {
-      toast('Сначала войдите в комнату', false);
-      return;
-    }
-    const preset = TING_BG_PRESETS.find((p) => p.id === presetId) || TING_BG_PRESETS[0];
-    if ((state.bgPreset || 'none') === preset.id) {
-      return; /* same-preset no-op — без WebGL churn */
-    }
-    const cam = localCamPublication();
-    if (!cam || !cam.track) {
-      toast('Включите камеру', false);
-      return;
-    }
-    try {
-      if (typeof cam.track.stopProcessor === 'function') {
-        try { await cam.track.stopProcessor(); } catch (_) { /* */ }
-      }
-      state.blurOn = false;
-      state.bgPreset = preset.id;
-      if (!preset.url) {
-        toast('Фон выключен');
-        return;
-      }
-      const processors = await loadTrackProcessors();
-      if (!processors || typeof cam.track.setProcessor !== 'function') {
-        toast('Эффекты фона недоступны в этом браузере', false);
-        state.bgPreset = 'none';
-        return;
-      }
-      let proc = null;
-      if (preset.url === '__blur__') {
-        if (typeof processors.BackgroundBlur !== 'function') {
-          toast('Размытие недоступно', false);
-          state.bgPreset = 'none';
-          return;
-        }
-        proc = processors.BackgroundBlur(16);
-        state.blurOn = true;
-      } else if (typeof processors.VirtualBackground === 'function') {
-        proc = processors.VirtualBackground(preset.url);
-      } else {
-        toast('Виртуальный фон недоступен', false);
-        state.bgPreset = 'none';
-        return;
-      }
-      await cam.track.setProcessor(proc);
-      toast(preset.label);
-    } catch (e) {
-      state.bgPreset = 'none';
-      state.blurOn = false;
-      toast((e && e.message) || 'Не удалось сменить фон', false);
-    }
-  }
-
-  async function toggleBackgroundBlur() {
-    await applyBackgroundPreset(state.blurOn || state.bgPreset === 'blur' ? 'none' : 'blur');
-  }
+  /* Виртуальные фоны и размытие убраны полностью: MediaPipe-сегментация
+     на каждом кадре роняла FPS и текла VideoFrame'ами (WebGL stalls,
+     «A VideoFrame was garbage collected without being closed»). Камера
+     публикуется напрямую, без процессоров — это и самый быстрый путь. */
 
   function resolvePartLabel(identity, fallback) {
     if (fallback === 'Вы') {
@@ -3465,7 +3383,10 @@
             if (lp) applyTileMuteState(lp.identity || state.myIdentity, { mic: !state.micOn });
             return;
           }
-          bumpPublicationQuality(pub, participant);
+          /* Локальная публикация: участник — это мы сами. В обработчике
+             LocalTrackPublished параметра participant нет (он есть только
+             в TrackSubscribed), поэтому берём room.localParticipant. */
+          bumpPublicationQuality(pub, lp);
           const id = lp && lp.identity;
           const tile = id && document.querySelector('#ting-stage .ting-tile[data-id="' + id + '"], #ting-filmstrip .ting-tile[data-id="' + id + '"]');
           if (tile && pub && pub.track && pub.track.kind === 'video') {
@@ -4910,8 +4831,9 @@
         updateDockMedia();
         return;
       }
-      if (act === 'bg-preset') {
-        await applyBackgroundPreset(btn.dataset.bg || 'none');
+      if (act === 'bg-preset-legacy') {
+        /* Виртуальные фоны отключены: пункт убран из меню, старые сборки
+           могли прислать событие — просто гасим. */
         state.moreOpen = false;
         const oldMore = qs('#ting-more');
         if (oldMore) oldMore.remove();
@@ -4951,7 +4873,7 @@
         return;
       }
       if (act === 'blur-toggle') {
-        await toggleBackgroundBlur();
+        /* Размытие убрано вместе с процессорами фона. */
         state.moreOpen = false;
         const oldMore = qs('#ting-more');
         if (oldMore) oldMore.remove();

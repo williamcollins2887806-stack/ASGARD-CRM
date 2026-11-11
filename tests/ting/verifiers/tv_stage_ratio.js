@@ -176,8 +176,63 @@ async function measure(url) {
     })()`;
 
     const out = await send('Runtime.evaluate', { expression: expr, returnByValue: true });
+    /* Второй замер: галерея. Раньше galleryRatio всегда был null, потому что
+       в сцене не было плиток .is-gallery — то есть «как в масштабе» не
+       проверялось вообще. */
+    const galleryCases = ['hall-dual', 'hall-g3'];
+    const galleryResults = [];
+    for (const mode of galleryCases) {
+      await send('Runtime.evaluate', {
+        expression: `(() => {
+          const stage = document.getElementById('stage');
+          if (!stage) return 'no stage';
+          stage.className = 'ttv-stage ${mode}';
+          const n = '${mode}' === 'hall-dual' ? 2 : 6;
+          stage.innerHTML = '';
+          for (let i = 0; i < n; i++) {
+            const t = document.createElement('div');
+            t.className = 'ttv-tile is-gallery';
+            t.setAttribute('data-id', 'g' + i);
+            t.innerHTML = '<div class="ttv-av-fallback">Г' + (i+1) + '</div>';
+            stage.appendChild(t);
+          }
+          return 'ok';
+        })()`,
+        returnByValue: true
+      });
+      await sleep(350);
+      const g = await send('Runtime.evaluate', {
+        expression: `(() => {
+          const stage = document.getElementById('stage');
+          if (!stage) return 'null';
+          const tiles = Array.from(stage.querySelectorAll('.ttv-tile.is-gallery'));
+          const rs = stage.getBoundingClientRect();
+          const ratios = tiles.map((el) => {
+            const b = el.getBoundingClientRect();
+            return {
+              ratio: +(b.width / b.height).toFixed(3),
+              overflowW: Math.round(b.right - rs.right),
+              overflowH: Math.round(b.bottom - rs.bottom),
+              w: Math.round(b.width), h: Math.round(b.height)
+            };
+          });
+          return JSON.stringify({ mode: '${mode}', stage: { w: Math.round(rs.width), h: Math.round(rs.height) }, tiles: ratios });
+        })()`,
+        returnByValue: true
+      });
+      const val = g.result && g.result.result && g.result.result.value;
+      if (val && val !== 'null') galleryResults.push(JSON.parse(val));
+    }
     sock.close();
-    return out.result && out.result.result && out.result.result.value;
+    const base = out.result && out.result.result && out.result.result.value;
+    if (base && galleryResults.length) {
+      try {
+        const parsed = JSON.parse(base);
+        parsed.galleries = galleryResults;
+        return JSON.stringify(parsed);
+      } catch (_) { /* */ }
+    }
+    return base;
   } finally {
     try { proc.kill(); } catch (_) { /* */ }
   }
@@ -210,5 +265,23 @@ async function measure(url) {
   console.log(`main fills ${fill}% of stage → ${okFill ? 'OK' : 'FAIL (мелкая плитка)'}`);
   const noOverflow = d.bodyScrollW <= d.bodyClientW + 1;
   console.log(`no horizontal overflow: ${noOverflow ? 'OK' : 'FAIL'}`);
-  process.exit(okStageFits && okMain && okFill && noOverflow ? 0 : 1);
+
+  /* Галерея: каждая плитка обязана быть 16:9 и не вылезать за сцену.
+     Раньше этот замер отсутствовал, и «картинка в масштабе» проходила мимо. */
+  let okGallery = true;
+  (d.galleries || []).forEach((g) => {
+    g.tiles.forEach((t, i) => {
+      const okRatio = t.ratio >= 1.70 && t.ratio <= 1.86;
+      const okFit = t.overflowW <= 1 && t.overflowH <= 1;
+      if (!okRatio || !okFit) okGallery = false;
+      console.log(`gallery ${g.mode} tile${i} ratio ${t.ratio} overflow ${t.overflowW}x${t.overflowH}`
+        + ` → ${okRatio && okFit ? 'OK' : 'FAIL'}`);
+    });
+  });
+  if (!(d.galleries || []).length) {
+    okGallery = false;
+    console.log('gallery: FAIL (замер не выполнен)');
+  }
+
+  process.exit(okStageFits && okMain && okFill && noOverflow && okGallery ? 0 : 1);
 })();

@@ -1,7 +1,7 @@
 # THING-CODE-VERIFY-F4
 
-at: 2026-11-11T13:15:00.261Z
-result: VERIFIED (69/69)
+at: 2026-11-11T15:03:05.875Z
+result: VERIFIED (75/75)
 
 | ID | PASS | Evidence |
 |----|------|----------|
@@ -51,7 +51,7 @@ result: VERIFIED (69/69)
 | C44_calendar_create_thing | PASS | календарь шлёт create_thing |
 | C45_turn_ops | PASS | coturn + turn_servers в ops |
 | C46_device_picker | PASS | device picker в Ещё CRM+guest |
-| C47_bg_presets | PASS | 3 вирт.фона + blur wiring CRM+guest |
+| C47_bg_effects_removed | PASS | виртуальные фоны и размытие отключены (нет UI и загрузки процессоров) |
 | C48_2peer_smoke_artifact | PASS | TING-2PEER-MEDIA-SMOKE.json green |
 | C49_lobby_crm_name | PASS | lobby берёт ФИО из CRM-профиля |
 | C50_cinema_chat_overlay | PASS | desktop chat = overlay, не G-колонка |
@@ -74,5 +74,11 @@ result: VERIFIED (69/69)
 | C67_quality_auto_ladder | PASS | лестница HIGH/MEDIUM/LOW по ConnectionQuality (CRM + ТВ) |
 | C68_low_speed_banner | PASS | адресное скрытие видео + баннер + автовозврат (3 поверхности) |
 | C69_low_speed_is_per_participant | PASS | качество приходит per-participant, id передаётся во всех трёх поверхностях |
+| C70_local_track_published_no_participant | PASS | LocalTrackPublished: bumpPublicationQuality(pub, lp), без ReferenceError |
+| C71_tv_video_explicit_play | PASS | TV: play() после attach — нет серого «плей» |
+| C72_guest_audio_constraints | PASS | гость: setMicrophoneEnabled(..., {AEC/NS/AGC}) + audioCaptureDefaults |
+| C73_adaptive_vs_manual_quality | PASS | гость: adaptive только на мобильном, HIGH вручную только на десктопе |
+| C74_tv_mic_by_publication | PASS | TV: micIsPublishing по публикации + audioCaptureDefaults + чистый конструктор |
+| C75_tv_gallery_no_stretch | PASS | TV: галерея 16:9 без width:100%, видео contain (лицо не обрезано) |
 
 ## All PASS

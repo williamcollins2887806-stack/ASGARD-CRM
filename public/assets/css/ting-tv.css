@@ -437,12 +437,29 @@ html, body.ting-tv {
   object-fit: contain;
   background: #000;
 }
+/* Два участника: плитки в ряд, каждая 16:9, сумма влезает в сцену.
+   Правила контейнера не было вообще: .ttv-stage.hall-dual наследовал flex от
+   .ttv-stage.hall, плитки шли в строку без ограничения ширины, и вторая
+   уезжала за правый край (замер: overflow +633px при 1920px). */
+.ttv-stage.hall-dual {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  overflow: hidden;
+}
 .ttv-stage.hall-dual > .ttv-tile.is-gallery {
   position: relative;
-  /* Галерея: обе плитки тоже держат 16:9, а не растягиваются по высоте. */
+  /* Галерея: держим 16:9 и НЕ растягиваем по ширине ячейки.
+     Раньше width:100% + height:auto давали плитку выше ячейки: грид её
+     подрезал, а object-fit:cover добивал кадр — отсюда «как в масштабе».
+     Теперь ширина задана явно (половина сцены минус зазор), а высота
+     считается из aspect-ratio — иначе max-width ломает соотношение. */
   aspect-ratio: 16 / 9;
-  width: 100%;
+  width: calc(50% - 6px);
   height: auto;
+  flex: 0 0 auto;
+  min-width: 0;
   min-height: 0;
   border-radius: 18px;
 }
@@ -451,8 +468,10 @@ html, body.ting-tv {
 .ttv-stage.hall-g5 > .ttv-tile.is-gallery {
   position: relative;
   aspect-ratio: 16 / 9;
-  width: 100%;
-  height: auto;
+  width: auto;
+  height: 100%;
+  max-width: 100%;
+  min-width: 0;
   min-height: 0;
   border-radius: 14px;
 }
@@ -551,7 +570,9 @@ html, body.ting-tv {
   pointer-events: none;
 }
 .ttv-tile video {
-  width: 100%; height: 100%; object-fit: cover; background: #000;
+  /* contain, а не cover: камера телефона/4:3 не должна обрезать лицо.
+     Плитка уже держит 16:9, поэтому для 16:9-камер разницы нет. */
+  width: 100%; height: 100%; object-fit: contain; background: #000;
   pointer-events: none;
 }
 .ttv-tile video::-webkit-media-controls { display: none !important; }

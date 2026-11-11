@@ -98,12 +98,25 @@ check('C45_turn_ops', /coturn/.test(fs.readFileSync(path.join(root, 'ops/livekit
 check('C46_device_picker', /device-audio/.test(tingPage) && /device-video/.test(tingPage) && /switchTingDevice/.test(tingPage)
   && /guestMicSelect/.test(guest) && /switchGuestDevice/.test(guest),
   'device picker в Ещё CRM+guest');
-check('C47_bg_presets', /TING_BG_PRESETS/.test(tingPage) && /office-dusk/.test(tingPage) && /VirtualBackground/.test(tingPage)
-  && /guestBgGrid/.test(guest) && /warm-studio/.test(guest)
-  && fs.existsSync(path.join(root, 'public/assets/img/ting-bg/office-dusk.svg'))
-  && fs.existsSync(path.join(root, 'public/assets/img/ting-bg/soft-sky.svg'))
-  && fs.existsSync(path.join(root, 'public/assets/img/ting-bg/warm-studio.svg')),
-  '3 вирт.фона + blur wiring CRM+guest');
+check('C47_bg_effects_removed',
+  (() => {
+    /* Виртуальные фоны и размытие отключены намеренно: MediaPipe-сегментация
+       на каждом кадре роняла FPS и текла VideoFrame'ами («A VideoFrame was
+       garbage collected without being closed»). Проверяем код и разметку,
+       не считая комментарии, где описано удалённое. */
+    const strip = (s) => s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/<!--[\s\S]*?-->/g, '');
+    const p = strip(tingPage);
+    const g = strip(guest);
+    return !/TING_BG_PRESETS/.test(p)
+      && !/VirtualBackground/.test(p)
+      && !/ting-bg-effects/.test(p)
+      && !/setProcessor/.test(p)
+      && !/guestBgGrid/.test(g)
+      && !/livekit-track-processors/.test(g)
+      && !/data-bg=/.test(g)
+      && !/data-act="bg-preset"/.test(p);
+  })(),
+  'виртуальные фоны и размытие отключены (нет UI и загрузки процессоров)');
 check('C48_2peer_smoke_artifact', (() => {
   try {
     const j = JSON.parse(fs.readFileSync(path.join(root, 'tests/reports/TING-2PEER-MEDIA-SMOKE.json'), 'utf8'));
@@ -189,6 +202,7 @@ check('C62_incall_credit_hidden',
    deviceId («микрофон не найден», хотя камера жила).
    C65 — качество: 1080p-пресет и HIGH-слой у зрителя, иначе «ужасная картинка». */
 const tingTv = fs.readFileSync(path.join(root, 'public/ting-tv/index.html'), 'utf8');
+const tingTvCss = fs.readFileSync(path.join(root, 'public/assets/css/ting-tv.css'), 'utf8');
 const unversioned = (src) => (src.match(/(?:src|href)="\/assets\/[^"?]+"/g) || []);
 check('C63_ting_pages_assets_versioned',
   unversioned(guest).length === 0
@@ -268,6 +282,66 @@ check('C69_low_speed_is_per_participant',
   && /isSelf \? null : \(participant && participant\.identity\)/.test(guest)
   && /isSelf \? null : \(participant && participant\.identity\)/.test(tingTv),
   'качество приходит per-participant, id передаётся во всех трёх поверхностях');
+
+/* C70: в обработчике LocalTrackPublished не должно быть переменной
+   participant — её там нет, это давало Uncaught ReferenceError и рвало
+   обновление плиток и меню. */
+check('C70_local_track_published_no_participant',
+  (() => {
+    const i = tingPage.indexOf('RoomEvent.LocalTrackPublished, (pub)');
+    if (i < 0) return false;
+    const block = tingPage.slice(i, i + 1600);
+    return !/bumpPublicationQuality\(pub,\s*participant\)/.test(block)
+      && /bumpPublicationQuality\(pub,\s*lp\)/.test(block);
+  })(),
+  'LocalTrackPublished: bumpPublicationQuality(pub, lp), без ReferenceError');
+/* C71: видео на ТВ обязано стартовать явным play() — autoplay в Android
+   WebView не гарантирует воспроизведение (серый значок «плей»). */
+check('C71_tv_video_explicit_play',
+  /track\.attach\(video\)/.test(tingTv)
+  && /video\.play\(\)\.catch/.test(tingTv),
+  'TV: play() после attach — нет серого «плей»');
+/* C72: AEC/NS/AGC у гостя. Без них близко стоящие устройства слышат друг
+   друга — писк и эхо. */
+check('C72_guest_audio_constraints',
+  !/setMicrophoneEnabled\(localAudio\)/.test(guest)
+  && !/setMicrophoneEnabled\(localAudio\)/.test(tingPage)
+  && (guest.match(/noiseSuppression:\s*true/g) || []).length >= 2
+  && /audioCaptureDefaults/.test(guest)
+  && /echoCancellation:\s*true/.test(guest),
+  'гость: setMicrophoneEnabled(..., {AEC/NS/AGC}) + audioCaptureDefaults');
+/* C73: adaptiveStream и ручной setVideoQuality несовместимы — SDK блокирует
+   смену качества и пишет «adaptive stream is enabled». На десктопе adaptive
+   выключен, на мобильном — включён и ручной вызов не делается. */
+check('C73_adaptive_vs_manual_quality',
+  /adaptiveStream:\s*smallEarly/.test(guest)
+  && /!smallEarly\s*&&\s*pub/.test(guest),
+  'гость: adaptive только на мобильном, HIGH вручную только на десктопе');
+/* C74: ТВ-микрофон судим по факту публикации, а не по isMicrophoneEnabled:
+   у трека, созданного напрямую, source может быть unknown, и геттер врёт. */
+check('C74_tv_mic_by_publication',
+  (() => {
+    const i = tingTv.indexOf('function micIsPublishing');
+    if (i < 0) return false;
+    const block = tingTv.slice(i, i + 600);
+    return !/isMicrophoneEnabled === false/.test(block)
+      && /info\.live/.test(block);
+  })()
+  && /audioCaptureDefaults/.test(tingTv)
+  && !/new LK\.LocalAudioTrack\(mst, undefined, false\)/.test(tingTv),
+  'TV: micIsPublishing по публикации + audioCaptureDefaults + чистый конструктор');
+/* C75: плитки галереи ТВ не растягиваются (было width:100% + height:auto →
+   грид подрезал, cover добивал → «как в масштабе»). */
+check('C75_tv_gallery_no_stretch',
+  (() => {
+    /* Комментарии не считаем: в них встречается описание старого дефекта. */
+    const css = tingTvCss.replace(/\/\*[\s\S]*?\*\//g, '');
+    return !/\.ttv-stage\.hall-dual > \.ttv-tile\.is-gallery\s*\{[^}]*?[^-]width:\s*100%/.test(css)
+      && !/\.ttv-stage\.hall-g[345] > \.ttv-tile\.is-gallery[^{]*\{[^}]*?[^-]width:\s*100%/.test(css)
+      && /\.ttv-stage\.hall-dual > \.ttv-tile\.is-gallery\s*\{[^}]*aspect-ratio:\s*16\s*\/\s*9/.test(css)
+      && /\.ttv-tile video\s*\{[^}]*object-fit:\s*contain/.test(css);
+  })(),
+  'TV: галерея 16:9 без width:100%, видео contain (лицо не обрезано)');
 
 const fail = checks.filter((c) => !c.pass);
 const md = [
