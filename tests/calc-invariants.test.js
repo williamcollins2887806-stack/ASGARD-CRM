@@ -73,18 +73,77 @@ check('пик людей растёт со сменами, сменная — н
   eq(two.headcount_peak, one.headcount_peak * 2);
 });
 
-// ── 2. Инвариант денег в смете ──────────────────────────────────────────────
-check('Σ qty базовых ролей = PS (s=1..2, C=1..3)', () => {
-  const mh = 5760;
-  for (const s of [1, 2]) {
-    for (const C of [1, 2, 3]) {
-      const r = sm.resolveSchedule({ mh, shifts_per_day: s, crew_size: 5, fronts: C, trips: 1 });
-      const qty = r.crew_size * r.crews * r.work_days * r.shifts_per_day;
-      const tol = r.crew_size * r.crews * r.shifts_per_day;
-      if (Math.abs(qty - r.ps) > tol) {
-        throw new Error('s=' + s + ' C=' + C + ': qty=' + qty + ' PS=' + r.ps);
-      }
-    }
+// ── 2. Инвариант денег: Σqty × часы смены = человеко-часы ──────────────────
+//
+// ВАЖНО: здесь была ошибка в исходном тесте, на неё справедливо указал
+// верификатор. Инвариант «Σqty = PS = MH/h_net» НЕВЕРЕН по определению:
+//   • смена оплачивается целиком (12 ч), а не производительные 9,25 ч;
+//   • PS = MH/h_net — «сколько смен производительного труда», но человеку
+//     платят за полную смену.
+// На числах: 656 смен × 12 ч = 7872 ч = MH. И 851 × 9,25 = 7872.
+// Оба верны, но платим за 656 смен, а не за 851.
+//
+// Правильный инвариант — Σqty × shift_hours = MH (± округление суток вверх).
+// Проверяется на РЕАЛЬНЫХ строках сметы A2/A3, а не на тождестве внутри
+// resolveSchedule (иначе тест не может провалиться по построению).
+check('Σqty × часы смены = MH на строках сметы A2/A3', () => {
+  const positions = Array.from({ length: 8 }, (_, i) => ({
+    name: 'Аппарат ' + i, people: 5, days: 16.4
+  }));
+  const plan = st.normalizeCalcPlan({ positions }, { max_crews: 6, fronts: 8 });
+  const est = smeta.recalcAsgardSmeta({
+    template: 'asgard_v1',
+    crew: plan.crew,
+    params: {
+      work_days: plan.work_days,
+      shifts_per_day: plan.shifts_per_day,
+      shift_hours: 12,
+      calc_formula_version: 2
+    },
+    works: []
+  });
+  const rows = (est.rows || []).filter((r) => r.id === 'a2' || r.id === 'a3');
+  const qty = rows.reduce((s, r) => s + (Number(r.qty) || 0), 0);
+  const hours = qty * 12;
+  const tol = plan.man_hours * 0.12;   // сутки округляются вверх — до 12 %
+  if (Math.abs(hours - plan.man_hours) > tol) {
+    throw new Error('Σqty×12 = ' + hours + ', MH = ' + plan.man_hours
+      + ' (расхождение ' + Math.round(Math.abs(hours - plan.man_hours) / plan.man_hours * 100) + ' %)');
+  }
+});
+
+check('ФОТ не падает при росте людей на объекте', () => {
+  // Дефект, который нашёл верификатор (FAIL 1a): состав бригад из плана
+  // игнорировался сметой (брались DEFAULT_PARAMS: 3 слесаря, 1 мастер),
+  // и ФОТ падал в 20 раз там, где людей БОЛЬШЕ.
+  const positions = Array.from({ length: 8 }, (_, i) => ({
+    name: 'Аппарат ' + i, people: 5, days: 16.4
+  }));
+  const fot = (plan) => {
+    const est = smeta.recalcAsgardSmeta({
+      template: 'asgard_v1',
+      crew: plan.crew,
+      params: {
+        work_days: plan.work_days,
+        shifts_per_day: plan.shifts_per_day,
+        shift_hours: 12,
+        calc_formula_version: 2
+      },
+      works: []
+    });
+    return (est.rows || [])
+      .filter((r) => r.id === 'a2' || r.id === 'a3')
+      .reduce((s, r) => s + (Number(r.sum) || 0), 0);
+  };
+
+  const one = st.normalizeCalcPlan({ positions }, { max_crews: 1, fronts: 1 });
+  const many = st.normalizeCalcPlan({ positions }, { max_crews: 6, fronts: 8 });
+  const f1 = fot(one);
+  const f6 = fot(many);
+  if (!(f1 > 0) || !(f6 > 0)) throw new Error('ФОТ пустой: ' + f1 + ' / ' + f6);
+  // Больше бригад — не меньше денег. Раньше было МЕНЬШЕ в 20 раз.
+  if (f6 < f1 * 0.7) {
+    throw new Error('ФОТ обвалился при росте бригад: ' + Math.round(f1) + ' → ' + Math.round(f6));
   }
 });
 

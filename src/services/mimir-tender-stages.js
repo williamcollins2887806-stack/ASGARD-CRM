@@ -1307,12 +1307,23 @@ function normalizeCalcPlan(ai, opts) {
   });
 
   // Человеко-часы: если у позиции задано mh (норма дала готовые чел·часы),
-  // берём его. Иначе считаем люди × сутки × часы смены. Без первой ветки
-  // позиция «1800 чел·ч без суток» давала mh = 0, и срок не считался вовсе.
+  // берём его. Иначе считаем люди × сутки × часы смены.
+  //
+  // КРИТИЧНО: число смен ДОЛЖНО быть тем же, что пойдёт в resolveSchedule.
+  // Раньше здесь стояло `p.shifts || 2`, а ниже — `shiftsFromPositions || 1`.
+  // На одних данных man_hours считался по 24 ч/сутки (15 744), а срок — по
+  // 12 ч/сутки: срок выходил вдвое длиннее, и Σqty в смете не совпадала с PS.
+  // Теперь смены определяются ОДИН раз и используются в обоих местах.
+  const shiftsFromPositions = positions.reduce((m, p) => Math.max(m, Number(p.shifts) || 0), 0);
+  const shiftsPerDayOpt = Number(opts && opts.shifts_per_day) > 0
+    ? Number(opts.shifts_per_day)
+    : (shiftsFromPositions || 1);
+
   const manHours = positions.reduce((s, p) => {
     const direct = Number(p.mh) || Number(p.labor_hours) || 0;
     if (direct > 0) return s + direct;
-    return s + (p.people || 0) * (p.days || 0) * (p.shifts || 2) * (p.shift_hours || 12);
+    const shifts = Number(p.shifts) > 0 ? Number(p.shifts) : shiftsPerDayOpt;
+    return s + (p.people || 0) * (p.days || 0) * shifts * (p.shift_hours || 12);
   }, 0);
 
   // ── Срок по инварианту MH (расчётная модель v2) ──────────────────────────
@@ -1322,13 +1333,7 @@ function normalizeCalcPlan(ai, opts) {
   // В заездах работы последовательны: параллелить можно только по фронтам
   // (числу аппаратов), а не «виртуальными» бригадами.
   const shiftHoursOpt = Number(opts && opts.shift_hours) > 0 ? Number(opts.shift_hours) : 12;
-  // Смены берём из позиций: если модель сказала «2 смены по 12 ч», люди
-  // работают 24 ч/сутки, и срок в 2 раза меньше. Раньше здесь жёстко 1,
-  // и план завышал срок вдвое при 24/7 (дефект найден на сверке сметы).
-  const shiftsFromPositions = positions.reduce((m, p) => Math.max(m, Number(p.shifts) || 0), 0);
-  const shiftsPerDayOpt = Number(opts && opts.shifts_per_day) > 0
-    ? Number(opts.shifts_per_day)
-    : (shiftsFromPositions || 1);
+  // Смены уже определены выше (shiftsPerDayOpt) — здесь только часы смены.
   // Фронты: сколько бригад может работать ОДНОВРЕМЕННО. Если объекты в
   // позициях не заданы, `fronts_known: false` — это НЕ «один аппарат»,
   // а «данных нет». Разница важна: при неизвестных фронтах окно заказчика
@@ -1398,6 +1403,25 @@ function normalizeCalcPlan(ai, opts) {
   for (const [code, count] of specialPeak) {
     addRole(code, crewPlan.ROLE_LABEL[code] || code, count, 'по признакам работ');
   }
+
+  // ── Уровень тендера: ИТР и ПТО ────────────────────────────────────────────
+  // Это роли НА ОБЪЕКТ, а не в каждой бригаде: один ИТР на все бригады, ПТО
+  // подключается на объёмных работах. Раньше вызывалось из normalizeCalcPlan
+  // напрямую, при переходе на crew-plan вызов потерялся — и ПТО исчезло из
+  // состава молча (нашёл верификатор). Возвращаем: без ПТО нет приёмки
+  // скрытых работ, а это статья затрат.
+  try {
+    const tenderRoles = crewPlan.planTenderCrew({
+      positions: positions.length,
+      crews,
+      pto_threshold: Number(opts && opts.pto_threshold) || 10
+    });
+    for (const tr of tenderRoles) {
+      // ИТР уже добавлен выше как одна роль — не дублируем.
+      if (tr.role_code === 'itr') continue;
+      addRole(tr.role_code, crewPlan.ROLE_LABEL[tr.role_code] || tr.role_code, tr.count, tr.reason);
+    }
+  } catch (_) { /* расчёт состава не должен валить план */ }
 
   // Совместимость: прежние поля observer/chemist считались отдельно. Их
   // больше нет — роли уже в составе выше. Флаги оставляем для отчёта.

@@ -167,8 +167,40 @@ check('mergeDv сохраняет и позиции, и заезды', () => {
   if (!r.conflicts.length) throw new Error('конфликты не собраны');
 });
 
-// ── Крайние случаи ──────────────────────────────────────────────────────────
-check('пустая база — просто берём разбор', () => {
+// ── Порядок слияния: разбор обновляет, РП защищён ───────────────────────────
+check('новый разбор МОЖЕТ изменить режим и число заездов', () => {
+  // Дефект (нашёл верификатор): basePlan стоял последним в Object.assign,
+  // поэтому mode/trip_count из разбора игнорировались, а визиты приходили
+  // из разбора — получалось mode=continuous при 3 визитах.
+  const r = vpc.mergeVisitPlan({
+    basePlan: { schedule_mode: 'continuous', trip_count: 1, source: 'analysis' },
+    incomingPlan: {
+      schedule_mode: 'visits', trip_count: 3,
+      visits: [{ id: 'v1' }, { id: 'v2' }, { id: 'v3' }]
+    }
+  });
+  eq(r.plan.schedule_mode, 'visits', 'режим должен обновиться из разбора');
+  eq(r.plan.trip_count, 3, 'число заездов должно обновиться');
+});
+
+check('правка РП в плане заездов не перезаписывается', () => {
+  const r = vpc.mergeVisitPlan({
+    basePlan: { schedule_mode: 'continuous', trip_count: 1, source: 'rp' },
+    incomingPlan: { schedule_mode: 'visits', trip_count: 3, visits: [{ id: 'v1' }] }
+  });
+  eq(r.plan.schedule_mode, 'continuous', 'правка РП должна остаться');
+  eq(r.plan.trip_count, 1);
+});
+
+check('locked-план заездов тоже защищён', () => {
+  const r = vpc.mergeVisitPlan({
+    basePlan: { schedule_mode: 'visits', trip_count: 2, locked: true },
+    incomingPlan: { schedule_mode: 'continuous', trip_count: 1 }
+  });
+  eq(r.plan.trip_count, 2);
+});
+
+check('пустая база — берём разбор как есть', () => {
   const r = vpc.mergeList({ base: [], incoming: [pos(1), pos(2)] });
   eq(r.merged.length, 2);
   eq(r.stats.kept_manual, 0);

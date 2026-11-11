@@ -34,6 +34,14 @@ function isManual(rec) {
   return src === 'rp' || src === 'manual' || src === 'user';
 }
 
+/** Признак правки человека в плане заездов. */
+function visitPlanManual(plan) {
+  if (!plan || typeof plan !== 'object') return false;
+  if (plan.crew_locked || plan.locked || plan.manual) return true;
+  const src = String(plan.source || plan.origin || '').toLowerCase();
+  return src === 'rp' || src === 'manual' || src === 'user';
+}
+
 /**
  * Объединение списков id без потерь и дублей.
  * Порядок: сначала сохранённые, затем новые из разбора.
@@ -195,16 +203,37 @@ function mergeVisitPlan(p) {
   const res = mergeList({ base: baseVisits, incoming: incomingVisits });
 
   // Позиции внутри заездов: объединяем по id, не теряя ручных.
-  const plan = Object.assign({}, o.incomingPlan || {}, o.basePlan || {}, {
-    visits: res.merged.map((v) => {
-      // `v` — результат склейки (с приоритетом РП), `inc` — свежий разбор.
-      // Порядок важен: свежие поля дают новое, но правки РП перекрывают.
-      const inc = incomingVisits.find((x) => keyOf(x) === keyOf(v)) || {};
-      const ids = [...new Set([]
-        .concat(v.position_ids || [])
-        .concat(inc.position_ids || []))];
-      return Object.assign({}, inc, v, { position_ids: ids });
-    })
+  // ── Порядок слияния: правки РП главнее, но НЕ порядком ключей ────────────
+  // Было `Object.assign({}, incoming, base, {...})` — base последний, значит
+  // новый разбор не мог изменить ни режим, ни число заездов, ни вернуть
+  // исправленный график. При этом визиты приходили из разбора, и получалось
+  // внутреннее противоречие: mode=continuous при 3 визитах.
+  //
+  // Правильно: берём свежий разбор за основу (он актуален), а поверх кладём
+  // ТОЛЬКО те поля сохранённого плана, которые человек правил вручную.
+  const basePlanObj = o.basePlan || {};
+  const manualFields = ['schedule_mode', 'trip_count', 'visits', 'note'];
+  const keptFromBase = {};
+  if (visitPlanManual(basePlanObj)) {
+    for (const f of manualFields) {
+      if (basePlanObj[f] !== undefined) keptFromBase[f] = basePlanObj[f];
+    }
+  }
+
+  const plan = Object.assign(
+    {},
+    basePlanObj,        // исторические поля, которые разбор не знает
+    o.incomingPlan || {}, // актуальные данные разбора
+    keptFromBase        // ручные правки РП поверх всего
+  );
+  plan.visits = res.merged.map((v) => {
+    // `v` — результат склейки (с приоритетом РП), `inc` — свежий разбор.
+    // Порядок важен: свежие поля дают новое, но правки РП перекрывают.
+    const inc = incomingVisits.find((x) => keyOf(x) === keyOf(v)) || {};
+    const ids = [...new Set([]
+      .concat(v.position_ids || [])
+      .concat(inc.position_ids || []))];
+    return Object.assign({}, inc, v, { position_ids: ids });
   });
 
   return { plan, stats: res.stats, conflicts: res.conflicts };

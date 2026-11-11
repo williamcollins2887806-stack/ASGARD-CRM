@@ -963,6 +963,42 @@ function recalcAsgardSmeta(estimate) {
 
   // Техплан: бригада, МТР, график. Нормализуем ДО строк — из него строятся A и F.
   est.crew = normalizeCrew(est.crew);
+  // ── Состав бригады → параметры сметы ──────────────────────────────────────
+  // КРИТИЧНО: строки A1–A3 считают количество как work_days × shifts ×
+  // workers_per_shift, а это поле бралось из DEFAULT_PARAMS (3 слесаря,
+  // 1 мастер), полностью ИГНОРИРУЯ переданный состав. На плане с 6 бригадами
+  // (30 человек) в смету попадало 4 человека, и Σqty = 87 вместо PS = 1702 —
+  // деньги падали в 20 раз там, где людей больше.
+  //
+  // Теперь состав из `crew` (единственный источник численности) переносится
+  // в params, поэтому A1–A3 считаются от реальной бригады.
+  (() => {
+    const list = Array.isArray(est.crew) ? est.crew : [];
+    if (!list.length) return;
+    let masters = 0;
+    let workers = 0;
+    let itr = 0;
+    let other = 0;
+    for (const c of list) {
+      const code = String(c.role_code || c.code || '').toLowerCase();
+      const role = String(c.role || '').toLowerCase();
+      const n = num(c.count, 0);
+      if (!(n > 0)) continue;
+      if (code === 'master' || /мастер|бригадир/.test(role)) masters += n;
+      else if (code === 'worker' || /слесар|рабоч|исполн/.test(role)) workers += n;
+      else if (code === 'itr' || /итр/.test(role)) itr += n;
+      else other += n;
+    }
+    // Параметры — на ОДНУ смену. Если смен несколько, состав из crew уже
+    // суммарный по объекту, поэтому делим на смены: 2 смены × 6 бригад —
+    // это 2 сменных состава, а не удвоенная бригада.
+    const shifts = Math.max(1, num(est.params.shifts_per_day) || 1);
+    if (masters > 0) est.params.masters_per_shift = Math.max(1, Math.round(masters / shifts));
+    if (workers > 0) est.params.workers_per_shift = Math.max(1, Math.round(workers / shifts));
+    // ИТР и спецроли идут отдельными строками, но их наличие фиксируем,
+    // чтобы смета их не «съела» молча.
+    est.crew_counts = { masters, workers, itr, other, shifts };
+  })();
   est.mtr = normalizeMtr(est.mtr);
   est.schedule = normalizeSchedule(est.schedule, p);
   // Перечень работ из ведомости. Деньги идут через роли (A) и срок — работы

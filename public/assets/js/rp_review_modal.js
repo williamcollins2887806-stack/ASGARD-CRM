@@ -522,7 +522,10 @@ window.AsgardRpReviewModal = (function () {
       if (useGroups) {
         const pKey = String(p.period || '').trim() ? periodKey(p.period) : '__none__';
         if (pKey !== lastPeriodKey) {
-          if (lastPeriodKey !== null) h += '</div>'; // закрыть прошлую группу
+          // Закрываем ОБА контейнера прошлой группы: обёртку и тело.
+          // Раньше закрывался один, и следующая группа вкладывалась внутрь
+          // предыдущей (глубина 3 вместо 0), ломая insertAdjacentHTML.
+          if (lastPeriodKey !== null) h += '</div></div>';
           const grp = periodGroups.find((g) => g.key === pKey);
           if (grp) {
             h += '<div class="rp-dv-period' +
@@ -651,8 +654,8 @@ window.AsgardRpReviewModal = (function () {
         '</div>';
     });
 
-    // Закрываем последнюю группу периода, если группировка включена.
-    if (useGroups && lastPeriodKey !== null) h += '</div>';
+    // Закрываем последнюю группу: оба контейнера (обёртку и тело).
+    if (useGroups && lastPeriodKey !== null) h += '</div></div>';
 
     h += '</div>';
 
