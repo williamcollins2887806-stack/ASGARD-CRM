@@ -428,7 +428,13 @@ console.log('\n=== Факсимиле верхним слоем + бланк (09
   ok(/wp:anchor/.test(src), 'факсимиле — плавающий anchor');
   ok(/obs_stamp_sign\.png/.test(src), 'комбинированный PNG печати+подписи');
   ok(/diam = 4\.0|4\.0 \* CM|Ø печати 40/.test(src), 'печать Ø 40 мм');
-  ok(/lastContent/.test(src), 'пустые абзацы в конце документа убираются');
+  // V490: тест закреплял `lastContent` — прежнюю логику, которая собирала
+  // ВСЕ <w:p> по документу, включая абзацы ВНУТРИ таблиц. Именно она вырезала
+  // из ячейки шапки единственный параграф, и Word писал «Файл поврежден»
+  // (проверено Word 16.0 через COM). Теперь чистим только хвост тела вне таблиц.
+  ok(/emptyTail/.test(src), 'пустые абзацы в конце убираются (только вне таблиц)');
+  ok(/inTable/.test(src), 'абзацы внутри таблиц не удаляются (иначе Word: файл повреждён)');
+  ok(/relativeFrom="column"/.test(src), 'печать в anchor с relativeFrom="column" (иначе Word не открывает)');
   ok(/_pdfFromOfficialDocx|docx-libreoffice/.test(
     fs.readFileSync(require.resolve('../src/services/obs-letter'), 'utf8')),
     'PDF собирается из DOCX бланка (LibreOffice), не из HTML CRM');

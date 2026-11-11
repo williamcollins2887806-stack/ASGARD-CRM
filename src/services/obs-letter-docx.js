@@ -342,10 +342,17 @@ async function generateObsLetterDocx(db, docId, opts = {}) {
     if (badRid.size) {
       let out = xml;
       for (const rid of badRid) {
-        // абзац целиком, если он содержит только этот рисунок
-        out = out.replace(
-          new RegExp(`<w:p\\b[^>]*>(?:(?!<w:p\\b)[\\s\\S])*?r:embed="${rid}"(?:(?!<w:p\\b)[\\s\\S])*?</w:p>`, 'g'),
-          (para) => (para.replace(/<[^>]+>/g, '').trim() ? para : ''));
+        // Удаляем ТОЛЬКО сам рисунок, а не абзац вокруг него.
+        //
+        // V490: прежний код вырезал абзац целиком регуляркой
+        // `<w:p\b[^>]*>...r:embed="rIdN"...</w:p>`. Она цепляла и
+        // самозакрытые `<w:p/>`, поэтому граница абзаца уезжала: открывающий
+        // `<w:p>` одного абзаца съедался вместе с закрывающим `</w:p>`
+        // соседнего. Результат в готовом файле — `w:p` открыт 15, закрыт 14,
+        // и Word писал «Файл поврежден» (проверено Word 16.0 через COM).
+        //
+        // Пустой абзац от неиспользованного {%signature_img} не мешает: он
+        // без текста и без рисунка, высоты почти не даёт.
         out = out.replace(
           new RegExp(`<w:drawing>(?:(?!</w:drawing>)[\\s\\S])*?r:embed="${rid}"[\\s\\S]*?</w:drawing>`, 'g'), '');
         rels = rels.replace(new RegExp(`<Relationship\\b[^>]*Id="${rid}"[^>]*/>`, 'g'), '');
@@ -385,22 +392,62 @@ async function generateObsLetterDocx(db, docId, opts = {}) {
     if (patched !== xml) outZip.file('word/document.xml', patched);
   }
 
-  // D-392f: УБИРАЕМ ПУСТЫЕ АБЗАЦЫ В КОНЦЕ документа. Word добавляет
+  // D-392f: убираем ЛИШНИЕ ПУСТЫЕ АБЗАЦЫ В КОНЦЕ документа. Word добавляет
   // невидимый абзац после последнего элемента, и он уезжает на новую
   // страницу, если места впритык. Оставляем ровно один перед sectPr.
+  //
+  // V490 — КРИТИЧЕСКИЙ ДЕФЕКТ (Word: «Файл поврежден»). Прежний код собирал
+  // ВСЕ `<w:p>` регуляркой по всему document.xml, включая абзацы ВНУТРИ
+  // таблиц. Дальше он брал `tail` — всё, что после последнего «содержательного»
+  // абзаца, — и удалял из документа. А «последним содержательным» оказывался
+  // абзац с подписью директора, ПОСЛЕ которого в разметке ещё лежат ячейки
+  // шапки-таблицы. В результате из `<w:tc>` вырезался единственный `<w:p>`,
+  // и ячейка оставалась без блочного элемента. По схеме OOXML (CT_Tc) это
+  // недопустимо: LibreOffice терпит и делает PDF, Word отказывается открывать.
+  //
+  // Бисекция подтвердила: правка ровно этого блока переводит файл из
+  // «не открывается» в «открывается». Теперь чистим ТОЛЬКО хвост тела
+  // документа, и только абзацы, стоящие ВНЕ таблиц.
   {
     const xml = outZip.file('word/document.xml').asText();
-    const list = xml.match(/<w:p\b[\s\S]*?<\/w:p>/g) || [];
-    let lastContent = -1;
-    list.forEach((p, idx) => {
-      const t = p.replace(/<[^>]+>/g, '').trim();
-      if (t || /w:drawing/.test(p)) lastContent = idx;
-    });
-    const tail = list.slice(lastContent + 1).filter((p) => !/<w:sectPr/.test(p));
-    if (tail.length > 1) {
-      let out = xml;
-      tail.slice(1).forEach((p) => { out = out.replace(p, ''); });
-      outZip.file('word/document.xml', out);
+
+    // Границы w:body.
+    const bodyOpen = xml.indexOf('<w:body>');
+    const bodyClose = xml.lastIndexOf('</w:body>');
+    if (bodyOpen >= 0 && bodyClose > bodyOpen) {
+      const head = xml.slice(0, bodyOpen + '<w:body>'.length);
+      const body = xml.slice(bodyOpen + '<w:body>'.length, bodyClose);
+      const tailXml = xml.slice(bodyClose);
+
+      // Размечаем, какие позиции в body принадлежат таблицам — их не трогаем.
+      const inTable = new Array(body.length).fill(false);
+      for (const m of body.matchAll(/<w:tbl>[\s\S]*?<\/w:tbl>/g)) {
+        for (let i = m.index; i < m.index + m[0].length; i += 1) inTable[i] = true;
+      }
+
+      // Абзацы верхнего уровня (вне таблиц), идущие до sectPr.
+      const sectAt = body.indexOf('<w:sectPr');
+      const scope = sectAt >= 0 ? body.slice(0, sectAt) : body;
+      const paras = [...scope.matchAll(/<w:p\b[\s\S]*?<\/w:p>/g)]
+        .filter((m) => !inTable[m.index]);
+
+      // С конца: сколько подряд пустых абзацев (без текста и без картинок).
+      let emptyTail = 0;
+      for (let i = paras.length - 1; i >= 0; i -= 1) {
+        const p = paras[i][0];
+        const hasText = p.replace(/<[^>]+>/g, '').trim().length > 0;
+        const hasPic = /w:drawing/.test(p);
+        if (hasText || hasPic) break;
+        emptyTail += 1;
+      }
+      // Оставляем один пустой абзац (Word требует абзац перед sectPr).
+      if (emptyTail > 1) {
+        let outBody = body;
+        for (const m of paras.slice(paras.length - emptyTail + 1)) {
+          outBody = outBody.replace(m[0], '');
+        }
+        outZip.file('word/document.xml', head + outBody + tailXml);
+      }
     }
   }
 
@@ -461,18 +508,53 @@ async function generateObsLetterDocx(db, docId, opts = {}) {
               .replace(/<wp:positionH\b[\s\S]*?<\/wp:positionH>/g, '')
               .replace(/<wp:positionV\b[\s\S]*?<\/wp:positionV>/g, '')
               .replace(/<wp:wrap\w*[^/]*\/>/g, '')
+              // V490: effectExtent тоже вычищаем — иначе он остаётся от
+              // шаблона и дублируется с тем, что добавляем ниже. Два
+              // wp:effectExtent подряд схема CT_Anchor не допускает, и Word
+              // отказывается открывать файл.
+              .replace(/<wp:effectExtent\b[^/]*\/>/g, '')
               .replace(/<wp:extent\b[^/]*\/>/g, '');
-            return `<wp:anchor distT="0" distB="0" distL="0" distR="0" simplePos="0" relativeHeight="251658240" behindDoc="0" locked="0" layoutInCell="1" allowOverlap="1">`
+            return `<wp:anchor distT="0" distB="0" distL="0" distR="0" simplePos="0" relativeHeight="251659264" behindDoc="0" locked="0" layoutInCell="1" allowOverlap="1">`
               + `<wp:simplePos x="0" y="0"/>`
-              + `<wp:positionH relativeFrom="paragraph"><wp:posOffset>1100000</wp:posOffset></wp:positionH>`
+              // V490: relativeFrom="column", как у рабочего логотипа в шаблоне.
+              // С "paragraph" Word отказывался открывать файл (проверено
+              // Word 16.0 через COM: с column открывается, с paragraph — нет).
+              + `<wp:positionH relativeFrom="column"><wp:posOffset>1100000</wp:posOffset></wp:positionH>`
               + `<wp:positionV relativeFrom="paragraph"><wp:posOffset>-200000</wp:posOffset></wp:positionV>`
               + `<wp:extent cx="${wEmu}" cy="${hEmu}"/>`
+              // V490: порядок по схеме CT_Anchor — effectExtent ПОСЛЕ extent и
+              // ПЕРЕД wrap*. Раньше wrapNone шёл первым, Word на этом спотыкался.
+              + `<wp:effectExtent l="0" t="0" r="0" b="0"/>`
               + `<wp:wrapNone/>`
               + clean
               + '</wp:anchor>';
           });
-        xml = xml.replace(stampPara, '');
-        xml = xml.replace(hostPara, hostPara.replace('</w:p>', over + '</w:p>'));
+
+        // V490: `a:ext` внутри `pic:spPr` тоже должен получить реальный размер.
+        // ImageModule оставляет там `cx="0" cy="0"`, и Word отказывается
+        // открывать файл (нулевая картинка). Переносим wp:extent в a:ext.
+        const overSized = over.replace(
+          /(<pic:spPr\b[^>]*>[\s\S]*?<a:xfrm>[\s\S]*?)<a:ext cx="0" cy="0"\/>/,
+          `$1<a:ext cx="${wEmu}" cy="${hEmu}"/>`
+        );
+
+        // V490: КРИТИЧНО — замены делаем функциями, а не строками.
+        //
+        // Класс ошибки: `String.prototype.replace(searchString, replacement)`
+        // трактует `$&`, `$'`, `` $` `` и `$1` в СТРОКЕ ЗАМЕНЫ как спецсимволы.
+        // В XML письма попадаются `$`, а хуже — сам `hostPara` содержит `$`-пары
+        // в base64 картинки; подстановка съедала куски и рвала `</w:p>`.
+        // Итог: `w:p` открыт 15, закрыт 14 → Word «Файл поврежден».
+        // Функция-заменитель возвращает строку буквально, без интерпретации.
+        xml = xml.replace(stampPara, () => '');
+
+        // Вставляем факсимиле в конец ИМЕННО этого абзаца. Ищем последний
+        // `</w:p>`, принадлежащий hostPara, а не первый вложенный.
+        const hostClose = hostPara.lastIndexOf('</w:p>');
+        if (hostClose >= 0) {
+          const patchedHost = hostPara.slice(0, hostClose) + overSized + hostPara.slice(hostClose);
+          xml = xml.replace(hostPara, () => patchedHost);
+        }
         outZip.file('word/document.xml', xml);
       }
     }

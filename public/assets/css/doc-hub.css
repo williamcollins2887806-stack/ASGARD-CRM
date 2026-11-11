@@ -3697,7 +3697,12 @@ body.dh-obs-resizing iframe { pointer-events: none; }
   overflow: auto;
   display: flex;
   align-items: flex-start;
-  justify-content: center;
+  /* V490: центрируем лист по горизонтали и держим сверху.
+     `justify-content:center` в комбинации с широким листом и `overflow:auto`
+     обрезал левый край: лист уезжал вправо, и было видно только его часть —
+     это и читалось как «предпросмотр смещён». Для скроллящегося флекса
+     безопаснее `margin:0 auto` у самого листа. */
+  justify-content: flex-start;
   padding: 16px;
   background-image:
     linear-gradient(45deg, rgba(148, 163, 184, 0.06) 25%, transparent 25%),
@@ -3707,7 +3712,16 @@ body.dh-obs-resizing iframe { pointer-events: none; }
   background-size: 16px 16px;
   background-position: 0 0, 0 8px, 8px -8px, -8px 0;
 }
-.dh-obs-prev-scaler { display: flex; align-items: flex-start; justify-content: center; margin: auto; }
+.dh-obs-prev-scaler {
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  /* V490: `margin:auto` в скроллящемся контейнере центрирует только когда
+     места хватает; при масштабе >100% лист шире вьюпорта и уезжал вправо.
+     `margin:0 auto` центрирует по факту свободного места и не срезает край. */
+  margin: 0 auto;
+  flex: 0 0 auto;
+}
 .dh-obs-frame {
   width: 794px;
   height: 1123px;

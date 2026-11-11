@@ -1032,6 +1032,17 @@ window.AsgardObsLetterModal = (function () {
     el('dhObsAccountAdd').hidden = !OBS_ACCOUNT_ROLES.includes(String(role() || '').toUpperCase());
 
     try {
+      // V490: пока идёт запрос, в списках — явное «Загружаю…».
+      //
+      // Заказчик: «выпадающие списки не сразу показываются, сначала они пустые».
+      // Причина: списки рендерятся пустыми, а obs-options приходит после
+      // (иногда секунду-две). Пустой select читается как «договоров нет».
+      const loadingOpt = '<option value="" disabled selected>Загружаю…</option>';
+      const accSel = el('dhObsAccount');
+      const subSel = el('dhObsSub');
+      if (accSel) accSel.innerHTML = loadingOpt;
+      if (subSel) subSel.innerHTML = loadingOpt;
+
       const opt = await apiJson(`/${docId}/obs-options`);
       if (!state) return;   // окно закрыли, пока грузили
       state.defaults = opt.defaults || {};
