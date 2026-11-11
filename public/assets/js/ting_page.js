@@ -1565,14 +1565,17 @@
     const usable = cams.filter((c) => c.score > -50);
     const list = [];
     const bestId = usable[0] && usable[0].deviceId ? usable[0].deviceId : '';
-    /* 4K первым: «ideal» не ломает слабые камеры (браузер отдаст что есть),
-       но 4K-камера на ТВ/ноуте даёт настоящее 4K, а не растянутое 720p.
-       Дальше — 1440p/1080p/720p и мягкие варианты. */
+    /* D-197b: потолок захвата — 720p, и это ГЛАВНОЕ ограничение качества.
+       SDK строит верхний simulcast-слой из ФАКТИЧЕСКОГО захвата
+       (`new VideoPreset(width, height, videoEncoding)`), а не из списка
+       пресетов: список обрезается до трёх rid, и третий всегда идёт с
+       scaleResolutionDownBy = 1. Поэтому «4K первым» давало публикацию 4K
+       при битрейте 720p — мыло и limiter=cpu, ровно жалоба «140–360p».
+       Ограничивать надо ЗАХВАТ. */
     const steps = [
-      { width: { ideal: 3840 }, height: { ideal: 2160 } },
-      { width: { ideal: 2560 }, height: { ideal: 1440 } },
-      { width: { ideal: 1920 }, height: { ideal: 1080 } },
-      { width: { ideal: 1280 }, height: { ideal: 720 } }
+      { width: { ideal: 1280 }, height: { ideal: 720 } },
+      { width: { ideal: 960 }, height: { ideal: 540 } },
+      { width: { ideal: 640 }, height: { ideal: 360 } }
     ];
     if (bestId) {
       steps.forEach((s) => {

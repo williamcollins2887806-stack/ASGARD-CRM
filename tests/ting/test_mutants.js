@@ -314,10 +314,11 @@ const MUTANTS = [
     to: ''
   },
   {
-    name: 'publishTrack obhodit potolok 720p (ruchnye 5 sloev)',
-    file: 'public/assets/js/ting_page.js',
-    from: 'pubOpts.videoSimulcastLayers = profile.layers;',
-    to: 'pubOpts.videoSimulcastLayers = [LK.VideoPresets.h180, LK.VideoPresets.h1440];'
+    name: 'vetka ischerpaniya rekonnekta ne gasit telemetriyu',
+    file: 'public/ting/index.html',
+    anchor: 'if (reconnectAttempts < RECONNECT_MAX)',
+    from: 'guestStopMetrics();',
+    to: ''
   }
 ];
 

@@ -16,8 +16,8 @@
       if (t === 'light' || t === 'dark') document.documentElement.setAttribute('data-theme', t);
     } catch (e) {}
   </script>
-  <link rel="stylesheet" href="/assets/css/design-tokens.css?v=20.28.512" />
-  <link rel="stylesheet" href="/assets/css/ting.css?v=20.28.512" />
+  <link rel="stylesheet" href="/assets/css/design-tokens.css?v=20.28.513" />
+  <link rel="stylesheet" href="/assets/css/ting.css?v=20.28.513" />
   <style>
     html, body { margin: 0; min-height: 100%; }
     .hidden { display: none !important; }
@@ -48,11 +48,11 @@
       backdrop-filter: blur(12px);
     }
   </style>
-  <script src="/assets/vendor/livekit-client.umd.min.js?v=20.28.512"></script>
-  <script src="/assets/js/ting_icons.js?v=20.28.512"></script>
-  <script src="/assets/js/ting_common.js?v=20.28.512"></script>
-  <script src="/assets/js/ting_media_profile.js?v=20.28.512"></script>
-  <script src="/assets/js/ting_room_core.js?v=20.28.512"></script>
+  <script src="/assets/vendor/livekit-client.umd.min.js?v=20.28.513"></script>
+  <script src="/assets/js/ting_icons.js?v=20.28.513"></script>
+  <script src="/assets/js/ting_common.js?v=20.28.513"></script>
+  <script src="/assets/js/ting_media_profile.js?v=20.28.513"></script>
+  <script src="/assets/js/ting_room_core.js?v=20.28.513"></script>
   <script>
     /* D-196: установка Тинга как приложение — закрывает запрос «как у TrueConf»
        без отдельного exe.
@@ -531,9 +531,15 @@
           if (LK && LK.VideoPresets) {
             var uaP = navigator.userAgent || '';
             var smallP = /Android|iPhone|iPad|Mobile/i.test(uaP);
+            /* D-197b: захват ограничен 720p (540p на телефоне). Раньше десктоп
+               просил h2160/h1080, и хотя список слоёв обрезался до трёх,
+               ВЕРХНИЙ слой SDK строит из ФАКТИЧЕСКОГО захвата
+               (`new VideoPreset(width, height, videoEncoding)`), поэтому
+               публиковался кадр 4K при битрейте 720p — то самое «мыло»
+               плюс limiter=cpu. Ограничивать надо захват, а не список. */
             var pref = smallP
-              ? (LK.VideoPresets.h720 || LK.VideoPresets.h360)
-              : (LK.VideoPresets.h2160 || LK.VideoPresets.h1080);
+              ? (LK.VideoPresets.h540 || LK.VideoPresets.h360)
+              : LK.VideoPresets.h720;
             if (pref && pref.resolution) {
               presetOpts.resolution = pref.resolution;
               presetOpts.frameRate = pref.frameRate || 30;

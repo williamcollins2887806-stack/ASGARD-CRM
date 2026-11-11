@@ -259,35 +259,33 @@ check('PWA: кнопка установки инициализируется п�
 
 /* D-195: цикл телеметрии должен гаситься на выходе, иначе он крутится по
    мёртвому PC, копит нули и отправляет их в отчёт. */
-check('Медиа: явный publishTrack не обходит потолок 720p', () => {
-  /* D-197: CRM и гость собирали пять слоёв вручную и передавали их в
-     publishTrack поверх publishDefaults — SDK брал третий кодинг из
-     фактического захвата (до 4K), и потолок 720p терялся. Верификатор
-     нашёл это как предсуществующий дефект. */
+check('Медиа: потолок 720p ограничен В ЗАХВАТЕ (главное)', () => {
+  /* D-197b: SDK строит верхний simulcast-слой из ФАКТИЧЕСКОГО захвата
+     (`new VideoPreset(width, height, videoEncoding)`), а список пресетов
+     обрезается до трёх rid с scaleResolutionDownBy=1 у третьего.
+     Значит качество ограничивает ЗАХВАТ, а не длина списка слоёв.
+     Раньше CRM просил 4K первым — публиковался кадр 4K при битрейте 720p. */
   const crm = fs.readFileSync(path.join(root, 'public/assets/js/ting_page.js'), 'utf8');
   const guest2 = fs.readFileSync(path.join(root, 'public/ting/index.html'), 'utf8');
+  const tv2 = fs.readFileSync(path.join(root, 'public/ting-tv/index.html'), 'utf8');
 
-  /* Ручных пятислойных списков быть не должно ни в одном месте. */
-  [['crm', crm], ['guest', guest2]].forEach(([name, src]) => {
-    assert(!/videoSimulcastLayers = layers;/.test(src),
-      name + ': остался ручной список слоёв в publishTrack');
-    assert(!/h1440\)\s*layers\.push|h1440\)\s*opts\.videoSimulcastLayers/.test(src),
-      name + ': h1440 всё ещё попадает в публикацию');
-  });
+  /* В CRM в constraints камеры не должно быть 3840/2160/2560/1440. */
+  const ci = crm.indexOf('cameraConstraintsList');
+  assert(ci > 0, 'cameraConstraintsList не найден');
+  const cSeg = crm.slice(ci, ci + 1600);
+  assert(!/ideal:\s*3840|ideal:\s*2560/.test(cSeg),
+    'CRM: захват всё ещё просит 4K/1440 — потолок не работает');
+  assert(/ideal:\s*1280[\s\S]{0,40}ideal:\s*720/.test(cSeg),
+    'CRM: захват не ограничен 720p');
 
-  /* На пути publishTrack должен использоваться общий профиль, а не
-     самодельный список. Проверяем присваивание именно из profile.layers. */
-  const crmPub = crm.indexOf('publishTrack(track, pubOpts)');
-  assert(crmPub > 0, 'CRM: publishTrack не найден');
-  const crmSeg = crm.slice(Math.max(0, crmPub - 1600), crmPub);
-  assert(/pubOpts\.videoSimulcastLayers = profile\.layers;/.test(crmSeg),
-    'CRM: publishTrack не берёт слои из общего профиля');
+  /* У гостя десктоп не должен просить h2160/h1080 в захвате. */
+  assert(!/h2160 \|\| LK\.VideoPresets\.h1080/.test(guest2),
+    'гость: десктопный захват всё ещё просит 4K/1080p');
+  assert(!/h2160 \|\| LKp\.VideoPresets\.h1080/.test(guest2),
+    'гость: захват всё ещё просит 4K/1080p');
 
-  const guestPub = guest2.indexOf('publishTrack(localTrack');
-  assert(guestPub > 0, 'гость: publishTrack не найден');
-  const guestSeg = guest2.slice(Math.max(0, guestPub - 1200), guestPub);
-  assert(/opts\.videoSimulcastLayers = prof\.layers;/.test(guestSeg),
-    'гость: publishTrack не берёт слои из общего профиля');
+  /* ТВ уже был ограничен — проверяем, что не сломали. */
+  assert(/CAPTURE_RES[\s\S]{0,400}h720/.test(tv2), 'ТВ: потолок захвата 720p потерян');
 });
 
 /* D-195: цикл телеметрии должен гаситься на выходе, иначе он крутится по
@@ -299,11 +297,23 @@ check('Телеметрия: цикл гасится при выходе (CRM и
   const tSeg = crm.slice(tIdx, tIdx + 2200);
   assert(/stopMetricsLoop\(\)/.test(tSeg), 'CRM: teardownLive не гасит телеметрию');
   assert(/guestStopMetrics\(\)/.test(guest), 'гость: нет остановки телеметрии');
-  /* Проверяем именно обработчик выхода, а не только определение функции. */
+  /* Проверяем ВСЕ пути выхода, а не только btnLeave: раньше мутация в ветке
+     исчерпания реконнекта выживала, потому что тест смотрел лишь на кнопку. */
   const lIdx = guest.indexOf("document.getElementById('btnLeave')");
   assert(lIdx > 0, 'обработчик выхода не найден');
   const lSeg = guest.slice(lIdx, lIdx + 900);
   assert(/guestStopMetrics\(\)/.test(lSeg), 'гость: выход не гасит телеметрию');
+
+  /* Ветка исчерпания реконнекта: между очисткой chatPollId и show('ended'). */
+  const reIdx = guest.indexOf('reconnectAttempts > RECONNECT_MAX');
+  const reSeg = reIdx > 0
+    ? guest.slice(reIdx, reIdx + 2600)
+    : guest.slice(guest.indexOf('if (reconnectAttempts < RECONNECT_MAX)'));
+  const cIdx = reSeg.indexOf("if (chatPollId) clearInterval(chatPollId);");
+  assert(cIdx > 0, 'ветка исчерпания реконнекта не найдена');
+  const after = reSeg.slice(cIdx, cIdx + 700);
+  assert(/guestStopMetrics\(\)/.test(after),
+    'гость: ветка исчерпания реконнекта не гасит телеметрию');
 });
 
 console.log('\n=== ' + (n + fails.length) + ' checks, ' + n + ' PASS, ' + fails.length + ' FAIL ===');
