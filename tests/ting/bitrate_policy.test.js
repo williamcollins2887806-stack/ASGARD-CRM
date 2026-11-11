@@ -49,39 +49,48 @@ check('ТВ: cameraPresets не предлагает 4K/1440', () => {
   assert(!/h1440/.test(seg), 'cameraPresets всё ещё содержит h1440');
 });
 
-check('ТВ: ровно три слоя simulcast (SDK публикует максимум q/h/f)', () => {
-  const i = tv.indexOf('var layers = []');
-  assert(i > 0, 'блок layers не найден');
-  const seg = tv.slice(i, i + 400);
-  const pushes = (seg.match(/layers\.push/g) || []).length;
-  assert(pushes === 3, 'слоёв ' + pushes + ', ожидалось 3');
+check('ТВ: использует общий профиль (три слоя, потолок 720p)', () => {
+  /* D-192: локальная копия профиля удалена — теперь из ting_media_profile.js.
+     Три слоя (q/h/f) и потолок 720p проверяются там же, на общем модуле. */
+  assert(/TingMediaProfile/.test(tv), 'ТВ не использует общий модуль');
+  assert(/buildPublishDefaults\(LK,\s*\{\s*maxHeight:\s*720\s*\}\)/.test(tv),
+    'ТВ не задаёт потолок 720p');
+  const moduleSrc = fs.readFileSync(path.join(root, 'public/assets/js/ting_media_profile.js'), 'utf8');
+  const pushes = (moduleSrc.match(/layers\.push/g) || []).length;
+  assert(pushes === 3, 'в общем модуле не три слоя, а ' + pushes);
+  assert(!/h2160/.test(moduleSrc), 'общий модуль тянет 4K-пресет');
 });
 
-check('ТВ: degradationPreference в publish-опциях, НЕ в videoEncoding', () => {
-  assert(/degradationPreference:\s*'maintain-resolution'/.test(tv),
-    'degradationPreference не задан как maintain-resolution');
-  const i = tv.indexOf('videoEncoding:');
-  assert(i > 0, 'videoEncoding не найден');
-  const near = tv.slice(i, i + 200);
-  assert(!/degradationPreference/.test(near),
+check('ТВ: degradationPreference и H264 — в общем модуле', () => {
+  const moduleSrc = fs.readFileSync(path.join(root, 'public/assets/js/ting_media_profile.js'), 'utf8');
+  assert(/degradationPreference:\s*'maintain-resolution'/.test(moduleSrc),
+    'нет maintain-resolution');
+  assert(/videoCodec:\s*h264Supported\(\)\s*\?\s*'h264'\s*:\s*'vp8'/.test(moduleSrc),
+    'videoCodec не выбирается по поддержке');
+  /* Проверяем внутри buildPublishDefaults: мутация именно там, и
+     поиск по всему файлу её пропускал (слово встречалось в комментарии). */
+  const fnIdx = moduleSrc.indexOf('function buildPublishDefaults(');
+  assert(fnIdx > 0, 'buildPublishDefaults не найден');
+  const fnBody = moduleSrc.slice(fnIdx, fnIdx + 900);
+  assert(/backupCodec:\s*false/.test(fnBody), 'backupCodec не выключен в buildPublishDefaults');
+  assert(/degradationPreference:\s*'maintain-resolution'/.test(fnBody),
+    'maintain-resolution не в buildPublishDefaults');
+  assert(/videoCodec:\s*h264Supported\(\)/.test(fnBody),
+    'videoCodec не выбирается в buildPublishDefaults');
+  /* Значение не должно попасть внутрь videoEncoding — там только битрейт.
+     videoEncoding присваивается после объекта defaults, ищем по всему телу. */
+  const vIdx = fnBody.indexOf('defaults.videoEncoding');
+  assert(vIdx > 0, 'videoEncoding не присваивается в buildPublishDefaults');
+  assert(!/degradationPreference/.test(fnBody.slice(vIdx, vIdx + 120)),
     'degradationPreference попал внутрь videoEncoding');
 });
 
-check('ТВ: H264 только при поддержке + backupCodec выключен', () => {
-  assert(/function h264Supported\(\)/.test(tv), 'нет capability-check h264Supported');
-  assert(/RTCRtpSender\.getCapabilities/.test(tv), 'capability-check не использует getCapabilities');
-  assert(/videoCodec:\s*h264Supported\(\)\s*\?\s*'h264'\s*:\s*'vp8'/.test(tv),
-    'videoCodec не выбирается по поддержке');
-  assert(/backupCodec:\s*false/.test(tv), 'backupCodec не выключен (два кодека параллельно)');
-});
-
-check('ТВ: setPlayoutDelay на треке в СЕКУНДАХ, не опция Room', () => {
-  assert(/track\.setPlayoutDelay\(/.test(tv), 'setPlayoutDelay не вызывается на треке');
-  assert(!/playoutDelay:\s*\{/.test(tv), 'playoutDelay всё ещё передаётся как опция Room');
-  const i = tv.indexOf('playoutDelaySec:');
-  assert(i > 0, 'playoutDelaySec не найден');
-  const seg = tv.slice(i, i + 40);
-  assert(/0\.\d+/.test(seg), 'значение задержки не в секундах: ' + seg);
+check('ТВ: setPlayoutDelay через общий модуль, в секундах', () => {
+  assert(/attachPlayoutDelay/.test(tv), 'ТВ не использует attachPlayoutDelay');
+  const moduleSrc = fs.readFileSync(path.join(root, 'public/assets/js/ting_media_profile.js'), 'utf8');
+  assert(/setPlayoutDelay\(/.test(moduleSrc), 'модуль не вызывает setPlayoutDelay');
+  assert(/typeof sec === 'number' \? sec : 0\.15/.test(moduleSrc),
+    'значение задержки не в секундах');
 });
 
 check('ТВ: микрофон публикуется из getUserMedia + LocalAudioTrack', () => {
@@ -136,6 +145,77 @@ check('Сервер: guest-token через ON CONFLICT с сохранение�
     'нет ON CONFLICT — duplicate_record вернётся');
   assert(/'rejected'/.test(seg), 'rejected не упоминается в guest-token');
   assert(/RETURNING id/.test(seg), 'нет RETURNING id');
+});
+
+check('Сервер: окно действует и на «Начать Тинг» (обход закрыт)', () => {
+  /* D-193: раньше start безусловно ставил status='live', и joinWindowFor
+     такие комнаты не ограничивал — окно исчезало для всех. */
+  const startIdx = server.indexOf("fastify.post('/rooms/:id/start'");
+  assert(startIdx > 0, 'start не найден');
+  const nextRoute = server.indexOf('fastify.post(', startIdx + 10);
+  const seg = server.slice(startIdx, nextRoute > 0 ? nextRoute : startIdx + 4000);
+  assert(/joinWindowFor\(room\)/.test(seg), 'start не проверяет окно — обход открыт');
+  assert(/ROOM_NOT_OPEN_YET/.test(seg), 'start не возвращает ROOM_NOT_OPEN_YET');
+  /* Проверка окна должна идти ДО обновления статуса. */
+  const winPos = seg.indexOf('joinWindowFor(room)');
+  const updPos = seg.indexOf("status = 'live'");
+  assert(winPos > 0 && updPos > 0, 'не найдены проверка окна или UPDATE статуса');
+  assert(winPos < updPos, 'окно проверяется ПОСЛЕ установки live — обход остаётся');
+});
+
+check('Сервер: окно действует и на CRM-токен (не-хост)', () => {
+  const tokIdx = server.indexOf("fastify.post('/rooms/:id/token'");
+  assert(tokIdx > 0, 'CRM-токен не найден');
+  const nextRoute = server.indexOf('fastify.post(', tokIdx + 10);
+  const seg = server.slice(tokIdx, nextRoute > 0 ? nextRoute : tokIdx + 5000);
+  assert(/isHostOrDirector/.test(seg), 'нет исключения для хоста/директора');
+  assert(/joinWindowFor\(room\)/.test(seg), 'CRM-токен не проверяет окно — обход открыт');
+  assert(/ROOM_NOT_OPEN_YET/.test(seg), 'CRM-токен не возвращает ROOM_NOT_OPEN_YET');
+});
+
+check('Медиа: единый профиль используется всеми тремя поверхностями', () => {
+  /* D-192: три копии разошлись — CRM и гость держали пять слоёв с верхним 4K,
+     из-за чего SDK выбрасывал 720p и зритель получал 360p. */
+  const crm = fs.readFileSync(path.join(root, 'public/assets/js/ting_page.js'), 'utf8');
+  const guest2 = fs.readFileSync(path.join(root, 'public/ting/index.html'), 'utf8');
+  const tv2 = fs.readFileSync(path.join(root, 'public/ting-tv/index.html'), 'utf8');
+  [['crm', crm], ['guest', guest2], ['tv', tv2]].forEach(([name, src]) => {
+    assert(/TingMediaProfile/.test(src), name + ': не использует общий модуль');
+    assert(/buildPublishDefaults/.test(src), name + ': не вызывает buildPublishDefaults');
+  });
+  /* Ни в одном месте не должно остаться 4K в профиле публикации. */
+  [['crm', crm], ['guest', guest2], ['tv', tv2]].forEach(([name, src]) => {
+    assert(!/h2160\.encoding/.test(src), name + ': в профиле остался 4K-битрейт');
+  });
+});
+
+check('Медиа: телеметрия подключена в CRM и у гостя', () => {
+  const crm = fs.readFileSync(path.join(root, 'public/assets/js/ting_page.js'), 'utf8');
+  const guest2 = fs.readFileSync(path.join(root, 'public/ting/index.html'), 'utf8');
+  assert(/startMetricsLoop/.test(crm), 'CRM: нет цикла телеметрии');
+  assert(/collectStats/.test(crm), 'CRM: не собирает getStats');
+  assert(/client-log/.test(crm), 'CRM: не отправляет метрики');
+  /* Проверяем не только наличие вызова, но и что отправка НЕ заглушена. */
+  assert(/if \(metricsBuffer\.length >= 12\) flushMetrics\(\);/.test(crm),
+    'CRM: отправка батча заглушена — метрики не уйдут');
+  assert(!/if \(false\)[^\n]*flushMetrics/.test(crm), 'CRM: flushMetrics отключён');
+  assert(/startMetricsLoop\(room\);/.test(crm), 'CRM: цикл не запускается после входа');
+  assert(/guestStartMetrics\(next\);/.test(guest2), 'гость: цикл не запускается');
+  assert(/client-log/.test(guest2), 'гость: не отправляет метрики');
+});
+
+check('Медиа: сервер реально пишет метрики в таблицу', () => {
+  /* Строгая проверка имени таблицы: `INSERT INTO thing_client_metrics_off`
+     содержит искомую подстроку и раньше проходил — мутация «таблица
+     переименована» выживала. */
+  assert(/INSERT INTO thing_client_metrics\s*\(/.test(server),
+    'client-log не делает INSERT в thing_client_metrics (проверьте имя таблицы)');
+  assert(/body\.samples/.test(server), 'client-log не принимает samples[]');
+  const i = server.indexOf('INSERT INTO thing_client_metrics');
+  assert(i > 0, 'INSERT не найден');
+  const seg = server.slice(i, i + 500);
+  assert(/VALUES \(\$1/.test(seg), 'INSERT без подстановки значений');
+  assert(/room_id/.test(seg), 'INSERT без room_id');
 });
 
 console.log('\n=== ' + (n + fails.length) + ' checks, ' + n + ' PASS, ' + fails.length + ' FAIL ===');

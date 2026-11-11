@@ -16,8 +16,8 @@
       if (t === 'light' || t === 'dark') document.documentElement.setAttribute('data-theme', t);
     } catch (e) {}
   </script>
-  <link rel="stylesheet" href="/assets/css/design-tokens.css?v=20.28.506" />
-  <link rel="stylesheet" href="/assets/css/ting.css?v=20.28.506" />
+  <link rel="stylesheet" href="/assets/css/design-tokens.css?v=20.28.509" />
+  <link rel="stylesheet" href="/assets/css/ting.css?v=20.28.509" />
   <style>
     html, body { margin: 0; min-height: 100%; }
     .hidden { display: none !important; }
@@ -48,10 +48,41 @@
       backdrop-filter: blur(12px);
     }
   </style>
-  <script src="/assets/vendor/livekit-client.umd.min.js?v=20.28.506"></script>
-  <script src="/assets/js/ting_icons.js?v=20.28.506"></script>
-  <script src="/assets/js/ting_common.js?v=20.28.506"></script>
-  <script src="/assets/js/ting_room_core.js?v=20.28.506"></script>
+  <script src="/assets/vendor/livekit-client.umd.min.js?v=20.28.509"></script>
+  <script src="/assets/js/ting_icons.js?v=20.28.509"></script>
+  <script src="/assets/js/ting_common.js?v=20.28.509"></script>
+  <script src="/assets/js/ting_media_profile.js?v=20.28.509"></script>
+  <script src="/assets/js/ting_room_core.js?v=20.28.509"></script>
+  <script>
+    /* D-194: установка Тинга как приложение — закрывает запрос «как у TrueConf»
+       без отдельного exe. Кнопку показываем только когда браузер реально готов
+       установить, иначе это мёртвая кнопка. */
+    (function () {
+      var deferred = null;
+      var btn = document.getElementById('btnInstallApp');
+      if (!btn) return;
+      window.addEventListener('beforeinstallprompt', function (e) {
+        e.preventDefault();
+        deferred = e;
+        btn.classList.remove('hidden');
+      });
+      btn.addEventListener('click', function () {
+        if (!deferred) {
+          var hint = document.getElementById('installHint');
+          if (hint) hint.classList.remove('hidden');
+          return;
+        }
+        deferred.prompt();
+        deferred.userChoice.then(function (r) {
+          if (r && r.outcome === 'accepted') btn.classList.add('hidden');
+          deferred = null;
+        });
+      });
+      window.addEventListener('appinstalled', function () {
+        btn.classList.add('hidden');
+      });
+    })();
+  </script>
 </head>
 <body class="ting-guest">
   <div class="g-screen" id="lobby">
@@ -193,6 +224,8 @@
       </div>
       <div class="ting-reconnect-banner hidden" id="reconnectBanner" role="status" aria-live="polite">Переподключение…</div>
       <button type="button" class="ting-btn ting-btn-primary hidden" id="btnAudioUnlock" style="position:fixed;left:50%;bottom:96px;transform:translateX(-50%);z-index:10050">Включить звук</button>
+      <button type="button" class="ting-btn hidden" id="btnInstallApp" style="position:fixed;left:50%;top:12px;transform:translateX(-50%);z-index:10050">Установить приложение</button>
+      <div class="ting-muted hidden" id="installHint" style="position:fixed;left:50%;top:60px;transform:translateX(-50%);z-index:10050;max-width:320px;text-align:center">Откройте меню браузера и выберите «Установить приложение»</div>
       <div class="ting-stage-wrap">
         <div class="ting-stage" id="stage"></div>
         <div class="ting-filmstrip" id="filmstrip"></div>
@@ -421,6 +454,54 @@
         }
         return videoTrack;
       }
+      /* D-191: телеметрия качества — батчем раз в минуту на отдельный
+         HTTP-путь (не медиа-канал). Работает и когда медиа уже упало. */
+      var guestMetrics = { buf: [], timer: null };
+      function guestMetricsSurface() {
+        try { if (window.innerWidth <= 820) return 'mobile'; } catch (_) { /* */ }
+        return 'desktop';
+      }
+      function guestSampleMetrics(r) {
+        try {
+          if (!r || !window.TingMediaProfile) return;
+          var pcs = window.TingMediaProfile.peerConnections(r);
+          window.TingMediaProfile.collectStats(pcs.pub, pcs.sub).then(function (s) {
+            guestMetrics.buf.push(s);
+            if (guestMetrics.buf.length > 60) guestMetrics.buf.splice(0, guestMetrics.buf.length - 60);
+          }).catch(function () { /* */ });
+        } catch (_) { /* */ }
+      }
+      function guestFlushMetrics() {
+        try {
+          if (!guestMetrics.buf.length || !slug) return;
+          var batch = guestMetrics.buf.splice(0, guestMetrics.buf.length);
+          fetch('/api/thing/public/' + encodeURIComponent(slug) + '/client-log', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              identity: guestIdentity || '',
+              surface: guestMetricsSurface(),
+              device_class: guestMetricsSurface(),
+              samples: batch
+            }),
+            keepalive: true
+          }).catch(function () { /* */ });
+        } catch (_) { /* */ }
+      }
+      function guestStartMetrics(r) {
+        guestStopMetrics();
+        guestSampleMetrics(r);
+        guestMetrics.timer = setInterval(function () {
+          if (room !== r) { guestStopMetrics(); return; }
+          guestSampleMetrics(r);
+          if (guestMetrics.buf.length >= 12) guestFlushMetrics();
+        }, 5000);
+      }
+      function guestStopMetrics() {
+        if (guestMetrics.timer) { clearInterval(guestMetrics.timer); guestMetrics.timer = null; }
+        guestFlushMetrics();
+      }
+
       function withTimeout(promise, ms, label) {
         var t = null;
         return Promise.race([
@@ -1277,24 +1358,17 @@
           var LKp = window.LivekitClient;
           var ua = navigator.userAgent || '';
           var small = /Android|iPhone|iPad|Mobile/i.test(ua);
-          if (LKp && LKp.VideoPresets) {
-            var layers = [];
-            if (LKp.VideoPresets.h180) layers.push(LKp.VideoPresets.h180);
-            if (LKp.VideoPresets.h360) layers.push(LKp.VideoPresets.h360);
-            if (LKp.VideoPresets.h720) layers.push(LKp.VideoPresets.h720);
-            if (!small) {
-              if (LKp.VideoPresets.h1080) layers.push(LKp.VideoPresets.h1080);
-              if (LKp.VideoPresets.h1440) layers.push(LKp.VideoPresets.h1440);
+          /* D-192: профиль из общего модуля. Раньше здесь на десктопе верхним
+             слоем стоял 4K-битрейт, а SDK публикует только три rid — 720p и
+             1080p выбрасывались, зритель получал 360p. Теперь потолок 720p
+             (540p на телефоне), три слоя, H264 с проверкой, без backupCodec. */
+          if (window.TingMediaProfile) {
+            roomOpts.publishDefaults = window.TingMediaProfile.buildPublishDefaults(LKp, {
+              maxHeight: small ? 540 : 720
+            });
+            if (small) {
+              roomOpts.videoCaptureDefaults = { resolution: { width: 960, height: 540 }, frameRate: 30 };
             }
-            var top = small
-              ? (LKp.VideoPresets.h720 || LKp.VideoPresets.h360)
-              : (LKp.VideoPresets.h2160 || LKp.VideoPresets.h1080);
-            roomOpts.publishDefaults = {
-              simulcast: true,
-              videoSimulcastLayers: layers,
-              videoEncoding: top && top.encoding
-            };
-            if (top && top.resolution) roomOpts.videoCaptureDefaults = { resolution: top.resolution };
           }
         } catch (_) { /* */ }
         var next = new window.LivekitClient.Room(roomOpts);
@@ -1304,6 +1378,10 @@
             if (!TingRoomCore.trackIsLive(pub || { track: track })) return;
           }
           attachTrack(track, participant.identity, participant.name, false);
+          /* D-192: задержка воспроизведения — на треке, в секундах. */
+          if (track && window.TingMediaProfile) {
+            window.TingMediaProfile.attachPlayoutDelay(track, 0.15);
+          }
           /* Зритель на слабом канале не должен «смотреть в мусор»: сразу
              просим HIGH, а дальше качество решает адаптив. */
           try {
@@ -1478,6 +1556,8 @@
         });
         try {
           await next.connect(creds.url || creds.livekit_url, creds.token);
+          /* D-191: замеры с этого звонка — ручные тестовые сессии не нужны. */
+          guestStartMetrics(next);
           /* Треки, опубликованные ДО входа, событий не дают — добираем вручную,
              иначе телефон показывает пустые плитки, пока не выйдешь/войдёшь. */
           try { if (window.__tingAttachExisting) window.__tingAttachExisting(); } catch (_) { /* */ }

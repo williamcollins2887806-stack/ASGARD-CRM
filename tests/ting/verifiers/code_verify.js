@@ -206,14 +206,22 @@ check('C64_tv_mic_publish_verified',
 /* C65 (D-184): политика качества пересмотрена. 4K/8 Мбит/с вверх душили Wi-Fi ТВ
    и были корнем «140p у собеседника». Теперь: потолок h720, три слоя, H264 только
    при поддержке, backupCodec выключен, degradationPreference в publish-опциях. */
+/* C65 (D-192): профиль публикации переехал в общий модуль ting_media_profile.js.
+   Раньше проверка смотрела в ТВ, где была локальная копия; три копии разошлись
+   (CRM и гость держали пять слоёв с верхним 4K — отсюда «360p»). Теперь проверяем
+   модуль и то, что все три поверхности его используют. */
+const mediaProfile = fs.readFileSync(path.join(root, 'public/assets/js/ting_media_profile.js'), 'utf8');
 check('C65_video_720_cap_h264',
-  /var CAPTURE_RES/.test(tingTv)
-  && !/h2160/.test(tingTv.slice(tingTv.indexOf('var CAPTURE_RES'), tingTv.indexOf('var CAPTURE_RES') + 700))
-  && /videoCodec:\s*h264Supported\(\)\s*\?\s*'h264'\s*:\s*'vp8'/.test(tingTv)
-  && /backupCodec:\s*false/.test(tingTv)
-  && /degradationPreference:\s*'maintain-resolution'/.test(tingTv)
-  && /VideoQuality\.MEDIUM/.test(tingTv),
-  'ТВ: потолок 720p, H264 с capability-check, без двух кодеков');
+  /function h264Supported/.test(mediaProfile)
+  && /RTCRtpSender\.getCapabilities/.test(mediaProfile)
+  && /videoCodec:\s*h264Supported\(\)\s*\?\s*'h264'\s*:\s*'vp8'/.test(mediaProfile)
+  && /backupCodec:\s*false/.test(mediaProfile)
+  && /degradationPreference:\s*'maintain-resolution'/.test(mediaProfile)
+  && !/h2160/.test(mediaProfile)
+  && /TingMediaProfile/.test(tingTv)
+  && /TingMediaProfile/.test(tingPage)
+  && /TingMediaProfile/.test(guest),
+  'общий профиль: потолок 720p, H264 с проверкой, без двух кодеков, во всех поверхностях');
 /* C66: корень «144/360p». Лобби открывало камеру как `video: true` (640×480),
    и этот же трек публиковался в звонок — энкодер h1080 растягивал 480p.
    Теперь preview обязан быть HD, а суб-HD трек не переиспользуется. */

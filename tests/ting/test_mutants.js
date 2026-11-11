@@ -28,6 +28,7 @@ const FILES = [
   TV,
   'public/ting/index.html',
   'public/assets/js/ting_page.js',
+  'public/assets/js/ting_media_profile.js',
   'tests/ting/join_window.behavior.test.js',
   'tests/ting/bitrate_policy.test.js'
 ];
@@ -99,12 +100,6 @@ const MUTANTS = [
     file: TV,
     from: 'if (LK.VideoPresets.h720) return LK.VideoPresets.h720.resolution;',
     to: 'if (LK.VideoPresets.h2160) return LK.VideoPresets.h2160.resolution;'
-  },
-  {
-    name: 'backupCodec снова включён (два кодека параллельно)',
-    file: TV,
-    from: 'backupCodec: false',
-    to: 'backupCodec: true'
   },
   {
     name: 'canPlaybackAudio снова вызывается как метод',
@@ -239,6 +234,57 @@ const MUTANTS = [
     anchor: 'function publicRoomUnavailable(room, reply, opts) {',
     from: "if (room.status === 'ended' || room.status === 'cancelled') {",
     to: 'if (false) {'
+  },
+  {
+    name: 'start не проверяет окно (обход через «Начать Тинг»)',
+    file: THING,
+    anchor: "fastify.post('/rooms/:id/start'",
+    from: 'const startWin = joinWindowFor(room);',
+    to: 'const startWin = { applies: false, opensAt: null, startsAt: null };'
+  },
+  {
+    name: 'CRM-токен не проверяет окно (сотрудник входит заранее)',
+    file: THING,
+    anchor: "fastify.post('/rooms/:id/token'",
+    from: 'const win = joinWindowFor(room);',
+    to: 'const win = { applies: false, opensAt: null, startsAt: null };'
+  },
+  {
+    name: 'общий медиа-модуль тянет 4K-битрейт',
+    file: 'public/assets/js/ting_media_profile.js',
+    from: 'if (maxHeight >= 720 && presets.h720) top = presets.h720;',
+    to: 'if (maxHeight >= 720 && presets.h2160) top = presets.h2160;'
+  },
+  {
+    name: 'общий модуль теряет maintain-resolution',
+    file: 'public/assets/js/ting_media_profile.js',
+    from: "degradationPreference: 'maintain-resolution',",
+    to: ''
+  },
+  {
+    name: 'общий модуль включает backupCodec (два кодека)',
+    file: 'public/assets/js/ting_media_profile.js',
+    anchor: 'function buildPublishDefaults(',
+    from: 'backupCodec: false',
+    to: 'backupCodec: true'
+  },
+  {
+    name: 'CRM публикует мимо общего модуля (4 слоя)',
+    file: 'public/assets/js/ting_page.js',
+    from: 'opts.publishDefaults = window.TingMediaProfile.buildPublishDefaults(LK, { maxHeight: 720 });',
+    to: 'opts.publishDefaults = { simulcast: true };'
+  },
+  {
+    name: 'телеметрия не отправляется из CRM',
+    file: 'public/assets/js/ting_page.js',
+    from: 'if (metricsBuffer.length >= 12) flushMetrics();',
+    to: 'if (false) flushMetrics();'
+  },
+  {
+    name: 'сервер не пишет метрики в БД',
+    file: THING,
+    from: 'INSERT INTO thing_client_metrics',
+    to: 'INSERT INTO thing_client_metrics_off'
   }
 ];
 
@@ -257,14 +303,23 @@ function copyFiles(dest) {
 }
 
 function runTest(cwd) {
-  try {
-    execFileSync(process.execPath, [path.join(cwd, 'tests/ting/join_window.behavior.test.js')], {
-      cwd, stdio: 'pipe', timeout: 45000
-    });
-    return 0;
-  } catch (e) {
-    return e.status || 1;
+  /* Гоняем ОБА теста: проверки разделены (окно/поведение — в одном,
+     медиа/телеметрия — в другом). Раньше запускался только первый, и
+     мутации в медиа-коде «выживали» ложно. */
+  const tests = [
+    'tests/ting/join_window.behavior.test.js',
+    'tests/ting/bitrate_policy.test.js'
+  ];
+  for (const t of tests) {
+    try {
+      execFileSync(process.execPath, [path.join(cwd, t)], {
+        cwd, stdio: 'pipe', timeout: 45000
+      });
+    } catch (e) {
+      return e.status || 1;
+    }
   }
+  return 0;
 }
 
 let killed = 0;

@@ -576,6 +576,24 @@ module.exports = async function thingRoutes(fastify) {
     if (!(await canAccessRoom(room, request.user))) {
       return reply.code(403).send({ error: 'Нет доступа' });
     }
+    /* D-193: окно входа действует и для сотрудников CRM. Раньше здесь была
+       только проверка доступа, поэтому любой сотрудник входил в запланированную
+       комнату за сутки — окно обходилось. Исключения: хост (готовит комнату:
+       свет, камера, звук — это рабочая необходимость) и директора. */
+    const isHostOrDirector = room.host_user_id === request.user.id
+      || DIRECTOR_ROLES.includes(request.user.role);
+    if (!isHostOrDirector) {
+      const win = joinWindowFor(room);
+      if (win.applies && Date.now() < win.opensAt) {
+        return reply.code(425).send({
+          error: 'Тинг ещё не открыт',
+          code: 'ROOM_NOT_OPEN_YET',
+          message: 'Вход откроется за час до начала',
+          opens_at: new Date(win.opensAt).toISOString(),
+          starts_at: new Date(win.startsAt).toISOString()
+        });
+      }
+    }
     if (!livekit.isConfigured()) {
       return reply.code(503).send({
         error: 'LiveKit ещё не развёрнут на сервере (P1)',
@@ -769,6 +787,20 @@ module.exports = async function thingRoutes(fastify) {
       if (!room) return reply.code(404).send({ error: 'Комната не найдена' });
       if (room.host_user_id !== request.user.id && !DIRECTOR_ROLES.includes(request.user.role)) {
         return reply.code(403).send({ error: 'Только организатор может начать Тинг' });
+      }
+      /* D-193: обход окна входа. Раньше «Начать Тинг» безусловно ставил
+         status='live', а joinWindowFor не ограничивает комнаты вне 'scheduled'.
+         То есть организатор жал «Начать» за сутки — и окно исчезало для всех.
+         Теперь начать раньше чем за час до scheduled_at нельзя. */
+      const startWin = joinWindowFor(room);
+      if (startWin.applies && Date.now() < startWin.opensAt) {
+        return reply.code(425).send({
+          error: 'Тинг ещё не открыт',
+          code: 'ROOM_NOT_OPEN_YET',
+          message: 'Начать можно за час до назначенного времени',
+          opens_at: new Date(startWin.opensAt).toISOString(),
+          starts_at: new Date(startWin.startsAt).toISOString()
+        });
       }
       const { rows: [updated] } = await db.query(
         `UPDATE thing_rooms SET status = 'live', started_at = COALESCE(started_at, NOW()) WHERE id = $1 RETURNING *`,
@@ -1457,6 +1489,18 @@ module.exports = async function thingRoutes(fastify) {
   });
 
   // ─── PARTICIPANTS / LOBBY / MODERATION ───────────────────────
+  /**
+   * Телеметрия качества (D-191). Два режима в одном эндпоинте:
+   *   1) текстовый `line` — как раньше, в лог сервиса (диагностика по событиям);
+   *   2) структурированный `samples[]` — в таблицу thing_client_metrics.
+   *
+   * Клиент копит сэмплы getStats и шлёт БАТЧ раз в 60 секунд, а не 12 раз
+   * в минуту: иначе сами метрики станут нагрузкой на 3G-канал.
+   *
+   * Путь отдельный от медиа (обычный HTTP, не LiveKit data-channel) — данные
+   * доходят даже когда медиа уже развалилось. Это же рекомендует практика
+   * WebRTC-observability: независимый ingestion-эндпоинт.
+   */
   fastify.post('/public/:code/client-log', async (request, reply) => {
     const code = String(request.params.code || '').toLowerCase();
     if (!isSlug(code) && !isDialCode(code)) {
@@ -1466,12 +1510,59 @@ module.exports = async function thingRoutes(fastify) {
     const line = String(body.line || '').slice(0, 500);
     const identity = String(body.identity || '').slice(0, 120);
     const ua = String(body.ua || '').slice(0, 300);
-    // Только для диагностики — пишем в лог сервиса, БД не трогаем.
-    fastify.log.info(
-      { tingDiag: true, code, identity, ua, line, ts: body.ts || null },
-      `[TING-DIAG] ${code} ${identity} :: ${line}`
-    );
-    return { ok: true };
+
+    /* Текстовая диагностика — в лог, как раньше. */
+    if (line) {
+      fastify.log.info(
+        { tingDiag: true, code, identity, ua, line, ts: body.ts || null },
+        `[TING-DIAG] ${code} ${identity} :: ${line}`
+      );
+    }
+
+    /* Структурированные сэмплы — в БД. Молча игнорируем мусор: телеметрия
+       не должна ронять звонок. */
+    let stored = 0;
+    if (Array.isArray(body.samples) && body.samples.length) {
+      try {
+        const room = await loadPublicRoomByCode(code);
+        if (room) {
+          const surface = ['desktop', 'mobile', 'tv'].includes(String(body.surface))
+            ? String(body.surface)
+            : 'desktop';
+          const deviceClass = String(body.device_class || '').slice(0, 40) || null;
+          /* Ограничиваем батч: 20 сэмплов × 6 поверхностей — с запасом. */
+          const batch = body.samples.slice(0, 20);
+          for (const s of batch) {
+            if (!s || typeof s !== 'object') continue;
+            const n = (v) => (Number.isFinite(Number(v)) ? Math.round(Number(v)) : null);
+            await db.query(
+              `INSERT INTO thing_client_metrics
+                 (room_id, identity, surface, device_class, limiter, codec,
+                  res_width, res_height, fps, bitrate_kbps, packets_lost,
+                  jitter_ms, freeze_count, rtt_ms, ice_pair, payload, created_at)
+               VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,
+                       COALESCE($17::timestamptz, NOW()))`,
+              [
+                room.id, identity || null, surface, deviceClass,
+                s.limiter ? String(s.limiter).slice(0, 20) : null,
+                s.codec ? String(s.codec).slice(0, 20) : null,
+                n(s.width), n(s.height), n(s.fps), n(s.bitrateKbps),
+                n(s.packetsLost), n(s.jitterMs), n(s.freezeCount), n(s.rttMs),
+                s.icePair ? String(s.icePair).slice(0, 24) : null,
+                JSON.stringify(s),
+                s.ts || null
+              ]
+            );
+            stored += 1;
+          }
+        }
+      } catch (err) {
+        /* Не роняем: телеметрия вторична по отношению к звонку. */
+        fastify.log.warn({ err: err && err.message }, '[TING-DIAG] metrics insert failed');
+      }
+    }
+
+    return { ok: true, stored };
   });
 
   fastify.get('/rooms/:id/participants', { preHandler: [fastify.authenticate] }, async (request, reply) => {

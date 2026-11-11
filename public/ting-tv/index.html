@@ -5,14 +5,15 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="ting-tv" content="1" />
   <title>Тинг Переговорка</title>
-  <link rel="icon" type="image/svg+xml" href="/assets/img/ting-logo.svg?v=20.28.506" />
-  <link rel="stylesheet" href="/assets/css/design-tokens.css?v=20.28.506" />
-  <link rel="stylesheet" href="/assets/css/ting.css?v=20.28.506" />
-  <link rel="stylesheet" href="/assets/css/ting-tv.css?v=20.28.506" />
-  <script src="/assets/vendor/livekit-client.umd.min.js?v=20.28.506"></script>
-  <script src="/assets/js/ting_icons.js?v=20.28.506"></script>
-  <script src="/assets/js/ting_common.js?v=20.28.506"></script>
-  <script src="/assets/js/ting_room_core.js?v=20.28.506"></script>
+  <link rel="icon" type="image/svg+xml" href="/assets/img/ting-logo.svg?v=20.28.509" />
+  <link rel="stylesheet" href="/assets/css/design-tokens.css?v=20.28.509" />
+  <link rel="stylesheet" href="/assets/css/ting.css?v=20.28.509" />
+  <link rel="stylesheet" href="/assets/css/ting-tv.css?v=20.28.509" />
+  <script src="/assets/vendor/livekit-client.umd.min.js?v=20.28.509"></script>
+  <script src="/assets/js/ting_icons.js?v=20.28.509"></script>
+  <script src="/assets/js/ting_common.js?v=20.28.509"></script>
+  <script src="/assets/js/ting_media_profile.js?v=20.28.509"></script>
+  <script src="/assets/js/ting_room_core.js?v=20.28.509"></script>
 </head>
 <body class="ting-tv">
   <div class="ttv-screen" id="startView">
@@ -1515,27 +1516,13 @@
       }
     };
     try {
-      if (LK.VideoPresets) {
-        /* SDK физически публикует ТРИ rid (q/h/f) — лишние пресеты отбрасываются.
-           Даём ровно три осмысленных шага, без h1440/h2160. */
-        var layers = [];
-        if (LK.VideoPresets.h180) layers.push(LK.VideoPresets.h180);
-        if (LK.VideoPresets.h360) layers.push(LK.VideoPresets.h360);
-        if (LK.VideoPresets.h720) layers.push(LK.VideoPresets.h720);
-        roomOpts.publishDefaults = {
-          simulcast: true,
-          videoSimulcastLayers: layers,
-          videoEncoding: (LK.VideoPresets.h720 && LK.VideoPresets.h720.encoding) || undefined,
-          /* D-184: картинка важнее fps — при просадке режем кадры, а не разрешение.
-             Значение читается из publish-опций (НЕ из videoEncoding). */
-          degradationPreference: 'maintain-resolution',
-          /* D-189: H264 строкой (enum в рантайме нет) и только если реально
-             поддерживается. backupCodec выключаем — иначе два кодека параллельно. */
-          videoCodec: h264Supported() ? 'h264' : 'vp8',
-          backupCodec: false
-        };
+      /* D-192: единый профиль из общего модуля — три копии разошлись, и это
+         было корнем «360p». ТВ и раньше был настроен правильно, теперь просто
+         берёт профиль из одного места. */
+      if (window.TingMediaProfile) {
+        roomOpts.publishDefaults = window.TingMediaProfile.buildPublishDefaults(LK, { maxHeight: 720 });
         diag('CODEC requested=' + roomOpts.publishDefaults.videoCodec
-          + ' h264Caps=' + h264Supported());
+          + ' h264Caps=' + window.TingMediaProfile.h264Supported());
       }
     } catch (_) { /* */ }
     var next = new LK.Room(roomOpts);
@@ -1555,8 +1542,8 @@
          трека, и единицы СЕКУНДЫ (0.15 = 150 мс). Меньше буфер — быстрее реакция;
          на плохом канале поднимем по freezeCount (см. statsLoop). */
       try {
-        if (track && track.kind === 'video' && typeof track.setPlayoutDelay === 'function') {
-          track.setPlayoutDelay(state.playoutDelaySec || 0.15);
+        if (track && window.TingMediaProfile) {
+          window.TingMediaProfile.attachPlayoutDelay(track, state.playoutDelaySec || 0.15);
         }
       } catch (_) { /* браузер без playoutDelayHint — тихий warn внутри SDK */ }
       if (!participant) { bumpRoster(); return; }

@@ -2070,6 +2070,8 @@
     setIncall(false);
     document.body.classList.remove('ting-incall');
     document.documentElement.classList.remove('ting-incall');
+    /* D-191: досылаем накопленные метрики и глушим цикл. */
+    stopMetricsLoop();
     state.pageBound = false;
     state.lkRoom = null;
     if (root) {
@@ -2085,6 +2087,86 @@
       /* Тост «свёрнут в мини-окно» убран — засорял каждый park. */
     }
   }
+  /**
+   * D-191: телеметрия качества. Копим сэмплы getStats и отправляем БАТЧЕМ
+   * раз в 60 с — 12 запросов в минуту сами стали бы нагрузкой на слабом канале.
+   *
+   * Это второй контур диагностики (первый — события в TING-DIAG). Владелец
+   * контура — телеметрия с КАЖДОГО звонка, поэтому ручные тестовые сессии
+   * больше не нужны: цифры приходят сами.
+   */
+  const metricsBuffer = [];
+  let metricsTimer = null;
+
+  function metricsSurface() {
+    try {
+      if (typeof window !== 'undefined' && window.innerWidth <= 820) return 'mobile';
+    } catch (_) { /* */ }
+    return 'desktop';
+  }
+
+  function metricsDeviceClass() {
+    try {
+      const ua = navigator.userAgent || '';
+      if (/Android|iPhone|iPad|Mobile/i.test(ua)) return 'mobile';
+      if (/Windows/i.test(ua)) return 'windows';
+      if (/Mac OS/i.test(ua)) return 'macos';
+      if (/Linux/i.test(ua)) return 'linux';
+      return 'other';
+    } catch (_) {
+      return null;
+    }
+  }
+
+  async function sampleMetrics(room) {
+    try {
+      if (!room || !window.TingMediaProfile) return;
+      const pcs = window.TingMediaProfile.peerConnections(room);
+      const s = await window.TingMediaProfile.collectStats(pcs.pub, pcs.sub);
+      metricsBuffer.push(s);
+      /* Не даём буферу расти бесконечно при обрыве отправки. */
+      if (metricsBuffer.length > 60) metricsBuffer.splice(0, metricsBuffer.length - 60);
+    } catch (_) { /* телеметрия не критична */ }
+  }
+
+  function flushMetrics() {
+    try {
+      if (!metricsBuffer.length) return;
+      const slug = state.room && state.room.slug;
+      if (!slug) return;
+      const batch = metricsBuffer.splice(0, metricsBuffer.length);
+      const body = JSON.stringify({
+        identity: state.myIdentity || '',
+        surface: metricsSurface(),
+        device_class: metricsDeviceClass(),
+        samples: batch
+      });
+      /* keepalive: досылает даже если пользователь уже закрыл вкладку. */
+      fetch('/api/thing/public/' + encodeURIComponent(slug) + '/client-log', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body,
+        keepalive: true
+      }).catch(function () { /* офлайн — сэмплы потеряны, звонок не страдает */ });
+    } catch (_) { /* */ }
+  }
+
+  function startMetricsLoop(room) {
+    stopMetricsLoop();
+    sampleMetrics(room);
+    metricsTimer = setInterval(function () {
+      if (state.lkRoom !== room) { stopMetricsLoop(); return; }
+      sampleMetrics(room);
+      /* Раз в 12 сэмплов = раз в 60 секунд при интервале 5 с. */
+      if (metricsBuffer.length >= 12) flushMetrics();
+    }, 5000);
+  }
+
+  function stopMetricsLoop() {
+    if (metricsTimer) { clearInterval(metricsTimer); metricsTimer = null; }
+    flushMetrics();
+  }
+
   function withTimeout(promise, ms, label) {
     let t = null;
     return Promise.race([
@@ -3122,21 +3204,13 @@
       };
     } catch (_) { /* старые сборки LiveKit */ }
     try {
-      if (LK && LK.VideoPresets) {
-        const layers = [];
-        if (LK.VideoPresets.h180) layers.push(LK.VideoPresets.h180);
-        if (LK.VideoPresets.h360) layers.push(LK.VideoPresets.h360);
-        if (LK.VideoPresets.h720) layers.push(LK.VideoPresets.h720);
-        if (LK.VideoPresets.h1080) layers.push(LK.VideoPresets.h1080);
-        if (LK.VideoPresets.h1440) layers.push(LK.VideoPresets.h1440);
-        opts.publishDefaults = {
-          simulcast: true,
-          videoSimulcastLayers: layers,
-          /* 4K-битрейт, если камера/канал тянут; иначе остаётся 1080p. Слои
-             дают слабому зрителю низкий ярус — подстройка под скорость. */
-          videoEncoding: (LK.VideoPresets.h2160 && LK.VideoPresets.h2160.encoding)
-            || (LK.VideoPresets.h1080 && LK.VideoPresets.h1080.encoding) || undefined
-        };
+      /* D-192: профиль публикации — из общего модуля, не локальной копией.
+         Раньше здесь было пять слоёв с верхним 4K-битрейтом; SDK публикует
+         только три rid (q/h/f), поэтому 720p/1080p выбрасывались, а верхним
+         слоем оставался 4K@8 Мбит/с. На обычном канале он не тянется —
+         зритель получал 360p. Это и была жалоба «картинка как 140-360p». */
+      if (LK && window.TingMediaProfile) {
+        opts.publishDefaults = window.TingMediaProfile.buildPublishDefaults(LK, { maxHeight: 720 });
       }
     } catch (_) { /* */ }
     return opts;
@@ -3323,6 +3397,11 @@
         if (track && track.kind === 'audio') {
           syncRemoteAudio(room);
           return;
+        }
+        /* D-192: задержка воспроизведения — на треке, в секундах (не опция
+           Room). Убирает лишний джиттер-буфер, то есть «задержку». */
+        if (track && window.TingMediaProfile) {
+          window.TingMediaProfile.attachPlayoutDelay(track, 0.15);
         }
         bumpPublicationQuality(pub, participant);
         const id = participant && participant.identity;
@@ -3802,6 +3881,9 @@
       }
       state.joinInFlight = false;
       state.skipHashRoute = false;
+      /* D-191: телеметрия с этого звонка — каждые 5 с, отправка батчем раз
+         в минуту. Работает и когда медиа уже деградировало. */
+      startMetricsLoop(room);
       if (parkedAway || !root || state.lkRoom !== room) {
         try {
           if (window.HuginnTing && typeof HuginnTing.ensurePip === 'function') HuginnTing.ensurePip();

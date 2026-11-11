@@ -379,13 +379,15 @@ check('upsert: отклонённый гость получает 403 BANNED', (
 
 // ── Кодек и качество ────────────────────────────────────────────────────
 check('качество: потолок 720p, три слоя, H264 с проверкой', () => {
-  const i = tv.indexOf('var CAPTURE_RES');
-  assert(i > 0, 'CAPTURE_RES не найден');
-  const cap = tv.slice(i, i + 700);
-  assert(!/h2160|h1440/.test(cap), 'CAPTURE_RES всё ещё берёт 4K/1440');
-  assert(/function h264Supported/.test(tv), 'нет capability-check');
-  assert(/backupCodec:\s*false/.test(tv), 'backupCodec не выключен');
-  assert(/degradationPreference:\s*'maintain-resolution'/.test(tv), 'нет maintain-resolution');
+  /* D-192: профиль переехал в общий модуль — проверяем его, а не копию в ТВ. */
+  const moduleSrc = fs.readFileSync(path.join(root, 'public/assets/js/ting_media_profile.js'), 'utf8');
+  assert(/function h264Supported/.test(moduleSrc), 'нет capability-check в модуле');
+  assert(/backupCodec:\s*false/.test(moduleSrc), 'backupCodec не выключен в модуле');
+  assert(/degradationPreference:\s*'maintain-resolution'/.test(moduleSrc),
+    'нет maintain-resolution в модуле');
+  assert(!/h2160/.test(moduleSrc), 'модуль тянет 4K-пресет');
+  const pushes = (moduleSrc.match(/layers\.push/g) || []).length;
+  assert(pushes === 3, 'в модуле ' + pushes + ' слоёв, ожидалось 3');
 });
 
 check('качество: canPlaybackAudio как геттер', () => {
