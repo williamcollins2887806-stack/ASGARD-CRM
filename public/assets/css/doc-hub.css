@@ -3467,24 +3467,113 @@ html[data-theme="light"] .dh-obs-submodal__head,
 html[data-theme="light"] .dh-obs-submodal__foot {
   border-color: rgba(15, 23, 42, 0.10);
 }
+/* V487: форма «Новый ОБС-счёт» — подмодалка внутри окна письма.
+   Появилась потому, что window.prompt не даёт ввести ИНН/КПП/к-с и объект,
+   а без объекта счёт не встаёт первым в списке для своего счёта. */
+.dh-obs-submodal {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.55);
+  padding: 24px;
+}
+.dh-obs-submodal__card {
+  width: min(560px, 100%);
+  max-height: 90%;
+  overflow: auto;
+  background: var(--bg2, #1e293b);
+  border: 1px solid var(--brd, #334155);
+  border-radius: 14px;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.45);
+}
+.dh-obs-submodal__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--brd, #334155);
+  font-weight: 750;
+}
+.dh-obs-submodal__body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px 16px;
+}
+.dh-obs-submodal__body .dh-field { display: flex; flex-direction: column; gap: 4px; }
+.dh-obs-submodal__body .dh-field > span { font-size: 11px; color: var(--t2, #94a3b8); font-weight: 650; }
+.dh-obs-submodal__foot {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 12px 16px;
+  border-top: 1px solid var(--brd, #334155);
+}
+html.theme-light .dh-obs-submodal__card,
+html[data-theme="light"] .dh-obs-submodal__card {
+  background: #ffffff;
+  border-color: rgba(15, 23, 42, 0.12);
+}
+html.theme-light .dh-obs-submodal__head,
+html.theme-light .dh-obs-submodal__foot,
+html[data-theme="light"] .dh-obs-submodal__head,
+html[data-theme="light"] .dh-obs-submodal__foot { border-color: rgba(15, 23, 42, 0.10); }
+
 .dh-obs-body {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  gap: 18px;
+  /* V487: перетаскиваемая ширина формы и превью (как mlsp_split).
+     --dh-obs-split задаётся из JS, значение помнится в localStorage. */
+  grid-template-columns: minmax(280px, var(--dh-obs-split, 46%)) 10px minmax(300px, 1fr);
+  gap: 0 14px;
   overflow: hidden;
   min-height: 0;
 }
+/* Ручка между формой и превью: тонкая полоса, курсор col-resize. */
+.dh-obs-grip {
+  align-self: stretch;
+  width: 10px;
+  border-radius: 6px;
+  cursor: col-resize;
+  position: relative;
+  background: transparent;
+  transition: background 0.15s ease;
+}
+.dh-obs-grip::before {
+  content: '';
+  position: absolute;
+  left: 4px; top: 50%;
+  transform: translateY(-50%);
+  width: 2px; height: 46px;
+  border-radius: 2px;
+  background: var(--brd, #334155);
+}
+.dh-obs-grip:hover::before,
+.dh-obs-grip:focus-visible::before { background: var(--gold, #d4a017); }
+.dh-obs-grip:focus-visible { outline: 2px solid var(--gold, #d4a017); outline-offset: 2px; }
+body.dh-obs-resizing { cursor: col-resize; user-select: none; }
+body.dh-obs-resizing iframe { pointer-events: none; }
 .dh-obs-form {
   overflow-y: auto;
   max-height: 62vh;
   padding-right: 6px;
 }
+/* V487: «дорогой» вид секций — не капс-анкета, а блоки с акцентом. */
 .dh-obs-sec {
   border: 1px solid var(--brd);
-  border-radius: 12px;
-  padding: 12px 14px;
+  border-radius: 14px;
+  padding: 14px 16px;
   margin-bottom: 12px;
-  background: color-mix(in srgb, var(--bg2) 60%, transparent);
+  background: linear-gradient(180deg,
+    color-mix(in srgb, var(--bg2) 78%, transparent),
+    color-mix(in srgb, var(--bg2) 52%, transparent));
+  box-shadow: inset 0 1px 0 color-mix(in srgb, #fff 6%, transparent);
+  transition: border-color 0.16s ease;
+}
+.dh-obs-sec:focus-within {
+  border-color: color-mix(in srgb, var(--gold, #d4a017) 42%, var(--brd));
 }
 .dh-obs-sec__h {
   display: flex;
@@ -3492,11 +3581,14 @@ html[data-theme="light"] .dh-obs-submodal__foot {
   justify-content: space-between;
   gap: 10px;
   font-weight: 700;
-  font-size: 12.5px;
-  text-transform: uppercase;
-  letter-spacing: .05em;
-  color: var(--t3);
-  margin-bottom: 10px;
+  /* V487: убран uppercase и «технический» кегль — заголовки секций
+     читаются как разделы документа, а не как анкета. */
+  font-size: 13px;
+  letter-spacing: 0;
+  color: var(--t1, #e2e8f0);
+  margin-bottom: 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid color-mix(in srgb, var(--brd) 60%, transparent);
 }
 .dh-obs-check { display: flex; align-items: center; gap: 8px; font-size: 13px; cursor: pointer; }
 .dh-obs-hint { font-size: 11.5px; color: var(--t3); margin-top: 6px; line-height: 1.4; }
@@ -3518,39 +3610,272 @@ html[data-theme="light"] .dh-obs-submodal__foot {
   display: flex;
   flex-direction: column;
   min-height: 0;
-}
-.dh-obs-frame {
-  width: 100%;
-  height: 62vh;
+  /* V487: превью — «рабочий стол» с подложкой, а не пустое поле. */
   border: 1px solid var(--brd);
-  border-radius: 12px;
-  /* PDF рисуется на белом листе — это свойство документа, а не темы,
-     поэтому белый здесь уместен. */
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--bg2) 45%, transparent);
+  overflow: hidden;
+}
+/* ─── V487: панель инструментов предпросмотра (как mlsp_sheet__bar) ─────── */
+.dh-obs-prev-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 9px 12px;
+  border-bottom: 1px solid color-mix(in srgb, var(--brd) 70%, transparent);
+  background: color-mix(in srgb, var(--bg3) 60%, transparent);
+}
+.dh-obs-prev-bar__title { font-size: 12.5px; font-weight: 750; color: var(--t1, #e2e8f0); }
+.dh-obs-prev-bar__meta { font-size: 11px; color: var(--t3); margin-top: 1px; }
+.dh-obs-prev-tools { display: flex; align-items: center; gap: 4px; }
+.dh-obs-prev-tools__sep {
+  width: 1px; height: 18px; margin: 0 4px;
+  background: color-mix(in srgb, var(--brd) 80%, transparent);
+}
+.dh-obs-zbtn {
+  min-width: 26px;
+  height: 26px;
+  padding: 0 7px;
+  border-radius: 7px;
+  border: 1px solid var(--brd);
+  background: color-mix(in srgb, var(--bg2) 70%, transparent);
+  color: var(--t2, #94a3b8);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease, border-color 0.12s ease;
+}
+.dh-obs-zbtn:hover {
+  background: color-mix(in srgb, var(--gold, #d4a017) 16%, var(--bg2));
+  border-color: color-mix(in srgb, var(--gold, #d4a017) 45%, var(--brd));
+  color: var(--t1, #e2e8f0);
+}
+.dh-obs-zbtn--label { min-width: 52px; font-variant-numeric: tabular-nums; }
+/* Область просмотра: «шахматка» под листом, как в МЛСП. */
+.dh-obs-prev-viewport {
+  flex: 1 1 auto;
+  min-height: 0;
+  max-height: 62vh;
+  overflow: auto;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 16px;
+  background-image:
+    linear-gradient(45deg, rgba(148, 163, 184, 0.06) 25%, transparent 25%),
+    linear-gradient(-45deg, rgba(148, 163, 184, 0.06) 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, rgba(148, 163, 184, 0.06) 75%),
+    linear-gradient(-45deg, transparent 75%, rgba(148, 163, 184, 0.06) 75%);
+  background-size: 16px 16px;
+  background-position: 0 0, 0 8px, 8px -8px, -8px 0;
+}
+.dh-obs-prev-scaler { display: flex; align-items: flex-start; justify-content: center; margin: auto; }
+.dh-obs-frame {
+  width: 794px;
+  height: 1123px;
+  border: 1px solid color-mix(in srgb, var(--brd) 80%, transparent);
+  border-radius: 4px;
+  /* PDF рисуется на белом листе — это свойство документа, а не темы. */
   background: #fff;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35), 0 1px 0 rgba(255, 255, 255, 0.06);
+  flex: 0 0 auto;
 }
 .dh-obs-preview__empty {
   display: flex; flex-direction: column; align-items: center; justify-content: center;
-  gap: 8px; height: 62vh; border: 1px dashed var(--brd); border-radius: 12px;
-  color: var(--t3); font-size: 13px; text-align: center; padding: 20px;
+  gap: 10px; min-height: 320px; width: 100%;
+  border: 1px dashed color-mix(in srgb, var(--brd) 90%, transparent); border-radius: 12px;
+  color: var(--t3); font-size: 13px; text-align: center; padding: 24px;
 }
 .dh-obs-preview__ico {
-  width: 46px; height: 46px; border-radius: 12px;
+  width: 52px; height: 52px; border-radius: 14px;
   display: flex; align-items: center; justify-content: center;
-  border: 1px solid var(--brd); font-weight: 800; font-size: 12px; color: var(--gold);
+  border: 1px solid color-mix(in srgb, var(--gold, #d4a017) 38%, var(--brd));
+  background: color-mix(in srgb, var(--gold, #d4a017) 10%, transparent);
+  font-weight: 800; font-size: 12px; color: var(--gold, #d4a017);
+  letter-spacing: 0.06em;
 }
 .dh-obs-preview__stale {
-  margin-top: 8px; font-size: 12px; font-weight: 600;
-  color: var(--amber);
+  margin: 0 12px 10px; padding: 7px 10px; border-radius: 8px;
+  font-size: 11.5px; font-weight: 650;
+  color: #92400e;
+  background: color-mix(in srgb, var(--amber, #f59e0b) 16%, transparent);
+  border: 1px solid color-mix(in srgb, var(--amber, #f59e0b) 38%, transparent);
 }
 .dh-obs-foot { flex-wrap: wrap; gap: 10px; align-items: center; }
 .dh-obs-foot__left { flex: 1 1 240px; font-size: 12px; }
 .dh-obs-foot__right { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
 
 @media (max-width: 980px) {
+  /* На узком экране ручка не нужна: колонки идут одна под другой. */
   .dh-obs-body { grid-template-columns: 1fr; overflow-y: auto; }
+  .dh-obs-grip { display: none; }
   .dh-obs-form { max-height: none; overflow: visible; }
-  .dh-obs-preview__empty, .dh-obs-frame { height: 52vh; }
+  .dh-obs-prev-viewport { max-height: 52vh; }
 }
+
+/* ═══ V487: СВЕТЛАЯ ТЕМА окна ОБС ═══════════════════════════════════════════
+   Дефект 11.11.2026: тема в проекте задаётся КЛАССОМ на <html>
+   (`html.theme-light` / `html.theme-dark`), а не атрибутом `data-theme`.
+   Когда правила писались только на `[data-theme="light"]`, на реальной
+   светлой теме не срабатывало НИЧЕГО: окно оставалось тёмным, а поля
+   становились белыми с тёмным текстом — худший вариант.
+   Теперь оба механизма, и это единственное место, где они дублируются. */
+html.theme-light .dh-obs-modal,
+html[data-theme="light"] .dh-obs-modal { background: rgba(15, 23, 42, 0.28); }
+
+/* Специфичность: `.dh-modal__card` + `.dh-obs-card` перебивают одиночный
+   класс, поэтому здесь двойной селектор и !important на фон. */
+html.theme-light .dh-obs-modal .dh-obs-card,
+html[data-theme="light"] .dh-obs-modal .dh-obs-card {
+  background: #ffffff !important;
+  color: #0f172a !important;
+  border-color: rgba(15, 23, 42, 0.12);
+  box-shadow: 0 24px 64px rgba(15, 23, 42, 0.18);
+}
+html.theme-light .dh-obs-head,
+html[data-theme="light"] .dh-obs-head { border-bottom-color: rgba(15, 23, 42, 0.10); }
+html.theme-light .dh-obs-head h2,
+html.theme-light .dh-obs-head h3,
+html[data-theme="light"] .dh-obs-head h2,
+html[data-theme="light"] .dh-obs-head h3 { color: #0f172a; }
+
+html.theme-light .dh-obs-modal .dh-obs-sec,
+html[data-theme="light"] .dh-obs-modal .dh-obs-sec {
+  background: #f8fafc !important;
+  background-image: none !important;
+  border-color: rgba(15, 23, 42, 0.10);
+  box-shadow: none;
+}
+html.theme-light .dh-obs-sec__h,
+html[data-theme="light"] .dh-obs-sec__h {
+  color: #1e293b;
+  border-bottom-color: rgba(15, 23, 42, 0.08);
+}
+
+html.theme-light .dh-obs-modal input,
+html.theme-light .dh-obs-modal select,
+html.theme-light .dh-obs-modal textarea,
+html[data-theme="light"] .dh-obs-modal input,
+html[data-theme="light"] .dh-obs-modal select,
+html[data-theme="light"] .dh-obs-modal textarea {
+  background: #ffffff !important;
+  color: #0f172a !important;
+  border-color: rgba(15, 23, 42, 0.18);
+}
+html.theme-light .dh-obs-modal input::placeholder,
+html.theme-light .dh-obs-modal textarea::placeholder,
+html[data-theme="light"] .dh-obs-modal input::placeholder,
+html[data-theme="light"] .dh-obs-modal textarea::placeholder { color: #94a3b8; }
+
+html.theme-light .dh-obs-hint,
+html[data-theme="light"] .dh-obs-hint { color: #475569; }
+html.theme-light .dh-obs-hint--warn,
+html[data-theme="light"] .dh-obs-hint--warn { color: #92400e; }
+html.theme-light .dh-obs-hint--bad,
+html[data-theme="light"] .dh-obs-hint--bad { color: #b91c1c; }
+html.theme-light .dh-obs-hint--ok,
+html[data-theme="light"] .dh-obs-hint--ok { color: #15803d; }
+html.theme-light .dh-obs-bad,
+html[data-theme="light"] .dh-obs-bad { color: #b91c1c; }
+html.theme-light .dh-obs-ok,
+html[data-theme="light"] .dh-obs-ok { color: #15803d; }
+
+html.theme-light .dh-obs-preview,
+html[data-theme="light"] .dh-obs-preview {
+  background: #f8fafc;
+  border-color: rgba(15, 23, 42, 0.10);
+}
+html.theme-light .dh-obs-prev-bar,
+html[data-theme="light"] .dh-obs-prev-bar {
+  background: #f1f5f9;
+  border-bottom-color: rgba(15, 23, 42, 0.08);
+}
+html.theme-light .dh-obs-prev-bar__title,
+html[data-theme="light"] .dh-obs-prev-bar__title { color: #0f172a; }
+html.theme-light .dh-obs-prev-bar__meta,
+html[data-theme="light"] .dh-obs-prev-bar__meta { color: #64748b; }
+html.theme-light .dh-obs-zbtn,
+html[data-theme="light"] .dh-obs-zbtn {
+  background: #ffffff;
+  color: #475569;
+  border-color: rgba(15, 23, 42, 0.16);
+}
+html.theme-light .dh-obs-zbtn:hover,
+html[data-theme="light"] .dh-obs-zbtn:hover {
+  background: #fef3c7;
+  color: #0f172a;
+  border-color: rgba(180, 130, 10, 0.4);
+}
+html.theme-light .dh-obs-prev-viewport,
+html[data-theme="light"] .dh-obs-prev-viewport {
+  background-image:
+    linear-gradient(45deg, rgba(15, 23, 42, 0.04) 25%, transparent 25%),
+    linear-gradient(-45deg, rgba(15, 23, 42, 0.04) 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, rgba(15, 23, 42, 0.04) 75%),
+    linear-gradient(-45deg, transparent 75%, rgba(15, 23, 42, 0.04) 75%);
+}
+html.theme-light .dh-obs-frame,
+html[data-theme="light"] .dh-obs-frame { box-shadow: 0 8px 24px rgba(15, 23, 42, 0.14); }
+html.theme-light .dh-obs-preview__empty,
+html[data-theme="light"] .dh-obs-preview__empty {
+  color: #64748b;
+  border-color: rgba(15, 23, 42, 0.16);
+}
+html.theme-light .dh-obs-preview__empty .dh-obs-preview__ico,
+html[data-theme="light"] .dh-obs-preview__empty .dh-obs-preview__ico {
+  border-color: rgba(180, 130, 10, 0.4);
+  color: #92651a;
+  background: #fef3c7;
+}
+html.theme-light .dh-obs-foot,
+html[data-theme="light"] .dh-obs-foot {
+  border-top-color: rgba(15, 23, 42, 0.10);
+  background: #f8fafc;
+}
+html.theme-light .dh-obs-preview__stale,
+html[data-theme="light"] .dh-obs-preview__stale {
+  background: #fef3c7;
+  color: #92400e;
+  border-color: #fcd34d;
+}
+html.theme-light .dh-obs-warn,
+html[data-theme="light"] .dh-obs-warn {
+  background: #fef3c7;
+  border-color: #fcd34d;
+  color: #92400e;
+}
+
+/* Крестик закрытия: раньше не имел CSS вообще (жил на браузерном дефолте).
+   Определён здесь один раз, чтобы работал в любой теме. */
+.dh-modal__x {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 1px solid var(--brd, #334155);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--t2, #94a3b8);
+  font: inherit;
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+.dh-modal__x:hover { background: var(--bg4, #334155); color: var(--t1, #e2e8f0); }
+html.theme-light .dh-modal__x,
+html[data-theme="light"] .dh-modal__x {
+  border-color: rgba(15, 23, 42, 0.16);
+  color: #475569;
+  background: #ffffff;
+}
+html.theme-light .dh-modal__x:hover,
+html[data-theme="light"] .dh-modal__x:hover { background: #f1f5f9; color: #0f172a; }
 @media (max-width: 620px) {
   .dh-obs-grid2 { grid-template-columns: 1fr; }
   .dh-obs-foot__right { width: 100%; justify-content: stretch; }

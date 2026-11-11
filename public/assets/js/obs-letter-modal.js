@@ -201,14 +201,42 @@ window.AsgardObsLetterModal = (function () {
         </section>
       </div>
 
+      <!-- V487: перетаскиваемая ручка ширины, как в «Пропусках МЛСП».
+           Форма и предпросмотр независимы: кому нужен широкий бланк —
+           тянет влево, кому длинные наименования позиций — вправо. -->
+      <div class="dh-obs-grip" id="dhObsGrip" title="Потяните — ширина формы и превью"
+           role="separator" aria-orientation="vertical" tabindex="0"></div>
+
       <!-- правая колонка: предпросмотр -->
       <div class="dh-obs-preview" id="dhObsPreviewPane">
-        <div class="dh-obs-preview__empty" id="dhObsPreviewEmpty">
-          <div class="dh-obs-preview__ico">PDF</div>
-          <div>Нажмите «Предпросмотр», чтобы увидеть письмо</div>
-          <div class="dh-obs-hint">Номер исходящего при этом не тратится</div>
+        <!-- V487: панель предпросмотра как в «Пропусках МЛСП» —
+             заголовок, масштаб, обновление. Было: голая заглушка «PDF» и
+             кнопка «Предпросмотр» в подвале, из-за чего окно выглядело
+             дёшево, а масштабировать письмо было нельзя. -->
+        <div class="dh-obs-prev-bar">
+          <div class="dh-obs-prev-bar__main">
+            <div class="dh-obs-prev-bar__title">Предпросмотр письма</div>
+            <div class="dh-obs-prev-bar__meta" id="dhObsPrevMeta">A4 · банковский бланк</div>
+          </div>
+          <div class="dh-obs-prev-tools" role="toolbar" aria-label="Масштаб предпросмотра">
+            <button type="button" class="dh-obs-zbtn" id="dhObsZoomOut" title="Уменьшить">−</button>
+            <button type="button" class="dh-obs-zbtn dh-obs-zbtn--label" id="dhObsZoomLabel" title="По ширине">100%</button>
+            <button type="button" class="dh-obs-zbtn" id="dhObsZoomIn" title="Увеличить">+</button>
+            <span class="dh-obs-prev-tools__sep" aria-hidden="true"></span>
+            <button type="button" class="dh-obs-zbtn" id="dhObsZoomFit" title="Вписать по ширине">↔</button>
+            <button type="button" class="dh-obs-zbtn" id="dhObsNewWindow" title="Открыть в новом окне">↗</button>
+          </div>
         </div>
-        <iframe id="dhObsPreviewFrame" class="dh-obs-frame" hidden title="Предпросмотр письма"></iframe>
+        <div class="dh-obs-prev-viewport" id="dhObsPrevViewport">
+          <div class="dh-obs-preview__empty" id="dhObsPreviewEmpty">
+            <div class="dh-obs-preview__ico">PDF</div>
+            <div>Нажмите «Предпросмотр», чтобы увидеть письмо</div>
+            <div class="dh-obs-hint">Номер исходящего при этом не тратится</div>
+          </div>
+          <div class="dh-obs-prev-scaler" id="dhObsPrevScaler">
+            <iframe id="dhObsPreviewFrame" class="dh-obs-frame" hidden title="Предпросмотр письма"></iframe>
+          </div>
+        </div>
         <div class="dh-obs-preview__stale" id="dhObsStale" hidden>
           Есть несохранённые изменения — обновите предпросмотр.
         </div>
@@ -395,6 +423,158 @@ window.AsgardObsLetterModal = (function () {
     return r.blob();
   }
 
+  // ─── V487: масштаб предпросмотра, split-ручка, живое обновление ──────────
+  //
+  // Заказчик 11.11.2026: «предпросмотр как у МЛСП (split + масштаб), живое
+  // обновление превью, всё должно быть дорого».
+  //
+  // Что было: статичный iframe высотой 62vh, который появлялся ТОЛЬКО по
+  // кнопке «Предпросмотр». Ни масштаба, ни перетаскивания, ни авто-обновления.
+  // Если человек правил сумму после предпросмотра, он видел старый бланк с
+  // пометкой «есть изменения» — и должен был жать кнопку заново.
+  //
+  // Что стало: панель инструментов (масштаб −/+/по ширине/в новом окне),
+  // перетаскиваемая граница формы и превью (процент в localStorage), и
+  // авто-обновление через debounce после любой правки.
+  const ZOOM_KEY = 'dh_obs_zoom';
+  const SPLIT_KEY = 'dh_obs_split_pct';
+  const MIN_ZOOM = 0.5;
+  const MAX_ZOOM = 2.0;
+  const ZOOM_STEP = 0.1;
+
+  function zoomNow() {
+    const v = parseFloat(state.zoom);
+    return Number.isFinite(v) && v >= MIN_ZOOM && v <= MAX_ZOOM ? v : 1;
+  }
+
+  /** Применить масштаб к «бумаге» превью. 1:1 = реальная ширина A4 (210 мм). */
+  function applyZoom() {
+    const z = zoomNow();
+    const scaler = el('dhObsPrevScaler');
+    const frame = el('dhObsPreviewFrame');
+    const viewport = el('dhObsPrevViewport');
+    const label = el('dhObsZoomLabel');
+    if (label) label.textContent = Math.round(z * 100) + '%';
+    if (!scaler || !frame) return;
+    // Ширина листа A4 при 96 dpi ≈ 794 px. Масштабируем трансформом, чтобы
+    // iframe не перерисовывался: PDF внутри сохраняет своё разрешение.
+    const paperW = 794;
+    const w = Math.round(paperW * z);
+    frame.style.width = w + 'px';
+    frame.style.height = Math.round(w * 1.414) + 'px';
+    if (scaler) {
+      scaler.style.width = w + 'px';
+      scaler.style.height = frame.style.height;
+    }
+    if (viewport) viewport.classList.toggle('is-zoomed', z !== 1);
+  }
+
+  function setZoom(z) {
+    const v = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, Math.round(z * 100) / 100));
+    state.zoom = v;
+    try { localStorage.setItem(ZOOM_KEY, String(v)); } catch (_) { /* приватный режим */ }
+    applyZoom();
+  }
+
+  /** «По ширине»: подогнать лист под ширину видимой области. */
+  function fitToWidth() {
+    const viewport = el('dhObsPrevViewport');
+    if (!viewport) return;
+    const avail = Math.max(220, viewport.clientWidth - 36);
+    setZoom(avail / 794);
+  }
+
+  // ─── Перетаскивание ручки (как mlsp_split_grip) ─────────────────────────
+  function applySplit(pct) {
+    const body = el('dhObsBody');
+    if (!body) return;
+    const v = Math.max(28, Math.min(68, Number(pct) || 46));
+    body.style.setProperty('--dh-obs-split', v + '%');
+    state.splitPct = v;
+  }
+
+  function bindGrip() {
+    const grip = el('dhObsGrip');
+    if (!grip) return;
+    let dragging = false;
+    const onMove = (e) => {
+      if (!dragging) return;
+      const body = el('dhObsBody');
+      if (!body) return;
+      const rect = body.getBoundingClientRect();
+      const x = (e.touches ? e.touches[0].clientX : e.clientX);
+      const pct = ((x - rect.left) / rect.width) * 100;
+      applySplit(pct);
+      e.preventDefault();
+    };
+    const stop = () => {
+      if (!dragging) return;
+      dragging = false;
+      document.body.classList.remove('dh-obs-resizing');
+      try { localStorage.setItem(SPLIT_KEY, String(state.splitPct)); } catch (_) { /* */ }
+      // После смены ширины «по ширине» надо пересчитать.
+      applyZoom();
+    };
+    const start = (e) => {
+      dragging = true;
+      document.body.classList.add('dh-obs-resizing');
+      e.preventDefault();
+    };
+    grip.addEventListener('mousedown', start);
+    grip.addEventListener('touchstart', start, { passive: false });
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('touchmove', onMove, { passive: false });
+    document.addEventListener('mouseup', stop);
+    document.addEventListener('touchend', stop);
+    // Клавиатура: ручка — separator, должна двигаться стрелками.
+    grip.addEventListener('keydown', (e) => {
+      const step = e.shiftKey ? 6 : 2;
+      if (e.key === 'ArrowLeft') { applySplit((state.splitPct || 46) - step); e.preventDefault(); }
+      if (e.key === 'ArrowRight') { applySplit((state.splitPct || 46) + step); e.preventDefault(); }
+    });
+  }
+
+  // ─── Живое обновление превью ────────────────────────────────────────────
+  //
+  // Ключевое отличие от «обновить по кнопке»: человек меняет сумму и сразу
+  // видит результат в бланке. Debounce 700 мс — чтобы не собирать PDF на
+  // каждое нажатие клавиши (один прогон = LibreOffice, это дорого).
+  //
+  // Живое обновление включается ТОЛЬКО после первого ручного предпросмотра:
+  // иначе при открытии окна сразу пойдёт сборка, хотя человек ещё ничего не
+  // смотрел. Это и экономия, и предсказуемость.
+  let liveTimer = null;
+  function scheduleLivePreview() {
+    if (!state || !state.previewed) return;
+    if (liveTimer) clearTimeout(liveTimer);
+    liveTimer = setTimeout(() => {
+      liveTimer = null;
+      refreshPreviewQuiet();
+    }, 700);
+  }
+
+  /** Тихое обновление: без тостов и без спиннера на кнопке. */
+  async function refreshPreviewQuiet() {
+    try {
+      const blob = await fetchPreviewBlob('pdf');
+      if (state.previewUrl) URL.revokeObjectURL(state.previewUrl);
+      state.previewUrl = URL.createObjectURL(blob);
+      const frame = el('dhObsPreviewFrame');
+      frame.src = state.previewUrl;
+      frame.hidden = false;
+      const empty = el('dhObsPreviewEmpty');
+      if (empty) empty.hidden = true;
+      const stale = el('dhObsStale');
+      if (stale) stale.hidden = true;
+      applyZoom();
+    } catch (e) {
+      // Тихое обновление не должно ругаться: человек не просил его явно.
+      console.warn('[obs-letter] live preview failed:', e && e.message);
+      const stale = el('dhObsStale');
+      if (stale) stale.hidden = false;
+    }
+  }
+
   async function doPreview() {
     const btn = el('dhObsPreviewBtn');
     btn.disabled = true;
@@ -410,6 +590,10 @@ window.AsgardObsLetterModal = (function () {
       el('dhObsPreviewEmpty').hidden = true;
       el('dhObsStale').hidden = true;
       state.previewed = true;
+      // Первый предпросмотр — подгоняем по ширине, если человек ещё не
+      // выбирал масштаб вручную.
+      if (!state.zoomTouched) fitToWidth();
+      else applyZoom();
       // D-397b (замечание верификатора 07.11.2026): здесь стоял сброс
       // `state.dirty = false` при `state.saved = null`. Предпросмотр — это НЕ
       // сохранение: если человек после него закроет окно, введённые данные
@@ -418,6 +602,8 @@ window.AsgardObsLetterModal = (function () {
       el('dhObsSave').disabled = false;
       el('dhObsDlPdf').disabled = false;
       el('dhObsDlDocx').disabled = false;
+      const meta = el('dhObsPrevMeta');
+      if (meta) meta.textContent = 'A4 · банковский бланк · готов';
     } catch (e) {
       toast('Предпросмотр не собрался', e.message || 'ошибка', 'err');
     } finally {
@@ -547,6 +733,8 @@ window.AsgardObsLetterModal = (function () {
           if (id === 'dhObsSub') updateSubInfo();
           if (id === 'dhObsAccount') updateAccountInfo();
           markDirty();
+          // V487: живое обновление бланка после правки.
+          scheduleLivePreview();
         });
         node.addEventListener('change', () => {
           if (id === 'dhObsGross' || id === 'dhObsVatRate') recalcVat();
@@ -554,9 +742,41 @@ window.AsgardObsLetterModal = (function () {
           if (id === 'dhObsSub') updateSubInfo();
           if (id === 'dhObsAccount') updateAccountInfo();
           markDirty();
+          scheduleLivePreview();
         });
       });
     el('dhObsAccountAdd').onclick = addAccount;
+
+    // ─── V487: панель масштаба и ручка ширины ─────────────────────────────
+    const zoomIn = el('dhObsZoomIn');
+    const zoomOut = el('dhObsZoomOut');
+    const zoomFit = el('dhObsZoomFit');
+    const newWin = el('dhObsNewWindow');
+    const zoomLabel = el('dhObsZoomLabel');
+    if (zoomIn) zoomIn.onclick = () => { state.zoomTouched = true; setZoom(zoomNow() + ZOOM_STEP); };
+    if (zoomOut) zoomOut.onclick = () => { state.zoomTouched = true; setZoom(zoomNow() - ZOOM_STEP); };
+    if (zoomFit) zoomFit.onclick = () => { state.zoomTouched = true; fitToWidth(); };
+    // Клик по проценту — сброс на 1:1 (масштаб в натуральную величину).
+    if (zoomLabel) zoomLabel.onclick = () => { state.zoomTouched = true; setZoom(1); };
+    if (newWin) {
+      newWin.onclick = () => {
+        if (!state.previewUrl) { toast('Предпросмотр', 'Сначала соберите бланк', 'info'); return; }
+        window.open(state.previewUrl, '_blank', 'noopener');
+      };
+    }
+    // Ctrl+колесо над превью — как в МЛСП.
+    const viewport = el('dhObsPrevViewport');
+    if (viewport) {
+      viewport.addEventListener('wheel', (e) => {
+        if (!e.ctrlKey) return;
+        e.preventDefault();
+        state.zoomTouched = true;
+        setZoom(zoomNow() + (e.deltaY < 0 ? ZOOM_STEP : -ZOOM_STEP));
+      }, { passive: false });
+    }
+    bindGrip();
+    applySplit(state.splitPct);
+    applyZoom();
   }
 
   function onKey(e) {
@@ -726,6 +946,23 @@ window.AsgardObsLetterModal = (function () {
       previewed: false,
       previewUrl: null,
       saved: null,
+      // V487: масштаб и ширина колонок запоминаются между открытиями окна —
+      // человек настраивает рабочее место один раз, а не на каждый счёт.
+      zoom: (() => {
+        try {
+          const v = parseFloat(localStorage.getItem(ZOOM_KEY));
+          return Number.isFinite(v) && v >= MIN_ZOOM && v <= MAX_ZOOM ? v : 1;
+        } catch (_) { return 1; }
+      })(),
+      zoomTouched: (() => {
+        try { return !!localStorage.getItem(ZOOM_KEY); } catch (_) { return false; }
+      })(),
+      splitPct: (() => {
+        try {
+          const v = parseFloat(localStorage.getItem(SPLIT_KEY));
+          return Number.isFinite(v) ? Math.max(28, Math.min(68, v)) : 46;
+        } catch (_) { return 46; }
+      })(),
     };
 
     el('dhObsFootLeft').innerHTML = '';
