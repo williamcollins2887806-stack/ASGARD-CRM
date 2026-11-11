@@ -214,6 +214,13 @@ check('окно: завершённую комнату блокирует 410', 
   assert(r.status === 410, 'код ' + r.status + ', ожидался 410');
 });
 
+check('окно: гости не допущены → 403 (allow_guests=false)', () => {
+  const guard = buildRoomGuard();
+  const r = mkReply();
+  guard(room({ allow_guests: false }), r);
+  assert(r.status === 403, 'код ' + r.status + ', ожидался 403 (гости не допущены)');
+});
+
 check('окно: guest-token НЕ передаёт skipWindow и tvHall', () => {
   /* Поведенческая проверка вызова: ищем вызов внутри обработчика guest-token. */
   const gi = server.indexOf("fastify.post('/public/:code/guest-token'");

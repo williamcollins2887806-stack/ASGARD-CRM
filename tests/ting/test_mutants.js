@@ -226,6 +226,19 @@ const MUTANTS = [
     anchor: 'function publicRoomMeta(',
     from: 'recording_active: !!recordingActive,',
     to: 'recording_active: false,'
+  },
+  {
+    name: 'allow_guests не проверяется (закрытая комната пускает)',
+    file: THING,
+    from: 'if (!room.allow_guests) return reply.code(403).send({ error: \'Гости не допущены\' });',
+    to: 'if (false) return reply.code(403).send({ error: \'Гости не допущены\' });'
+  },
+  {
+    name: 'завершённая комната не блокируется (410 убран)',
+    file: THING,
+    anchor: 'function publicRoomUnavailable(room, reply, opts) {',
+    from: "if (room.status === 'ended' || room.status === 'cancelled') {",
+    to: 'if (false) {'
   }
 ];
 
