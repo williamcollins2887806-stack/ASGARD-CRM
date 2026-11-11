@@ -163,6 +163,69 @@ const MUTANTS = [
     anchor: 'function publicRoomMeta(',
     from: 'slug: room.slug,',
     to: 'slug: null,'
+  },
+  {
+    name: 'title потерян',
+    file: THING,
+    anchor: 'function publicRoomMeta(',
+    from: 'title: room.title,',
+    to: 'title: null,'
+  },
+  {
+    name: 'status потерян',
+    file: THING,
+    anchor: 'function publicRoomMeta(',
+    from: 'status: room.status,',
+    to: 'status: null,'
+  },
+  {
+    name: 'dial_code потерян',
+    file: THING,
+    anchor: 'function publicRoomMeta(',
+    from: 'dial_code: room.dial_code || null,',
+    to: 'dial_code: null,'
+  },
+  {
+    name: 'lobby_enabled потерян',
+    file: THING,
+    anchor: 'function publicRoomMeta(',
+    from: 'lobby_enabled: room.lobby_enabled,',
+    to: 'lobby_enabled: false,'
+  },
+  {
+    name: 'pin_required всегда false',
+    file: THING,
+    anchor: 'function publicRoomMeta(',
+    from: 'pin_required: Boolean(room.pin_code),',
+    to: 'pin_required: false,'
+  },
+  {
+    name: 'locked всегда false',
+    file: THING,
+    anchor: 'function publicRoomMeta(',
+    from: 'locked: Boolean(room.locked),',
+    to: 'locked: false,'
+  },
+  {
+    name: 'conference_mode всегда meeting',
+    file: THING,
+    anchor: 'function publicRoomMeta(',
+    from: "conference_mode: room.conference_mode || 'meeting',",
+    to: "conference_mode: 'meeting',"
+  },
+  {
+    name: 'recording_mode всегда off',
+    file: THING,
+    anchor: 'function publicRoomMeta(',
+    from: "recording_mode: room.recording_mode || 'off',",
+    to: "recording_mode: 'off',"
+  },
+  {
+    name: 'recording_active всегда false',
+    file: THING,
+    anchor: 'function publicRoomMeta(',
+    from: 'recording_active: !!recordingActive,',
+    to: 'recording_active: false,'
   }
 ];
 

@@ -98,13 +98,23 @@ const NOW = Date.now();
 const iso = (ms) => new Date(ms).toISOString();
 
 function room(over) {
+  /* ВАЖНО: все поля заполнены РЕАЛЬНЫМИ значениями. Если поле не задано в
+     фикстуре, проверка `m.X === r.X` даёт `undefined === undefined` и молча
+     проходит — верификатор поймал это: удаление title/lobby_enabled/locked
+     оставалось зелёным. */
   return Object.assign({
     id: 1,
     slug: 'abc123',
     dial_code: '123456',
+    title: 'Совещание по проекту',
     status: 'scheduled',
     mode: 'scheduled',
     allow_guests: true,
+    lobby_enabled: true,
+    pin_code: '4321',
+    recording_mode: 'manual',
+    conference_mode: 'webinar',
+    locked: true,
     scheduled_at: iso(NOW + 3 * 3600 * 1000) // старт через 3 часа
   }, over);
 }
@@ -267,8 +277,7 @@ check('метаданные: join_open == реальное поведение о
     assert(m.lobby_enabled === r.lobby_enabled, label + ': lobby_enabled потерян');
     assert(m.pin_required === Boolean(r.pin_code), label + ': pin_required неверен');
     assert(m.recording_mode === (r.recording_mode || 'off'), label + ': recording_mode потерян');
-    assert(m.recording_active === false, label + ': recording_active должен быть false');
-    assert(m.locked === Boolean(r.locked), label + ': locked неверен');
+    assert(m.recording_active === false, label + ': recording_active должен быть false');    assert(m.locked === Boolean(r.locked), label + ': locked неверен');
     assert(m.conference_mode === (r.conference_mode || 'meeting'), label + ': conference_mode потерян');
     assert(m.slug === r.slug, label + ': slug потерян');
     assert(m.dial_code === (r.dial_code || null), label + ': dial_code потерян');
@@ -282,6 +291,14 @@ check('метаданные: join_open == реальное поведение о
     'nowMs: до открытия окна join_open должен быть false');
   assert(meta(future, false, NOW + 3 * 3600 * 1000).join_open === true,
     'nowMs: после открытия join_open должен быть true');
+
+  /* recording_active проверяется в ОБЕ стороны: раньше случай true не был
+     покрыт, и мутация `recording_active: false` выживала — плашка записи
+     могла исчезнуть из ответа незаметно. */
+  assert(meta(future, true).recording_active === true,
+    'recording_active=true не доходит до ответа');
+  assert(meta(future, false).recording_active === false,
+    'recording_active=false не доходит до ответа');
 });
 
 // ── Микрофон: withTimeout не гасит поток на успехе ──────────────────────
