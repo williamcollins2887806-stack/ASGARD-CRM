@@ -278,7 +278,37 @@ module.exports = async function thingRoutes(fastify) {
     return rows[0] || null;
   }
 
-  function publicRoomUnavailable(room, reply) {
+  const EARLY_JOIN_MS = 60 * 60 * 1000;
+
+  /**
+   * D-188: единый расчёт окна входа. Чистая функция без побочных эффектов —
+   * её использует и охранник, и метаданные, и тесты (поведенческие, не grep).
+   * Возвращает { applies, opensAt, startsAt }.
+   *   applies  — действует ли окно для этой комнаты вообще;
+   *   opensAt  — момент открытия (или null);
+   *   startsAt — момент начала (или null).
+   * Исключения:
+   *   mode='instant'        — встреча «сейчас», расписания нет;
+   *   status != 'scheduled' — комната уже идёт: не блокируем, иначе хост
+   *                           запустил раньше и гости получат 425;
+   *   scheduled_at пустое   — время не задано (сиды, демо);
+   *   невалидная дата       — окно не применяем (иначе RangeError на toISOString).
+   */
+  function joinWindowFor(room) {
+    const res = { applies: false, opensAt: null, startsAt: null };
+    if (!room) return res;
+    if (String(room.mode || 'instant') !== 'scheduled') return res;
+    if (String(room.status || '') !== 'scheduled') return res;
+    if (!room.scheduled_at) return res;
+    const startsAt = new Date(room.scheduled_at).getTime();
+    if (!Number.isFinite(startsAt)) return res;
+    res.applies = true;
+    res.startsAt = startsAt;
+    res.opensAt = startsAt - EARLY_JOIN_MS;
+    return res;
+  }
+
+  function publicRoomUnavailable(room, reply, opts) {
     if (!room) return reply.code(404).send({ error: 'Тинг не найден' });
     if (room.status === 'ended' || room.status === 'cancelled') {
       return reply.code(410).send({
@@ -290,6 +320,23 @@ module.exports = async function thingRoutes(fastify) {
       });
     }
     if (!room.allow_guests) return reply.code(403).send({ error: 'Гости не допущены' });
+    /* D-188b: исключения для tv_hall НЕТ. Раньше флаг приходил из публичного
+       тела запроса, и любой гость снимал окно одной строкой JSON.
+       skipWindow — только для GET метаданных: гость должен видеть название.
+       Организатор не ограничен по другой причине: он входит через
+       авторизованный /rooms/:id/token, где окна нет вовсе. */
+    const skipWindow = !!(opts && opts.skipWindow);
+    if (skipWindow) return null;
+    const win = joinWindowFor(room);
+    if (win.applies && Date.now() < win.opensAt) {
+      return reply.code(425).send({
+        error: 'Тинг ещё не открыт',
+        code: 'ROOM_NOT_OPEN_YET',
+        message: 'Вход откроется за час до начала',
+        opens_at: new Date(win.opensAt).toISOString(),
+        starts_at: new Date(win.startsAt).toISOString()
+      });
+    }
     return null;
   }
 
@@ -1091,6 +1138,36 @@ module.exports = async function thingRoutes(fastify) {
     return { ok: true, protocol_status: 'queued' };
   });
 
+  /**
+   * D-188d: публичные метаданные комнаты — чистая функция без БД, чтобы тест
+   * мог её ИСПОЛНИТЬ и сравнить join_open с реальным поведением охранника.
+   * Раньше проверка реконструировала логику рядом с обработчиком: верификатор
+   * показал, что мутации `join_open: true` и удаление поля проходили гейт.
+   */
+  function publicRoomMeta(room, recordingActive, nowMs) {
+    const now = Number.isFinite(nowMs) ? nowMs : Date.now();
+    const win = joinWindowFor(room);
+    const scheduledAt = win.applies ? new Date(win.startsAt) : null;
+    const opensAt = win.applies ? new Date(win.opensAt) : null;
+    return {
+      title: room.title,
+      status: room.status,
+      lobby_enabled: room.lobby_enabled,
+      pin_required: Boolean(room.pin_code),
+      recording_mode: room.recording_mode || 'off',
+      recording_active: !!recordingActive,
+      locked: Boolean(room.locked),
+      conference_mode: room.conference_mode || 'meeting',
+      slug: room.slug,
+      dial_code: room.dial_code || null,
+      mode: room.mode || 'instant',
+      scheduled_at: scheduledAt ? scheduledAt.toISOString() : null,
+      opens_at: opensAt ? opensAt.toISOString() : null,
+      /* Открыт ли вход прямо сейчас — считается из окна, не независимо. */
+      join_open: !win.applies || now >= win.opensAt
+    };
+  }
+
   // ─── PUBLIC guest ───────────────────────────────────────────
   fastify.get('/public/:code', async (request, reply) => {
     const code = String(request.params.code || '').toLowerCase();
@@ -1098,10 +1175,11 @@ module.exports = async function thingRoutes(fastify) {
       return reply.code(400).send({ error: 'Некорректный код' });
     }
     const room = await loadPublicRoomByCode(code);
-    const blocked = publicRoomUnavailable(room, reply);
+    /* Метаданные отдаём ВСЕГДА: гость и ТВ-зал должны видеть название и время
+       ещё до открытия окна. Окно проверяется только при фактическом входе
+       (guest-token), поэтому здесь opts.skipWindow. */
+    const blocked = publicRoomUnavailable(room, reply, { skipWindow: true });
     if (blocked) return blocked;
-
-    /* D7: врать в обе стороны нельзя — сообщаем ФАКТ записи. */
     let recordingActive = false;
     try {
       const { rows: rec } = await db.query(
@@ -1111,18 +1189,7 @@ module.exports = async function thingRoutes(fastify) {
       recordingActive = rec.length > 0;
     } catch (_) { /* */ }
 
-    return {
-      title: room.title,
-      status: room.status,
-      lobby_enabled: room.lobby_enabled,
-      pin_required: Boolean(room.pin_code),
-      recording_mode: room.recording_mode || 'off',
-      recording_active: recordingActive,
-      locked: Boolean(room.locked),
-      conference_mode: room.conference_mode || 'meeting',
-      slug: room.slug,
-      dial_code: room.dial_code || null
-    };
+    return publicRoomMeta(room, recordingActive);
   });
 
   fastify.post('/public/:code/guest-token', async (request, reply) => {
@@ -1135,6 +1202,8 @@ module.exports = async function thingRoutes(fastify) {
     }
 
     const room = await loadPublicRoomByCode(code);
+    /* Окно входа действует для всех гостей одинаково (см. D-188b).
+       tv_hall исключением НЕ является: флаг приходит из публичного тела. */
     const blocked = publicRoomUnavailable(room, reply);
     if (blocked) return blocked;
     if (room.locked) return reply.code(403).send({ error: 'Вход в комнату закрыт организатором', code: 'ROOM_LOCKED' });
@@ -1194,14 +1263,47 @@ module.exports = async function thingRoutes(fastify) {
     const policy = String(room.lobby_policy || 'all');
     /* 'guests' — в лобби только внешние; остальные политики держат всех гостей. */
     const lobby = room.lobby_enabled && policy !== 'none' ? 'waiting' : 'admitted';
+    /* D-183: повторный вход того же guest_key падал в 23505
+       (thing_participants_identity_room UNIQUE (room_id, identity)), потому что
+       строка от прошлого входа НЕ удаляется — её лишь помечают left_at.
+       Пользователь видел на экране сырое «duplicate_record».
+       Теперь upsert. ВАЖНО: lobby_status='rejected' не перезаписываем —
+       иначе кикнутый гость вернулся бы простым обновлением страницы. */
     const { rows: ins } = await db.query(
       `INSERT INTO thing_participants
          (room_id, guest_name, guest_email, role, display_name, identity, lobby_status, join_token_hash,
           guest_key, client_ip)
-       VALUES ($1, $2, $3, 'guest', $2, $4, $5, $6, $7, $8) RETURNING id`,
+       VALUES ($1, $2, $3, 'guest', $2, $4, $5, $6, $7, $8)
+       ON CONFLICT (room_id, identity) DO UPDATE SET
+         guest_name      = EXCLUDED.guest_name,
+         guest_email     = COALESCE(EXCLUDED.guest_email, thing_participants.guest_email),
+         display_name    = EXCLUDED.display_name,
+         join_token_hash = EXCLUDED.join_token_hash,
+         guest_key       = COALESCE(EXCLUDED.guest_key, thing_participants.guest_key),
+         client_ip       = EXCLUDED.client_ip,
+         lobby_status    = CASE
+                             WHEN thing_participants.lobby_status = 'rejected' THEN 'rejected'
+                             ELSE EXCLUDED.lobby_status
+                           END,
+         joined_at       = CASE
+                             WHEN thing_participants.lobby_status = 'rejected' THEN thing_participants.joined_at
+                             ELSE NOW()
+                           END,
+         left_at         = CASE
+                             WHEN thing_participants.lobby_status = 'rejected' THEN thing_participants.left_at
+                             ELSE NULL
+                           END
+       RETURNING id, lobby_status`,
       [room.id, name, body.email || null, identity, lobby, joinHash, guestKey,
         request.ip || null]
     );
+    /* Отклонённого не пускаем даже с валидным guest_key. */
+    if (ins[0] && ins[0].lobby_status === 'rejected') {
+      return reply.code(403).send({
+        error: 'Вас удалили из этой комнаты',
+        code: 'BANNED'
+      });
+    }
 
     if (lobby === 'waiting') {
       // Tell the host somebody is waiting in the lobby — otherwise guests sit silently.

@@ -5,14 +5,14 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="ting-tv" content="1" />
   <title>Тинг Переговорка</title>
-  <link rel="icon" type="image/svg+xml" href="/assets/img/ting-logo.svg?v=20.28.501" />
-  <link rel="stylesheet" href="/assets/css/design-tokens.css?v=20.28.501" />
-  <link rel="stylesheet" href="/assets/css/ting.css?v=20.28.501" />
-  <link rel="stylesheet" href="/assets/css/ting-tv.css?v=20.28.501" />
-  <script src="/assets/vendor/livekit-client.umd.min.js?v=20.28.501"></script>
-  <script src="/assets/js/ting_icons.js?v=20.28.501"></script>
-  <script src="/assets/js/ting_common.js?v=20.28.501"></script>
-  <script src="/assets/js/ting_room_core.js?v=20.28.501"></script>
+  <link rel="icon" type="image/svg+xml" href="/assets/img/ting-logo.svg?v=20.28.506" />
+  <link rel="stylesheet" href="/assets/css/design-tokens.css?v=20.28.506" />
+  <link rel="stylesheet" href="/assets/css/ting.css?v=20.28.506" />
+  <link rel="stylesheet" href="/assets/css/ting-tv.css?v=20.28.506" />
+  <script src="/assets/vendor/livekit-client.umd.min.js?v=20.28.506"></script>
+  <script src="/assets/js/ting_icons.js?v=20.28.506"></script>
+  <script src="/assets/js/ting_common.js?v=20.28.506"></script>
+  <script src="/assets/js/ting_room_core.js?v=20.28.506"></script>
 </head>
 <body class="ting-tv">
   <div class="ttv-screen" id="startView">
@@ -177,7 +177,9 @@
     peopleOpen: false,
     activeSpeakerId: null,
     camDeviceId: localStorage.getItem(PREF_CAM) || '',
-    micDeviceId: localStorage.getItem(PREF_MIC) || ''
+    micDeviceId: localStorage.getItem(PREF_MIC) || '',
+    joinRetried: false,
+    playoutDelaySec: 0.15
   };
 
   /* ── Док на пульте: автоскрытие через 10 с бездействия ──────────────
@@ -368,14 +370,46 @@
     paintDeviceLabels();
   }
 
-  function withTimeout(promise, ms, label) {
+  /**
+   * D-187: таймаут НЕ отменял исходное обещание. `Promise.race` бросал
+   * 'Error microphone', а getUserMedia продолжал висеть и ДЕРЖАТЬ устройство —
+   * следующий вызов получал Device in use. Именно это и выглядело как
+   * «микрофон не найден», хотя он есть.
+   * Теперь по таймауту мы дожидаемся реального результата и ГАСИМ поток,
+   * освобождая устройство.
+   */
+  function withTimeout(promise, ms, label, onLate) {
     var t = null;
+    var timedOut = false;
     return Promise.race([
-      promise,
+      promise.then(function (v) { return v; }),
       new Promise(function (_, rej) {
-        t = setTimeout(function () { rej(new Error(label || 'timeout')); }, ms);
+        t = setTimeout(function () {
+          timedOut = true;
+          rej(new Error(label || 'timeout'));
+        }, ms);
       })
-    ]).finally(function () { if (t) clearTimeout(t); });
+    ]).finally(function () {
+      if (t) clearTimeout(t);
+      /* Поздний результат освобождаем ТОЛЬКО если был таймаут.
+         Верификатор поймал дефект: безусловный вызов гасил поток на УСПЕШНОМ
+         пути — трек становился ended и публикация всегда падала. */
+      if (timedOut && typeof onLate === 'function') {
+        promise.then(onLate).catch(function () { /* уже отвалилось */ });
+      }
+    });
+  }
+
+  /** Погасить MediaStream/трек, чтобы устройство освободилось. */
+  function releaseStream(s) {
+    try {
+      if (!s) return;
+      if (typeof s.getTracks === 'function') {
+        s.getTracks().forEach(function (tr) { try { tr.stop(); } catch (_) { /* */ } });
+      } else if (s && typeof s.stop === 'function') {
+        s.stop();
+      }
+    } catch (_) { /* */ }
   }
 
   function stopPreview() {
@@ -404,24 +438,44 @@
     } catch (_) { /* */ }
   }
 
-  /* Публикация камеры: максимум качества, которое реально тянет камера.
-     Камеры на ТВ бывают 4K, поэтому лестница 4K → 1440p → 1080p → 720p:
-     берём первый пресет, который устройство отдало, и НЕ растягиваем слабое.
-     Реальное разрешение пишем в консоль — иначе «сколько на самом деле»
-     приходится угадывать. */
+  /* Публикация камеры: потолок 720p (D-184). 4K/1440 отдавали 8 Мбит/с вверх
+     и душили собственный приём на Wi-Fi — это и был «140p у собеседника».
+     Берём первый пресет, который устройство реально отдало, и НЕ растягиваем
+     слабое. Фактическое разрешение пишем в консоль — иначе приходится гадать. */
   function cameraPresets(LK) {
     var out = [];
     try {
       if (LK.VideoPresets) {
-        /* 1080p первым, 4K — только если канал проверенно хороший (см.
-           autoUpgradeTo4K). Иначе 8 Мбит/с вверх душит собственный приём. */
-        ['h1080', 'h720', 'h1440', 'h2160'].forEach(function (k) {
+        /* D-184: потолок 720p. 4K/1440 отдавали 8 Мбит/с вверх и душили
+           собственный приём на Wi-Fi — это и был «140p у собеседника».
+           1080p допустим как запас, но публикуем не выше h720 по умолчанию. */
+        ['h720', 'h1080'].forEach(function (k) {
           if (LK.VideoPresets[k] && LK.VideoPresets[k].resolution) out.push(LK.VideoPresets[k]);
         });
       }
     } catch (_) { /* */ }
     if (!out.length) out.push(null);
     return out;
+  }
+
+  /**
+   * D-189: H264 даёт аппаратное кодирование, но SDK НЕ проверяет его поддержку
+   * (проверяет только av1/vp9) — на устройстве без H264-энкодера публикация
+   * деградирует молча. Поэтому проверяем сами через RTCRtpSender.getCapabilities.
+   * Плюс отключаем backupCodec: с ним SDK публикует H264 И VP8 одновременно,
+   * удваивая исходящий битрейт — ровно то, от чего мы уходим.
+   */
+  function h264Supported() {
+    try {
+      if (typeof RTCRtpSender === 'undefined' || !RTCRtpSender.getCapabilities) return false;
+      var caps = RTCRtpSender.getCapabilities('video');
+      if (!caps || !caps.codecs) return false;
+      return caps.codecs.some(function (c) {
+        return /video\/h264/i.test(String(c && c.mimeType || ''));
+      });
+    } catch (_) {
+      return false;
+    }
   }
 
   function logPublishedCamera(track) {
@@ -457,6 +511,114 @@
         keepalive: true
       }).catch(function () { /* офлайн — не критично */ });
     } catch (_) { /* */ }
+  }
+
+  /* ── Сбор ФАКТОВ через getStats (D-186) ──────────────────────────────────
+     Без этих цифр любой тюнинг — гадание. Ключевые вопросы, на которые
+     отвечает лог:
+       qualityLimitationReason = cpu       → виноват энкодер (кодек/слои/разрешение)
+       qualityLimitationReason = bandwidth → виноват канал (битрейт)
+       relayProtocol = tcp                 → идём через TURN/TCP, вот и «залипания»
+     Смотрим: journalctl -u asgard-crm | grep TING-DIAG | grep STATS */
+  var statsTimer = null;
+
+  function stopStatsLoop() {
+    if (statsTimer) { clearInterval(statsTimer); statsTimer = null; }
+  }
+
+  function num(v) { return (typeof v === 'number' && isFinite(v)) ? v : null; }
+
+  async function collectStats(room) {
+    if (!room) return;
+    try {
+      /* Верификатор поймал дефект: ranьше брали ОДИН pc (по умолчанию
+         subscriber), поэтому qualityLimitationReason (это outbound-метрика
+         энкодера) всегда был пустым. Теперь читаем оба и сливаем в один лог. */
+      var pubPc = null, subPc = null;
+      try {
+        var engine = room.engine || (room.room && room.room.engine);
+        var pcm = engine && engine.pcManager;
+        pubPc = pcm && pcm.publisher && (pcm.publisher._pc || pcm.publisher.pc);
+        subPc = pcm && pcm.subscriber && (pcm.subscriber._pc || pcm.subscriber.pc);
+      } catch (_) { /* */ }
+      if ((!pubPc || typeof pubPc.getStats !== 'function')
+          && (!subPc || typeof subPc.getStats !== 'function')) return;
+
+      var out = { relay: null, rtt: null, availOut: null, losses: 0, jitterMax: 0,
+                  freezes: 0, res: null, fps: null, limiter: null, pairs: {},
+                  pubRes: null, pubFps: null, pubLimiter: null, pubBitrate: null };
+
+      async function readPc(pc, isPub) {
+        if (!pc || typeof pc.getStats !== 'function') return;
+        var report = await pc.getStats();
+        report.forEach(function (s) {
+          if (s.type === 'candidate-pair' && (s.selected || s.nominated || s.state === 'succeeded')) {
+            if (num(s.currentRoundTripTime) != null) out.rtt = Math.round(s.currentRoundTripTime * 1000);
+            if (num(s.availableOutgoingBitrate) != null) out.availOut = Math.round(s.availableOutgoingBitrate / 1000);
+            out.pairs[s.id] = s;
+          }
+          if (isPub && s.type === 'outbound-rtp' && s.kind === 'video') {
+            /* Только здесь есть качество энкодера: cpu / bandwidth / none. */
+            if (s.qualityLimitationReason) out.pubLimiter = s.qualityLimitationReason;
+            if (num(s.frameWidth)) out.pubRes = s.frameWidth + 'x' + s.frameHeight;
+            if (num(s.framesPerSecond)) out.pubFps = Math.round(s.framesPerSecond);
+            if (num(s.targetBitrate)) out.pubBitrate = Math.round(s.targetBitrate / 1000);
+          }
+          if (!isPub && s.type === 'inbound-rtp' && s.kind === 'video') {
+            if (num(s.packetsLost)) out.losses += s.packetsLost;
+            if (num(s.jitter)) out.jitterMax = Math.max(out.jitterMax, Math.round(s.jitter * 1000));
+            if (num(s.freezeCount)) out.freezes = s.freezeCount;
+            if (num(s.frameWidth)) out.res = s.frameWidth + 'x' + s.frameHeight;
+            if (num(s.framesPerSecond)) out.fps = Math.round(s.framesPerSecond);
+          }
+        });
+        /* Протокол выбранной пары (udp/tcp/relay) — из локального кандидата. */
+        var pairId = Object.keys(out.pairs).pop();
+        if (pairId && !out.relay) {
+          var pair = out.pairs[pairId];
+          var loc = report.get(pair.localCandidateId);
+          if (loc) out.relay = String(loc.candidateType || '?') + '/' + String(loc.protocol || '?');
+        }
+      }
+
+      await readPc(pubPc, true);
+      await readPc(subPc, false);
+
+      var line = 'STATS rtt=' + (out.rtt == null ? '?' : out.rtt + 'ms')
+        + ' pair=' + (out.relay || '?')
+        + ' availOut=' + (out.availOut == null ? '?' : out.availOut + 'kbps')
+        + ' pub=' + (out.pubRes || '?') + '/' + (out.pubFps == null ? '?' : out.pubFps) + 'fps'
+        + '/' + (out.pubBitrate == null ? '?' : out.pubBitrate + 'kbps')
+        + ' limiter=' + (out.pubLimiter || '?')
+        + ' in=' + (out.res || '?') + '/' + (out.fps == null ? '?' : out.fps) + 'fps'
+        + ' lost=' + out.losses
+        + ' jitter=' + out.jitterMax + 'ms'
+        + ' freezes=' + out.freezes;
+      console.info('[TingTV]', line);
+      diag(line);
+
+      /* На плохом канале буфер увеличиваем — иначе картинка «застывает». */
+      try {
+        if (out.freezes > 3 && state.playoutDelaySec < 0.4) {
+          state.playoutDelaySec = 0.3;
+          diag('PLAYOUT raised to 0.3 (freezes=' + out.freezes + ')');
+        }
+      } catch (_) { /* */ }
+
+      var badge = document.getElementById('ttvDiag');
+      if (badge) {
+        badge.textContent = (out.res || '—') + ' · ' + (out.fps || '?') + 'fps · ' + (out.relay || '?');
+      }
+    } catch (_) { /* статистика не критична для звонка */ }
+  }
+
+  function startStatsLoop(room) {
+    stopStatsLoop();
+    statsTimer = setInterval(function () {
+      if (state.room !== room) { stopStatsLoop(); return; }
+      collectStats(room);
+    }, 5000);
+    collectStats(room);
   }
 
   /* ── Проверка РЕАЛЬНОГО звука с микрофона ────────────────────────────────
@@ -668,25 +830,26 @@
     } catch (_) { /* */ }
   }
 
-  /* Разрешение превью/захвата. 4K — только если камера его реально отдаёт;
-     браузер сам понизит до возможного (ideal, не exact). */
+  /* Разрешение превью/захвата. D-184: 720p — потолок по умолчанию.
+     Захват в 4K + публикация в 8 Мбит/с душили Wi-Fi ТВ и портили приём.
+     Выше поднимать только по подтверждённо хорошему каналу. */
   var CAPTURE_RES = (function () {
     try {
       var LK = window.LivekitClient;
       if (LK && LK.VideoPresets) {
-        if (LK.VideoPresets.h2160) return LK.VideoPresets.h2160.resolution;
-        if (LK.VideoPresets.h1440) return LK.VideoPresets.h1440.resolution;
+        if (LK.VideoPresets.h720) return LK.VideoPresets.h720.resolution;
         if (LK.VideoPresets.h1080) return LK.VideoPresets.h1080.resolution;
       }
     } catch (_) { /* */ }
-    return { width: 1920, height: 1080 };
+    return { width: 1280, height: 720 };
   })();
 
   async function ensurePreview() {
     stopPreview();
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) return;
     /* ideal, не exact: на ТВ deviceId часто протухает после перезагрузки WebView.
-       Разрешение максимальное из возможных — камеры на ТВ бывают 4K. */
+       CAPTURE_RES = 720p (D-184): выше поднимать нельзя, иначе исходящий
+       битрейт забивает Wi-Fi и портит собственный приём. */
     var hdVideo = {
       width: { ideal: CAPTURE_RES.width },
       height: { ideal: CAPTURE_RES.height },
@@ -991,7 +1154,10 @@
     try {
       syncRemoteAudio(r);
       if (typeof r.startAudio === 'function') await r.startAudio();
-      var can = typeof r.canPlaybackAudio === 'function' ? r.canPlaybackAudio() : true;
+      /* D-190: canPlaybackAudio — ГЕТТЕР ('boolean'), а не метод. Проверка на
+         'function' всегда давала false, и кнопка «Включить звук» не появлялась
+         никогда — на ТВ это тишина до первого клика по экрану. */
+      var can = (typeof r.canPlaybackAudio === 'boolean') ? r.canPlaybackAudio : true;
       setAudioUnlockVisible(!can);
       return !!can;
     } catch (_) {
@@ -1037,30 +1203,85 @@
     opts.echoCancellation = true;
     opts.noiseSuppression = true;
     opts.autoGainControl = true;
+    /* D-187: публикуем напрямую из getUserMedia, а не через
+       setMicrophoneEnabled. Причина: внутри SDK это тот же путь
+       (createTracks → getUserMedia → publishTrack), но при таймауте поток
+       остаётся висеть и держит устройство. Здесь мы владеем потоком сами и
+       ГАСИМ его при любой неудаче. */
+    var opened = null;
     try {
-      await withTimeout(lp.setMicrophoneEnabled(true, opts), 12000, 'microphone');
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        throw new Error('no mediaDevices');
+      }
+      opened = await withTimeout(
+        navigator.mediaDevices.getUserMedia({ audio: opts, video: false }),
+        20000,
+        'microphone',
+        releaseStream
+      );
     } catch (e) {
-      if (!useDevice || !state.micDeviceId) throw e;
-      /* Протухший deviceId: стираем и пробуем дефолт. */
-      state.micDeviceId = '';
-      prefsSet(PREF_MIC, '');
-      await withTimeout(lp.setMicrophoneEnabled(true), 12000, 'microphone');
+      /* Протухший deviceId — повтор без привязки к устройству. */
+      if (useDevice && state.micDeviceId) {
+        state.micDeviceId = '';
+        prefsSet(PREF_MIC, '');
+        try {
+          opened = await withTimeout(
+            navigator.mediaDevices.getUserMedia({
+              audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+              video: false
+            }),
+            20000,
+            'microphone',
+            releaseStream
+          );
+        } catch (_) { opened = null; }
+      }
+      if (!opened) throw e;
     }
-    var info = micPublication(room);
-    if (info.pub && info.pub.isMuted === true) {
-      try { await info.pub.unmute(); } catch (_) { /* */ }
+
+    var mst = opened && opened.getAudioTracks ? opened.getAudioTracks()[0] : null;
+    if (!mst || mst.readyState !== 'live') {
+      releaseStream(opened);
+      diag('MIC no-live-audio-track');
+      throw new Error('audio track not live');
     }
-    if (!micIsPublishing(room) && !info.pub) {
-      /* Публикации не создалось вовсе — последний шанс: прямой трек. */
+
+    /* Сначала снимаем прошлую публикацию, иначе два микрофона в эфире. */
+    try {
+      var olds = Array.from(lp.audioTrackPublications.values());
+      for (var i = 0; i < olds.length; i++) {
+        var oldPub = olds[i];
+        try {
+          if (oldPub && oldPub.track && typeof lp.unpublishTrack === 'function') {
+            await lp.unpublishTrack(oldPub.track, true);
+          }
+        } catch (_) { /* */ }
+      }
+    } catch (_) { /* */ }
+
+    try {
+      var at = null;
+      var LK = window.LivekitClient;
+      if (LK && typeof LK.LocalAudioTrack === 'function') {
+        at = new LK.LocalAudioTrack(mst, undefined, false);
+      } else if (LK && typeof LK.createLocalAudioTrack === 'function') {
+        releaseStream(opened);
+        at = await withTimeout(LK.createLocalAudioTrack(opts), 20000, 'microphone');
+      }
+      if (!at) throw new Error('cannot wrap audio track');
+      var pubOpts = {};
       try {
-        var mk = window.LivekitClient && window.LivekitClient.createLocalAudioTrack;
-        if (typeof mk === 'function') {
-          var at = await withTimeout(mk(opts), 12000, 'microphone');
-          await withTimeout(lp.publishTrack(at), 12000, 'microphone');
-        }
-      } catch (_) { /* остаётся false */ }
+        if (LK && LK.Track && LK.Track.Source) pubOpts.source = LK.Track.Source.Microphone;
+      } catch (_) { /* */ }
+      await withTimeout(lp.publishTrack(at, pubOpts), 20000, 'microphone');
+      diag('MIC published dev=' + String(mst.label || '?').slice(0, 40));
+      return micIsPublishing(room);
+    } catch (e) {
+      /* Публикация не удалась — устройство обязано освободиться. */
+      releaseStream(opened);
+      diag('MIC publish-fail ' + (e && e.name) + ' ' + (e && e.message));
+      return false;
     }
-    return micIsPublishing(room);
   }
 
   async function publishLocalMic(room) {
@@ -1244,6 +1465,8 @@
 
   async function teardown() {
     state.intentionalLeave = true;
+    stopStatsLoop();
+    stopMicProbe();
     try {
       if (window.TingRoomCore && TingRoomCore.lowSpeed) TingRoomCore.lowSpeed.reset();
     } catch (_) { /* */ }
@@ -1278,31 +1501,41 @@
     showDock();
 
     /* ТВ: фиксированный большой стейдж — adaptive выкл (иначе thrash при relayout).
-       Качество: камеры на ТВ бывают 4K — публикуем максимум (h2160), а слои
-       simulcast дают зрителю выбор: быстрый канал берёт 4K, слабый — ниже.
-       Это и есть «авто-подстройка под скорость» на уровне транспорта. */
+       D-184: реальный корень «140p у собеседника» — не кодек, а ЗАВЫШЕННЫЙ
+       битрейт публикации. ТВ часто на Wi-Fi: отдавая 8 Мбит/с вверх, он забивает
+       эфир и САМ перестаёт принимать (подтверждено логами LiveKit:
+       top HIGH 3840x2160 @ 8 Мбит/с). Потолок — 720p/1.7 Мбит/с. */
     var roomOpts = {
       adaptiveStream: false,
       dynacast: true,
-      videoCaptureDefaults: { resolution: CAPTURE_RES, frameRate: 30 }
+      videoCaptureDefaults: {
+        resolution: (LK.VideoPresets && LK.VideoPresets.h720 && LK.VideoPresets.h720.resolution)
+          || { width: 1280, height: 720 },
+        frameRate: 30
+      }
     };
     try {
       if (LK.VideoPresets) {
+        /* SDK физически публикует ТРИ rid (q/h/f) — лишние пресеты отбрасываются.
+           Даём ровно три осмысленных шага, без h1440/h2160. */
         var layers = [];
         if (LK.VideoPresets.h180) layers.push(LK.VideoPresets.h180);
         if (LK.VideoPresets.h360) layers.push(LK.VideoPresets.h360);
         if (LK.VideoPresets.h720) layers.push(LK.VideoPresets.h720);
-        if (LK.VideoPresets.h1080) layers.push(LK.VideoPresets.h1080);
-        if (LK.VideoPresets.h1440) layers.push(LK.VideoPresets.h1440);
         roomOpts.publishDefaults = {
           simulcast: true,
           videoSimulcastLayers: layers,
-          /* ВАЖНО: не 8 Мбит/с «на всякий случай». ТВ часто на Wi-Fi: отдавая
-             8 Мбит/с вверх, он забивает эфир и САМ не может принимать —
-             отсюда «140p» у собеседника и лаги. 1080p-битрейт как потолок,
-             а 4K включается точечно, когда канал проверенно хороший. */
-          videoEncoding: (LK.VideoPresets.h1080 && LK.VideoPresets.h1080.encoding) || undefined
+          videoEncoding: (LK.VideoPresets.h720 && LK.VideoPresets.h720.encoding) || undefined,
+          /* D-184: картинка важнее fps — при просадке режем кадры, а не разрешение.
+             Значение читается из publish-опций (НЕ из videoEncoding). */
+          degradationPreference: 'maintain-resolution',
+          /* D-189: H264 строкой (enum в рантайме нет) и только если реально
+             поддерживается. backupCodec выключаем — иначе два кодека параллельно. */
+          videoCodec: h264Supported() ? 'h264' : 'vp8',
+          backupCodec: false
         };
+        diag('CODEC requested=' + roomOpts.publishDefaults.videoCodec
+          + ' h264Caps=' + h264Supported());
       }
     } catch (_) { /* */ }
     var next = new LK.Room(roomOpts);
@@ -1318,6 +1551,14 @@
           publication.setVideoQuality(LK.VideoQuality.HIGH);
         }
       } catch (_) { /* */ }
+      /* D-185: задержка воспроизведения. Это НЕ опция Room — только метод
+         трека, и единицы СЕКУНДЫ (0.15 = 150 мс). Меньше буфер — быстрее реакция;
+         на плохом канале поднимем по freezeCount (см. statsLoop). */
+      try {
+        if (track && track.kind === 'video' && typeof track.setPlayoutDelay === 'function') {
+          track.setPlayoutDelay(state.playoutDelaySec || 0.15);
+        }
+      } catch (_) { /* браузер без playoutDelayHint — тихий warn внутри SDK */ }
       if (!participant) { bumpRoster(); return; }
       var isLocal = !!(next.localParticipant && participant.identity === next.localParticipant.identity);
       ensureParticipantTile(participant, isLocal);
@@ -1485,11 +1726,14 @@
     await unlockTvAudio(next);
     if (LK.RoomEvent && LK.RoomEvent.AudioPlaybackStatusChanged) {
       next.on(LK.RoomEvent.AudioPlaybackStatusChanged, function () {
-        var can = typeof next.canPlaybackAudio === 'function' ? next.canPlaybackAudio() : true;
+        /* Геттер, см. D-190. */
+        var can = (typeof next.canPlaybackAudio === 'boolean') ? next.canPlaybackAudio : true;
         setAudioUnlockVisible(!can);
       });
     }
     await publishLocalMic(next);
+    /* D-186: собираем факты каждые 5 с — без них тюнинг качества = гадание. */
+    startStatsLoop(next);
     /* Страховка: Android TV отдаёт микрофон с задержкой после stopPreview.
        Если публикации нет через 1.5 с — один тихий повтор без deviceId. */
     setTimeout(async function () {
@@ -1597,7 +1841,25 @@
         return r.json().then(function (j) { return { ok: r.ok, status: r.status, j: j }; });
       });
       if (!res.ok) {
-        msg.textContent = (res.j && res.j.error) || ('Ошибка ' + res.status);
+        var errText = (res.j && (res.j.message || res.j.error)) || ('Ошибка ' + res.status);
+        /* D-183: серверные коды не показываем как есть — они не говорят человеку
+           ничего. duplicate_record был виден на экране ТВ буквально. */
+        var errCode = (res.j && res.j.code) || '';
+        if (errCode === 'BANNED' || res.status === 403 && /удалил/i.test(errText)) {
+          errText = 'Вас удалили из этой комнаты. Попросите организатора вернуть доступ.';
+        } else if (/duplicate_record|23505/i.test(errText)) {
+          errText = 'Не удалось войти — повторяем…';
+          /* Один автоматический повтор: строка участника уже есть, upsert её подхватит. */
+          if (!state.joinRetried) {
+            state.joinRetried = true;
+            setTimeout(function () { join(); }, 600);
+            return;
+          }
+          errText = 'Не удалось войти. Нажмите «Войти» ещё раз.';
+        } else if (res.status >= 500) {
+          errText = 'Сервер временно недоступен. Попробуйте через минуту.';
+        }
+        msg.textContent = errText;
         return;
       }
       state.identity = res.j.identity;

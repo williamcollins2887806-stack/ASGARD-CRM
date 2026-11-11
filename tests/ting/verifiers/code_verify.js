@@ -203,15 +203,17 @@ check('C64_tv_mic_publish_verified',
   && /createLocalAudioTrack/.test(tingTv)
   && /prefsSet\(PREF_MIC, ''\)/.test(tingTv),
   'TV mic: проверка публикации + фолбэк без deviceId');
-check('C65_video_max_with_auto',
-  /VideoPresets\.h2160/.test(tingTv)
-  && /cameraPresets/.test(tingTv)
-  && /VideoQuality\.HIGH/.test(tingTv)
-  && /VideoQuality\.MEDIUM/.test(tingTv)
-  && /VideoPresets\.h2160/.test(tingPage)
-  && /VideoPresets\.h2160/.test(guest)
-  && /ideal: 3840/.test(tingPage),
-  '4K (h2160) с автопонижением: пресеты 2160→1440→1080→720 + HIGH/MEDIUM/LOW');
+/* C65 (D-184): политика качества пересмотрена. 4K/8 Мбит/с вверх душили Wi-Fi ТВ
+   и были корнем «140p у собеседника». Теперь: потолок h720, три слоя, H264 только
+   при поддержке, backupCodec выключен, degradationPreference в publish-опциях. */
+check('C65_video_720_cap_h264',
+  /var CAPTURE_RES/.test(tingTv)
+  && !/h2160/.test(tingTv.slice(tingTv.indexOf('var CAPTURE_RES'), tingTv.indexOf('var CAPTURE_RES') + 700))
+  && /videoCodec:\s*h264Supported\(\)\s*\?\s*'h264'\s*:\s*'vp8'/.test(tingTv)
+  && /backupCodec:\s*false/.test(tingTv)
+  && /degradationPreference:\s*'maintain-resolution'/.test(tingTv)
+  && /VideoQuality\.MEDIUM/.test(tingTv),
+  'ТВ: потолок 720p, H264 с capability-check, без двух кодеков');
 /* C66: корень «144/360p». Лобби открывало камеру как `video: true` (640×480),
    и этот же трек публиковался в звонок — энкодер h1080 растягивал 480p.
    Теперь preview обязан быть HD, а суб-HD трек не переиспользуется. */
