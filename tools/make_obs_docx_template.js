@@ -288,30 +288,27 @@ function main() {
     }
   }
 
-  // 13б. ЛОГОТИП: в образце он ПЛАВАЮЩИЙ (wp:anchor со смещением −476885).
-  //      При конвертации LibreOffice/Word выносят плавающий объект за поток,
-  //      и он «выталкивает» пустую страницу. Переводим во встроенный
-  //      (wp:inline), сохраняя ВСЁ дерево картинки: меняем только имя тега
-  //      и выкидываем позиционные элементы.
+  // 13б. ЛОГОТИП: оставляем ПЛАВАЮЩИМ (wp:anchor), как в эталоне Дмитрия.
+  //
+  // ИСТОРИЯ ДЕФЕКТА (V488, заказчик 11.11.2026: «контитул с карточкой асгарда
+  // куда-то уехал»). Раньше этот блок ПРИНУДИТЕЛЬНО переводил anchor → inline
+  // «чтобы плавающий объект не выталкивал пустую страницу». Побочный эффект
+  // оказался хуже причины: встроенный логотип перестал держать позицию
+  // относительно реквизитов и уезжал в потоке текста.
+  //
+  // Пустую страницу выталкивали не логотип, а пустые абзацы-отбивки (см. 13в,
+  // они вычищаются отдельно). Поэтому здесь только проверяем, что позиция
+  // логотипа задана — без переделки тега.
   {
-    const before = xml;
-    xml = xml.replace(/<wp:anchor\b([^>]*)>([\s\S]*?)<\/wp:anchor>/g, (m, attrs, inner) => {
-      const keepAttrs = attrs
-        .replace(/\s(?:simplePos|relativeHeight|behindDoc|locked|layoutInCell|allowOverlap|wp14:anchorId|wp14:editId)="[^"]*"/g, '')
-        .trim();
-      const cleaned = inner
-        .replace(/<wp:simplePos[^/]*\/>/g, '')
-        .replace(/<wp:positionH\b[\s\S]*?<\/wp:positionH>/g, '')
-        .replace(/<wp:positionV\b[\s\S]*?<\/wp:positionV>/g, '')
-        .replace(/<wp:wrap\w*[^/]*\/>/g, '');
-      return `<wp:inline ${keepAttrs}>${cleaned}</wp:inline>`;
-    });
     const anchors = (xml.match(/<wp:anchor\b/g) || []).length;
-    if (anchors) {
-      console.error('ОТКАЗ: остались плавающие объекты (wp:anchor):', anchors);
-      process.exit(1);
+    const inlines = (xml.match(/<wp:inline\b/g) || []).length;
+    if (!anchors && inlines) {
+      // Шаблон пришёл уже «сплющенным» — восстановим плавающий логотип тем же
+      // патчем, что и в patch_obs_template_v488.js (единый источник правды).
+      console.log('ВНИМАНИЕ: логотип встроенный (wp:inline) — запустите tools/patch_obs_template_v488.js');
+    } else if (anchors) {
+      console.log('логотип плавающий (wp:anchor) — как в эталоне');
     }
-    if (before !== xml) console.log('логотип переведён во встроенный (wp:inline)');
   }
 
   // 13в. Пустые абзацы: в образце их много (отбивки между блоками).

@@ -257,7 +257,15 @@ function buildItems(doc, lines) {
     if (bits.length) return bits.slice(0, 6);
   }
 
-  return [`по счёту № ${doc.invoice_number || 'б/н'}`];
+  // V488: НИЧЕГО НЕ ВЫДУМЫВАЕМ.
+  //
+  // Раньше при отсутствии позиций и комментария возвращалось
+  // `['по счёту № Е-00063180']` — и это печаталось как ПЕРЕЧЕНЬ ЗАКУПКИ:
+  //   «… необходимы по счёту № Е-00063180. Поставка осуществляется ООО «ДНС
+  //    РИТЕЙЛ» … — по счёту № Е-00063180»
+  // Заказчик справедливо назвал это бредом. Пустой перечень честнее выдуманного:
+  // если позиций нет, письмо просто их не перечисляет.
+  return [];
 }
 
 // ─── Данные для письма ────────────────────────────────────────────────────
@@ -637,8 +645,16 @@ function buildHtml(data, opts) {
   const aiWhy = (data.aiBody && data.aiBody.why) ? String(data.aiBody.why) : '';
   const scaffoldGate = (data.aiBody && data.aiBody.scaffold) || '';
   // Позиции — строкой через запятую (в эталонах Дмитрия списков нет).
+  //
+  // V488: чистим артикулы, размеры и фасовку — иначе в письме для банка
+  // красуется «Костюм Легион-1 (тк.Смесовая,210) брюки, т.серый/красный
+  // р. 44-46, 158-164 (арт. 87490062)». Сокращения импортируем лениво, чтобы
+  // не тянуть модуль ИИ при каждом рендере HTML.
+  const _shortName = (() => {
+    try { return require('./obs-letter-ai').shortenItemName; } catch (_) { return (x) => x; }
+  })();
   const itemsLine = sel.shown.length
-    ? sel.shown.join(', ') + (sel.rest > 0 ? `, а также ${sel.restLine}` : '')
+    ? sel.shown.map((t) => _shortName(t) || t).join(', ') + (sel.rest > 0 ? `, а также ${sel.restLine}` : '')
     : '';
 
   const vatLine = hasVat
@@ -1194,7 +1210,14 @@ function buildLetterParagraphs(data, opts = {}) {
 
   const invoiceNo = doc.invoice_number || 'б/н';
   const invoiceDate = dateNum(doc.invoice_date);
-  const counterparty = doc.counterparty_name || 'контрагент';
+  // V488: в письме — короткая форма юрлица, как у Дмитрия.
+  // Раньше сюда шло имя из карточки как есть: «Общество с ограниченной
+  // ответственностью "Безопасность Труда"» вместо «ООО «Безопасность Труда»».
+  const counterparty = (() => {
+    const raw = doc.counterparty_name || 'контрагент';
+    try { return require('./obs-letter-ai').shortenOrgName(raw) || raw; }
+    catch (_) { return raw; }
+  })();
 
   const objectName = (work && work.object_name) || '';
   const workTitle = (work && work.work_title) || '';
@@ -1233,12 +1256,19 @@ function buildLetterParagraphs(data, opts = {}) {
   }
   out.push(`Настоящим сообщаем, что ${basis.join(' ')}.`.replace(/\s+/g, ' '));
 
-  // 2. Требование к допускам — ТОЛЬКО для каркаса «допуск».
+  // 2. Требование к допускам — ТОЛЬКО для КАРКАСА «допуск» И ТОЛЬКО ДЛЯ УСЛУГ.
   //
   // V486: раньше этот абзац стоял всегда, из-за чего письмо про холодильник
   // или лицензию ПО начиналось с требований охраны труда. Теперь — по каркасу.
+  //
+  // V488: и внутри «допуска» он нужен не всегда. Для спецодежды и СИЗ (товар)
+  // фраза «персонал обязан иметь допуски» — канцелярский довесок: Дмитрий
+  // пишет сразу «Для обеспечения безопасного выполнения работ … привлекло …
+  // для поставки спецодежды». Абзац оставляем только для УСЛУГ: медосмотр,
+  // обучение, аттестация — там он объясняет, зачем вообще услуга.
   const scaffold = data.aiBody && data.aiBody.scaffold;
-  if (scaffold === 'dopusk') {
+  const scaffoldType = data.aiBody && data.aiBody.type;
+  if (scaffold === 'dopusk' && scaffoldType === 'service') {
     out.push(`В рамках исполнения обязательств по указанному договору персонал ${company.name_short} `
       + `обязан иметь действующие допуски и разрешительные документы, подтверждающие `
       + `возможность выполнения работ на объекте Заказчика.`);
@@ -1258,7 +1288,7 @@ function buildLetterParagraphs(data, opts = {}) {
     const fb = aiSvc.buildFallback(cls, {
       company: company.name_short,
       counterparty,
-      items: aiSvc.itemsInline(data.items),
+      items: aiSvc.itemsInline((data.items || []).map(aiSvc.shortenItemName)),
       invoice_no: doc.invoice_number || 'б/н',
       invoice_date: dateNum(doc.invoice_date),
       contract_label: data.contractLabel || '',
@@ -1279,15 +1309,28 @@ function buildLetterParagraphs(data, opts = {}) {
   // своим форматированием. В HTML-версии (buildHtml) перечень выводится
   // отдельной строкой через запятую, без маркеров.
   const sel = selectLetterItems(data.items, invoiceNo);
+  // V488: перечень печатаем из своего блока ТОЛЬКО если ИИ не перечислил его
+  // в основном абзаце — иначе позиции дублируются дважды подряд
+  // («…для поставки средств индивидуальной защиты (Костюм Легион-1 СОП, Ботинки
+  // "Билд" утепленные). … Костюм Легион-1 СОП Ботинки "Билд" утепленные»).
+  //
+  // Сравнение делаем по СОКРАЩЁННЫМ именам с обеих сторон: в gist позиции уже
+  // очищены `shortenItemName`, а `sel.shown` приходят сырыми из `line_items_json`.
+  // Прежняя проверка сравнивала сырое имя с очищенным и не совпадала, поэтому
+  // блок печатался всегда.
+  const aiMod2 = require('./obs-letter-ai');
+  const cleanItem = (t) => {
+    try { return aiMod2.shortenItemName(t) || t; } catch (_) { return t; }
+  };
   const gistText = String((data.aiBody && data.aiBody.gist) || '').toLowerCase();
-  const firstItem = sel.shown.length ? String(sel.shown[0]).toLowerCase().slice(0, 20) : '';
-  const itemsAlreadyInText = !!firstItem && gistText.includes(firstItem);
+  const firstClean = sel.shown.length ? cleanItem(String(sel.shown[0])).toLowerCase() : '';
+  // Первые 18 символов достаточно, чтобы опознать упоминание, и мало, чтобы
+  // случайно совпасть с общей фразой.
+  const itemsAlreadyInText = !!firstClean && gistText.includes(firstClean.slice(0, 18));
   if (sel.shown.length && !itemsAlreadyInText) {
     // Каждая позиция — отдельным абзацем с маркером «— ». Так их выделяет
-    // `buildLetterBlocks` в блок `items` для DOCX-шаблона, и так же они
-    // рендерятся в HTML-версии (`<ul class="items">`). В письме Дмитрия
-    // перечень идёт строкой — это отражено в HTML через `itemsLine`.
-    for (const t of sel.shown) out.push(`— ${t}`);
+    // `buildLetterBlocks` в блок `items` для DOCX-шаблона.
+    for (const t of sel.shown) out.push(`— ${cleanItem(t)}`);
     if (sel.rest > 0) out.push(`— ${sel.restLine}`);
   }
 
@@ -1314,7 +1357,7 @@ function buildLetterParagraphs(data, opts = {}) {
     const fb = aiSvc.buildFallback(cls, {
       company: company.name_short,
       counterparty,
-      items: aiSvc.itemsInline(data.items),
+      items: aiSvc.itemsInline((data.items || []).map(aiSvc.shortenItemName)),
       invoice_no: doc.invoice_number || 'б/н',
       invoice_date: dateNum(doc.invoice_date),
       contract_label: data.contractLabel || '',

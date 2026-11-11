@@ -90,7 +90,7 @@ window.AsgardObsLetterModal = (function () {
     <header class="dh-modal__head dh-obs-head">
       <div>
         <h3 id="dhObsTitle">Письмо для оплаты через ОБС</h3>
-        <p class="dh-modal__sub" id="dhObsSub">Проверьте данные, посмотрите предпросмотр и сохраните</p>
+        <p class="dh-modal__sub" id="dhObsSubtitle">Проверьте данные, посмотрите предпросмотр и сохраните</p>
       </div>
       <button type="button" class="dh-modal__x" id="dhObsX" aria-label="Закрыть">✕</button>
     </header>
@@ -280,15 +280,20 @@ window.AsgardObsLetterModal = (function () {
     if (!sel) return;
     const opts = ['<option value="">— без договора —</option>'];
     (list || []).forEach((s) => {
-      const rem = Number(s.remaining) || 0;
-      const lim = Number(s.limit_amount) || 0;
-      const covers = amount > 0 ? rem >= amount : true;
-      const label = `${s.number} от ${fmtDate(s.agreement_date)} · `
-        + (covers
-          ? `остаток ${money(rem)} из ${money(lim)} · ${Number(s.used_pct || 0).toFixed(1)}%`
-          : `не хватает: остаток ${money(rem)}, счёт ${money(amount)}`);
+      // V488: в списке — КОРОТКАЯ подпись.
+      //
+      // Было: «КР-433п26 от 11.08.2026 · остаток 2 584 671 из 3 000 000 · 13.8%»
+      // в одну строку на каждый договор. В шапке окна это сливалось в кашу
+      // («— без договора — КР-433п26 … 13.8% КР320п26 … 2.7%»), заказчик
+      // справедливо спросил «это зачем?». Полные цифры нужны при выборе, а не
+      // в закрытом списке. Детали показываем в подсказке под селектом.
+      const parts = [s.number];
+      if (s.agreement_date) parts.push('от ' + fmtDate(s.agreement_date));
+      if (s.object_name) parts.push('· ' + s.object_name);
+      const covers = amount > 0 ? (Number(s.remaining) || 0) >= amount : true;
+      if (!covers) parts.push('· лимита не хватает');
       opts.push(`<option value="${s.id}" ${Number(s.id) === Number(selectedId) ? 'selected' : ''}>`
-        + `${esc(label)}</option>`);
+        + `${esc(parts.join(' '))}</option>`);
     });
     sel.innerHTML = opts.join('');
   }
@@ -314,13 +319,24 @@ window.AsgardObsLetterModal = (function () {
     const id = Number(sel.value) || 0;
     const s = (state.subcontracts || []).find((x) => Number(x.id) === id);
     const amount = parseNum(el('dhObsGross') && el('dhObsGross').value);
-    if (!s) { box.textContent = 'Договор не выбран — лимит не считается.'; return; }
+    if (!s) {
+      // V488: подсказка не должна звучать как поломка, когда договоров
+      // несколько и человек ещё не выбрал.
+      const total = (state.subcontracts || []).length;
+      box.textContent = total > 1
+        ? `Выберите договор — от него зависит лимит существенности (доступно ${total}).`
+        : 'Договор не выбран — лимит не считается.';
+      return;
+    }
     const rem = Number(s.remaining) || 0;
+    const lim = Number(s.limit_amount) || 0;
+    const usedPct = Number(s.used_pct || 0).toFixed(1);
     if (amount > 0 && rem < amount) {
       box.innerHTML = `<span class="dh-obs-bad">Лимита не хватает: остаток ${money(rem)}, `
         + `недостаёт ${money(amount - rem)} ₽. Письмо не сохранится.</span>`;
     } else {
-      box.textContent = `Остаток после этого счёта: ${money(rem - amount)} из ${money(s.limit_amount)}.`;
+      const after = amount > 0 ? ` · после этого счёта останется ${money(rem - amount)}` : '';
+      box.textContent = `Остаток ${money(rem)} из ${money(lim)} · использовано ${usedPct}%${after}.`;
     }
   }
 
@@ -449,6 +465,9 @@ window.AsgardObsLetterModal = (function () {
 
   /** Применить масштаб к «бумаге» превью. 1:1 = реальная ширина A4 (210 мм). */
   function applyZoom() {
+    // V488: защита от вызова до open(). Раньше любая такая попытка роняла
+    // модалку целиком (TypeError), и человек видел пустые списки и мёртвые кнопки.
+    if (!state) return;
     const z = zoomNow();
     const scaler = el('dhObsPrevScaler');
     const frame = el('dhObsPreviewFrame');
@@ -490,7 +509,8 @@ window.AsgardObsLetterModal = (function () {
     if (!body) return;
     const v = Math.max(28, Math.min(68, Number(pct) || 46));
     body.style.setProperty('--dh-obs-split', v + '%');
-    state.splitPct = v;
+    // V488: без state ручка всё равно двигает колонки, но нечего запоминать.
+    if (state) state.splitPct = v;
   }
 
   function bindGrip() {
@@ -704,6 +724,25 @@ window.AsgardObsLetterModal = (function () {
     return root;
   }
 
+  /**
+   * V488: КРИТИЧЕСКИЙ ДЕФЕКТ — модалка падала целиком.
+   *
+   * `ensureMounted()` вызывает `bind()` ПЕРЕД созданием `state` (он создаётся
+   * в `open()`). А в `bind()` в конце стояли `applySplit(state.splitPct)` и
+   * `applyZoom()` → `TypeError: Cannot read properties of null (reading
+   * 'splitPct')`. Из консоли заказчика:
+   *
+   *   obs-letter-modal.js:778 Uncaught TypeError: ... reading 'splitPct'
+   *     at bind → at ensureMounted → at Object.open
+   *
+   * Последствия были не косметические: исключение прерывало `open()`, поэтому
+   * НЕ заполнялись списки ОБС и договоров, НЕ включались кнопки, не работало
+   * живое обновление превью. Сообщения «список договоров пуст», «предпросмотр
+   * сломан», «кнопки не работают» — всё это следствие одной строки.
+   *
+   * Теперь `bind()` не трогает `state` вовсе: масштаб и split применяются из
+   * `open()`, когда данные уже есть.
+   */
   function bind(root) {
     el('dhObsX').onclick = close;
     el('dhObsCancel').onclick = close;
@@ -775,8 +814,9 @@ window.AsgardObsLetterModal = (function () {
       }, { passive: false });
     }
     bindGrip();
-    applySplit(state.splitPct);
-    applyZoom();
+    // V488: масштаб и ширина колонок применяются в open(), когда state уже
+    // создан. Здесь только навешиваем обработчики — обращаться к state на этой
+    // стадии нельзя, иначе модалка падает целиком (см. комментарий ниже).
   }
 
   function onKey(e) {
@@ -974,6 +1014,12 @@ window.AsgardObsLetterModal = (function () {
     el('dhObsDlPdf').disabled = true;
     el('dhObsDlDocx').disabled = true;
     el('dhObsSave').textContent = 'Сохранить';
+
+    // V488: масштаб и ширина колонок применяются ЗДЕСЬ, а не в bind().
+    // В bind() `state` ещё не существует — именно на этом модалка падала
+    // (TypeError reading 'splitPct'), из-за чего не заполнялись договоры.
+    applySplit(state.splitPct);
+    applyZoom();
     // V486: заводить ОБС-счёт могут РП и ТО, а не только админ.
     //
     // Заказчик 11.11.2026: «надо сделать, чтобы можно было в модалке добавить

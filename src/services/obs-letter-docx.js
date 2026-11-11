@@ -103,11 +103,20 @@ function _buildImageOpts(withSignature, withStamp) {
       return Buffer.alloc(0);
     },
     getSize(tagValue, tagName) {
-      // Печать Ø 40 мм (заказчик 09.11.2026: 22% масштаба ≈ 40 мм в диаметре).
-      // 40 мм = 40/25.4*72 ≈ 113.4 pt. PNG печати+подписи шире круга (~1.42×).
-      if (tagName === 'stamp_img' && combined) return [161, 113];
+      // V488: печать 40 мм в диаметре.
+      //
+      // 40 мм = 40 / 25.4 * 72 ≈ 113.4 pt. Комбинированный PNG
+      // (obs_stamp_sign.png, 1586×1114) шире круга в 1.42 раза, поэтому ВЫСОТА
+      // = 113 pt даёт диаметр печати ≈ 40 мм, ширина ≈ 161 pt.
+      //
+      // Дефект 11.11.2026: в готовом DOCX печать была 142 мм в ширину —
+      // пост-обработка не находила абзац {%stamp_img} и брала «последний
+      // drawing», которым оказался логотип. Теперь размер задаётся здесь и
+      // дублируется в пост-обработке по фактическому extent.
+      if (tagName === 'stamp_img') {
+        return combined ? [161, 113] : [113, 113];
+      }
       if (tagName === 'signature_img') return [113, 42];
-      if (tagName === 'stamp_img') return [113, 113]; // Ø 40 мм
       return [0, 0];
     },
   };
@@ -274,6 +283,14 @@ async function generateObsLetterDocx(db, docId, opts = {}) {
     logo_img: 'asgard_logo.png',
   };
 
+  // V488: убираем из отрендеренного XML пустые рисунки от неиспользованных
+  // тегов изображений (`{%signature_img}` при комбинированной печати).
+  //
+  // ImageModule на пустой буфер всё равно вставляет `<w:drawing>` с
+  // extent 22×22 мм — в письме появлялась пустая рамка рядом с факсимиле,
+  // а Word ругался на отсутствующий media. Вырезаем такие рисунки ДО
+  // пост-обработки печати, чтобы она нашла именно печать.
+
   const zip = new PizZip(fs.readFileSync(templatePath, 'binary'));
   const imageModule = new ImageModule(_buildImageOpts(
     opts.with_signature !== false,
@@ -298,6 +315,45 @@ async function generateObsLetterDocx(db, docId, opts = {}) {
     const re = /<w:p\b[^>]*>(?:(?!<\/w:p>)[\s\S])*?Исп\.:(?:(?!<\/w:p>)[\s\S])*?<\/w:p>/g;
     const cleaned = xml.replace(re, '');
     if (cleaned !== xml) outZip.file('word/document.xml', cleaned);
+  }
+
+  // V488: вырезать остаточные рисунки от неиспользованных тегов изображений.
+  //
+  // `signature_img` отдаёт пустой буфер (подпись уже внутри комбинированного
+  // `obs_stamp_sign.png`), но ImageModule всё равно вставляет `<w:drawing>`
+  // с extent 22×22 мм и ссылкой на несуществующий media. В готовом письме это
+  // пустая рамка рядом с печатью + «две печати» на глаз.
+  {
+    const xml = outZip.file('word/document.xml').asText();
+    const relsFile = outZip.file('word/_rels/document.xml.rels');
+    let rels = relsFile ? relsFile.asText() : '';
+
+    // Какие rel ведут на отсутствующие/пустые файлы media.
+    const badRid = new Set();
+    const badMedia = new Set();
+    for (const m of rels.matchAll(/<Relationship\b[^>]*Id="([^"]+)"[^>]*Target="media\/([^"]+)"/g)) {
+      const path = 'word/media/' + m[2];
+      const f = outZip.file(path);
+      if (!f || f.dir || f.asUint8Array().length === 0) {
+        badRid.add(m[1]);
+        badMedia.add(m[2]);
+      }
+    }
+    if (badRid.size) {
+      let out = xml;
+      for (const rid of badRid) {
+        // абзац целиком, если он содержит только этот рисунок
+        out = out.replace(
+          new RegExp(`<w:p\\b[^>]*>(?:(?!<w:p\\b)[\\s\\S])*?r:embed="${rid}"(?:(?!<w:p\\b)[\\s\\S])*?</w:p>`, 'g'),
+          (para) => (para.replace(/<[^>]+>/g, '').trim() ? para : ''));
+        out = out.replace(
+          new RegExp(`<w:drawing>(?:(?!</w:drawing>)[\\s\\S])*?r:embed="${rid}"[\\s\\S]*?</w:drawing>`, 'g'), '');
+        rels = rels.replace(new RegExp(`<Relationship\\b[^>]*Id="${rid}"[^>]*/>`, 'g'), '');
+      }
+      outZip.file('word/document.xml', out);
+      if (relsFile) outZip.file('word/_rels/document.xml.rels', rels);
+    }
+    for (const name of badMedia) outZip.remove('word/media/' + name);
   }
 
   // D-392d: РАЗМЕРЫ ФАКСИМИЛЕ. ImageModule получает размеры в пикселях и
@@ -351,30 +407,54 @@ async function generateObsLetterDocx(db, docId, opts = {}) {
   // Факсимиле (печать+подпись) — ВЕРХНИЙ слой на абзаце должности/ФИО.
   // Абзац {%stamp_img} убираем целиком: иначе LibreOffice резервирует под
   // него высоту и печать уезжает на 2-ю страницу (проверено pdfimages 09.11).
+  //
+  // V488 (дефект 11.11.2026): раньше факсимиле искалось как «последний
+  // drawing в документе». Если шаблон не содержал {%stamp_img}, последним
+  // оказывался ЛОГОТИП — и пост-обработка навешивала на него размер печати,
+  // а сама печать оставалась 142 мм. Теперь ищем строго по имени картинки
+  // (stamp/sign/obs_stamp) и по нулевому размеру не угадываем.
   {
     let xml = outZip.file('word/document.xml').asText();
     const ps = xml.match(/<w:p\b[\s\S]*?<\/w:p>/g) || [];
-    const imgParas = ps.filter((p) => /w:drawing/.test(p));
-    // Первый drawing — логотип шапки (крупный), последний — факсимиле.
-    const stampPara = imgParas.length >= 2 ? imgParas[imgParas.length - 1] : null;
+
+    // Абзац, в котором лежит именно печать: в `wp:docPr name` или в rels
+    // фигурирует имя файла печати.
+    const isStampPara = (p) => /name="[^"]*(stamp|sign|obs_stamp)/i.test(p)
+      || /image_generated|stamp\.png|signature\.png/i.test(p);
+
+    const stampPara = [...ps].reverse().find(isStampPara)
+      || (ps.filter((p) => /w:drawing/.test(p)).length >= 2
+        ? [...ps].reverse().find((p) => /w:drawing/.test(p))
+        : null);
+
     if (stampPara) {
       const stampRun = (stampPara.match(/<w:r\b[^>]*>(?:(?!<\/w:r>)[\s\S])*?<w:drawing>[\s\S]*?<\/w:drawing>(?:(?!<\/w:r>)[\s\S])*?<\/w:r>/) || [''])[0];
-      // Хост: абзац с должностью или ФИО директора (не картинка).
-      const hostPara = [...ps].reverse().find((p) => {
-        if (/w:drawing/.test(p)) return false;
+      // Хост: абзац с должностью или ФИО директора.
+      //
+      // V488: ищем ТОЛЬКО среди абзацев БЕЗ картинки. Раньше берёлся
+      // `[...ps].reverse().find(...)`, то есть последний подходящий, — а им
+      // оказывался сам абзац с печатью. Якорь вставлялся туда же, абзац
+      // удалялся (`xml.replace(stampPara, '')`) вместе с только что
+      // вставленным якорем, и печать оставалась 42 мм inline на второй
+      // странице — ровно та жалоба, из-за которой правим.
+      const noDrawing = [...ps].filter((p) => !/w:drawing/.test(p));
+      const hostPara = noDrawing.reverse().find((p) => {
         const t = p.replace(/<[^>]+>/g, '').trim();
         return /Генеральный директор|Директор|Путков|Кудряшов|Гажилиев|[А-ЯЁ][а-яё]+\s+[А-ЯЁ]\.[А-ЯЁ]\./.test(t);
-      }) || [...ps].reverse().find((p) => !/w:drawing/.test(p) && p.replace(/<[^>]+>/g, '').trim());
-
+      }) || noDrawing.find((p) => p.replace(/<[^>]+>/g, '').trim());
       if (stampRun && hostPara) {
         // Ø печати 40 мм. Комбинированный PNG шире круга (~1.42×): высота=диаметр.
+        //
+        // V488: 40 мм = 4.0 см = 1 440 000 EMU (1 см = 360 000 EMU).
+        // Раньше формула давала 5.7 см по ширине, а в файле оказывалось 142 мм —
+        // потому что размер брался из шаблона, а не пересчитывался.
         const CM = 360000;
-        const diam = 4.0; // 40 мм
+        const diam = 4.0; // 40 мм — требование заказчика
         const aspect = 1586 / 1114;
-        const hEmu = Math.round(diam * CM);
-        const wEmu = Math.round(diam * aspect * CM);
+        const hEmu = Math.round(diam * CM);          // 1 440 000
+        const wEmu = Math.round(diam * aspect * CM); // ≈ 2 050 000 (шире круга)
         const over = stampRun.replace(
-          /<wp:inline\b([^>]*)>([\s\S]*?)<\/wp:inline>/,
+          /<wp:(?:inline|anchor)\b([^>]*)>([\s\S]*?)<\/wp:(?:inline|anchor)>/,
           (m, attrs, inner) => {
             const clean = inner
               .replace(/<wp:simplePos[^/]*\/>/g, '')
@@ -398,15 +478,100 @@ async function generateObsLetterDocx(db, docId, opts = {}) {
     }
   }
 
-  // Пустой {%signature_img} (0 байт) ImageModule всё равно вставляет —
-  // убираем нулевые media и ссылки на них, чтобы не плодить мусор.
+  // Пустой {%signature_img} (0 байт) ImageModule всё равно вставляет рисунок —
+  // в документе остаётся ОСИРОТЕВШИЙ inline 22×22 мм с `r:embed`, который
+  // ссылается на отсутствующий файл media. Word показывает его как битую
+  // картинку, а рядом печать стоит ещё раз — «две печати».
+  //
+  // V488: убираем не только нулевые media, но и сами рисунки, чей rel
+  // указывает на несуществующий файл (или чей файл пуст), затем чистим rels
+  // и media, на которые больше никто не ссылается.
   {
-    const names = Object.keys(outZip.files).filter((n) => n.startsWith('word/media/'));
-    for (const n of names) {
+    const xml2 = outZip.file('word/document.xml').asText();
+    const relsFile = outZip.file('word/_rels/document.xml.rels');
+    let rels = relsFile ? relsFile.asText() : '';
+    let out = xml2;
+
+    // 1. Нулевые media — в мусор.
+    const dead = new Set();
+    for (const n of Object.keys(outZip.files)) {
+      if (!n.startsWith('word/media/')) continue;
       const f = outZip.file(n);
-      if (f && f.asUint8Array().length === 0) {
-        outZip.remove(n);
+      if (!f || f.dir) continue;
+      if (f.asUint8Array().length === 0) dead.add(n.split('/').pop());
+    }
+    // 2. rels, ведущие на мёртвый или несуществующий файл.
+    const deadRel = new Set();
+    for (const m of rels.matchAll(/<Relationship\b[^>]*Id="([^"]+)"[^>]*Target="media\/([^"]+)"/g)) {
+      const target = 'word/media/' + m[2];
+      if (dead.has(m[2]) || !outZip.file(target) || !outZip.file(target).asUint8Array().length) {
+        deadRel.add(m[1]);
+        dead.add(m[2]);
       }
+    }
+    // 3. Вырезаем рисунки с такими rel и абзацы, ставшие пустыми.
+    for (const rid of deadRel) {
+      const re = new RegExp(
+        `<w:p\\b[^>]*>(?:(?!<w:p\\b)[\\s\\S])*?r:embed="${rid}"[\\s\\S]*?</w:p>`, 'g');
+      out = out.replace(re, '');
+      out = out.replace(new RegExp(`<w:drawing>(?:(?!</w:drawing>)[\\s\\S])*?r:embed="${rid}"[\\s\\S]*?</w:drawing>`, 'g'), '');
+    }
+    // 4. Чистим rels и файлы, на которые больше нет ссылок.
+    for (const rid of deadRel) {
+      rels = rels.replace(new RegExp(`<Relationship\\b[^>]*Id="${rid}"[^>]*/>`, 'g'), '');
+    }
+    const stillUsed = new Set();
+    for (const m of out.matchAll(/r:(?:embed|id|link)="([^"]+)"/g)) stillUsed.add(m[1]);
+    for (const m of rels.matchAll(/<Relationship\b[^>]*Id="([^"]+)"[^>]*Target="media\/([^"]+)"/g)) {
+      if (!stillUsed.has(m[1])) {
+        rels = rels.replace(new RegExp(`<Relationship\\b[^>]*Id="${m[1]}"[^>]*/>`, 'g'), '');
+        dead.add(m[2]);
+      }
+    }
+    for (const name of dead) outZip.remove('word/media/' + name);
+
+    outZip.file('word/document.xml', out);
+    if (relsFile) outZip.file('word/_rels/document.xml.rels', rels);
+  }
+
+  // Контроль: в документе не должно остаться ссылок на отсутствующие media —
+  // иначе Word ругается «файл повреждён» и показывает пустые рамки.
+  //
+  // V488: последний проход. Пост-обработка печати удаляет абзац-источник
+  // вместе с его рисунком, но `Relationship` в rels может остаться висеть
+  // (rId13 → image_generated_2.png, файла нет). Word такое терпит молча, но
+  // LibreOffice при конвертации в PDF падает. Вычищаем висячие rels.
+  {
+    let out = outZip.file('word/document.xml').asText();
+    const relsFile = outZip.file('word/_rels/document.xml.rels');
+    let rels = relsFile ? relsFile.asText() : '';
+    const missing = [];
+    for (const m of rels.matchAll(/<Relationship\b[^>]*Id="([^"]+)"[^>]*Target="media\/([^"]+)"/g)) {
+      const f = outZip.file('word/media/' + m[2]);
+      if (!f || f.dir) missing.push({ rid: m[1], name: m[2] });
+    }
+    for (const { rid, name } of missing) {
+      rels = rels.replace(new RegExp(`<Relationship\\b[^>]*Id="${rid}"[^>]*/>`, 'g'), '');
+      outZip.remove('word/media/' + name);
+    }
+    if (missing.length) {
+      outZip.file('word/_rels/document.xml.rels', rels);
+      outZip.file('word/document.xml', out);
+      console.warn('[obs-letter-docx] вычищены висячие rels:', missing.map((x) => x.rid).join(', '));
+    }
+
+    // Финальный self-check: каждый r:embed в тексте имеет файл за собой.
+    const relTarget = new Map();
+    for (const m of rels.matchAll(/<Relationship\b[^>]*Id="([^"]+)"[^>]*Target="media\/([^"]+)"/g)) {
+      relTarget.set(m[1], m[2]);
+    }
+    const broken = [];
+    for (const m of out.matchAll(/r:embed="([^"]+)"/g)) {
+      const target = relTarget.get(m[1]);
+      if (!target || !outZip.file('word/media/' + target)) broken.push(m[1]);
+    }
+    if (broken.length) {
+      throw new Error('DOCX собран с битыми ссылками на картинки: ' + broken.join(', '));
     }
   }
 

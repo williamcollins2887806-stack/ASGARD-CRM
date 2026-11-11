@@ -2529,6 +2529,34 @@ module.exports = async function docRegistryRoutes(fastify) {
       uploaded_at: new Date().toISOString(),
       by: req.user.id
     };
+
+    // V488: если в строку счёта, у которого уже есть письмо ОБС, загружают PDF —
+    // это ПОДПИСАННОЕ письмо, а не «ещё один документ поставщика».
+    //
+    // Дефект (заказчик 11.11.2026): «когда прикрепляешь документы к строке
+    // реестра она не понимает что это письмо — как СФ прикрепляет». Причина:
+    // вложение создавалось с `kind` по MIME, и ничто не связывало его с
+    // письмом. Теперь помечаем явно, чтобы UI показывал его как письмо ОБС и
+    // не предлагал сформировать новое.
+    let kind = 'document';
+    if (ext === '.pdf') {
+      const linked = await db.query(
+        `SELECT d.obs_letter_doc_id, d.payment_source,
+                EXISTS (SELECT 1 FROM doc_registry l
+                         WHERE l.id = d.obs_letter_doc_id
+                           AND l.deleted_at IS NULL) AS has_letter
+           FROM doc_registry d WHERE d.id = $1`, [id]);
+      const lr = linked.rows[0] || {};
+      // Признак письма: у счёта есть сформированное письмо ИЛИ счёт помечен
+      // как «платится через ОБС» (письмо могли подписать и прислать бумагой,
+      // не создавая строку в реестре).
+      const looksLikeLetter = !!lr.has_letter || String(lr.payment_source) === 'obs';
+      if (looksLikeLetter) {
+        att.kind = 'obs_letter';
+        kind = 'obs_letter';
+      }
+    }
+
     const prev = attachmentsOf(doc);
     prev.push(att);
     const { rows } = await db.query(
@@ -3741,6 +3769,97 @@ module.exports = async function docRegistryRoutes(fastify) {
       req.log.error({ err: e, docId: id }, '[obs-letter] recreate failed');
       return reply.code(500).send({ error: 'Не удалось пересобрать письмо' });
     }
+  });
+
+  /**
+   * V488: DELETE /:id/obs-letter — убрать созданное письмо.
+   *
+   * Дефект (заказчик 11.11.2026): «нельзя удалить созданое письмо обс».
+   * Причина была структурная — письмо живёт отдельной строкой реестра с
+   * `package_type='letter'`, а реестр такие строки СКРЫВАЕТ
+   * (`doc-registry.js:715: WHERE d.package_type <> 'letter'`). То есть удалять
+   * было нечего: строки письма человек не видит, и на счёте-родителе кнопки
+   * тоже не было.
+   *
+   * Что делаем:
+   *  - мягко удаляем строку письма (`deleted_at`), файл оставляем на диске —
+   *    история переписки не должна теряться;
+   *  - снимаем ссылку у счёта (`obs_letter_doc_id = NULL`);
+   *  - возвращаем платёжный контур в `regular`, счёт снова платится напрямую;
+   *  - сбрасываем `obs_letter_status` в `none`.
+   *
+   * Право — то же, что на создание (`canCreateObsLetter`): кто завёл письмо,
+   * тот может его и убрать. Админ — всегда.
+   */
+  fastify.delete('/:id/obs-letter', {
+    preHandler: [fastify.requireRoles(ALLOWED)],
+  }, async (req, reply) => {
+    const id = parseInt(req.params.id, 10);
+    if (!Number.isFinite(id)) return reply.code(400).send({ error: 'Неверный ID' });
+    if (!(await assertDocVisible(db, { role: req.user.role, userId: req.user.id }, id))) {
+      return reply.code(404).send({ error: 'Не найдено' });
+    }
+
+    const parent = await db.query(
+      `SELECT id, created_by, doc_owner_id, pm_id, package_type,
+              obs_letter_doc_id, payment_source
+         FROM doc_registry
+        WHERE id=$1 AND deleted_at IS NULL`, [id]);
+    if (!parent.rows[0]) return reply.code(404).send({ error: 'Не найдено' });
+
+    const row = parent.rows[0];
+    // Разрешаем вызвать и на самом письме, и на счёте-родителе — фронт может
+    // прислать любой из двух id.
+    const isLetter = String(row.package_type || '') === 'letter';
+    const letterId = isLetter ? Number(row.id) : Number(row.obs_letter_doc_id || 0);
+    if (!letterId) {
+      return reply.code(409).send({ error: 'У этого счёта нет письма ОБС' });
+    }
+    const invoiceId = isLetter
+      ? (await db.query(
+        `SELECT id FROM doc_registry
+          WHERE obs_letter_doc_id = $1 AND deleted_at IS NULL LIMIT 1`, [letterId]
+      )).rows[0]?.id || null
+      : Number(row.id);
+
+    if (!(await canCreateObsLetter(req.user, row))) {
+      return reply.code(403).send({ error: 'Нет права удалять письмо по этому счёту' });
+    }
+
+    const client = await db.connect();
+    try {
+      await client.query('BEGIN');
+      // Мягкое удаление письма. Файл не трогаем — ссылка на него остаётся
+      // в attachments, чтобы при разборе истории было видно, что отправляли.
+      await client.query(
+        `UPDATE doc_registry
+            SET deleted_at = NOW()
+          WHERE id = $1 AND deleted_at IS NULL`, [letterId]);
+
+      if (invoiceId) {
+        // На счёте-родителе восстанавливаем «как было»: снимаем ссылку на
+        // письмо и возвращаем прямой платёж. Колонок obs_letter_number /
+        // obs_letter_at в схеме НЕТ (номер письма — это invoice_number строки
+        // письма, он читается JOIN'ом как ol.invoice_number); писать в них
+        // нельзя — запрос упал бы на «column does not exist».
+        await client.query(
+          `UPDATE doc_registry
+              SET obs_letter_doc_id = NULL,
+                  payment_source = CASE WHEN payment_source = 'obs' THEN 'regular' ELSE payment_source END,
+                  obs_letter_status = 'none',
+                  obs_letter_error = NULL
+            WHERE id = $1 AND deleted_at IS NULL`, [invoiceId]);
+      }
+      await client.query('COMMIT');
+    } catch (e) {
+      await client.query('ROLLBACK');
+      req.log.error({ err: e, docId: id, letterId }, '[obs-letter] delete failed');
+      return reply.code(500).send({ error: 'Не удалось удалить письмо' });
+    } finally {
+      client.release();
+    }
+
+    return { ok: true, letter_id: letterId, invoice_id: invoiceId, payment_source: 'regular' };
   });
 
   /**

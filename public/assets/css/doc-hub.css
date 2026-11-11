@@ -887,6 +887,41 @@ html[data-theme="light"] .dh-table tbody tr.is-selected.is-traffic-green {
   align-items: center;
   gap: 4px;
 }
+/* V488: кнопка удаления письма. Маленькая и тихая — рядом с открытием
+   письма, но не перетягивает внимание: удаление всегда через подтверждение. */
+.dh-obs-del {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 1px solid var(--brd);
+  border-radius: 5px;
+  background: transparent;
+  color: var(--fg-2, #6b7280);
+  font: inherit;
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+  transition: background .12s ease, color .12s ease, border-color .12s ease;
+}
+.dh-obs-del:hover {
+  background: var(--err-bg, #fee2e2);
+  border-color: var(--err, #dc2626);
+  color: var(--err, #dc2626);
+}
+.dh-obs-del:focus-visible { outline: 2px solid var(--brd); outline-offset: 1px; }
+.dh-obs-del:disabled { opacity: .5; cursor: default; }
+/* В карточке счёта кнопка текстовая — та же тихая роль, но с подписью. */
+.dh-obs-del--wide {
+  width: auto;
+  height: auto;
+  margin-left: 6px;
+  padding: 3px 9px;
+  font-size: 11px;
+  font-weight: 700;
+}
 .dh-obs-gen {
   height: 20px;
   padding: 0 7px;

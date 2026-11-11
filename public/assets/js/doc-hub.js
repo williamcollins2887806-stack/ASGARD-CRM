@@ -1062,7 +1062,9 @@ window.AsgardDocHubPage = (function () {
           <button type="button" class="dh-att-dl__btn" data-doc-dl="${letterDocId}" data-fmt="pdf" data-as-letter="1" title="Скачать ПИСЬМО для ОБС в PDF (бланк, подпись, печать)">Письмо PDF</button>
           <button type="button" class="dh-att-dl__btn" data-doc-dl="${letterDocId}" data-fmt="docx" data-as-letter="1" title="Скачать ПИСЬМО для ОБС в Word (редактируемый бланк)">Письмо Word</button>
         </div>
-        ${opt && opt.can_create_letter ? '<div style="margin-top:6px"><button type="button" class="dh-obs-gen" data-obs-gen="' + Number(row.id) + '">Пересоздать письмо</button></div>' : ''}
+        ${opt && opt.can_create_letter ? '<div style="margin-top:6px"><button type="button" class="dh-obs-gen" data-obs-gen="' + Number(row.id) + '">Пересоздать письмо</button>'
+          + ' <button type="button" class="dh-obs-del dh-obs-del--wide" data-obs-del="' + Number(row.id) + '"'
+          + ' title="Удалить письмо ОБС. Счёт вернётся к прямой оплате, история переписки сохранится">Удалить письмо</button></div>' : ''}
       </div>`;
     } else if (letterStatus === 'failed') {
       letterBlock = `<div class="dh-obs-state is-bad">Письмо не сформировано${letterErr ? ': ' + esc(String(letterErr).slice(0, 200)) : ''}.
@@ -1782,9 +1784,17 @@ window.AsgardDocHubPage = (function () {
       // уже с префиксом («Исх. АС-2026-11-42»), а плашка добавляла «Исх.»
       // ещё раз — на экране выходило «Исх. Исх. АС-2026-11-42». Стрипаем.
       const isoNum = isoNumberText(row.obs_letter_number);
-      letterPill = `<button type="button" class="dh-pill dh-pill--ok dh-obs-letter dh-obs-letter--open"
+      // V488: рядом с открытием письма — удаление. Раньше убрать письмо было
+      // нельзя: оно живёт отдельной строкой реестра с package_type='letter',
+      // а такие строки список СКРЫВАЕТ. Теперь DELETE /:id/obs-letter снимает
+      // ссылку у счёта и возвращает прямой платёж.
+      letterPill = `<span class="dh-obs-letter-wrap">`
+        + `<button type="button" class="dh-pill dh-pill--ok dh-obs-letter dh-obs-letter--open"
         data-obs-open="${Number(row.obs_letter_doc_id)}" title="Открыть письмо для ОБС${isoNum ? ' № ' + esc(isoNum) : ''}">`
-        + `${isoNum ? 'Исх. ' + esc(isoNum) : 'Письмо готово'}</button>`;
+        + `${isoNum ? 'Исх. ' + esc(isoNum) : 'Письмо готово'}</button>`
+        + `<button type="button" class="dh-obs-del" data-obs-del="${Number(row.id)}"
+            title="Удалить письмо ОБС. Счёт вернётся к прямой оплате, история переписки сохранится">×</button>`
+        + `</span>`;
     } else {
       const err = row.obs_letter_error
         ? ` title="${esc(String(row.obs_letter_error).slice(0, 200))}"`
@@ -3389,7 +3399,9 @@ window.AsgardDocHubPage = (function () {
       const url = typeof a === 'string' ? a : (a.url || a.path || '');
       const name = niceName(url, typeof a === 'string' ? null : (a.name || a.filename));
       const ext = fileExt(url) || (typeof a === 'object' && a.kind ? String(a.kind).toUpperCase() : 'FILE');
-      const kindWord = isPdf(url) ? 'PDF-документ' : (isImg(url) ? 'изображение' : 'файл');
+      const kindWord = (typeof a === 'object' && a.kind === 'obs_letter')
+        ? 'Письмо ОБС'
+        : (isPdf(url) ? 'PDF-документ' : (isImg(url) ? 'изображение' : 'файл'));
       const openBtn = url
         ? `<a class="dh-btn dh-btn--sm" href="${esc(url)}" target="_blank" rel="noopener">Открыть</a>
            <a class="dh-btn dh-btn--sm dh-btn--ghost" href="${esc(url)}" download title="Скачать">Скачать</a>`
@@ -6047,6 +6059,31 @@ window.AsgardDocHubPage = (function () {
         e.preventDefault();
         e.stopPropagation();
         openDocFile(Number(obsOpen.getAttribute('data-obs-open')), 'letter');
+        return;
+      }
+
+      // V488: удаление письма ОБС. Письмо — отдельная скрытая строка реестра,
+      // поэтому обычная «корзина» до него не достаёт; удаляем через свой роут.
+      const obsDel = e.target.closest('[data-obs-del]');
+      if (obsDel) {
+        e.preventDefault();
+        e.stopPropagation();
+        const invId = Number(obsDel.getAttribute('data-obs-del'));
+        if (!window.confirm(
+          'Удалить письмо ОБС?\n\n'
+          + 'Счёт вернётся к прямой оплате. Само письмо уйдёт из реестра, '
+          + 'но история переписки и файл сохранятся.'
+        )) return;
+        obsDel.disabled = true;
+        api(`/${invId}/obs-letter`, { method: 'DELETE' })
+          .then(() => {
+            toast('Письмо удалено', 'Счёт снова платится напрямую', 'ok');
+            refresh();
+          })
+          .catch((err) => {
+            obsDel.disabled = false;
+            toast('Не удалось удалить', err.message || 'ошибка', 'err');
+          });
         return;
       }
 
