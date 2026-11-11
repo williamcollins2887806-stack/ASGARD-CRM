@@ -3265,6 +3265,40 @@ window.AsgardDocHubPage = (function () {
     }
   }
 
+  /**
+   * V485: может ли текущий пользователь открыть «Очередь оплаты».
+   *
+   * ЗАЧЕМ. Заказчик 11.11.2026: «когда отправляю на оплату, ругается что
+   * недостаточно прав, но при этом всё равно отправляет директору».
+   *
+   * Причина: после успешной отправки (`/quick` action='pay') фронт всегда делал
+   * `location.hash = '#/approval-payment?id=...'`. Но эту страницу видят только
+   * ADMIN / BUH / директора (app.js: маршрут `/approval-payment`). У роли
+   * HEAD_TO (Хосе) доступа нет — роутер показывал «Доступ закрыт: Недостаточно
+   * прав» и уводил на главную. При этом заявка УЖЕ создана бэкендом
+   * (`CREATE_ROLES` в payment-invoices.js включает HEAD_TO), поэтому директор
+   * её получал. Отсюда «ошибка + всё равно отправилось».
+   *
+   * Правильно: редирект — это удобство, а не часть операции. Нет доступа →
+   * остаёмся в реестре и показываем понятное подтверждение со статусом.
+   */
+  function canOpenPayQueue() {
+    try {
+      const A = window.AsgardAuth;
+      const auth = A && typeof A.getAuth === 'function' ? A.getAuth() : null;
+      const role = auth && auth.user && auth.user.role;
+      if (!role) return false;
+      if (role === 'ADMIN' || role === 'BUH') return true;
+      const DIR = ['DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV', 'DIRECTOR'];
+      if (DIR.includes(role)) return true;
+      // Персональный грант на модуль очереди оплаты.
+      if (A && typeof A.hasPermission === 'function') {
+        try { return !!A.hasPermission('approval_payment', 'read'); } catch (_) { return false; }
+      }
+      return false;
+    } catch (_) { return false; }
+  }
+
   async function quick(id, action) {
     const labels = {
       sf: 'СФ получена',
@@ -3284,17 +3318,34 @@ window.AsgardDocHubPage = (function () {
     if (!ok) return;
     try {
       const res = await api('/' + id + '/quick', { method: 'POST', body: JSON.stringify({ action }) });
+      // V485: редирект в очередь оплаты — только если она реально доступна роли.
+      // Иначе роутер покажет «Доступ закрыт» ПОСЛЕ успешной отправки, и человек
+      // решит, что не отправилось (заявка при этом уже у директора).
+      const goQueue = (redirect) => {
+        if (!canOpenPayQueue()) return false;
+        location.hash = redirect.startsWith('#') ? redirect : ('#' + redirect);
+        return true;
+      };
       // D-363: сервер сам говорит, что счёт уже в оплате — показываем это как
       // информацию, а не как ошибку (вторая заявка не создана, и это правильно).
       if (res && res.already) {
-        toast('Уже отправлено', res.message || 'Счёт уже в оплате — вторая заявка не создаётся.', 'info');
+        const msg = res.message || 'Счёт уже в оплате — вторая заявка не создаётся.';
         if (res.redirect) {
-          location.hash = res.redirect.startsWith('#') ? res.redirect : ('#' + res.redirect);
+          const jumped = goQueue(res.redirect);
+          toast('Уже отправлено', jumped ? msg : (msg + ' Заявку видит директор.'), 'info');
           return;
         }
+        toast('Уже отправлено', msg, 'info');
       }
       if (action === 'pay' && res && res.redirect) {
-        location.hash = res.redirect.startsWith('#') ? res.redirect : ('#' + res.redirect);
+        const jumped = goQueue(res.redirect);
+        if (!jumped) {
+          // У роли нет доступа к очереди оплаты (HEAD_TO и подобные). Операция
+          // УСПЕШНА — говорим именно это, без слова «ошибка».
+          toast('Отправлено директору', 'Заявка создана и ждёт согласования. Очередь оплаты вам недоступна — статус виден в реестре.', 'ok');
+        }
+        await refresh();
+        if (state.selectedId === id) openDrawer(id);
         return;
       }
       toast('Готово', 'Обновлено', 'ok');
