@@ -4908,12 +4908,19 @@ window.AsgardDocHubPage = (function () {
             <div class="dh-section">
               <div class="dh-section__h">Вложения</div>
               <div class="dh-section__b">
+                <!-- V484 (заказчик 11.11.2026: «как мне файл счёта на оплату внести,
+                     если я уже создал карточку счёта?»). Блок только ПОКАЗЫВАЛ
+                     файлы: кнопка «СФ» рядом — это отметка «СФ получена», а не
+                     загрузка. То есть догрузить скан в уже созданную карточку
+                     было нечем, хотя эндпоинт POST /:id/upload существовал.
+                     Теперь здесь настоящая загрузка: выбор файла + перетаскивание. -->
                 ${attachmentsHtml(row)}
-                <div class="dh-attach">
-                  <div class="dh-attach__ico">+</div>
-                  <div class="dh-attach__meta"><div class="a">Добавить скан СФ / УПД</div><div class="b">файл или путь</div></div>
-                  <button class="dh-btn dh-btn--sm dh-btn--primary" type="button" data-qa="sf">СФ</button>
-                </div>
+                <label class="dh-drop dh-drop--attach" id="drAttachDrop">
+                  <input type="file" id="drAttachInput" multiple
+                    accept=".pdf,.jpg,.jpeg,.png,.webp,.xlsx,.xls,.doc,.docx,.txt,.json" />
+                  <span class="dh-drop__t">Приложить файл к счёту</span>
+                  <span class="dh-drop__s">PDF, JPG, PNG, Word, Excel · до 20 МБ · можно несколько</span>
+                </label>
               </div>
             </div>
 
@@ -5154,6 +5161,64 @@ window.AsgardDocHubPage = (function () {
           const wrap = d.querySelector('#drDeliveryNoteWrap');
           if (wrap) wrap.hidden = drDeliv.value !== 'other';
         };
+      }
+
+      // V484: загрузка файла в уже созданную карточку.
+      //
+      // Заказчик 11.11.2026: «как мне файл счёта на оплату внести, если я уже
+      // создал карточку счёта?». Раньше единственная кнопка рядом с вложениями
+      // («СФ») ставила отметку «СФ получена», а не загружала файл.
+      //
+      // Работает и перетаскиванием: dropzone — обычный label с input внутри,
+      // поэтому клик открывает выбор файла без отдельного кода.
+      const attachInput = d.querySelector('#drAttachInput');
+      const attachDrop = d.querySelector('#drAttachDrop');
+      const uploadFiles = async (files) => {
+        const list = [...(files || [])].filter(Boolean);
+        if (!list.length) return;
+        let okCount = 0;
+        const errors = [];
+        for (const f of list) {
+          if (f.size > 20 * 1024 * 1024) { errors.push(`${f.name}: больше 20 МБ`); continue; }
+          try {
+            const fd = new FormData();
+            fd.append('file', f);
+            await api('/' + id + '/upload', { method: 'POST', body: fd, json: false });
+            okCount += 1;
+          } catch (e) {
+            errors.push(`${f.name}: ${e.message || 'не загрузился'}`);
+          }
+        }
+        if (okCount) toast('Файл', okCount === 1 ? 'Приложен к счёту' : `Приложено файлов: ${okCount}`, 'ok');
+        if (errors.length) toast('Не загружено', errors.join('; ').slice(0, 200), 'err');
+        // Перерисовываем карточку, чтобы новый файл сразу появился в списке.
+        if (okCount) {
+          const keep = captureScroll();
+          await refreshRow(id);
+          restoreScroll(keep);
+          await openDrawer(id);
+        }
+      };
+      if (attachInput) {
+        attachInput.onchange = async () => {
+          await uploadFiles(attachInput.files);
+          attachInput.value = '';
+        };
+      }
+      if (attachDrop) {
+        ['dragenter', 'dragover'].forEach((ev) => attachDrop.addEventListener(ev, (e) => {
+          e.preventDefault();
+          attachDrop.classList.add('is-over');
+        }));
+        ['dragleave', 'drop'].forEach((ev) => attachDrop.addEventListener(ev, (e) => {
+          e.preventDefault();
+          attachDrop.classList.remove('is-over');
+        }));
+        attachDrop.addEventListener('drop', async (e) => {
+          if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length) {
+            await uploadFiles(e.dataTransfer.files);
+          }
+        });
       }
 
       // Closing rows: add + delete

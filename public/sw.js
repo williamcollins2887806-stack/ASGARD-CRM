@@ -2,7 +2,7 @@
 // Shell caching + Push Notifications + Offline Support + Background Sync
 // Session 15: PWA + Push Actions + Badge + Offline
 
-const SHELL_VERSION = '20.28.507';
+const SHELL_VERSION = '20.28.509';
 const CACHE_NAME = `asgard-crm-shell-${SHELL_VERSION}`;
 const API_CACHE_NAME = 'asgard-crm-api-v2';
 
@@ -143,10 +143,11 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // JS/CSS с ?v= параметром: network-first (гарантирует свежесть после деплоя).
-  // Остальное (картинки, шрифты): stale-while-revalidate (быстро).
+  // JS/CSS: НЕ перехватывать SW.
+  // Раньше networkFirstWithOffline при обрыве сети отдавал offline.html
+  // как тело .css/.js → страница «без стилей», в консоли JS-ошибок нет.
+  // Свежесть и так через ?v=<SHELL_VERSION> + nginx immutable.
   if (url.pathname.endsWith('.js') || url.pathname.endsWith('.css')) {
-    event.respondWith(networkFirstWithOffline(request));
     return;
   }
 
