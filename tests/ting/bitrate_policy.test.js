@@ -286,6 +286,27 @@ check('Медиа: потолок 720p ограничен В ЗАХВАТЕ (г�
 
   /* ТВ уже был ограничен — проверяем, что не сломали. */
   assert(/CAPTURE_RES[\s\S]{0,400}h720/.test(tv2), 'ТВ: потолок захвата 720p потерян');
+
+  /* D-197c: ВСЕ точки getUserMedia должны быть ограничены, включая превью.
+     Превью-трек публикуется как есть (HD-гейт пропускает >=720p), поэтому
+     «4K в превью» = верхний слой 4K. Раньше тест смотрел только
+     cameraConstraintsList и пропускал ensurePreview/startPreview. */
+  const captures = [
+    ['CRM visibility', crm, /getUserMedia\(\{ video: hd, audio: true \}\)/],
+    ['гость ensurePreview', guest2, /var hdVideo = \{ facingMode/]
+  ];
+  [['CRM', crm], ['гость', guest2]].forEach(([name, src]) => {
+    /* Ни в одном объекте-constraint не должно остаться 3840/2160/2560/1440. */
+    const bad = src.match(/ideal:\s*(3840|2560|1920)\b/g) || [];
+    const badH = src.match(/height:\s*\{\s*ideal:\s*(2160|1440|1080)\s*\}/g) || [];
+    assert(bad.length === 0, name + ': в захвате остался 4K/1440 (' + bad.join(', ') + ')');
+    assert(badH.length === 0, name + ': в захвате осталась высота 2160/1440/1080 (' + badH.join(', ') + ')');
+  });
+
+  /* HD-гейт должен остаться: он не даёт опубликовать суб-HD превью. */
+  assert(/function trackIsHd/.test(guest2), 'гость: HD-гейт удалён');
+  assert(/trackIsHd\(videoTrack\)/.test(guest2), 'гость: HD-гейт не применяется');
+  assert(/function previewTrackIsHd/.test(crm), 'CRM: HD-гейт удалён');
 });
 
 /* D-195: цикл телеметрии должен гаситься на выходе, иначе он крутится по

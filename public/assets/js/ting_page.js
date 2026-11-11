@@ -1279,10 +1279,10 @@
         if (desktopNoPrevCam) {
           stream = await navigator.mediaDevices.getUserMedia({ video: false, audio: true });
         } else {
-          /* Максимум качества сразу: без явного разрешения браузер отдаёт
-             640×480, и этот же трек уходит в звонок. «ideal» безопасен —
-             слабая камера просто вернёт свой максимум. */
-          const hd = { width: { ideal: 3840 }, height: { ideal: 2160 }, frameRate: { ideal: 30 } };
+          /* D-197c: потолок захвата 720p. Даже если превью не публикуется,
+             ограничение держим единым — иначе одна ветка снова потянет 4K,
+             а верхний simulcast-слой строится из ФАКТИЧЕСКОГО захвата. */
+          const hd = { width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 } };
           try {
             stream = await navigator.mediaDevices.getUserMedia({ video: hd, audio: true });
           } catch (_) {
