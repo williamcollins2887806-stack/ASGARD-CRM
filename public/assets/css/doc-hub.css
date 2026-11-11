@@ -3324,7 +3324,149 @@ html[data-theme="light"] .dh-cp-badge { color: #24503B; background: rgba(45,106,
   margin: auto;
   flex: 0 1 auto;
 }
+
+/* ═══ V486: СВЕТЛАЯ ТЕМА для окна ОБС ═══════════════════════════════════════
+   Заказчик 11.11.2026: «не работает на светлой теме».
+   Причина была в том, что `.dh-modal__card` берёт `var(--panel, #0f172a)`,
+   а `--panel` объявлен ТОЛЬКО внутри `.nd-page` (светлая страница пропусков).
+   На реестре документов переменная не определена → срабатывал тёмный
+   фолбэк `#0f172a`, и окно оставалось тёмным на светлом фоне.
+
+   Здесь: явные светлые значения для всех частей окна + контраст полей,
+   подсказок и превью. Не полагаемся на --panel. */
+html[data-theme="light"] .dh-obs-modal {
+  background: rgba(15, 23, 42, 0.28);
+}
+html[data-theme="light"] .dh-obs-card {
+  background: #ffffff;
+  color: #0f172a;
+  border: 1px solid rgba(15, 23, 42, 0.12);
+  box-shadow: 0 24px 64px rgba(15, 23, 42, 0.18);
+}
+html[data-theme="light"] .dh-obs-head {
+  border-bottom: 1px solid rgba(15, 23, 42, 0.10);
+}
+html[data-theme="light"] .dh-obs-head h2 { color: #0f172a; }
+html[data-theme="light"] .dh-obs-sec {
+  background: #f8fafc;
+  border: 1px solid rgba(15, 23, 42, 0.10);
+}
+html[data-theme="light"] .dh-obs-sec__h { color: #334155; }
+html[data-theme="light"] .dh-obs-card input,
+html[data-theme="light"] .dh-obs-card select,
+html[data-theme="light"] .dh-obs-card textarea {
+  background: #ffffff;
+  color: #0f172a;
+  border: 1px solid rgba(15, 23, 42, 0.18);
+}
+html[data-theme="light"] .dh-obs-card input::placeholder,
+html[data-theme="light"] .dh-obs-card textarea::placeholder { color: #94a3b8; }
+html[data-theme="light"] .dh-obs-hint { color: #475569; }
+html[data-theme="light"] .dh-obs-hint--warn { color: #92400e; }
+html[data-theme="light"] .dh-obs-hint--bad { color: #b91c1c; }
+html[data-theme="light"] .dh-obs-hint--ok { color: #15803d; }
+html[data-theme="light"] .dh-obs-preview {
+  background: #f1f5f9;
+  border-left: 1px solid rgba(15, 23, 42, 0.10);
+}
+html[data-theme="light"] .dh-obs-preview__empty { color: #64748b; }
+html[data-theme="light"] .dh-obs-preview__empty .dh-obs-preview__ico {
+  border-color: rgba(15, 23, 42, 0.18);
+  color: #475569;
+}
+html[data-theme="light"] .dh-obs-foot {
+  border-top: 1px solid rgba(15, 23, 42, 0.10);
+  background: #f8fafc;
+}
+html[data-theme="light"] .dh-obs-preview__stale {
+  background: #fef3c7;
+  color: #92400e;
+  border: 1px solid #fcd34d;
+}
+html[data-theme="light"] .dh-obs-frame {
+  border: 1px solid rgba(15, 23, 42, 0.12);
+  box-shadow: 0 2px 12px rgba(15, 23, 42, 0.08);
+}
+
+/* Крестик закрытия: раньше не имел CSS вообще (жил на браузерном дефолте) —
+   в светлой теме выглядел как системная кнопка «из 90-х». */
+.dh-modal__x {  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 1px solid var(--brd, #334155);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--t2, #94a3b8);
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+.dh-modal__x:hover { background: var(--bg4, #334155); color: var(--t1, #e2e8f0); }
+html[data-theme="light"] .dh-modal__x {
+  border-color: rgba(15, 23, 42, 0.16);
+  color: #475569;
+  background: #ffffff;
+}
+html[data-theme="light"] .dh-modal__x:hover { background: #f1f5f9; color: #0f172a; }
 .dh-obs-head { align-items: flex-start; }
+
+/* V486: форма «Новый ОБС-счёт» — подмодалка внутри окна письма.
+   Появилась потому, что window.prompt не даёт ввести ИНН/КПП/к-с и объект,
+   а без объекта счёт не встаёт первым в списке для своего счёта. */
+.dh-obs-submodal {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.55);
+  padding: 24px;
+}
+.dh-obs-submodal__card {
+  width: min(560px, 100%);
+  max-height: 90%;
+  overflow: auto;
+  background: var(--bg2, #1e293b);
+  border: 1px solid var(--brd, #334155);
+  border-radius: 14px;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.45);
+}
+.dh-obs-submodal__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--brd, #334155);
+  font-weight: 750;
+}
+.dh-obs-submodal__body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px 16px;
+}
+.dh-obs-submodal__body .dh-field { display: flex; flex-direction: column; gap: 4px; }
+.dh-obs-submodal__body .dh-field > span { font-size: 11px; color: var(--t2, #94a3b8); font-weight: 650; }
+.dh-obs-submodal__foot {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 12px 16px;
+  border-top: 1px solid var(--brd, #334155);
+}
+html[data-theme="light"] .dh-obs-submodal__card {
+  background: #ffffff;
+  border-color: rgba(15, 23, 42, 0.12);
+}
+html[data-theme="light"] .dh-obs-submodal__head,
+html[data-theme="light"] .dh-obs-submodal__foot {
+  border-color: rgba(15, 23, 42, 0.10);
+}
 .dh-obs-body {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);

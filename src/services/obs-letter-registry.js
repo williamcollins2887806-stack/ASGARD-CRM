@@ -371,7 +371,22 @@ async function saveObsLetter(db, docId, payload, opts = {}) {
         subject,
         `Исх. ${number}`,
         letterDate.toISOString().slice(0, 10),
-        JSON.stringify([{ name: files.fileName, url: files.publicUrl, kind: 'obs_letter' }]),
+        // V486: вложение письма — через ACL, а не прямым путём.
+        //
+        // Дефект (консоль заказчика 11.11.2026): клик по вложению письма давал
+        // 404. Причина: в nginx стоит `location ^~ /uploads/doc-hub/obs-letters/ {
+        // return 404; }` — каталог с письмами НАМЕРЕННО не раздаётся напрямую
+        // (там суммы и реквизиты), а доступ идёт через ACL-роут
+        // `/api/doc-registry/:id/letter-file`. Но в attachments писался прямой
+        // `/uploads/doc-hub/obs-letters/...`, и он же открывался по клику.
+        //
+        // Храним ACL-URL: он работает для всех ролей с правом на документ и
+        // не зависит от nginx-заглушки.
+        JSON.stringify([{
+          name: files.fileName,
+          url: `/api/doc-registry/${letterDocId}/letter-file`,
+          kind: 'obs_letter',
+        }]),
         doc.work_id || null,
         obsAccountId,
         subcontractId,

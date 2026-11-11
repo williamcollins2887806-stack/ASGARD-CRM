@@ -473,8 +473,42 @@ async function buildLetterDataFromPayload(db, docId, payload) {
     obsAccount = oa.rows[0] || null;
   }
 
+  // ─── V486: ТЕКСТ ПИСЬМА ПОД ПРЕДМЕТ ЗАКУПКИ ─────────────────────────────
+  //
+  // Заказчик 11.11.2026: «холодильник, шуруповёрт и кулер не для безопасного
+  // выполнения работ — надо думать, для чего нужна каждая позиция».
+  //
+  // Здесь единственное место, где есть `await` для вызова ИИ: ниже все
+  // функции сборки письма синхронные, поэтому текст готовим заранее и кладём
+  // в `data.aiBody`. Если ИИ недоступен — сервис отдаёт детерминированный
+  // фолбэк по каркасу, письмо всё равно соберётся.
+  //
+  // `force` в payload позволяет человеку перегенерировать текст в модалке,
+  // если первый вариант не понравился.
+  let aiBody = null;
+  try {
+    const aiSvc = require('./obs-letter-ai');
+    const contractText = subcontract
+      ? `№ ${subcontract.number}${contractDate ? ` от ${contractDate}` : ''}`
+      : (contractLabel ? `№ ${contractLabel}` : '');
+    aiBody = await aiSvc.generate({
+      items,
+      comment: doc.comment_text || base.doc.comment_text || '',
+      counterparty: doc.counterparty_name || '',
+      company: (base.company && (base.company.name_short || base.company.name_full)) || 'ООО «Асгард-Сервис»',
+      invoiceNo: doc.invoice_number || '',
+      invoiceDate: doc.invoice_date ? _shared.formatRuDate(doc.invoice_date) : '',
+      contractLabel: contractText,
+      amount: doc.amount_gross,
+    });
+  } catch (e) {
+    // Письмо должно собираться даже при падении ИИ — это платёжный документ.
+    console.warn('[obs-letter] aiBody не собрался: ' + (e && e.message));
+  }
+
   return Object.assign({}, base, {
     doc, subcontract, contractLabel, contractDate, items, obsAccount,
+    aiBody,   // { gist, why, scaffold, type, source } | null
   });
 }
 
@@ -588,6 +622,24 @@ function buildHtml(data, opts) {
   const sel = selectLetterItems(data.items, doc.invoice_number);
   const itemsHtml = sel.shown.map((t) => `<li>${esc(t)}</li>`).join('')
     + (sel.rest > 0 ? `<li class="more">${esc(sel.restLine)}</li>` : '');
+
+  // ─── V486: текст по каркасу ──────────────────────────────────────────────
+  //
+  // Заказчик 11.11.2026: «холодильник, шуруповёрт и кулер не для безопасного
+  // выполнения работ». Раньше здесь стояли ДВА жёстких абзаца — про допуски
+  // персонала и про «привлекло для оказания услуг», — и они попадали в любое
+  // письмо, включая счёт на кулер.
+  //
+  // Теперь: `data.aiBody` (собрано в buildLetterDataFromPayload) даёт `gist`
+  // и `why` под конкретный предмет, а абзац про допуски печатается ТОЛЬКО для
+  // каркаса «допуск».
+  const aiGist = (data.aiBody && data.aiBody.gist) ? String(data.aiBody.gist) : '';
+  const aiWhy = (data.aiBody && data.aiBody.why) ? String(data.aiBody.why) : '';
+  const scaffoldGate = (data.aiBody && data.aiBody.scaffold) || '';
+  // Позиции — строкой через запятую (в эталонах Дмитрия списков нет).
+  const itemsLine = sel.shown.length
+    ? sel.shown.join(', ') + (sel.rest > 0 ? `, а также ${sel.restLine}` : '')
+    : '';
 
   const vatLine = hasVat
     ? ` (включая НДС ${ratePct ? String(Math.round(ratePct)) + '%' : ''} — ${money(vat)} руб.)`
@@ -822,16 +874,13 @@ function buildHtml(data, opts) {
 
   <div class="body">
     <p>${basisText}</p>
-    <p>Персонал ${esc(company.name_short)} обязан иметь действующие допуски и разрешительные документы,
-       подтверждающие возможность выполнения работ на объекте Заказчика.</p>
-    <p>Чтобы обеспечить допуск персонала к работам, ${esc(company.name_short)} привлекло
-       ${esc(counterparty)} для оказания услуг${contractText}, а именно:</p>
-    ${data.items.length ? `<ul class="items">${itemsHtml}</ul>` : ''}
+    ${scaffoldGate === 'dopusk' ? `<p>В рамках исполнения обязательств по указанному договору персонал ${esc(company.name_short)} обязан иметь действующие допуски и разрешительные документы, подтверждающие возможность выполнения работ на объекте Заказчика.</p>` : ''}
+    ${aiGist ? `<p>${esc(aiGist)}</p>` : `<p>Чтобы обеспечить допуск персонала к работам, ${esc(company.name_short)} привлекло ${esc(counterparty)}${contractText}.</p>`}
+    ${itemsLine ? `<p>${esc(itemsLine)}</p>` : ''}
     <p>${esc(company.name_short)} получило счёт на оплату <strong>№ ${esc(invoiceNo)}</strong>${invoiceDate ? ` от ${esc(invoiceDate)}` : ''}
        на сумму <strong>${money(gross)} руб.</strong>${esc(vatLine)}.</p>
     ${limitNote}
-    <p>Расходы обязательные и напрямую связаны с исполнением обязательств по договору:
-       без этих документов работы на объекте Заказчика выполнять нельзя.</p>
+    <p>${aiWhy ? esc(aiWhy) : 'Расходы обязательные и напрямую связаны с исполнением обязательств по договору субподряда.'}</p>
     <p class="request">Просим оплатить счёт (100% суммы) в размере <strong>${money(gross)} руб.</strong>
        (${esc(amountInWords(gross))})${esc(vatTail)}</p>
     ${obsPayLine}
@@ -1159,40 +1208,88 @@ function buildLetterParagraphs(data, opts = {}) {
   const out = [];
 
   // 1. Основание: объект и работы.
+  //
+  // V486: «Настоящим сообщаем, что…» — так начинается ВСЕ 13 писем Дмитрия,
+  // это устойчивая формула, а не случайность. Дальше — объект, работы и
+  // договор субподряда с заказчиком (не с поставщиком).
+  const scNo = subcontract ? subcontract.number : '';
+  const scDate = subcontract && subcontract.agreement_date
+    ? dateNum(subcontract.agreement_date)
+    : (data.contractDate || '');
+  const basis = [];
   if (objectName && customerName) {
-    out.push(`${company.name_short} выполняет ${whatWeDo} на объекте ${objectName} `
-      + `по договору субподряда с ${customerName}.`);
+    basis.push(`${company.name_short} выполняет ${whatWeDo} в интересах ${customerName}`
+      + `${objectName ? `, расположенного на объекте ${objectName}` : ''}`);
   } else if (objectName) {
-    out.push(`${company.name_short} выполняет ${whatWeDo} на объекте ${objectName}.`);
+    basis.push(`${company.name_short} выполняет ${whatWeDo} на объекте ${objectName}`);
   } else if (workTitle) {
-    out.push(`${company.name_short} выполняет ${whatWeDo}.`);
+    basis.push(`${company.name_short} выполняет ${whatWeDo}`);
   } else {
-    out.push(`${company.name_short} привлекает подрядчиков для исполнения своих обязательств перед заказчиками.`);
+    basis.push(`${company.name_short} привлекает подрядчиков для исполнения своих обязательств перед заказчиками`);
+  }
+  if (scNo) {
+    basis.push(`на основании Договора субподряда № ${scNo}${scDate ? ` от ${scDate}` : ''}`
+      + (customerName ? `, заключенного с ${customerName}` : ''));
+  }
+  out.push(`Настоящим сообщаем, что ${basis.join(' ')}.`.replace(/\s+/g, ' '));
+
+  // 2. Требование к допускам — ТОЛЬКО для каркаса «допуск».
+  //
+  // V486: раньше этот абзац стоял всегда, из-за чего письмо про холодильник
+  // или лицензию ПО начиналось с требований охраны труда. Теперь — по каркасу.
+  const scaffold = data.aiBody && data.aiBody.scaffold;
+  if (scaffold === 'dopusk') {
+    out.push(`В рамках исполнения обязательств по указанному договору персонал ${company.name_short} `
+      + `обязан иметь действующие допуски и разрешительные документы, подтверждающие `
+      + `возможность выполнения работ на объекте Заказчика.`);
   }
 
-  // 2. Требование к допускам.
-  out.push(`Персонал ${company.name_short} обязан иметь действующие допуски и разрешительные документы, `
-    + `подтверждающие возможность выполнения работ на объекте Заказчика.`);
+  // 3. Предмет закупки и обоснование — от ИИ по каркасу, иначе фолбэк.
+  //
+  // V486: это сердце письма. Раньше здесь был один универсальный абзац
+  // («Чтобы обеспечить допуск персонала к работам… для оказания услуг»),
+  // который не имел смысла для инструмента, питания и лицензий.
+  if (data.aiBody && data.aiBody.gist) {
+    out.push(data.aiBody.gist);
+  } else {
+    // Фолбэк без ИИ: та же логика, но по образцам Дмитрия.
+    const aiSvc = require('./obs-letter-ai');
+    const cls = aiSvc.classify(data.items, doc.comment_text || '');
+    const fb = aiSvc.buildFallback(cls, {
+      company: company.name_short,
+      counterparty,
+      items: aiSvc.itemsInline(data.items),
+      invoice_no: doc.invoice_number || 'б/н',
+      invoice_date: dateNum(doc.invoice_date),
+      contract_label: data.contractLabel || '',
+      amount: money(gross),
+    });
+    out.push(fb.gist);
+  }
 
-  // 3. Кого привлекли и по какому договору.
-  const contractTail = subcontract
-    ? ` на основании договора субподряда № ${subcontract.number}`
-      + (data.contractDate ? ` от ${data.contractDate}` : '')
-    : (data.contractLabel
-      ? ` на основании договора № ${data.contractLabel}`
-        + (data.contractDate ? ` от ${data.contractDate}` : '')
-      : '');
-  out.push(`Чтобы обеспечить допуск персонала к работам, ${company.name_short} привлекло `
-    + `${counterparty} для оказания услуг${contractTail}, а именно:`);
-
-  // 4. Перечень услуг — по строке на позицию. Отбор общий с PDF (см.
-  // selectLetterItems): если перечень длинный, в обоих форматах остаётся
-  // одинаковый хвост «и ещё N позиций», иначе PDF и Word разойдутся.
+  // 4. Перечень позиций — СТРОКОЙ через запятую, как в эталонах Дмитрия.
+  //
+  // V486: в шаблонах Дмитрия списков нет вообще, даже 16 наименований идут
+  // одной строкой после двоеточия. Прежний вывод «— позиция» построчно
+  // расходился с эталоном.
+  //
+  // ВАЖНО: `buildLetterBlocks` выделяет перечень по префиксу `— ` для
+  // DOCX-шаблона (там есть отдельный блок `items`). Поэтому строки перечня
+  // оставляем с этим префиксом — в Word они попадут в свой блок и напечатаются
+  // своим форматированием. В HTML-версии (buildHtml) перечень выводится
+  // отдельной строкой через запятую, без маркеров.
   const sel = selectLetterItems(data.items, invoiceNo);
-  for (const item of sel.shown) {
-    out.push(`— ${item}`);
+  const gistText = String((data.aiBody && data.aiBody.gist) || '').toLowerCase();
+  const firstItem = sel.shown.length ? String(sel.shown[0]).toLowerCase().slice(0, 20) : '';
+  const itemsAlreadyInText = !!firstItem && gistText.includes(firstItem);
+  if (sel.shown.length && !itemsAlreadyInText) {
+    // Каждая позиция — отдельным абзацем с маркером «— ». Так их выделяет
+    // `buildLetterBlocks` в блок `items` для DOCX-шаблона, и так же они
+    // рендерятся в HTML-версии (`<ul class="items">`). В письме Дмитрия
+    // перечень идёт строкой — это отражено в HTML через `itemsLine`.
+    for (const t of sel.shown) out.push(`— ${t}`);
+    if (sel.rest > 0) out.push(`— ${sel.restLine}`);
   }
-  if (sel.rest > 0) out.push(`— ${sel.restLine}`);
 
   // 5. Счёт и сумма.
   const vatLine = hasVat
@@ -1208,9 +1305,23 @@ function buildLetterParagraphs(data, opts = {}) {
       + `Остаток до настоящего счёта: ${money(subcontract.remaining || 0)} руб.`);
   }
 
-  // 7. Обоснование необходимости.
-  out.push('Расходы обязательные и напрямую связаны с исполнением обязательств по договору: '
-    + 'без этих документов работы на объекте Заказчика выполнять нельзя.');
+  // 7. Обоснование необходимости — от ИИ, иначе фолбэк.
+  if (data.aiBody && data.aiBody.why) {
+    out.push(data.aiBody.why);
+  } else {
+    const aiSvc = require('./obs-letter-ai');
+    const cls = aiSvc.classify(data.items, doc.comment_text || '');
+    const fb = aiSvc.buildFallback(cls, {
+      company: company.name_short,
+      counterparty,
+      items: aiSvc.itemsInline(data.items),
+      invoice_no: doc.invoice_number || 'б/н',
+      invoice_date: dateNum(doc.invoice_date),
+      contract_label: data.contractLabel || '',
+      amount: money(gross),
+    });
+    out.push(fb.why);
+  }
 
   // 8. Просьба об оплате.
   const vatTail = hasVat

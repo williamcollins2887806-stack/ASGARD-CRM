@@ -3236,6 +3236,19 @@ module.exports = async function docRegistryRoutes(fastify) {
    * правит тот, кто отвечает за договорную базу.
    */
   const SUBCONTRACT_ADMIN_ROLES = ['ADMIN'];
+  /**
+   * V486: кто может ЗАВЕСТИ ОБС-счёт из модалки письма.
+   *
+   * Заказчик 11.11.2026: «надо сделать, чтобы можно было в модалке добавить и
+   * привязать, и чтобы РП и ТО могли это сделать тоже». Раньше заводил только
+   * админ (`SUBCONTRACT_ADMIN_ROLES`), и человек, у которого нет ОБС под его
+   * объект, оставался без письма — его отправляли к админу.
+   *
+   * Договоры субподряда (лимиты) по-прежнему только админ: ошибка в лимите
+   * разрешает платежи за пределы договора. А справочник ОБС-счетов — это
+   * реквизиты для письма, не денежный лимит, поэтому его могут вести и РП/ТО.
+   */
+  const OBS_ACCOUNT_ROLES = ['ADMIN', 'BUH', 'PM', 'HEAD_PM', 'TO', 'HEAD_TO', 'OFFICE_MANAGER'];
   const isSubcontractAdmin = (role) => String(role || '').toUpperCase() === 'ADMIN';
 
   /** Проверка полей договора. Возвращает {ok, error, data}. */
@@ -3541,11 +3554,18 @@ module.exports = async function docRegistryRoutes(fastify) {
   });
 
   fastify.post('/obs-accounts', {
-    preHandler: [fastify.requireRoles(SUBCONTRACT_ADMIN_ROLES)],
+    preHandler: [fastify.requireRoles(OBS_ACCOUNT_ROLES)],
   }, async (req, reply) => {
     const b = req.body || {};
     const name = String(b.name || '').trim();
     if (!name) return reply.code(400).send({ error: 'Название ОБС обязательно' });
+    // V486: объект (work_id) — чтобы список ОБС в модалке показывал счета
+    // «своего» объекта первыми. РП и ТО заводят счёт под свой объект.
+    let workId = null;
+    if (b.work_id !== undefined && b.work_id !== null && b.work_id !== '') {
+      workId = parseInt(b.work_id, 10);
+      if (!Number.isInteger(workId)) return reply.code(400).send({ error: 'work_id: число или пусто' });
+    }
     try {
       const { rows } = await db.query(
         `INSERT INTO obs_accounts
@@ -3553,7 +3573,12 @@ module.exports = async function docRegistryRoutes(fastify) {
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
         [name, b.customer_name || null, b.inn || null, b.kpp || null,
           b.bank_name || null, b.bank_account || null, b.bank_corr_account || null,
-          b.bank_bik || null, b.work_id || null, b.note || null]);
+          b.bank_bik || null, workId, b.note || null]);
+      // V486: кто завёл счёт — в журнал. Справочник общий, и при споре нужно
+      // понимать, откуда взялись реквизиты.
+      await audit(db, null, req.user.id, 'obs_account_created', {
+        obs_account_id: rows[0].id, name, work_id: workId,
+      }).catch(() => {});
       return { ok: true, item: rows[0] };
     } catch (e) {
       if (String(e.message).includes('uq_obs_accounts_name')) {
@@ -3625,6 +3650,42 @@ module.exports = async function docRegistryRoutes(fastify) {
     }
 
     const payload = req.body || {};
+
+    // V486: номер исходящего в предпросмотре.
+    //
+    // Заказчик 11.11.2026: «почему номер исх не ставится?». Причина: номер
+    // выдаётся только при СОХРАНЕНИИ (allocateOutgoingNumber внутри транзакции),
+    // а предпросмотр и обе кнопки «Скачать» идут через этот эндпоинт и печатали
+    // «Исх. № б/н».
+    //
+    // Здесь берём СЛЕДУЮЩИЙ номер без инкремента (`getNextOutgoingNumberPreview`),
+    // чтобы человек видел реальный номер до сохранения. Счётчик не двигается:
+    // если письмо не сохранят, номер достанется следующему — это правильно,
+    // «съедать» номера на предпросмотры нельзя.
+    //
+    // Если у счёта уже есть живое письмо — показываем ЕГО номер (письмо
+    // пересоздаётся, номер не меняется).
+    if (!payload.preview_number) {
+      try {
+        const existing = await db.query(
+          `SELECT c.number FROM doc_registry d
+             JOIN correspondence c ON c.obs_invoice_doc_id = d.id AND c.deleted_at IS NULL
+            WHERE d.id = $1
+            ORDER BY c.id DESC LIMIT 1`, [id]).catch(() => ({ rows: [] }));
+        if (existing.rows[0] && existing.rows[0].number) {
+          payload.preview_number = existing.rows[0].number;
+        } else {
+          const corr = require('../services/correspondence');
+          if (typeof corr.getNextOutgoingNumberPreview === 'function') {
+            const pv = await corr.getNextOutgoingNumberPreview(db, { date: new Date() });
+            if (pv && pv.number) payload.preview_number = pv.number;
+          }
+        }
+      } catch (e) {
+        req.log.warn({ err: e, docId: id }, '[obs-letter] preview number');
+      }
+    }
+
     const format = String(req.query.format || 'pdf').toLowerCase();
     try {
       if (format === 'docx') {
@@ -3729,7 +3790,28 @@ module.exports = async function docRegistryRoutes(fastify) {
     if (typeof atts === 'string') { try { atts = JSON.parse(atts); } catch (_) { atts = []; } }
     if (!Array.isArray(atts)) atts = [];
     const first = atts[0] || null;
-    const url = (first && (first.url || first.path)) || doc.original_path_url;
+    let url = (first && (first.url || first.path)) || doc.original_path_url;
+
+    // V486: вложения, созданные ДО правки, содержат прямой путь
+    // `/uploads/doc-hub/obs-letters/...`. Новые содержат ACL-ссылку
+    // `/api/doc-registry/<id>/letter-file` — она НЕ файловый путь, и
+    // `safeUploadPath` её не найдёт. Для таких определяем файл по номеру
+    // письма: имя письма = `ОБС_<номер счёта>_<номер исходящего>.pdf`.
+    if (url && /^\/api\//i.test(String(url))) {
+      url = null;
+    }
+    if (!url) {
+      // Ищем файл по номеру исходящего: это надёжнее, чем угадывать имя.
+      const letterNo = String(doc.invoice_number || '').replace(/^Исх\.\s*/i, '').trim();
+      try {
+        const obsLib = require('../services/obs-letter');
+        if (letterNo && fs.existsSync(obsLib.STORAGE_DIR)) {
+          const files = fs.readdirSync(obsLib.STORAGE_DIR);
+          const hit = files.find((f) => f.endsWith('.pdf') && f.includes(letterNo));
+          if (hit) url = `${obsLib.URL_PREFIX}/${encodeURIComponent(hit)}`;
+        }
+      } catch (_) { /* ниже отдадим 404 с понятным текстом */ }
+    }
     if (!url) return reply.code(404).send({ error: 'Файл письма не найден' });
 
     // D-378: url в attachments хранится как публичный адрес и содержит
@@ -3905,20 +3987,29 @@ module.exports = async function docRegistryRoutes(fastify) {
 
     // Договоры: по объекту счёта, иначе все активные. Остаток считается
     // функцией subcontract_limit_state, она учитывает только ОБС-расходы.
-    const params = [];
-    let where = 'a.is_active = TRUE';
-    if (doc.work_id) {
-      params.push(doc.work_id);
-      where += ` AND (a.work_id = $${params.length} OR a.work_id IS NULL)`;
-    }
+    //
+    // V486 (дефект, найденный 11.11.2026). Раньше фильтр был:
+    //   work_id = счёта → только договоры ЭТОГО объекта или «общие».
+    // Плюс номер параметра для subcontract_limit_state считался как
+    // `$${params.length + 1}` — при `doc.work_id = null` (объект не указан)
+    // получалось `$1`, и функция получала ID СЧЁТА вместо своего ID. Список
+    // молча становился пустым, и в модалке стояло «Договор не выбран — лимит
+    // не считается», хотя оба договора в базе есть (КР320п26 и КР-433п26).
+    //
+    // Теперь: показываем ВСЕ активные договоры, но сортируем так, чтобы
+    // договоры объекта счёта шли первыми. Пустой список недопустим — человек
+    // должен видеть, что выбрать, даже если объект в счёте не проставлен.
     const subs = await db.query(
       `SELECT a.id, a.number, a.agreement_date, a.customer_name, a.work_id,
-              a.limit_amount, a.note,
-              s.spent_amount, s.remaining, s.used_pct, s.exhausted
-         FROM subcontract_agreements a, subcontract_limit_state(a.id, $${params.length + 1}) s
-        WHERE ${where}
-        ORDER BY a.agreement_date DESC`,
-      [...params, id]);
+              a.limit_amount, a.note, w.object_name,
+              s.spent_amount, s.remaining, s.used_pct, s.exhausted,
+              (a.work_id IS NOT DISTINCT FROM $1) AS same_work
+         FROM subcontract_agreements a
+         LEFT JOIN works w ON w.id = a.work_id,
+              subcontract_limit_state(a.id, $2) s
+        WHERE a.is_active = TRUE
+        ORDER BY (a.work_id IS NOT DISTINCT FROM $1) DESC, a.agreement_date DESC`,
+      [doc.work_id || null, id]);
 
     const amount = Number(doc.amount_gross) || 0;
     const items = subs.rows.map((r) => {
@@ -3934,6 +4025,11 @@ module.exports = async function docRegistryRoutes(fastify) {
         agreement_date: r.agreement_date,
         customer_name: r.customer_name,
         work_id: r.work_id,
+        // V486: чтобы в селекте было понятно, к какому объекту договор и
+        // относится ли он к объекту этого счёта. Раньше список приходил
+        // пустым, и человек не знал, есть ли вообще договоры.
+        object_name: r.object_name || null,
+        same_work: !!r.same_work,
         limit_amount: limit,
         spent_amount: Number(r.spent_amount) || 0,
         remaining,

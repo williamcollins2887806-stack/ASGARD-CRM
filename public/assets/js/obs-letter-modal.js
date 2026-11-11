@@ -428,15 +428,44 @@ window.AsgardObsLetterModal = (function () {
 
   async function download(format) {
     try {
-      const blob = await fetchPreviewBlob(format);
+      // V486: после сохранения качаем РЕАЛЬНЫЙ файл письма с его номером.
+      //
+      // Дефект (жалоба 11.11.2026 «ворд не работает»): обе кнопки «Скачать»
+      // всегда шли в эндпоинт ПРЕДПРОСМОТРА, а он печатает «Исх. № б/н».
+      // Человек сохранял письмо, жал «Скачать» — и получал файл без номера,
+      // то есть непригодный для банка.
+      //
+      // Если письмо уже сохранено (`state.saved.letter_doc_id`) — берём файл
+      // из ACL-роута письма, где номер настоящий.
+      const savedId = state.saved && state.saved.letter_doc_id;
+      let blob;
+      let fileName;
+      if (savedId) {
+        const r = await fetch(`/api/doc-registry/${savedId}/letter-file`
+          + (format === 'docx' ? '?format=docx' : ''), {
+          headers: { Authorization: 'Bearer ' + token() },
+          cache: 'no-store',
+        });
+        if (!r.ok) {
+          let msg = 'HTTP ' + r.status;
+          try { const j = await r.json(); msg = j.error || msg; } catch (_) { /* не JSON */ }
+          throw new Error(msg);
+        }
+        blob = await r.blob();
+        const num = String((state.saved && state.saved.number) || '').replace(/^Исх\.\s*/i, '');
+        fileName = `Письмо ОБС${num ? ' ' + num : ''}${format === 'docx' ? '.docx' : '.pdf'}`;
+      } else {
+        blob = await fetchPreviewBlob(format);
+        fileName = `Письмо ОБС (черновик)${format === 'docx' ? '.docx' : '.pdf'}`;
+      }
       const a = document.createElement('a');
       a.href = URL.createObjectURL(blob);
-      a.download = `Письмо ОБС${format === 'docx' ? '.docx' : '.pdf'}`;
+      a.download = fileName;
       document.body.appendChild(a);
       a.click();
       a.remove();
       setTimeout(() => URL.revokeObjectURL(a.href), 60000);
-      toast('Скачано', a.download, 'ok');
+      toast('Скачано', fileName, 'ok');
     } catch (e) {
       toast('Не удалось скачать', e.message || 'ошибка', 'err');
     }
@@ -553,28 +582,109 @@ window.AsgardObsLetterModal = (function () {
     recalcVat();
   }
 
+  /**
+   * V486: добавить ОБС-счёт прямо из модалки письма.
+   *
+   * Заказчик 11.11.2026: «надо сделать, чтобы можно было в модалке добавить и
+   * привязать, и чтобы РП и ТО могли это сделать тоже».
+   *
+   * Почему не `window.prompt`: так заводятся только название, банк, р/с и БИК —
+   * ИНН, КПП, корр. счёт и ОБЪЕКТ остаются пустыми. А без объекта новый счёт
+   * не встаёт первым в списке для своего счёта, и человек снова ищет его руками.
+   * Плюс `prompt` блокирует окно и на светлой теме выглядит системным.
+   *
+   * Здесь — нормальная форма внутри модалки: все поля реквизитов + выбор
+   * объекта. Обязательно только название: реквизиты можно дозаполнить позже
+   * (заказчик пришлёт их отдельно).
+   */
   async function addAccount() {
-    const name = window.prompt('Название ОБС-счёта (например «ОБС «АГПЗ»»)');
-    if (!name) return;
-    const bank = window.prompt('Банк (можно пропустить)') || '';
-    const rs = window.prompt('Расчётный счёт (можно пропустить)') || '';
-    const bik = window.prompt('БИК (можно пропустить)') || '';
-    try {
-      const res = await apiJson('/obs-accounts', {
-        method: 'POST',
-        body: JSON.stringify({
-          name: name.trim(), bank_name: bank || null,
-          bank_account: rs || null, bank_bik: bik || null,
-        }),
-      });
-      state.obsAccounts = (state.obsAccounts || []).concat([res.item]);
-      fillAccounts(state.obsAccounts, res.item.id);
-      updateAccountInfo();
-      markDirty();
-      toast('ОБС добавлен', res.item.name, 'ok');
-    } catch (e) {
-      toast('Не удалось добавить ОБС', e.message || 'ошибка', 'err');
+    const root = document.getElementById('dhObsModal');
+    if (!root) return;
+    // Список объектов для выбора — из уже загруженных договоров (там есть
+    // object_name и work_id) плюс текущий объект счёта.
+    const worksMap = new Map();
+    for (const s of (state.subcontracts || [])) {
+      if (s.work_id) worksMap.set(String(s.work_id), s.object_name || ('#' + s.work_id));
     }
+    if (state.docWorkId && !worksMap.has(String(state.docWorkId))) {
+      worksMap.set(String(state.docWorkId), state.docWorkName || ('#' + state.docWorkId));
+    }
+    const workOpts = ['<option value="">— не привязан к объекту —</option>']
+      .concat([...worksMap.entries()].map(([id, nm]) =>
+        `<option value="${esc(id)}"${String(state.docWorkId) === String(id) ? ' selected' : ''}>${esc(nm)}</option>`))
+      .join('');
+
+    const host = document.createElement('div');
+    host.className = 'dh-obs-submodal';
+    host.innerHTML = `
+      <div class="dh-obs-submodal__card">
+        <div class="dh-obs-submodal__head">
+          <span>Новый ОБС-счёт</span>
+          <button type="button" class="dh-modal__x" id="dhObsAccX" aria-label="Закрыть">✕</button>
+        </div>
+        <div class="dh-obs-submodal__body">
+          <label class="dh-field"><span>Название *</span>
+            <input id="dhAccName" placeholder="ОБС «АГПЗ»" /></label>
+          <label class="dh-field"><span>Заказчик (кому подряд)</span>
+            <input id="dhAccCustomer" placeholder="ООО «ГСП Ремонт»" /></label>
+          <div class="dh-obs-grid2">
+            <label class="dh-field"><span>ИНН</span><input id="dhAccInn" inputmode="numeric" /></label>
+            <label class="dh-field"><span>КПП</span><input id="dhAccKpp" inputmode="numeric" /></label>
+          </div>
+          <label class="dh-field"><span>Банк</span><input id="dhAccBank" /></label>
+          <div class="dh-obs-grid2">
+            <label class="dh-field"><span>Р/с</span><input id="dhAccRs" inputmode="numeric" /></label>
+            <label class="dh-field"><span>К/с</span><input id="dhAccKs" inputmode="numeric" /></label>
+          </div>
+          <label class="dh-field"><span>БИК</span><input id="dhAccBik" inputmode="numeric" /></label>
+          <label class="dh-field"><span>Объект <span class="dh-field__hint">к какому объекту относится счёт</span></span>
+            <select id="dhAccWork">${workOpts}</select></label>
+          <div class="dh-obs-hint">Реквизиты можно оставить пустыми и дозаполнить позже — письмо соберётся и без них.</div>
+        </div>
+        <div class="dh-obs-submodal__foot">
+          <button type="button" class="dh-btn dh-btn--ghost" id="dhAccCancel">Отмена</button>
+          <button type="button" class="dh-btn dh-btn--primary" id="dhAccSave">Создать ОБС</button>
+        </div>
+      </div>`;
+    root.appendChild(host);
+    const q = (id) => host.querySelector('#' + id);
+    const closeSub = () => host.remove();
+    q('dhObsAccX').onclick = closeSub;
+    q('dhAccCancel').onclick = closeSub;
+    q('dhAccName').focus();
+
+    q('dhAccSave').onclick = async () => {
+      const name = (q('dhAccName').value || '').trim();
+      if (!name) { toast('Название', 'Укажите название ОБС-счёта', 'err'); return; }
+      const val = (id) => {
+        const v = (q(id).value || '').trim();
+        return v || null;
+      };
+      try {
+        const res = await apiJson('/obs-accounts', {
+          method: 'POST',
+          body: JSON.stringify({
+            name,
+            customer_name: val('dhAccCustomer'),
+            inn: val('dhAccInn'),
+            kpp: val('dhAccKpp'),
+            bank_name: val('dhAccBank'),
+            bank_account: val('dhAccRs'),
+            bank_corr_account: val('dhAccKs'),
+            bank_bik: val('dhAccBik'),
+            work_id: q('dhAccWork').value || null,
+          }),
+        });
+        state.obsAccounts = (state.obsAccounts || []).concat([res.item]);
+        fillAccounts(state.obsAccounts, res.item.id);
+        updateAccountInfo();
+        markDirty();
+        closeSub();
+        toast('ОБС добавлен', res.item.name, 'ok');
+      } catch (e) {
+        toast('Не удалось добавить ОБС', e.message || 'ошибка', 'err');
+      }
+    };
   }
 
   function close() {
@@ -627,7 +737,16 @@ window.AsgardObsLetterModal = (function () {
     el('dhObsDlPdf').disabled = true;
     el('dhObsDlDocx').disabled = true;
     el('dhObsSave').textContent = 'Сохранить';
-    el('dhObsAccountAdd').hidden = !isAdmin();
+    // V486: заводить ОБС-счёт могут РП и ТО, а не только админ.
+    //
+    // Заказчик 11.11.2026: «надо сделать, чтобы можно было в модалке добавить
+    // и привязать, и чтобы РП и ТО могли это сделать тоже». Раньше кнопка была
+    // скрыта для всех, кроме ADMIN, и человек без ОБС под свой объект шёл к
+    // админу. Справочник ОБС — это реквизиты для письма, не денежный лимит,
+    // поэтому права шире. Договоры субподряда по-прежнему только админ:
+    // ошибка в лимите разрешает платежи за пределы договора.
+    const OBS_ACCOUNT_ROLES = ['ADMIN', 'BUH', 'PM', 'HEAD_PM', 'TO', 'HEAD_TO', 'OFFICE_MANAGER'];
+    el('dhObsAccountAdd').hidden = !OBS_ACCOUNT_ROLES.includes(String(role() || '').toUpperCase());
 
     try {
       const opt = await apiJson(`/${docId}/obs-options`);
