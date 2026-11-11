@@ -1,5 +1,5 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { ActivityIndicator, Image, StyleSheet, Text, View } from 'react-native';
 import {
   AudioSession,
   LiveKitRoom,
@@ -10,45 +10,71 @@ import {
 } from '@livekit/react-native';
 import { Track } from 'livekit-client';
 import Hall from './Hall';
-import {
-  API_BASE,
-  ENDPOINTS,
-  TOKENS,
-  TYPE,
-  apiPost,
-  hallModeFor,
-} from './api';
+import Dock from './Dock';
+import Backdrop from './Backdrop';
+import { COLORS, FONT } from './theme';
+import { API_BASE, ENDPOINTS, apiPost, hallModeFor } from './api';
+
+const MARK = require('./assets/mark.png');
+
+/** Секунды → mm:ss, как в веб-версии. */
+function fmtTimer(sec) {
+  const s = Math.max(0, Math.floor(sec));
+  const m = Math.floor(s / 60);
+  const r = s % 60;
+  return String(m).padStart(2, '0') + ':' + String(r).padStart(2, '0');
+}
+
+function stateLabel(s) {
+  switch (String(s)) {
+    case 'connected': return 'на связи';
+    case 'connecting': return 'подключение';
+    case 'reconnecting': return 'переподключение';
+    case 'disconnected': return 'отключено';
+    default: return '';
+  }
+}
 
 /**
- * Внутренний экран зала: монтируется только внутри LiveKitRoom, где
- * доступны хуки. Отдельный компонент нужен, потому что хуки LiveKit
- * требуют контекста комнаты.
+ * Внутри LiveKitRoom: собирает плитки из треков, рисует зал и док.
+ * Отдельный компонент, потому что хуки LiveKit требуют контекста комнаты.
  */
-function RoomBody({ roomTitle, selfName }) {
+function RoomBody({ roomTitle, selfName, onLeave, startedAt }) {
   const participants = useParticipants();
   const connectionState = useConnectionState();
   const { localParticipant } = useLocalParticipant();
+  const [micOn, setMicOn] = useState(true);
+  const [camOn, setCamOn] = useState(true);
+  const [peopleOpen, setPeopleOpen] = useState(false);
+  const [timer, setTimer] = useState(0);
 
-  /* Видео-треки всех участников. Аудио монтируется отдельно самим SDK. */
+  useEffect(() => {
+    const t = setInterval(() => {
+      setTimer(Math.floor((Date.now() - startedAt) / 1000));
+    }, 1000);
+    return () => clearInterval(t);
+  }, [startedAt]);
+
+  /* Обе камеры и шаринг экрана: тип источника задаём явно, иначе camera
+     выбранной пользователем камеры может не оказаться в списке. */
   const videoTracks = useTracks([Track.Source.Camera, Track.Source.ScreenShare], {
     onlySubscribed: false,
   });
 
-  const tiles = React.useMemo(() => {
+  const tiles = useMemo(() => {
     const out = [];
     const me = localParticipant;
     if (me) {
-      const myTrack = videoTracks.find(
+      const mine = videoTracks.find(
         (t) => t.participant && me.identity && t.participant.identity === me.identity,
       );
       out.push({
         id: me.identity || 'me',
-        participant: me,
-        track: myTrack ? myTrack.publication.track : null,
+        track: mine && mine.publication ? mine.publication.track : null,
         isLocal: true,
         isSpeaking: !!me.isSpeaking,
-        label: selfName || 'Вы',
-        muted: !me.isMicrophoneEnabled,
+        label: selfName || 'Зал',
+        muted: !micOn,
       });
     }
     participants.forEach((p) => {
@@ -58,8 +84,7 @@ function RoomBody({ roomTitle, selfName }) {
       );
       out.push({
         id: p.identity,
-        participant: p,
-        track: pub ? pub.publication.track : null,
+        track: pub && pub.publication ? pub.publication.track : null,
         isLocal: false,
         isSpeaking: !!p.isSpeaking,
         label: p.name || p.identity,
@@ -67,57 +92,54 @@ function RoomBody({ roomTitle, selfName }) {
       });
     });
     return out;
-  }, [participants, videoTracks, localParticipant, selfName]);
+  }, [participants, videoTracks, localParticipant, selfName, micOn]);
 
   const remoteCount = Math.max(0, tiles.length - 1);
   const mode = hallModeFor(remoteCount, false);
 
+  const toggleMic = useCallback(async () => {
+    if (!localParticipant) return;
+    const next = !micOn;
+    setMicOn(next);
+    try { await localParticipant.setMicrophoneEnabled(next); } catch (_) { setMicOn(!next); }
+  }, [localParticipant, micOn]);
+
+  const toggleCam = useCallback(async () => {
+    if (!localParticipant) return;
+    const next = !camOn;
+    setCamOn(next);
+    try { await localParticipant.setCameraEnabled(next); } catch (_) { setCamOn(!next); }
+  }, [localParticipant, camOn]);
+
   return (
-    <View style={styles.room}>
-      <View style={styles.topBar}>
-        <View style={styles.brandDot} />
-        <Text style={styles.title} numberOfLines={1}>{roomTitle || 'Тинг'}</Text>
-        <Text style={styles.state}>{labelForState(connectionState)}</Text>
-      </View>
+    <View style={styles.fill}>
       <Hall
-        mode={mode}
         tiles={tiles}
         title={roomTitle}
-        connecting={connectionState !== 'connected'}
+        timer={fmtTimer(timer)}
+        stateLabel={stateLabel(connectionState)}
+        mode={mode}
+        peopleOpen={peopleOpen}
+        connecting={connectionState === 'connecting'}
       />
-      <View style={styles.bottomBar}>
-        <Text style={styles.footNote}>
-          {tiles.length} {plural(tiles.length, 'участник', 'участника', 'участников')}
-          {' · '}микрофон {localParticipant && localParticipant.isMicrophoneEnabled ? 'включён' : 'выключен'}
-        </Text>
-      </View>
+      <Dock
+        micOn={micOn}
+        camOn={camOn}
+        peopleOpen={peopleOpen}
+        onToggleMic={toggleMic}
+        onToggleCam={toggleCam}
+        onPeople={() => setPeopleOpen((v) => !v)}
+        onLeave={onLeave}
+      />
     </View>
   );
 }
 
-function labelForState(s) {
-  switch (String(s)) {
-    case 'connected': return 'на связи';
-    case 'connecting': return 'подключение';
-    case 'reconnecting': return 'переподключение';
-    case 'disconnected': return 'отключено';
-    default: return String(s || '');
-  }
-}
-
-function plural(n, one, few, many) {
-  const a = Math.abs(n) % 100;
-  const b = a % 10;
-  if (a > 10 && a < 20) return many;
-  if (b > 1 && b < 5) return few;
-  if (b === 1) return one;
-  return many;
-}
-
 /**
- * Корневой экран: получает токен у нашего бэкенда и поднимает LiveKitRoom.
- * Публикация камеры и микрофона идёт нативно (AudioRecord/Camera2 через
- * react-native-webrtc) — именно это решает исходную проблему с микрофоном.
+ * Корневой экран зала. Получает токен у нашего бэкенда и поднимает
+ * LiveKitRoom. Публикация камеры и микрофона идёт нативно (AudioRecord и
+ * Camera2 внутри react-native-webrtc) — именно это решает проблему WebView,
+ * где микрофон отдавал цифровую тишину.
  */
 export default function MeetingScreen({ code, pin, onLeave }) {
   const [token, setToken] = useState(null);
@@ -126,15 +148,15 @@ export default function MeetingScreen({ code, pin, onLeave }) {
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(true);
   const [identity, setIdentity] = useState('');
+  const startedAt = useRef(Date.now()).current;
   const left = useRef(false);
 
   useEffect(() => {
     let cancelled = false;
-
     (async () => {
       try {
         /* Аудиосессия обязательна до подключения: без неё WebRTC не получит
-           маршрут вывода и звук уйдёт «в никуда». */
+           аудиомаршрут, и звук уйдёт в никуда на части прошивок ТВ. */
         await AudioSession.startAudioSession();
 
         const res = await apiPost(ENDPOINTS.guestToken(code), {
@@ -165,63 +187,68 @@ export default function MeetingScreen({ code, pin, onLeave }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [code, pin]);
 
-  const handleDisconnect = useCallback(() => {
+  const handleLeave = useCallback(() => {
     if (left.current) return;
     left.current = true;
     try { apiPost(ENDPOINTS.leave(code), { identity }).catch(() => {}); } catch (_) {}
+    try { AudioSession.stopAudioSession(); } catch (_) {}
     onLeave && onLeave();
   }, [code, identity, onLeave]);
 
   if (busy) {
     return (
-      <View style={styles.center}>
-        <Text style={styles.wait}>Готовим зал…</Text>
-      </View>
+      <Backdrop>
+        <View style={styles.center}>
+          <Image source={MARK} style={styles.bigMark} resizeMode="contain" />
+          <ActivityIndicator color={COLORS.gold} size="large" />
+          <Text style={styles.waitTitle}>Готовим зал</Text>
+        </View>
+      </Backdrop>
     );
   }
 
   if (error || !token || !serverUrl) {
     return (
-      <View style={styles.center}>
-        <Text style={styles.errorTitle}>Не удалось войти</Text>
-        <Text style={styles.errorBody}>{error || 'нет токена'}</Text>
-      </View>
+      <Backdrop>
+        <View style={styles.center}>
+          <Image source={MARK} style={styles.bigMark} resizeMode="contain" />
+          <Text style={styles.errorTitle}>Не удалось войти</Text>
+          <Text style={styles.errorBody}>{error || 'нет токена'}</Text>
+          <Text style={styles.errorHint} onPress={onLeave}>Вернуться к вводу кода</Text>
+        </View>
+      </Backdrop>
     );
   }
 
   return (
-    <LiveKitRoom
-      serverUrl={serverUrl}
-      token={token}
-      connect
-      audio
-      video
-      /* Звук с ТВ — только приём: свой микрофон публикуем отдельно. */
-      options={{ adaptiveStream: true, dynacast: true }}
-      onDisconnected={handleDisconnect}
-      onError={(e) => setError(String((e && e.message) || e))}
-    >
-      <RoomBody roomTitle={title} selfName="Зал совещаний" />
-    </LiveKitRoom>
+    <Backdrop>
+      <LiveKitRoom
+        serverUrl={serverUrl}
+        token={token}
+        connect
+        audio
+        video
+        options={{ adaptiveStream: true, dynacast: true }}
+        onDisconnected={handleLeave}
+        onError={(e) => setError(String((e && e.message) || e))}
+      >
+        <RoomBody
+          roomTitle={title}
+          selfName="Зал совещаний"
+          onLeave={handleLeave}
+          startedAt={startedAt}
+        />
+      </LiveKitRoom>
+    </Backdrop>
   );
 }
 
 const styles = StyleSheet.create({
-  room: { flex: 1, backgroundColor: TOKENS.bg },
-  topBar: {
-    flexDirection: 'row', alignItems: 'center',
-    paddingHorizontal: 24, paddingTop: 20, paddingBottom: 10,
-  },
-  brandDot: {
-    width: 14, height: 14, borderRadius: 7,
-    backgroundColor: TOKENS.gold, marginRight: 12,
-  },
-  title: { color: TOKENS.text, fontSize: TYPE.h2, fontWeight: '700', flex: 1 },
-  state: { color: TOKENS.textMuted, fontSize: TYPE.tiny },
-  bottomBar: { paddingHorizontal: 24, paddingVertical: 14, alignItems: 'center' },
-  footNote: { color: TOKENS.textMuted, fontSize: TYPE.tiny },
-  center: { flex: 1, backgroundColor: TOKENS.bg, alignItems: 'center', justifyContent: 'center' },
-  wait: { color: TOKENS.text, fontSize: TYPE.h2 },
-  errorTitle: { color: TOKENS.danger, fontSize: TYPE.h1, fontWeight: '700', marginBottom: 12 },
-  errorBody: { color: TOKENS.textMuted, fontSize: TYPE.body, textAlign: 'center', paddingHorizontal: 40 },
+  fill: { flex: 1 },
+  center: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 40, gap: 18 },
+  bigMark: { width: 140, height: 140, opacity: 0.9 },
+  waitTitle: { color: COLORS.t1, fontSize: FONT.h1, fontWeight: '800' },
+  errorTitle: { color: COLORS.danger, fontSize: FONT.h1, fontWeight: '800' },
+  errorBody: { color: COLORS.t2, fontSize: FONT.body, textAlign: 'center', maxWidth: 720, lineHeight: 26 },
+  errorHint: { color: COLORS.gold, fontSize: FONT.body, fontWeight: '700', marginTop: 10 },
 });

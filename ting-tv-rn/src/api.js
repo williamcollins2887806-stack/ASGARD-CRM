@@ -9,27 +9,8 @@
 
 export const API_BASE = 'https://asgard-crm.ru';
 
-export const TOKENS = {
-  bg: '#0A0C10',
-  surface: '#11151C',
-  surfaceHi: '#1A2230',
-  line: '#232B38',
-  text: '#F4F6F8',
-  textMuted: '#B0B8C4',
-  gold: '#C8A84E',
-  goldSoft: 'rgba(200,168,78,0.16)',
-  danger: '#E05A5A',
-  live: '#4CC38A',
-};
-
-export const TYPE = {
-  title: 42,
-  h1: 32,
-  h2: 24,
-  body: 18,
-  small: 15,
-  tiny: 13,
-};
+/* Цвета и типографика живут в theme.js: раньше они были скопированы и здесь,
+   и два набора начали расходиться. */
 
 export const HALL_MODES = {
   wait: { tiles: 1 },
@@ -65,15 +46,6 @@ export function gridFor(mode) {
     case 'g5': return { cols: 5, rows: 3 };
     default: return { cols: 1, rows: 1 };
   }
-}
-
-/** Инициалы для заглушки. */
-export function initials(name) {
-  const s = String(name || '?').trim();
-  if (!s) return '?';
-  const parts = s.split(/\s+/).filter(Boolean);
-  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
-  return (parts[0][0] + parts[1][0]).toUpperCase();
 }
 
 /** Запрос к бэкенду. Токен и PIN передаются в теле, не в URL. */

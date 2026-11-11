@@ -1,23 +1,30 @@
-import React, { useEffect } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import React, { useMemo } from 'react';
+import { Image, StyleSheet, Text, View } from 'react-native';
 import { RTCView } from '@livekit/react-native-webrtc';
-import { TOKENS, TYPE, initials } from '../api';
+import { COLORS, FONT, RADIUS, textShadow } from './theme';
+import { MicOff } from './icons';
+
+const MARK = require('./assets/mark-round.png');
 
 /**
- * Плитка участника. Видео держит 16:9 (aspectRatio) и вписывается в ячейку
- * без обрезки: на ТВ это критично, иначе лицо «как в масштабе».
+ * Плитка участника.
+ *
+ * Требования зала: кадр 16:9 без обрезки (objectFit contain), подпись читается
+ * на любой картинке, речь видна с трёх метров, выключенный микрофон заметен
+ * сразу. Тени и блюр не используем — они пересчитываются на каждом кадре
+ * видео и роняют FPS на телеке.
  */
-export default function Tile({ participant, track, isLocal, isSpeaking, label, muted }) {
-  useEffect(() => {
-    /* На ТВ элемент монтируется заново при смене раскладки — RTCView сам
-       отпускает поток при размонтировании, поэтому cleanup не требуется.
-       Пустой эффект оставлен намеренно: он фиксирует это решение. */
-    return undefined;
-  }, []);
-
-  const streamURL = track && track.mediaStreamTrack
-    ? (track.mediaStreamTrack.toURL ? track.mediaStreamTrack.toURL() : null)
-    : null;
+export default function Tile({ stall, isSpeaking, label, muted, isLocal }) {
+  const streamURL = useMemo(() => {
+    if (!stall) return null;
+    const ms = stall.mediaStreamTrack;
+    if (!ms) return null;
+    try {
+      return ms.toURL ? ms.toURL() : null;
+    } catch (_) {
+      return null;
+    }
+  }, [stall]);
 
   return (
     <View style={[styles.tile, isSpeaking && styles.speaking]}>
@@ -30,15 +37,22 @@ export default function Tile({ participant, track, isLocal, isSpeaking, label, m
           zOrder={0}
         />
       ) : (
-        <View style={styles.fallback}>
-          <View style={[styles.avatar, muted && styles.avatarMuted]}>
-            <Text style={styles.avatarText}>{initials(label)}</Text>
-          </View>
+        <View style={styles.empty}>
+          <Image source={MARK} style={styles.mark} resizeMode="contain" />
+          <Text style={styles.emptyName} numberOfLines={2}>{label || 'Участник'}</Text>
         </View>
       )}
-      <View style={styles.labelRow}>
-        <Text style={styles.label} numberOfLines={1}>{label || 'Участник'}</Text>
-        {muted ? <Text style={styles.micOff}>выкл</Text> : null}
+
+      <View style={styles.bar}>
+        <View style={styles.namePill}>
+          <Text style={styles.name} numberOfLines={1}>{label || 'Участник'}</Text>
+        </View>
+        {muted ? (
+          <View style={styles.mutePill}>
+            <MicOff size={16} color={COLORS.danger} />
+            <Text style={styles.muteText}>выкл</Text>
+          </View>
+        ) : null}
       </View>
     </View>
   );
@@ -48,45 +62,57 @@ const styles = StyleSheet.create({
   tile: {
     flex: 1,
     aspectRatio: 16 / 9,
-    backgroundColor: TOKENS.surface,
-    borderRadius: 16,
+    backgroundColor: COLORS.panelSolid,
+    borderRadius: RADIUS.lg,
     borderWidth: 2,
     borderColor: 'transparent',
     overflow: 'hidden',
-    margin: 5,
+    margin: 6,
   },
-  /* Индикатор речи — рамка, без тени: тень перерисовывается на каждом кадре. */
-  speaking: { borderColor: TOKENS.gold },
+  /* Индикатор речи — только рамка: тень вокруг плитки перерисовывалась бы
+     на каждом кадре видео. */
+  speaking: { borderColor: COLORS.gold },
   video: { flex: 1, backgroundColor: '#000' },
-  fallback: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: TOKENS.surfaceHi },
-  avatar: {
-    width: 120, height: 120, borderRadius: 60,
-    backgroundColor: TOKENS.goldSoft,
-    borderWidth: 2, borderColor: TOKENS.gold,
-    alignItems: 'center', justifyContent: 'center',
+  empty: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: COLORS.panelHi,
   },
-  avatarMuted: { borderColor: TOKENS.line, backgroundColor: TOKENS.surface },
-  avatarText: { color: TOKENS.gold, fontSize: 40, fontWeight: '800' },
-  labelRow: {
-    position: 'absolute', left: 12, bottom: 12, right: 12,
-    flexDirection: 'row', alignItems: 'center',
+  mark: { width: 96, height: 96, opacity: 0.9 },
+  emptyName: {
+    marginTop: 18,
+    color: COLORS.t2,
+    fontSize: FONT.h3,
+    fontWeight: '700',
+    textAlign: 'center',
+    paddingHorizontal: 24,
   },
-  label: {
-    color: TOKENS.text,
-    backgroundColor: 'rgba(10,12,16,0.78)',
-    borderRadius: 8,
+  bar: {
+    position: 'absolute',
+    left: 12,
+    right: 12,
+    bottom: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  namePill: {
+    backgroundColor: 'rgba(6,8,12,0.80)',
+    borderRadius: RADIUS.sm,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    maxWidth: '72%',
+  },
+  name: { color: COLORS.t1, fontSize: FONT.small, fontWeight: '700', ...textShadow },
+  mutePill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    backgroundColor: 'rgba(6,8,12,0.80)',
+    borderRadius: RADIUS.sm,
     paddingHorizontal: 10,
-    paddingVertical: 5,
-    fontSize: TYPE.small,
-    overflow: 'hidden',
+    paddingVertical: 7,
   },
-  micOff: {
-    marginLeft: 8,
-    color: TOKENS.danger,
-    backgroundColor: 'rgba(10,12,16,0.78)',
-    borderRadius: 8,
-    paddingHorizontal: 8,
-    paddingVertical: 5,
-    fontSize: TYPE.tiny,
-  },
+  muteText: { color: COLORS.danger, fontSize: FONT.tiny, fontWeight: '700' },
 });

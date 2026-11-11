@@ -1,21 +1,20 @@
 /**
  * Ting TV — нативный клиент зала (React Native / Android TV).
  *
- * Двухэкранная навигация без библиотеки роутера: экран входа и зал. Так меньше
- * зависимостей и предсказуемее фокус по D-pad на телевизоре.
+ * Два экрана без библиотеки роутера: вход и зал. Так меньше зависимостей и
+ * предсказуемее поведение фокуса по D-pad на телевизоре.
  */
 import React, { useCallback, useState } from 'react';
 import { StatusBar, StyleSheet, View } from 'react-native';
 import JoinScreen from './src/JoinScreen';
 import MeetingScreen from './src/MeetingScreen';
-import { TOKENS } from './src/api';
+import Backdrop from './src/Backdrop';
+import { COLORS } from './src/theme';
 
 type Screen = { name: 'join' } | { name: 'room'; code: string; pin: string };
 
 function App(): React.JSX.Element {
   const [screen, setScreen] = useState<Screen>({ name: 'join' });
-  const [busy] = useState(false);
-  const [error] = useState('');
 
   const handleJoin = useCallback((code: string, pin: string) => {
     setScreen({ name: 'room', code, pin });
@@ -29,7 +28,9 @@ function App(): React.JSX.Element {
     <View style={styles.root}>
       <StatusBar hidden />
       {screen.name === 'join' ? (
-        <JoinScreen onJoin={handleJoin} busy={busy} error={error} />
+        <Backdrop>
+          <JoinScreen onJoin={handleJoin} busy={false} error="" />
+        </Backdrop>
       ) : (
         <MeetingScreen code={screen.code} pin={screen.pin} onLeave={handleLeave} />
       )}
@@ -38,7 +39,7 @@ function App(): React.JSX.Element {
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: TOKENS.bg },
+  root: { flex: 1, backgroundColor: COLORS.bg0 },
 });
 
 export default App;

@@ -1,95 +1,128 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
-import {
-  ActivityIndicator,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from 'react-native';
-import { TOKENS, TYPE, initials } from '../api';
+import React, { useCallback, useRef, useState } from 'react';
+import { Image, Pressable, StyleSheet, Text, TextInput, View, ActivityIndicator } from 'react-native';
+import { COLORS, FONT, RADIUS, textShadow } from './theme';
+import { Lock } from './icons';
+
+const MARK = require('./assets/mark.png');
 
 /**
- * Экран входа: код комнаты и PIN. Работает без пульта-мыши — на Android TV
- * поля получают фокус по D-pad, Enter подтверждает.
+ * Экран входа. Один экран, два поля: код комнаты и PIN.
+ *
+ * На ТВ важнее фокус, чем форма: поле получает золотую рамку при фокусе,
+ * Enter/OK переводит к следующему, кнопка «Войти» — последняя в цепочке.
  */
+function Field({ label, hint, inputRef, value, onChangeText, onSubmitEditing, placeholder, secure, focusNext }) {
+  const [focused, setFocused] = useState(false);
+  return (
+    <View style={styles.fieldBlock}>
+      <Text style={styles.label}>{label}</Text>
+      <TextInput
+        ref={inputRef}
+        style={[styles.input, focused && styles.inputFocused]}
+        value={value}
+        onChangeText={onChangeText}
+        onFocus={() => setFocused(true)}
+        onBlur={() => setFocused(false)}
+        onSubmitEditing={onSubmitEditing}
+        placeholder={placeholder}
+        placeholderTextColor={COLORS.t3}
+        autoCapitalize="none"
+        autoCorrect={false}
+        secureTextEntry={!!secure}
+        returnKeyType={focusNext ? 'next' : 'go'}
+        blurOnSubmit={false}
+        selectionColor={COLORS.gold}
+      />
+      {hint ? <Text style={styles.hint}>{hint}</Text> : null}
+    </View>
+  );
+}
+
 export default function JoinScreen({ onJoin, busy, error }) {
   const [code, setCode] = useState('');
   const [pin, setPin] = useState('');
-  const codeRef = useRef(null);
+  const [ctaFocused, setCtaFocused] = useState(false);
   const pinRef = useRef(null);
-
-  useEffect(() => {
-    /* Фокус на первом поле: на ТВ без этого пульт «не видит» курсора. */
-    const t = setTimeout(() => { try { codeRef.current && codeRef.current.focus(); } catch (_) {} }, 400);
-    return () => clearTimeout(t);
-  }, []);
 
   const submit = useCallback(() => {
     const c = String(code || '').trim().toLowerCase();
-    if (!c) return;
+    if (!c || busy) return;
     onJoin && onJoin(c, String(pin || '').trim());
-  }, [code, pin, onJoin]);
+  }, [code, pin, busy, onJoin]);
 
   return (
     <View style={styles.root}>
       <View style={styles.card}>
-        <View style={styles.brandRow}>
-          <View style={styles.mark}><Text style={styles.markText}>{initials('Тинг')}</Text></View>
-          <View>
+        <View style={styles.head}>
+          <Image source={MARK} style={styles.mark} resizeMode="contain" />
+          <View style={styles.headText}>
             <Text style={styles.brand}>Тинг</Text>
-            <Text style={styles.brandSub}>Зал совещаний</Text>
+            <Text style={styles.brandSub}>переговорная ASGARD</Text>
+          </View>
+          <View style={styles.chip}>
+            <Text style={styles.chipText}>ЗАЛ</Text>
           </View>
         </View>
 
-        <Text style={styles.label}>Код комнаты</Text>
-        <TextInput
-          ref={codeRef}
-          style={styles.input}
-          value={code}
-          onChangeText={setCode}
-          autoCapitalize="none"
-          autoCorrect={false}
-          placeholder="например nmv9ks"
-          placeholderTextColor={TOKENS.textMuted}
-          onSubmitEditing={() => { try { pinRef.current && pinRef.current.focus(); } catch (_) {} }}
-          returnKeyType="next"
-          editable={!busy}
-          tvParallaxProperties={{ enabled: true }}
-        />
+        <Text style={styles.h1}>Войти в совещание</Text>
+        <Text style={styles.lead}>
+          Код комнаты из карточки Тинга в CRM — шесть цифр или буквенный код.
+        </Text>
 
-        <Text style={styles.label}>PIN (если нужен)</Text>
-        <TextInput
-          ref={pinRef}
-          style={styles.input}
-          value={pin}
-          onChangeText={setPin}
-          keyboardType="number-pad"
-          placeholder="необязательно"
-          placeholderTextColor={TOKENS.textMuted}
-          onSubmitEditing={submit}
-          returnKeyType="go"
-          editable={!busy}
-          secureTextEntry
-        />
+        <View style={styles.grid}>
+          <View style={styles.left}>
+            <Field
+              label="Код комнаты"
+              value={code}
+              onChangeText={setCode}
+              onSubmitEditing={() => { try { pinRef.current && pinRef.current.focus(); } catch (_) {} }}
+              placeholder="например 482917"
+              focusNext
+            />
+            <Field
+              label="PIN"
+              hint="Если организатор задал PIN"
+              inputRef={pinRef}
+              value={pin}
+              onChangeText={setPin}
+              onSubmitEditing={submit}
+              placeholder="необязательно"
+              secure
+            />
+          </View>
+
+          <View style={styles.right}>
+            <View style={styles.tipBox}>
+              <Lock size={24} color={COLORS.gold} />
+              <Text style={styles.tipTitle}>Без логина CRM</Text>
+              <Text style={styles.tipText}>
+                Зал входит по коду комнаты. Войти можно не раньше чем за час до начала.
+              </Text>
+            </View>
+          </View>
+        </View>
 
         {error ? <Text style={styles.error}>{error}</Text> : null}
 
-        <View
-          style={[styles.cta, busy && styles.ctaBusy]}
+        <Pressable
           accessible
           accessibilityRole="button"
+          accessibilityLabel="Войти в зал"
           focusable
-          hasTVPreferredFocus={false}
-          onStartShouldSetResponder={() => !busy}
-          onResponderRelease={submit}
+          onPress={submit}
+          onFocus={() => setCtaFocused(true)}
+          onBlur={() => setCtaFocused(false)}
+          style={[styles.cta, ctaFocused && styles.ctaFocused, busy && styles.ctaBusy]}
         >
-          {busy
-            ? <ActivityIndicator color={TOKENS.bg} />
-            : <Text style={styles.ctaText}>Войти в зал</Text>}
-        </View>
+          {busy ? (
+            <ActivityIndicator color={COLORS.ink} />
+          ) : (
+            <Text style={styles.ctaText}>Войти в Тинг</Text>
+          )}
+        </Pressable>
 
-        <Text style={styles.hint}>
-          Код показан в CRM в карточке комнаты. Войти можно не раньше чем за час.
+        <Text style={styles.foot}>
+          Пульт: стрелки — выбор поля, OK — подтвердить.
         </Text>
       </View>
     </View>
@@ -99,51 +132,82 @@ export default function JoinScreen({ onJoin, busy, error }) {
 const styles = StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: TOKENS.bg,
     alignItems: 'center',
     justifyContent: 'center',
-    padding: 40,
+    paddingHorizontal: 40,
   },
   card: {
-    width: 720,
-    maxWidth: '92%',
-    backgroundColor: TOKENS.surface,
-    borderRadius: 28,
+    width: 1080,
+    maxWidth: '96%',
+    paddingHorizontal: 56,
+    paddingVertical: 44,
+    borderRadius: RADIUS.xl,
+    backgroundColor: COLORS.panel,
     borderWidth: 1,
-    borderColor: TOKENS.line,
-    paddingHorizontal: 48,
-    paddingVertical: 40,
+    borderColor: COLORS.line,
   },
-  brandRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 28 },
-  mark: {
-    width: 64, height: 64, borderRadius: 32,
-    backgroundColor: TOKENS.goldSoft,
-    borderWidth: 2, borderColor: TOKENS.gold,
-    alignItems: 'center', justifyContent: 'center', marginRight: 18,
+  head: { flexDirection: 'row', alignItems: 'center', marginBottom: 26 },
+  mark: { width: 68, height: 68, marginRight: 18 },
+  headText: { flex: 1 },
+  brand: { color: COLORS.t1, fontSize: FONT.display, fontWeight: '800', letterSpacing: 0.4 },
+  brandSub: { color: COLORS.t2, fontSize: FONT.small, marginTop: 2 },
+  chip: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: RADIUS.pill,
+    borderWidth: 1,
+    borderColor: COLORS.goldDim,
+    backgroundColor: COLORS.goldGlow,
   },
-  markText: { color: TOKENS.gold, fontSize: 22, fontWeight: '800' },
-  brand: { color: TOKENS.text, fontSize: TYPE.title, fontWeight: '800' },
-  brandSub: { color: TOKENS.textMuted, fontSize: TYPE.body, marginTop: 2 },
-  label: { color: TOKENS.textMuted, fontSize: TYPE.small, marginBottom: 8, marginTop: 16 },
+  chipText: { color: COLORS.gold, fontSize: FONT.tiny, fontWeight: '800', letterSpacing: 1.2 },
+  h1: { color: COLORS.t1, fontSize: FONT.h1, fontWeight: '800', marginBottom: 10 },
+  lead: { color: COLORS.t2, fontSize: FONT.body, lineHeight: 26, maxWidth: 700 },
+  grid: { flexDirection: 'row', gap: 36, marginTop: 28 },
+  left: { flex: 1, minWidth: 420 },
+  right: { width: 300, justifyContent: 'flex-start' },
+  fieldBlock: { marginBottom: 20 },
+  label: { color: COLORS.t2, fontSize: FONT.tiny, fontWeight: '700', marginBottom: 8, letterSpacing: 0.4 },
   input: {
-    backgroundColor: TOKENS.surfaceHi,
-    borderRadius: 14,
+    backgroundColor: COLORS.panelHi,
+    borderRadius: RADIUS.md,
+    borderWidth: 2,
+    borderColor: COLORS.line,
+    color: COLORS.t1,
+    fontSize: FONT.h2,
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+  },
+  inputFocused: {
+    borderColor: COLORS.gold,
+    backgroundColor: 'rgba(200,168,78,0.10)',
+  },
+  hint: { color: COLORS.t3, fontSize: FONT.tiny, marginTop: 7 },
+  tipBox: {
+    borderRadius: RADIUS.lg,
     borderWidth: 1,
-    borderColor: TOKENS.line,
-    color: TOKENS.text,
-    fontSize: TYPE.h2,
-    paddingHorizontal: 18,
-    paddingVertical: 14,
+    borderColor: COLORS.goldDim,
+    backgroundColor: COLORS.goldGlow,
+    padding: 20,
+    gap: 10,
   },
-  error: { color: TOKENS.danger, fontSize: TYPE.small, marginTop: 14 },
+  tipTitle: { color: COLORS.gold, fontSize: FONT.small, fontWeight: '800' },
+  tipText: { color: COLORS.t2, fontSize: FONT.tiny, lineHeight: 21 },
+  error: { color: COLORS.danger, fontSize: FONT.small, marginTop: 12, fontWeight: '700' },
   cta: {
-    marginTop: 28,
-    backgroundColor: TOKENS.gold,
-    borderRadius: 14,
-    paddingVertical: 18,
+    marginTop: 30,
+    height: 74,
+    borderRadius: RADIUS.md,
+    backgroundColor: COLORS.gold,
     alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 3,
+    borderColor: 'transparent',
   },
-  ctaBusy: { opacity: 0.7 },
-  ctaText: { color: TOKENS.bg, fontSize: TYPE.h2, fontWeight: '800' },
-  hint: { color: TOKENS.textMuted, fontSize: TYPE.tiny, marginTop: 18, lineHeight: 20 },
+  ctaFocused: {
+    backgroundColor: COLORS.goldLite,
+    borderColor: COLORS.t1,
+  },
+  ctaBusy: { opacity: 0.75 },
+  ctaText: { color: COLORS.ink, fontSize: FONT.h2, fontWeight: '800', letterSpacing: 0.3 },
+  foot: { color: COLORS.t3, fontSize: FONT.tiny, marginTop: 18, ...textShadow },
 });
