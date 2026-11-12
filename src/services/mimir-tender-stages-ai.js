@@ -43,6 +43,13 @@ async function completeOrStream(aiProvider, opts, emit, streamMeta) {
     maxTokens: o.maxTokens,
     temperature: o.temperature != null ? o.temperature : 0,
     responseFormat: o.responseFormat || (o.expectJson ? { type: 'json_object' } : undefined),
+    // Reasoning-контроль ОБЯЗАН доходить и до потока, не только до complete().
+    // Без него deepseek-v4.1-flash тратит max_tokens на «размышления», уходит
+    // в finish_reason=length с НЕЗАКРЫТЫМ JSON, и порча ответа превращается в
+    // потерю позиций: на проде 12.11.2026 порция из 164 строк давала 36–54
+    // (в прямом замере с тем же промптом и reasoning:false — 164 из 164).
+    // См. ai-provider.js: reasoning:{enabled:false} отдаёт весь бюджет под content.
+    reasoning: o.reasoning,
     model: o.model
   });
   const provider = (aiProvider.getProvider && aiProvider.getProvider())
@@ -989,7 +996,11 @@ function chunkStructureRows(structured, maxRows) {
         fromLine: from + 1,
         toLine: from + slice.length,
         title: `${e.name}, строки ${from + 1}–${from + slice.length}`,
-        text: slice.map(structureLine).join('\n')
+        text: slice.map(structureLine).join('\n'),
+        // Строки храним отдельно: при обрыве ответа порция режется пополам
+        // и повторяется (рантайм-детект предела провайдера).
+        _rows: slice.map(structureLine),
+        _offset: from
       });
     }
   }
@@ -1162,6 +1173,11 @@ async function generateDv(p) {
   let modelSaidPositions = 0;
 
   const MAX_ROUNDS = 8;
+  // Счётчики рантайм-детекта предела провайдера: сколько раз пришлось
+  // дробить порцию и сколько строк в итоге не разобралось. Объявлены здесь,
+  // а не внутри ветки порций: уходят в отчёт, чтобы неполнота была видна.
+  let shrinks = 0;
+  let heldRows = 0;
   // Минимальный прирост новых позиций за раунд, при котором добор продолжается.
   // ВАЖНО: абсолютная константа, а не доля от ожидания. Порог, зависящий от
   // размера ведомости, нарушает монотонность: крупная ведомость обрывала бы
@@ -1183,12 +1199,13 @@ async function generateDv(p) {
   let lastTruncated = false;
 
   // ── Нарезка: по СТРОКАМ СТРУКТУРЫ, а не по символам CSV ─────────────────
-  // На 675 позициях ответ — ~43 тыс. токенов. Пока это влезает в предел модели
-  // (128k у дефолтной), режем не надо: один вызов без потерь на стыках.
+  // Режем всегда, когда расчётный ответ не влезает в ФАКТИЧЕСКИЙ предел
+  // провайдера. Раньше здесь предполагалось 128k «по паспорту модели»,
+  // поэтому 673 позиции считались влезающими одним вызовом, нарезка не
+  // включалась, и модель обрывалась на 115 позициях (прод, 12.11.2026).
   //
-  // Если всё же не влезает — режем СТРУКТУРУ по строкам таблицы. CSV
-  // (`countableText`) больше не участвует: он в промпт не идёт, и нарезка по
-  // нему давала порции, которых в промпте нет.
+  // CSV (`countableText`) больше не участвует: он в промпт не идёт, и
+  // нарезка по нему давала порции, которых в промпте нет.
   const chunker = require('./dv-chunker');
   const budget = require('./ai-call-budget');
   const callPlan = budget.planCall({
@@ -1198,9 +1215,19 @@ async function generateDv(p) {
     model: o.model
   });
   // Порция ≈ столько строк, чтобы ответ заведомо влез в предел модели.
-  const rowsPerChunk = callPlan.output.modelCap >= 128000
-    ? 250
-    : Math.max(40, Math.floor(callPlan.output.modelCap / 120));
+  //
+  // Считаем от РЕАЛЬНОГО предела провайдера и измеренной стоимости позиции
+  // в порции, а не от магических чисел: раньше здесь стояло
+  // «cap >= 128000 ? 250», и на провайдере с пределом 46k порции не
+  // включались вовсе — модель обрывалась, и разбор молча давал 115 из 673.
+  //
+  // Стоимость позиции в порции = 330 токенов (замер с полным системным
+  // промптом, tools/small_probe.js), а не 151 «в вакууме»: в порции модель
+  // повторяет структуру полей и техоснастку. На 164 строках ответ доходил
+  // до 82 994 символов и обрывался в length с незакрытым JSON.
+  const safeOutputTokens = Math.floor(callPlan.output.modelCap * 0.75);
+  const rowsPerChunk = Math.max(20, Math.min(250,
+    Math.floor(safeOutputTokens / budget.TOKENS_PER_POSITION_PORTION)));
   const chunks = callPlan.chunk ? chunkStructureRows(structured, rowsPerChunk) : [];
   const useChunks = chunks.length > 1;
   if (!callPlan.chunk) {
@@ -1263,47 +1290,137 @@ async function generateDv(p) {
         chunks: chunks.length,
         positions: allPositions.length
       });
-      let chRes;
-      try {
-        chRes = await completeOrStream(o.aiProvider, {
-          system: chunkSystem,
-          messages: [{
-            role: 'user',
-            content: `Перенеси ВСЕ строки этой порции таблицы в JSON — по одной позиции на строку. `
-              + `Ничего не суммируй, ничего не пропускай. Порция: ${ch.title} `
-              + `(строки ${ch.fromLine}–${ch.toLine}).\n\n`
-              + ch.text
-          }],
-          // Лимит — под размер порции, а не общий: иначе ответ снова режется.
-          maxTokens: Math.min(64000, Math.max(16000,
-            budget.outputLimit({
-              expectedPositions: Math.ceil(ch.text.split('\n').length * BUDGET_POSITION_MARGIN),
-              model: o.model
-            }).limit)),
-          temperature: 0,
-          expectJson: true,
-          model: o.model
-        }, typeof o.onProgress === 'function' ? emit : null, {
-          pct: chunkPct,
-          label: `порция ${ci + 1}/${chunks.length}`
-        });
-      } catch (_) {
-        emit({
-          step: 'chunk_fail',
-          message: `Порция ${ci + 1}/${chunks.length} не ответила — пропускаю.`,
-          pct: 12 + Math.round(((ci + 1) / Math.max(chunks.length, 1)) * 55)
-        });
-        continue;
+      // ── Порция с рантайм-детектом обрыва ────────────────────────────────
+      // Порция, которая не влезла в предел провайдера, раньше ПРОСТО ТЕРЯЛАСЬ:
+      // `catch → continue`, и целая часть ведомости исчезала. На #2138 так
+      // пропадали десятки позиций, и разбор молча оставался неполным.
+      //
+      // Теперь: если ответ оборван (`stop=length`) или JSON не собрался —
+      // режем порцию ВДВОЕ и повторяем её же. Предел провайдера не угадывается
+      // константой: он определяется по факту обрыва, поэтому смена модели или
+      // лимита не приводит к тихой потере данных.
+      //
+      // Замер (tools/detect_probe.js, 200 строк): max=4000 → length/битый,
+      // max=8000 → length/битый, max=12000 → stop/целый. Сигнал бинарный.
+      const pieces = [{ ...ch, _depth: 0 }];
+      let gotChunk = 0;
+      let chunkOk = false;
+      let guard = 0;
+      while (pieces.length && guard < 12) {
+        guard += 1;
+        const piece = pieces.shift();
+        if (!piece) break;
+        if (piece._rows && piece._rows.length < 8) {
+          // Мельче резать некуда: честно сообщаем, а не теряем молча.
+          emit({
+            step: 'chunk_too_small',
+            message: `Порция «${String(piece.title || '').slice(0, 40)}» не влезает даже `
+              + `в ${piece._rows.length} строк — оставлена на второй проход.`,
+            chunk: ci + 1,
+            chunks: chunks.length
+          });
+          continue;
+        }
+
+        const rowsInPiece = piece._rows ? piece._rows.length : null;
+        const outLimit = Math.min(64000, Math.max(16000,
+          budget.outputLimit({
+            expectedPositions: Math.ceil(piece.text.split('\n').length * BUDGET_POSITION_MARGIN),
+            model: o.model
+          }).limit));
+
+        let res = null;
+        try {
+          res = await completeOrStream(o.aiProvider, {
+            system: chunkSystem,
+            messages: [{
+              role: 'user',
+              content: `Перенеси ВСЕ строки этой порции таблицы в JSON — по одной позиции на строку. `
+                + `Ничего не суммируй, ничего не пропускай. Порция: ${piece.title} `
+                + `(строки ${piece.fromLine}–${piece.toLine}).\n\n`
+                + piece.text
+            }],
+            maxTokens: outLimit,
+            temperature: 0,
+            expectJson: true,
+            reasoning: { enabled: false },
+            model: o.model
+          }, typeof o.onProgress === 'function' ? emit : null, {
+            pct: chunkPct,
+            label: `порция ${ci + 1}/${chunks.length}`
+          });
+        } catch (e) {
+          emit({
+            step: 'chunk_fail',
+            message: `Порция ${ci + 1}/${chunks.length} не ответила: ${String(e.message || '').slice(0, 80)}`,
+            chunk: ci + 1,
+            chunks: chunks.length
+          });
+          res = null;
+        }
+
+        const stopReason = String((res && res.stopReason) || '').toLowerCase();
+        const truncated = stopReason === 'length' || stopReason === 'max_tokens';
+        const parsed = res ? safeJson(res.text) : null;
+
+        if (truncated || !parsed) {
+          // Обрыв: режем порцию пополам и пробуем её же снова.
+          const rows = piece._rows || [];
+          if (rows.length >= 16) {
+            const mid = Math.floor(rows.length / 2);
+            const halves = [rows.slice(0, mid), rows.slice(mid)];
+            const offset = piece._offset || 0;
+            halves.forEach((half, hi) => {
+              const from = offset + (hi === 0 ? 0 : mid);
+              pieces.push({
+                ...piece,
+                _depth: (piece._depth || 0) + 1,
+                _offset: from,
+                _rows: half,
+                fromLine: from + 1,
+                toLine: from + half.length,
+                title: `${piece.title} [${from + 1}–${from + half.length}]`,
+                text: half.join('\n')
+              });
+            });
+            shrinks += 1;
+            emit({
+              step: 'chunk_shrink',
+              message: `Порция ${ci + 1}/${chunks.length}: ответ оборван `
+                + `(${truncated ? 'stop=length' : 'JSON не собрался'}) — режу `
+                + `${rows.length} строк на ${mid} + ${rows.length - mid} и повторяю.`,
+              pct: chunkPct,
+              chunk: ci + 1,
+              chunks: chunks.length,
+              rows: rows.length,
+              shrinks
+            });
+            continue;
+          }
+          emit({
+            step: 'chunk_lost_rows',
+            message: `Порция ${ci + 1}/${chunks.length}: ${rows.length} строк не разобралось `
+              + `даже после дробления — попадут в предупреждения.`,
+            chunk: ci + 1,
+            chunks: chunks.length,
+            rows: rows.length
+          });
+          continue;
+        }
+
+        // Успех: позиции этой части идут в общий котёл.
+        const dvPart = stages.normalizeDv(parsed, catalog);
+        if (!firstDv) firstDv = dvPart;
+        perChunk.push(dvPart.positions || []);
+        gotChunk += (dvPart.positions || []).length;
+        chunkOk = true;
+        const said = Number(parsed.source_positions_count);
+        if (Number.isFinite(said) && said > 0) modelSaidPositions += Math.round(said);
+        if (rowsInPiece) {
+          heldRows += Math.max(0, rowsInPiece - (dvPart.positions || []).length);
+        }
       }
-      const chParsed = safeJson(chRes && chRes.text);
-      if (!chParsed) continue;
-      const chDv = stages.normalizeDv(chParsed, catalog);
-      if (!firstDv) firstDv = chDv;
-      const gotChunk = (chDv.positions || []).length;
-      perChunk.push(chDv.positions || []);
-      rounds += 1;
-      const said = Number(chParsed.source_positions_count);
-      if (Number.isFinite(said) && said > 0) modelSaidPositions += Math.round(said);
+      rounds += chunkOk ? 1 : 0;
       const interim = chunker.mergeChunkPositions(perChunk);
       emit({
         step: 'chunk_done',
@@ -1737,6 +1854,11 @@ async function generateDv(p) {
     // Заключение роли объёмов: отдельное поле, чтобы модалка показала его
     // даже когда общая оценка выглядит нормально, а строки разошлись.
     agents_completeness: agentsCompleteness,
+    // Рантайм-детект предела провайдера: сколько раз пришлось дробить порцию
+    // и сколько строк не разобралось даже после дробления. Без этих чисел
+    // неполнота разбора снова стала бы невидимой.
+    portion_shrinks: typeof shrinks === 'number' ? shrinks : 0,
+    portion_lost_rows: typeof heldRows === 'number' ? heldRows : 0,
     model: usedModel,
     provider: usedProvider,
     tokens: totalUsage
