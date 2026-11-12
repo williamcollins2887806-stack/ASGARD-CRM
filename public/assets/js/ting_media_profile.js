@@ -125,6 +125,11 @@
    * inbound (потери/фризы) — у subscriber.
    */
   var lastPacketsLost = null;
+  /* D-402: реальный исходящий битрейт считаем по дельте bytesSent — targetBitrate
+     это ЦЕЛЬ энкодера, а не то, что реально ушло в сеть. Именно из-за этого
+     в телеметрии стояли красивые цифры при плохой картинке (и наоборот). */
+  var lastBytesSent = null;
+  var lastBytesTs = 0;
 
   async function collectStats(pubPc, subPc) {
     var out = {
@@ -148,14 +153,42 @@
     var subReport = await read(subPc, false);
 
     if (pubReport) {
+      /* D-402: при simulcast у publisher НЕСКОЛЬКО outbound-rtp (по одному на
+         слой: h180/h360/h720). Старый код перезаписывал поля на каждой итерации,
+         поэтому в телеметрию попадал ПОСЛЕДНИЙ — самый низкий — слой:
+         в таблице стояло 320x180 и 121 кбит/с при нормальном канале, и выводы
+         о качестве делались по нижнему слою. Берём слой с максимальным
+         битрейтом: он и есть то, что видит зритель на хорошей связи. */
+      var bestOut = null;
+      var bestBw = -1;
       pubReport.forEach(function (s) {
         if (s.type === 'outbound-rtp' && s.kind === 'video') {
-          if (s.qualityLimitationReason) out.limiter = String(s.qualityLimitationReason);
-          if (num(s.frameWidth)) out.width = s.frameWidth;
-          if (num(s.frameHeight)) out.height = s.frameHeight;
-          if (num(s.framesPerSecond)) out.fps = Math.round(s.framesPerSecond);
-          if (num(s.targetBitrate)) out.bitrateKbps = Math.round(s.targetBitrate / 1000);
+          var bw = num(s.targetBitrate) ? s.targetBitrate : 0;
+          if (bw > bestBw) { bestBw = bw; bestOut = s; }
         }
+      });
+      if (bestOut) {
+        if (bestOut.qualityLimitationReason) out.limiter = String(bestOut.qualityLimitationReason);
+        if (num(bestOut.frameWidth)) out.width = bestOut.frameWidth;
+        if (num(bestOut.frameHeight)) out.height = bestOut.frameHeight;
+        if (num(bestOut.framesPerSecond)) out.fps = Math.round(bestOut.framesPerSecond);
+        /* Реальный битрейт по байтам: дельта bytesSent / дельта времени.
+           targetBitrate оставляем как запасной вариант (первый сэмпл). */
+        var nowTs = Date.now();
+        if (num(bestOut.bytesSent)) {
+          if (lastBytesSent != null && lastBytesTs && nowTs > lastBytesTs) {
+            var dBytes = bestOut.bytesSent - lastBytesSent;
+            var dSec = (nowTs - lastBytesTs) / 1000;
+            if (dBytes > 0 && dSec > 0.5) out.bitrateKbps = Math.round((dBytes * 8) / dSec / 1000);
+          }
+          lastBytesSent = bestOut.bytesSent;
+          lastBytesTs = nowTs;
+        }
+        if (out.bitrateKbps == null && num(bestOut.targetBitrate)) {
+          out.bitrateKbps = Math.round(bestOut.targetBitrate / 1000);
+        }
+      }
+      pubReport.forEach(function (s) {
         if (s.type === 'candidate-pair' && (s.selected || s.nominated || s.state === 'succeeded')) {
           if (num(s.currentRoundTripTime)) out.rttMs = Math.round(s.currentRoundTripTime * 1000);
           var loc = pubReport.get && pubReport.get(s.localCandidateId);

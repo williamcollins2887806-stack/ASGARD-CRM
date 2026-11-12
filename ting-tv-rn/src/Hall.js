@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import { Image, StyleSheet, Text, View } from 'react-native';
 import Tile from './Tile';
 import { COLORS, FONT, RADIUS, textShadow } from './theme';
@@ -50,9 +50,16 @@ export function PeopleDrawer({ tiles }) {
 /**
  * Сцена зала. Раскладка повторяет веб-версию: 1 — крупно, 2 — рядом,
  * до 7 — крупный и полоса, дальше сетки 3×3, 4×3, 5×3.
+ *
+ * D-403: раньше плитка была flex:1 + aspectRatio 16/9. В строке с flex:1
+ * ширина бралась из flex, а высота — из аспекта, и сетка вылезала за экран:
+ * на 50" (1080p) нижние ряды и док уходили за границу, «много не входит».
+ * Теперь размер плитки считается от РЕАЛЬНЫХ размеров сцены (onLayout):
+ * 16:9 вписывается и по ширине, и по высоте, остаётся запас под док.
  */
 export default function Hall({ tiles, title, timer, stateLabel, mode, peopleOpen, connecting }) {
   const { cols } = gridFor(mode);
+  const [box, setBox] = useState({ width: 0, height: 0 });
 
   const rows = useMemo(() => {
     if (cols <= 1) return tiles.length ? [tiles] : [];
@@ -60,6 +67,29 @@ export default function Hall({ tiles, title, timer, stateLabel, mode, peopleOpen
     for (let i = 0; i < tiles.length; i += cols) out.push(tiles.slice(i, i + cols));
     return out;
   }, [cols, tiles]);
+
+  const onLayout = useCallback((e) => {
+    const { width, height } = e.nativeEvent.layout;
+    setBox((prev) => (Math.abs(prev.width - width) < 1 && Math.abs(prev.height - height) < 1
+      ? prev
+      : { width, height }));
+  }, []);
+
+  /* Вписываем 16:9 в сцену: ширина ограничена колонками, высота — рядами.
+     Берём меньший из двух вариантов, чтобы ни одна сторона не обрезалась. */
+  const tileSize = useMemo(() => {
+    if (!box.width || !box.height || !rows.length) return null;
+    const rowsCount = rows.length;
+    const maxCols = Math.max(1, ...rows.map((r) => r.length));
+    const gap = 12;
+    const availW = box.width - gap * (maxCols + 1);
+    const availH = box.height - gap * (rowsCount + 1);
+    if (availW <= 0 || availH <= 0) return null;
+    const wByWidth = availW / maxCols;
+    const wByHeight = (availH / rowsCount) * (16 / 9);
+    const width = Math.max(64, Math.min(wByWidth, wByHeight));
+    return { width, height: width * 9 / 16 };
+  }, [box.width, box.height, rows]);
 
   if (connecting) {
     return (
@@ -84,7 +114,10 @@ export default function Hall({ tiles, title, timer, stateLabel, mode, peopleOpen
   return (
     <View style={styles.root}>
       <TopBar title={title} timer={timer} count={tiles.length} stateLabel={stateLabel} />
-      <View style={[styles.stage, peopleOpen && styles.stageWithDrawer]}>
+      <View
+        style={[styles.stage, peopleOpen && styles.stageWithDrawer]}
+        onLayout={onLayout}
+      >
         {rows.map((row, ri) => (
           <View key={'r' + ri} style={styles.row}>
             {row.map((t) => (
@@ -95,6 +128,7 @@ export default function Hall({ tiles, title, timer, stateLabel, mode, peopleOpen
                 isSpeaking={t.isSpeaking}
                 label={t.label}
                 muted={t.muted}
+                size={tileSize}
               />
             ))}
           </View>
@@ -143,9 +177,16 @@ const styles = StyleSheet.create({
     borderColor: COLORS.line,
   },
   countText: { color: COLORS.t1, fontSize: FONT.small, fontWeight: '700' },
-  stage: { flex: 1, justifyContent: 'center', paddingHorizontal: 14, paddingTop: 74, paddingBottom: 108 },
+  stage: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 14,
+    paddingTop: 74,
+    paddingBottom: 112,
+  },
   stageWithDrawer: { paddingRight: 340 },
-  row: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center' },
+  row: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center' },
   center: {
     flex: 1,
     alignItems: 'center',

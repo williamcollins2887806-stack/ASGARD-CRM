@@ -14,7 +14,8 @@ const MARK = require('./assets/mark-round.png');
  * сразу. Тени и блюр не используем — они пересчитываются на каждом кадре
  * видео и роняют FPS на телеке.
  */
-export default function Tile({ stall, isSpeaking, label, muted, isLocal }) {
+export default function Tile({ stall, isSpeaking, label, muted, isLocal, size }) {
+
   const streamURL = useMemo(() => {
     if (!stall) return null;
     const ms = stall.mediaStreamTrack;
@@ -27,7 +28,15 @@ export default function Tile({ stall, isSpeaking, label, muted, isLocal }) {
   }, [stall]);
 
   return (
-    <View style={[styles.tile, isSpeaking && styles.speaking]}>
+    <View
+      style={[
+        styles.tile,
+        /* D-403: размер приходит от Hall (расчёт от реальных пикселей сцены).
+           Без него плитка была flex:1 + aspectRatio и сетка вылезала за экран. */
+        size ? { width: size.width, height: size.height } : styles.tileAuto,
+        isSpeaking && styles.speaking,
+      ]}
+    >
       {streamURL ? (
         <RTCView
           streamURL={streamURL}
@@ -60,8 +69,7 @@ export default function Tile({ stall, isSpeaking, label, muted, isLocal }) {
 
 const styles = StyleSheet.create({
   tile: {
-    flex: 1,
-    aspectRatio: 16 / 9,
+    minWidth: 120,
     backgroundColor: COLORS.panelSolid,
     borderRadius: RADIUS.lg,
     borderWidth: 2,
@@ -69,6 +77,7 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     margin: 6,
   },
+  tileAuto: { flex: 1, aspectRatio: 16 / 9 },
   /* Индикатор речи — только рамка: тень вокруг плитки перерисовывалась бы
      на каждом кадре видео. */
   speaking: { borderColor: COLORS.gold },
