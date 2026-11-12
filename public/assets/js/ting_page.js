@@ -2683,6 +2683,37 @@
     return map;
   }
 
+  /**
+   * D-399: убрать дубликаты плиток одного участника.
+   * Причина дефекта «Костя выключил и включил камеру — его стало двое»:
+   * ensureCrmParticipantTile создавал новую плитку, если не находил её по
+   * селектору с кавычками в data-id, а старая оставалась в DOM. Вторая копия
+   * не участвовала в collectTilesMap (ключ один), поэтому перерисовка её не
+   * убирала — «фантом» жил до перезагрузки.
+   * Оставляем первую плитку, у которой реально есть <video> (иначе — первую).
+   * @returns {number} сколько удалили
+   */
+  function dedupeTiles(root) {
+    const scope = root || document;
+    const byId = new Map();
+    scope.querySelectorAll('#ting-stage .ting-tile, #ting-filmstrip .ting-tile').forEach((tile) => {
+      const id = (tile.dataset && tile.dataset.id) || '';
+      if (!id || id === '__overflow') return;
+      const prev = byId.get(id);
+      if (!prev) { byId.set(id, tile); return; }
+      const prevHasVideo = !!prev.querySelector('video');
+      const curHasVideo = !!tile.querySelector('video');
+      /* Держим ту, где есть видео; при равенстве — первую. */
+      if (!prevHasVideo && curHasVideo) {
+        try { prev.remove(); } catch (_) { /* */ }
+        byId.set(id, tile);
+      } else {
+        try { tile.remove(); } catch (_) { /* */ }
+      }
+    });
+    return 0;
+  }
+
   /** mainId для speaker: screen > pin > swapPrimary > activeSpeaker > first remote > local */
   function resolveSpeakerMainId(map) {
     const room = state.lkRoom;
@@ -2735,6 +2766,11 @@
     const stage = qs('#ting-stage');
     const strip = qs('#ting-filmstrip');
     if (!stage) return false;
+    /* D-399: сначала убрать дубликаты. Плитка могла оказаться и на стейдже,
+       и в ленте (ensureCrmParticipantTile + relayout), а collectTilesMap
+       схлопывает их в один ключ — «лишняя» оставалась в DOM, и участник
+       выглядел дважды (частый симптом после выключения/включения камеры). */
+    dedupeTiles();
     const map = collectTilesMap();
     const ids = Object.keys(map);
     if (!ids.length) return false;
@@ -3295,6 +3331,7 @@
 
   function syncCrmRoster(room) {    if (!room || !state.pageBound) return;
     syncRemoteAudio(room);
+    dedupeTiles();
     const stage = qs('#ting-stage');
     if (!stage) {
       paintTiles();
@@ -3526,10 +3563,25 @@
           }, settleMs);
         });
       }
-      room.on(LK.RoomEvent.DataReceived, (payload, _participant, _kind, topic) => {
+      room.on(LK.RoomEvent.DataReceived, async (payload, _participant, _kind, topic) => {
         try {
           const msg = JSON.parse(new TextDecoder().decode(payload));
           if (!msg || !msg.type) return;
+          /* D-400: хост завершил Тинг. Раньше клиенты об этом не узнавали:
+             /end удалял SFU-комнату, а фронт остальных пытался переподключиться
+             и продолжал разговор. Теперь — сразу выходим и показываем итог. */
+          if (msg.type === 'room_ended') {
+            try {
+              state.intentionalLeave = true;
+              if (state.room) state.room.status = 'ended';
+              toast('Тинг завершён организатором', false);
+            } catch (_) { /* */ }
+            try { await leaveRoom(false); } catch (_) { /* */ }
+            setIncall(false);
+            state.view = 'ended';
+            try { render(); } catch (_) { /* */ }
+            return;
+          }
           if (msg.type === 'chat' && msg.text) {
             const row = {
               text: msg.text,
@@ -4867,7 +4919,7 @@
           state.chatOpen = false;
           state.chatOpenMobile = false;
           state.moreOpen = false;
-          const more = qs('#ting-more');
+          const more = qs('#ting-more-sheet') || qs('#ting-more');
           if (more) more.remove();
           const chat = qs('.ting-chat');
           if (chat) chat.classList.remove('open');
@@ -4886,7 +4938,10 @@
         }
         /* Soft: sheet в stage-wrap без remount video (T-WIPE-02). */
         const wrap = qs('.ting-stage-wrap');
-        const oldMore = qs('#ting-more');
+        /* D-399: элемент называется #ting-more-sheet, а код искал #ting-more.
+           Из-за этого закрыть меню было нельзя: старый шит не удалялся,
+           новый вставлялся вторым слоем — визуально «модалка не закрывается». */
+        const oldMore = qs('#ting-more-sheet') || qs('#ting-more');
         if (oldMore) oldMore.remove();
         if (state.moreOpen && wrap) wrap.insertAdjacentHTML('beforeend', moreSheetHtml());
         updateDockMedia();

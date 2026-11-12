@@ -384,6 +384,12 @@ module.exports = async function(fastify) {
           meetingId: meeting.id,
           mode: 'scheduled',
           status: 'scheduled',
+          /* D-398: комната наследует ВРЕМЯ СОВЕЩАНИЯ. Раньше сюда не
+             передавали scheduled_at, и createThingRoom ставил «момент создания»:
+             встреча на 12.11 получала комнату с окном 10.11, sweeper видел
+             просроченное окно и закрывал её через 20 минут — в списке Тингов
+             висело «Завершён» у ещё не начавшейся встречи. */
+          scheduled_at: start_time,
           protocol_enabled: protocol_enabled !== false && protocol_enabled !== 'false',
           pin_code: thing_pin_code || null,
           overwrite_conference_url: !conference_url
@@ -494,6 +500,22 @@ module.exports = async function(fastify) {
         `UPDATE meetings SET ${updates.join(', ')} WHERE id = $${idx}`,
         values
       );
+    }
+
+    /* D-398: перенос совещания переносит и окно входа Тинга. Раньше правился
+       только meetings.start_time, а thing_rooms.scheduled_at оставался прежним:
+       встречу перенесли на 12.11, комната продолжала жить в окне 10.11,
+       и её закрывал sweeper. */
+    if (timeChanged && meeting.thing_room_id) {
+      const newStart = start_time !== undefined ? start_time : meeting.start_time;
+      await db.query(
+        `UPDATE thing_rooms
+            SET scheduled_at = $2::timestamptz, updated_at = NOW()
+          WHERE id = $1 AND status = 'scheduled'`,
+        [meeting.thing_room_id, newStart]
+      ).catch((e) => {
+        fastify.log.warn('Thing window sync failed: ' + e.message);
+      });
     }
 
     const newlyAddedUserIds = [];

@@ -251,10 +251,17 @@ async function sweepStaleRooms(db, { staleMinutes = 20, log } = {}) {
   );
 
   const closed = [];
+  const SCHEDULED_GRACE_MS = 6 * 60 * 60 * 1000;
   for (const room of rows) {
-    // scheduled в будущем не трогаем
-    if (room.status === 'scheduled' && room.scheduled_at && new Date(room.scheduled_at) > new Date()) {
-      continue;
+    /* D-398: запланированную комнату нельзя закрывать сразу по наступлении
+       времени. Раньше условие было «scheduled_at уже прошёл → закрываем»,
+       поэтому встреча 14:00 закрывалась в 14:00-14:20, ещё до входа людей
+       (в списке Тингов появлялось «Завершён» у сегодняшней встречи).
+       Даём 6 часов после назначенного времени: не пришли — тогда закрываем. */
+    if (room.status === 'scheduled') {
+      const anchor = room.scheduled_at || room.created_at;
+      const at = anchor ? new Date(anchor).getTime() : NaN;
+      if (Number.isFinite(at) && Date.now() < at + SCHEDULED_GRACE_MS) continue;
     }
     let liveCount = null;
     if (livekit.isConfigured() && room.livekit_room_name) {

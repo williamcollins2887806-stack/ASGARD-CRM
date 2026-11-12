@@ -199,20 +199,28 @@ module.exports = async function thingRoutes(fastify) {
    * D3: max_video раньше писался в БД и нигде не применялся.
    * Считаем, сколько участников уже публикуют камеру на SFU; если слоты кончились,
    * новый участник входит с audio-only (canPublishSources = микрофон).
+   * @param {object} [opts]
+   * @param {string} [opts.selfIdentity] — кто входит: его собственную публикацию
+   *   (та же база identity) в занятых слотах не считаем. Иначе при переподключении
+   *   человек «занимал» слот сам себе, токен приходил без камеры, и она отваливалась
+   *   при идеальном канале (D-401).
    */
-  async function videoSlotsAvailable(room) {
+  async function videoSlotsAvailable(room, opts) {
     const maxVideo = Math.max(1, parseInt(room.max_video, 10) || 3);
     if (!livekit.isConfigured()) return { allowed: true, used: 0, max: maxVideo };
     try {
       const parts = await livekit.listLiveKitParticipants(room.livekit_room_name);
       /* D-176: один человек с двух устройств занимает ОДИН слот —
          считаем уникальные базовые identity, а не подключения. */
+      const selfBase = baseIdentityOf(opts && opts.selfIdentity);
       const withCam = new Set();
       for (const p of parts || []) {
         if (/^EG_/i.test(String(p && p.identity))) continue;
+        const base = baseIdentityOf(p.identity);
+        if (selfBase && base === selfBase) continue;
         /* SDK отдаёт source числом (CAMERA=1) — сравнение строками не работало. */
         const hasCam = (p.tracks || []).some(t => livekit.isCameraSource(livekit.trackSourceName(t)));
-        if (hasCam) withCam.add(baseIdentityOf(p.identity));
+        if (hasCam) withCam.add(base);
       }
       const used = withCam.size;
       return { allowed: used < maxVideo, used, max: maxVideo };
@@ -730,8 +738,9 @@ module.exports = async function thingRoutes(fastify) {
 
     try {
       await ensureRoomMediaName(room);
-      /* D3: если видео-слоты кончились — входим audio-only, а не молча ломаем max_video. */
-      const slots = await videoSlotsAvailable(room);
+      /* D3: если видео-слоты кончились — входим audio-only, а не молча ломаем max_video.
+         D-401: свою же публикацию слотом не считаем (иначе reconnect без камеры). */
+      const slots = await videoSlotsAvailable(room, { selfIdentity: identity });
       /* C04/C05: режим конференции может запретить публикацию (webinar/podium). */
       const policy = await publishPolicyFor(room, {
         isModerator: host,
@@ -857,13 +866,28 @@ module.exports = async function thingRoutes(fastify) {
       );
     }
 
-    await livekit.deleteLiveKitRoom(room.livekit_room_name);
+    /* D-400: ПОРЯДОК ВАЖЕН. Сначала фиксируем статус в БД, потом сообщаем
+       людям, и только затем рвём SFU. Раньше deleteLiveKitRoom шёл первым,
+       а UPDATE — после: участники отваливались, их фронт шёл в /token,
+       видел ещё "живую" комнату и переподключался, продолжая разговор
+       между собой. Хост при этом видел «завершён». */
     const { rows } = await db.query(
       `UPDATE thing_rooms SET status = 'ended', ended_at = NOW(), updated_at = NOW()
        WHERE id = $1 RETURNING *`,
       [room.id]
     );
     const ended = rows[0];
+
+    if (livekit.isConfigured()) {
+      try {
+        await livekit.sendData(room.livekit_room_name, { type: 'room_ended', ts: Date.now() });
+      } catch (e) {
+        fastify.log.warn('[thing] end broadcast room_ended failed: ' + e.message);
+      }
+      /* Дать пакету уйти до разрыва SFU-комнаты. */
+      await new Promise((r) => setTimeout(r, 400));
+    }
+    await livekit.deleteLiveKitRoom(room.livekit_room_name);
     /* Журнал: закрытие комнаты — критичное действие (остановка записи, протокол). */
     await lifecycle.audit(db, {
       roomId: room.id,
@@ -1433,7 +1457,8 @@ module.exports = async function thingRoutes(fastify) {
     if (!livekit.isConfigured()) return reply.code(503).send({ error: 'LiveKit не настроен' });
     try {
       await ensureRoomMediaName(room);
-      const slots = await videoSlotsAvailable(room);
+      /* D-401: гость на refresh тоже не должен занимать слот сам себе. */
+      const slots = await videoSlotsAvailable(room, { selfIdentity: p.identity });
       /* Refresh медиа-токена гостя: 4 ч (уже в комнате), не 30 мин первичного входа. */
       const creds = await livekit.createAccessToken({
         roomName: room.livekit_room_name,
