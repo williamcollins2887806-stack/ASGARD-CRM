@@ -1025,6 +1025,27 @@ async function previewCalc(db, body) {
     // ok — per_unit_shift уже берёт circuit_m3
   }
 
+  // ── Площадь из объёма, когда единица совпадает ──────────────────────────
+  // Часть норм считает площадь (`surface_m2`): авo.outer, plates.hydro_dis,
+  // boilers, towers_hvac. В ВОР эта же величина лежит в `volume` с единицей
+  // «м2» — заказчику так удобнее, пересчёт не нужен.
+  //
+  // Без этого норма отвечала «Укажите площадь, м²» на 83 позициях АВО из
+  // #2138, хотя площадь была в объёме (10.546 м²). Проверено: с surface_m2
+  // норма сразу даёт сутки.
+  //
+  // Правило общее и безопасное: подставляем ТОЛЬКО когда единица позиции
+  // действительно площадь. Для «шт», «т», «м3» подстановки нет — иначе
+  // штуки стали бы квадратными метрами.
+  const volUnit = String(inputs.unit || inputs._measured_unit || inputs.measured_unit || '')
+    .toLowerCase().replace(/\s+/g, '');
+  const isAreaUnit = /^(м2|м²|кв\.?м|квм|m2)$/.test(volUnit);
+  const volValue = Number(inputs.volume) || Number(inputs._measured_value) || Number(inputs.measured_value) || 0;
+  if (isAreaUnit && volValue > 0 && !(Number(inputs.surface_m2) > 0)) {
+    inputs.surface_m2 = volValue;
+    normTrace.push(`площадь ${volValue} м² взята из объёма (единица совпадает)`);
+  }
+
   // ── Пересчёт альтернативных единиц (V472) ────────────────────────────────
   // В ВОР объём приходит как удобно заказчику: м², тонны, литры, дюймы.
   // Норма считает в своей единице. Если ожидаемого поля нет, а для единицы
