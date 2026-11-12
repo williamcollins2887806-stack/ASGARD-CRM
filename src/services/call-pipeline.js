@@ -212,6 +212,7 @@ class CallPipeline {
       // ±1 с: реплики в ней — нейтральны, чтобы не приписать не тому.
       await this._markTransferSpeakers(call, result);
 
+      const formatted = this._formatTranscript(result);
       await this.db.query(
         `UPDATE call_history SET
           transcript = $1,
@@ -219,10 +220,27 @@ class CallPipeline {
           transcript_status = 'done',
           updated_at = NOW()
         WHERE id = $3`,
-        [this._formatTranscript(result), JSON.stringify(result.segments), call.id]
+        [formatted, JSON.stringify(result.segments), call.id]
       );
 
-      console.log(`[CallPipeline] Transcription done: ${result.text.length} chars, ${result.segments.length} segments`);
+      // Пустая речь: не оставляем карточку в вечном «Ждёт анализ ИИ»
+      if (!String(formatted || '').trim()) {
+        await this.db.query(
+          `UPDATE call_history SET
+             ai_summary = $1,
+             ai_sentiment = 'neutral',
+             ai_is_target = false,
+             ai_analysis_status = 'skipped',
+             ai_last_error = NULL,
+             ai_last_error_at = NULL,
+             updated_at = NOW()
+           WHERE id = $2`,
+          ['В записи нет распознанной речи', call.id]
+        );
+        console.log(`[CallPipeline] Transcription empty for #${call.id} — AI skipped`);
+      } else {
+        console.log(`[CallPipeline] Transcription done: ${result.text.length} chars, ${result.segments.length} segments`);
+      }
     } catch (err) {
       console.error(`[CallPipeline] Transcription failed for call #${call.id}:`, err.message);
       await this.db.query(
@@ -317,6 +335,7 @@ class CallPipeline {
         || call.caller_number || '';
       const digits = String(raw).replace(/\D/g, '').slice(-10);
       if (digits.length !== 10) return [];
+      // Заявки клиента — чтобы ИИ понимал, что обращение уже в работе.
       const r = await this.db.query(
         `SELECT id, created_at, work_title, status
            FROM pre_tender_requests
@@ -326,7 +345,39 @@ class CallPipeline {
           LIMIT 5`,
         [digits]
       );
-      return r.rows || [];
+      const rows = r.rows || [];
+      // Прошлые звонки этого же клиента — фактический контекст разговора:
+      // что уже обсуждали, что обещали, чем закончилось.
+      try {
+        const prev = await this.db.query(
+          `SELECT id, created_at, started_at, duration_seconds, ai_summary,
+                  ai_sentiment, ai_quality_score, user_id
+             FROM call_history
+            WHERE right(regexp_replace(COALESCE(client_number, ''), '\\D', '', 'g'), 10) = $1
+              AND id <> $2
+              AND ai_summary IS NOT NULL
+              AND ai_summary <> ''
+              AND parent_call_id IS NULL
+            ORDER BY COALESCE(started_at, created_at) DESC
+            LIMIT 8`,
+          [digits, call.id || 0]
+        );
+        for (const p of prev.rows || []) {
+          const dt = p.started_at || p.created_at;
+          const day = dt ? new Date(dt).toLocaleDateString('ru-RU') : 'ранее';
+          const dur = p.duration_seconds ? ` (${Math.floor(p.duration_seconds / 60)} мин)` : '';
+          rows.push({
+            id: null,
+            created_at: dt,
+            work_title: `Звонок ${day}${dur}: ${String(p.ai_summary || '').slice(0, 400)}`,
+            status: 'звонок',
+            call_id: p.id,
+          });
+        }
+      } catch (e) {
+        console.warn('[CallPipeline] previous calls lookup failed:', e.message);
+      }
+      return rows;
     } catch (err) {
       console.warn('[CallPipeline] client history lookup failed:', err.message);
       return [];

@@ -51,18 +51,25 @@ function getCallAnalysisPrompt(callData) {
   let historyBlock = '';
   const hist = Array.isArray(callData && callData.clientHistory) ? callData.clientHistory : [];
   if (hist.length) {
-    const lines = hist.slice(0, 5).map((h) => {
+    const lines = hist.slice(0, 10).map((h) => {
       const dt = h.created_at ? new Date(h.created_at).toLocaleDateString('ru-RU') : 'ранее';
-      return `- Заявка #${h.id} от ${dt}: «${String(h.work_title || 'без названия').slice(0, 120)}», статус ${h.status || 'new'}`;
+      const title = String(h.work_title || 'без названия').slice(0, 300);
+      if (h.call_id) return `- ${title}`; // прошлый звонок: дата уже внутри
+      return `- Заявка #${h.id} от ${dt}: «${title}», статус ${h.status || 'new'}`;
     }).join('\n');
+    const firstId = hist.find((h) => h.id)?.id;
     historyBlock = `
 
-ИСТОРИЯ ОБРАЩЕНИЙ ЭТОГО КЛИЕНТА:
+ИСТОРИЯ ОБРАЩЕНИЙ ЭТОГО КЛИЕНТА (от старых к новым):
 ${lines}
 
 Клиент уже в работе. Если текущий разговор — уточнение, продолжение или вопрос
-по этой же заявке, то is_target=true, classification=repeat_order,
-и в summary НЕ описывай объект заново: начни с «Продолжение обращения #${hist[0].id}:».
+по этой же заявке, то is_target=true, classification=repeat_order.
+В summary НЕ описывай объект заново: начни с «Продолжение обращения${firstId ? ' #' + firstId : ''}:».
+Обязательно учти, что уже было сказано/обещано в прошлых звонках: кто что
+передавал (письма, WhatsApp, паспорта, видео), какие сроки называли, что до сих
+пор не сделано. Если ранее называли одни данные (город, объект, адрес), а сейчас
+другие — прямо укажи расхождение, не затирай старое молча.
 Если продолжают коммерцию / детали объекта — outcome_kind="lead" (CRM допишет в ту же заявку).
 Если «узнаю и скажу» по уже открытой заявке — outcome_kind="task".`;
   }

@@ -1042,10 +1042,22 @@ module.exports = async function telephonyRoutes(fastify, opts) {
     const total = parseInt(countRes.rows[0].count);
 
     const rows = await db.query(
-      `SELECT ch.*, c.name as client_name, c.contact_person as client_contact, u.name as manager_name
+      `SELECT ch.*, c.name as client_name, c.contact_person as client_contact,
+              u.name as manager_name,
+              COALESCE(ch.user_id, ch.answered_by) AS operator_id,
+              pt.id AS pre_tender_ref, pt.status AS pre_tender_status,
+              pt.assigned_to AS pre_tender_assigned_to,
+              pa.name AS pre_tender_assignee_name,
+              t.id AS task_ref, t.status AS task_status,
+              COALESCE(t.assignee_id, t.created_by) AS task_assignee_id,
+              ta.name AS task_assignee_name
        FROM call_history ch
        LEFT JOIN customers c ON c.inn = ch.client_inn
-       LEFT JOIN users u ON u.id = ch.user_id
+       LEFT JOIN users u ON u.id = COALESCE(ch.user_id, ch.answered_by)
+       LEFT JOIN pre_tender_requests pt ON pt.id = ch.pre_tender_id
+       LEFT JOIN users pa ON pa.id = pt.assigned_to
+       LEFT JOIN tasks t ON t.id = ch.task_id
+       LEFT JOIN users ta ON ta.id = COALESCE(t.assignee_id, t.created_by)
        ${where}
        ORDER BY ch.${sortCol} ${sortOrder}
        LIMIT $${paramIdx++} OFFSET $${paramIdx}`,
@@ -1108,6 +1120,7 @@ module.exports = async function telephonyRoutes(fastify, opts) {
           `SELECT ch.id, ch.call_type, ch.direction, ch.duration_seconds,
                   ch.started_at, ch.created_at,
                   COALESCE(ch.ai_summary, ch.transcript) AS summary,
+                  ch.ai_lead_data,
                   u.name AS employee_name
              FROM call_history ch
              LEFT JOIN users u ON u.id = COALESCE(ch.user_id, ch.answered_by)
@@ -1115,7 +1128,7 @@ module.exports = async function telephonyRoutes(fastify, opts) {
               AND ch.id <> $2
               AND ch.parent_call_id IS NULL
             ORDER BY ch.created_at ASC
-            LIMIT 20`,
+            LIMIT 50`,
           [call.pre_tender_id, call.id]
         );
         call.sibling_calls = sib.rows || [];
@@ -1123,6 +1136,69 @@ module.exports = async function telephonyRoutes(fastify, opts) {
         call.sibling_calls = [];
       }
     } catch (_) { call.sibling_calls = []; }
+
+    // СВОДКА ПО ОБРАЩЕНИЮ (12.11.2026): вся история звонков по заявке одной
+    // лентой — «когда → что было → чем закончилось». Раньше в карточке был
+    // только резюме текущего звонка, и контекст прошлых разговоров терялся.
+    try {
+      if (call.pre_tender_id) {
+        const all = await db.query(
+          `SELECT ch.id, ch.started_at, ch.created_at, ch.duration_seconds,
+                  COALESCE(ch.ai_summary, ch.transcript) AS summary,
+                  ch.ai_lead_data, ch.ai_sentiment, ch.ai_quality_score,
+                  u.name AS employee_name
+             FROM call_history ch
+             LEFT JOIN users u ON u.id = COALESCE(ch.user_id, ch.answered_by)
+            WHERE ch.pre_tender_id = $1
+            ORDER BY COALESCE(ch.started_at, ch.created_at) ASC
+            LIMIT 50`,
+          [call.pre_tender_id]
+        );
+        const items = (all.rows || []).map((r) => {
+          let ld = {};
+          try { ld = typeof r.ai_lead_data === 'string' ? JSON.parse(r.ai_lead_data) : (r.ai_lead_data || {}); } catch (_) { ld = {}; }
+          return {
+            id: r.id,
+            at: r.started_at || r.created_at,
+            duration_seconds: r.duration_seconds,
+            employee: r.employee_name || null,
+            summary: r.summary || null,
+            sentiment: r.ai_sentiment || null,
+            quality: r.ai_quality_score != null ? r.ai_quality_score : (ld.quality_score != null ? ld.quality_score : null),
+            next_steps: Array.isArray(ld.next_steps) ? ld.next_steps : [],
+            object: ld.object_description || (ld.object && ld.object.name) || null,
+            location: ld.location || null,
+          };
+        });
+        // Дедуп одинаковых резюме (плечи/повторы транскрипта) — в ленте это шум.
+        const seen = new Set();
+        const uniq = [];
+        for (const it of items) {
+          const key = String(it.summary || '').slice(0, 120).toLowerCase();
+          if (it.summary && seen.has(key)) continue;
+          if (it.summary) seen.add(key);
+          uniq.push(it);
+        }
+        call.history_timeline = uniq;
+        call.history_count = uniq.length;
+        const first = uniq[0] || null;
+        const last = uniq[uniq.length - 1] || null;
+        call.history_span = first && last && first.at && last.at
+          ? {
+              from: first.at,
+              to: last.at,
+              days: Math.max(0, Math.round((new Date(last.at) - new Date(first.at)) / 86400000)),
+            }
+          : null;
+      } else {
+        call.history_timeline = [];
+        call.history_count = 0;
+      }
+    } catch (e) {
+      console.warn('[Telephony] history timeline:', e.message);
+      call.history_timeline = [];
+      call.history_count = 0;
+    }
 
     // Идентификация СТОРОН по данным звонка (не по индексу спикера):
     // клиент — по номеру (входящий: from_number, исходящий: to_number),
@@ -1292,11 +1368,21 @@ module.exports = async function telephonyRoutes(fastify, opts) {
     if (!access) return;
     const call = (await db.query('SELECT id,transcript,transcript_status FROM call_history WHERE id=$1', [callId])).rows[0];
     if (!call) return reply.code(404).send({ error: 'Call not found' });
-    if (!call.transcript || call.transcript_status !== 'done') return reply.code(400).send({ error: 'Транскрипт не готов' });
+    if (call.transcript_status !== 'done') return reply.code(400).send({ error: 'Транскрипт не готов' });
+    const tr = String(call.transcript || '').trim();
+    if (!tr) {
+      return reply.code(400).send({
+        error: 'В записи нет распознанной речи. Повторите расшифровку или проверьте запись — анализ не из чего строить'
+      });
+    }
+    // Сброс ai_attempts обязателен: иначе после error_final первая же json_parse
+    // сразу снова ставит error_final и jobQueue не ретраит (err.retryable=false).
     await db.query(
       `UPDATE call_history SET
          ai_summary=NULL, ai_is_target=NULL, ai_lead_data=NULL, ai_sentiment=NULL,
+         ai_quality_score=NULL,
          ai_analysis_status='pending', ai_last_error=NULL, ai_last_error_at=NULL,
+         ai_attempts=0,
          updated_at=NOW()
        WHERE id=$1`,
       [callId]

@@ -755,7 +755,7 @@ window.AsgardTelephonyPage = (function () {
     var existing = document.getElementById('telColMenu');
     if (existing) { existing.remove(); return; }
     var prefs = loadColPrefs();
-    var labels = { date: 'Дата', dir: 'Направление', client: 'Клиент', dur: 'Длительность', manager: 'Сотрудник', summary: 'Резюме', rating: 'Рейтинг', process: 'Обработка' };
+    var labels = { date: 'Дата', dir: 'Направление', client: 'Клиент', dur: 'Длительность', manager: 'Сотрудник', summary: 'Резюме', outcome: 'Куда ушло', rating: 'Рейтинг', process: 'Обработка' };
     var sticky = { date: 1, dir: 1, process: 1 };
     var menu = document.createElement('div');
     menu.id = 'telColMenu';
@@ -887,6 +887,36 @@ window.AsgardTelephonyPage = (function () {
         ? '<span class="call-summary-text" title="' + esc(c.ai_summary) + '">' + esc(c.ai_summary.slice(0, 80)) + (c.ai_summary.length > 80 ? '\u2026' : '') + '</span>'
         : '<span class="tel-text-muted">' + esc(aiSt.label) + '</span>';
 
+      // Куда ушёл звонок: задача / заявка маркетплейса / сага.
+      // Раньше в журнале было не видно — непонятно, что с обращением дальше.
+      var outcomeCell = (function () {
+        if (c.task_ref) {
+          var done = (c.task_status === 'done' || c.task_status === 'completed' || c.task_status === 'closed');
+          var who = c.task_assignee_name || '';
+          return '<a class="call-outcome call-outcome--task' + (done ? ' is-done' : '') + '"' +
+            ' href="#/tasks?id=' + c.task_ref + '"' +
+            ' data-tooltip="Задача #' + c.task_ref + (who ? ': ' + esc(who) : '') + (done ? ' — выполнена' : ' — в работе') + '">' +
+            '<span class="call-outcome__kind">' + (done ? 'Задача ✓' : 'Задача') + '</span>' +
+            '<span class="call-outcome__who">' + esc(who || 'без исполнителя') + '</span>' +
+          '</a>';
+        }
+        if (c.pre_tender_ref) {
+          var stMap = {
+            new: 'новая', in_review: 'в работе', need_docs: 'нужны доки',
+            addendum: 'дозапрос', accepted: 'принята', rejected: 'отклонена',
+            approved: 'согласована', expired: 'истекла'
+          };
+          var stTxt = stMap[c.pre_tender_status] || c.pre_tender_status || '';
+          var owner = c.pre_tender_assignee_name || '';
+          return '<a class="call-outcome call-outcome--lead" href="#/director-inbox?id=' + c.pre_tender_ref + '"' +
+            ' data-tooltip="Заявка #' + c.pre_tender_ref + (owner ? ' — РП ' + esc(owner) : ' — не назначена') + (stTxt ? ' (' + esc(stTxt) + ')' : '') + '">' +
+            '<span class="call-outcome__kind">Заявка #' + c.pre_tender_ref + '</span>' +
+            '<span class="call-outcome__who">' + esc(owner || 'свободна') + '</span>' +
+          '</a>';
+        }
+        return '<span class="tel-text-muted">\u2014</span>';
+      })();
+
       var dirTipAttr = dirTip ? ' data-tooltip="' + esc(dirTip) + '"' : '';
       var statusTipAttr = statusTip ? ' data-tooltip="' + esc(statusTip) + '"' : '';
       var aiTipAttr = aiSt.tip ? ' data-tooltip="' + esc(aiSt.tip) + '"' : '';
@@ -897,6 +927,7 @@ window.AsgardTelephonyPage = (function () {
         '<td class="tel-cell-dur">' + esc(fmtDuration(c.duration_seconds)) + '</td>' +
         '<td class="tel-cell-manager">' + esc(c.manager_name || '\u2014') + '</td>' +
         '<td class="ai-col">' + summaryCell + '</td>' +
+        '<td class="call-outcome-col">' + outcomeCell + '</td>' +
         '<td class="call-rating-col">' + ratingCell + '</td>' +
         '<td class="call-process-col"><div class="call-status-stack">' +
           '<span class="call-status-badge ' + statusCls + '"' + statusTipAttr + '>' + esc(STATUS_LABELS[tStatus] || '\u2014') + '</span>' +
@@ -952,7 +983,7 @@ window.AsgardTelephonyPage = (function () {
     wrap.innerHTML = '<table class="call-log-table">' +
       '<thead><tr>' +
         '<th data-col="date">Дата/время</th><th data-col="dir">Направление</th><th data-col="client">Клиент/Номер</th>' +
-        '<th data-col="dur">Длительность</th><th data-col="manager">Сотрудник</th><th data-col="summary">Резюме</th><th data-col="rating" data-tooltip="Оценка качества разговора ИИ">Рейтинг</th><th data-col="process">Обработка</th>' +
+        '<th data-col="dur">Длительность</th><th data-col="manager">Сотрудник</th><th data-col="summary">Резюме</th><th data-col="outcome">Куда ушло</th><th data-col="rating" data-tooltip="Оценка качества разговора ИИ">Рейтинг</th><th data-col="process">Обработка</th>' +
       '</tr></thead>' +
       '<tbody>' + rows + '</tbody></table>';
 
@@ -974,6 +1005,25 @@ window.AsgardTelephonyPage = (function () {
       btn.addEventListener('click', function (e) {
         e.stopPropagation();
         openDetailPanel(btn.getAttribute('data-call-id'));
+      });
+    });
+    // «История обращения» — переход в карточку другого звонка той же заявки.
+    container.querySelectorAll('.call-history-item[data-call-id]').forEach(function (row) {
+      row.addEventListener('click', function (e) {
+        e.stopPropagation();
+        var sid = row.getAttribute('data-call-id');
+        if (sid) openDetailPanel(sid);
+      });
+    });
+    // «Другие звонки по этой заявке» — переход в карточку sibling-звонка.
+    // Раньше строки рендерились с data-ph-open (обработчик из другого модуля),
+    // поэтому клик не открывал ничего.
+    wrap.querySelectorAll('.call-sibling-row').forEach(function (row) {
+      row.style.cursor = 'pointer';
+      row.addEventListener('click', function (e) {
+        e.stopPropagation();
+        var sid = row.getAttribute('data-call-id');
+        if (sid) openDetailPanel(sid);
       });
     });
     wrap.querySelectorAll('.call-record-play').forEach(function (btn) {
@@ -2140,22 +2190,44 @@ window.AsgardTelephonyPage = (function () {
       keyReqsHtml +
       renderAiAnalysis(call) +
 
-      (Array.isArray(call.sibling_calls) && call.sibling_calls.length
-        ? '<div class="call-detail-section"><div class="telephony-chart-title">Другие звонки по этой заявке</div>' +
-          call.sibling_calls.map(function (s) {
-            var dt = s.started_at || s.created_at;
-            var d = dt ? new Date(dt) : null;
-            var when = d ? d.toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '';
-            var sec = s.duration_seconds ? (Math.floor(s.duration_seconds / 60) + ':' + String(s.duration_seconds % 60).padStart(2, '0')) : '';
-            return '<div class="call-sibling-row" data-ph-open="detail" data-id="' + s.id + '">' +
-              '<span class="call-sibling-when">' + when + '</span>' +
-              '<span class="call-sibling-type">' + (s.call_type || s.direction || '') + '</span>' +
-              '<span class="call-sibling-dur">' + sec + '</span>' +
-              '<span class="call-sibling-sum">' + esc(String(s.summary || '').slice(0, 120)) + '</span>' +
+      (function () {
+        var tl = Array.isArray(call.history_timeline) ? call.history_timeline : [];
+        if (!tl.length) return '';
+        var span = call.history_span;
+        var head = 'История обращения';
+        if (call.history_count > 1) head += ' · ' + call.history_count + ' звонк' + (call.history_count > 4 ? 'ов' : (call.history_count > 1 ? 'а' : ''));
+        if (span && span.days > 0) head += ' · ' + span.days + ' дн.';
+        return '<div class="call-detail-section"><div class="telephony-chart-title">' + esc(head) + '</div>' +
+          '<div class="call-history-timeline">' +
+          tl.map(function (h, idx) {
+            var d = h.at ? new Date(h.at) : null;
+            var when = d ? d.toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' }) : '';
+            var dur = h.duration_seconds ? (Math.floor(h.duration_seconds / 60) + ':' + String(h.duration_seconds % 60).padStart(2, '0')) : '';
+            var isCurrent = String(h.id) === String(call.id);
+            var meta = [];
+            if (dur) meta.push(dur);
+            if (h.employee) meta.push(h.employee);
+            if (h.quality != null) meta.push(h.quality + '/10');
+            return '<div class="call-history-item' + (isCurrent ? ' is-current' : '') + '"' +
+                (isCurrent ? '' : ' data-call-id="' + h.id + '" role="button" tabindex="0"') + '>' +
+              '<div class="call-history-dot" aria-hidden="true"></div>' +
+              '<div class="call-history-body">' +
+                '<div class="call-history-head">' +
+                  '<span class="call-history-when">' + when + '</span>' +
+                  (isCurrent ? '<span class="call-history-now">текущий</span>' : '') +
+                  (meta.length ? '<span class="call-history-meta">' + esc(meta.join(' · ')) + '</span>' : '') +
+                '</div>' +
+                (h.summary ? '<div class="call-history-text">' + esc(h.summary) + '</div>' : '<div class="call-history-text tel-text-muted">резюме нет</div>') +
+                (h.object ? '<div class="call-history-obj">Объект: ' + esc(h.object) + '</div>' : '') +
+                (h.location ? '<div class="call-history-obj">Адрес: ' + esc(h.location) + '</div>' : '') +
+                (h.next_steps && h.next_steps.length
+                  ? '<ul class="call-history-steps">' + h.next_steps.map(function (s) { return '<li>' + esc(s) + '</li>'; }).join('') + '</ul>'
+                  : '') +
+              '</div>' +
             '</div>';
           }).join('') +
-          '</div>'
-        : '') +
+          '</div></div>';
+      })() +
 
       '<div class="call-detail-section call-detail-actions">' +
         '<button class="btn primary" id="callbackBtn" data-tooltip="Исходящий звонок">Перезвонить</button>' +

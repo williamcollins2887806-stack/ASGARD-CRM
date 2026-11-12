@@ -10181,6 +10181,130 @@ body.call-detail-open .asg-main-wrap {
   white-space: nowrap;
 }
 
+/* Журнал звонков: «Куда ушло» — задача или заявка маркетплейса.
+   Без этой колонки непонятно, кто взял обращение и выполнено ли оно. */
+.call-outcome-col { white-space: nowrap; }
+.call-outcome {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 3px 8px;
+  border-radius: 6px;
+  font-size: 11px;
+  line-height: 1.25;
+  text-decoration: none;
+  border: 1px solid transparent;
+  max-width: 150px;
+}
+.call-outcome__kind { font-weight: 700; }
+.call-outcome__who {
+  color: var(--t3);
+  font-size: 10px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.call-outcome--lead {
+  background: color-mix(in srgb, var(--gold) 12%, transparent);
+  border-color: color-mix(in srgb, var(--gold) 35%, transparent);
+  color: var(--gold);
+}
+.call-outcome--lead:hover { background: color-mix(in srgb, var(--gold) 20%, transparent); }
+.call-outcome--task {
+  background: color-mix(in srgb, var(--blue) 12%, transparent);
+  border-color: color-mix(in srgb, var(--blue) 32%, transparent);
+  color: var(--blue);
+}
+.call-outcome--task:hover { background: color-mix(in srgb, var(--blue) 20%, transparent); }
+.call-outcome--task.is-done {
+  background: color-mix(in srgb, var(--ok-t) 12%, transparent);
+  border-color: color-mix(in srgb, var(--ok-t) 32%, transparent);
+  color: var(--ok-t);
+}
+
+/* История обращения: вся цепочка звонков по заявке одной лентой.
+   Раньше был только резюме текущего звонка — контекст прошлых терялся. */
+.call-history-timeline {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  padding-left: 4px;
+}
+.call-history-item {
+  position: relative;
+  display: grid;
+  grid-template-columns: 14px 1fr;
+  gap: 10px;
+  padding: 8px 0 10px;
+  cursor: pointer;
+}
+.call-history-item.is-current { cursor: default; }
+/* Вертикальная нить между точками */
+.call-history-item::before {
+  content: '';
+  position: absolute;
+  left: 6px;
+  top: 18px;
+  bottom: -2px;
+  width: 1px;
+  background: var(--brd-m);
+}
+.call-history-item:last-child::before { display: none; }
+.call-history-dot {
+  width: 9px;
+  height: 9px;
+  margin-top: 4px;
+  border-radius: 50%;
+  background: var(--bg4);
+  border: 1px solid var(--brd-m);
+  position: relative;
+  z-index: 1;
+}
+.call-history-item.is-current .call-history-dot {
+  background: var(--gold);
+  border-color: var(--gold);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--gold) 22%, transparent);
+}
+.call-history-body:hover .call-history-text { color: var(--t1); }
+.call-history-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 3px;
+}
+.call-history-when {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--t1);
+  font-variant-numeric: tabular-nums;
+}
+.call-history-now {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--gold);
+}
+.call-history-meta { font-size: 11px; color: var(--t3); }
+.call-history-text {
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--t2);
+}
+.call-history-obj {
+  font-size: 11.5px;
+  color: var(--t3);
+  margin-top: 3px;
+}
+.call-history-steps {
+  margin: 5px 0 0 16px;
+  padding: 0;
+  font-size: 11.5px;
+  color: var(--t2);
+}
+.call-history-steps li { margin: 2px 0; }
+
 .call-detail-label {
   font-size: 12px;
   color: var(--t3);
