@@ -106,26 +106,33 @@ async function lookupCaller(db, phone) {
     }
   } catch (_) { /* optional */ }
 
-  // 2. Полевой рабочий (employees.role_tag = field_worker, без user или с user)
+  // 2. Сотрудник из справочника employees — любой role_tag (РП, мастер,
+  // слесарь…). Раньше искали ТОЛЬКО role_tag='field_worker', поэтому
+  // телефоны РП и офисных сотрудников в карточке не находились вовсе.
   try {
     const fw = await db.query(
-      `SELECT e.id AS employee_id, e.full_name, e.user_id, u.name AS user_name
+      `SELECT e.id AS employee_id, COALESCE(NULLIF(e.fio,''), e.full_name) AS emp_name,
+              e.user_id, e.role_tag, u.name AS user_name
        FROM employees e
        LEFT JOIN users u ON u.id = e.user_id
-       WHERE e.role_tag = 'field_worker'
+       WHERE COALESCE(e.is_active, true) = true
          AND (
            RIGHT(REGEXP_REPLACE(COALESCE(e.phone, ''), '[^0-9]', '', 'g'), 10) = $1
            OR RIGHT(REGEXP_REPLACE(COALESCE(e.phone2, ''), '[^0-9]', '', 'g'), 10) = $1
          )
+       ORDER BY (e.user_id IS NOT NULL) DESC, e.id ASC
        LIMIT 1`,
       [tail]
     );
     if (fw.rows.length) {
+      const row = fw.rows[0];
+      const isField = row.role_tag === 'field_worker';
       return {
-        type: 'field_worker',
-        user_id: fw.rows[0].user_id || undefined,
-        name: fw.rows[0].full_name || fw.rows[0].user_name || 'Полевой сотрудник',
-        company: null,
+        type: isField ? 'field_worker' : 'colleague',
+        user_id: row.user_id || undefined,
+        name: row.emp_name || row.user_name || 'Сотрудник',
+        company: isField ? null : 'Асгард Сервис',
+        role_tag: row.role_tag || null,
         responsible_name: null,
         last_tender_title: null,
         region: null,

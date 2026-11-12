@@ -2979,6 +2979,54 @@ AsgardRouter.add("/assembly", () => {
       _sseSource = new EventSource('/api/sse/stream?token=' + encodeURIComponent(token));
       window._asgardSSE = _sseSource;
 
+      /**
+       * ДОБОР ПРОПУЩЕННЫХ ЗВОНКОВ (12.11.2026).
+       * Сервер рестартует при каждом деплое (29 раз за день) — SSE рвётся,
+       * и `call:incoming`, отправленный в момент разрыва, теряется навсегда:
+       * EventSource не отдаёт историю. Оператор не видит ни баннера, ни строки.
+       * При каждом (пере)подключении спрашиваем /api/telephony/active и
+       * досоздаём баннер по ещё звонящим PBX-звонкам.
+       */
+      _sseSource.addEventListener('open', () => {
+        setTimeout(() => { recoverMissedRings(); }, 900);
+      });
+
+      function recoverMissedRings() {
+        const P = window.AsgardPhone;
+        // Не мешаем живому звонку: если уже звонит/говорим — ничего не трогаем.
+        if (P && P.getState && P.getState() !== 'offline' && P.getState() !== 'on_line_mobile'
+            && P.getState() !== 'on_line_browser') {
+          return;
+        }
+        if (P && P.isInCallOrRinging && P.isInCallOrRinging()) return;
+        const token = localStorage.getItem('asgard_token');
+        if (!token) return;
+        fetch('/api/telephony/active', { headers: { Authorization: 'Bearer ' + token } })
+          .then((r) => (r.ok ? r.json() : null))
+          .then((d) => {
+            if (!d || !Array.isArray(d.pbx)) return;
+            const now = Date.now();
+            for (const c of d.pbx) {
+              const started = c.started_at ? new Date(c.started_at).getTime() : 0;
+              // Только свежие (2.5 мин) и только свои: чужой звонок не показываем.
+              if (!started || now - started > 150000) continue;
+              const mapped = mapCallSsePayload({
+                call_id: c.call_id || ('pbx_' + c.pbx_uid),
+                pbx_uid: c.pbx_uid,
+                from_number: c.client_number || c.from_number,
+                history_id: c.id,
+                via: 'mobile',
+                is_duty: true,
+                recovered: true,
+              });
+              if (!mapped.pbx_uid) continue;
+              notifyIncomingCall(mapped);
+              break; // один активный — достаточно
+            }
+          })
+          .catch(() => {});
+      }
+
       // Глобальные уведомления о тендерах
       _sseSource.addEventListener('tender:new_assignment', (e) => {
         try {

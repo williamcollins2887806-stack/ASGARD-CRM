@@ -2045,7 +2045,32 @@ module.exports = async function telephonyRoutes(fastify, opts) {
        LEFT JOIN users u ON u.id = ac.assigned_user_id
        ORDER BY ac.started_at DESC`
     );
-    return reply.send({ calls: res.rows });
+    // PBX-звонки (Asterisk/AGI) в active_calls НЕ попадают — они живут только
+    // в call_history. Без этого рестарт сервиса или реконнект SSE «терял»
+    // входящий: notifyRing уходил в пустоту, и оператор не видел ни баннера,
+    // ни строки (инцидент 12.11.2026).
+    //
+    // ВАЖНО: status='ringing' живёт недолго — summary от Mango быстро ставит
+    // 'answered'. Поэтому признак «ещё актуален» — СВЕЖЕСТЬ и отсутствие
+    // ended_at: если звонок начался меньше 2 минут назад и не завершён,
+    // значит он ещё идёт (звонит или только что ответили).
+    let pbxRing = [];
+    try {
+      const r = await db.query(
+        `SELECT ch.id, ch.pbx_uid, ch.call_id, ch.direction, ch.call_type,
+                ch.status, ch.from_number, ch.client_number, ch.started_at,
+                COALESCE(ch.user_id, ch.answered_by) AS assigned_user_id
+           FROM call_history ch
+          WHERE ch.source = 'pbx'
+            AND ch.parent_call_id IS NULL
+            AND ch.ended_at IS NULL
+            AND COALESCE(ch.started_at, ch.created_at) > NOW() - INTERVAL '2 minutes'
+          ORDER BY ch.started_at DESC
+          LIMIT 20`
+      );
+      pbxRing = r.rows || [];
+    } catch (_) { /* схема без ended_at */ }
+    return reply.send({ calls: res.rows, pbx: pbxRing });
   });
 
   // --- Route/Transfer через API (D-252c: только админы телефонии; предпочтителен PBX API) ---
