@@ -291,13 +291,15 @@
         ${v.period_start || v.period_end
           ? ` · ${esc([v.period_start, v.period_end].filter(Boolean).join(' — '))}` : ''}
         ${nPos ? ` · ${nPos} поз.` : ''}
-        ${v.work_days ? ` · ~${esc(String(v.work_days))} дн.` : ''}
+        ${v.work_days ? ` · ~${esc(String(v.work_days))} трудосут.` : ''}
         ${v.people_peak ? ` · до ${esc(String(v.people_peak))} чел.` : ''}
       </div>`;
     }).join('');
     return `<div class="mst-block" style="margin-top:12px">
       <h3 class="mst-block__title">График заездов · ${esc(modeLabel)}</h3>
-      <p class="mst-hint" style="margin:0 0 8px">Периоды ВОР — подписи внутри заезда. Деньги и смета здесь не считаются.</p>
+      <p class="mst-hint" style="margin:0 0 8px">Периоды ВОР — подписи внутри заезда.
+        «Трудосутки» — работа бригад на объекте, не календарь кампании: при нескольких
+        заездах они делятся между выездами. Деньги и смета здесь не считаются.</p>
       ${rows || '<span class="mst-hint">Заезды ещё не собраны</span>'}
       ${(vp && vp.unconfirmed) ? '<div class="mst-warn" style="margin-top:8px">Режим заездов не подтверждён — уточните перед просчётом.</div>' : ''}
     </div>`;

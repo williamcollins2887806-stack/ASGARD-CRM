@@ -1000,12 +1000,25 @@ window.AsgardRpCalcModal = (function () {
         ? '<div class="rp-calc-dv-summary">' +
             (plan.crews ? '<span>Бригад: <b>' + esc(String(plan.crews)) + '</b> × ' +
               esc(String(plan.crew_size || 5)) + ' чел</span>' : '') +
-            (plan.work_days != null ? '<span>Срок: <b>' + esc(String(plan.work_days)) + ' сут</b></span>' : '') +
+            (plan.work_days != null
+              ? '<span title="Трудосутки всего объёма при текущем числе бригад — знаменатель ФОТ и проживания">'
+                + 'Трудосуток: <b>' + esc(String(plan.work_days)) + '</b>'
+                + (plan.trip_count > 1 && plan.work_days_per_trip != null
+                  ? ' <i class="rp-plan-fit">≈' + esc(String(plan.work_days_per_trip))
+                    + ' на заезд, выездов ' + esc(String(plan.trip_count)) + '</i>'
+                  : '')
+                + '</span>'
+              : '') +
             (plan.window_days
               ? '<span>Срок заказчика: <b>' + esc(String(plan.window_days)) + ' сут</b>' +
                 (plan.fits_window === true
                   ? ' <i class="rp-plan-fit is-ok">укладываемся</i>'
                   : ' <i class="rp-plan-fit is-bad">не укладываемся</i>') + '</span>'
+              : '') +
+            (Array.isArray(plan.visit_window_check) && plan.visit_window_check.some((w) => w && w.checked && w.ok === false)
+              ? '<span class="rp-plan-fit is-bad">Не влезает в окно: ' +
+                esc(plan.visit_window_check.filter((w) => w && w.checked && w.ok === false)
+                  .map((w) => w.label || 'заезд').join(', ')) + '</span>'
               : '') +
             (plan.people_total ? '<span>Людей на объекте: <b>' + esc(String(plan.people_total)) + '</b></span>' : '') +
             (plan.total_crew_days ? '<span>Трудозатрат: <b>' + esc(String(plan.total_crew_days)) + '</b> бр.-сут</span>' : '') +

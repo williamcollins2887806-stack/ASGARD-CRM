@@ -1778,8 +1778,8 @@ function normalizeCalcPlan(ai, opts) {
     visits,
     positions,
     totalWorkDays: finalWorkDays,
-    mobDays: Number(raw.mob_days) || 0,
-    roadDays: Number(raw.road_days) || 0
+    mobDays: Number(opts && opts.mob_days) || Number(raw.mob_days) || 0,
+    roadDays: Number(opts && opts.road_days) || Number(raw.road_days) || 0
   });
 
   return {

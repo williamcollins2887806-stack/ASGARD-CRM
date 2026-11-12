@@ -254,10 +254,38 @@ window.AsgardRpReviewModal = (function () {
   function renderVisitSchedule(rj) {
     const vp = rj && rj.visit_plan;
     if (!vp) return '';
-    const visits = Array.isArray(vp.visits) ? vp.visits : [];
+    let visits = Array.isArray(vp.visits) ? vp.visits : [];
     const mode = String(vp.mode || 'unknown');
-    const totals = vp.totals || {};
+    const totals = Object.assign({}, vp.totals || {});
     const conflicts = Array.isArray(vp.conflicts) ? vp.conflicts : [];
+
+    // ── Разрез трудосуток из плана (P2, 12.11.2026) ────────────────────────
+    // visit_plan считает «дни» как сумму суток позиций — это не то же число,
+    // что трудосутки в смете (work_days при текущем C). Если план посчитан,
+    // показываем ЕГО разрез: Σ по заездам == work_days, а не вторая цифра.
+    const plan = rj && rj.calc_plan && typeof rj.calc_plan === 'object' ? rj.calc_plan : null;
+    const split = plan && Array.isArray(plan.visits_work) ? plan.visits_work : [];
+    if (plan && Number(plan.work_days) > 0) {
+      totals.work_days = plan.work_days;
+      totals.work_days_per_trip = plan.work_days_per_trip || null;
+    }
+    if (split.length) {
+      const byId = new Map();
+      split.forEach((s, i) => {
+        if (s && s.id) byId.set(String(s.id), s);
+        byId.set('#' + i, s);
+      });
+      visits = visits.map((v, i) => {
+        const s = byId.get(String(v.id)) || split[i] || null;
+        if (!s) return v;
+        return Object.assign({}, v, {
+          work_days: s.work_days != null ? s.work_days : v.work_days,
+          person_hours: s.person_hours != null ? s.person_hours : v.person_hours
+        });
+      });
+    }
+    const windowCheck = plan && Array.isArray(plan.visit_window_check)
+      ? plan.visit_window_check : (Array.isArray(vp.visit_window_check) ? vp.visit_window_check : []);
 
     const MODE_LABEL = {
       continuous: 'Один непрерывный заезд',
@@ -303,6 +331,12 @@ window.AsgardRpReviewModal = (function () {
       return `${MONTH_SHORT[m - 1]} ${String(y).slice(2)}`;
     };
 
+    // «дн. работ» читалось как «кампания идёт столько дней подряд». На деле
+    // это ТРУДОСУТКИ всего объёма при текущем числе бригад — знаменатель ФОТ
+    // и проживания в смете. При 3 заездах 407 трудосуток = ~136 на выезд,
+    // а не 407 календарных дней (P2, 12.11.2026).
+    const perTrip = Number(vp.work_days_per_trip) || (visits.length && totals.work_days
+      ? Math.round((Number(totals.work_days) / visits.length) * 10) / 10 : null);
     let h = '<section class="rp-visit-plan" data-rp-visit-root="1">' +
       '<div class="rp-visit-plan__head">' +
         '<div><strong>График заездов</strong>' +
@@ -310,7 +344,12 @@ window.AsgardRpReviewModal = (function () {
         '<div class="rp-visit-plan__metrics">' +
           '<span class="rp-visit-plan__mode rp-visit-plan__mode--' + esc(mode) + '">' +
             esc(modeText) + '</span>' +
-          (totals.work_days ? '<span><b>' + esc(String(totals.work_days)) + '</b> дн. работ</span>' : '') +
+          (totals.work_days
+            ? '<span title="Трудосутки всего объёма при текущем числе бригад — знаменатель ФОТ и проживания">'
+              + '<b>' + esc(String(totals.work_days)) + '</b> трудосуток</span>'
+            : '') +
+          (perTrip && visits.length > 1
+            ? '<span><b>~' + esc(String(perTrip)) + '</b> на заезд</span>' : '') +
           (totals.person_hours
             ? '<span><b>' + esc(String(totals.person_hours)) + '</b> чел·ч</span>' : '') +
         '</div>' +
@@ -327,6 +366,14 @@ window.AsgardRpReviewModal = (function () {
           '<button type="button" class="rp-visit-plan__btn" data-rp-visit-mode="visits">Несколько выездов</button>' +
         '</div>' +
       '</div>';
+    }
+
+    // Заезд не влезает в СВОЁ окно — конкретный вопрос РП, а не общая тревога.
+    const winFails = windowCheck.filter((w) => w && w.checked && w.ok === false);
+    if (winFails.length) {
+      h += '<ul class="rp-visit-plan__conflicts">' +
+        winFails.map((w) => '<li>' + esc((w.label ? w.label + ': ' : '') + (w.message || '')) + '</li>').join('') +
+      '</ul>';
     }
 
     // Конфликты источников (ТЗ vs ВОР, модель vs документы).
@@ -380,7 +427,8 @@ window.AsgardRpReviewModal = (function () {
 
       h += '<div class="rp-visit-row__stats">' +
         '<span><b>' + esc(String(v.positions != null ? v.positions : '—')) + '</b> позиц.</span>' +
-        '<span><b>' + esc(v.work_days != null ? String(v.work_days) : '—') + '</b> дн.</span>' +
+        '<span title="Трудосутки этого заезда при том же числе бригад, что в плане">' +
+          '<b>' + esc(v.work_days != null ? String(v.work_days) : '—') + '</b> трудосут.</span>' +
         '<span><b>' + esc(v.people_peak != null ? String(v.people_peak) : '—') + '</b> чел.</span>' +
         '<span><b>' + esc(v.person_hours != null ? String(v.person_hours) : '—') + '</b> чел·ч</span>' +
         (v.incomplete_positions
