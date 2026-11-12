@@ -883,8 +883,6 @@ window.AsgardRpCalcModal = (function () {
         'или запустить «Анализ Мимир», он разберёт ТЗ и выпишет объёмы.</p></div></div>';
     }
 
-    const foulingMap = { light: 'лёгкие', medium: 'средние', heavy: 'тяжёлые' };
-    const foulingCls = { light: 'is-light', medium: 'is-medium', heavy: 'is-heavy' };
     const srcMap = { norm: 'справочник', expert: 'оценка', analog: 'аналог', history: 'история' };
 
     // Откуда взят ОБЪЁМ работ (требование РП 07.11.2026): РП должен видеть
@@ -911,7 +909,15 @@ window.AsgardRpCalcModal = (function () {
     const hasPlan = calc.length > 0;
 
     // Позиции — карточками, как в анализе: на 9 колонок в модалке не читается.
-    let cards = '';
+    // ── Позиции — строками таблицы, как в анализе ──────────────────────────
+    // Раньше здесь были КАРТОЧКИ по 5 строк каждая: на 628 позициях вкладка
+    // растягивалась на десятки тысяч пикселей, и её невозможно было ни
+    // прочитать, ни править (жалоба 12.11.2026). Ведомость читают построчно —
+    // значит и править её надо построчно. Тот же вид, что в карточке анализа,
+    // чтобы РП не переучивался между модалками.
+    const UNITS = ['м3', 'м2', 'п.м', 'т', 'шт', 'кг', 'компл', 'Гкал', 'апп.', 'м'];
+
+    let rows = '';
     positions.forEach((p, idx) => {
       const c = byPos[p.id] || {};
       const src = c.source ? srcMap[c.source] || c.source : null;
@@ -922,69 +928,74 @@ window.AsgardRpCalcModal = (function () {
         ? p.category_name + ' · ' + p.method_name
         : (p.method_name || p.category_name
           || [p.category_code, p.method_code].filter(Boolean).join('.'))) || null;
+      const extraUnit = p.unit && UNITS.indexOf(p.unit) === -1
+        ? '<option value="' + esc(p.unit) + '" selected>' + esc(p.unit) + '</option>' : '';
+      const rowCls = p.needs_classification ? ' is-warn' : (p.confidence === 'low' ? ' is-low' : '');
 
-      cards += '<article class="rp-calc-dv-card' + (p.needs_classification ? ' is-warn' : '') +
-        '" data-dv-pos="' + esc(p.id) + '" data-dv-idx="' + idx + '">' +
-        '<div class="rp-calc-dv-card__top">' +
-          '<span class="rp-calc-dv-card__num">' + (idx + 1) + '</span>' +
-          '<div class="rp-calc-dv-card__title">' +
-            // Название правится на месте: если Мимир понял работу неверно,
-            // РП исправляет сам, не выходя из просчёта.
-            '<input class="rp-calc-dv-inp rp-calc-dv-inp--name" data-dv-field="name" ' +
-              'value="' + esc(p.name || '') + '" placeholder="Что делаем" ' +
-              'aria-label="Наименование работ"/>' +
-            '<div class="rp-calc-dv-card__meta">' +
-              // Объём и единица — главное, что ошибается чаще всего.
-              '<input class="rp-calc-dv-inp rp-calc-dv-inp--vol" type="number" step="any" min="0" ' +
-                'data-dv-field="volume" ' +
-                'value="' + (p.volume != null ? esc(String(p.volume)) : '') + '" ' +
-                'placeholder="0" aria-label="Объём"/>' +
-              '<select class="rp-calc-dv-inp rp-calc-dv-inp--unit" data-dv-field="unit" ' +
-                'aria-label="Единица измерения">' +
-                ['м3', 'м2', 'п.м', 'т', 'шт', 'кг', 'компл', 'Гкал', 'апп.', 'м'].map((u) =>
-                  '<option value="' + u + '"' + (u === p.unit ? ' selected' : '') + '>' + u + '</option>').join('') +
-                (p.unit && ['м3', 'м2', 'п.м', 'т', 'шт', 'кг', 'компл', 'Гкал', 'апп.', 'м'].indexOf(p.unit) === -1
-                  ? '<option value="' + esc(p.unit) + '" selected>' + esc(p.unit) + '</option>' : '') +
-              '</select>' +
-              (objects.length ? '<span>' +
-                objects.slice(0, 4).map((t) => '<em>' + esc(t) + '</em>').join('') + '</span>' : '') +
-            '</div>' +
-          '</div>' +
-          (src ? '<span class="rp-dv-source' + srcCls + '" title="' + esc(c.explain || '') + '">' +
-            esc(src) + '</span>' : '') +
-          '<button type="button" class="rp-calc-dv-del" data-act="dv-del" data-dv-idx="' + idx + '" ' +
-            'title="Удалить позицию">✕</button>' +
+      rows += '<div class="rp-dv-row' + rowCls + '" data-dv-pos="' + esc(p.id) + '" data-dv-idx="' + idx + '">' +
+        '<div class="rp-dv-row__num">' + (idx + 1) + '</div>' +
+        '<div class="rp-dv-row__name">' +
+          '<input class="rp-dv-field rp-dv-field--name" data-dv-field="name" ' +
+            'value="' + esc(p.name || '') + '" placeholder="Что делаем" ' +
+            'aria-label="Наименование работ"/>' +
+          '<input class="rp-dv-field rp-dv-field--method" data-dv-field="method_name" ' +
+            'value="' + esc(p.method_name || p.category_name || '') + '" ' +
+            'placeholder="метод: чистка, гидродинамика…" aria-label="Метод"/>' +
+          (objects.length
+            ? '<span class="rp-dv-row__tags">' +
+              objects.slice(0, 4).map((t) => '<em>' + esc(t) + '</em>').join('') + '</span>' : '') +
         '</div>' +
-        // Откуда взят объём — отдельной строкой с доказательством.
-        (p.volume_source && p.volume_source !== 'none'
-          ? '<div class="rp-dv-volsrc' + (volSrcCls[p.volume_source] || '') + '">' +
-              '<span class="rp-dv-volsrc__badge">' +
-                esc(volSrcMap[p.volume_source] || p.volume_source) + '</span>' +
-              (p.volume_proof
-                ? '<span class="rp-dv-volsrc__proof">' + esc(p.volume_proof) + '</span>'
-                : '') +
+        '<div class="rp-dv-row__qty">' +
+          '<input class="rp-dv-field rp-dv-field--vol" type="number" step="any" min="0" ' +
+            'data-dv-field="volume" ' +
+            'value="' + (p.volume != null ? esc(String(p.volume)) : '') + '" ' +
+            'placeholder="0" aria-label="Объём"/>' +
+          '<select class="rp-dv-field rp-dv-field--unit" data-dv-field="unit" aria-label="Единица">' +
+            '<option value="">—</option>' + extraUnit +
+            UNITS.map((u) => '<option value="' + esc(u) + '"' + (u === p.unit ? ' selected' : '') + '>' +
+              esc(u) + '</option>').join('') +
+          '</select>' +
+        '</div>' +
+        '<div class="rp-dv-row__foul">' +
+          '<select class="rp-dv-field rp-dv-field--foul" data-dv-field="fouling" aria-label="Отложения">' +
+            '<option value="">—</option>' +
+            '<option value="light"' + (p.fouling === 'light' ? ' selected' : '') + '>лёгкие</option>' +
+            '<option value="medium"' + (p.fouling === 'medium' ? ' selected' : '') + '>средние</option>' +
+            '<option value="heavy"' + (p.fouling === 'heavy' ? ' selected' : '') + '>тяжёлые</option>' +
+          '</select>' +
+        '</div>' +
+        '<div class="rp-dv-row__period">' +
+          '<input class="rp-dv-field rp-dv-field--period" data-dv-field="period" ' +
+            'value="' + esc(p.period || '') + '" placeholder="когда" ' +
+            'title="Период работ. Одна работа в разные месяцы — разные строки и заезды" ' +
+            'aria-label="Период работ"/>' +
+        '</div>' +
+        // План и источник — узкими колонками: их читают, но не правят.
+        '<div class="rp-dv-row__plan">' +
+          (hasPlan && (c.people != null || c.days != null)
+            ? '<span title="Люди по плану">' + (c.people != null ? esc(String(c.people)) : '—') + ' чел</span>' +
+              '<span title="Сутки по плану">' + (c.days != null ? esc(String(c.days)) : '—') + ' сут</span>'
+            : (src ? '<span class="rp-dv-source' + srcCls + '" title="' + esc(c.explain || '') + '">' +
+              esc(src) + '</span>' : '')) +
+        '</div>' +
+        '<button type="button" class="rp-dv-row__del" data-act="dv-del" data-dv-idx="' + idx + '" ' +
+          'title="Удалить строку" aria-label="Удалить строку">' +
+          '<svg width="13" height="13" viewBox="0 0 14 14" aria-hidden="true">' +
+            '<path d="M2 2l10 10M12 2L2 12" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>' +
+          '</svg></button>' +
+        // Откуда объём и чем работаем — второй строкой, только когда есть что
+        // сказать. В карточках это занимало 4 строки на позицию.
+        ((p.volume_source && p.volume_source !== 'none') || p.tech_equip || c.source_ref
+          ? '<div class="rp-dv-row__src">' +
+            (p.volume_source && p.volume_source !== 'none'
+              ? '<span class="rp-dv-volsrc-badge' + (volSrcCls[p.volume_source] || '') + '">' +
+                esc(volSrcMap[p.volume_source] || p.volume_source) + '</span> ' : '') +
+            (p.volume_proof ? '<span>' + esc(p.volume_proof) + '</span> ' : '') +
+            (p.tech_equip ? '<span class="rp-dv-row__tech">' + esc(p.tech_equip) + '</span>' : '') +
+            (c.source_ref ? '<span class="rp-dv-row__ref">' + esc(c.source_ref) + '</span>' : '') +
             '</div>'
-          : (p.confidence === 'low'
-            ? '<div class="rp-dv-volsrc is-low"><span class="rp-dv-volsrc__badge">объём не подтверждён</span>' +
-              '<span class="rp-dv-volsrc__proof">источник не указан — проверьте перед просчётом</span></div>'
-            : '')) +
-        '<dl class="rp-calc-dv-card__grid">' +
-          '<div><dt>Метод</dt><dd>' + esc(method || '—') + '</dd></div>' +
-          '<div><dt>Отложения</dt><dd><span class="rp-dv-foul ' +
-            (foulingCls[p.fouling] || '') + '">' + esc(foulingMap[p.fouling] || 'не указаны') + '</span></dd></div>' +
-          // Люди и сутки показываем только когда план посчитан: прочерки
-          // в каждой карточке выглядят как недоделка (жалоба 06.11).
-          (hasPlan
-            ? '<div><dt>Люди</dt><dd>' + (c.people != null ? esc(String(c.people)) : '—') + '</dd></div>' +
-              '<div><dt>Сутки</dt><dd>' + (c.days != null ? esc(String(c.days)) : '—') + '</dd></div>'
-            : '') +
-        '</dl>' +
-        (p.tech_equip
-          ? '<div class="rp-calc-dv-card__tech"><span>Чем работаем</span><p>' + esc(p.tech_equip) + '</p></div>'
           : '') +
-        (c.source_ref ? '<div class="rp-calc-dv-card__ref">Обоснование: ' +
-          esc(c.source_ref) + '</div>' : '') +
-        '</article>';
+        '</div>';
     });
 
     return '<div class="rp-calc-panel' + active + '" data-panel="dv">' +
@@ -1032,7 +1043,20 @@ window.AsgardRpCalcModal = (function () {
             : '')
         : '<p class="rp-calc-dv-empty">План ещё не считан. Нажмите «Рассчитать людей и сроки» — ' +
           'Мимир подберёт бригаду и срок по каждой позиции и покажет, откуда взял цифру.</p>') +
-      '<div class="rp-calc-dv-cards">' + cards + '</div>' +
+      // Таблица: шапка колонок + строки. Ширины заданы сеткой в CSS, чтобы
+      // шапка и строки совпадали без <table> с его «системными» контролами.
+      '<div class="rp-dv-table">' +
+        '<div class="rp-dv-head" aria-hidden="true">' +
+          '<span></span>' +
+          '<span>Наименование · метод</span>' +
+          '<span>Объём</span>' +
+          '<span>Отложения</span>' +
+          '<span>Период</span>' +
+          '<span>' + (hasPlan ? 'Люди · сутки' : 'Источник') + '</span>' +
+          '<span></span>' +
+        '</div>' +
+        '<div class="rp-dv-list">' + rows + '</div>' +
+      '</div>' +
       '<p class="rp-calc-hint">Источник <b>«справочник»</b> — из наших норм (код показан рядом, ' +
         'это официальная цифра). <b>«оценка»</b> — Мимир прикинул сам, цифра уйдёт в калибровку ' +
         'после сохранения.</p>' +
@@ -1106,9 +1130,16 @@ window.AsgardRpCalcModal = (function () {
       '<div class="rp-calc-hint">До 100 000 символов. Добавляется к ТЗ из документов, приоритет — выше документов.</div></div>' +
       '<div class="rp-calc-card__head" style="border:0;padding-top:0">Свои файлы ТЗ</div>' +
       '<div class="rp-calc-extra-files" data-rp-extra-files>' + extraFilesHtml(state) + '</div>' +
-      '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">' +
-      '<button type="button" class="btn mini" data-rp-act="extra-add">📎 Добавить файл(ы)</button>' +
-      '<span class="muted" style="font-size:11px;align-self:center">PDF / DOCX / XLSX / JPG / PNG</span>' +
+      '<div class="rp-calc-extra-add">' +
+      // ВАЖНО: input скрыт атрибутом hidden. Раньше он лежал рядом БЕЗ hidden,
+      // и браузер рисовал вторую кнопку «Выбрать файлы · Файл не выбран» —
+      // рядом с нашей «Добавить файл(ы)». Две кнопки об одном действии.
+      '<button type="button" class="rp-calc-btn-add" data-rp-act="extra-add">' +
+        '<svg width="13" height="13" viewBox="0 0 16 16" aria-hidden="true" fill="none">' +
+          '<path d="M8 3v10M3 8h10" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>' +
+        '</svg>' +
+        'Добавить файлы</button>' +
+      '<span class="rp-calc-extra-add__hint">PDF, DOCX, XLSX, JPG, PNG</span>' +
       '<input type="file" data-rp-extra-input multiple hidden ' +
       'accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png,.webp,.txt,.csv,.zip,.rar,.7z"/>' +
       '</div></div>' +
@@ -3214,10 +3245,18 @@ window.AsgardRpCalcModal = (function () {
     toast('Просчёт', 'Откройте карточку просчёта, чтобы перенести норму', 'err');
   };
 
+  // Тест-хук: рендер вкладки «Объёмы» без открытия модалки. Нужен, чтобы
+  // проверять таблицу, правку на месте и отсутствие карточек в CI
+  // (tests/ui-calc-dv-table.test.js). Поведения не меняет.
+  function __renderDvForTest(state) {
+    return renderDv(state || {});
+  }
+
   return {
     open: open,
     openDemo: openDemo,
     buildEmailPreviewHtml: buildEmailPreviewHtml,
-    renderSmetaTableHtml: renderSmetaTableHtml
+    renderSmetaTableHtml: renderSmetaTableHtml,
+    __renderDvForTest: __renderDvForTest
   };
 })();

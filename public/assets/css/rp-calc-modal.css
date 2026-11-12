@@ -962,7 +962,7 @@ html[data-theme='light'] .rp-calc-approve-toggle input[type='checkbox']:checked 
 .rp-tech-take:hover { background: color-mix(in srgb, var(--primary) 18%, transparent); }
 .rp-tech-edit { display: grid; gap: 12px; }
 
-/* ── Вкладка «Объёмы» в просчёте: позиции карточками ─────────────────────── */
+/* ── Вкладка «Объёмы» в просчёте: таблица строк, как в анализе ──────────── */
 .rp-calc-dv-summary {
   display: flex; flex-wrap: wrap; gap: 8px 18px; margin-bottom: 12px;
   font-size: 12px; color: var(--t2);
@@ -971,71 +971,102 @@ html[data-theme='light'] .rp-calc-approve-toggle input[type='checkbox']:checked 
 .rp-calc-dv-empty { margin: 0 0 12px; font-size: 12px; color: var(--t2); line-height: 1.5; }
 .rp-calc-dv-plan { margin-left: auto; }
 
-.rp-calc-dv-cards { display: grid; gap: 10px; }
-.rp-calc-dv-card {
-  padding: 13px 15px;
-  border-radius: 11px;
-  background: var(--bg3);
+/* Общая сетка колонок: одна и та же для шапки и строк, поэтому шапка не
+   «плывёт» относительно данных. */
+.rp-dv-table {
+  --rp-dv-cols: 30px minmax(0, 1fr) 150px 104px 132px 104px 28px;
   border: 1px solid var(--brd-m);
+  border-radius: 11px;
+  overflow: hidden;
+  background: var(--bg3);
 }
-.rp-calc-dv-card__top { display: flex; align-items: flex-start; gap: 10px; }
-.rp-calc-dv-card__num {
-  flex: 0 0 auto; display: grid; place-items: center;
-  width: 22px; height: 22px; margin-top: 1px;
-  border-radius: 7px; font-size: 10.5px; font-weight: 700;
-  font-variant-numeric: tabular-nums;
-  color: var(--gold); background: var(--gold-bg);
-  border: 1px solid color-mix(in srgb, var(--gold) 26%, transparent);
-}
-.rp-calc-dv-card__title { flex: 1; min-width: 0; }
-.rp-calc-dv-card__title h4 {
-  margin: 0; font-size: 12.5px; font-weight: 650; line-height: 1.4; color: var(--t1);
-}
-.rp-calc-dv-card__meta {
-  display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 5px;
-}
-.rp-calc-dv-card__meta b {
-  font-size: 12.5px; font-weight: 700; color: var(--t1);
-  font-variant-numeric: tabular-nums; white-space: nowrap;
-}
-.rp-calc-dv-card__meta b i { font-style: normal; font-weight: 500; font-size: 11px; color: var(--t3); }
-.rp-calc-dv-card__meta span { display: inline-flex; gap: 4px; flex-wrap: wrap; }
-.rp-calc-dv-card__meta em {
-  font-style: normal; padding: 1px 7px; border-radius: 5px;
-  font-size: 10px; font-weight: 600; color: var(--t2);
-  background: var(--bg4); border: 1px solid var(--brd-m); white-space: nowrap;
-}
-.rp-calc-dv-card__grid {
-  display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-  gap: 8px 14px; margin: 10px 0 0; padding-top: 9px;
-  border-top: 1px dashed var(--brd-m);
-}
-.rp-calc-dv-card__grid > div { min-width: 0; }
-.rp-calc-dv-card__grid dt {
+.rp-dv-head {
+  display: grid;
+  grid-template-columns: var(--rp-dv-cols);
+  gap: 10px;
+  padding: 7px 10px;
+  background: var(--bg2);
+  border-bottom: 1px solid var(--brd-m);
   font-size: 9px; font-weight: 700; letter-spacing: 0.09em;
   text-transform: uppercase; color: var(--t3);
 }
-.rp-calc-dv-card__grid dd {
-  margin: 3px 0 0; font-size: 11.5px; line-height: 1.4; color: var(--t1);
-  font-variant-numeric: tabular-nums;
+.rp-dv-list { display: block; }
+
+/* Строка: та же сетка, что шапка. Карточки убраны — на 628 позициях они
+   растягивали вкладку на десятки тысяч пикселей и не читались. */
+.rp-dv-row {
+  display: grid;
+  grid-template-columns: var(--rp-dv-cols);
+  align-items: start;
+  gap: 10px;
+  padding: 7px 10px;
+  transition: background .15s ease;
 }
-.rp-dv-foul { font-weight: 600; }
-.rp-dv-foul.is-light { color: var(--ok-t); }
-.rp-dv-foul.is-medium { color: var(--warn-t); }
-.rp-dv-foul.is-heavy { color: var(--red); font-weight: 700; }
-.rp-calc-dv-card__tech {
-  margin-top: 9px; padding: 8px 10px; border-radius: 8px;
-  background: var(--bg2);
-  border-left: 2px solid color-mix(in srgb, var(--gold) 44%, transparent);
+.rp-dv-row + .rp-dv-row { border-top: 1px solid var(--brd-m); }
+.rp-dv-row:hover { background: color-mix(in srgb, var(--bg4) 60%, transparent); }
+.rp-dv-row.is-warn { box-shadow: inset 3px 0 0 var(--warn); }
+.rp-dv-row.is-low { box-shadow: inset 3px 0 0 color-mix(in srgb, var(--warn) 50%, transparent); }
+.rp-dv-row__num {
+  font-size: 11px; font-weight: 700; color: var(--t3);
+  font-variant-numeric: tabular-nums; text-align: right; padding-top: 6px;
 }
-.rp-calc-dv-card__tech span {
-  display: block; font-size: 9px; font-weight: 700;
-  letter-spacing: 0.09em; text-transform: uppercase; color: var(--gold);
+.rp-dv-row__name { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.rp-dv-row__qty { display: flex; align-items: center; gap: 6px; }
+.rp-dv-row__tags { display: inline-flex; gap: 4px; flex-wrap: wrap; }
+.rp-dv-row__tags em {
+  font-style: normal; padding: 0 6px; border-radius: 4px;
+  font-size: 9.5px; font-weight: 600; color: var(--t3);
+  background: var(--bg2); border: 1px solid var(--brd-m); white-space: nowrap;
 }
-.rp-calc-dv-card__tech p {
-  margin: 3px 0 0; font-size: 11.5px; line-height: 1.45; color: var(--t2);
+.rp-dv-row__plan { display: flex; flex-direction: column; gap: 2px; font-size: 10.5px; color: var(--t3); padding-top: 6px; font-variant-numeric: tabular-nums; }
+
+/* Поле в покое выглядит текстом: рамка появляется по фокусу. */
+.rp-dv-field {
+  width: 100%; padding: 4px 6px;
+  border: 1px solid transparent; border-radius: 6px;
+  background: transparent; color: var(--t1);
+  font: inherit; font-size: 12.5px; line-height: 1.35;
+  transition: border-color .15s ease, background .15s ease;
 }
-.rp-calc-dv-card__ref { margin-top: 7px; font-size: 10.5px; color: var(--t3); }
+.rp-dv-field:hover { border-color: var(--brd-m); }
+.rp-dv-field:focus {
+  outline: none; border-color: var(--primary);
+  background: var(--bg1); box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 15%, transparent);
+}
+.rp-dv-field::placeholder { color: var(--t3); opacity: .7; }
+.rp-dv-field--name { font-weight: 600; font-size: 12.5px; }
+.rp-dv-field--method { font-size: 11px; color: var(--t2); }
+.rp-dv-field--vol { width: 86px; text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; }
+.rp-dv-field--unit { width: 58px; font-size: 11.5px; color: var(--t2); cursor: pointer; }
+.rp-dv-field--foul { font-size: 11px; color: var(--t2); cursor: pointer; }
+.rp-dv-field--period { font-size: 11px; color: var(--t2); }
+.rp-dv-field--unit option, .rp-dv-field--foul option { color: #111; background: #fff; }
+
+/* Удаление — тихое, проявляется по наведению. */
+.rp-dv-row__del {
+  border: 0; background: transparent; cursor: pointer; color: var(--t3);
+  padding: 5px; border-radius: 6px; margin-top: 2px;
+  display: inline-flex; align-items: center; justify-content: center;
+  opacity: 0; transition: opacity .15s ease, background .15s ease, color .15s ease;
+}
+.rp-dv-row:hover .rp-dv-row__del, .rp-dv-row__del:focus-visible { opacity: 1; }
+.rp-dv-row__del:hover { background: var(--err-bg, #3a1a1a); color: var(--err-t, #f87171); }
+
+/* Вторая строка позиции: источник, доказательство, оснастка. */
+.rp-dv-row__src {
+  grid-column: 2 / -1;
+  display: flex; flex-wrap: wrap; gap: 4px 10px; align-items: baseline;
+  margin-top: 2px; font-size: 10px; color: var(--t3); line-height: 1.4;
+}
+.rp-dv-volsrc-badge {
+  padding: 0 6px; border-radius: 4px; font-weight: 600;
+  background: var(--bg2); border: 1px solid var(--brd-m); white-space: nowrap;
+}
+.rp-dv-volsrc-badge.is-vor { color: var(--ok-t, #4ade80); border-color: color-mix(in srgb, var(--ok-t, #4ade80) 35%, transparent); }
+.rp-dv-volsrc-badge.is-tz { color: var(--warn-t, #fbbf24); border-color: color-mix(in srgb, var(--warn-t, #fbbf24) 35%, transparent); }
+.rp-dv-volsrc-badge.is-geometry { color: var(--gold); border-color: color-mix(in srgb, var(--gold) 35%, transparent); }
+.rp-dv-row__tech { color: var(--t2); }
+.rp-dv-row__ref { color: var(--t3); }
 
 /* ── Откуда взят объём работ (требование РП 07.11.2026) ─────────────────────
    РП должен видеть доказательство объёма: из ВОР заказчика, из ТЗ,
@@ -1086,8 +1117,17 @@ html[data-theme='light'] .rp-calc-approve-toggle input[type='checkbox']:checked 
 .rp-dv-source.is-expert {
   background: var(--warn-bg); border-color: color-mix(in srgb, var(--warn) 42%, transparent); color: var(--warn-t);
 }
+/* На узком экране таблица становится карточками: 7 колонок не влезают.
+   Порядок сохраняем: имя сверху, объём с единицей, потом отложения и период. */
 @media (max-width: 900px) {
-  .rp-calc-dv-card__grid { grid-template-columns: repeat(2, 1fr); }
+  .rp-dv-table { --rp-dv-cols: 24px minmax(0, 1fr) 96px 26px; }
+  .rp-dv-head { display: none; }
+  .rp-dv-row { grid-template-columns: 24px minmax(0, 1fr) 96px 26px; row-gap: 6px; }
+  .rp-dv-row__qty { grid-column: 2 / 4; grid-row: 2; justify-content: flex-start; }
+  .rp-dv-row__foul { grid-column: 2; grid-row: 3; }
+  .rp-dv-row__period { grid-column: 3 / 5; grid-row: 3; }
+  .rp-dv-row__plan { grid-column: 2 / 4; grid-row: 4; flex-direction: row; gap: 10px; padding-top: 0; }
+  .rp-dv-row__del { grid-column: 4; grid-row: 1; }
 }
 .rp-calc-dv-empty { margin: 0 0 10px; font-size: 12px; color: var(--t2); line-height: 1.5; }
 .rp-calc-dv-plan { margin-left: auto; }
@@ -1114,6 +1154,29 @@ html[data-theme='light'] .rp-calc-approve-toggle input[type='checkbox']:checked 
    Блок в карточке просчёта: РП прикладывает документы, которых нет в тендере.
    Строка показывает статус распознавания, чтобы было видно, дошёл ли текст. */
 .rp-calc-extra-files { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
+
+/* Кнопка добавления файлов. Нативный input[type=file] спрятан атрибутом
+   hidden; раньше его перебивал display:block из app.css и рядом появлялась
+   вторая кнопка «Выбрать файлы · Файл не выбран» (жалоба 12.11.2026). */
+.rp-calc-extra-add {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 8px;
+}
+.rp-calc-btn-add {
+  display: inline-flex; align-items: center; gap: 7px;
+  padding: 7px 13px; border-radius: 9px;
+  border: 1px solid color-mix(in srgb, var(--gold) 40%, transparent);
+  background: color-mix(in srgb, var(--gold) 12%, transparent);
+  color: var(--gold);
+  font: inherit; font-size: 12px; font-weight: 650; cursor: pointer;
+  transition: background .15s ease, border-color .15s ease, transform .15s ease;
+}
+.rp-calc-btn-add:hover {
+  background: color-mix(in srgb, var(--gold) 20%, transparent);
+  border-color: color-mix(in srgb, var(--gold) 58%, transparent);
+}
+.rp-calc-btn-add:active { transform: translateY(1px); }
+.rp-calc-btn-add__hint { font-size: 11px; color: var(--t3); }
+.rp-calc-extra-add__hint { font-size: 11px; color: var(--t3); }
 .rp-calc-extra-file {
   display: flex; align-items: center; gap: 10px;
   padding: 7px 10px; border-radius: 8px;
