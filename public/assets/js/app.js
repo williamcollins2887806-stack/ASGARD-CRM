@@ -3030,9 +3030,11 @@ AsgardRouter.add("/assembly", () => {
       function notifyIncomingCall(data) {
         const mapped = mapCallSsePayload(data);
         const P = window.AsgardPhone;
-        // Звонок ушёл на мобильный: телефон уже звонит, браузер молчит.
-        // Показываем тихий баннер — по клику карточка с переводом.
-        if (mapped.via === 'mobile') {
+        // Звонок ушёл на мобильный (или это дежурный через фолбэк): телефон
+        // уже звонит, браузер молчит. Показываем тихий баннер — по клику
+        // карточка с переводом. Признак не зависит от receive_mode оператора:
+        // сервер сам ставит via='mobile' или is_duty, когда звонит на телефон.
+        if (mapped.via === 'mobile' || mapped.is_duty) {
           if (P && P.applyMobileIncoming) {
             P.applyMobileIncoming({
               number: mapped.caller,
@@ -3047,6 +3049,16 @@ AsgardRouter.add("/assembly", () => {
             document.dispatchEvent(new CustomEvent('asgard-phone', {
               detail: { type: 'incoming_mobile', number: mapped.caller, callMeta: mapped },
             }));
+          }
+          // Страховка: если ядро ещё не инициализировано (страница только что
+          // открылась, скрипты не доехали) — показываем баннер напрямую.
+          // Раньше в этом случае не происходило ничего, и звонок «не видели».
+          if (!P || !P.applyMobileIncoming) {
+            try {
+              if (window.AsgardTelephonyPopup && AsgardTelephonyPopup.showIncoming) {
+                AsgardTelephonyPopup.showIncoming(mapped);
+              }
+            } catch (_) {}
           }
           return;
         }

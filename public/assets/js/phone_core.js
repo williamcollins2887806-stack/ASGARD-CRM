@@ -827,8 +827,9 @@
         via: 'mobile',
         is_duty: !!meta.is_duty,
       });
+      // Баннер не зависит от режима приёма: звонок уже на телефоне.
+      // Режим 'browser' у дежурного — норма, его не переключаем.
       setState(STATES.ringing, { number: callMeta.number, callMeta: callMeta });
-      // Отдельное событие: UI показывает баннер, а не рингующий попап.
       emit('incoming_mobile', { number: callMeta.number, callMeta: callMeta });
       return callMeta;
     },
