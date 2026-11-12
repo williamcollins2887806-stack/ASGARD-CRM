@@ -83,9 +83,12 @@ const FIELD_HINTS = {
     ]
   },
   // Число чисток: сколько раз за год повторяется работа.
+  // «Метод_очистки» тоже содержит «чистк», но это ТЕКСТ, а не кратность:
+  // такая колонка отсекается проверкой числового тела (NUMERIC_FIELDS),
+  // а веса ниже дополнительно отдают предпочтение «Кол_во_чисток».
   clean_count: {
-    plus: [['чист', 9], ['циклов', 7], ['повторност', 7], ['раз', 3]],
-    minus: [['труб', -6], ['арматур', -6], ['осадок', -5], ['стоимост', -6]]
+    plus: [['кол_во', 8], ['кол-во', 8], ['количество', 6], ['чист', 9], ['циклов', 7], ['повторност', 7], ['раз', 3]],
+    minus: [['труб', -6], ['арматур', -6], ['осадок', -5], ['стоимост', -6], ['метод', -9]]
   },
   // Число трубок в аппарате — геометрия, не количество работ.
   tubes: {
@@ -253,6 +256,36 @@ function detectHeaderRow(rows) {
 }
 
 /**
+ * Числовые поля: в этих колонках должны лежать числа, а не текст.
+ *
+ * Нужно, потому что заголовок бывает обманчив. В дефектной ведомости заказчика
+ * (тендер 2138) есть две колонки со словом «чистк»:
+ *   • «Метод_очистки» — текст: «Гидродинамическая чистка внутренней поверхности»;
+ *   • «Кол_во_чисток» — число: 1, 2, 3, 4.
+ * `FIELD_HINTS.clean_count` содержит `['чист', 9]`, поэтому по заголовку
+ * выигрывала текстовая колонка. Она заполнена в 100 % строк, и проверка
+ * «заполненности» её не отбраковывала. Итог: `clean_count` = null у ВСЕХ 658
+ * позиций, а кратность умножает объём работ, то есть срок и деньги.
+ */
+const NUMERIC_FIELDS = new Set(['volume', 'clean_count', 'tubes', 'dn_mm', 'length_m', 'mh']);
+
+/** Похоже ли содержимое колонки на числа (а не на текст). */
+function numericShare(body, col) {
+  let nonEmpty = 0;
+  let numeric = 0;
+  for (const row of body) {
+    const v = cellText((row || [])[col]);
+    if (!v) continue;
+    nonEmpty += 1;
+    // «1», «12,5», «1 234,5», «340 м3» — число; «Гидродинамическая чистка» — нет.
+    const compact = String(v).replace(/\s/g, '').replace(',', '.');
+    if (/^-?\d+(?:\.\d+)?$/.test(compact)) { numeric += 1; continue; }
+    if (/^-?\d+(?:\.\d+)?[^\d.]{0,8}$/.test(compact)) numeric += 1;
+  }
+  return nonEmpty > 0 ? numeric / nonEmpty : 0;
+}
+
+/**
  * Уточняет колонки по ФАКТИЧЕСКОЙ заполненности.
  *
  * Заголовок может наврать: «Позиция» стоит левее «Наименования» и пуста во
@@ -285,12 +318,18 @@ function refineColumns(rows, headerIdx, map) {
   for (const field of FIELDS) {
     const current = out[field];
     const currentFill = current != null ? fill(current) : 0;
-    // Достаточно заполнено — не трогаем.
-    if (currentFill >= Math.max(2, Math.floor(body.length * 0.25))) continue;
+    const isNumeric = NUMERIC_FIELDS.has(field);
+    // Для числового поля колонка с текстом (например «Метод_очистки»)
+    // не годится, даже если заполнена полностью: норма ждёт число.
+    const currentShare = isNumeric && current != null ? numericShare(body, current) : 1;
+    // Достаточно заполнено и по типу подходит — не трогаем.
+    if (currentFill >= Math.max(2, Math.floor(body.length * 0.25))
+      && (!isNumeric || currentShare >= 0.6)) continue;
     if (field === 'volume' && yearlyCol >= 0) continue;
 
     let bestCol = current;
     let bestFill = currentFill;
+    let bestShare = currentShare;
     headerRow.forEach((cell, col) => {
       const h = cellText(cell);
       if (!h) return;
@@ -299,9 +338,19 @@ function refineColumns(rows, headerIdx, map) {
       // Колонка уже отдана другому полю и там заполнена — не отбираем.
       const owner = Object.keys(out).find((k) => k !== field && out[k] === col);
       if (owner && fill(col) >= bestFill) return;
-      if (f > bestFill) { bestFill = f; bestCol = col; }
+      // Числовое поле берёт только колонку, где реально лежат числа.
+      const share = isNumeric ? numericShare(body, col) : 1;
+      if (isNumeric && share < 0.6) return;
+      // Заполненность сравниваем, только если тип не хуже текущего.
+      if (f > bestFill || (isNumeric && share > bestShare && f >= bestFill)) {
+        bestFill = f;
+        bestShare = share;
+        bestCol = col;
+      }
     });
-    if (bestCol !== current && bestFill > currentFill) out[field] = bestCol;
+    if (bestCol !== current && (bestFill > currentFill || bestShare > currentShare)) {
+      out[field] = bestCol;
+    }
   }
   return out;
 }
@@ -466,6 +515,18 @@ function parseWorkbook(XLSX, wb) {
         clean_count: (() => {
           const cc = Number(String(get('clean_count')).replace(',', '.'));
           return Number.isFinite(cc) && cc > 0 ? Math.round(cc) : null;
+        })(),
+        // Кратность не выдумываем: если заказчик не дал колонку чисток,
+        // считаем ОДИН проход и прямо говорим об этом. Без пометки РП видит
+        // объём как за один проход и не знает, что кратность неизвестна.
+        clean_count_source: get('clean_count')
+          ? (Number(String(get('clean_count')).replace(',', '.')) > 0 ? 'document' : 'unknown')
+          : 'missing',
+        clean_count_note: (() => {
+          const raw = get('clean_count');
+          const cc = Number(String(raw).replace(',', '.'));
+          if (Number.isFinite(cc) && cc > 0) return null;
+          return 'число чисток в документе не задано — считаем 1 проход';
         })(),
         dn_mm: (() => { const v = Number(get('dn_mm').replace(',', '.')); return v > 0 ? v : null; })(),
         length_m: (() => { const v = Number(get('length_m').replace(',', '.')); return v > 0 ? v : null; })(),
