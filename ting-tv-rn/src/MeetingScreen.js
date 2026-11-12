@@ -11,7 +11,6 @@ import {
 import { Track } from 'livekit-client';
 import Hall from './Hall';
 import Dock from './Dock';
-import Backdrop from './Backdrop';
 import { COLORS, FONT } from './theme';
 import { API_BASE, ENDPOINTS, apiPost, hallModeFor } from './api';
 
@@ -197,31 +196,26 @@ export default function MeetingScreen({ code, pin, onLeave }) {
 
   if (busy) {
     return (
-      <Backdrop>
         <View style={styles.center}>
           <Image source={MARK} style={styles.bigMark} resizeMode="contain" />
           <ActivityIndicator color={COLORS.gold} size="large" />
           <Text style={styles.waitTitle}>Готовим зал</Text>
         </View>
-      </Backdrop>
     );
   }
 
   if (error || !token || !serverUrl) {
     return (
-      <Backdrop>
         <View style={styles.center}>
           <Image source={MARK} style={styles.bigMark} resizeMode="contain" />
           <Text style={styles.errorTitle}>Не удалось войти</Text>
           <Text style={styles.errorBody}>{error || 'нет токена'}</Text>
           <Text style={styles.errorHint} onPress={onLeave}>Вернуться к вводу кода</Text>
         </View>
-      </Backdrop>
     );
   }
 
   return (
-    <Backdrop>
       <LiveKitRoom
         serverUrl={serverUrl}
         token={token}
@@ -239,7 +233,6 @@ export default function MeetingScreen({ code, pin, onLeave }) {
           startedAt={startedAt}
         />
       </LiveKitRoom>
-    </Backdrop>
   );
 }
 

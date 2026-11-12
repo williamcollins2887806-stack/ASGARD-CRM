@@ -38,10 +38,11 @@ function Field({ label, hint, inputRef, value, onChangeText, onSubmitEditing, pl
   );
 }
 
-export default function JoinScreen({ onJoin, busy, error }) {
+export default function JoinScreen({ onJoin, busy, error, onSpeed }) {
   const [code, setCode] = useState('');
   const [pin, setPin] = useState('');
   const [ctaFocused, setCtaFocused] = useState(false);
+  const [speedFocused, setSpeedFocused] = useState(false);
   const pinRef = useRef(null);
 
   const submit = useCallback(() => {
@@ -124,6 +125,19 @@ export default function JoinScreen({ onJoin, busy, error }) {
         <Text style={styles.foot}>
           Пульт: стрелки — выбор поля, OK — подтвердить.
         </Text>
+
+        <Pressable
+          accessible
+          accessibilityRole="button"
+          accessibilityLabel="Замерить скорость до сервера"
+          focusable
+          onPress={() => onSpeed && onSpeed()}
+          onFocus={() => setSpeedFocused(true)}
+          onBlur={() => setSpeedFocused(false)}
+          style={[styles.speedBtn, speedFocused && styles.speedBtnFocused]}
+        >
+          <Text style={styles.speedText}>Замерить скорость до сервера</Text>
+        </Pressable>
       </View>
     </View>
   );
@@ -210,4 +224,16 @@ const styles = StyleSheet.create({
   ctaBusy: { opacity: 0.75 },
   ctaText: { color: COLORS.ink, fontSize: FONT.h2, fontWeight: '800', letterSpacing: 0.3 },
   foot: { color: COLORS.t3, fontSize: FONT.tiny, marginTop: 18, ...textShadow },
+  speedBtn: {
+    marginTop: 14,
+    height: 58,
+    borderRadius: RADIUS.md,
+    borderWidth: 2,
+    borderColor: COLORS.lineStrong,
+    backgroundColor: COLORS.panelHi,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  speedBtnFocused: { borderColor: COLORS.gold, backgroundColor: COLORS.goldGlow },
+  speedText: { color: COLORS.t1, fontSize: FONT.small, fontWeight: '700' },
 });
