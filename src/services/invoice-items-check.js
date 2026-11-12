@@ -36,8 +36,18 @@ function parseLines(raw) {
 
 function lineSum(l) {
   if (!l || typeof l !== 'object') return 0;
-  const v = Number(l.sum != null ? l.sum : (l.amount != null ? l.amount : l.total));
-  return Number.isFinite(v) ? v : 0;
+  // Явная сумма строки: sum / amount / total / total_price (как в procurement UI).
+  for (const k of ['sum', 'amount', 'total', 'total_price']) {
+    if (l[k] != null && l[k] !== '') {
+      const v = Number(l[k]);
+      if (Number.isFinite(v)) return v;
+    }
+  }
+  // OCR часто кладёт только quantity × unit_price без sum (#373–375).
+  const qty = Number(l.quantity != null ? l.quantity : l.qty);
+  const price = Number(l.unit_price != null ? l.unit_price : l.price);
+  if (Number.isFinite(qty) && Number.isFinite(price) && qty !== 0) return qty * price;
+  return 0;
 }
 
 function sumLines(raw) {

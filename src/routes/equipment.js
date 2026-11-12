@@ -27,6 +27,28 @@ async function equipmentRoutes(fastify, options) {
     return ['ADMIN', 'CHIEF_ENGINEER', 'DIRECTOR', 'DIRECTOR_GEN', 'DIRECTOR_COMM', 'DIRECTOR_DEV'].includes(role);
   }
 
+  // Держатель: users (офис) ИЛИ employees (дружина). Имя — COALESCE по emp.fio/full_name → user.name
+  const HOLDER_NAME_SQL = `COALESCE(
+    NULLIF(TRIM(he.fio), ''),
+    NULLIF(TRIM(he.full_name), ''),
+    NULLIF(TRIM(h.name), ''),
+    NULLIF(TRIM(h.login), '')
+  )`;
+  const HOLDER_JOINS = `
+      LEFT JOIN users h ON e.current_holder_id = h.id
+      LEFT JOIN employees he ON e.current_holder_employee_id = he.id`;
+  const MOV_FROM_HOLDER_NAME = `COALESCE(NULLIF(TRIM(fhe.fio),''), NULLIF(TRIM(fhe.full_name),''), fh.name)`;
+  const MOV_TO_HOLDER_NAME = `COALESCE(NULLIF(TRIM(the_emp.fio),''), NULLIF(TRIM(the_emp.full_name),''), th.name)`;
+  const MOV_HOLDER_JOINS = `
+      LEFT JOIN users fh ON m.from_holder_id = fh.id
+      LEFT JOIN employees fhe ON m.from_holder_employee_id = fhe.id
+      LEFT JOIN users th ON m.to_holder_id = th.id
+      LEFT JOIN employees the_emp ON m.to_holder_employee_id = the_emp.id`;
+
+  function empDisplayName(row) {
+    return (row && (String(row.fio || '').trim() || String(row.full_name || '').trim())) || '';
+  }
+
   // ============================================
   // 1. GET /categories
   // ============================================
@@ -154,13 +176,13 @@ async function equipmentRoutes(fastify, options) {
       SELECT e.*,
         c.name as category_name, c.icon as category_icon,
         w.name as warehouse_name,
-        h.name as holder_name,
+        ${HOLDER_NAME_SQL} as holder_name,
         o.name as object_name,
         l.label as location_label, l.zone as location_zone
       FROM equipment e
       LEFT JOIN equipment_categories c ON e.category_id = c.id
       LEFT JOIN warehouses w ON e.warehouse_id = w.id
-      LEFT JOIN users h ON e.current_holder_id = h.id
+      ${HOLDER_JOINS}
       LEFT JOIN objects o ON e.current_object_id = o.id
       LEFT JOIN warehouse_locations l ON e.location_id = l.id
       WHERE e.qr_uuid = $1
@@ -244,6 +266,8 @@ async function equipmentRoutes(fastify, options) {
   }, async (request) => {
     const { holderId } = request.params;
 
+    // Держатель: user (current_holder_id) ИЛИ сотрудник дружины, привязанный к этому user
+    // (FaceKit выдача шла на employees — иначе «Моё оборудование» у РП пустое).
     const result = await db.query(`
       SELECT e.*,
         c.name as category_name, c.icon as category_icon,
@@ -253,7 +277,12 @@ async function equipmentRoutes(fastify, options) {
       LEFT JOIN equipment_categories c ON e.category_id = c.id
       LEFT JOIN warehouses w ON e.warehouse_id = w.id
       LEFT JOIN objects o ON e.current_object_id = o.id
-      WHERE e.current_holder_id = $1 AND e.status != 'written_off' AND e.deleted_at IS NULL
+      LEFT JOIN employees emp ON emp.id = e.current_holder_employee_id
+      WHERE e.status != 'written_off' AND e.deleted_at IS NULL
+        AND (
+          e.current_holder_id = $1
+          OR emp.user_id = $1
+        )
       ORDER BY e.name
     `, [holderId]);
 
@@ -273,11 +302,11 @@ async function equipmentRoutes(fastify, options) {
       SELECT e.id, e.name, e.inventory_number, e.serial_number,
         e.next_maintenance, e.next_calibration, e.status, e.condition,
         c.name as category_name, c.icon as category_icon,
-        h.name as holder_name,
+        ${HOLDER_NAME_SQL} as holder_name,
         w.name as warehouse_name
       FROM equipment e
       LEFT JOIN equipment_categories c ON e.category_id = c.id
-      LEFT JOIN users h ON e.current_holder_id = h.id
+      ${HOLDER_JOINS}
       LEFT JOIN warehouses w ON e.warehouse_id = w.id
       WHERE e.status != 'written_off' AND e.deleted_at IS NULL
         AND (
@@ -386,12 +415,68 @@ async function equipmentRoutes(fastify, options) {
   });
 
   // ============================================
+  // 11b. GET /holders — получатели выдачи: офис (users) + дружина (employees)
+  // ============================================
+  fastify.get('/holders', {
+    preHandler: [fastify.authenticate]
+  }, async (request) => {
+    const q = String(request.query.q || request.query.search || '').trim().toLowerCase();
+    const limit = Math.min(parseInt(request.query.limit, 10) || 500, 2000);
+    const OFFICE_ROLES = ['PM', 'HEAD_PM', 'DIRECTOR_DEV', 'DIRECTOR_GEN', 'CHIEF_ENGINEER', 'HR', 'WAREHOUSE', 'TO', 'HEAD_TO', 'MANAGER', 'ADMIN', 'DIRECTOR', 'DIRECTOR_COMM'];
+
+    const usersSql = `
+      SELECT u.id, u.name, u.login, u.role
+      FROM users u
+      WHERE COALESCE(u.is_active, true) = true
+        AND u.role = ANY($1::text[])
+        ${q ? `AND (LOWER(COALESCE(u.name,'')) LIKE $3 OR LOWER(COALESCE(u.login,'')) LIKE $3)` : ''}
+      ORDER BY u.name NULLS LAST
+      LIMIT $2`;
+    const usersParams = q ? [OFFICE_ROLES, limit, `%${q}%`] : [OFFICE_ROLES, limit];
+    const users = await db.query(usersSql, usersParams);
+
+    const empSql = `
+      SELECT e.id, e.fio, e.full_name, e.role_tag, e.phone
+      FROM employees e
+      WHERE COALESCE(e.is_active, true) = true
+        AND COALESCE(e.is_se_payee, false) = false
+        AND TRIM(COALESCE(e.fio, e.full_name, '')) <> ''
+        AND LOWER(COALESCE(e.fio, e.full_name, '')) NOT LIKE '%тест%'
+        AND LOWER(COALESCE(e.fio, e.full_name, '')) NOT LIKE '%test%'
+        AND LOWER(COALESCE(e.fio, e.full_name, '')) NOT LIKE '%hr создал%'
+        ${q ? `AND LOWER(COALESCE(e.fio, e.full_name, '')) LIKE $2` : ''}
+      ORDER BY COALESCE(e.fio, e.full_name) ASC
+      LIMIT $1`;
+    const empParams = q ? [limit, `%${q}%`] : [limit];
+    const emps = await db.query(empSql, empParams);
+
+    const items = [
+      ...users.rows.map((u) => ({
+        key: `u:${u.id}`,
+        type: 'user',
+        id: u.id,
+        name: u.name || u.login,
+        meta: u.role || 'офис',
+      })),
+      ...emps.rows.map((e) => ({
+        key: `e:${e.id}`,
+        type: 'employee',
+        id: e.id,
+        name: empDisplayName(e),
+        meta: e.role_tag || 'дружина',
+      })),
+    ].sort((a, b) => String(a.name).localeCompare(String(b.name), 'ru'));
+
+    return { success: true, holders: items };
+  });
+
+  // ============================================
   // 12. GET / — Список оборудования с фильтрами + статистика
   // ============================================
   fastify.get('/', {
     preHandler: [fastify.authenticate]
   }, async (request) => {
-    const { status, category_id, warehouse_id, holder_id, search, page, limit, sort, order, offset: offsetParam } = request.query;
+    const { status, category_id, warehouse_id, holder_id, holder_employee_id, search, page, limit, sort, order, offset: offsetParam } = request.query;
     const pageNum = parseInt(page) || 1;
     const pageSize = Math.min(parseInt(limit) || 50, 200);
     const offset = offsetParam != null ? parseInt(offsetParam) || 0 : (pageNum - 1) * pageSize;
@@ -400,12 +485,12 @@ async function equipmentRoutes(fastify, options) {
       SELECT e.*,
         c.name as category_name, c.icon as category_icon,
         w.name as warehouse_name,
-        h.name as holder_name,
+        ${HOLDER_NAME_SQL} as holder_name,
         o.name as object_name
       FROM equipment e
       LEFT JOIN equipment_categories c ON e.category_id = c.id
       LEFT JOIN warehouses w ON e.warehouse_id = w.id
-      LEFT JOIN users h ON e.current_holder_id = h.id
+      ${HOLDER_JOINS}
       LEFT JOIN objects o ON e.current_object_id = o.id
       WHERE e.deleted_at IS NULL
     `;
@@ -437,6 +522,12 @@ async function equipmentRoutes(fastify, options) {
       countParams.push(holder_id);
       sql += ` AND e.current_holder_id = $${params.length}`;
       countSql += ` AND e.current_holder_id = $${countParams.length}`;
+    }
+    if (holder_employee_id) {
+      params.push(holder_employee_id);
+      countParams.push(holder_employee_id);
+      sql += ` AND e.current_holder_employee_id = $${params.length}`;
+      countSql += ` AND e.current_holder_employee_id = $${countParams.length}`;
     }
     if (search) {
       params.push(`%${search}%`);
@@ -561,13 +652,14 @@ async function equipmentRoutes(fastify, options) {
       SELECT e.*,
         c.name as category_name, c.icon as category_icon, c.is_consumable, c.requires_calibration,
         w.name as warehouse_name,
-        h.name as holder_name,
+        ${HOLDER_NAME_SQL} as holder_name,
+        COALESCE(e.current_holder_id, he.user_id) as holder_user_id,
         o.name as object_name,
         cb.name as created_by_name
       FROM equipment e
       LEFT JOIN equipment_categories c ON e.category_id = c.id
       LEFT JOIN warehouses w ON e.warehouse_id = w.id
-      LEFT JOIN users h ON e.current_holder_id = h.id
+      ${HOLDER_JOINS}
       LEFT JOIN objects o ON e.current_object_id = o.id
       LEFT JOIN users cb ON e.created_by = cb.id
       WHERE e.id = $1
@@ -581,14 +673,14 @@ async function equipmentRoutes(fastify, options) {
     const movements = await db.query(`
       SELECT m.*,
         fw.name as from_warehouse_name, tw.name as to_warehouse_name,
-        fh.name as from_holder_name, th.name as to_holder_name,
+        ${MOV_FROM_HOLDER_NAME} as from_holder_name,
+        ${MOV_TO_HOLDER_NAME} as to_holder_name,
         fo.name as from_object_name, tobj.name as to_object_name,
         u.name as created_by_name
       FROM equipment_movements m
       LEFT JOIN warehouses fw ON m.from_warehouse_id = fw.id
       LEFT JOIN warehouses tw ON m.to_warehouse_id = tw.id
-      LEFT JOIN users fh ON m.from_holder_id = fh.id
-      LEFT JOIN users th ON m.to_holder_id = th.id
+      ${MOV_HOLDER_JOINS}
       LEFT JOIN objects fo ON m.from_object_id = fo.id
       LEFT JOIN objects tobj ON m.to_object_id = tobj.id
       LEFT JOIN users u ON m.created_by = u.id
@@ -983,6 +1075,7 @@ async function equipmentRoutes(fastify, options) {
 
   // ============================================
   // 17. POST /issue — Выдача оборудования
+  // holder_id (users) ИЛИ holder_employee_id (employees/дружина)
   // ============================================
   fastify.post('/issue', {
     preHandler: [fastify.authenticate]
@@ -992,10 +1085,31 @@ async function equipmentRoutes(fastify, options) {
       return reply.code(403).send({ success: false, message: 'Нет прав на выдачу' });
     }
 
-    const { equipment_id, holder_id, object_id, work_id, issue_reason, issue_date, condition_after, notes } = request.body;
+    const {
+      equipment_id, holder_id, holder_employee_id, object_id, work_id,
+      issue_reason, issue_date, condition_after, notes
+    } = request.body;
 
-    if (!equipment_id || !holder_id) {
-      return reply.code(400).send({ success: false, message: 'Укажите equipment_id и holder_id' });
+    const holderUserId = holder_id ? Number(holder_id) : null;
+    const holderEmpId = holder_employee_id ? Number(holder_employee_id) : null;
+
+    if (!equipment_id || (!holderUserId && !holderEmpId)) {
+      return reply.code(400).send({ success: false, message: 'Укажите equipment_id и получателя (holder_id или holder_employee_id)' });
+    }
+    if (holderUserId && holderEmpId) {
+      return reply.code(400).send({ success: false, message: 'Укажите либо holder_id, либо holder_employee_id' });
+    }
+
+    if (holderUserId) {
+      const hu = await db.query(`SELECT id FROM users WHERE id=$1 AND COALESCE(is_active,true)=true`, [holderUserId]);
+      if (!hu.rows[0]) return reply.code(400).send({ success: false, message: 'Получатель (user) не найден' });
+    }
+    if (holderEmpId) {
+      const he = await db.query(
+        `SELECT id FROM employees WHERE id=$1 AND COALESCE(is_active,true)=true`,
+        [holderEmpId]
+      );
+      if (!he.rows[0]) return reply.code(400).send({ success: false, message: 'Получатель (сотрудник дружины) не найден' });
     }
 
     const equip = await db.query('SELECT * FROM equipment WHERE id = $1', [equipment_id]);
@@ -1015,19 +1129,23 @@ async function equipmentRoutes(fastify, options) {
       // Create movement
       await client.query(`
         INSERT INTO equipment_movements (
-          equipment_id, movement_type, from_warehouse_id, to_holder_id, to_object_id,
+          equipment_id, movement_type, from_warehouse_id, to_holder_id, to_holder_employee_id, to_object_id,
           work_id, condition_before, condition_after, notes, confirmed, confirmed_at, created_by
-        ) VALUES ($1, 'issue', $2, $3, $4, $5, $6, $7, $8, true, NOW(), $9)
-      `, [equipment_id, eq.warehouse_id, holder_id, object_id || null, work_id || null,
+        ) VALUES ($1, 'issue', $2, $3, $4, $5, $6, $7, $8, $9, true, NOW(), $10)
+      `, [equipment_id, eq.warehouse_id, holderUserId, holderEmpId, object_id || null, work_id || null,
           eq.condition, condition_after || eq.condition, notes || issue_reason || 'Выдача', user.id]);
 
-      // Update equipment
+      // Update equipment — ровно один держатель
       await client.query(`
         UPDATE equipment SET
-          status = 'issued', current_holder_id = $1, current_object_id = $2,
-          warehouse_id = NULL, work_id = $3, condition = COALESCE($4, condition), updated_at = NOW()
-        WHERE id = $5
-      `, [holder_id, object_id || null, work_id || null, condition_after, equipment_id]);
+          status = 'issued',
+          current_holder_id = $1,
+          current_holder_employee_id = $2,
+          current_object_id = $3,
+          warehouse_id = NULL, work_id = $4,
+          condition = COALESCE($5, condition), updated_at = NOW()
+        WHERE id = $6
+      `, [holderUserId, holderEmpId, object_id || null, work_id || null, condition_after, equipment_id]);
 
       await client.query('COMMIT');
       return { success: true, message: 'Оборудование выдано' };
@@ -1082,17 +1200,17 @@ async function equipmentRoutes(fastify, options) {
       // Create movement
       await client.query(`
         INSERT INTO equipment_movements (
-          equipment_id, movement_type, from_holder_id, from_object_id, to_warehouse_id,
+          equipment_id, movement_type, from_holder_id, from_holder_employee_id, from_object_id, to_warehouse_id,
           work_id, condition_before, condition_after, notes, confirmed, confirmed_at, created_by
-        ) VALUES ($1, 'return', $2, $3, $4, $5, $6, $7, $8, true, NOW(), $9)
-      `, [equipment_id, eq.current_holder_id, eq.current_object_id, whId,
+        ) VALUES ($1, 'return', $2, $3, $4, $5, $6, $7, $8, $9, true, NOW(), $10)
+      `, [equipment_id, eq.current_holder_id, eq.current_holder_employee_id || null, eq.current_object_id, whId,
           eq.work_id, eq.condition, condition || eq.condition, notes || return_reason || 'Возврат', user.id]);
 
       // Update equipment
       const newStatus = (condition === 'broken') ? 'broken' : 'on_warehouse';
       await client.query(`
         UPDATE equipment SET
-          status = $1, current_holder_id = NULL, current_object_id = NULL,
+          status = $1, current_holder_id = NULL, current_holder_employee_id = NULL, current_object_id = NULL,
           warehouse_id = $2, work_id = NULL, condition = COALESCE($3, condition), updated_at = NOW()
         WHERE id = $4
       `, [newStatus, whId, condition, equipment_id]);
@@ -1244,17 +1362,17 @@ async function equipmentRoutes(fastify, options) {
       // Create movement
       await client.query(`
         INSERT INTO equipment_movements (
-          equipment_id, movement_type, from_warehouse_id, from_holder_id,
+          equipment_id, movement_type, from_warehouse_id, from_holder_id, from_holder_employee_id,
           condition_before, notes, confirmed, confirmed_at, created_by
-        ) VALUES ($1, 'write_off', $2, $3, $4, $5, true, NOW(), $6)
-      `, [equipment_id, eq.warehouse_id, eq.current_holder_id, eq.condition, notes || reason || 'Списание', user.id]);
+        ) VALUES ($1, 'write_off', $2, $3, $4, $5, $6, true, NOW(), $7)
+      `, [equipment_id, eq.warehouse_id, eq.current_holder_id, eq.current_holder_employee_id || null, eq.condition, notes || reason || 'Списание', user.id]);
 
       // Update equipment
       await client.query(`
         UPDATE equipment SET
           status = 'written_off', written_off_date = CURRENT_DATE,
           written_off_reason = $1, written_off_by = $2,
-          current_holder_id = NULL, current_object_id = NULL, warehouse_id = NULL, work_id = NULL,
+          current_holder_id = NULL, current_holder_employee_id = NULL, current_object_id = NULL, warehouse_id = NULL, work_id = NULL,
           updated_at = NOW()
         WHERE id = $3
       `, [reason || notes || 'Списание', user.id, equipment_id]);
@@ -2138,16 +2256,16 @@ async function equipmentRoutes(fastify, options) {
         // Create return movement
         await client.query(`
           INSERT INTO equipment_movements (
-            equipment_id, movement_type, from_holder_id, from_object_id, to_warehouse_id,
+            equipment_id, movement_type, from_holder_id, from_holder_employee_id, from_object_id, to_warehouse_id,
             work_id, condition_before, condition_after, notes, confirmed, confirmed_at, created_by
-          ) VALUES ($1, 'return', $2, $3, $4, $5, $6, $7, $8, true, NOW(), $9)
-        `, [eqId, eq.current_holder_id, eq.current_object_id, warehouseId, workId, eq.condition, condition_on_return || eq.condition, notes || 'Возврат с работы', user.id]);
+          ) VALUES ($1, 'return', $2, $3, $4, $5, $6, $7, $8, $9, true, NOW(), $10)
+        `, [eqId, eq.current_holder_id, eq.current_holder_employee_id || null, eq.current_object_id, warehouseId, workId, eq.condition, condition_on_return || eq.condition, notes || 'Возврат с работы', user.id]);
 
         // Update equipment
         const newStatus = (condition_on_return === 'broken') ? 'broken' : 'on_warehouse';
         await client.query(`
           UPDATE equipment SET
-            status = $1, current_holder_id = NULL, current_object_id = NULL,
+            status = $1, current_holder_id = NULL, current_holder_employee_id = NULL, current_object_id = NULL,
             warehouse_id = $2, work_id = NULL, condition = COALESCE($3, condition), updated_at = NOW()
           WHERE id = $4
         `, [newStatus, warehouseId, condition_on_return, eqId]);
@@ -2226,11 +2344,11 @@ async function equipmentRoutes(fastify, options) {
 
     const result = await db.query(`
       SELECT e.*, c.name as category_name, w.name as warehouse_name,
-        h.name as holder_name, o.name as object_name
+        ${HOLDER_NAME_SQL} as holder_name, o.name as object_name
       FROM equipment e
       LEFT JOIN equipment_categories c ON e.category_id = c.id
       LEFT JOIN warehouses w ON e.warehouse_id = w.id
-      LEFT JOIN users h ON e.current_holder_id = h.id
+      ${HOLDER_JOINS}
       LEFT JOIN objects o ON e.current_object_id = o.id
       ${where} ORDER BY e.name
     `, params);
@@ -2416,7 +2534,7 @@ async function equipmentRoutes(fastify, options) {
     return { success: true, message: 'Фото добавлены' };
   });
 
-  // GET /my — my equipment (issued to current user)
+  // GET /my — my equipment (issued to current user or linked employee)
   fastify.get('/my', {
     preHandler: [fastify.authenticate]
   }, async (request, reply) => {
@@ -2426,11 +2544,46 @@ async function equipmentRoutes(fastify, options) {
        FROM equipment e
        LEFT JOIN equipment_categories c ON c.id = e.category_id
        LEFT JOIN warehouses w ON w.id = e.warehouse_id
-       WHERE e.current_holder_id = $1 AND e.status = 'issued' AND e.deleted_at IS NULL
+       LEFT JOIN employees emp ON emp.id = e.current_holder_employee_id
+       WHERE e.status = 'issued' AND e.deleted_at IS NULL
+         AND (e.current_holder_id = $1 OR emp.user_id = $1)
        ORDER BY e.updated_at DESC`,
       [user.id]
     );
     return { success: true, equipment: result.rows };
+  });
+
+  // GET /my/movements — история выдач/возвратов по user + linked employee
+  fastify.get('/my/movements', {
+    preHandler: [fastify.authenticate]
+  }, async (request) => {
+    const user = request.user;
+    const limit = Math.min(parseInt(request.query.limit, 10) || 100, 500);
+    const emp = await db.query(
+      `SELECT id FROM employees WHERE user_id = $1`,
+      [user.id]
+    );
+    const empIds = emp.rows.map((r) => r.id);
+    const result = await db.query(
+      `SELECT m.*, e.name as equipment_name, e.inventory_number,
+              COALESCE(NULLIF(TRIM(e1.fio),''), NULLIF(TRIM(e1.full_name),''), u1.name) as from_user,
+              COALESCE(NULLIF(TRIM(e2.fio),''), NULLIF(TRIM(e2.full_name),''), u2.name) as to_user
+       FROM equipment_movements m
+       LEFT JOIN equipment e ON e.id = m.equipment_id
+       LEFT JOIN users u1 ON u1.id = m.from_holder_id
+       LEFT JOIN employees e1 ON e1.id = m.from_holder_employee_id
+       LEFT JOIN users u2 ON u2.id = m.to_holder_id
+       LEFT JOIN employees e2 ON e2.id = m.to_holder_employee_id
+       WHERE m.to_holder_id = $1 OR m.from_holder_id = $1
+          OR (cardinality($2::int[]) > 0 AND (
+                m.to_holder_employee_id = ANY($2::int[])
+             OR m.from_holder_employee_id = ANY($2::int[])
+          ))
+       ORDER BY m.created_at DESC NULLS LAST, m.id DESC
+       LIMIT $3`,
+      [user.id, empIds, limit]
+    );
+    return { success: true, movements: result.rows };
   });
 
   // GET /movements — global movements history
@@ -2442,12 +2595,15 @@ async function equipmentRoutes(fastify, options) {
     const offset = parseInt(request.query.offset) || 0;
     const result = await db.query(
       `SELECT m.*, e.name as equipment_name,
-              u1.name as from_user, u2.name as to_user,
+              COALESCE(NULLIF(TRIM(e1.fio),''), NULLIF(TRIM(e1.full_name),''), u1.name) as from_user,
+              COALESCE(NULLIF(TRIM(e2.fio),''), NULLIF(TRIM(e2.full_name),''), u2.name) as to_user,
               w1.name as from_warehouse, w2.name as to_warehouse
        FROM equipment_movements m
        LEFT JOIN equipment e ON e.id = m.equipment_id
        LEFT JOIN users u1 ON u1.id = m.from_holder_id
+       LEFT JOIN employees e1 ON e1.id = m.from_holder_employee_id
        LEFT JOIN users u2 ON u2.id = m.to_holder_id
+       LEFT JOIN employees e2 ON e2.id = m.to_holder_employee_id
        LEFT JOIN warehouses w1 ON w1.id = m.from_warehouse_id
        LEFT JOIN warehouses w2 ON w2.id = m.to_warehouse_id
        ORDER BY m.created_at DESC

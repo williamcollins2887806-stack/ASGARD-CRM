@@ -3635,6 +3635,24 @@ body.dh-obs-resizing iframe { pointer-events: none; }
   border: 1px solid color-mix(in srgb, var(--amber) 40%, transparent);
   font-size: 12px;
 }
+.dh-obs-preflight {
+  margin: 0 0 10px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  font-size: 12px;
+  line-height: 1.4;
+  background: color-mix(in srgb, var(--amber) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--amber) 35%, transparent);
+  color: var(--t1, #e2e8f0);
+}
+.dh-obs-preflight__title { font-weight: 700; margin-bottom: 4px; }
+.dh-obs-preflight ul { margin: 4px 0 0 16px; padding: 0; }
+.dh-obs-preflight li { margin: 2px 0; }
+html[data-theme="light"] .dh-obs-preflight {
+  background: #fffbeb;
+  border-color: #fde68a;
+  color: #78350f;
+}
 .dh-obs-row { display: flex; gap: 8px; align-items: stretch; }
 .dh-obs-row select { flex: 1 1 auto; min-width: 0; }
 .dh-obs-add { white-space: nowrap; }

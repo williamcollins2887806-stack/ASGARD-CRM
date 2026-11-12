@@ -14,7 +14,7 @@ window.AsgardEquipment = (function () {
   let _availableCache = null;
 
   /* --- STATE --- */
-  let categories = [], objects = [], warehouses = [], pmList = [], worksList = [];
+  let categories = [], objects = [], warehouses = [], pmList = [], holdersList = [], worksList = [];
   let allEquipment = [], filteredEquipment = [], kits = [], stats = {};
   let currentUser = null, currentLayout = null;
   let viewMode   = localStorage.getItem('fk_view')  || 'cards';
@@ -110,6 +110,15 @@ window.AsgardEquipment = (function () {
   const _objArr = () => objects.map(o => ({ value: String(o.id), label: o.name }));
   const _whArr  = () => warehouses.map(w => ({ value: String(w.id), label: w.name }));
   const _pmArr  = () => pmList.map(p => ({ value: String(p.id), label: p.name }));
+  const _holderArr = () => (holdersList.length ? holdersList : pmList.map(p => ({ key: 'u:' + p.id, name: p.name, meta: p.role || 'офис' })))
+    .map(h => ({ value: String(h.key || ('u:' + h.id)), label: (h.name || '') + (h.meta ? (' · ' + h.meta) : '') }));
+  function _parseHolderKey(raw) {
+    const v = String(raw || '');
+    if (v.startsWith('e:')) return { holder_employee_id: parseInt(v.slice(2), 10) || null };
+    if (v.startsWith('u:')) return { holder_id: parseInt(v.slice(2), 10) || null };
+    const n = parseInt(v, 10);
+    return n ? { holder_id: n } : {};
+  }
   const _workArr = () => worksList.filter(w=>!_isClosedWork(w.work_status)).map(w => ({ value: String(w.id), label: (w.work_number||'')+' — '+(w.work_title||w.customer_name||'') }));
   const _condArr = () => Object.entries(COND).map(([k,v]) => ({ value: k, label: v.l }));
   const _unitArr = () => ['шт','м','кг','л','компл'].map(u => ({ value: u, label: u }));
@@ -623,13 +632,15 @@ window.AsgardEquipment = (function () {
         fetch('/api/equipment/objects', { headers: h }).then(function(r){return r.json();}),
         fetch('/api/equipment/warehouses', { headers: h }).then(function(r){return r.json();}),
         fetch('/api/users?is_active=true', { headers: h }).then(function(r){return r.json();}).then(function(d){var pmRoles=['PM','HEAD_PM','DIRECTOR_DEV','DIRECTOR_GEN','CHIEF_ENGINEER','HR'];d.users=(d.users||[]).filter(function(u){return pmRoles.indexOf(u.role)!==-1;});return d;}).catch(function(){return {};}),
-        fetch('/api/works?limit=200', { headers: h }).then(function(r){return r.json();}).catch(function(){return {};})
+        fetch('/api/works?limit=200', { headers: h }).then(function(r){return r.json();}).catch(function(){return {};}),
+        fetch('/api/equipment/holders?limit=2000', { headers: h }).then(function(r){return r.json();}).catch(function(){return {};})
       ]);
       categories = results[0].categories || [];
       objects = results[1].objects || [];
       warehouses = results[2].warehouses || [];
       pmList = results[3].users || [];
       worksList = results[4].works || [];
+      holdersList = results[5].holders || [];
     } catch(e) { console.error('Dict load err:', e); }
   }
 
@@ -900,7 +911,8 @@ window.AsgardEquipment = (function () {
         case 'object':
           key = eq.current_object_id||0; label = eq.object_name||'Без объекта'; icon = '📍'; break;
         case 'holder':
-          key = eq.current_holder_id||0; label = eq.holder_name||'На складе'; icon = '👤'; break;
+          key = eq.current_holder_employee_id ? ('e:' + eq.current_holder_employee_id) : (eq.current_holder_id || 0);
+          label = eq.holder_name||'На складе'; icon = '👤'; break;
         default:
           key = 'all'; label = 'Все'; icon = ''; break;
       }
@@ -1310,8 +1322,8 @@ window.AsgardEquipment = (function () {
 
   async function openIssueForm(equipmentId) {
     var html = '<form id="fkIssueForm" style="display:grid;gap:14px">' +
-      '<div><label style="display:block;margin-bottom:4px;font-size:13px;color:var(--text-muted)">Кому выдать (РП) *</label>' +
-        '<div id="fkIssue_pm_w"></div>' + _hiddenVal('holder_id','') + '</div>' +
+      '<div><label style="display:block;margin-bottom:4px;font-size:13px;color:var(--text-muted)">Кому выдать (офис / дружина) *</label>' +
+        '<div id="fkIssue_pm_w"></div>' + _hiddenVal('holder_key','') + '</div>' +
       '<div><label style="display:block;margin-bottom:4px;font-size:13px;color:var(--text-muted)">Работа *</label>' +
         '<div id="fkIssue_work_w"></div>' + _hiddenVal('work_id','') + '</div>' +
       '<div><label style="display:block;margin-bottom:4px;font-size:13px;color:var(--text-muted)">Объект</label>' +
@@ -1324,7 +1336,7 @@ window.AsgardEquipment = (function () {
         '<button type="submit" class="btn" id="fkIssueSubmit">📤 Выдать</button>' +
       '</div></form>';
     showModal({ title: '📤 Выдача оборудования', html, icon: '🔧', subtitle: 'Оборудование' });
-    _mountCR('#fkIssue_pm_w', 'fkIssue_pm', { id: 'fkIssue_pm', placeholder: 'Выберите...', options: _pmArr(), required: true, searchable: true, dropdownClass: 'z-modal', onChange: v => { $('input[name="holder_id"]').value = v; } });
+    _mountCR('#fkIssue_pm_w', 'fkIssue_pm', { id: 'fkIssue_pm', placeholder: 'Выберите...', options: _holderArr(), required: true, searchable: true, dropdownClass: 'z-modal', onChange: v => { $('input[name="holder_key"]').value = v; } });
     _mountCR('#fkIssue_work_w', 'fkIssue_work', { id: 'fkIssue_work', placeholder: 'Выберите...', options: _workArr(), required: true, searchable: true, dropdownClass: 'z-modal', onChange: v => { $('input[name="work_id"]').value = v; } });
     _mountCR('#fkIssue_obj_w', 'fkIssue_obj', { id: 'fkIssue_obj', placeholder: 'Выберите...', options: _objArr(), searchable: true, dropdownClass: 'z-modal', onChange: v => { $('input[name="object_id"]').value = v; } });
     _mountCR('#fkIssue_cond_w', 'fkIssue_cond', { id: 'fkIssue_cond', options: [{ value:'good', label:'Хорошее' },{ value:'satisfactory', label:'Удовл.' },{ value:'poor', label:'Плохое' }], value: 'good', dropdownClass: 'z-modal', onChange: v => { $('input[name="condition_after"]').value = v; } });
@@ -1335,11 +1347,17 @@ window.AsgardEquipment = (function () {
       btnLoading(submitBtn, 'Выдача...');
       try {
         var fd = new FormData(e.target);
-        var r = await api('/api/equipment/issue', { method:'POST', body:{
-          equipment_id:parseInt(equipmentId), holder_id:parseInt(fd.get('holder_id')),
+        var holder = _parseHolderKey(fd.get('holder_key'));
+        if (!holder.holder_id && !holder.holder_employee_id) {
+          toast('Внимание', 'Выберите получателя', 'warn');
+          btnReset(submitBtn);
+          return;
+        }
+        var r = await api('/api/equipment/issue', { method:'POST', body: Object.assign({
+          equipment_id:parseInt(equipmentId),
           work_id:parseInt(fd.get('work_id')), object_id:fd.get('object_id')?parseInt(fd.get('object_id')):null,
           condition_after:fd.get('condition_after'), notes:fd.get('notes')
-        }});
+        }, holder)});
         if (r.success) { closeModal(); toast('Успех', 'Оборудование выдано', 'ok'); loadEquipment(); loadStats(); }
         else toast('Ошибка', r.message||'Ошибка', 'err');
       } catch(e5) { toast('Ошибка', e5.message || 'Не удалось выдать', 'err'); }

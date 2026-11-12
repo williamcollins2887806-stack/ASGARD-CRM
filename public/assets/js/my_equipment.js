@@ -10,7 +10,7 @@ window.AsgardMyEquipment = (function(){
     const auth = await AsgardAuth.getAuth();
     const userId = auth?.user?.id;
     
-    // Загружаем оборудование текущего пользователя
+    // Загружаем оборудование текущего пользователя (user + linked employee)
     let equipment = [];
     try {
       const resp = await fetch('/api/equipment/by-holder/' + userId, {
@@ -18,6 +18,15 @@ window.AsgardMyEquipment = (function(){
       });
       const data = await resp.json();
       equipment = data.equipment || [];
+    } catch(e) {}
+
+    let movements = [];
+    try {
+      const resp = await fetch('/api/equipment/my/movements?limit=100', {
+        headers: { 'Authorization': 'Bearer ' + auth.token }
+      });
+      const data = await resp.json();
+      movements = data.movements || [];
     } catch(e) {}
     
     // Загружаем объекты для формы передачи
@@ -37,6 +46,13 @@ window.AsgardMyEquipment = (function(){
       'poor': { label: 'Плохое', color: 'var(--orange)' },
       'broken': { label: 'Сломано', color: 'var(--err-t)' }
     };
+
+    const fmtDt = (d) => {
+      if (!d) return '—';
+      try { return new Date(d).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }); }
+      catch (_) { return '—'; }
+    };
+    const moveLabel = (t) => ({ issue: 'Выдача', return: 'Возврат', transfer: 'Перемещение', write_off: 'Списание' }[t] || t || '—');
     
     const html = `
       <div class="my-equipment-page">
@@ -45,6 +61,10 @@ window.AsgardMyEquipment = (function(){
           <div class="stat-card" style="background:var(--bg-card);padding:16px;border-radius:6px;text-align:center">
             <div style="font-size:32px;font-weight:700;color:var(--accent)">${equipment.length}</div>
             <div style="font-size:12px;color:var(--text-muted)">Единиц оборудования</div>
+          </div>
+          <div class="stat-card" style="background:var(--bg-card);padding:16px;border-radius:6px;text-align:center">
+            <div style="font-size:32px;font-weight:700;color:var(--accent)">${movements.length}</div>
+            <div style="font-size:12px;color:var(--text-muted)">Записей в истории</div>
           </div>
         </div>
         
@@ -96,6 +116,38 @@ window.AsgardMyEquipment = (function(){
               `}
             </tbody>
           </table>
+        </div>
+
+        <div style="margin-top:24px">
+          <h3 style="margin:0 0 12px;font-size:16px">История перемещений</h3>
+          <div class="tbl-wrap" style="background:var(--bg-card);border-radius:6px;overflow:hidden">
+            <table class="tbl" id="myEquipmentHistory">
+              <thead>
+                <tr>
+                  <th>Дата</th>
+                  <th>Тип</th>
+                  <th>Оборудование</th>
+                  <th>От</th>
+                  <th>Кому</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${movements.length ? movements.map(m => `
+                  <tr>
+                    <td style="white-space:nowrap">${fmtDt(m.created_at || m.confirmed_at)}</td>
+                    <td>${esc(moveLabel(m.movement_type))}</td>
+                    <td>${esc(m.equipment_name || '—')}${m.inventory_number ? ` <code style="font-size:11px">${esc(m.inventory_number)}</code>` : ''}</td>
+                    <td>${esc(m.from_user || '—')}</td>
+                    <td>${esc(m.to_user || '—')}</td>
+                  </tr>
+                `).join('') : `
+                  <tr>
+                    <td colspan="5" style="text-align:center;padding:24px;color:var(--text-muted)">Истории пока нет</td>
+                  </tr>
+                `}
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
     `;

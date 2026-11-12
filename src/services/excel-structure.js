@@ -162,6 +162,42 @@ function scoreField(field, header) {
 /** Порог: ниже него заголовок не считается полем. */
 const MIN_FIELD_SCORE = 3;
 
+/**
+ * Единица измерения ВНУТРИ заголовка колонки объёма.
+ *
+ * Заказчики называют колонки «Площадь_м2», «Объем_емкости_м3», «Осадок_т»,
+ * «Площадь поверхности м2»: единица стоит в заголовке, в данных — только
+ * число, отдельной колонки единиц нет. Без этого позиция получала unit=null,
+ * и дедуп не мог сопоставить её с той же позицией из другого файла.
+ *
+ * @param {string} header — текст заголовка
+ * @returns {string|null} единица или null
+ */
+function unitFromColumnHeader(header) {
+  const s = normHeader(header);
+  if (!s) return null;
+  // Явные обозначения меры — ищем как ОТДЕЛЬНЫЙ сегмент: в «суммарная»
+  // подстрока «мм» есть, но миллиметрами она не является.
+  const segs = s.split(/[^а-яёa-z0-9]+/).filter(Boolean);
+  const MEASURES = {
+    'м2': 'м2', 'м²': 'м2', 'квм': 'м2', 'кв': 'м2',
+    'м3': 'м3', 'м³': 'м3', 'кубм': 'м3', 'куб': 'м3',
+    'пм': 'п.м', 'мп': 'п.м', 'погм': 'п.м',
+    'мм': 'мм', 'см': 'см', 'км': 'км',
+    'шт': 'шт', 'т': 'т', 'тн': 'т', 'тонн': 'т', 'кг': 'кг', 'г': 'г',
+    'компл': 'компл', 'л': 'л', 'мл': 'мл', 'гкал': 'гкал', 'квт': 'кВт'
+  };
+  for (let i = segs.length - 1; i >= 0; i -= 1) {
+    const seg = segs[i];
+    if (MEASURES[seg]) return MEASURES[seg];
+    // Одиночное «м» — метры, но только у колонок длины/протяжённости:
+    // «Суммарная длина трубок, м», «Длина трубопровода, м». Иначе «м»
+    // в заголовке ничего не значит.
+    if (seg === 'м' && /длин|протяж|длина/.test(s)) return 'м';
+  }
+  return null;
+}
+
 /** Поля, которые ищем в заголовке. */
 const FIELDS = Object.keys(FIELD_HINTS);
 
@@ -391,11 +427,22 @@ function parseWorkbook(XLSX, wb) {
         const tubes = Number(String(get('tubes')).replace(/\s/g, '').replace(',', '.'));
         const lenRaw = Number(String(get('length_m')).replace(/\s/g, '').replace(',', '.'));
         if (Number.isFinite(lenRaw) && lenRaw > 0) {
-          // «Длина трубки, мм» — миллиметры; «Суммарная длина трубок, м» — метры.
           const headCell = cellText(map.length_m != null ? rows[head.index][map.length_m] : '');
-          const inMm = /мм/i.test(headCell) && lenRaw > 1000;
+          // ВАЖНО (найдено на тендере 2138, 12.11.2026):
+          //  1. «мм» — это ОТДЕЛЬНЫЙ сегмент заголовка. Подстрока «мм» есть
+          //     внутри слова «суММарная», и проверка /мм/i пересчитывала
+          //     метры как миллиметры (5475 м → 5,475 м), а потом ещё
+          //     умножала на число трубок. Объём завышался в 899 раз.
+          //  2. «Суммарная длина трубок, м» — это УЖЕ сумма по всем трубкам.
+          //     Умножение на количество трубок считало её дважды.
+          // Два дефекта взаимно маскировались: 899 × 5475 / 1000 ≈ 4922
+          // выглядело правдоподобно и не бросалось в глаза.
+          const isTotalLen = /суммарн/.test(String(headCell).toLowerCase());
+          const inMm = /(^|[^а-яё])мм([^а-яё]|$)/.test(String(headCell).toLowerCase());
           const lenM = inMm ? lenRaw / 1000 : lenRaw;
-          if (Number.isFinite(tubes) && tubes > 0) {
+          if (isTotalLen) {
+            vol = lenM;
+          } else if (Number.isFinite(tubes) && tubes > 0) {
             vol = tubes * lenM;
           } else {
             vol = lenM;
@@ -408,7 +455,11 @@ function parseWorkbook(XLSX, wb) {
         row: r + 1,
         name: nm.slice(0, 200),
         volume: Number.isFinite(vol) && vol > 0 ? vol : null,
-        unit: get('unit') || geomUnit || null,
+        // Единица: колонка «Ед. изм.» → вычисленная геометрия → заголовок
+        // колонки объёма («Площадь_м2», «Объем_емкости_м3»).
+        unit: get('unit') || geomUnit
+          || (volPeek ? unitFromColumnHeader(cellText(map.volume != null ? rows[head.index][map.volume] : '')) : null)
+          || null,
         zone: get('zone') || null,
         fouling: get('fouling') || null,
         period: get('period') || null,
@@ -539,6 +590,35 @@ function toPromptText(parsed) {
 }
 
 /**
+ * Нормализация ярлыка периода для сравнения перечней.
+ * «октябрь 2027», «Октябрь-2027», «10.2027» → один ключ.
+ */
+function normalizePeriodKey(raw) {
+  const s = String(raw || '').toLowerCase().replace(/\s+/g, ' ').trim();
+  if (!s) return '';
+  const months = [
+    ['январ', '01'], ['феврал', '02'], ['март', '03'], ['апрел', '04'],
+    ['ма[йяею]', '05'], ['июн', '06'], ['июл', '07'], ['август', '08'],
+    ['сентябр', '09'], ['октябр', '10'], ['ноябр', '11'], ['декабр', '12']
+  ];
+  let mm = null;
+  let yy = null;
+  for (const [stem, num] of months) {
+    if (new RegExp(stem, 'i').test(s)) { mm = num; break; }
+  }
+  const y = s.match(/(20\d{2})/);
+  if (y) yy = y[1];
+  const numDate = s.match(/\b(\d{1,2})[./\-](\d{4})\b/) || s.match(/\b(\d{4})[./\-](\d{1,2})\b/);
+  if (numDate) {
+    if (numDate[1].length === 4) { yy = numDate[1]; mm = String(numDate[2]).padStart(2, '0'); }
+    else { mm = String(numDate[1]).padStart(2, '0'); yy = numDate[2]; }
+  }
+  if (mm && yy) return yy + '-' + mm;
+  if (mm) return 'm' + mm;
+  return s;
+}
+
+/**
  * Сравнение двух разобранных перечней: насколько они совпадают.
  *
  * Зачем: заказчик присылает ОДИН перечень в двух файлах — «Форма тендерного
@@ -546,47 +626,102 @@ function toPromptText(parsed) {
  * Имена разные, объёмы и периоды те же. Складывать их нельзя: 603 + 688 =
  * 1291 при реальных 688, и раздутое ожидание включает нарезку на 52 порции.
  *
- * Сравниваем по СОДЕРЖИМОМУ позиции (объём + период + единица), а не по
- * названию: названия у копий разные («Теплообменник трубчатый» против
- * «теплообменник оборотной воды»), а объёмы — один в один.
+ * ── Три отпечатка, а не два (тендер 2138, 12.11.2026) ─────────────────────
+ * Объём+единица и объём+единица+период сравнивают позиции один-в-один. Этого
+ * мало: в «Форме» объём трубчатых аппаратов задан ГЕОМЕТРИЕЙ (трубки × длина),
+ * в дефектной ведомости — готовой колонкой. Даже после исправления расчёта
+ * объёмы расходятся на проценты, и построчный отпечаток даёт ratio 0 при
+ * 599 общих названиях из 601. Получалось 675 + 673 = 1348 позиций.
+ *
+ * Поэтому третий отпечаток — по НАБОРУ НАЗВАНИЙ. Он ловит именно этот случай
+ * и не выдаёт ложных совпадений: разные приложения одного файла (Прил_1 vs
+ * Прил_2) дают name-ratio 0,11, а один перечень в двух вёрстках — 1,0.
  *
  * @param {Array} a — позиции первого перечня
  * @param {Array} b — позиции второго
- * @returns {{overlap:number, ratio:number, sameList:boolean}}
+ * @returns {{overlap:number, ratio:number, sameList:boolean,
+ *            ratio_volume:number, ratio_name:number}}
  */
 function compareLists(a, b) {
   const listA = Array.isArray(a) ? a : [];
   const listB = Array.isArray(b) ? b : [];
-  if (!listA.length || !listB.length) return { overlap: 0, ratio: 0, sameList: false };
+  if (!listA.length || !listB.length) {
+    return { overlap: 0, ratio: 0, ratio_volume: 0, ratio_name: 0, sameList: false };
+  }
 
-  // Отпечаток: объём (нормализованный) + период + единица. Название не берём.
-  const sig = (p) => {
+  const volUnit = (p) => {
     const vol = Number(p.volume);
-    const v = Number.isFinite(vol) && vol > 0 ? vol.toFixed(2) : '—';
-    const per = String(p.period || '').toLowerCase().replace(/\s+/g, ' ').trim();
-    const unit = String(p.unit || '').toLowerCase().trim();
-    return v + '|' + per + '|' + unit;
+    // Позиция без объёма не даёт объёмного отпечатка. Иначе все такие
+    // позиции получают ключ «—|» и два РАЗНЫХ перечня без объёмов
+    // сравниваются как идентичные (ratio 1) — ложное схлопывание.
+    if (!(Number.isFinite(vol) && vol > 0)) return null;
+    const unit = String(p.unit || '').toLowerCase().replace(/\s+/g, '').trim();
+    return vol.toFixed(2) + '|' + unit;
+  };
+  const sig = (p) => {
+    const vu = volUnit(p);
+    return vu == null ? null : vu + '|' + normalizePeriodKey(p.period);
   };
 
-  const setA = new Set(listA.map(sig));
-  const setB = new Set(listB.map(sig));
-  let common = 0;
-  for (const x of setA) if (setB.has(x)) common += 1;
-  const ratio = common / Math.max(1, Math.min(setA.size, setB.size));
+  const ratioOf = (fn) => {
+    const setA = new Set();
+    const setB = new Set();
+    for (const p of listA) { const k = fn(p); if (k != null) setA.add(k); }
+    for (const p of listB) { const k = fn(p); if (k != null) setB.add(k); }
+    // Один из перечней не дал ни одного отпечатка — сравнивать нечем.
+    // Не 0 и не 1: сигнал просто отсутствует, решение примет другой отпечаток.
+    if (!setA.size || !setB.size) return { overlap: 0, ratio: 0, available: false };
+    let common = 0;
+    for (const x of setA) if (setB.has(x)) common += 1;
+    return {
+      overlap: common,
+      ratio: common / Math.max(1, Math.min(setA.size, setB.size)),
+      available: true
+    };
+  };
+
+  // Названия: нормализуем регистр, кавычки и «поз.» — это одна и та же
+  // позиция, записанная по-разному («Теплообменник поз. 1901»).
+  const normName = (p) => String(p && p.name ? p.name : '')
+    .toLowerCase()
+    .replace(/[«»"'`]/g, '')
+    .replace(/\bпоз\.?\s*/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  const withPeriod = ratioOf(sig);
+  const volumeOnly = ratioOf(volUnit);
+  const byName = ratioOf(normName);
+
+  // Отпечаток по названиям — отдельное правило, а не «ещё один голос».
+  // Названия позиций уникальны внутри перечня, поэтому 90 % совпадения
+  // означает тот же перечень (на 2138 — 599 из 601 при объёмном ratio 0).
+  // Разные приложения того же файла дают 0,11, так что запас большой.
+  const nameSaysSame = byName.available && byName.ratio >= 0.7;
+  const bestOfVolume = Math.max(withPeriod.ratio, volumeOnly.ratio);
+  const bestRatio = Math.max(bestOfVolume, byName.ratio);
+  const bestOverlap = Math.max(withPeriod.overlap, volumeOnly.overlap, byName.overlap);
 
   // 70 % — порог: одна и та же ведомость в другой вёрстке совпадает почти
   // целиком, а разные перечни одного заказчика — нет.
-  return { overlap: common, ratio: Math.round(ratio * 100) / 100, sameList: ratio >= 0.7 };
+  return {
+    overlap: bestOverlap,
+    ratio: Math.round(bestRatio * 100) / 100,
+    ratio_volume: Math.round(volumeOnly.ratio * 100) / 100,
+    ratio_name: Math.round(byName.ratio * 100) / 100,
+    sameList: nameSaysSame || bestOfVolume >= 0.7
+  };
 }
 
 module.exports = {
   FIELD_HINTS,
   scoreField,
   normHeader,
+  unitFromColumnHeader,
   MIN_FIELD_SCORE,
   detectHeaderRow,
   parseWorkbook,
   toPromptText,
   cellText,
-  compareLists
+  compareLists,
+  normalizePeriodKey
 };

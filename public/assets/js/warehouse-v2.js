@@ -1766,6 +1766,7 @@ window.AsgardWarehouseV2 = (function () {
           <div class="wh2-card__sub" style="margin-bottom:6px;font-weight:700;letter-spacing:.02em;text-transform:uppercase;font-size:11px">Описание</div>
           <div style="font-size:14px;line-height:1.5;color:var(--t1,#e8eaed);white-space:pre-wrap">${esc(descAi)}</div>
         </div>` : ''}
+        <div id="wh2-related" class="wh2-related" hidden></div>
         ${slots.length ? `<div><div class="wh2-card__sub" style="margin-bottom:6px;font-weight:600">Где лежит</div>
           <table class="wh2-table"><tbody>${slots.map(s => `<tr><td>${esc(s.warehouse_name || '—')}</td><td><b style="color:var(--gold,#D4A843)">${esc(s.location_label || 'без ячейки')}</b></td><td style="text-align:right">${fmt(s.quantity)} ${esc(s.unit)}</td></tr>`).join('')}</tbody></table></div>` : ''}
         ${(card.offers || []).length ? `<div><div class="wh2-card__sub" style="margin-bottom:6px;font-weight:600">Где заказать / цены</div>
@@ -1805,6 +1806,56 @@ window.AsgardWarehouseV2 = (function () {
     };
     const cb = document.getElementById('wh2-confirm-draft');
     if (cb) cb.onclick = async () => { try { await api('/api/stock/products/' + pid + '/confirm', { method: 'PUT' }); toast('Готово', 'Позиция подтверждена', 'ok'); UI.closeModal && UI.closeModal(); refresh(); } catch (e) { toast('Ошибка', e.message, 'err'); } };
+    _mountRelatedBlock('product', pid);
+  }
+
+  function _relatedThumb(it) {
+    if (it.photo_url) return `<img src="${esc(it.photo_url)}" alt="" loading="lazy">`;
+    if (window.AsgardGoodsIcon && (it.icon_path || it.icon_slug)) {
+      return window.AsgardGoodsIcon.placeholder({ slug: it.icon_slug, path: it.icon_path, size: 56, alt: it.title || '' });
+    }
+    const s = ((it.category_name || '') + ' ' + (it.title || '')).toLowerCase();
+    let emoji = '📦';
+    if (/сиз|перчат|каск|защит/.test(s)) emoji = '🧤';
+    else if (/хими|спрей|реагент/.test(s)) emoji = '🧪';
+    else if (/насос|компрессор/.test(s)) emoji = '⚙️';
+    else if (/кабель|электр/.test(s)) emoji = '⚡';
+    else if (/ключ|инструм/.test(s)) emoji = '🔧';
+    return `<span class="wh2-related__emoji">${emoji}</span>`;
+  }
+
+  async function _mountRelatedBlock(kind, id) {
+    const box = document.getElementById('wh2-related');
+    if (!box) return;
+    try {
+      const data = await api('/api/warehouse/market/related?kind=' + encodeURIComponent(kind) + '&id=' + encodeURIComponent(id) + '&limit=8');
+      const items = (data && data.items) || [];
+      if (!items.length) { box.hidden = true; box.innerHTML = ''; return; }
+      const hasComp = items.some((x) => x.relation === 'complementary');
+      const title = hasComp ? 'С этим обычно берут' : 'Похожие';
+      box.hidden = false;
+      box.innerHTML = `<div class="wh2-related__head">${esc(title)}</div>
+        <div class="wh2-related__row">${items.map((it) => `
+          <button type="button" class="wh2-related__card" data-rk="${esc(it.kind)}" data-rid="${it.id}">
+            <div class="wh2-related__media">${_relatedThumb(it)}</div>
+            <div class="wh2-related__title">${esc(it.title || '')}</div>
+            <div class="wh2-related__meta">${esc(it.badge_label || '')}</div>
+          </button>`).join('')}</div>`;
+      if (window.AsgardGoodsIcon) window.AsgardGoodsIcon.hydrate(box);
+      box.querySelectorAll('.wh2-related__card').forEach((btn) => {
+        btn.onclick = () => {
+          const rk = btn.getAttribute('data-rk');
+          const rid = +btn.getAttribute('data-rid');
+          UI.closeModal && UI.closeModal();
+          setTimeout(() => {
+            if (rk === 'product') openProduct(rid);
+            else if (window.WH2Equipment && WH2Equipment.openDetail) WH2Equipment.openDetail(rid);
+          }, 80);
+        };
+      });
+    } catch (_) {
+      box.hidden = true;
+    }
   }
 
   function openQuickProduct() {
@@ -2111,6 +2162,10 @@ window.AsgardWarehouseV2 = (function () {
         : (isEq ? '🛠️' : '📦');
       const avail = Array.isArray(it.available_ids) ? it.available_ids : (isEq && it.id ? [it.id] : []);
       const stockLine = it.stock_qty != null ? (' · ' + fmt(it.stock_qty) + ' на складе') : '';
+      const siteLabel = it.location_label || '';
+      const siteBadge = siteLabel
+        ? `<span class="wh2-m-badge wh2-m-badge--site">${esc(siteLabel)}</span>`
+        : '';
       return `<article class="wh2-m-card" data-kind="${esc(it.kind)}" data-id="${it.id}"
         data-available-ids="${esc(JSON.stringify(avail))}">
         <div class="wh2-m-card__media">
@@ -2118,6 +2173,7 @@ window.AsgardWarehouseV2 = (function () {
             <span class="wh2-m-badge ${badgeCls}">${esc(it.badge_label || '')}</span>
             <span class="wh2-m-badge wh2-m-badge--type">${isEq ? 'Оборудование' : 'Товар'}</span>
           </div>
+          ${siteBadge}
           ${media}
         </div>
         <div class="wh2-m-card__body">

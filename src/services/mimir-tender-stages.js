@@ -412,6 +412,148 @@ function deriveVisitCount(positions) {
 }
 
 /**
+ * Трудосутки и человеко-часы ПО ЗАЕЗДАМ (P2, 12.11.2026).
+ *
+ * Зачем: РП видит в карточке «срок 407 суток» и читает это как «кампания
+ * идёт 407 дней подряд». На деле это трудосутки всего объёма при текущем
+ * числе бригад — знаменатель ФОТ и проживания в смете.
+ *
+ * Ничего в смету не пишем. Считаем только разрез:
+ *   • доля заезда = его человеко-часы / общий MH;
+ *   • work_days заезда = work_days × доля (Σ == итог, расход только округление);
+ *   • проверка «влезает ли заезд в своё окно» — по ЕГО окну, а не по общему
+ *     сроку минус все дороги.
+ *
+ * @param {object} p
+ * @param {Array} p.visits — заезды с position_ids/period_start/period_end
+ * @param {Array} p.positions — позиции плана (для доли по MH)
+ * @param {number} p.totalWorkDays — итоговые трудосутки всего объёма
+ * @param {number} p.mobDays
+ * @param {number} p.roadDays
+ * @returns {{perVisit:Array, perTrip:number|null, total:number|null,
+ *            windowCheck:Array}}
+ */
+function distributeWorkDaysByVisits(p) {
+  const o = p || {};
+  const visits = Array.isArray(o.visits) ? o.visits : [];
+  const positions = Array.isArray(o.positions) ? o.positions : [];
+  const totalWorkDays = Number(o.totalWorkDays);
+  const empty = { perVisit: [], perTrip: null, total: null, windowCheck: [] };
+  if (!visits.length) return empty;
+  if (!(totalWorkDays > 0)) {
+    // Срок неизвестен — разрез не выдумываем, но заезды отдаём.
+    return {
+      perVisit: visits.map((v) => ({ id: v.id, label: v.label, work_days: null, person_hours: null })),
+      perTrip: null,
+      total: null,
+      windowCheck: []
+    };
+  }
+
+  const mhOf = (x) => {
+    const direct = Number(x && x.mh);
+    if (direct > 0) return direct;
+    const hours = Number(x && x.labor_hours);
+    if (hours > 0) return hours;
+    const people = Number(x && x.people) || 0;
+    const days = Number(x && x.days) || 0;
+    const shift = Number(x && x.shift_hours) || 12;
+    return people > 0 && days > 0 ? people * days * shift : 0;
+  };
+  const mhById = new Map();
+  let mhAll = 0;
+  for (const pos of positions) {
+    const m = mhOf(pos);
+    if (m > 0) {
+      mhAll += m;
+      if (pos.id != null) mhById.set(String(pos.id), m);
+    }
+  }
+
+  const shares = visits.map((v) => {
+    const ids = Array.isArray(v.position_ids) ? v.position_ids.map(String) : [];
+    let mh = 0;
+    for (const id of ids) mh += mhById.get(id) || 0;
+    return { visit: v, idList: ids, mh };
+  });
+
+  const mhAssigned = shares.reduce((s, x) => s + x.mh, 0);
+  // Если позиции не размечены по заездам (или размечены частично), делим по
+  // числу заездов: РП видит равные доли, а не ноль.
+  const even = mhAssigned <= 0;
+  const evenShare = 1 / shares.length;
+
+  // Округление: трудосутки в 0,1 — как work_days в плане. Остаток отдаём
+  // последнему заезду, чтобы Σ совпадала с итогом ровно.
+  let allocated = 0;
+  const perVisit = shares.map((s, i) => {
+    const share = even ? evenShare : (mhAll > 0 ? s.mh / mhAll : evenShare);
+    const isLast = i === shares.length - 1;
+    const days = isLast
+      ? Math.round((totalWorkDays - allocated) * 10) / 10
+      : Math.round(totalWorkDays * share * 10) / 10;
+    allocated += days;
+    return {
+      id: s.visit.id,
+      label: s.visit.label,
+      period_start: s.visit.period_start || null,
+      period_end: s.visit.period_end || null,
+      positions: s.idList.length || null,
+      work_days: days,
+      person_hours: s.mh > 0 ? Math.round(s.mh) : null,
+      share_pct: Math.round(share * 1000) / 10
+    };
+  });
+
+  // Проверка окна ПО КАЖДОМУ заезду: сутки работ + мобилизация + дорога
+  // туда-обратно должны влезть в окно именно этого периода. Раньше сравнивали
+  // общий срок со сроком заказчика — и один «длинный» заезд прятался за
+  // другими.
+  const mob = Math.max(0, Number(o.mobDays) || 0);
+  const road = Math.max(0, Number(o.roadDays) || 0);
+  const windowCheck = perVisit.map((v) => {
+    const need = (Number(v.work_days) || 0) + mob + 2 * road;
+    const win = calendarDaysBetween(v.period_start, v.period_end);
+    if (!(win > 0)) {
+      return {
+        id: v.id, label: v.label, required: Math.round(need * 10) / 10,
+        available: null, ok: null, checked: false,
+        message: 'окно заезда не задано — проверить нечем'
+      };
+    }
+    const ok = need <= win;
+    return {
+      id: v.id, label: v.label,
+      required: Math.round(need * 10) / 10,
+      available: win,
+      ok,
+      checked: true,
+      message: ok
+        ? `заезд ${Math.round(need * 10) / 10} сут влезает в ${win} кал. дней`
+        : `заезд НЕ влезает: нужно ${Math.round(need * 10) / 10} сут при окне ${win} кал. дней`
+    };
+  });
+
+  return {
+    perVisit,
+    perTrip: Math.round((totalWorkDays / shares.length) * 100) / 100,
+    total: Math.round(perVisit.reduce((s, v) => s + (Number(v.work_days) || 0), 0) * 10) / 10,
+    windowCheck
+  };
+}
+
+/** Календарных дней между датами (включительно), null если дат нет. */
+function calendarDaysBetween(startIso, endIso) {
+  const s = String(startIso || '').slice(0, 10);
+  const e = String(endIso || '').slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(s) || !/^\d{4}-\d{2}-\d{2}$/.test(e)) return null;
+  const a = Date.parse(s + 'T00:00:00Z');
+  const b = Date.parse(e + 'T00:00:00Z');
+  if (!Number.isFinite(a) || !Number.isFinite(b) || b < a) return null;
+  return Math.round((b - a) / 86400000) + 1;
+}
+
+/**
  * Откуда взят объём позиции — доказательство для РП.
  *
  * Требование 07.11.2026: пользователь должен видеть, откуда цифра —
@@ -1177,7 +1319,21 @@ function normalizeCalcPlan(ai, opts) {
       // Без переноса флаг теряется, и потери вычитаются повторно.
       norm_basis: p.norm_basis || (p.norm && p.norm.norm_basis) || null,
       crew_locked: !!p.crew_locked,
-      objects: Number(p.objects) > 0 ? Number(p.objects) : null,
+      // Объекты — из них считаются ФРОНТЫ (сколько бригад встанет
+      // одновременно). Без переноса fronts=1 на любой ведомости, бригада
+      // одна, а срок складывается как сумма суток всех позиций (516 суток
+      // на 621 позицию вместо реальных ~90).
+      objects: Array.isArray(p.objects) ? p.objects : null,
+      // Число объектов отдельным полем: массив — это состав, а сколько их
+      // бывает числом от модели / objects_count. Без него fronts=1.
+      objects_count: (() => {
+        if (Array.isArray(p.objects)) {
+          const q = p.objects.reduce((a, o) => a + (Number(o && o.qty) || 0), 0);
+          return q > 0 ? q : p.objects.length;
+        }
+        if (Number(p.objects_count) > 0) return Number(p.objects_count);
+        return Number(p.objects) > 0 ? Number(p.objects) : null;
+      })(),
       parallel_group: p.parallel_group != null ? String(p.parallel_group) : '0',
       equipment: Array.isArray(p.equipment) ? p.equipment : [],
       source,
@@ -1363,13 +1519,32 @@ function normalizeCalcPlan(ai, opts) {
   // позициях не заданы, `fronts_known: false` — это НЕ «один аппарат»,
   // а «данных нет». Разница важна: при неизвестных фронтах окно заказчика
   // может увеличить число бригад, при известном одном аппарате — нет.
-  const objectsMax = positions.reduce((m, p) => Math.max(m, Number(p.objects) || 0), 0);
+  // Фронты — сколько бригад работает ОДНОВРЕМЕННО. Считаем по СУММАРНОМУ
+  // числу аппаратов во всех позициях, а не по длине массива `objects`.
+  //
+  // Дефект 12.11: `objects` у позиции — это ОПИСАНИЕ аппарата (обычно один
+  // элемент: «{tag:'2104L', size:'Ø18 L=6090 N=899'}' )», и длина массива
+  // давала fronts=1 на 621 позицию. Из-за этого бригада оставалась одна,
+  // а срок складывался как сумма суток всех позиций (516 суток).
+  // objects_count — когда массив objects потерян (скрипт передал число,
+  // модель отдала count без состава). Без него fronts=1 на всей ведомости.
+  const objectsTotal = positions.reduce((s, p) => {
+    const objs = Array.isArray(p.objects) ? p.objects : [];
+    const q = objs.reduce((acc, o) => acc + (Number(o && o.qty) || 0), 0);
+    if (q > 0) return s + q;
+    if (objs.length > 0) return s + objs.length;
+    const cnt = Number(p.objects_count);
+    if (cnt > 0) return s + cnt;
+    // Число в поле objects (ошибка маппинга length→objects) тоже фронт.
+    if (!Array.isArray(p.objects) && Number(p.objects) > 0) return s + Number(p.objects);
+    return s;
+  }, 0);
   const frontsExplicit = Number(opts && opts.fronts) > 0;
   const frontsResolved = scheduleModel.resolveFronts({
-    objects: frontsExplicit ? Number(opts.fronts) : (objectsMax || null),
+    objects: frontsExplicit ? Number(opts.fronts) : (objectsTotal || null),
     manual: Number(opts && opts.fronts_manual) || null
   });
-  const frontsKnown = frontsExplicit || objectsMax > 0 || Number(opts && opts.fronts_manual) > 0;
+  const frontsKnown = frontsExplicit || objectsTotal > 0 || Number(opts && opts.fronts_manual) > 0;
 
   // ── Базис нормы: передаётся из каталога, а не гадается ────────────────────
   // gross_12h (8 норм min_per_unit) уже содержит внутрисменные потери в
@@ -1530,17 +1705,25 @@ function normalizeCalcPlan(ai, opts) {
   if (laborSchedule) {
     finalWorkDays = laborSchedule.days;
     workDaysSource = 'tz_labor_hours';
+  } else if (mhDays != null && mhDays > 0) {
+    // ПРИОРИТЕТ MH. Он единственный согласован с деньгами: смета считает
+    // qty = work_days × смены × люди, и произведение должно давать ровно
+    // человеко-часы из норм. Срок «по сумме суток позиций» (crew_days)
+    // этого не гарантирует: на 621 позиции он давал 516 суток при MH,
+    // рассчитанном на 86, и Σqty расходилась с MH на 69 %.
+    //
+    // `hasExplicitDays` больше не перебивает MH: модель часто ставит
+    // days=1 «на глаз», а норма даёт точные часы. Расхождение фиксируется
+    // в workDaysCheck, чтобы РП видел разницу, но срок берётся из MH.
+    finalWorkDays = mhDays;
+    workDaysSource = 'mh_invariant';
   } else if (hasExplicitDays) {
     finalWorkDays = workDays || null;
     workDaysSource = 'crew_days';
-  } else if (mhDays != null && mhDays > 0) {
-    finalWorkDays = mhDays;
-    workDaysSource = 'mh_invariant';
   } else {
     finalWorkDays = workDays || null;
     workDaysSource = 'crew_days';
   }
-
   // Сверка двух путей — только когда оба дали число.
   let workDaysCheck = null;
   if (hasExplicitDays && mhDays != null && mhDays > 0 && workDays > 0) {
@@ -1582,6 +1765,23 @@ function normalizeCalcPlan(ai, opts) {
     }))
     : [];
 
+  // ── Трудосутки по заездам (P2, 12.11.2026) ──────────────────────────────
+  // `work_days` — трудосутки ВСЕГО объёма при текущем C, и они же знаменатель
+  // ФОТ и проживания в смете. Менять их на «сумму заездов» нельзя: при том же
+  // C сумма даёт ту же цифру, а при другом — разваливает смету. Что РП
+  // действительно нужно видеть — сколько трудосуток приходится на КАЖДЫЙ
+  // выезд и влезает ли это в окно его периода.
+  //
+  // Делим по доле человеко-часов заезда от общего MH: Σ по заездам = итог,
+  // расхождения только на округлении копеек.
+  const visitDayShare = distributeWorkDaysByVisits({
+    visits,
+    positions,
+    totalWorkDays: finalWorkDays,
+    mobDays: Number(raw.mob_days) || 0,
+    roadDays: Number(raw.road_days) || 0
+  });
+
   return {
     positions,
     // Срок по трудоёмкости заказчика главнее расчёта по позициям: если он дал
@@ -1592,9 +1792,16 @@ function normalizeCalcPlan(ai, opts) {
     // выезд. Без этого «6 заездов за 16 дней» физически невозможно.
     // Считаем честно и отдаём наружу: visits_mode_sequential объясняет, почему
     // срок больше, чем crewDays / crews.
-    work_days_per_trip: visitsMode && tripCountOpt > 1
-      ? Math.round((workDays / tripCountOpt) * 100) / 100
-      : null,
+    work_days_per_trip: visitDayShare.perTrip != null
+      ? visitDayShare.perTrip
+      : (visitsMode && tripCountOpt > 1
+        ? Math.round((workDays / tripCountOpt) * 100) / 100
+        : null),
+    // Разрез по заездам: трудосутки, люди и проверка «влезает ли в окно».
+    // Σ visit.work_days == work_days (расхождение только на округлении).
+    visits_work: visitDayShare.perVisit,
+    visits_work_total: visitDayShare.total,
+    visit_window_check: visitDayShare.windowCheck,
     trips_sequential: visitsMode && tripCountOpt > 1,
     labor_hours: laborSchedule ? laborSchedule.labor_hours : null,
     labor_basis: laborSchedule
@@ -1616,7 +1823,9 @@ function normalizeCalcPlan(ai, opts) {
     loss_min: scheduleResolved.loss_min,
     ps: scheduleResolved.ps,
     fronts: frontsResolved.fronts,
+    fronts_known: frontsKnown,
     fronts_source: frontsResolved.source,
+    objects_total: objectsTotal,
     work_days_source: workDaysSource,
     // Сверка двух путей срока: если разошлись больше чем на 15 %, это
     // сигнал РП, а не повод молча перезаписать одно другим.
@@ -1820,6 +2029,7 @@ module.exports = {
   countTableRowsDetailed,
   dupKey,
   deriveVisitCount,
+  distributeWorkDaysByVisits,
   canTransition,
   isAnalysisStage,
   isCalcStage,

@@ -130,6 +130,42 @@ window.AsgardObsLetterModal = (function () {
         </section>
 
         <section class="dh-obs-sec">
+          <div class="dh-obs-sec__h">Основание и доля оплаты</div>
+          <div class="dh-obs-preflight" id="dhObsPreflight" hidden></div>
+          <div class="dh-field">
+            <label>Контекст работ <span class="dh-field__hint">первый абзац письма</span></label>
+            <textarea id="dhObsWorkCtx" rows="3"
+              placeholder="выполняет работы по…"></textarea>
+          </div>
+          <div class="dh-field">
+            <label>Сторона договора субподряда</label>
+            <div class="dh-obs-row">
+              <select id="dhObsSubParty">
+                <option value="ООО «ГСП Ремонт»">ООО «ГСП Ремонт»</option>
+                <option value="__custom__">Другое…</option>
+              </select>
+              <input id="dhObsSubPartyCustom" placeholder="наименование" hidden autocomplete="off" />
+            </div>
+          </div>
+          <div class="dh-obs-grid2">
+            <div class="dh-field">
+              <label>Доля оплаты, %</label>
+              <input id="dhObsPayPct" inputmode="decimal" value="100" />
+            </div>
+            <div class="dh-field">
+              <label>Срок / период оплаты</label>
+              <input id="dhObsPayPeriod" autocomplete="off" placeholder="например: в течение 10 дней" />
+            </div>
+          </div>
+          <div class="dh-obs-row" style="margin-top:8px">
+            <button type="button" class="dh-btn dh-btn--ghost dh-obs-mini" id="dhObsSpecialBtn">
+              Спецправила
+            </button>
+            <span class="dh-obs-hint" id="dhObsSpecialHint"></span>
+          </div>
+        </section>
+
+        <section class="dh-obs-sec">
           <div class="dh-obs-sec__h">3. Реквизиты счёта</div>
           <div class="dh-obs-grid2">
             <div class="dh-field">
@@ -189,15 +225,27 @@ window.AsgardObsLetterModal = (function () {
         </section>
 
         <section class="dh-obs-sec">
-          <div class="dh-obs-sec__h">5. Письмо</div>
+          <div class="dh-obs-sec__h">
+            5. Текст письма
+            <button type="button" class="dh-btn dh-btn--ghost dh-obs-mini" id="dhObsComposeBtn">
+              Собрать текст
+            </button>
+          </div>
           <div class="dh-field">
             <label>Дата письма</label>
             <input type="date" id="dhObsLetterDate" />
           </div>
-          <div class="dh-obs-hint">
-            Исходящий номер выдаётся при сохранении (сквозная нумерация переписки).
-            Предпросмотр номер не расходует.
+          <div class="dh-field">
+            <label>Абзацы письма</label>
+            <textarea id="dhObsLetterText" rows="10"
+              placeholder="Нажмите «Собрать текст» — здесь появятся абзацы, их можно править вручную"></textarea>
           </div>
+          <div class="dh-obs-hint">
+            Исходящий номер выдаётся при сохранении. Сохранить можно после «Собрать текст» и успешного предпросмотра этого текста.
+          </div>
+          <button type="button" class="dh-btn dh-btn--ghost dh-obs-mini" id="dhObsDraftReset" style="margin-top:6px">
+            Сбросить черновик
+          </button>
         </section>
       </div>
 
@@ -380,6 +428,8 @@ window.AsgardObsLetterModal = (function () {
     updateItemsHint();
   }
 
+  const draftKey = (docId) => `dh_obs_draft_v1_${docId}`;
+
   function markDirty() {
     if (!state) return;
     state.dirty = true;
@@ -393,10 +443,176 @@ window.AsgardObsLetterModal = (function () {
     if (stale) stale.hidden = !el('dhObsPreviewFrame') || el('dhObsPreviewFrame').hidden;
     const save = el('dhObsSave');
     if (save) save.disabled = true;
+    state.previewOkForLetter = false;
     const dl1 = el('dhObsDlPdf');
     const dl2 = el('dhObsDlDocx');
     if (dl1) dl1.disabled = true;
     if (dl2) dl2.disabled = true;
+    persistDraft();
+  }
+
+  function subcontractPartyValue() {
+    const sel = el('dhObsSubParty');
+    const custom = el('dhObsSubPartyCustom');
+    if (sel && sel.value === '__custom__') return (custom && custom.value || '').trim();
+    return (sel && sel.value) || 'ООО «ГСП Ремонт»';
+  }
+
+  function letterParagraphsFromTextarea() {
+    const raw = String((el('dhObsLetterText') && el('dhObsLetterText').value) || '');
+    return raw.split(/\n{2,}/).map((s) => s.trim()).filter(Boolean);
+  }
+
+  function letterTextFingerprint() {
+  return String((el('dhObsLetterText') && el('dhObsLetterText').value) || '').trim();
+  }
+
+  function persistDraft() {
+    if (!state || !state.docId) return;
+    try {
+      const data = {
+        fromCard: !!el('dhObsFromCard').checked,
+        invoice_number: el('dhObsInvNo').value,
+        invoice_date: el('dhObsInvDate').value,
+        gross: el('dhObsGross').value,
+        vat_rate: el('dhObsVatRate').value,
+        vat: el('dhObsVat').value,
+        counterparty: el('dhObsCp').value,
+        items: el('dhObsItems').value,
+        letter_date: el('dhObsLetterDate').value,
+        obs_account: el('dhObsAccount').value,
+        subcontract: el('dhObsSub').value,
+        work_context: el('dhObsWorkCtx').value,
+        sub_party: el('dhObsSubParty').value,
+        sub_party_custom: el('dhObsSubPartyCustom').value,
+        pay_pct: el('dhObsPayPct').value,
+        pay_period: el('dhObsPayPeriod').value,
+        special_context: state.specialContext || '',
+        letter_text: el('dhObsLetterText').value,
+      };
+      localStorage.setItem(draftKey(state.docId), JSON.stringify(data));
+    } catch (_) { /* приватный режим */ }
+  }
+
+  function restoreDraft() {
+    if (!state || !state.docId) return false;
+    try {
+      const raw = localStorage.getItem(draftKey(state.docId));
+      if (!raw) return false;
+      const data = JSON.parse(raw);
+      if (!data || typeof data !== 'object') return false;
+      if (data.fromCard != null) el('dhObsFromCard').checked = !!data.fromCard;
+      if (data.invoice_number != null) el('dhObsInvNo').value = data.invoice_number;
+      if (data.invoice_date) el('dhObsInvDate').value = data.invoice_date;
+      if (data.gross != null) el('dhObsGross').value = data.gross;
+      if (data.vat_rate != null) el('dhObsVatRate').value = data.vat_rate;
+      if (data.vat != null) el('dhObsVat').value = data.vat;
+      if (data.counterparty != null) el('dhObsCp').value = data.counterparty;
+      if (data.items != null) el('dhObsItems').value = data.items;
+      if (data.letter_date) el('dhObsLetterDate').value = data.letter_date;
+      if (data.obs_account != null && el('dhObsAccount').querySelector(`option[value="${data.obs_account}"]`)) {
+        el('dhObsAccount').value = data.obs_account;
+      }
+      if (data.subcontract != null && el('dhObsSub').querySelector(`option[value="${data.subcontract}"]`)) {
+        el('dhObsSub').value = data.subcontract;
+      }
+      if (data.work_context != null) el('dhObsWorkCtx').value = data.work_context;
+      if (data.sub_party) {
+        el('dhObsSubParty').value = data.sub_party;
+        el('dhObsSubPartyCustom').hidden = data.sub_party !== '__custom__';
+        if (data.sub_party === '__custom__' && data.sub_party_custom) {
+          el('dhObsSubPartyCustom').value = data.sub_party_custom;
+        }
+      }
+      if (data.pay_pct != null) el('dhObsPayPct').value = data.pay_pct;
+      if (data.pay_period != null) el('dhObsPayPeriod').value = data.pay_period;
+      if (data.special_context != null) state.specialContext = data.special_context;
+      if (data.letter_text != null) el('dhObsLetterText').value = data.letter_text;
+      recalcVat();
+      updateItemsHint();
+      updateAccountInfo();
+      updateSubInfo();
+      return true;
+    } catch (_) { return false; }
+  }
+
+  function clearDraftStorage() {
+    if (!state || !state.docId) return;
+    try { localStorage.removeItem(draftKey(state.docId)); } catch (_) { /* */ }
+  }
+
+  function renderPreflight(warnings) {
+    const box = el('dhObsPreflight');
+    if (!box) return;
+    const list = Array.isArray(warnings) ? warnings.filter(Boolean) : [];
+    if (!list.length) { box.hidden = true; box.innerHTML = ''; return; }
+    box.hidden = false;
+    box.innerHTML = '<div class="dh-obs-preflight__title">Проверьте перед сохранением</div><ul>'
+      + list.map((w) => `<li>${esc(w)}</li>`).join('') + '</ul>';
+  }
+
+  async function doCompose() {
+    const btn = el('dhObsComposeBtn');
+    if (!btn || !state) return;
+    btn.disabled = true;
+    const prev = btn.textContent;
+    btn.textContent = 'Собираю…';
+    try {
+      const res = await apiJson(`/${state.docId}/obs-letter/compose`, {
+        method: 'POST',
+        body: JSON.stringify(collectPayload()),
+      });
+      const text = (res.paragraphs || []).join('\n\n');
+      el('dhObsLetterText').value = text;
+      state.composedFingerprint = text.trim();
+      state.previewOkForLetter = false;
+      el('dhObsSave').disabled = true;
+      persistDraft();
+      toast('Текст письма', `Собрано абзацев: ${(res.paragraphs || []).length}`, 'ok');
+      markDirty();
+    } catch (e) {
+      toast('Не удалось собрать текст', e.message || 'ошибка', 'err');
+    } finally {
+      btn.disabled = false;
+      btn.textContent = prev;
+    }
+  }
+
+  function openSpecialRules() {
+    const root = document.getElementById('dhObsModal');
+    if (!root) return;
+    const hint = state && state.specialRule ? state.specialRule.label : '';
+    const host = document.createElement('div');
+    host.className = 'dh-obs-submodal';
+    host.innerHTML = `
+      <div class="dh-obs-submodal__card">
+        <div class="dh-obs-submodal__head">
+          <span>Спецправила${hint ? ' · ' + esc(hint) : ''}</span>
+          <button type="button" class="dh-modal__x" id="dhObsSpecX" aria-label="Закрыть">✕</button>
+        </div>
+        <div class="dh-obs-submodal__body">
+          <label class="dh-field"><span>Дополнительный контекст для письма</span>
+            <textarea id="dhObsSpecialText" rows="6">${esc(state.specialContext || '')}</textarea>
+          </label>
+        </div>
+        <div class="dh-obs-submodal__foot">
+          <button type="button" class="dh-btn dh-btn--ghost" id="dhObsSpecCancel">Отмена</button>
+          <button type="button" class="dh-btn dh-btn--primary" id="dhObsSpecOk">Применить</button>
+        </div>
+      </div>`;
+    root.appendChild(host);
+    const q = (id) => host.querySelector('#' + id);
+    const closeSub = () => host.remove();
+    q('dhObsSpecX').onclick = closeSub;
+    q('dhObsSpecCancel').onclick = closeSub;
+    q('dhObsSpecOk').onclick = () => {
+      state.specialContext = (q('dhObsSpecialText').value || '').trim();
+      const h = el('dhObsSpecialHint');
+      if (h) h.textContent = state.specialContext ? 'Спецконтекст задан' : '';
+      markDirty();
+      closeSub();
+    };
+    q('dhObsSpecialText').focus();
   }
 
   function collectPayload() {
@@ -411,7 +627,14 @@ window.AsgardObsLetterModal = (function () {
       items: itemsFromTextarea(),
       letter_date: el('dhObsLetterDate').value || null,
       payment_source: 'obs',
+      work_context: String(el('dhObsWorkCtx').value || '').trim(),
+      subcontract_party: subcontractPartyValue(),
+      payment_pct: parseNum(el('dhObsPayPct').value) || 100,
+      payment_period: String(el('dhObsPayPeriod').value || '').trim(),
+      special_context: String(state && state.specialContext || '').trim(),
     };
+    const paras = letterParagraphsFromTextarea();
+    if (paras.length) payload.paragraphs_override = paras;
     const acc = Number(el('dhObsAccount').value) || 0;
     if (acc) payload.obs_account_id = acc;
     const sub = Number(el('dhObsSub').value) || 0;
@@ -610,6 +833,14 @@ window.AsgardObsLetterModal = (function () {
       el('dhObsPreviewEmpty').hidden = true;
       el('dhObsStale').hidden = true;
       state.previewed = true;
+      const fp = letterTextFingerprint();
+      if (state.composedFingerprint && fp === state.composedFingerprint) {
+        state.previewOkForLetter = true;
+        el('dhObsSave').disabled = false;
+      } else {
+        state.previewOkForLetter = false;
+        el('dhObsSave').disabled = true;
+      }
       // Первый предпросмотр — подгоняем по ширине, если человек ещё не
       // выбирал масштаб вручную.
       if (!state.zoomTouched) fitToWidth();
@@ -619,7 +850,7 @@ window.AsgardObsLetterModal = (function () {
       // сохранение: если человек после него закроет окно, введённые данные
       // пропадали без вопроса. Флаг «есть несохранённые правки» держим до
       // фактического save.
-      el('dhObsSave').disabled = false;
+      if (!state.previewOkForLetter) el('dhObsSave').disabled = true;
       el('dhObsDlPdf').disabled = false;
       el('dhObsDlDocx').disabled = false;
       const meta = el('dhObsPrevMeta');
@@ -678,6 +909,10 @@ window.AsgardObsLetterModal = (function () {
   }
 
   async function save() {
+    if (!state.previewOkForLetter || !letterTextFingerprint()) {
+      toast('Сохранение', 'Сначала «Собрать текст» и предпросмотр с этим текстом', 'err');
+      return;
+    }
     const btn = el('dhObsSave');
     btn.disabled = true;
     const prev = btn.textContent;
@@ -693,6 +928,7 @@ window.AsgardObsLetterModal = (function () {
       btn.textContent = 'Готово';
       state.dirty = false;
       state.saved = res;
+      clearDraftStorage();
       toast('Письмо создано', 'Исх. № ' + (res.number || ''), 'ok');
       if (typeof state.opts.onSaved === 'function') {
         try { await state.opts.onSaved(res); } catch (_) { /* не критично */ }
@@ -750,6 +986,24 @@ window.AsgardObsLetterModal = (function () {
     document.addEventListener('keydown', onKey);
 
     el('dhObsPreviewBtn').onclick = doPreview;
+    el('dhObsComposeBtn').onclick = doCompose;
+    el('dhObsSpecialBtn').onclick = openSpecialRules;
+    el('dhObsDraftReset').onclick = () => {
+      if (!window.confirm('Сбросить черновик и подставить значения из карточки?')) return;
+      clearDraftStorage();
+      applyDefaults(!!el('dhObsFromCard').checked);
+      applyObsFieldDefaults();
+      el('dhObsLetterText').value = '';
+      state.composedFingerprint = null;
+      state.specialContext = (state.defaults && state.defaults.special_context) || '';
+      markDirty();
+    };
+    el('dhObsSubParty').onchange = () => {
+      const custom = el('dhObsSubPartyCustom');
+      const isCustom = el('dhObsSubParty').value === '__custom__';
+      if (custom) custom.hidden = !isCustom;
+      markDirty();
+    };
     el('dhObsSave').onclick = save;
     el('dhObsDlPdf').onclick = () => download('pdf');
     el('dhObsDlDocx').onclick = () => download('docx');
@@ -762,7 +1016,8 @@ window.AsgardObsLetterModal = (function () {
       markDirty();
     };
     ['dhObsInvNo', 'dhObsInvDate', 'dhObsGross', 'dhObsVatRate', 'dhObsVat',
-      'dhObsCp', 'dhObsItems', 'dhObsLetterDate', 'dhObsSub', 'dhObsAccount']
+      'dhObsCp', 'dhObsItems', 'dhObsLetterDate', 'dhObsSub', 'dhObsAccount',
+      'dhObsWorkCtx', 'dhObsSubPartyCustom', 'dhObsPayPct', 'dhObsPayPeriod', 'dhObsLetterText']
       .forEach((id) => {
         const node = el(id);
         if (!node) return;
@@ -822,6 +1077,29 @@ window.AsgardObsLetterModal = (function () {
   function onKey(e) {
     if (!state) return;
     if (e.key === 'Escape') { e.preventDefault(); close(); }
+  }
+
+  function applyObsFieldDefaults() {
+    const d = state.defaults || {};
+    if (d.work_context != null) el('dhObsWorkCtx').value = d.work_context;
+    if (d.payment_pct != null) el('dhObsPayPct').value = String(d.payment_pct);
+    if (d.payment_period != null) el('dhObsPayPeriod').value = d.payment_period;
+    state.specialContext = d.special_context || '';
+    const hint = el('dhObsSpecialHint');
+    if (hint) hint.textContent = state.specialContext ? `Правило: ${(state.specialRule && state.specialRule.label) || 'спецконтекст'}` : '';
+    const party = d.subcontract_party || 'ООО «ГСП Ремонт»';
+    const partySel = el('dhObsSubParty');
+    const customIn = el('dhObsSubPartyCustom');
+    if (partySel) {
+      const has = Array.from(partySel.options).some((o) => o.value === party);
+      if (has) {
+        partySel.value = party;
+        if (customIn) customIn.hidden = true;
+      } else {
+        partySel.value = '__custom__';
+        if (customIn) { customIn.hidden = false; customIn.value = party; }
+      }
+    }
   }
 
   function applyDefaults(on) {
@@ -984,6 +1262,10 @@ window.AsgardObsLetterModal = (function () {
       subcontracts: [],
       dirty: false,
       previewed: false,
+      previewOkForLetter: false,
+      composedFingerprint: null,
+      specialContext: '',
+      specialRule: null,
       previewUrl: null,
       saved: null,
       // V487: масштаб и ширина колонок запоминаются между открытиями окна —
@@ -1057,10 +1339,19 @@ window.AsgardObsLetterModal = (function () {
 
       // Сначала заполняем опции, потом ставим value — иначе select
       // молча сбрасывает выбранный договор/ОБС.
+      const subDefault = opt.default_subcontract_id || opt.subcontract_id;
       fillAccounts(state.obsAccounts, opt.obs_account_id);
-      fillSubcontracts(state.subcontracts, opt.subcontract_id, Number(opt.amount_gross) || 0);
+      fillSubcontracts(state.subcontracts, subDefault, Number(opt.amount_gross) || 0);
+      state.specialRule = opt.special_rule || null;
+      renderPreflight(opt.preflight_warnings);
       el('dhObsLetterDate').value = state.defaults.letter_date || new Date().toISOString().slice(0, 10);
-      applyDefaults(true);
+      const hadDraft = restoreDraft();
+      if (!hadDraft) {
+        applyDefaults(true);
+        applyObsFieldDefaults();
+      } else if (el('dhObsLetterText').value.trim()) {
+        state.composedFingerprint = el('dhObsLetterText').value.trim();
+      }
       updateAccountInfo();
       updateSubInfo();
       updateItemsHint();

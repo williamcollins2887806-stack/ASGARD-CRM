@@ -108,11 +108,94 @@ async function attachFilesToDoc(db, docId, emailId, files, opts = {}) {
  *          counterparty_name?:string, excludeId?:number}} hint
  * @returns {Promise<object|null>}
  */
+/**
+ * Нормализация номера счёта для сравнения (как в findTargetDoc / дедупе).
+ * @param {string} v
+ * @returns {string}
+ */
+function normInvoiceNo(v) {
+  return String(v || '').toLowerCase()
+    .replace(/[№#"'`«»\s._-]/g, '')
+    .replace(/[/\\]+/g, '')
+    .replace(/[^0-9a-zа-яё]/gi, '');
+}
+
+/**
+ * Найти строку реестра по треду письма (in_reply_to / thread_id / References).
+ * В шапке модуля это было заявлено; до фикса искали только номер и сумму+ИНН.
+ *
+ * @param {object} db
+ * @param {{email_id?:number, in_reply_to?:string, thread_id?:string, message_id?:string, references_header?:string}} emailHint
+ * @returns {Promise<object|null>}
+ */
+async function findTargetDocByThread(db, emailHint = {}) {
+  const emailId = emailHint.email_id != null ? Number(emailHint.email_id) : null;
+  let inReply = emailHint.in_reply_to
+    ? String(emailHint.in_reply_to).replace(/[<>]/g, '').trim()
+    : null;
+  let threadId = emailHint.thread_id ? String(emailHint.thread_id).trim() : null;
+  let refs = emailHint.references_header ? String(emailHint.references_header) : '';
+
+  if (emailId && (!inReply || !threadId)) {
+    const er = await db.query(
+      `SELECT in_reply_to, thread_id, references_header, message_id
+         FROM emails WHERE id=$1`, [emailId]);
+    if (er.rows[0]) {
+      if (!inReply && er.rows[0].in_reply_to) {
+        inReply = String(er.rows[0].in_reply_to).replace(/[<>]/g, '').trim();
+      }
+      if (!threadId && er.rows[0].thread_id) threadId = String(er.rows[0].thread_id).trim();
+      if (!refs && er.rows[0].references_header) refs = String(er.rows[0].references_header);
+    }
+  }
+  if (!inReply && !threadId && !refs) return null;
+
+  const refIds = [];
+  if (inReply) refIds.push(inReply);
+  const refMatches = refs.match(/<[^>]+>/g) || [];
+  for (const m of refMatches) {
+    const id = m.slice(1, -1).trim();
+    if (id && !refIds.includes(id)) refIds.push(id);
+  }
+
+  // 1) Письма того же треда / по in_reply_to → doc_email_intake.doc_id
+  const r = await db.query(`
+    SELECT d.id, d.invoice_number, d.amount_gross, d.counterparty_name, d.counterparty_inn,
+           d.attachments, d.payment_invoice_id, d.work_id
+      FROM emails e
+      JOIN doc_email_intake i ON i.email_id = e.id AND i.doc_id IS NOT NULL
+      JOIN doc_registry d ON d.id = i.doc_id AND d.deleted_at IS NULL
+       AND d.dir='in' AND d.package_type='invoice'
+     WHERE ($1::text IS NULL OR e.thread_id = $1)
+        OR ($2::text[] IS NOT NULL AND cardinality($2::text[]) > 0
+            AND regexp_replace(coalesce(e.message_id,''), '[<>]', '', 'g') = ANY($2::text[]))
+     ORDER BY (d.payment_invoice_id IS NOT NULL) DESC, d.id ASC
+     LIMIT 1`, [threadId || null, refIds.length ? refIds : null]);
+  if (r.rows[0]) return r.rows[0];
+
+  // 2) Вложение уже лежит на карточке с email_id из того же треда
+  const r2 = await db.query(`
+    SELECT d.id, d.invoice_number, d.amount_gross, d.counterparty_name, d.counterparty_inn,
+           d.attachments, d.payment_invoice_id, d.work_id
+      FROM emails e
+      JOIN doc_registry d ON d.deleted_at IS NULL AND d.dir='in' AND d.package_type='invoice'
+       AND EXISTS (
+         SELECT 1 FROM jsonb_array_elements(COALESCE(d.attachments,'[]'::jsonb)) a
+          WHERE (a->>'email_id')::bigint = e.id
+       )
+     WHERE ($1::text IS NULL OR e.thread_id = $1)
+        OR ($2::text[] IS NOT NULL AND cardinality($2::text[]) > 0
+            AND regexp_replace(coalesce(e.message_id,''), '[<>]', '', 'g') = ANY($2::text[]))
+     ORDER BY (d.payment_invoice_id IS NOT NULL) DESC, d.id ASC
+     LIMIT 1`, [threadId || null, refIds.length ? refIds : null]);
+  return r2.rows[0] || null;
+}
+
 async function findTargetDoc(db, hint = {}) {
   const num = String(hint.invoice_number || '').trim();
   // 1. Точный номер (нормализованный) — самый надёжный признак.
   if (num) {
-    const norm = num.toLowerCase().replace(/[№#"'`«»\s._-]/g, '').replace(/[/\\]+/g, '/');
+    const norm = normInvoiceNo(num);
     if (norm) {
       const r = await db.query(`
         SELECT id, invoice_number, amount_gross, counterparty_name, counterparty_inn,
@@ -122,7 +205,7 @@ async function findTargetDoc(db, hint = {}) {
            AND lower(regexp_replace(coalesce(invoice_number,''),
                  '[^0-9a-zA-Zа-яА-ЯёЁ/]', '', 'g')) = $1
          ORDER BY (payment_invoice_id IS NOT NULL) DESC, id ASC
-         LIMIT 1`, [norm.replace(/\//g, '')]);
+         LIMIT 1`, [norm]);
       if (r.rows[0]) return r.rows[0];
     }
   }
@@ -146,6 +229,11 @@ async function findTargetDoc(db, hint = {}) {
          FROM doc_registry WHERE ${where}
         ORDER BY (payment_invoice_id IS NOT NULL) DESC, id ASC LIMIT 2`, params);
     if (r.rows.length === 1) return r.rows[0];
+  }
+  // 3. Тред письма (Re:/in_reply_to/thread_id) — когда OCR не дал номер.
+  if (hint.email_id || hint.in_reply_to || hint.thread_id) {
+    const byThread = await findTargetDocByThread(db, hint);
+    if (byThread) return byThread;
   }
   return null;
 }
@@ -225,4 +313,12 @@ function fileMatchesInvoice(fileName, invoiceNumber) {
   return hit ? 'match' : 'other';
 }
 
-module.exports = { attachFilesToDoc, findTargetDoc, asList, numbersFromFileName, fileMatchesInvoice };
+module.exports = {
+  attachFilesToDoc,
+  findTargetDoc,
+  findTargetDocByThread,
+  normInvoiceNo,
+  asList,
+  numbersFromFileName,
+  fileMatchesInvoice,
+};

@@ -460,7 +460,11 @@ async function intakeOne(db, { email, attachment, text, userId = null, dryRun = 
       invoice_number: parsed.invoice_number,
       amount_gross: parsed.amount_gross,
       counterparty_inn: parsed.inn,
-      counterparty_name: parsed.counterparty_name
+      counterparty_name: parsed.counterparty_name,
+      // D-348: Re:/тред — когда OCR не вытащил номер, но письмо в цепочке счёта.
+      email_id: emailId || null,
+      in_reply_to: email && email.in_reply_to || null,
+      thread_id: email && email.thread_id || null,
     });
 
     // Собираем файлы ЭТОГО письма (все, не только PDF-счёт): договор, ТЗ,
@@ -732,6 +736,24 @@ async function intakeOne(db, { email, attachment, text, userId = null, dryRun = 
     if (dup) docId = dup.id;
   } catch (e) {
     console.warn('[intake] дедуп не сработал: ' + (e && e.message));
+  }
+
+  // D-348 gap: классификатор сказал «счёт», findTargetDoc уже нашёл карточку
+  // (для attach), а строгий findDuplicate промахнулся (дата/ИНН). Раньше файлы
+  // уходили на старую строку, а пайплайн всё равно делал INSERT — дубль в реестре.
+  // Правило: совпал номер ИЛИ сумма с найденной карточкой → reuse, без новой строки.
+  if (!docId && targetDoc && targetDoc.id) {
+    const docAtt = require('./doc-attachments');
+    const sameNum = !!(parsed.invoice_number
+      && docAtt.normInvoiceNo(parsed.invoice_number)
+      && docAtt.normInvoiceNo(parsed.invoice_number) === docAtt.normInvoiceNo(targetDoc.invoice_number));
+    const sameAmt = Number(parsed.amount_gross) > 0
+      && Math.abs(Number(parsed.amount_gross) - Number(targetDoc.amount_gross || 0)) < 0.01;
+    if (sameNum || sameAmt) {
+      docId = targetDoc.id;
+      console.log(`[intake] письмо ${emailId}: reuse #${docId} через targetDoc `
+        + `(${sameNum ? 'номер' : 'сумма'}) — новую строку не создаём`);
+    }
   }
 
   let createdDoc = false;

@@ -162,6 +162,11 @@
                 <span data-meter-pos></span>
               </div>
             </div>
+            <div class="mst-side__cancel" data-cancel-wrap hidden style="margin:8px 12px 0">
+              <button type="button" class="mst-btn mst-btn--ghost mst-btn--sm" data-act="cancel-analyze">
+                Отменить анализ
+              </button>
+            </div>
             <div class="mst-side__log" data-log></div>
           </aside>
         </div>
@@ -267,6 +272,55 @@
       <div class="mst-gaps" style="margin-top:10px">${items}</div>`;
   }
 
+  /** Блок заездов без денег — на этапе объёмов и решения. */
+  function visitsBlockHtml() {
+    const st = _state.state || {};
+    const vp = st.visit_plan || null;
+    const visits = (vp && Array.isArray(vp.visits)) ? vp.visits
+      : (Array.isArray(st.visits) ? st.visits : []);
+    if (!vp && !visits.length) return '';
+    const mode = (vp && vp.mode) || st.visit_mode || 'unknown';
+    const trip = (vp && vp.trip_count) || st.trip_count || visits.length || 1;
+    const modeLabel = mode === 'continuous' ? 'один непрерывный заезд'
+      : (mode === 'visits' ? (trip + ' заезд(ов)') : 'режим не подтверждён');
+    const rows = visits.slice(0, 12).map((v, i) => {
+      const nPos = Array.isArray(v.position_ids) ? v.position_ids.length
+        : (Array.isArray(v.positions) ? v.positions.length : 0);
+      return `<div class="mst-readcard">
+        <b>${esc(v.label || ('Заезд ' + (i + 1)))}</b>
+        ${v.period_start || v.period_end
+          ? ` · ${esc([v.period_start, v.period_end].filter(Boolean).join(' — '))}` : ''}
+        ${nPos ? ` · ${nPos} поз.` : ''}
+        ${v.work_days ? ` · ~${esc(String(v.work_days))} дн.` : ''}
+        ${v.people_peak ? ` · до ${esc(String(v.people_peak))} чел.` : ''}
+      </div>`;
+    }).join('');
+    return `<div class="mst-block" style="margin-top:12px">
+      <h3 class="mst-block__title">График заездов · ${esc(modeLabel)}</h3>
+      <p class="mst-hint" style="margin:0 0 8px">Периоды ВОР — подписи внутри заезда. Деньги и смета здесь не считаются.</p>
+      ${rows || '<span class="mst-hint">Заезды ещё не собраны</span>'}
+      ${(vp && vp.unconfirmed) ? '<div class="mst-warn" style="margin-top:8px">Режим заездов не подтверждён — уточните перед просчётом.</div>' : ''}
+    </div>`;
+  }
+
+  /** МТР без цен — только номенклатура и количество. */
+  function mtrBlockHtml() {
+    const st = _state.state || {};
+    const mtr = Array.isArray(st.mtr_suggestions) ? st.mtr_suggestions
+      : (Array.isArray(st.mtr) ? st.mtr : []);
+    if (!mtr.length) return '';
+    const rows = mtr.slice(0, 20).map((m) => `<div class="mst-readcard">
+      <b>${esc(m.name || m.equipment || '—')}</b>
+      ${m.qty != null ? ` · ${esc(String(m.qty))} ${esc(m.unit || '')}` : ''}
+      ${m.purpose || m.note ? `<div class="mst-readcard__facts">${esc(m.purpose || m.note)}</div>` : ''}
+    </div>`).join('');
+    return `<div class="mst-block" style="margin-top:12px">
+      <h3 class="mst-block__title">МТР · ${mtr.length}</h3>
+      <p class="mst-hint" style="margin:0 0 8px">Перечень материалов и оснастки. Цены — только в просчёте.</p>
+      ${rows}
+    </div>`;
+  }
+
   function viewDv() {
     const positions = (_state.state && _state.state.positions) || [];
     if (!positions.length) {
@@ -351,7 +405,9 @@
       <div class="mst-row" style="margin-top:10px">
         <button type="button" class="mst-btn mst-btn--ghost mst-btn--sm" data-act="add-position">Добавить позицию</button>
         <button type="button" class="mst-btn mst-btn--ghost mst-btn--sm" data-act="approve-all">Согласовать все проверенные</button>
-      </div>`;
+      </div>
+      ${visitsBlockHtml()}
+      ${mtrBlockHtml()}`;
   }
 
   /** Список методов: только существующие в справочнике, без выдуманных кодов. */
@@ -468,6 +524,9 @@
         <h3 class="mst-block__title">Что собрали</h3>
         ${rows || '<span class="mst-hint">Позиций нет</span>'}
       </div>
+
+      ${visitsBlockHtml()}
+      ${mtrBlockHtml()}
 
       <div class="mst-block">
         <h3 class="mst-block__title">Чек-лист звонка клиенту · ${checklist.answered || 0}/${checklist.total || 0}</h3>
@@ -997,6 +1056,27 @@
     if (!p) return;
     p.textContent = text || '';
     p.classList.toggle('is-stream', !!streaming);
+    const cancelWrap = q('[data-cancel-wrap]');
+    if (cancelWrap) cancelWrap.hidden = !streaming;
+  }
+
+  async function cancelAnalyze() {
+    const s = _state;
+    const uid = s && (s.uid || s.sessionUid);
+    if (!uid) return;
+    try {
+      await api(`/api/tkp-quick/sessions/${encodeURIComponent(uid)}/stage/analyze-cancel`, {
+        method: 'POST',
+        body: {}
+      });
+      setLive('Анализ отменён.', false);
+      pushLog('Анализ отменён РП.');
+      _busy = false;
+      const cancelWrap = q('[data-cancel-wrap]');
+      if (cancelWrap) cancelWrap.hidden = true;
+    } catch (e) {
+      handleError(e);
+    }
   }
 
   /**
@@ -1134,6 +1214,8 @@
     });
 
     q('[data-act="next"]').addEventListener('click', () => onNext(o));
+    const cancelBtn = q('[data-act="cancel-analyze"]');
+    if (cancelBtn) cancelBtn.addEventListener('click', () => cancelAnalyze());
 
     startTimer();
     render();
@@ -1145,7 +1227,11 @@
       await loadStage();
       render();
       updateStatusChip();
-      if (_state.stage === 'clarify') {
+      // Если analyze ещё бежит после закрытия модалки — подписываемся, не стартуем заново.
+      const attached = await attachRunningAnalyze(o);
+      if (attached) {
+        /* live уже обновляется poll'ом */
+      } else if (_state.stage === 'clarify') {
         setLive('Жду ответа на вопросы — без них считать нельзя.', false);
       } else if (_state.stage === 'intake') {
         setLive('Готов начать: прочитаю ТЗ и покажу объёмы.', false);
@@ -1155,6 +1241,58 @@
     } catch (e) {
       handleError(e);
     }
+  }
+
+  /**
+   * Attach к in-flight analyze: poll analyze-status, пока running.
+   * Close модалки не убивает job — только этот watch.
+   */
+  async function attachRunningAnalyze(opts) {
+    const s = _state;
+    const uid = s && (s.uid || s.sessionUid);
+    if (!uid) return false;
+    let st = null;
+    try {
+      st = await api(`/api/tkp-quick/sessions/${encodeURIComponent(uid)}/stage/analyze-status`);
+    } catch (_) { return false; }
+    if (!st || !st.running || !st.job) return false;
+
+    _busy = true;
+    setLive(st.job.message || 'Анализ продолжается…', true);
+    if (st.job.pct != null) setMeter(st.job.pct, st.job.positions, null);
+    pushLog('Подхватил идущий анализ — жду завершения.');
+
+    const poll = async () => {
+      if (!_el) return; // модалку закрыли — watch стоп, job на сервере жив
+      let cur = null;
+      try {
+        cur = await api(`/api/tkp-quick/sessions/${encodeURIComponent(uid)}/stage/analyze-status`);
+      } catch (_) {
+        setTimeout(poll, 3000);
+        return;
+      }
+      if (!cur || !cur.job) { _busy = false; return; }
+      if (cur.job.message) setLive(cur.job.message, cur.running);
+      if (cur.job.pct != null) setMeter(cur.job.pct, cur.job.positions, null);
+      if (cur.running) {
+        setTimeout(poll, 2500);
+        return;
+      }
+      _busy = false;
+      try {
+        await loadStage();
+        render();
+        updateStatusChip();
+        setLive(cur.job.status === 'done'
+          ? 'Анализ завершён — проверьте объёмы.'
+          : ('Анализ: ' + (cur.job.error || cur.job.message || 'остановлен')), false);
+        if (typeof opts.onAnalyzeDone === 'function' && cur.job.status === 'done') {
+          opts.onAnalyzeDone(cur);
+        }
+      } catch (e) { handleError(e); }
+    };
+    setTimeout(poll, 2000);
+    return true;
   }
 
   /** Статус-чип в шапке обновляется вместе с этапом. */

@@ -38,6 +38,20 @@ const ASGARD_ORG = {
   signName: 'О.С. Кудряшов'
 };
 
+/** Строка A11 бланка МЛСП: «на оказание услуг по (…)» */
+function formatPassSubjectLine(subject) {
+  const s = String(subject || '').trim().replace(/\s+/g, ' ');
+  if (!s) return '';
+  if (/^на оказание\b/i.test(s)) return s;
+  return `на оказание услуг по (${s})`;
+}
+
+function resolvePassSubjectText(app) {
+  const direct = String(app?.subject_text || '').trim();
+  if (direct) return direct;
+  return formatPassSubjectLine(app?.contract_subject || app?.subject || '');
+}
+
 function passportLine(p) {
   const num = [p.passport_series, p.passport_number].filter(Boolean).join(' ') || p.passport || '';
   const issued = p.passport_issued || '';
@@ -197,11 +211,14 @@ function cellInlineStyle(cell) {
   if (font.italic) parts.push('font-style:italic');
   if (font.size) parts.push(`font-size:${font.size}pt`);
   const color = argbToCss(font.color && font.color.argb);
-  if (color) parts.push(`color:${color}`);
+  // !important — иначе components.css `table td { color: var(--t1) }` красит буквы в цвет темы
+  if (color) parts.push(`color:${color} !important`);
+  else parts.push('color:#0f172a !important');
   const fill = cell.fill;
   if (fill && fill.type === 'pattern' && fill.pattern === 'solid' && fill.fgColor) {
     const bg = argbToCss(fill.fgColor.argb);
-    if (bg) parts.push(`background:${bg}`);
+    // !important — иначе zebra/table td из app.css перебивают заливку Excel
+    if (bg) parts.push(`background:${bg} !important`);
   }
   const al = cell.alignment || {};
   if (al.horizontal) parts.push(`text-align:${al.horizontal}`);
@@ -301,7 +318,7 @@ function worksheetToHtml(ws) {
   const rowsHtml = [];
   for (let r = 1; r <= maxRow; r++) {
     const row = ws.getRow(r);
-    const h = excelHeightToPx(row.height || 15);
+    const h = Math.max(excelHeightToPx(row.height || 15), 18);
     const tds = [];
     for (let c = 1; c <= maxCol; c++) {
       const key = `${r}:${c}`;
@@ -319,7 +336,8 @@ function worksheetToHtml(ws) {
       const text = escHtml(cellDisplayValue(cell)).replace(/\n/g, '<br>');
       tds.push(`<td${attrs} style="${style}">${text}</td>`);
     }
-    rowsHtml.push(`<tr style="height:${h}px">${tds.join('')}</tr>`);
+    // min-height: фиксированный height + overflow:hidden резал 14pt текст в «полосы»
+    rowsHtml.push(`<tr style="min-height:${h}px;height:auto">${tds.join('')}</tr>`);
   }
 
   const orient = (ws.pageSetup && ws.pageSetup.orientation) || 'portrait';
@@ -379,7 +397,8 @@ function fillFlightSheet(ws, app) {
       setVal(ws, `C${r}`, p.fio || '');
       setVal(ws, `D${r}`, p.org || ASGARD_ORG.name);
       setVal(ws, `E${r}`, p.position || '');
-      setVal(ws, `F${r}`, p.department || '');
+      // Отдел/управление/блок не ведём — в бланке всегда прочерк
+      setVal(ws, `F${r}`, '—');
       setVal(ws, `G${r}`, p.mvz || app.mvz || '');
       setVal(ws, `H${r}`, fmtRu(p.birth_date) || '');
       setVal(ws, `I${r}`, [p.passport_series, p.passport_number].filter(Boolean).join(' ') || p.passport || '');
@@ -388,6 +407,11 @@ function fillFlightSheet(ws, app) {
       setVal(ws, `L${r}`, contract);
       setVal(ws, `M${r}`, p.permits_text || 'пропуск ФСБ');
       setVal(ws, `N${r}`, p.fsb_doc || '');
+      // перенос строк в колонке ФСБ (номер + период с–по)
+      try {
+        const cellN = ws.getCell(`N${r}`);
+        cellN.alignment = { ...(cellN.alignment || {}), wrapText: true, vertical: 'middle' };
+      } catch (_) { /* ignore */ }
     }
   }
 
@@ -509,7 +533,12 @@ function fillMlspPassSheet(ws, app) {
       ? `Для исполнения обязательств по действующему договору ${contract}`
       : '');
 
-  if (app.subject_text) setVal(ws, 'A11', app.subject_text);
+  clearFormula(ws.getCell('A11'));
+  setVal(
+    ws,
+    'A11',
+    resolvePassSubjectText(app) || 'на оказание услуг по (предмет договора)'
+  );
 
   for (let i = 0; i < 4; i++) {
     const r = 14 + i;
@@ -686,6 +715,8 @@ module.exports = {
   filenameFor,
   outDateRu,
   asgardBlock,
+  formatPassSubjectLine,
+  resolvePassSubjectText,
   SHEET_BY_TYPE,
   TEMPLATE_PATH,
   FSB_TEMPLATE_PATH

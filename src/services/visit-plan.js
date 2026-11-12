@@ -25,6 +25,136 @@
 const scheduleExtract = require('./schedule-extract');
 
 const LUNCH_SHIFT_HOURS = 12;
+/** Разрыв ≤ N дней — один заезд (выходные / стык смен). */
+const STAY_GAP_DAYS = 3;
+/** Доля заполнения календаря, при которой демобилизация бессмысленна. */
+const STAY_FILL_RATIO = 0.6;
+
+/**
+ * Ключ месяца YYYY-MM из даты или ярлыка периода.
+ * Универсально: мойка/сварка/стройка — без привязки к заказчику.
+ */
+function periodMonthKey(v) {
+  const start = String((v && (v.period_start || v.start)) || '').slice(0, 7);
+  if (/^\d{4}-\d{2}$/.test(start)) return start;
+  const end = String((v && (v.period_end || v.end)) || '').slice(0, 7);
+  if (/^\d{4}-\d{2}$/.test(end)) return end;
+  const label = String((v && (v.label || v.period)) || '').toLowerCase();
+  const months = [
+    ['январ', '01'], ['феврал', '02'], ['март', '03'], ['апрел', '04'],
+    ['ма[йяею]', '05'], ['июн', '06'], ['июл', '07'], ['август', '08'],
+    ['сентябр', '09'], ['октябр', '10'], ['ноябр', '11'], ['декабр', '12']
+  ];
+  let mm = null;
+  for (const [stem, num] of months) {
+    if (new RegExp(stem, 'i').test(label)) { mm = num; break; }
+  }
+  const y = label.match(/(20\d{2})/);
+  if (mm && y) return y[1] + '-' + mm;
+  if (mm) return 'xxxx-' + mm;
+  return null;
+}
+
+function daysBetween(aIso, bIso) {
+  if (!aIso || !bIso) return null;
+  const a = Date.parse(String(aIso).slice(0, 10));
+  const b = Date.parse(String(bIso).slice(0, 10));
+  if (!Number.isFinite(a) || !Number.isFinite(b)) return null;
+  return Math.round((b - a) / 86400000);
+}
+
+function calendarWorkDaysInRange(start, end) {
+  const s = Date.parse(String(start || '').slice(0, 10));
+  const e = Date.parse(String(end || '').slice(0, 10));
+  if (!Number.isFinite(s) || !Number.isFinite(e) || e < s) return null;
+  // Примерно 5/7 календарных суток — рабочие.
+  const cal = Math.round((e - s) / 86400000) + 1;
+  return Math.max(1, Math.round(cal * 5 / 7));
+}
+
+/**
+ * Склеить смежные периоды в заезды-пребывания.
+ * Период ВОР ≠ автоматически выезд: месяц на 25 суток работ — один заезд.
+ *
+ * @param {Array} visits — сырые заезды (по периодам)
+ * @returns {Array} кластеры
+ */
+function clusterAdjacentVisits(visits) {
+  const list = (Array.isArray(visits) ? visits : [])
+    .map((v, i) => Object.assign({}, v, {
+      _sort: periodMonthKey(v) || String(v.period_start || '') || ('z' + i)
+    }))
+    .sort((a, b) => String(a._sort).localeCompare(String(b._sort)));
+  if (list.length <= 1) {
+    return list.map((v, i) => {
+      const out = Object.assign({}, v);
+      delete out._sort;
+      out.id = out.id || ('v' + (i + 1));
+      return out;
+    });
+  }
+
+  const clusters = [];
+  let cur = null;
+  for (const v of list) {
+    const clean = Object.assign({}, v);
+    delete clean._sort;
+    if (!cur) {
+      cur = Object.assign({}, clean, {
+        id: clean.id || 'v1',
+        period_labels: [clean.label].filter(Boolean),
+        position_ids: Array.isArray(clean.position_ids) ? clean.position_ids.slice() : [],
+        positions: Array.isArray(clean.positions) ? clean.positions.slice() : []
+      });
+      clusters.push(cur);
+      continue;
+    }
+    const gap = daysBetween(cur.period_end, clean.period_start);
+    const curKey = periodMonthKey(cur);
+    const nextKey = periodMonthKey(clean);
+    let consecutiveMonths = false;
+    if (curKey && nextKey && /^\d{4}-\d{2}$/.test(curKey) && /^\d{4}-\d{2}$/.test(nextKey)) {
+      const [y1, m1] = curKey.split('-').map(Number);
+      const [y2, m2] = nextKey.split('-').map(Number);
+      consecutiveMonths = (y2 * 12 + m2) - (y1 * 12 + m1) === 1;
+    }
+    const mergedStart = cur.period_start || clean.period_start;
+    const mergedEnd = clean.period_end || cur.period_end;
+    const workDays = (Number(cur.work_days) || 0) + (Number(clean.work_days) || 0);
+    const calWd = calendarWorkDaysInRange(mergedStart, mergedEnd);
+    const filled = calWd > 0 && workDays > 0 ? workDays / calWd : 0;
+    const shouldMerge = (gap != null && gap >= 0 && gap <= STAY_GAP_DAYS)
+      || (consecutiveMonths && (filled >= STAY_FILL_RATIO || !(Number(clean.work_days) > 0)));
+
+    if (shouldMerge) {
+      cur.period_end = clean.period_end || cur.period_end;
+      if (!cur.period_start) cur.period_start = clean.period_start;
+      cur.period_labels = (cur.period_labels || []).concat(clean.label ? [clean.label] : []);
+      cur.label = (cur.period_labels || []).filter(Boolean).join(' → ') || cur.label;
+      cur.position_ids = (cur.position_ids || []).concat(clean.position_ids || []);
+      cur.positions = (cur.positions || []).concat(clean.positions || []);
+      cur.work_days = workDays > 0 ? Math.round(workDays * 10) / 10 : cur.work_days;
+      const ph = (Number(cur.person_hours) || 0) + (Number(clean.person_hours) || 0);
+      if (ph > 0) cur.person_hours = ph;
+      cur.people_peak = Math.max(Number(cur.people_peak) || 0, Number(clean.people_peak) || 0) || cur.people_peak;
+    } else {
+      cur = Object.assign({}, clean, {
+        id: 'v' + (clusters.length + 1),
+        period_labels: [clean.label].filter(Boolean),
+        position_ids: Array.isArray(clean.position_ids) ? clean.position_ids.slice() : [],
+        positions: Array.isArray(clean.positions) ? clean.positions.slice() : []
+      });
+      clusters.push(cur);
+    }
+  }
+  return clusters.map((c, i) => {
+    c.id = c.id || ('v' + (i + 1));
+    if (Array.isArray(c.positions) && c.positions.length) {
+      return summarizeVisit(c);
+    }
+    return c;
+  });
+}
 
 /** Группировка позиций по заездам. */
 function groupPositionsByVisit(positions) {
@@ -188,10 +318,38 @@ function buildVisitPlan(p) {
     : (positions.length > 0 && posWithPeriod.length === 0 ? null : 'unknown');
 
   // ── Приоритет источников ─────────────────────────────────────────────────
-  // Модель главнее: она читает документы любого вида. Детерминированный
-  // разбор страхует, если модель промолчала. Позиции ДВ — последний довод.
-  let mode = modelMode || docMode || posMode || 'unknown';
-  let source = modelMode ? 'model' : (docMode !== 'unknown' ? 'docs' : (posMode ? 'positions' : 'none'));
+  // Модель главнее: она читает документы любого вида. НО её «unknown» — это
+  // не решение, а отказ: если детерминированный разбор или сами позиции ДВ
+  // уже нашли график, использовать их. Иначе «не определил» перебивало
+  // реальные месяцы из документов, и trip_count падал до 1
+  // (дефект D4 верификатора 10.11.2026).
+  const modelDecided = modelMode && modelMode !== 'unknown';
+  const docsDecided = docMode && docMode !== 'unknown';
+  const posDecided = posMode && posMode !== 'unknown';
+
+  let mode;
+  let source;
+  if (modelDecided) {
+    mode = modelMode;
+    source = 'model';
+  } else if (docsDecided) {
+    mode = docMode;
+    source = 'docs';
+  } else if (posDecided) {
+    mode = posMode;
+    source = 'positions';
+  } else {
+    mode = 'unknown';
+    source = 'none';
+  }
+  // Если модель сказала «unknown», а документы дали ответ — это не конфликт
+  // источников, а отказ модели; пишем пометку для прозрачности.
+  if (modelMode === 'unknown' && mode !== 'unknown') {
+    conflicts.push({
+      kind: 'model_unknown_docs_resolved',
+      message: `Модель не определила режим, но документы дают «${mode}». Принят разбор документов.`
+    });
+  }
 
   // ТЗ главнее ВОР: если документы требуют непрерывной остановки, а ВОР
   // разбит по месяцам — едем непрерывно, а разбивку показываем справочно.
@@ -235,17 +393,48 @@ function buildVisitPlan(p) {
       }));
     }
 
-    // Позиции распределены по заездам? Если в заезде нет position_ids,
-    // но есть период — привяжем по совпадению месяца.
-    visits = attachPositionsToVisits(visits, positions);
+    // mode=visits без содержимого — запрещено: fallback на периоды позиций,
+    // иначе unknown + вопрос РП (не пустой visits[]).
+    if (!visits.length && posGroups.length && posWithPeriod.length) {
+      visits = posGroups.map((g) => summarizeVisit(g));
+      conflicts.push({
+        kind: 'visits_empty_fallback_periods',
+        message: 'Список заездов был пуст — собрали по периодам позиций ДВ.'
+      });
+    }
+    if (!visits.length && positions.length) {
+      mode = 'unknown';
+      source = source === 'model' ? 'model_empty_visits' : source;
+      conflicts.push({
+        kind: 'visits_empty',
+        message: 'Режим «несколько выездов», но заезды не удалось собрать. Нужен ответ РП.'
+      });
+      visits = [summarizeVisit({
+        id: 'v1',
+        label: 'режим не подтверждён',
+        position_ids: positions.map((x) => String(x.id)).filter(Boolean),
+        positions: positions.slice()
+      })];
+    } else {
+      visits = attachPositionsToVisits(visits, positions);
+      // Период ≠ выезд: склеиваем смежные окна в заезды-пребывания.
+      visits = clusterAdjacentVisits(visits);
+    }
   } else if (mode === 'continuous') {
+    // Периоды ВОР остаются подписями внутри одного заезда.
+    const periodLabels = [...new Set(
+      positions.map((x) => String(x.period || '').trim()).filter(Boolean)
+    )].slice(0, 24);
     visits = [summarizeVisit({
       id: 'v1',
-      label: 'один непрерывный заезд',
-      period_start: schedule.found && schedule.raw ? null : null,
+      label: periodLabels.length
+        ? ('один непрерывный заезд · ' + periodLabels.join(', '))
+        : 'один непрерывный заезд',
+      period_start: null,
       period_end: null,
       position_ids: positions.map((x) => String(x.id)).filter(Boolean),
-      positions: positions.slice()
+      positions: positions.slice(),
+      period_labels: periodLabels
     })];
   } else {
     // unknown: показываем одну группу «весь объём», но помечаем вопросом.
@@ -284,7 +473,9 @@ function buildVisitPlan(p) {
     });
   }
 
-  const unconfirmed = mode === 'unknown';
+  // unknown ИЛИ visits_empty (mode=visits без содержимого) — вопрос РП.
+  const unconfirmed = mode === 'unknown'
+    || conflicts.some((c) => c && (c.kind === 'visits_empty' || c.kind === 'visits_empty_fallback_periods'));
 
   // Итоговые числа для шапки графика.
   const totalWorkDays = visits.reduce((s, v) => s + (Number(v.work_days) || 0), 0);
@@ -368,4 +559,12 @@ function sameVisitWindow(p, v) {
   return false;
 }
 
-module.exports = { buildVisitPlan, groupPositionsByVisit, summarizeVisit };
+module.exports = {
+  buildVisitPlan,
+  groupPositionsByVisit,
+  summarizeVisit,
+  clusterAdjacentVisits,
+  periodMonthKey,
+  STAY_GAP_DAYS,
+  STAY_FILL_RATIO
+};

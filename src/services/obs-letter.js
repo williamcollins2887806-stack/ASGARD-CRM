@@ -481,42 +481,62 @@ async function buildLetterDataFromPayload(db, docId, payload) {
     obsAccount = oa.rows[0] || null;
   }
 
+  const letterRules = require('./obs-letter-rules');
+  const work_context = p.work_context !== undefined
+    ? String(p.work_context || '').trim()
+    : '';
+  const subcontract_party = p.subcontract_party !== undefined
+    ? String(p.subcontract_party || '').trim() || letterRules.DEFAULT_SUBCONTRACT_PARTY
+    : letterRules.DEFAULT_SUBCONTRACT_PARTY;
+  const special_context = p.special_context !== undefined ? String(p.special_context || '').trim() : '';
+
+  let payment_pct = 100;
+  if (p.payment_pct !== undefined && p.payment_pct !== null && p.payment_pct !== '') {
+    const n = Number(p.payment_pct);
+    if (Number.isFinite(n)) payment_pct = Math.max(0, Math.min(100, n));
+  }
+  const payment_period = p.payment_period !== undefined ? String(p.payment_period || '').trim() : '';
+
+  let paragraphs_override = null;
+  const rawOverride = p.paragraphs_override || p.letter_body;
+  if (Array.isArray(rawOverride)) {
+    const clean = rawOverride.map((t) => String(t == null ? '' : t).trim()).filter(Boolean);
+    if (clean.length) paragraphs_override = clean;
+  }
+
   // ─── V486: ТЕКСТ ПИСЬМА ПОД ПРЕДМЕТ ЗАКУПКИ ─────────────────────────────
-  //
-  // Заказчик 11.11.2026: «холодильник, шуруповёрт и кулер не для безопасного
-  // выполнения работ — надо думать, для чего нужна каждая позиция».
-  //
-  // Здесь единственное место, где есть `await` для вызова ИИ: ниже все
-  // функции сборки письма синхронные, поэтому текст готовим заранее и кладём
-  // в `data.aiBody`. Если ИИ недоступен — сервис отдаёт детерминированный
-  // фолбэк по каркасу, письмо всё равно соберётся.
-  //
-  // `force` в payload позволяет человеку перегенерировать текст в модалке,
-  // если первый вариант не понравился.
   let aiBody = null;
-  try {
-    const aiSvc = require('./obs-letter-ai');
-    const contractText = subcontract
-      ? `№ ${subcontract.number}${contractDate ? ` от ${contractDate}` : ''}`
-      : (contractLabel ? `№ ${contractLabel}` : '');
-    aiBody = await aiSvc.generate({
-      items,
-      comment: doc.comment_text || base.doc.comment_text || '',
-      counterparty: doc.counterparty_name || '',
-      company: (base.company && (base.company.name_short || base.company.name_full)) || 'ООО «Асгард-Сервис»',
-      invoiceNo: doc.invoice_number || '',
-      invoiceDate: doc.invoice_date ? _shared.formatRuDate(doc.invoice_date) : '',
-      contractLabel: contractText,
-      amount: doc.amount_gross,
-    });
-  } catch (e) {
-    // Письмо должно собираться даже при падении ИИ — это платёжный документ.
-    console.warn('[obs-letter] aiBody не собрался: ' + (e && e.message));
+  const skipAi = !!paragraphs_override;
+  if (!skipAi) {
+    try {
+      const aiSvc = require('./obs-letter-ai');
+      const contractText = subcontract
+        ? `№ ${subcontract.number}${contractDate ? ` от ${contractDate}` : ''}`
+        : (contractLabel ? `№ ${contractLabel}` : '');
+      aiBody = await aiSvc.generate({
+        items,
+        comment: doc.comment_text || base.doc.comment_text || '',
+        counterparty: doc.counterparty_name || '',
+        company: (base.company && (base.company.name_short || base.company.name_full)) || 'ООО «Асгард-Сервис»',
+        invoiceNo: doc.invoice_number || '',
+        invoiceDate: doc.invoice_date ? _shared.formatRuDate(doc.invoice_date) : '',
+        contractLabel: contractText,
+        amount: doc.amount_gross,
+      });
+    } catch (e) {
+      console.warn('[obs-letter] aiBody не собрался: ' + (e && e.message));
+    }
   }
 
   return Object.assign({}, base, {
     doc, subcontract, contractLabel, contractDate, items, obsAccount,
-    aiBody,   // { gist, why, scaffold, type, source } | null
+    aiBody,
+    work_context,
+    subcontract_party,
+    payment_pct,
+    payment_period,
+    special_context,
+    paragraphs_override,
   });
 }
 
@@ -573,41 +593,23 @@ function buildHtml(data, opts) {
   const invoiceDate = dateNum(doc.invoice_date);
   const counterparty = doc.counterparty_name || 'контрагент';
 
-  // Основание: объект и работы. Если работы нет — нейтральная формулировка.
-  const objectName = (work && work.object_name) || '';
-  const workTitle = (work && work.work_title) || '';
-  const customerName = (work && work.customer_name) || '';
+  const letterRules = require('./obs-letter-rules');
+  const workCtx = String(data.work_context || '').trim() || letterRules.DEFAULT_WORK_CONTEXT;
+  const subParty = String(data.subcontract_party || '').trim() || letterRules.DEFAULT_SUBCONTRACT_PARTY;
+  const payPct = Math.max(0, Math.min(100, Number(data.payment_pct) || 100));
+  const payPeriod = String(data.payment_period || '').trim();
+  const specialCtx = String(data.special_context || '').trim();
 
-  // D-378: падеж. «выполняет работы по Капитальный ремонт» — ошибка, которую
-  // поймал первый прогон. Если название работы само является действием
-  // («Капитальный ремонт…», «Очистка…»), ставим его сразу после «выполняет»;
-  // иначе — «выполняет работы по <название>».
-  const ACTION_TITLE = /^(капитальный|текущий|ремонт|замена|очистка|промывка|монтаж|демонтаж|восстановлен|диагностик|обследован|испытани)/i;
-  const whatWeDo = workTitle
-    ? (ACTION_TITLE.test(workTitle.trim()) ? workTitle.trim() : `работы по ${workTitle.trim()}`)
-    : 'работы';
-
-  // Даты — числами, как в образце («23.10.2026 г.»), а не словами.
-  //
-  // D-378 (P2 от верификатора 25.10.2026): в первой версии были обороты из
-  // запрещённого списка .cursor/rules/anti-ai-text.mdc — «Настоящим сообщаем»,
-  // «В рамках исполнения», «В целях обеспечения». Письмо уходит внешнему
-  // контрагенту, поэтому переписано прямыми формулировками без канцелярита.
-  let basisText;
-  if (objectName && customerName) {
-    basisText = `${esc(company.name_short)} выполняет ${esc(whatWeDo)} `
-      + `на объекте ${esc(objectName)} по договору субподряда с ${esc(customerName)}.`;
-  } else if (objectName) {
-    basisText = `${esc(company.name_short)} выполняет ${esc(whatWeDo)} на объекте ${esc(objectName)}.`;
-  } else if (workTitle) {
-    basisText = `${esc(company.name_short)} выполняет ${esc(whatWeDo)}.`;
-  } else {
-    basisText = `${esc(company.name_short)} привлекает подрядчиков для исполнения своих обязательств перед заказчиками.`;
+  const scNoHtml = data.subcontract ? data.subcontract.number : (data.contractLabel || '');
+  const scDateHtml = data.contractDate || '';
+  let basisText = `Настоящим сообщаем, что ${esc(company.name_short)} ${esc(workCtx)}`;
+  if (scNoHtml) {
+    basisText += ` на основании Договора субподряда № ${esc(scNoHtml)}`
+      + `${scDateHtml ? ` от ${esc(scDateHtml)}` : ''}`
+      + `, заключенного с ${esc(subParty)}`;
   }
+  basisText += '.';
 
-  // D-381: договор субподряда. Если директор выбрал договор — пишем его номер,
-  // дату и ссылку на лимит существенности. Ошибка в основании делает письмо
-  // непригодным, поэтому договор берём из данных, а не «какой найдётся».
   const contractText = data.subcontract
     ? ` на основании договора субподряда № ${esc(data.subcontract.number)}`
       + `${data.contractDate ? ` от ${esc(data.contractDate)}` : ''}`
@@ -659,11 +661,15 @@ function buildHtml(data, opts) {
 
   const vatLine = hasVat
     ? ` (включая НДС ${ratePct ? String(Math.round(ratePct)) + '%' : ''} — ${money(vat)} руб.)`
-    : ' (НДС не облагается)';
+    : ' (без НДС)';
 
+  const payGross = Math.round(gross * payPct / 100 * 100) / 100;
+  const payVat = hasVat ? Math.round(vat * payPct / 100 * 100) / 100 : 0;
+  const pctNote = payPct < 100 ? ` (${payPct}% от суммы счёта)` : '';
   const vatTail = hasVat
-    ? `, в том числе НДС ${ratePct ? String(Math.round(ratePct)) + '%' : ''} — ${money(vat)} руб.`
-    : '. НДС не облагается';
+    ? `, в том числе НДС ${ratePct ? String(Math.round(ratePct)) + '%' : ''} — ${money(payVat)} руб.`
+    : '';
+  const periodNote = payPeriod ? ` за период ${payPeriod}` : '';
 
   // V473: куда платить. В письме для ОБС обязательно должен быть виден счёт
   // ОБС — раньше его не было вовсе, и получатель не знал, куда перечислять.
@@ -675,6 +681,29 @@ function buildHtml(data, opts) {
       + `${obsAccount.bank_name ? ` (${esc(obsAccount.bank_name)})` : ''}`
       + `${obsAccount.bank_account ? `, р/с ${esc(obsAccount.bank_account)}` : ''}.</p>`
     : '';
+
+  const overrideParas = Array.isArray(data.paragraphs_override) && data.paragraphs_override.length
+    ? data.paragraphs_override : null;
+  const mainBodyHtml = overrideParas
+    ? overrideParas.map((t) => {
+      const s = String(t || '');
+      if (/^Просим осуществить оплату/i.test(s)) return `<p class="request">${esc(s)}</p>`;
+      if (/выставлен сч[её]т на оплату/i.test(s)) return `<p>${esc(s)}</p>`;
+      return `<p>${esc(s)}</p>`;
+    }).join('\n    ')
+      + (obsPayLine ? `\n    ${obsPayLine}` : '')
+    : `<p>${basisText}</p>
+    ${specialCtx ? `<p>${esc(specialCtx)}</p>` : ''}
+    ${scaffoldGate === 'dopusk' ? `<p>В рамках исполнения обязательств по указанному договору персонал ${esc(company.name_short)} обязан иметь действующие допуски и разрешительные документы, подтверждающие возможность выполнения работ на объекте Заказчика.</p>` : ''}
+    ${aiGist ? `<p>${esc(aiGist)}</p>` : `<p>Чтобы обеспечить допуск персонала к работам, ${esc(company.name_short)} привлекло ${esc(counterparty)}${contractText}.</p>`}
+    ${itemsLine ? `<p>${esc(itemsLine)}</p>` : ''}
+    <p>В адрес ООО «Асгард-Сервис» выставлен счёт на оплату <strong>№ ${esc(invoiceNo)}</strong>${invoiceDate ? ` от ${esc(invoiceDate)}` : ''}
+       на сумму <strong>${money(gross)} руб.</strong>${esc(vatLine)}.</p>
+    ${limitNote}
+    <p>${aiWhy ? esc(aiWhy) : 'Расходы обязательные и напрямую связаны с исполнением обязательств по договору субподряда.'}</p>
+    <p class="request">Просим осуществить оплату счёта${esc(pctNote)} в размере <strong>${money(payGross)} руб.</strong>
+       (${esc(amountInWords(payGross))})${esc(vatTail)}${esc(periodNote)}.</p>
+    ${obsPayLine}`;
 
   return `<!doctype html>
 <html lang="ru"><head>
@@ -889,17 +918,7 @@ function buildHtml(data, opts) {
   <div class="salute">Уважаемые коллеги!</div>
 
   <div class="body">
-    <p>${basisText}</p>
-    ${scaffoldGate === 'dopusk' ? `<p>В рамках исполнения обязательств по указанному договору персонал ${esc(company.name_short)} обязан иметь действующие допуски и разрешительные документы, подтверждающие возможность выполнения работ на объекте Заказчика.</p>` : ''}
-    ${aiGist ? `<p>${esc(aiGist)}</p>` : `<p>Чтобы обеспечить допуск персонала к работам, ${esc(company.name_short)} привлекло ${esc(counterparty)}${contractText}.</p>`}
-    ${itemsLine ? `<p>${esc(itemsLine)}</p>` : ''}
-    <p>${esc(company.name_short)} получило счёт на оплату <strong>№ ${esc(invoiceNo)}</strong>${invoiceDate ? ` от ${esc(invoiceDate)}` : ''}
-       на сумму <strong>${money(gross)} руб.</strong>${esc(vatLine)}.</p>
-    ${limitNote}
-    <p>${aiWhy ? esc(aiWhy) : 'Расходы обязательные и напрямую связаны с исполнением обязательств по договору субподряда.'}</p>
-    <p class="request">Просим оплатить счёт (100% суммы) в размере <strong>${money(gross)} руб.</strong>
-       (${esc(amountInWords(gross))})${esc(vatTail)}</p>
-    ${obsPayLine}
+    ${mainBodyHtml}
   </div>
 
   <div class="signature-block">
@@ -1192,6 +1211,18 @@ async function renderObsLetterDocx(db, docId, payload, opts = {}) {
 function buildLetterParagraphs(data, opts = {}) {
   const { doc, work, company, subcontract } = data;
 
+  const override = data.paragraphs_override;
+  if (Array.isArray(override) && override.length) {
+    return override.map((t) => String(t || '').trim()).filter(Boolean);
+  }
+
+  const letterRules = require('./obs-letter-rules');
+  const workCtx = String(data.work_context || '').trim() || letterRules.DEFAULT_WORK_CONTEXT;
+  const subParty = String(data.subcontract_party || '').trim() || letterRules.DEFAULT_SUBCONTRACT_PARTY;
+  const payPct = Math.max(0, Math.min(100, Number(data.payment_pct) || 100));
+  const payPeriod = String(data.payment_period || '').trim();
+  const specialCtx = String(data.special_context || '').trim();
+
   const dateNum = (d) => {
     if (!d) return '';
     const dt = d instanceof Date ? d : new Date(d);
@@ -1219,42 +1250,21 @@ function buildLetterParagraphs(data, opts = {}) {
     catch (_) { return raw; }
   })();
 
-  const objectName = (work && work.object_name) || '';
-  const workTitle = (work && work.work_title) || '';
-  const customerName = (work && work.customer_name) || '';
-
-  const ACTION_TITLE = /^(капитальный|текущий|ремонт|замена|очистка|промывка|монтаж|демонтаж|восстановлен|диагностик|обследован|испытани)/i;
-  const whatWeDo = workTitle
-    ? (ACTION_TITLE.test(workTitle.trim()) ? workTitle.trim() : `работы по ${workTitle.trim()}`)
-    : 'работы';
-
   const out = [];
 
-  // 1. Основание: объект и работы.
-  //
-  // V486: «Настоящим сообщаем, что…» — так начинается ВСЕ 13 писем Дмитрия,
-  // это устойчивая формула, а не случайность. Дальше — объект, работы и
-  // договор субподряда с заказчиком (не с поставщиком).
-  const scNo = subcontract ? subcontract.number : '';
+  // 1. Основание: work_context + договор субподряда с subcontract_party (не customer work).
+  const scNo = subcontract ? subcontract.number : (data.contractLabel || '');
   const scDate = subcontract && subcontract.agreement_date
     ? dateNum(subcontract.agreement_date)
     : (data.contractDate || '');
-  const basis = [];
-  if (objectName && customerName) {
-    basis.push(`${company.name_short} выполняет ${whatWeDo} в интересах ${customerName}`
-      + `${objectName ? `, расположенного на объекте ${objectName}` : ''}`);
-  } else if (objectName) {
-    basis.push(`${company.name_short} выполняет ${whatWeDo} на объекте ${objectName}`);
-  } else if (workTitle) {
-    basis.push(`${company.name_short} выполняет ${whatWeDo}`);
-  } else {
-    basis.push(`${company.name_short} привлекает подрядчиков для исполнения своих обязательств перед заказчиками`);
-  }
+  let basisIntro = `Настоящим сообщаем, что ${company.name_short} ${workCtx}`;
   if (scNo) {
-    basis.push(`на основании Договора субподряда № ${scNo}${scDate ? ` от ${scDate}` : ''}`
-      + (customerName ? `, заключенного с ${customerName}` : ''));
+    basisIntro += ` на основании Договора субподряда № ${scNo}${scDate ? ` от ${scDate}` : ''}`
+      + `, заключенного с ${subParty}`;
   }
-  out.push(`Настоящим сообщаем, что ${basis.join(' ')}.`.replace(/\s+/g, ' '));
+  out.push(`${basisIntro}.`.replace(/\s+/g, ' '));
+
+  if (specialCtx) out.push(specialCtx);
 
   // 2. Требование к допускам — ТОЛЬКО для КАРКАСА «допуск» И ТОЛЬКО ДЛЯ УСЛУГ.
   //
@@ -1337,8 +1347,8 @@ function buildLetterParagraphs(data, opts = {}) {
   // 5. Счёт и сумма.
   const vatLine = hasVat
     ? ` (включая НДС ${ratePct ? String(Math.round(ratePct)) + '%' : ''} — ${money(vat)} руб.)`
-    : ' (НДС не облагается)';
-  out.push(`${company.name_short} получило счёт на оплату № ${invoiceNo}`
+    : ' (без НДС)';
+  out.push(`В адрес ООО «Асгард-Сервис» выставлен счёт на оплату № ${invoiceNo}`
     + `${invoiceDate ? ` от ${invoiceDate}` : ''} на сумму ${money(gross)} руб.${vatLine}.`);
 
   // 6. Лимит существенности по договору (справочно).
@@ -1367,11 +1377,18 @@ function buildLetterParagraphs(data, opts = {}) {
   }
 
   // 8. Просьба об оплате.
+  const payGross = Math.round(gross * payPct / 100 * 100) / 100;
+  const payVat = hasVat ? Math.round(vat * payPct / 100 * 100) / 100 : 0;
+  // Доля оплаты: «50% от суммы счёта». Период — за какой отрезок платим
+  // (Газпром Питание), НЕ срок оплаты («оплатить не позднее» запрещено).
+  const pctNote = payPct < 100 ? ` (${payPct}% от суммы счёта)` : '';
   const vatTail = hasVat
-    ? `, в том числе НДС ${ratePct ? String(Math.round(ratePct)) + '%' : ''} — ${money(vat)} руб.`
-    : '. НДС не облагается.';
-  out.push(`Просим оплатить счёт (100% суммы) в размере ${money(gross)} руб. `
-    + `(${amountInWords(gross)})${vatTail}`);
+    ? `, в том числе НДС ${ratePct ? String(Math.round(ratePct)) + '%' : ''} — ${money(payVat)} руб.`
+    : '';
+  out.push(`Просим осуществить оплату счёта${pctNote} в размере ${money(payGross)} руб. `
+    + `(${amountInWords(payGross)})${vatTail}`
+    + (payPeriod ? ` за период ${payPeriod}` : '')
+    + '.');
 
   // 9. V473: куда платить — ОБС-счёт из справочника. Строка после просьбы,
   // чтобы Word и PDF совпадали по тексту (проверяется тестом).
@@ -1414,17 +1431,15 @@ function buildLetterBlocks(data, opts = {}) {
   // чтобы шаблон напечатал его своим (обычным) форматированием.
   const items = all.filter((t) => t.startsWith('— ')).map((t) => t.replace(/^—\s*/, ''));
 
-  // «Получило счёт …» — ключевой абзац, в образце жирный.
-  const invoice = all.filter((t) => /получило сч[её]т на оплату/i.test(t));
+  const invoice = all.filter((t) => /выставлен сч[её]т на оплату/i.test(t));
 
-  // «Просим оплатить …» — тоже жирный.
-  const request = all.filter((t) => /^Просим оплатить/i.test(t));
+  const request = all.filter((t) => /^Просим осуществить оплату/i.test(t));
 
   // Всё остальное делим на «до перечня» (intro), «после счёта» (outro) и
   // «после просьбы» (post — куда платить).
   const startItems = all.findIndex((t) => t.startsWith('— '));
-  const invoiceIdx = all.findIndex((t) => /получило сч[её]т на оплату/i.test(t));
-  const requestIdx = all.findIndex((t) => /^Просим оплатить/i.test(t));
+  const invoiceIdx = all.findIndex((t) => /выставлен сч[её]т на оплату/i.test(t));
+  const requestIdx = all.findIndex((t) => /^Просим осуществить оплату/i.test(t));
 
   const introEnd = startItems >= 0 ? startItems : (invoiceIdx >= 0 ? invoiceIdx : all.length);
   const intro = all.slice(0, introEnd);
@@ -1433,7 +1448,7 @@ function buildLetterBlocks(data, opts = {}) {
   const outroEnd = requestIdx >= 0 ? requestIdx : all.length;
   const outro = all.slice(outroStart, outroEnd)
     // лимит существенности остаётся в общем потоке — это справочная строка
-    .filter((t) => !/^Просим оплатить/i.test(t));
+    .filter((t) => !/^Просим осуществить оплату/i.test(t));
 
   // D-397 (FAIL верификатора 07.11.2026): строка «Оплату просим провести с…»
   // идёт ПОСЛЕ «Просим оплатить», а прежний outro заканчивался на requestIdx —

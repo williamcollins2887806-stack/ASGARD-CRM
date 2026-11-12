@@ -406,9 +406,12 @@ function extractVisitPeriods(text) {
 
   let mode = 'unknown';
   const uniqueVisits = dedupeVisits(visits);
+  // Число выездов без списка периодов — ещё не mode=visits с пустым visits[]:
+  // либо есть разложение по месяцам, либо оставляем unknown (РП подтвердит).
   if (uniqueVisits.length >= 2) mode = 'visits';
   else if (continuousSignal && uniqueVisits.length <= 1) mode = 'continuous';
-  else if (explicitTripCount && explicitTripCount >= 2) mode = 'visits';
+  else if (explicitTripCount && explicitTripCount >= 2 && uniqueVisits.length >= 1) mode = 'visits';
+  else if (explicitTripCount && explicitTripCount >= 2 && uniqueVisits.length === 0) mode = 'unknown';
   else if (continuousSignal) mode = 'continuous';
   else if (visitsSignal && uniqueVisits.length >= 1) mode = 'visits';
 
@@ -419,6 +422,7 @@ function extractVisitPeriods(text) {
     explicit_trip_count: explicitTripCount,
     continuous_signal: continuousSignal,
     visits_signal: visitsSignal,
+    unconfirmed: !!(explicitTripCount && explicitTripCount >= 2 && uniqueVisits.length === 0),
     quotes: uniqueVisits.map((v) => v.quote).filter(Boolean).slice(0, 8)
   };
 }

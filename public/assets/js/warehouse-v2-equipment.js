@@ -97,8 +97,16 @@ window.WH2Equipment = (function () {
   };
   const optHtml = (list, vKey, lKey, sel) => (list || []).map(o => `<option value="${esc(String(o[vKey]))}"${String(o[vKey]) === String(sel) ? ' selected' : ''}>${esc(o[lKey] || '')}</option>`).join('');
   function hl(text) { if (!S.search || !text) return esc(text || ''); const q = S.search.trim(); if (q.length < 2) return esc(text); try { const re = new RegExp('(' + q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + ')', 'gi'); return esc(text).replace(re, '<mark class="wh2-eq-hl">$1</mark>'); } catch (_) { return esc(text); } }
-  const modal = (title, html) => UI.showModal && UI.showModal({ title, html });
-  const close = () => UI.closeModal && UI.closeModal();
+  const modal = (title, html) => {
+    ensureDeps();
+    const show = (UI && UI.showModal) || (window.AsgardUI && window.AsgardUI.showModal);
+    return show && show({ title, html });
+  };
+  const close = () => {
+    ensureDeps();
+    const hide = (UI && UI.closeModal) || (window.AsgardUI && window.AsgardUI.closeModal);
+    return hide && hide();
+  };
   const token = () => localStorage.getItem('asgard_token') || localStorage.getItem('auth_token');
   async function refreshAll() { try { await loadData(false); loadStats(); loadRequests(); } catch (_) {} }
   const inp = (id, ph, val, type) => `<input id="${id}" class="wh2-btn" style="text-align:left;width:100%" placeholder="${esc(ph)}"${type ? ` type="${type}"` : ''}${val != null ? ` value="${esc(String(val))}"` : ''}>`;
@@ -198,16 +206,34 @@ window.WH2Equipment = (function () {
   async function loadRefs() {
     if (S.refsLoaded) return;
     const get = (u, k) => api(u).then(d => d[k] || d.items || []).catch(() => []);
-    const [cats, objs, whs, works, usersRaw] = await Promise.all([
+    const [cats, objs, whs, works, holders] = await Promise.all([
       get('/api/equipment/categories', 'categories'),
       get('/api/equipment/objects', 'objects'),
       get('/api/equipment/warehouses', 'warehouses'),
       api('/api/works?limit=200').then(d => d.works || d.items || []).catch(() => []),
-      api('/api/users?is_active=true').then(d => d.users || []).catch(() => []),
+      api('/api/equipment/holders?limit=2000').then(d => d.holders || []).catch(() => []),
     ]);
     S.refs.categories = cats; S.refs.objects = objs; S.refs.warehouses = whs; S.refs.works = works;
-    S.refs.pm = usersRaw.filter(u => ['PM', 'HEAD_PM', 'DIRECTOR_DEV', 'DIRECTOR_GEN', 'CHIEF_ENGINEER', 'HR', 'WAREHOUSE', 'TO', 'HEAD_TO'].includes(u.role));
+    // holders: офис (user) + дружина (employee); value = key "u:ID" / "e:ID"
+    S.refs.holders = holders;
+    S.refs.pm = holders; // legacy alias для форм выдачи/передачи
     S.refsLoaded = true;
+  }
+
+  function holderOptHtml(list) {
+    return (list || []).map(h => {
+      const label = h.meta ? `${h.name} · ${h.meta}` : (h.name || '');
+      return `<option value="${esc(h.key || '')}">${esc(label)}</option>`;
+    }).join('');
+  }
+
+  function parseHolderKey(raw) {
+    const v = String(raw || '');
+    if (v.startsWith('e:')) return { holder_employee_id: Number(v.slice(2)) || null };
+    if (v.startsWith('u:')) return { holder_id: Number(v.slice(2)) || null };
+    // fallback: старый числовой id пользователя
+    const n = Number(v);
+    return n ? { holder_id: n } : {};
   }
 
   async function loadData(append) {
@@ -325,7 +351,12 @@ window.WH2Equipment = (function () {
       if (by === 'category') { key = e.category_id || 'none'; label = e.category_name || 'Без категории'; }
       else if (by === 'status') { key = e.status || 'none'; label = (STATUS[e.status] || {}).l || e.status || '—'; }
       else if (by === 'object') { key = e.current_object_id || 'none'; label = e.object_name || 'Без объекта'; }
-      else { key = e.current_holder_id || 'none'; label = e.holder_name || 'На складе'; }
+      else {
+        key = e.current_holder_employee_id
+          ? ('e:' + e.current_holder_employee_id)
+          : (e.current_holder_id || 'none');
+        label = e.holder_name || 'На складе';
+      }
       if (!map.has(key)) map.set(key, { key: String(key), label, items: [] });
       map.get(key).items.push(e);
     }
@@ -463,6 +494,7 @@ window.WH2Equipment = (function () {
 
   // ─────────────────────────── КАРТОЧКА ЕДИНИЦЫ ───────────────────────────
   async function openCard(id) {
+    ensureDeps();
     modal('Оборудование', `<div class="wh2-loading">Загрузка…</div>`);
     let data; try { data = await api('/api/equipment/' + id); } catch (e) { toast('Ошибка', e.message, 'err'); return; }
     const e = data.equipment || data.item || data, moves = data.movements || [], maint = data.maintenance || [];
@@ -474,7 +506,7 @@ window.WH2Equipment = (function () {
         : eqIcon(e));
     const foot = [];
     if (e.status === 'on_warehouse' && isAdmin()) foot.push(`<button class="wh2-btn wh2-btn--primary" id="wh2c-issue">📤 Выдать</button>`);
-    if (e.status === 'issued' && (isAdmin() || e.current_holder_id === _user.id)) foot.push(`<button class="wh2-btn" id="wh2c-return">📥 Вернуть</button>`);
+    if (e.status === 'issued' && (isAdmin() || e.current_holder_id === _user?.id || e.holder_user_id === _user?.id)) foot.push(`<button class="wh2-btn" id="wh2c-return">📥 Вернуть</button>`);
     if (isAdmin()) foot.push(`<button class="wh2-btn" id="wh2c-edit">✏️ Изменить</button><button class="wh2-btn" id="wh2c-photo">📷 Фото</button>`);
     modal('Оборудование #' + e.id, `<div style="min-width:min(420px,92vw)">
       <div class="wh2-eq-hero"><div class="wh2-eq-hero__ph">${photo}</div><div style="flex:1"><div style="font-weight:700;font-size:18px;line-height:1.3">${esc(e.name)}</div>
@@ -489,21 +521,57 @@ window.WH2Equipment = (function () {
     if (window.AsgardGoodsIcon) window.AsgardGoodsIcon.hydrate(document.body);
     const body = document.getElementById('wh2c-body');
     const tabs = { info: () => infoTab(e), moves: () => movesTab(moves), maint: () => maintTab(maint), qr: () => qrTab(e) };
-    const show = t => { body.innerHTML = tabs[t](); if (t === 'maint') { const ab = body.querySelector('#wh2c-add-maint'); if (ab) ab.onclick = () => openMaintenanceForm(e.id); } };
+    const show = t => {
+      body.innerHTML = tabs[t]();
+      if (t === 'maint') { const ab = body.querySelector('#wh2c-add-maint'); if (ab) ab.onclick = () => openMaintenanceForm(e.id); }
+      if (t === 'info') mountEqRelated(e.id);
+    };
     show('info');
     document.querySelectorAll('#wh2c-tabs [data-ct]').forEach(b => b.onclick = () => { document.querySelectorAll('#wh2c-tabs [data-ct]').forEach(x => x.classList.remove('wh2-eq-dtab--on')); b.classList.add('wh2-eq-dtab--on'); show(b.dataset.ct); });
     const bind = (sel, fn) => { const x = document.getElementById(sel); if (x) x.onclick = fn; };
     bind('wh2c-issue', () => openIssueForm(e)); bind('wh2c-return', () => doReturn(e)); bind('wh2c-edit', () => openForm(e)); bind('wh2c-photo', () => openPhotoManager(e.id));
   }
+  async function mountEqRelated(eqId) {
+    const box = document.getElementById('wh2-eq-related');
+    if (!box) return;
+    try {
+      const data = await api('/api/warehouse/market/related?kind=equipment&id=' + eqId + '&limit=8');
+      const items = (data && data.items) || [];
+      if (!items.length) { box.hidden = true; return; }
+      const hasComp = items.some((x) => x.relation === 'complementary');
+      box.hidden = false;
+      box.innerHTML = `<div class="wh2-related__head">${hasComp ? 'С этим обычно берут' : 'Похожие'}</div>
+        <div class="wh2-related__row">${items.map((it) => `
+          <button type="button" class="wh2-related__card" data-rk="${esc(it.kind)}" data-rid="${it.id}">
+            <div class="wh2-related__media"><span class="wh2-related__emoji">${it.kind === 'equipment' ? '🔧' : '📦'}</span></div>
+            <div class="wh2-related__title">${esc(it.title || '')}</div>
+            <div class="wh2-related__meta">${esc(it.badge_label || '')}</div>
+          </button>`).join('')}</div>`;
+      box.querySelectorAll('.wh2-related__card').forEach((btn) => {
+        btn.onclick = () => {
+          const rk = btn.getAttribute('data-rk');
+          const rid = +btn.getAttribute('data-rid');
+          close();
+          setTimeout(() => {
+            if (rk === 'equipment') openCard(rid);
+            else if (window.AsgardWarehouseV2 && AsgardWarehouseV2.openProduct) AsgardWarehouseV2.openProduct(rid);
+          }, 80);
+        };
+      });
+    } catch (_) { box.hidden = true; }
+  }
   function infoTab(e) {
     const amort = (e.book_value != null || e.accumulated_depreciation != null) ? `<div class="wh2-eq-panel"><h4>Амортизация</h4><dt>Балансовая стоимость</dt><dd>${money(e.book_value)}</dd><dt>Накоплено</dt><dd>${money(e.accumulated_depreciation)}</dd></div>` : '';
+    const desc = (e.attrs && e.attrs.description_ai) ? String(e.attrs.description_ai) : '';
     return `<div class="wh2-eq-panels">
       <div class="wh2-eq-panel"><h4>Основное</h4><dt>Серийный №</dt><dd>${esc(e.serial_number || '—')}</dd><dt>Штрихкод</dt><dd>${esc(e.barcode || '—')}</dd><dt>Бренд / модель</dt><dd>${esc(e.brand || '—')} ${esc(e.model || '')}</dd><dt>Кол-во</dt><dd>${fmt(e.quantity || 1)} ${esc(e.unit || 'шт')}</dd></div>
       <div class="wh2-eq-panel"><h4>Габариты / вес</h4><dt>L×W×H</dt><dd>${e.length_mm && e.width_mm && e.height_mm ? `${e.length_mm}×${e.width_mm}×${e.height_mm} мм` : '—'}</dd><dt>Объём</dt><dd>${e.volume_mm3 ? (Number(e.volume_mm3)/1e9).toFixed(4)+' м³' : '—'}</dd><dt>Вес</dt><dd>${e.weight_g != null ? (Number(e.weight_g)/1000).toFixed(2)+' кг ('+e.weight_g+' г)' : '—'}</dd><dt>Источник</dt><dd>${esc(e.dims_source || '—')}</dd></div>
       <div class="wh2-eq-panel"><h4>Местоположение</h4><dt>Склад</dt><dd>${esc(e.warehouse_name || '—')}</dd><dt>Ячейка</dt><dd>${esc(e.location_label || '—')}</dd><dt>Ответственный</dt><dd>${esc(e.holder_name || '—')}</dd><dt>Объект</dt><dd>${esc(e.object_name || '—')}</dd></div>
       <div class="wh2-eq-panel"><h4>Финансы</h4><dt>Стоимость</dt><dd>${money(e.purchase_price)}</dd><dt>Куплено</dt><dd>${dt(e.purchase_date)}</dd></div>
       <div class="wh2-eq-panel"><h4>ТО и гарантия</h4><dt>Гарантия до</dt><dd>${dt(e.warranty_end)}</dd><dt>След. ТО</dt><dd>${dt(e.next_maintenance)}</dd><dt>Поверка</dt><dd>${dt(e.next_calibration)}</dd></div>
-      ${amort}${e.notes ? `<div class="wh2-eq-panel" style="grid-column:1/-1"><h4>Примечания</h4><dd>${esc(e.notes)}</dd></div>` : ''}</div>`;
+      ${amort}${e.notes ? `<div class="wh2-eq-panel" style="grid-column:1/-1"><h4>Примечания</h4><dd>${esc(e.notes)}</dd></div>` : ''}
+      ${desc ? `<div class="wh2-eq-panel" style="grid-column:1/-1"><h4>Описание</h4><dd style="white-space:pre-wrap">${esc(desc)}</dd></div>` : ''}
+      </div><div id="wh2-eq-related" class="wh2-related" hidden style="margin-top:12px"></div>`;
   }
   const movesTab = moves => !moves.length ? `<div class="wh2-empty"><div class="wh2-empty__i">📜</div>Перемещений нет.</div>`
     : `<div style="max-height:400px;overflow:auto">${moves.map(m => `<div class="wh2-mv"><div class="wh2-mv__ic" style="background:rgba(139,147,163,.15)">${(STATUS[m.movement_type] || {}).i || '•'}</div><div style="flex:1"><b>${esc(m.movement_type || '')}</b> <span class="wh2-card__sub">${esc(m.notes || '')}</span></div><span class="wh2-card__sub">${m.created_by_name ? esc(m.created_by_name) + ' · ' : ''}${dt(m.created_at)}</span></div>`).join('')}</div>`;
@@ -553,15 +621,28 @@ window.WH2Equipment = (function () {
   // ─────────────────────────── ОПЕРАЦИИ ───────────────────────────
   function openIssueForm(e) {
     modal('Выдать: ' + esc(e.name), `<div class="wh2-eq-form">
-      <select id="wh2i-holder" class="wh2-btn" style="text-align:left"><option value="">Кому выдать…</option>${optHtml(S.refs.pm, 'id', 'name')}</select>
+      <select id="wh2i-holder" class="wh2-btn" style="text-align:left"><option value="">Кому выдать (офис / дружина)…</option>${holderOptHtml(S.refs.holders || S.refs.pm)}</select>
       <select id="wh2i-work" class="wh2-btn" style="text-align:left"><option value="">Работа (необязательно)…</option>${optHtml(S.refs.works, 'id', 'work_title')}</select>
       <select id="wh2i-obj" class="wh2-btn" style="text-align:left"><option value="">Объект (необязательно)…</option>${optHtml(S.refs.objects, 'id', 'name')}</select>
       <textarea id="wh2i-notes" class="wh2-btn" style="text-align:left;min-height:50px" placeholder="Примечание"></textarea>
       <button class="wh2-btn wh2-btn--primary" id="wh2i-save">📤 Выдать</button></div>`);
     document.getElementById('wh2i-save').onclick = async () => {
-      const holder_id = val('wh2i-holder'); if (!holder_id) { toast('Внимание', 'Выберите получателя', 'warn'); return; }
-      try { await api('/api/equipment/issue', { method: 'POST', body: JSON.stringify({ equipment_id: e.id, holder_id: +holder_id, work_id: val('wh2i-work') || null, object_id: val('wh2i-obj') || null, notes: val('wh2i-notes') || null }) });
-        toast('Выдано', '', 'ok'); close(); refreshAll(); } catch (err) { toast('Ошибка', err.message, 'err'); }
+      const raw = val('wh2i-holder'); if (!raw) { toast('Внимание', 'Выберите получателя', 'warn'); return; }
+      const holder = parseHolderKey(raw);
+      if (!holder.holder_id && !holder.holder_employee_id) { toast('Внимание', 'Некорректный получатель', 'warn'); return; }
+      try {
+        await api('/api/equipment/issue', {
+          method: 'POST',
+          body: JSON.stringify({
+            equipment_id: e.id,
+            ...holder,
+            work_id: val('wh2i-work') || null,
+            object_id: val('wh2i-obj') || null,
+            notes: val('wh2i-notes') || null
+          })
+        });
+        toast('Выдано', '', 'ok'); close(); refreshAll();
+      } catch (err) { toast('Ошибка', err.message, 'err'); }
     };
   }
   function doReturn(e) {
@@ -571,8 +652,11 @@ window.WH2Equipment = (function () {
     });
   }
   function openTransferForm(e) {
+    // передача пока только между users (office) — API transfer-request ждёт to_user_id
+    const office = (S.refs.holders || []).filter(h => h.type === 'user');
+    const officeOpts = office.map(h => `<option value="${esc(h.id)}">${esc(h.name || '')}</option>`).join('');
     modal('Передать: ' + esc(e.name), `<div class="wh2-eq-form">
-      <select id="wh2t-holder" class="wh2-btn" style="text-align:left"><option value="">Кому передать…</option>${optHtml(S.refs.pm, 'id', 'name')}</select>
+      <select id="wh2t-holder" class="wh2-btn" style="text-align:left"><option value="">Кому передать (офис)…</option>${officeOpts}</select>
       <select id="wh2t-work" class="wh2-btn" style="text-align:left"><option value="">Работа…</option>${optHtml(S.refs.works, 'id', 'work_title')}</select>
       <textarea id="wh2t-notes" class="wh2-btn" style="text-align:left;min-height:50px" placeholder="Примечание"></textarea>
       <button class="wh2-btn wh2-btn--primary" id="wh2t-save">🔄 Создать передачу</button></div>`);
@@ -795,5 +879,5 @@ window.WH2Equipment = (function () {
     document.getElementById('wh2ai-ok').onclick = () => { const v = val('wh2ai-val'); if (!v) { toast('Внимание', 'Заполните поле', 'warn'); return; } onOk(v); };
   }
 
-  return { render, openCard, openWorkEquipmentModal, setCartCallbacks };
+  return { render, openCard, openDetail: openCard, openWorkEquipmentModal, setCartCallbacks };
 })();

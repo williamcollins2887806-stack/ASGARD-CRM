@@ -71,8 +71,13 @@ window.AsgardMlspPassesPage = (function () {
     history: [],
     reglament: null,
     draftApp: null,
+    editingId: null,
     preview: null,
     previewBusy: false,
+    previewZoom: null, // null = «по ширине»
+    previewZoomPct: 55,
+    splitPct: Number(localStorage.getItem('mlsp_split_pct') || 40),
+    previewH: localStorage.getItem('mlsp_preview_h') || 'md', // sm|md|lg
     busy: false,
     searchTimer: null
   };
@@ -312,14 +317,105 @@ window.AsgardMlspPassesPage = (function () {
     return j;
   }
 
+  function ymdOf(v) {
+    if (!v) return '';
+    return String(v).slice(0, 10);
+  }
+
+  async function startEditApp(id) {
+    const app = await api('/applications/' + id);
+    if (!app?.can_edit) {
+      toast('Эту заявку уже нельзя править', 'error');
+      return;
+    }
+    state.editingId = app.id;
+    state.appType = app.app_type;
+    state.form = {
+      ...state.form,
+      contract_number: app.contract_number || '',
+      curator: app.curator || '',
+      ship_curator: app.ship_curator || '',
+      mvz: app.mvz || '',
+      date_from: ymdOf(app.date_from) || todayYmd(),
+      date_to: ymdOf(app.date_to),
+      direction: app.direction || 'inbound',
+      transport: app.transport || (app.app_type === 'ship' ? 'ship' : 'plane'),
+      route_text: app.route_text || '',
+      purpose_text: app.purpose_text || '',
+      subject_text: app.subject_text || '',
+      pass_kind: app.pass_kind || 'разовый',
+      accept_warnings: false
+    };
+    state.selected = (Array.isArray(app.people) ? app.people : []).map((p) => ({
+      id: Number(p.id || p.employee_id),
+      fio: p.fio || '',
+      phone: p.phone || '',
+      position: p.position || '',
+      department: p.department || '',
+      fsb_doc: p.fsb_doc || '',
+      permits_text: p.permits_text || ''
+    })).filter((p) => Number.isFinite(p.id) && p.id > 0);
+    state.validation = null;
+    state.tab = 'gen';
+    await refreshPreview();
+    toast('Правите заявку #' + app.id + ' — после правок снова скачайте бланк', 'info');
+    render();
+  }
+
+  function cancelEditApp() {
+    state.editingId = null;
+    toast('Правка отменена — новая заявка будет создана как обычно', 'info');
+    render();
+  }
+
+  async function deleteApp(app) {
+    if (!app?.can_delete) {
+      toast('Удалить может только автор заявки', 'error');
+      return;
+    }
+    const ok = await uiConfirm({
+      title: 'Удалить заявку #' + app.id + '?',
+      html: `<p>Тип: <b>${esc(app.app_type_label || app.app_type)}</b>, людей: <b>${esc(String(app.people_count || '—'))}</b>.</p>
+        <p class="mlsp-muted">Заявка исчезнет из списка. Удалить может только автор.</p>`,
+      okLabel: 'Удалить',
+      danger: true
+    });
+    if (!ok) return;
+    await api('/applications/' + app.id, { method: 'DELETE' });
+    if (state.editingId === app.id) state.editingId = null;
+    toast('Заявка #' + app.id + ' удалена', 'success');
+    await loadApps();
+    await loadPulse();
+    render();
+  }
+
+  function formatSubjectLine(subject) {
+    const s = String(subject || '').trim().replace(/\s+/g, ' ');
+    if (!s) return '';
+    if (/^на оказание\b/i.test(s)) return s;
+    return 'на оказание услуг по (' + s + ')';
+  }
+
+  function subjectForContract(number) {
+    if (!number) return '';
+    const m = (state.meta || []).find((x) => x.contract_number === number);
+    if (m?.subject_line) return m.subject_line;
+    if (m?.subject) return formatSubjectLine(m.subject);
+    const c = (state.contracts || []).find((x) => x.number === number)
+      || (state.contracts || []).find((x) => String(x.number || '').startsWith(String(number).split(/\s+от\s+/i)[0]));
+    return formatSubjectLine(c?.subject || '');
+  }
+
   function applyContract(number) {
     state.form.contract_number = number || '';
     const m = (state.meta || []).find((x) => x.contract_number === number);
     if (m) {
-      state.form.mvz = m.mvz || state.form.mvz;
-      state.form.curator = m.curator || state.form.curator;
-      state.form.ship_curator = m.ship_curator || m.curator || state.form.ship_curator;
+      state.form.mvz = m.mvz || '';
+      state.form.curator = m.curator || '';
+      state.form.ship_curator = m.ship_curator || m.curator || '';
     }
+    // Предмет услуги всегда от выбранного договора (не оставляем текст прошлого)
+    state.form.subject_text = subjectForContract(number);
   }
 
   function defaultRoute() {
@@ -404,9 +500,20 @@ window.AsgardMlspPassesPage = (function () {
         state.form.accept_warnings = true;
       }
 
-      const created = await api('/applications', { method: 'POST', body: { ...draftBody(), force: true, accept_warnings: true } });
-      state.draftApp = created.item;
-      const id = created.item.id;
+      const payload = { ...draftBody(), force: true, accept_warnings: true };
+      let item;
+      if (state.editingId) {
+        const patched = await api('/applications/' + state.editingId, {
+          method: 'PATCH',
+          body: payload
+        });
+        item = patched.item;
+      } else {
+        const created = await api('/applications', { method: 'POST', body: payload });
+        item = created.item;
+      }
+      state.draftApp = item;
+      const id = item.id;
       const resp = await fetch('/api/mlsp-passes/applications/' + id + '/excel', {
         headers: { Authorization: 'Bearer ' + token() }
       });
@@ -430,8 +537,9 @@ window.AsgardMlspPassesPage = (function () {
         await api('/applications/' + id + '/publish-legs', { method: 'POST', body: {} });
         await loadBoard();
       }
-      toast('Бланк скачан · 1 лист', 'success');
-      state.draftApp = { ...created.item, status: 'exported' };
+      toast(state.editingId ? ('Заявка #' + id + ' обновлена · бланк скачан') : 'Бланк скачан · 1 лист', 'success');
+      state.draftApp = { ...item, status: item.status === 'draft' ? 'exported' : item.status };
+      state.editingId = null;
       await loadApps();
       await afterDownloadWizard(state.draftApp);
       await refreshPreview();
@@ -523,6 +631,11 @@ window.AsgardMlspPassesPage = (function () {
     bindPeopleActions(root);
   }
 
+  function previewZoomLabel() {
+    if (state.previewZoom == null) return 'по ширине';
+    return Math.round(state.previewZoom * 100) + '%';
+  }
+
   function sheetPreviewHtml() {
     const sheet = state.preview;
     if (state.previewBusy) {
@@ -531,20 +644,34 @@ window.AsgardMlspPassesPage = (function () {
     if (!sheet || !sheet.html) {
       return `<div class="mlsp-sheet mlsp-sheet--empty">
         <div class="mlsp-sheet__title">Предпросмотр бланка</div>
-        <div class="mlsp-sheet__hint">Выберите сотрудников — здесь тот же лист, что уйдёт в Excel (мерджи и стили шаблона).</div>
+        <div class="mlsp-sheet__hint">Выберите сотрудников — здесь тот же лист, что уйдёт в Excel. Масштаб и размер окна — справа сверху.</div>
       </div>`;
     }
     const orient = sheet.orientation === 'landscape' ? ' landscape' : '';
-    return `<div class="mlsp-sheet">
+    const hClass = state.previewH === 'sm' ? ' is-h-sm' : state.previewH === 'lg' ? ' is-h-lg' : ' is-h-md';
+    return `<div class="mlsp-sheet${hClass}" id="mlsp_sheet_root">
       <div class="mlsp-sheet__bar">
-        <div>
+        <div class="mlsp-sheet__bar-main">
           <div class="mlsp-sheet__title">${esc(sheet.sheet || 'Лист')}</div>
           <div class="mlsp-sheet__meta">${esc(sheet.source || 'шаблон')} · ${esc(sheet.orientation || 'portrait')}</div>
         </div>
-        <button type="button" class="btn ghost mini" id="mlsp_preview_refresh">Обновить лист</button>
+        <div class="mlsp-sheet__tools" role="toolbar" aria-label="Масштаб превью">
+          <button type="button" class="mlsp-zbtn" id="mlsp_z_out" title="Уменьшить">−</button>
+          <button type="button" class="mlsp-zbtn mlsp-zbtn--label" id="mlsp_z_label" title="Сброс / по ширине">${esc(previewZoomLabel())}</button>
+          <button type="button" class="mlsp-zbtn" id="mlsp_z_in" title="Увеличить">+</button>
+          <span class="mlsp-sheet__tools-sep" aria-hidden="true"></span>
+          <button type="button" class="mlsp-zbtn" id="mlsp_z_fit" title="Вписать по ширине">↔</button>
+          <button type="button" class="mlsp-zbtn" id="mlsp_z_100" title="100%">1:1</button>
+          <span class="mlsp-sheet__tools-sep" aria-hidden="true"></span>
+          <button type="button" class="mlsp-zbtn" id="mlsp_h_cycle" title="Высота окна превью">${state.previewH === 'sm' ? 'низк.' : state.previewH === 'lg' ? 'высок.' : 'средн.'}</button>
+          <button type="button" class="btn ghost mini" id="mlsp_preview_refresh">Обновить</button>
+        </div>
       </div>
-      <div class="mlsp-sheet__scroll">
-        <div class="mlsp-sheet__paper${orient}">${sheet.html}</div>
+      <div class="mlsp-sheet__hint-bar">Тяните лист мышью · Ctrl + колёсико — масштаб · ручка слева меняет ширину колонки</div>
+      <div class="mlsp-sheet__viewport" id="mlsp_sheet_viewport">
+        <div class="mlsp-sheet__scaler" id="mlsp_sheet_scaler">
+          <div class="mlsp-sheet__paper${orient}" id="mlsp_sheet_paper">${sheet.html}</div>
+        </div>
       </div>
     </div>`;
   }
@@ -572,8 +699,15 @@ window.AsgardMlspPassesPage = (function () {
     const contractOpts = (state.meta || []).map((m) =>
       `<option value="${esc(m.contract_number)}"${state.form.contract_number === m.contract_number ? ' selected' : ''}>${esc(m.contract_number)}${m.mvz ? ' · МВЗ ' + esc(m.mvz) : ''}</option>`
     ).join('');
+    const editBanner = state.editingId
+      ? `<div class="mlsp-edit-banner">
+          <div>Правите заявку <b>#${state.editingId}</b> — люди, даты, договор. После правок снова нажмите «Скачать бланк».</div>
+          <button type="button" class="btn ghost mini" id="mlsp_edit_cancel">Отменить правку</button>
+        </div>`
+      : '';
 
     return `<div class="mlsp-panel">${workflowHtml('collect')}</div>
+    ${editBanner}
     <div class="mlsp-panel mlsp-panel--types">
       <div class="mlsp-type-grid">
         ${TYPES.map((t) => `<button type="button" class="mlsp-type${state.appType === t.id ? ' is-on' : ''}" data-type="${t.id}">
@@ -583,7 +717,7 @@ window.AsgardMlspPassesPage = (function () {
         </button>`).join('')}
       </div>
     </div>
-    <div class="mlsp-split mlsp-split--gen">
+    <div class="mlsp-split mlsp-split--gen" id="mlsp_split" style="--mlsp-split:${Math.max(28, Math.min(58, state.splitPct))}%">
       <div class="mlsp-panel">
         <div class="mlsp-field-row">
           <div class="mlsp-field"><label>Договор ГНШ</label>
@@ -644,13 +778,36 @@ window.AsgardMlspPassesPage = (function () {
         <div class="mlsp-toolbar">
           <button type="button" class="btn ghost" id="mlsp_validate">Проверить</button>
           <button type="button" class="btn primary" id="mlsp_download" ${state.busy ? 'disabled' : ''}>
-            ${state.busy ? 'Собираю…' : 'Скачать бланк (1 лист)'}
+            ${state.busy
+              ? 'Собираю…'
+              : (state.editingId ? ('Сохранить #' + state.editingId + ' и скачать') : 'Скачать бланк (1 лист)')}
           </button>
         </div>
         <p class="mlsp-muted" style="margin-top:8px">Замечания по допускам не мешают скачать. После скачивания — «Отправлено» → «Пропуск получен».</p>
       </div>
-      <div>${sheetPreviewHtml()}</div>
+      <div class="mlsp-split__grip" id="mlsp_split_grip" title="Потяните — ширина формы / превью" role="separator" aria-orientation="vertical" tabindex="0"></div>
+      <div class="mlsp-preview-host" id="mlsp_preview_host">${sheetPreviewHtml()}</div>
     </div>`;
+  }
+
+  function appActionsMenu(a) {
+    const items = [];
+    if (a.can_edit) {
+      items.push(`<button type="button" class="mlsp-menu__item" data-app-edit="${a.id}">Изменить</button>`);
+    }
+    if (a.can_mark_received) {
+      items.push(`<button type="button" class="mlsp-menu__item" data-app-recv="${a.id}">Пропуск получен</button>`);
+    }
+    items.push(`<button type="button" class="mlsp-menu__item" data-app-dl="${a.id}">Скачать бланк</button>`);
+    if (a.can_delete) {
+      items.push(`<button type="button" class="mlsp-menu__item is-danger" data-app-del="${a.id}">Удалить</button>`);
+    } else if (!a.is_mine) {
+      items.push(`<div class="mlsp-menu__hint">Удалить может только автор</div>`);
+    }
+    return `<details class="mlsp-menu">
+      <summary class="btn ghost mini" title="Что сделать с заявкой">⋯</summary>
+      <div class="mlsp-menu__panel" role="menu">${items.join('')}</div>
+    </details>`;
   }
 
   function appsHtml() {
@@ -661,7 +818,7 @@ window.AsgardMlspPassesPage = (function () {
         <h2>Мои заявки</h2>
         <button type="button" class="btn ghost mini" id="mlsp_apps_refresh">Обновить</button>
       </div>
-      <p class="mlsp-muted">Здесь статусы после скачивания бланка. «Пропуск получен» для МЛСП/ФСБ пишет допуск в карточку сотрудника.</p>
+      <p class="mlsp-muted">Здесь статусы после скачивания бланка. «Пропуск получен» для МЛСП/ФСБ пишет допуск в карточку сотрудника. Изменить может любой, удалить — только автор заявки.</p>
       <div class="mlsp-table-wrap" style="margin-top:12px">
         <table class="mlsp-table">
           <thead><tr>
@@ -674,10 +831,7 @@ window.AsgardMlspPassesPage = (function () {
               if (a.can_mark_sent) {
                 actions.push(`<button type="button" class="btn primary mini" data-app-sent="${a.id}">Отправлено</button>`);
               }
-              if (a.can_mark_received) {
-                actions.push(`<button type="button" class="btn ghost mini" data-app-recv="${a.id}">Пропуск получен</button>`);
-              }
-              actions.push(`<button type="button" class="btn ghost mini" data-app-dl="${a.id}">Бланк</button>`);
+              actions.push(appActionsMenu(a));
               return `<tr>
                 <td>${a.id}</td>
                 <td>${esc(a.app_type_label || a.app_type)}</td>
@@ -815,19 +969,19 @@ window.AsgardMlspPassesPage = (function () {
   function baseHtml() {
     return `<div class="mlsp-panel">
       <div class="mlsp-section-h"><h2>Контрагенты и договоры ГНШ</h2></div>
-      <p class="mlsp-muted">ИНН: ГНШ 7725610285 · Снабжение 5501072608 · Аврора 5190087937. Клик по строке — править МВЗ / куратора / <b>дату окончания</b> (нужна для пропуска МЛСП).</p>
+      <p class="mlsp-muted">ИНН: ГНШ 7725610285 · Снабжение 5501072608 · Аврора 5190087937. Клик по строке — править МВЗ / куратора / <b>предмет услуги</b> / дату окончания (нужна для пропуска МЛСП).</p>
       <div class="mlsp-toolbar" style="margin-top:12px">
         <button type="button" class="btn primary" id="mlsp_ensure_cp">Создать / сверить в CRM</button>
       </div>
       <div class="mlsp-table-wrap" style="margin-top:14px">
         <table class="mlsp-table">
-          <thead><tr><th>Договор</th><th>МВЗ</th><th>Куратор</th><th>Куратор корабля</th><th>Окончание</th><th></th></tr></thead>
+          <thead><tr><th>Договор</th><th>МВЗ</th><th>Услуга / предмет</th><th>Куратор</th><th>Окончание</th><th></th></tr></thead>
           <tbody>
             ${(state.meta || []).map((m) => `<tr data-meta="${m.id}" class="mlsp-row-click">
               <td>${esc(m.contract_number)}</td>
               <td>${esc(m.mvz || '—')}</td>
+              <td class="mlsp-muted">${esc(m.subject || '—')}</td>
               <td>${esc(m.curator || '')}</td>
-              <td>${esc(m.ship_curator || '')}</td>
               <td>${m.end_date ? fmtRu(m.end_date) : '<span class="mlsp-chip is-warn">нет даты</span>'}</td>
               <td><button type="button" class="btn ghost mini" data-meta-edit="${m.id}">Править</button></td>
             </tr>`).join('') || '<tr><td colspan="6" class="mlsp-muted">Нет meta — проверьте миграцию V477</td></tr>'}
@@ -869,7 +1023,9 @@ window.AsgardMlspPassesPage = (function () {
           <div class="mlsp-field"><label>Куратор корабля</label>
             <input id="meta_ship" value="${esc(row.ship_curator || '')}"/></div>
         </div>
-        <div class="mlsp-drawer__hint">Дату окончания ждёт предупреждение в пропуске МЛСП.</div>
+        <div class="mlsp-field"><label>Наименование услуги / предмет договора</label>
+          <textarea id="meta_subject" rows="3" placeholder="Напр.: СМР по замене оголовка факельного совмещённого (ОФС) на МЛСП «Приразломная»">${esc(row.subject || '')}</textarea></div>
+        <div class="mlsp-drawer__hint">Предмет подставится в строку A11 бланка МЛСП при выборе этого договора. Дату окончания ждёт предупреждение в пропуске.</div>
         <div class="mlsp-drawer__foot">
           <button type="button" class="btn ghost" id="meta_cancel">Отмена</button>
           <button type="button" class="btn primary" id="meta_save">Сохранить</button>
@@ -886,11 +1042,13 @@ window.AsgardMlspPassesPage = (function () {
                 mvz: body.querySelector('#meta_mvz')?.value || null,
                 curator: body.querySelector('#meta_cur')?.value || null,
                 ship_curator: body.querySelector('#meta_ship')?.value || null,
-                end_date: body.querySelector('#meta_end')?.value || null
+                end_date: body.querySelector('#meta_end')?.value || null,
+                subject: body.querySelector('#meta_subject')?.value || null
               }
             });
             AsgardUI.hideDrawer();
             await loadContracts();
+            if (state.form.contract_number) applyContract(state.form.contract_number);
             render();
             toast('Договор сохранён', 'success');
           } catch (e) {
@@ -1078,6 +1236,32 @@ window.AsgardMlspPassesPage = (function () {
       });
     });
 
+    root.querySelectorAll('[data-app-edit]').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        const id = Number(btn.getAttribute('data-app-edit'));
+        try {
+          await startEditApp(id);
+        } catch (e) {
+          toast(e.message, 'error');
+        }
+      });
+    });
+
+    root.querySelectorAll('[data-app-del]').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        const id = Number(btn.getAttribute('data-app-del'));
+        const app = state.apps.find((x) => x.id === id);
+        if (!app) return;
+        try {
+          await deleteApp(app);
+        } catch (e) {
+          toast(e.message, 'error');
+        }
+      });
+    });
+
+    root.querySelector('#mlsp_edit_cancel')?.addEventListener('click', () => cancelEditApp());
+
     root.querySelectorAll('[data-type]').forEach((btn) => {
       btn.addEventListener('click', async () => {
         state.appType = btn.getAttribute('data-type');
@@ -1094,9 +1278,7 @@ window.AsgardMlspPassesPage = (function () {
         state.form[key] = cast ? cast(el.value) : el.value;
         if (key === 'contract_number') applyContract(el.value);
         await refreshPreview();
-        const sheetHost = root.querySelector('.mlsp-sheet')?.parentElement;
-        if (sheetHost && state.tab === 'gen') sheetHost.innerHTML = sheetPreviewHtml();
-        bindPreviewOnly(root);
+        if (state.tab === 'gen') repaintPreview(root);
       });
       if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') {
         el.addEventListener('input', () => {
@@ -1150,14 +1332,10 @@ window.AsgardMlspPassesPage = (function () {
       await runValidate();
       await refreshPreview();
       paintPeoplePanel(root);
-      const sheetHost = root.querySelector('.mlsp-sheet')?.parentElement;
-      if (sheetHost) {
-        sheetHost.innerHTML = sheetPreviewHtml();
-        bindPreviewOnly(root);
-      }
+      repaintPreview(root);
     });
     root.querySelector('#mlsp_download')?.addEventListener('click', () => createAndDownload());
-    bindPreviewOnly(root);
+    bindPreviewChrome(root);
 
     root.querySelectorAll('[data-meta-edit]').forEach((btn) => {
       btn.addEventListener('click', (ev) => {
@@ -1287,11 +1465,7 @@ window.AsgardMlspPassesPage = (function () {
         await runValidate();
         paintPeoplePanel(root);
         await refreshPreview();
-        const sheetHost = root.querySelector('.mlsp-sheet')?.parentElement;
-        if (sheetHost) {
-          sheetHost.innerHTML = sheetPreviewHtml();
-          bindPreviewOnly(root);
-        }
+        repaintPreview(root);
       });
     });
     root.querySelectorAll('[data-rm-person]').forEach((btn) => {
@@ -1303,11 +1477,7 @@ window.AsgardMlspPassesPage = (function () {
         await runValidate();
         paintPeoplePanel(root);
         await refreshPreview();
-        const sheetHost = root.querySelector('.mlsp-sheet')?.parentElement;
-        if (sheetHost) {
-          sheetHost.innerHTML = sheetPreviewHtml();
-          bindPreviewOnly(root);
-        }
+        repaintPreview(root);
       });
     });
     root.querySelector('#mlsp_clear_people')?.addEventListener('click', async () => {
@@ -1316,25 +1486,165 @@ window.AsgardMlspPassesPage = (function () {
       state.form.accept_warnings = false;
       paintPeoplePanel(root);
       state.preview = null;
-      const sheetHost = root.querySelector('.mlsp-sheet')?.parentElement;
-      if (sheetHost) {
-        sheetHost.innerHTML = sheetPreviewHtml();
-        bindPreviewOnly(root);
-      }
+      repaintPreview(root);
     });
   }
 
-  function bindPreviewOnly(root) {
+  function previewHost(root) {
+    return root.querySelector('#mlsp_preview_host')
+      || root.querySelector('.mlsp-sheet')?.parentElement;
+  }
+
+  function repaintPreview(root) {
+    const host = previewHost(root);
+    if (!host) return false;
+    host.innerHTML = sheetPreviewHtml();
+    bindPreviewChrome(root);
+    return true;
+  }
+
+  function applyPreviewZoom(root) {
+    const viewport = root.querySelector('#mlsp_sheet_viewport');
+    const scaler = root.querySelector('#mlsp_sheet_scaler');
+    const paper = root.querySelector('#mlsp_sheet_paper');
+    const label = root.querySelector('#mlsp_z_label');
+    if (!viewport || !scaler || !paper) return;
+
+    paper.style.transform = 'none';
+    scaler.style.width = 'max-content';
+    scaler.style.height = 'auto';
+    const natW = Math.max(paper.scrollWidth, paper.offsetWidth, 320);
+    const natH = Math.max(paper.scrollHeight, paper.offsetHeight, 200);
+    const fit = Math.max(0.28, Math.min(1.0, (viewport.clientWidth - 36) / natW));
+    const z = state.previewZoom == null ? fit : state.previewZoom;
+    state.previewZoomPct = Math.round(z * 100);
+
+    // спейсер = визуальный размер; сам лист масштабируем transform'ом
+    scaler.style.width = Math.round(natW * z) + 'px';
+    scaler.style.height = Math.round(natH * z) + 'px';
+    paper.style.width = natW + 'px';
+    paper.style.transformOrigin = 'top left';
+    paper.style.transform = `scale(${z})`;
+
+    if (label) {
+      label.textContent = state.previewZoom == null
+        ? `по ширине · ${state.previewZoomPct}%`
+        : `${state.previewZoomPct}%`;
+    }
+  }
+
+  function bindSplitGrip(root) {
+    const split = root.querySelector('#mlsp_split');
+    const grip = root.querySelector('#mlsp_split_grip');
+    if (!split || !grip || grip.dataset.bound) return;
+    grip.dataset.bound = '1';
+    let dragging = false;
+    const onMove = (ev) => {
+      if (!dragging) return;
+      const rect = split.getBoundingClientRect();
+      const pct = ((ev.clientX - rect.left) / rect.width) * 100;
+      state.splitPct = Math.max(28, Math.min(58, pct));
+      split.style.setProperty('--mlsp-split', state.splitPct + '%');
+    };
+    const onUp = () => {
+      if (!dragging) return;
+      dragging = false;
+      document.body.classList.remove('mlsp-resizing');
+      try { localStorage.setItem('mlsp_split_pct', String(Math.round(state.splitPct))); } catch (_) { /* ignore */ }
+      applyPreviewZoom(root);
+    };
+    grip.addEventListener('mousedown', (ev) => {
+      ev.preventDefault();
+      dragging = true;
+      document.body.classList.add('mlsp-resizing');
+    });
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  }
+
+  function bindPreviewChrome(root) {
+    bindSplitGrip(root);
+
+    const bumpZoom = (next) => {
+      state.previewZoom = Math.max(0.25, Math.min(1.6, next));
+      applyPreviewZoom(root);
+    };
+
+    root.querySelector('#mlsp_z_in')?.addEventListener('click', () => {
+      const cur = (state.previewZoom == null ? state.previewZoomPct / 100 : state.previewZoom) || 0.55;
+      bumpZoom(cur + 0.1);
+    });
+    root.querySelector('#mlsp_z_out')?.addEventListener('click', () => {
+      const cur = (state.previewZoom == null ? state.previewZoomPct / 100 : state.previewZoom) || 0.55;
+      bumpZoom(cur - 0.1);
+    });
+    root.querySelector('#mlsp_z_fit')?.addEventListener('click', () => {
+      state.previewZoom = null;
+      applyPreviewZoom(root);
+    });
+    root.querySelector('#mlsp_z_100')?.addEventListener('click', () => bumpZoom(1));
+    root.querySelector('#mlsp_z_label')?.addEventListener('click', () => {
+      state.previewZoom = null;
+      applyPreviewZoom(root);
+    });
+    root.querySelector('#mlsp_h_cycle')?.addEventListener('click', () => {
+      state.previewH = state.previewH === 'sm' ? 'md' : state.previewH === 'md' ? 'lg' : 'sm';
+      try { localStorage.setItem('mlsp_preview_h', state.previewH); } catch (_) { /* ignore */ }
+      repaintPreview(root);
+    });
+
     root.querySelector('#mlsp_preview_refresh')?.addEventListener('click', async () => {
       await refreshPreview();
-      const sheetHost = root.querySelector('.mlsp-sheet')?.parentElement;
-      if (sheetHost) {
-        sheetHost.innerHTML = sheetPreviewHtml();
-        bindPreviewOnly(root);
-      } else {
-        render();
-      }
+      if (!repaintPreview(root)) render();
     });
+
+    const viewport = root.querySelector('#mlsp_sheet_viewport');
+    if (viewport) {
+      if (state._panAbort) {
+        try { state._panAbort.abort(); } catch (_) { /* ignore */ }
+      }
+      const ac = new AbortController();
+      state._panAbort = ac;
+      const sig = { signal: ac.signal };
+      let pan = false;
+      let sx = 0;
+      let sy = 0;
+      let sl = 0;
+      let st = 0;
+      viewport.addEventListener('mousedown', (ev) => {
+        if (ev.button !== 0) return;
+        if (ev.target.closest('button, a, input, select, textarea')) return;
+        pan = true;
+        viewport.classList.add('is-panning');
+        sx = ev.clientX;
+        sy = ev.clientY;
+        sl = viewport.scrollLeft;
+        st = viewport.scrollTop;
+        ev.preventDefault();
+      }, sig);
+      window.addEventListener('mousemove', (ev) => {
+        if (!pan) return;
+        viewport.scrollLeft = sl - (ev.clientX - sx);
+        viewport.scrollTop = st - (ev.clientY - sy);
+      }, sig);
+      window.addEventListener('mouseup', () => {
+        pan = false;
+        viewport.classList.remove('is-panning');
+      }, sig);
+      viewport.addEventListener('wheel', (ev) => {
+        if (!(ev.ctrlKey || ev.metaKey)) return;
+        ev.preventDefault();
+        const cur = (state.previewZoom == null ? state.previewZoomPct / 100 : state.previewZoom) || 0.55;
+        state.previewZoom = Math.max(0.25, Math.min(1.6, cur + (ev.deltaY < 0 ? 0.08 : -0.08)));
+        applyPreviewZoom(root);
+      }, { passive: false, signal: ac.signal });
+    }
+
+    requestAnimationFrame(() => applyPreviewZoom(root));
+  }
+
+  function bindPreviewOnly(root) {
+    bindPreviewChrome(root);
   }
 
   function render() {

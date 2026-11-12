@@ -161,10 +161,8 @@ window.AsgardRpReviewModal = (function () {
     let h = '<div class="rp-review-analysis-ref">';
     h += '<div class="rp-review-analysis-ref-head"><strong>Анализ дежурного РП</strong>';
     h += '<span class="muted">' + esc(who) + (when ? ' · ' + esc(when) : '') + '</span></div>';
-    h += '<div class="rp-review-summary-card rp-review-ref-decision ' + cls + '"><strong>' + esc(label) + '</strong>';
-    const pr = priceRangeLabel(snap, null);
-    if (dec === 'submit' && pr !== '—') h += ' · ' + esc(pr);
-    h += '</div>';
+    // Анализ без денег: ориентир цены / смета здесь не показываем.
+    h += '<div class="rp-review-summary-card rp-review-ref-decision ' + cls + '"><strong>' + esc(label) + '</strong></div>';
     h += renderRo('Выполнимость', feasibilityLabel(snap.feasibility));
     h += renderRo('Конкуренция', competitionLabel(snap.competition));
     h += renderRo('Суть для ТО', snap.summary);
@@ -649,6 +647,11 @@ window.AsgardRpReviewModal = (function () {
             '<path d="M2 2l10 10M12 2L2 12" stroke="currentColor" stroke-width="1.6" ' +
             'stroke-linecap="round"/></svg>' +
         '</button>' +
+        '<div class="rp-dv-row__tech">' +
+          '<input class="rp-dv-field rp-dv-field--tech" data-rp-dv-field="tech_equip" ' +
+            'value="' + esc(p.tech_equip || '') + '" placeholder="чем работаем: технология / оснастка" ' +
+            'aria-label="Технология и оснастка"/>' +
+        '</div>' +
         (src ? '<div class="rp-dv-row__src" title="' + esc(src) + '">' +
           '<span>источник:</span> ' + esc(src) + '</div>' : '') +
         '</div>';
@@ -712,10 +715,13 @@ window.AsgardRpReviewModal = (function () {
    * «сколько человек, кого, на сколько дней, что за оборудование». Здесь
    * сводка из `report_json.tech_json` (или из сметы, если техплан старый).
    */
-  function renderTechPlanBlock(rj) {
+  function renderTechPlanBlock(rj, opts) {
     const ui = window.AsgardTechPlanUI;
     if (!ui) return '';
-    const plan = ui.readPlan(rj || {}, (rj && rj.asgard_smeta) || {});
+    // На анализе не подмешиваем asgard_smeta — там деньги просчёта.
+    const analysisOnly = !!(opts && opts.analysisOnly);
+    const smeta = analysisOnly ? {} : ((rj && rj.asgard_smeta) || {});
+    const plan = ui.readPlan(rj || {}, smeta);
     const html = ui.summaryHtml(plan, { hideEmpty: true });
     if (!html) return '';
     return '<div class="rp-review-tech-block"><div class="rp-review-analysis-ref-head"><strong>Техплан</strong>' +
@@ -1242,15 +1248,20 @@ window.AsgardRpReviewModal = (function () {
 
       let ih = '';
       if (!isLocked) {
-        ih += '<p class="muted" style="font-size:12px;margin:0 0 8px">Можно приложить смету, файл отчёта' +
-          (mode === 'calc' ? ' или ТКП' : '') +
-          ' — архив, Excel, Word, PDF (необязательно на анализе).</p>';
+        if (mode === 'calc') {
+          ih += '<p class="muted" style="font-size:12px;margin:0 0 8px">Можно приложить смету, файл отчёта или ТКП — архив, Excel, Word, PDF.</p>';
+        } else {
+          ih += '<p class="muted" style="font-size:12px;margin:0 0 8px">На анализе — только файл отчёта/заметки. Смета и ТКП прикладываются в просчёте.</p>';
+        }
       }
 
-      if (estimateFile) {
-        ih += renderAttachedFile(estimateFile, 'Смета / расчёт');
-      } else if (!isLocked) {
-        ih += renderUploadDrop('rpEstimateFile', 'Прикрепить смету / файл', RP_FILE_HINT);
+      // Смета — только просчёт (дежурный РП на анализе денег не видит).
+      if (mode === 'calc' || estimateFile) {
+        if (estimateFile) {
+          ih += renderAttachedFile(estimateFile, 'Смета / расчёт');
+        } else if (!isLocked && mode === 'calc') {
+          ih += renderUploadDrop('rpEstimateFile', 'Прикрепить смету / файл', RP_FILE_HINT);
+        }
       }
 
       if (reportFile) {
@@ -1325,10 +1336,24 @@ window.AsgardRpReviewModal = (function () {
         }
         // ДВ, технология и звонок — то, что разобрал Мимир. Без них карточка
         // показывала только текст и не давала проверить объёмы.
+        if (reportJson.incomplete || reportJson.review_hint) {
+          h += '<div class="rp-review-incomplete alert" style="margin-bottom:12px;font-size:13px">'
+            + '<strong>Разбор неполный.</strong> '
+            + esc(reportJson.review_hint || reportJson.incomplete_note
+              || ('Ожидалось ~' + (reportJson.expected_rows || '?')
+                + ', найдено ' + (reportJson.found_positions || reportJson.valid_positions || '?')))
+            + '</div>';
+        }
         h += renderVisitSchedule(reportJson);
         h += renderDvBlock(reportJson, isLocked);
         h += renderCallBlock(reportJson);
-        h += renderTechPlanBlock(reportJson);
+        h += renderTechPlanBlock(reportJson, { analysisOnly: true });
+        if (Array.isArray(reportJson.questions_for_customer) && reportJson.questions_for_customer.length) {
+          h += '<div class="rp-review-questions-block" style="margin:12px 0">'
+            + '<strong>Вопросы заказчику</strong><ul style="margin:6px 0 0;padding-left:18px">'
+            + reportJson.questions_for_customer.map((q) => '<li>' + esc(q) + '</li>').join('')
+            + '</ul></div>';
+        }
       }
 
       if (mode === 'calc' && review && review.analysis_finalized_at && !review.is_final) {
@@ -1384,16 +1409,8 @@ window.AsgardRpReviewModal = (function () {
             renderSeg('competition', [{ id: 'low', label: 'Низкая' }, { id: 'medium', label: 'Средняя' }, { id: 'high', label: 'Высокая' }], reportJson.competition, isLocked);
           ih += '</div></div>';
 
-          if (mode === 'analysis' && !isLocked) {
-            ih += '<p class="muted" style="margin:0 0 8px;font-size:12px">Ориентир до детального просчёта — оба значения без НДС.</p>';
-            ih += '<div class="rp-review-field-row"><div class="rp-review-field"><label>Ориентир цены от (без НДС)</label>' +
-              '<input class="inp" id="rpPriceMin" type="text" value="' + esc(reportJson.price_range_min ?? '') + '" placeholder="например: 5 млн или по КП"/></div>' +
-              '<div class="rp-review-field"><label>до (без НДС)</label>' +
-              '<input class="inp" id="rpPriceMax" type="text" value="' + esc(reportJson.price_range_max ?? '') + '" placeholder="цифры или текст"/></div></div>';
-          } else if (mode === 'analysis' && isLocked) {
-            const pr = priceRangeLabel(reportJson, workPrice);
-            if (pr !== '—') ih += renderRo('Ориентир цены', pr);
-          } else if (mode === 'calc' && isLocked && workPrice) {
+          // На анализе денег нет: ориентир цены / смета — только в просчёте.
+          if (mode === 'calc' && isLocked && workPrice) {
             // Канон: work_price — цена без НДС; «с НДС» показываем производной.
             ih += renderRo('Цена работ (без НДС)', fmtMoney(workPrice));
             const rw = reviewWorkPrice(review, workPrice);
@@ -1585,12 +1602,15 @@ window.AsgardRpReviewModal = (function () {
             '<span class="muted" style="font-size:11px">' +
             (d.updated_at ? new Date(d.updated_at).toLocaleString('ru-RU') : '') + '</span></div>';
           if (dj.summary) h += '<div style="font-size:12px;margin-top:6px">' + esc(String(dj.summary).slice(0, 220)) + '</div>';
-          if (dj.price_range_min != null || dj.price_range_max != null) {
-            h += '<div class="muted" style="font-size:11px;margin-top:4px">Ориентир: ' +
-              esc(fmtMoney(dj.price_range_min)) + ' — ' + esc(fmtMoney(dj.price_range_max)) + '</div>';
-          }
-          if (dj.work_price != null) {
-            h += '<div class="muted" style="font-size:11px;margin-top:4px">Цена (без НДС): ' + esc(fmtMoney(dj.work_price)) + '</div>';
+          // Ориентир цены и work_price — только в просчёте (анализ без денег).
+          if (mode === 'calc') {
+            if (dj.price_range_min != null || dj.price_range_max != null) {
+              h += '<div class="muted" style="font-size:11px;margin-top:4px">Ориентир: ' +
+                esc(fmtMoney(dj.price_range_min)) + ' — ' + esc(fmtMoney(dj.price_range_max)) + '</div>';
+            }
+            if (dj.work_price != null) {
+              h += '<div class="muted" style="font-size:11px;margin-top:4px">Цена (без НДС): ' + esc(fmtMoney(dj.work_price)) + '</div>';
+            }
           }
           if (isFinalOwner && !isLocked && !d._mine) {
             h += '<div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap">' +
@@ -1880,12 +1900,7 @@ window.AsgardRpReviewModal = (function () {
             reportJson.cost_without_vat = costEl.value ? Number(costEl.value) : null;
           }
         }
-        if (mode === 'analysis') {
-          const minEl = document.getElementById('rpPriceMin');
-          if (minEl) reportJson.price_range_min = minEl.value ? minEl.value.trim() : null;
-          const maxEl = document.getElementById('rpPriceMax');
-          if (maxEl) reportJson.price_range_max = maxEl.value ? maxEl.value.trim() : null;
-        }
+        // Анализ не сохраняет price_range_* — деньги только в просчёте.
       }
       if (decision === 'reject') {
         const pointInps = document.querySelectorAll('.rp-point');
@@ -2278,6 +2293,45 @@ window.AsgardRpReviewModal = (function () {
                     body: JSON.stringify({ tz_text: payload.tz_text, stream: true })
                   }
                 );
+                // 409 — анализ уже идёт: не стартуем второй, ждём status.
+                if (r.status === 409) {
+                  onProgress({
+                    type: 'progress',
+                    step: 'already_running',
+                    message: 'Анализ уже выполняется — жду завершения…',
+                    pct: 5
+                  });
+                  for (let i = 0; i < 120; i += 1) {
+                    await new Promise((res) => setTimeout(res, 2500));
+                    const st = await fetch(
+                      `/api/tkp-quick/sessions/${encodeURIComponent(uid)}/stage/analyze-status`,
+                      { headers: { Authorization: 'Bearer ' + token } }
+                    ).then((x) => x.json()).catch(() => null);
+                    if (!st) continue;
+                    if (st.job && st.job.message) {
+                      onProgress({
+                        type: 'progress',
+                        step: st.job.step || 'wait',
+                        message: st.job.message,
+                        pct: st.job.pct,
+                        positions: st.job.positions
+                      });
+                    }
+                    if (st.done || (st.job && st.job.status === 'done')) {
+                      // Результат уже в stage_state / report_json на сервере.
+                      const stage = await API.getStage?.(uid).catch(() => null)
+                        || await fetch(
+                          `/api/tkp-quick/sessions/${encodeURIComponent(uid)}/stage`,
+                          { headers: { Authorization: 'Bearer ' + token } }
+                        ).then((x) => x.json()).catch(() => null);
+                      return Object.assign({ ok: true }, stage || {}, { from_attach: true });
+                    }
+                    if (st.job && st.job.status === 'error') {
+                      throw new Error(st.job.error || 'Анализ завершился с ошибкой');
+                    }
+                  }
+                  throw new Error('Таймаут ожидания идущего анализа');
+                }
                 // SSE: шаги анализа с числами. Раньше висел один запрос 10–15 мин
                 // без обратной связи — «Мимир думает…» и тишина.
                 let d = null;
@@ -2365,32 +2419,50 @@ window.AsgardRpReviewModal = (function () {
                 }
 
                 // ── Материалы и оборудование ────────────────────────────────
-                // Раньше МТР всегда был пуст («Перечень не заполнен»), потому
-                // что модель его не возвращала, а заполнять вручную каждый раз
-                // никто не станет. Теперь модель предлагает расходники по
-                // документам, а РП правит их на вкладке «Бригада и МТР».
-                if (Array.isArray(d.mtr_suggestions) && d.mtr_suggestions.length) {
-                  const mtrList = d.mtr_suggestions
+                // МТР может прийти top-level ИЛИ в state (часто только там).
+                const mtrRaw = (Array.isArray(d.mtr_suggestions) && d.mtr_suggestions.length)
+                  ? d.mtr_suggestions
+                  : (d.state && Array.isArray(d.state.mtr_suggestions) ? d.state.mtr_suggestions : []);
+                if (mtrRaw.length) {
+                  const mtrList = mtrRaw
                     .filter((x) => x && x.name)
                     .map((x) => ({
                       name: String(x.name).trim().slice(0, 200),
                       qty: Number(x.qty) > 0 ? Number(x.qty) : null,
                       unit: String(x.unit || '').trim().slice(0, 20),
-                      purpose: String(x.purpose || '').trim().slice(0, 200),
-                      // Источник: из документа или типовой расходник.
-                      source: String(x.source || '').toLowerCase() === 'typical' ? 'typical' : 'doc'
+                      purpose: String(x.purpose || x.note || '').trim().slice(0, 200),
+                      source: String(x.source || '').toLowerCase() === 'typical' ? 'typical'
+                        : (String(x.source || '').toLowerCase() === 'warehouse' ? 'warehouse'
+                          : (String(x.source || '').toLowerCase() === 'purchase' ? 'purchase' : 'doc'))
                     }));
                   reportJson.mtr_suggestions = mtrList;
-                  // Кладём в техплан, чтобы вкладка «Бригада и МТР» была
-                  // заполнена сразу, а не показывала «Перечень не заполнен».
                   if (!Array.isArray(reportJson.mtr) || !reportJson.mtr.length) {
                     reportJson.mtr = mtrList.map((x) => ({
                       name: x.name,
                       qty: x.qty,
                       unit: x.unit,
-                      note: x.purpose
+                      note: x.purpose,
+                      source: x.source
                     }));
                   }
+                }
+
+                // Вопросы заказчику — целиком, не только урезок в risks.
+                const qCust = Array.isArray(d.questions_for_customer) ? d.questions_for_customer
+                  : (d.state && Array.isArray(d.state.questions_for_customer)
+                    ? d.state.questions_for_customer : null);
+                if (qCust && qCust.length) {
+                  reportJson.questions_for_customer = qCust.map((q) => String(q).trim()).filter(Boolean);
+                }
+                if (d.schedule || (d.state && d.state.schedule)) {
+                  reportJson.schedule = d.schedule || d.state.schedule;
+                }
+                if (d.schedule_days != null || (d.state && d.state.schedule_days != null)) {
+                  reportJson.schedule_days = d.schedule_days != null
+                    ? d.schedule_days : d.state.schedule_days;
+                }
+                if (d.history_block || (d.state && d.state.history_block)) {
+                  reportJson.history_block = d.history_block || d.state.history_block;
                 }
 
                 if (positions.length) {

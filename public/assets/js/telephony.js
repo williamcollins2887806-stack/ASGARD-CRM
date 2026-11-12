@@ -41,6 +41,8 @@ window.AsgardTelephonyPage = (function () {
   /** Статус ИИ-анализа (отдельно от расшифровки) */
   function getAiPipelineStatus(c) {
     var t = c.transcript_status || 'none';
+    var aiSt = String(c.ai_analysis_status || '');
+    var tr = (c.transcript && String(c.transcript).trim()) || '';
     var hasSummary = !!(c.ai_summary && String(c.ai_summary).trim());
     var summaryLower = hasSummary ? String(c.ai_summary).toLowerCase() : '';
     var aiFailed = hasSummary && (
@@ -49,14 +51,26 @@ window.AsgardTelephonyPage = (function () {
       summaryLower.indexOf('недостаточно средств') !== -1 ||
       summaryLower.indexOf('402') !== -1
     );
-    if (aiFailed) {
-      return { key: 'ai_error', label: 'ИИ: ошибка', tip: 'Анализ не прошёл (сеть, баланс RouterAI или сбой модели). Нажмите \u00ABПовторить анализ\u00BB' };
-    }
     if (t === 'processing' || t === 'pending') {
       return { key: 'waiting_stt', label: 'Ждём текст\u2026', tip: 'Сначала расшифровка, потом ИИ-резюме' };
     }
     if (t === 'error') {
       return { key: 'stt_error', label: 'Нужна расшифровка', tip: 'Без текста анализ недоступен \u2014 повторите расшифровку' };
+    }
+    if (t === 'done' && !tr) {
+      return { key: 'stt_empty', label: 'Нет текста', tip: 'В записи нет распознанной речи. Повторите расшифровку или проверьте запись' };
+    }
+    if (aiSt === 'skipped') {
+      return { key: 'ai_done', label: 'ИИ: пропуск', tip: c.ai_summary || 'Разговор слишком короткий или без речи' };
+    }
+    if (aiSt === 'error_final' || aiSt === 'error_retryable' || aiFailed) {
+      var errTip = (c.ai_last_error && String(c.ai_last_error).trim())
+        ? String(c.ai_last_error).trim()
+        : 'Анализ не прошёл (сеть, баланс RouterAI или сбой модели). Нажмите \u00ABПовторить анализ\u00BB';
+      return { key: 'ai_error', label: 'ИИ: ошибка', tip: errTip };
+    }
+    if (aiSt === 'pending' || aiSt === 'processing') {
+      return { key: 'ai_pending', label: 'Ждёт анализ ИИ', tip: 'Анализ в очереди. Обычно 10\u201360 сек' };
     }
     if (t === 'done' && !hasSummary) {
       return { key: 'ai_pending', label: 'Ждёт анализ ИИ', tip: 'Текст есть, резюме ещё нет. Нажмите \u00ABПовторить анализ\u00BB или подождите очередь' };
@@ -909,7 +923,7 @@ window.AsgardTelephonyPage = (function () {
         }
 
         var hint = '';
-        if (aiSt.key === 'ai_error' || aiSt.key === 'stt_error' || aiSt.key === 'ai_pending') {
+        if (aiSt.key === 'ai_error' || aiSt.key === 'stt_error' || aiSt.key === 'stt_empty' || aiSt.key === 'ai_pending') {
           hint = '<div class="call-pipeline-hint">' + esc(aiSt.tip) + '</div>';
         } else if (!hasAi && tStatus === 'processing') {
           hint = '<div class="call-pipeline-hint">Расшифровка обычно занимает 1\u20133 минуты. Обновите журнал или откройте карточку позже.</div>';

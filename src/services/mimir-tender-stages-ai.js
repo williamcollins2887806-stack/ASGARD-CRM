@@ -24,6 +24,69 @@ const excelStructure = require('./excel-structure');
 // module-level: вызовы последовательные, гонки нет.
 let lastSelection = null;
 
+/**
+ * complete() или stream()+parseStream() — если есть onProgress и stream API.
+ * Эмитит model_stream каждые ~1.5 с (символы, черновик позиций, хвост).
+ */
+async function completeOrStream(aiProvider, opts, emit, streamMeta) {
+  const o = opts || {};
+  const meta = streamMeta || {};
+  const canStream = typeof emit === 'function'
+    && typeof aiProvider.stream === 'function'
+    && typeof aiProvider.parseStream === 'function';
+  if (!canStream) {
+    return aiProvider.complete(o);
+  }
+  const response = await aiProvider.stream({
+    system: o.system,
+    messages: o.messages,
+    maxTokens: o.maxTokens,
+    temperature: o.temperature != null ? o.temperature : 0,
+    responseFormat: o.responseFormat || (o.expectJson ? { type: 'json_object' } : undefined),
+    model: o.model
+  });
+  const provider = (aiProvider.getProvider && aiProvider.getProvider())
+    || (aiProvider.getConfig && aiProvider.getConfig().provider)
+    || 'openai';
+  let fullText = '';
+  let usage = { inputTokens: 0, outputTokens: 0 };
+  let stopReason = 'end_turn';
+  let lastEmitAt = 0;
+  for await (const chunk of aiProvider.parseStream(
+    response,
+    provider === 'anthropic' ? 'anthropic' : 'openai'
+  )) {
+    if (chunk.type === 'text' && chunk.content) {
+      fullText += chunk.content;
+      const now = Date.now();
+      if (now - lastEmitAt >= 1500) {
+        lastEmitAt = now;
+        const nameHits = (fullText.match(/"name"\s*:/g) || []).length;
+        emit({
+          step: 'model_stream',
+          message: `Модель пишет ответ: ${fullText.length} симв.`
+            + (nameHits ? `, ~${nameHits} поз. в черновике` : '')
+            + (meta.label ? ` (${meta.label})` : ''),
+          pct: meta.pct != null ? meta.pct : 15,
+          chars: fullText.length,
+          positions_draft: nameHits,
+          snippet: fullText.slice(-120)
+        });
+      }
+    } else if (chunk.type === 'done') {
+      usage = chunk.usage || usage;
+      if (chunk.stopReason) stopReason = chunk.stopReason;
+    }
+  }
+  return {
+    text: fullText,
+    usage,
+    stopReason,
+    model: (aiProvider.getConfig && aiProvider.getConfig().model) || o.model || null,
+    provider
+  };
+}
+
 /** Каталог категорий и методов в компактном виде для промпта. */
 function catalogForPrompt(catalog) {
   const cats = (catalog && Array.isArray(catalog.categories)) ? catalog.categories : [];
@@ -300,7 +363,18 @@ function estimateExpectedForSelection(documents) {
         try { rows = docRole.countVolumeRows(text); } catch (_) { rows = 0; }
       }
       if (rows <= 0) continue;
-      docs.push({ name, structured: rows, signature: textSignature(text) });
+      // Структура документа (если разбор возможен) — чтобы схлопнуть ОДИН
+      // перечень, пришедший в двух вёрстках. Без этого «Форма» (675) и
+      // «Дефектная ведомость» (673) суммировались в 1348 при реальных 675
+      // (тендер 2138, 12.11.2026).
+      let struct = null;
+      try { struct = structureOf(d); } catch (_) { struct = null; }
+      docs.push({
+        name,
+        structured: rows,
+        signature: textSignature(text),
+        positions: struct && Array.isArray(struct.positions) ? struct.positions : null
+      });
     }
 
     // ── Согласование двух источников ──────────────────────────────────────
@@ -320,10 +394,23 @@ function estimateExpectedForSelection(documents) {
     let estimate = 0;
     if (docs.length) {
       // Копии одного перечня считаем один раз, разные перечни складываем.
-      const seenSignatures = new Set();
+      // Подписи по тексту мало: «Форма тендерного предложения» и «Дефектная
+      // ведомость» — один перечень, но тексты у них разные, поэтому раньше
+      // 675 + 673 = 1348. Если есть структура — сравниваем ПОЗИЦИИ.
+      const kept = [];
       for (const doc of docs) {
-        if (doc.signature && seenSignatures.has(doc.signature)) continue;
-        if (doc.signature) seenSignatures.add(doc.signature);
+        if (doc.signature && kept.some((k) => k.signature === doc.signature)) continue;
+        let dup = false;
+        if (Array.isArray(doc.positions) && doc.positions.length >= 5) {
+          for (const k of kept) {
+            if (!Array.isArray(k.positions) || !k.positions.length) continue;
+            try {
+              if (excelStructure.compareLists(k.positions, doc.positions).sameList) { dup = true; break; }
+            } catch (_) { /* сравнение — вспомогательное */ }
+          }
+        }
+        if (dup) continue;
+        kept.push(doc);
         estimate += doc.structured;
       }
     }
@@ -826,10 +913,18 @@ function buildStructuredInput(documents) {
       const smaller = Math.min(a, b);
       const bigger = Math.max(a, b);
       if (!bigger) return false;
+      let cmp = null;
+      try { cmp = excelStructure.compareLists(e.parsed.positions, parsed.positions); } catch (_) { cmp = null; }
+      // Подпись по НАЗВАНИЯМ сильнее объёмной: в «Форме» объём трубчатых
+      // аппаратов посчитан из геометрии, в дефектной ведомости дан колонкой,
+      // поэтому объёмы расходятся, а позиции — те же (599 общих из 601).
+      // Такой перечень — копия при ЛЮБОЙ разнице размеров: ошибиться и
+      // потерять настоящий перечень здесь нельзя, названия уникальны.
+      if (cmp && cmp.ratio_name >= 0.9 && smaller >= 5) return true;
       // Копия одного файла — это такой же перечень: размеры отличаются на
       // единицы процентов. Сравниваем только сопоставимые по размеру.
       if (smaller / bigger >= 0.85) {
-        try { return excelStructure.compareLists(e.parsed.positions, parsed.positions).sameList; } catch (_) { return false; }
+        try { return !!(cmp && cmp.sameList); } catch (_) { return false; }
       }
       // Вложенный перечень (дефектная ведомость = Прил_1) — тоже копия, но
       // ТОЛЬКО когда он большой: у маленького приложения (4–5 позиций)
@@ -837,8 +932,7 @@ function buildStructuredInput(documents) {
       // и потерять его молча дороже, чем продублировать несколько строк.
       if (smaller < 20) return false;
       try {
-        const cmp = excelStructure.compareLists(e.parsed.positions, parsed.positions);
-        return cmp.ratio >= 0.99;
+        return !!(cmp && cmp.ratio >= 0.99);
       } catch (_) { return false; }
     });
     if (dup) continue;
@@ -1171,7 +1265,7 @@ async function generateDv(p) {
       });
       let chRes;
       try {
-        chRes = await o.aiProvider.complete({
+        chRes = await completeOrStream(o.aiProvider, {
           system: chunkSystem,
           messages: [{
             role: 'user',
@@ -1187,7 +1281,11 @@ async function generateDv(p) {
               model: o.model
             }).limit)),
           temperature: 0,
-          expectJson: true
+          expectJson: true,
+          model: o.model
+        }, typeof o.onProgress === 'function' ? emit : null, {
+          pct: chunkPct,
+          label: `порция ${ci + 1}/${chunks.length}`
         });
       } catch (_) {
         emit({
@@ -1242,28 +1340,26 @@ async function generateDv(p) {
       positions: allPositions.length
     });
     let res;
+    const outLimit = budget.outputLimit({
+      // Запас 15 %: у ведомости позиция длиннее, чем 50 токенов из оценки
+      // ai-call-budget, и без запаса ответ обрывался по length.
+      expectedPositions: budgetPositions(expectedRows, modelSaidPositions),
+      model: o.model
+    }).limit;
     try {
-      res = await o.aiProvider.complete({
+      // Стрим токенов, когда есть onProgress: UI видит прирост JSON, а не
+      // минуты тишины на «15% жду». Без onProgress — прежний complete().
+      res = await completeOrStream(o.aiProvider, {
         system,
         messages: [{ role: 'user', content: user }],
-        // Поднято с 32000: 673 позиции дефектной ведомости 2138 — это ~34 тыс.
-        // токенов, и при 32000 ответ обрезался на середине массива.
-        // Лимит выхода — расчётный: под ожидаемое число позиций, в пределах
-        // возможностей модели. Было жёстко 64000, и на 675 позициях ответ
-        // обрывался (34k нужно только на массив).
-        maxTokens: budget.outputLimit({
-          // Запас 15 %: у ведомости позиция длиннее, чем 50 токенов из оценки
-          // ai-call-budget, и без запаса ответ обрывался по length.
-          expectedPositions: budgetPositions(expectedRows, modelSaidPositions),
-          model: o.model
-        }).limit,
-        // temperature 0 — ОБЯЗАТЕЛЬНО для разбора ведомости.
-        // Было 0.15: при повторном запуске на том же документе модель давала
-        // то 1, то 353 позиции. Разбор перечня — не творческая задача, здесь
-        // нужна воспроизводимость: один документ = один результат.
+        maxTokens: outLimit,
         temperature: 0,
         responseFormat: { type: 'json_object' },
-        reasoning: { enabled: false }
+        reasoning: { enabled: false },
+        model: o.model
+      }, typeof o.onProgress === 'function' ? emit : null, {
+        pct: 15 + Math.min(50, round * 8),
+        label: `раунд ${round + 1}`
       });
     } catch (e) {
       emit({ step: 'error', message: 'Модель недоступна: ' + e.message, pct: null });
@@ -1450,6 +1546,64 @@ async function generateDv(p) {
 
   // Собираем итоговую ДВ: поля-описания из первого круга, позиции — все.
   const dv = Object.assign({}, firstDv, { positions: allPositions });
+  // Schedule-pass после порций/раундов: firstDv часто без visits[] (хвост
+  // JSON съеден или первая порция без графика). Дособираем детерминированно.
+  try {
+    const visitSvc = require('./visit-plan');
+    const schedulePass = visitSvc.buildVisitPlan({
+      positions: allPositions,
+      text: (Array.isArray(o.documents) ? o.documents : [])
+        .map((d) => String(d && d.text || '')).join('\n'),
+      modelPlan: {
+        schedule_mode: dv.schedule_mode || null,
+        visits: Array.isArray(dv.visits) ? dv.visits : [],
+        trip_count: dv.trip_count || null
+      }
+    });
+    if (schedulePass) {
+      const modelVisitsEmpty = !Array.isArray(dv.visits) || !dv.visits.length;
+      const tzContinuous = schedulePass.mode === 'continuous'
+        && (schedulePass.source === 'docs_tz'
+          || (Array.isArray(schedulePass.conflicts)
+            && schedulePass.conflicts.some((c) => c.resolved_as === 'continuous')));
+      // Доверяем досбору, если модель молчала / visits пусты / ТЗ continuous.
+      if (!dv.schedule_mode || dv.schedule_mode === 'unknown'
+        || modelVisitsEmpty || tzContinuous) {
+        dv.schedule_mode = schedulePass.mode || dv.schedule_mode;
+      }
+      if (!(Number(dv.trip_count) > 0) || modelVisitsEmpty || tzContinuous) {
+        if (schedulePass.trip_count) dv.trip_count = schedulePass.trip_count;
+      }
+      if ((modelVisitsEmpty || tzContinuous)
+        && Array.isArray(schedulePass.visits) && schedulePass.visits.length) {
+        dv.visits = schedulePass.visits.map((v) => ({
+          id: v.id,
+          label: v.label,
+          period_start: v.period_start || null,
+          period_end: v.period_end || null,
+          position_ids: v.position_ids || []
+        }));
+      }
+      dv.visit_plan_pass = {
+        mode: schedulePass.mode,
+        trip_count: schedulePass.trip_count,
+        visits: (schedulePass.visits || []).length,
+        source: schedulePass.source,
+        unconfirmed: !!schedulePass.unconfirmed
+      };
+      emit({
+        step: 'schedule_pass',
+        message: schedulePass.mode === 'visits'
+          ? `График (досбор): ${schedulePass.trip_count} заезд(ов).`
+          : schedulePass.mode === 'continuous'
+            ? 'График (досбор): один непрерывный заезд.'
+            : 'График (досбор): режим не подтверждён.',
+        pct: 84,
+        visit_mode: schedulePass.mode,
+        trip_count: schedulePass.trip_count
+      });
+    }
+  } catch (_) { /* досбор графика не блокирует разбор */ }
   // Считаем валидные позиции ДО сверки полноты: `checkCompleteness` получает
   // это число параметром. Раньше строка `const validFound = ...` стояла ниже
   // вызова и модуль падал с «Cannot access 'validFound' before initialization»
@@ -1652,6 +1806,39 @@ async function generateCalcPlan(p) {
     };
   }
 
+  // Фронты из ДВ: иначе calc-модель на 600+ позициях не отдаёт objects
+  // и resolveFronts ставит 1 → срок раздувается.
+  const dvObjectsTotal = positions.reduce((s, p) => {
+    const objs = Array.isArray(p.objects) ? p.objects : [];
+    const q = objs.reduce((acc, ob) => acc + (Number(ob && ob.qty) || 0), 0);
+    if (q > 0) return s + q;
+    if (objs.length) return s + objs.length;
+    if (Number(p.objects_count) > 0) return s + Number(p.objects_count);
+    return s;
+  }, 0);
+  // Прокидываем objects/mh/source с ДВ в позиции плана, если модель их сжала.
+  if (Array.isArray(parsed.positions)) {
+    parsed.positions = parsed.positions.map((pp, i) => {
+      const src = positions.find((x) => String(x.id) === String(pp.id))
+        || positions[i]
+        || null;
+      if (!src) return pp;
+      return Object.assign({}, pp, {
+        objects: Array.isArray(pp.objects) && pp.objects.length
+          ? pp.objects
+          : (Array.isArray(src.objects) ? src.objects : pp.objects),
+        objects_count: pp.objects_count != null
+          ? pp.objects_count
+          : (src.objects_count != null ? src.objects_count : null),
+        mh: Number(pp.mh) > 0 ? pp.mh : (Number(src.mh) > 0 ? src.mh : null),
+        days: Number(pp.days) > 0 ? pp.days : (Number(src.days) > 0 ? src.days : null),
+        people: Number(pp.people) > 0 ? pp.people : (Number(src.people) > 0 ? src.people : null),
+        source: pp.source || src.source || null,
+        norm_basis: pp.norm_basis || src.norm_basis || (src.norm && src.norm.norm_basis) || null,
+        period: pp.period || src.period || null
+      });
+    });
+  }
   const plan = stages.normalizeCalcPlan(parsed, {
     max_parallel_posts: o.maxParallelPosts,
     // Окно дат нужно, чтобы подобрать число бригад под график заказчика.
@@ -1662,6 +1849,7 @@ async function generateCalcPlan(p) {
     // и число бригад нельзя размножать по объёму (иначе 6 заездов за 16 дней).
     visit_mode: o.visitMode || null,
     trip_count: o.tripCount || null,
+    fronts: Number(o.fronts) > 0 ? Number(o.fronts) : (dvObjectsTotal > 0 ? dvObjectsTotal : null),
     // Базис нормы: gross-норма уже содержит внутрисменные потери, вычитать их
     // повторно нельзя. Определяем по коду нормы из каталога — иначе защита
     // от двойного счёта остаётся мёртвой (нашёл верификатор).

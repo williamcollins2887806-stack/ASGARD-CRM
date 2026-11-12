@@ -714,13 +714,14 @@ function evalQtyExpr(expr, p) {
       // внутрисменных потерь молча не учитывались и потери B занижались
       // на 23 % (12 против 9,25). Та же формула, что в time-budget.
       // Если тип нормы gross — потери A уже внутри, значит h_net = shift_hours.
-      const tb = require('./time-budget');
-      const caps = tb.buildTimeBudget({
-        shift_hours: num(p.shift_hours) || 12,
-        norm_basis: p.norm_basis || 'net_productive',
-        crew_per_shift: crew
-      });
-      const hNet = caps.in_shift.h_net > 0 ? caps.in_shift.h_net : 12;
+      // ВАЖНО: эта функция уезжает в браузер через зеркало asgard_smeta.js,
+      // поэтому require здесь ставить нельзя — считаем h_net локально.
+      // 165 мин = обед 60 + перекуры 30 + ПЗР 30 + передача 15 + наряд 30
+      // (DEFAULTS в time-budget.js).
+      const shiftH = num(p.shift_hours) || 12;
+      const basis = String(p.norm_basis || 'net_productive');
+      const applyInShift = basis !== 'gross_12h' && basis !== 'gross_calendar';
+      const hNet = applyInShift ? Math.max(1, shiftH - 165 / 60) : shiftH;
       return Math.round((hours * crew) / hNet * 100) / 100;
     })()
   };

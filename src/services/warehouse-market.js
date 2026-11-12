@@ -5,6 +5,24 @@
 
 const { queryVariants, enrichOffer } = require('./price-search');
 
+const SITE_LABELS = {
+  korolev: 'Королёв',
+  astrakhan: 'Астрахань',
+};
+
+function formatLocationLabel(sites) {
+  const list = Array.isArray(sites) ? sites : [];
+  const labels = [];
+  for (const s of list) {
+    const key = String(s || '').trim().toLowerCase();
+    if (!key || key === 'unknown') continue;
+    const label = SITE_LABELS[key] || key;
+    if (!labels.includes(label)) labels.push(label);
+  }
+  if (!labels.length) return null;
+  return labels.join(' · ');
+}
+
 async function searchMarket(db, opts = {}) {
   const q = String(opts.q || '').trim();
   const availability = ['all', 'in_stock', 'order'].includes(opts.availability)
@@ -30,7 +48,11 @@ async function searchMarket(db, opts = {}) {
     const base = r.base_unit || r.unit || 'шт';
     let unitHint = `за ${base}`;
     let priceNote = null;
-    const price = r.best_price != null ? Number(r.best_price) : (r.unit_price_base != null ? Number(r.unit_price_base) : null);
+    let price = r.best_price != null ? Number(r.best_price) : (r.unit_price_base != null ? Number(r.unit_price_base) : null);
+    if (!(Number.isFinite(price) && price > 0) && r.price_ai != null) {
+      const ai = Number(r.price_ai);
+      if (Number.isFinite(ai) && ai > 0) price = ai;
+    }
     if (pack && pack > 1 && (String(r.unit || '').toLowerCase().includes('упак') || base === 'упак')) {
       unitHint = `за упак (${pack} шт)`;
       if (price != null) priceNote = `≈ ${(price / pack).toLocaleString('ru-RU', { maximumFractionDigits: 2 })} ₽ за 1 шт`;
@@ -39,6 +61,7 @@ async function searchMarket(db, opts = {}) {
     } else if (base === 'кг') unitHint = 'за кг';
     else if (base === 'шт') unitHint = 'за 1 шт';
 
+    const locationLabel = formatLocationLabel(r.location_site ? [r.location_site] : []);
     items.push({
       kind: 'product',
       id: r.id,
@@ -55,12 +78,14 @@ async function searchMarket(db, opts = {}) {
       badge: inStock ? 'in_stock' : 'order',
       badge_label: inStock ? 'В наличии' : 'Под заказ',
       stock_qty: stockQty,
-      best_price: price,
+      best_price: Number.isFinite(price) && price > 0 ? price : null,
       unit_hint: unitHint,
       price_note: priceNote,
       pack_qty: pack,
       best_supplier: r.best_supplier || null,
-      keywords: r.search_keywords || []
+      keywords: r.search_keywords || [],
+      location_sites: r.location_site ? [r.location_site] : [],
+      location_label: locationLabel,
     });
   }
 
@@ -76,6 +101,11 @@ async function searchMarket(db, opts = {}) {
           : [];
         const repId = availableIds[0] || Number(e.id) || null;
         if (!repId) continue;
+        const sites = Array.isArray(e.location_sites)
+          ? e.location_sites.map((x) => String(x || '').trim()).filter(Boolean)
+          : [];
+        const locationLabel = formatLocationLabel(sites);
+        const price = e.purchase_price != null ? Number(e.purchase_price) : null;
         items.push({
           kind: 'equipment',
           id: repId,
@@ -91,7 +121,7 @@ async function searchMarket(db, opts = {}) {
           badge: stockQty > 0 ? 'in_stock' : 'order',
           badge_label: stockQty > 0 ? 'В наличии' : 'Нет на складе',
           stock_qty: stockQty,
-          best_price: null,
+          best_price: Number.isFinite(price) && price > 0 ? price : null,
           unit_hint: 'за 1 шт',
           price_note: stockQty > 0 ? `${stockQty} шт на складе` : null,
           serial: null,
@@ -101,6 +131,8 @@ async function searchMarket(db, opts = {}) {
           available_ids: availableIds,
           brand: e.brand || null,
           model: e.model || null,
+          location_sites: sites,
+          location_label: locationLabel,
         });
       }
     }
@@ -185,6 +217,8 @@ async function fetchProducts(db, { q, likes, group, availability, warehouseId, l
     SELECT
       p.id, p.name, p.article, p.unit, p.photo_url, p.photo_source, p.market_card_key, p.icon_slug,
       NULLIF(btrim(p.attrs->>'description_ai'),'') AS description_ai,
+      NULLIF(btrim(p.attrs->>'location_site'),'') AS location_site,
+      NULLIF(btrim(p.attrs->>'price_ai'),'') AS price_ai,
       p.pack_qty, p.base_unit, p.unit_price_base, p.search_keywords,
       c.name AS category_name, COALESCE(c.search_group,'other') AS search_group,
       COALESCE(st.qty, 0)::float AS stock_qty,
@@ -296,6 +330,8 @@ async function fetchEquipmentGrouped(db, { q, likes, warehouseId, limit, availab
       MAX(c.name) AS category_name,
       MAX(w.name) FILTER (WHERE e.status = 'on_warehouse') AS warehouse_name,
       MAX(e.condition) FILTER (WHERE e.status = 'on_warehouse') AS condition,
+      MAX(e.purchase_price) FILTER (WHERE e.purchase_price IS NOT NULL AND e.purchase_price > 0) AS purchase_price,
+      ARRAY_REMOVE(ARRAY_AGG(DISTINCT NULLIF(btrim(COALESCE(e.attrs->>'location_site','')),'')), NULL) AS location_sites,
       COUNT(*) FILTER (WHERE e.status = 'on_warehouse')::int AS stock_qty,
       COUNT(*)::int AS total_units,
       COALESCE(

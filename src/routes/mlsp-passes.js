@@ -6,7 +6,13 @@
  */
 
 const { evaluateApplication, registrySignal, ymd, addDays, fmtRu } = require('../services/mlsp-passes-rules');
-const { buildApplicationExcel, buildPreviewDocument, filenameFor } = require('../services/mlsp-passes-excel');
+const {
+  buildApplicationExcel,
+  buildPreviewDocument,
+  filenameFor,
+  formatPassSubjectLine,
+  resolvePassSubjectText
+} = require('../services/mlsp-passes-excel');
 const dadata = require('../services/dadata');
 
 const VIEW_ROLES = [
@@ -53,9 +59,17 @@ const APP_TYPE_LABEL = {
   pass_fsb: 'Пропуск ФСБ'
 };
 
-function enrichApp(row) {
+function isAppCreator(row, viewer) {
+  const uid = Number(viewer?.id);
+  return Number.isFinite(uid) && uid > 0 && Number(row?.created_by) === uid;
+}
+
+function enrichApp(row, viewer) {
   if (!row) return row;
   const people = Array.isArray(row.people) ? row.people : [];
+  const cancelled = row.status === 'cancelled';
+  const isCreator = isAppCreator(row, viewer);
+  const isAdmin = String(viewer?.role || '') === 'ADMIN';
   return {
     ...row,
     status_label: APP_STATUS_LABEL[row.status] || row.status,
@@ -70,8 +84,40 @@ function enrichApp(row) {
     })[row.status] || '',
     can_mark_sent: ['draft', 'exported'].includes(row.status),
     can_mark_received: ['exported', 'sent'].includes(row.status),
+    can_edit: !cancelled,
+    can_delete: !cancelled && (isCreator || isAdmin),
+    is_mine: isCreator,
     writes_druzhina: !!permitCodeForApp(row.app_type)
   };
+}
+
+function peopleSnapshot(people, body, meta) {
+  return people.map((p) => ({
+    id: p.id,
+    fio: p.fio,
+    phone: p.phone,
+    position: p.position,
+    birth_date: ymd(p.birth_date),
+    birth_place: p.birth_place,
+    passport_series: p.passport_series,
+    passport_number: p.passport_number,
+    passport_date: ymd(p.passport_date),
+    passport_issued: p.passport_issued,
+    registration_address: p.registration_address,
+    department: p.department,
+    order_number: p.order_number,
+    order_date: ymd(p.order_date),
+    labor_term: p.labor_term,
+    org: p.org,
+    mvz: body.mvz || meta?.mvz || null,
+    curator: body.curator || meta?.curator || null,
+    contract_number: body.contract_number || meta?.contract_number,
+    fsb_doc: p.fsb_doc,
+    permits_text: p.permits_text,
+    mode: p.mode,
+    vehicle: p.vehicle,
+    leg_direction: p.leg_direction
+  }));
 }
 
 async function issuePermitsFromApplication(db, app, opts = {}) {
@@ -215,20 +261,40 @@ async function loadEmployeesRich(db, ids) {
     (permByEmp[p.employee_id] || (permByEmp[p.employee_id] = [])).push(p);
   }
 
+  /** Как в базе Хосе: «34/И №31526-01\n01.12.2026 - 30.11.2027» */
+  function formatFsbDoc(fsb) {
+    if (!fsb) return '';
+    const num = String(fsb.document_number || '').trim();
+    const from = fsb.issue_date ? fmtRu(fsb.issue_date) : '';
+    const to = fsb.expiry_date ? fmtRu(fsb.expiry_date) : '';
+    let period = '';
+    if (from && to) period = `${from} - ${to}`;
+    else if (to) period = to;
+    else if (from) period = `с ${from}`;
+    if (num && period) return `${num}\n${period}`;
+    return num || period;
+  }
+
   const byId = Object.fromEntries(emps.map((e) => [e.id, e]));
   return ids.map((id) => {
     const e = byId[id];
     if (!e) return null;
     const plist = permByEmp[id] || [];
-    const fsb = plist.find((p) => String(p.code).toUpperCase() === 'FSB');
+    // если несколько ФСБ — берём с самым поздним окончанием
+    const fsbList = plist.filter((p) => String(p.code).toUpperCase() === 'FSB');
+    const fsb = fsbList.slice().sort((a, b) => {
+      const ae = String(a.expiry_date || '');
+      const be = String(b.expiry_date || '');
+      return ae < be ? 1 : ae > be ? -1 : 0;
+    })[0] || null;
     return {
       ...e,
       org: 'ООО «АСГАРД-Сервис»',
       permits: plist,
       mlsp_stay: stayByEmp[id] || null,
-      fsb_doc: fsb
-        ? [fsb.document_number, fsb.expiry_date && fmtRu(fsb.expiry_date)].filter(Boolean).join(' · ')
-        : '',
+      fsb_doc: formatFsbDoc(fsb),
+      fsb_from: fsb?.issue_date ? fmtRu(fsb.issue_date) : '',
+      fsb_to: fsb?.expiry_date ? fmtRu(fsb.expiry_date) : '',
       permits_text: fsb ? 'пропуск ФСБ' : ''
     };
   }).filter(Boolean);
@@ -246,35 +312,68 @@ async function nextOutgoing(db, client) {
   return { series: '141603', seq, number };
 }
 
-async function loadContractMeta(db, contractNumber) {
+async function lookupContractRow(db, contractNumber) {
   if (!contractNumber) return null;
-  const { rows } = await db.query(
-    `SELECT * FROM mlsp_contract_meta WHERE contract_number = $1`,
-    [contractNumber]
-  );
-  if (rows[0]) return rows[0];
-  // fallback: contracts table
-  let c;
   try {
-    c = await db.query(
+    const exact = await db.query(
       `SELECT id, number, counterparty_name, customer_name, customer_inn, end_date, start_date, subject
          FROM contracts
         WHERE number = $1
         LIMIT 1`,
       [contractNumber]
     );
+    if (exact.rows[0]) return exact.rows[0];
+    // Иногда в CRM номер без хвоста «от ДД.ММ.ГГ»
+    const prefix = String(contractNumber).split(/\s+от\s+/i)[0].trim();
+    if (prefix && prefix !== contractNumber) {
+      const soft = await db.query(
+        `SELECT id, number, counterparty_name, customer_name, customer_inn, end_date, start_date, subject
+           FROM contracts
+          WHERE number = $1
+             OR number ILIKE $2
+          ORDER BY CASE WHEN number = $1 THEN 0 ELSE 1 END, length(number) DESC
+          LIMIT 1`,
+        [prefix, prefix + '%']
+      );
+      if (soft.rows[0]) return soft.rows[0];
+    }
   } catch (e) {
     console.warn('[mlsp-passes] contracts lookup:', e.message);
-    return { contract_number: contractNumber };
   }
-  if (!c.rows[0]) return { contract_number: contractNumber };
+  return null;
+}
+
+async function loadContractMeta(db, contractNumber) {
+  if (!contractNumber) return null;
+  const { rows } = await db.query(
+    `SELECT * FROM mlsp_contract_meta WHERE contract_number = $1`,
+    [contractNumber]
+  );
+  const crm = await lookupContractRow(db, contractNumber);
+  if (rows[0]) {
+    return {
+      ...rows[0],
+      contract_id: rows[0].contract_id || crm?.id || null,
+      end_date: rows[0].end_date || crm?.end_date || null,
+      // предмет услуги: meta.subject (если появится) → contracts.subject
+      subject: rows[0].subject || crm?.subject || null,
+      counterparty_name: rows[0].counterparty_name || crm?.counterparty_name || crm?.customer_name || null
+    };
+  }
+  if (!crm) return { contract_number: contractNumber };
   return {
-    contract_id: c.rows[0].id,
-    contract_number: c.rows[0].number,
-    counterparty_name: c.rows[0].counterparty_name || c.rows[0].customer_name,
-    end_date: c.rows[0].end_date,
-    subject: c.rows[0].subject
+    contract_id: crm.id,
+    contract_number: crm.number,
+    counterparty_name: crm.counterparty_name || crm.customer_name,
+    end_date: crm.end_date,
+    subject: crm.subject
   };
+}
+
+function subjectTextFromMeta(bodySubject, meta) {
+  const direct = String(bodySubject || '').trim();
+  if (direct) return direct;
+  return formatPassSubjectLine(meta?.subject) || '';
 }
 
 function enrichRegistryRow(row) {
@@ -323,7 +422,7 @@ async function routes(fastify) {
   });
 
   // ── Contracts meta + CRM contracts for GNSH ──────────────────
-  fastify.get('/contracts', { preHandler: [fastify.requireRoles(VIEW_ROLES)] }, async () => {
+  fastify.get('/contracts', { preHandler: [fastify.requireRoles(VIEW_ROLES)] }, async (request) => {
     const meta = await db.query(`SELECT * FROM mlsp_contract_meta ORDER BY contract_number`);
     const crm = await db.query(
       `SELECT id, number, counterparty_name, customer_name, customer_inn, subject,
@@ -337,7 +436,19 @@ async function routes(fastify) {
       request.log.warn(e, 'contracts GNSH list');
       return { rows: [] };
     });
-    return { meta: meta.rows, contracts: crm.rows };
+    const byNumber = Object.fromEntries((crm.rows || []).map((c) => [c.number, c]));
+    const enriched = [];
+    for (const m of meta.rows) {
+      const linked = (m.contract_id && (crm.rows || []).find((c) => c.id === m.contract_id))
+        || byNumber[m.contract_number]
+        || await lookupContractRow(db, m.contract_number);
+      enriched.push({
+        ...m,
+        subject: m.subject || linked?.subject || null,
+        subject_line: formatPassSubjectLine(m.subject || linked?.subject || '') || null
+      });
+    }
+    return { meta: enriched, contracts: crm.rows };
   });
 
   // Правка meta договора ГНШ (окончание, МВЗ, кураторы) — для Хосе / ТО / директоров
@@ -353,6 +464,7 @@ async function routes(fastify) {
       contract_number: 'contract_number',
       counterparty_inn: 'counterparty_inn',
       counterparty_name: 'counterparty_name'
+      // subject храним в contracts.subject — см. ниже
     };
     for (const [k, col] of Object.entries(map)) {
       if (body[k] !== undefined) {
@@ -360,17 +472,53 @@ async function routes(fastify) {
         fields.push(`${col} = $${params.length}`);
       }
     }
-    if (!fields.length) return reply.code(400).send({ error: 'Нет полей' });
-    params.push(request.params.id);
-    const { rows } = await db.query(
-      `UPDATE mlsp_contract_meta
-          SET ${fields.join(', ')}, updated_at = NOW()
-        WHERE id = $${params.length}
-        RETURNING *`,
-      params
-    );
-    if (!rows[0]) return reply.code(404).send({ error: 'Не найдено' });
-    return { item: rows[0] };
+    const wantSubject = body.subject !== undefined;
+    if (!fields.length && !wantSubject) return reply.code(400).send({ error: 'Нет полей' });
+
+    let row;
+    if (fields.length) {
+      params.push(request.params.id);
+      const { rows } = await db.query(
+        `UPDATE mlsp_contract_meta
+            SET ${fields.join(', ')}, updated_at = NOW()
+          WHERE id = $${params.length}
+          RETURNING *`,
+        params
+      );
+      row = rows[0];
+    } else {
+      const { rows } = await db.query(`SELECT * FROM mlsp_contract_meta WHERE id = $1`, [request.params.id]);
+      row = rows[0];
+    }
+    if (!row) return reply.code(404).send({ error: 'Не найдено' });
+
+    let subject = null;
+    if (wantSubject) {
+      subject = body.subject === '' || body.subject == null ? null : String(body.subject).trim();
+      const crm = await lookupContractRow(db, row.contract_number);
+      if (crm?.id) {
+        await db.query(
+          `UPDATE contracts SET subject = $1 WHERE id = $2`,
+          [subject, crm.id]
+        );
+      } else if (row.contract_id) {
+        await db.query(
+          `UPDATE contracts SET subject = $1 WHERE id = $2`,
+          [subject, row.contract_id]
+        );
+      }
+    } else {
+      const crm = await lookupContractRow(db, row.contract_number);
+      subject = crm?.subject || null;
+    }
+
+    return {
+      item: {
+        ...row,
+        subject,
+        subject_line: formatPassSubjectLine(subject) || null
+      }
+    };
   });
 
   // Ensure counterparties + GNSH contracts exist in CRM
@@ -583,7 +731,7 @@ async function routes(fastify) {
     sql += ` ORDER BY created_at DESC LIMIT 200`;
     const { rows } = await db.query(sql, params);
     return {
-      items: rows.map(enrichApp),
+      items: rows.map((r) => enrichApp(r, request.user)),
       workflow: [
         { id: 'draft', label: 'Собрать' },
         { id: 'exported', label: 'Скачать бланк' },
@@ -597,7 +745,7 @@ async function routes(fastify) {
   fastify.get('/applications/:id', { preHandler: [fastify.requireRoles(VIEW_ROLES)] }, async (request, reply) => {
     const { rows } = await db.query(`SELECT * FROM mlsp_applications WHERE id = $1`, [request.params.id]);
     if (!rows[0]) return reply.code(404).send({ error: 'Не найдено' });
-    return enrichApp(rows[0]);
+    return enrichApp(rows[0], request.user);
   });
 
   fastify.post('/applications', { preHandler: [fastify.requireRoles(WRITE_ROLES)] }, async (request, reply) => {
@@ -640,32 +788,7 @@ async function routes(fastify) {
       outgoing = n.number;
     }
 
-    const peopleSnap = people.map((p) => ({
-      id: p.id,
-      fio: p.fio,
-      phone: p.phone,
-      position: p.position,
-      birth_date: ymd(p.birth_date),
-      birth_place: p.birth_place,
-      passport_series: p.passport_series,
-      passport_number: p.passport_number,
-      passport_date: ymd(p.passport_date),
-      passport_issued: p.passport_issued,
-      registration_address: p.registration_address,
-      department: p.department,
-      order_number: p.order_number,
-      order_date: ymd(p.order_date),
-      labor_term: p.labor_term,
-      org: p.org,
-      mvz: body.mvz || meta?.mvz || null,
-      curator: body.curator || meta?.curator || null,
-      contract_number: body.contract_number || meta?.contract_number,
-      fsb_doc: p.fsb_doc,
-      permits_text: p.permits_text,
-      mode: p.mode,
-      vehicle: p.vehicle,
-      leg_direction: p.leg_direction
-    }));
+    const peopleSnap = peopleSnapshot(people, body, meta);
 
     const { rows } = await db.query(
       `INSERT INTO mlsp_applications (
@@ -690,7 +813,7 @@ async function routes(fastify) {
         body.direction || null,
         body.transport || (appType === 'ship' ? 'ship' : appType === 'flight' ? 'plane' : null),
         outgoing,
-        body.subject_text || null,
+        subjectTextFromMeta(body.subject_text, meta) || null,
         body.purpose_text || null,
         body.pass_kind || null,
         JSON.stringify(body.payload || {}),
@@ -700,7 +823,134 @@ async function routes(fastify) {
         request.user?.id || null
       ]
     );
-    return { item: rows[0], validation };
+    return { item: enrichApp(rows[0], request.user), validation };
+  });
+
+  // Правка заявки — любой с WRITE; статус workflow не трогаем
+  fastify.patch('/applications/:id', { preHandler: [fastify.requireRoles(WRITE_ROLES)] }, async (request, reply) => {
+    const { rows } = await db.query(`SELECT * FROM mlsp_applications WHERE id = $1`, [request.params.id]);
+    if (!rows[0]) return reply.code(404).send({ error: 'Не найдено' });
+    const app = rows[0];
+    if (app.status === 'cancelled') {
+      return reply.code(400).send({ error: 'Заявка удалена — править нельзя' });
+    }
+
+    const body = request.body || {};
+    const appType = body.app_type || body.type || app.app_type;
+    const ids = parseIds(body);
+    if (!ids.length) return reply.code(400).send({ error: 'Нужен хотя бы один человек' });
+
+    const people = await loadEmployeesRich(db, ids);
+    const meta = await loadContractMeta(db, body.contract_number || app.contract_number);
+    const pack = await loadPack(db);
+    const openReg = await db.query(`SELECT * FROM mlsp_pass_registry WHERE status NOT IN ('Готова','Сорвана')`);
+    const validation = evaluateApplication({
+      appType,
+      people,
+      dateFrom: body.date_from ?? app.date_from,
+      dateTo: body.date_to !== undefined ? body.date_to : app.date_to,
+      direction: body.direction ?? app.direction,
+      pack,
+      openRegistry: openReg.rows,
+      contractMeta: meta || {},
+      contractNumber: body.contract_number || app.contract_number,
+      mvz: body.mvz || meta?.mvz || app.mvz
+    });
+
+    const force = !!body.force;
+    if (!validation.ok && !force) {
+      return reply.code(422).send({
+        error: 'Есть блокирующие замечания',
+        ...validation
+      });
+    }
+
+    const peopleSnap = peopleSnapshot(people, {
+      ...body,
+      contract_number: body.contract_number || app.contract_number,
+      curator: body.curator !== undefined ? body.curator : app.curator,
+      mvz: body.mvz !== undefined ? body.mvz : app.mvz
+    }, meta);
+
+    const { rows: upd } = await db.query(
+      `UPDATE mlsp_applications SET
+         app_type = $1,
+         contract_id = $2,
+         contract_number = $3,
+         curator = $4,
+         ship_curator = $5,
+         mvz = $6,
+         route_text = $7,
+         date_from = $8,
+         date_to = $9,
+         direction = $10,
+         transport = $11,
+         subject_text = $12,
+         purpose_text = $13,
+         pass_kind = $14,
+         payload = $15::jsonb,
+         people = $16::jsonb,
+         warnings = $17::jsonb,
+         blocks = $18::jsonb,
+         updated_at = NOW()
+       WHERE id = $19
+       RETURNING *`,
+      [
+        appType,
+        meta?.contract_id || body.contract_id || app.contract_id || null,
+        body.contract_number !== undefined ? (body.contract_number || null) : app.contract_number,
+        body.curator !== undefined ? body.curator : app.curator,
+        body.ship_curator !== undefined ? body.ship_curator : app.ship_curator,
+        body.mvz !== undefined ? body.mvz : (meta?.mvz || app.mvz),
+        body.route_text !== undefined ? body.route_text : app.route_text,
+        body.date_from !== undefined ? body.date_from : app.date_from,
+        body.date_to !== undefined ? body.date_to : app.date_to,
+        body.direction !== undefined ? body.direction : app.direction,
+        body.transport !== undefined
+          ? body.transport
+          : (app.transport || (appType === 'ship' ? 'ship' : appType === 'flight' ? 'plane' : null)),
+        body.subject_text !== undefined
+          ? (subjectTextFromMeta(body.subject_text, meta) || null)
+          : (app.subject_text || subjectTextFromMeta('', meta) || null),
+        body.purpose_text !== undefined ? body.purpose_text : app.purpose_text,
+        body.pass_kind !== undefined ? body.pass_kind : app.pass_kind,
+        JSON.stringify(body.payload || app.payload || {}),
+        JSON.stringify(peopleSnap),
+        JSON.stringify(validation.warnings),
+        JSON.stringify(validation.blocks),
+        app.id
+      ]
+    );
+    return { item: enrichApp(upd[0], request.user), validation };
+  });
+
+  // Удаление (мягкое) — только автор или ADMIN
+  fastify.delete('/applications/:id', { preHandler: [fastify.requireRoles(WRITE_ROLES)] }, async (request, reply) => {
+    const { rows } = await db.query(`SELECT * FROM mlsp_applications WHERE id = $1`, [request.params.id]);
+    if (!rows[0]) return reply.code(404).send({ error: 'Не найдено' });
+    const app = rows[0];
+    if (app.status === 'cancelled') {
+      return { ok: true, already: true, application: enrichApp(app, request.user) };
+    }
+    const isAdmin = String(request.user?.role || '') === 'ADMIN';
+    if (!isAppCreator(app, request.user) && !isAdmin) {
+      return reply.code(403).send({
+        error: 'Удалить заявку может только тот, кто её создал',
+        code: 'mlsp_delete_forbidden'
+      });
+    }
+    const { rows: upd } = await db.query(
+      `UPDATE mlsp_applications
+          SET status = 'cancelled', updated_at = NOW()
+        WHERE id = $1
+        RETURNING *`,
+      [app.id]
+    );
+    return {
+      ok: true,
+      application: enrichApp(upd[0], request.user),
+      next_hint: 'Заявка удалена из списка'
+    };
   });
 
   // ── Export excel ─────────────────────────────────────────────
@@ -710,11 +960,25 @@ async function routes(fastify) {
     const app = rows[0];
     // BLOCK по допускам отключён (V479) — Excel отдаём всегда; force оставлен для совместимости
     void request.query.force;
-    // Допуски/паспорт — только WARN; force оставляем на случай старых BLOCK в payload
+    // Свежие ФСБ (период с–по) из Дружины, иначе в снимке заявки мог остаться только «до»
+    const snap = Array.isArray(app.people) ? app.people : [];
+    const ids = snap.map((p) => Number(p.id)).filter((n) => Number.isFinite(n) && n > 0);
+    const rich = ids.length ? await loadEmployeesRich(db, ids) : [];
+    const byId = Object.fromEntries(rich.map((p) => [p.id, p]));
+    const people = snap.map((p) => {
+      const live = byId[p.id];
+      if (!live) return p;
+      return { ...p, ...live, leg_direction: p.leg_direction, mode: p.mode, vehicle: p.vehicle };
+    });
+    const meta = await loadContractMeta(db, app.contract_number);
     const buf = await buildApplicationExcel({
       ...app,
-      people: app.people || [],
-      contract_end: (await loadContractMeta(db, app.contract_number))?.end_date
+      people,
+      contract_end: meta?.end_date,
+      subject_text: resolvePassSubjectText({
+        subject_text: app.subject_text,
+        contract_subject: meta?.subject
+      })
     });
     await db.query(
       `UPDATE mlsp_applications
@@ -736,10 +1000,23 @@ async function routes(fastify) {
     if (!rows[0]) return reply.code(404).send({ error: 'Не найдено' });
     const app = rows[0];
     const meta = await loadContractMeta(db, app.contract_number);
+    const snap = Array.isArray(app.people) ? app.people : [];
+    const ids = snap.map((p) => Number(p.id)).filter((n) => Number.isFinite(n) && n > 0);
+    const rich = ids.length ? await loadEmployeesRich(db, ids) : [];
+    const byId = Object.fromEntries(rich.map((p) => [p.id, p]));
+    const people = snap.map((p) => {
+      const live = byId[p.id];
+      if (!live) return p;
+      return { ...p, ...live, leg_direction: p.leg_direction, mode: p.mode, vehicle: p.vehicle };
+    });
     const sheet = await buildPreviewDocument({
       ...app,
-      people: app.people || [],
-      contract_end: meta?.end_date
+      people,
+      contract_end: meta?.end_date,
+      subject_text: resolvePassSubjectText({
+        subject_text: app.subject_text,
+        contract_subject: meta?.subject
+      })
     });
     return {
       app_type: app.app_type,
@@ -748,7 +1025,7 @@ async function routes(fastify) {
       date_from: ymd(app.date_from),
       date_to: ymd(app.date_to),
       route_text: app.route_text,
-      people: app.people,
+      people,
       blocks: app.blocks,
       warnings: app.warnings,
       sheet
@@ -763,6 +1040,7 @@ async function routes(fastify) {
     const missing = ids.filter((id) => !people.find((p) => p && p.id === id));
     if (missing.length) return reply.code(400).send({ error: 'Сотрудники не найдены', missing });
     const meta = await loadContractMeta(db, body.contract_number);
+    const subjectText = subjectTextFromMeta(body.subject_text, meta);
     const app = {
       app_type: body.app_type,
       contract_number: body.contract_number || '',
@@ -775,7 +1053,8 @@ async function routes(fastify) {
       transport: body.transport || 'plane',
       route_text: body.route_text || '',
       purpose_text: body.purpose_text || '',
-      subject_text: body.subject_text || '',
+      subject_text: subjectText,
+      contract_subject: meta?.subject || null,
       pass_kind: body.pass_kind || '',
       outgoing_number: body.outgoing_number || null,
       contract_end: meta?.end_date || null,
@@ -788,7 +1067,7 @@ async function routes(fastify) {
       payload: body.payload || {}
     };
     const sheet = await buildPreviewDocument(app);
-    return { sheet, people_count: people.length };
+    return { sheet, people_count: people.length, subject_text: subjectText };
   });
 
   // Finalize MLSP pass → outgoing registry + pass registry row
