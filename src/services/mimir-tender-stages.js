@@ -381,6 +381,29 @@ function isFinitePositive(v) {
   return Number.isFinite(n) && n > 0;
 }
 
+/**
+ * Длина трубки в МЕТРАХ из значения позиции.
+ *
+ * В ведомостях заказчика одна и та же величина приходит в разных единицах:
+ *   • «Длина трубки, мм» = 6090            → 6,09 м;
+ *   • «Суммарная длина трубок, м» = 5475   → 5475 м (это уже сумма).
+ * Норма tubes.gdo ждёт метры: с 6090 вместо 6,09 она отвечала
+ * «Укажите длину трубки, м», и 452 позиции из 658 оставались без срока (#2138).
+ *
+ * Порог 100 — не догадка о тендере, а физика: трубка длиной 100 м и больше
+ * в теплообменнике не встречается, значит число записано в миллиметрах.
+ * Правило общее для всех ведомостей и не зависит от заказчика.
+ *
+ * @param {object} p — позиция ДВ
+ * @returns {number|null} длина в метрах
+ */
+function normalizeLengthM(p) {
+  const raw = Number(p && p.length_m);
+  if (!(Number.isFinite(raw) && raw > 0)) return null;
+  const metres = raw > 100 ? raw / 1000 : raw;
+  return Math.round(metres * 1000) / 1000;
+}
+
 /** Мягкая дата из ответа модели: ISO / ДД.ММ.ГГГГ / ГГГГ-ММ → YYYY-MM-DD или null. */
 function normalizeLooseDate(v) {
   const s = String(v || '').trim();
@@ -1122,10 +1145,20 @@ function normalizeDv(ai, catalog) {
         thickness_mm: Number(p.thickness_mm) > 0 ? Number(p.thickness_mm) : null,
         density_t_m3: Number(p.density_t_m3) > 0 ? Number(p.density_t_m3) : null,
         dn_mm: Number(p.dn_mm) > 0 ? Number(p.dn_mm) : null,
-        length_m: Number(p.length_m) > 0 ? Number(p.length_m) : null,
+        // Длина трубки — В МЕТРАХ. В ведомостях заказчика она часто в
+        // миллиметрах («Длина трубки, мм» = 6090), а норма ждёт метры.
+        // Раньше значение переносилось как есть, и норма отвечала
+        // «Укажите длину трубки, м» на 452 позициях из 658 (#2138).
+        // Порог 100: трубка в 100 «м» физически невозможна, значит это мм.
+        length_m: normalizeLengthM(p),
         area_per_plate_m2: Number(p.area_per_plate_m2) > 0 ? Number(p.area_per_plate_m2) : null,
         deposit_type: String(p.deposit_type || '').trim() || null
       },
+      // Число трубок в аппарате — обязательный вход нормы tubes.gdo/gmo/chem.
+      // Без переноса этого поля норма отвечала «Укажите число трубок»,
+      // хотя парсер его читает (534 позиции на #2138). Поле хранится и в
+      // позиции, и в conversion_params: план читает p.tubes, норма — inputs.tubes.
+      tubes: Number(p.tubes) > 0 ? Math.round(Number(p.tubes)) : null,
       conversion_note: null,
       fouling: ['light', 'medium', 'heavy'].includes(String(p.fouling)) ? p.fouling : null,
       tech_equip: String(p.tech_equip || p.technology || '').trim() || null,
