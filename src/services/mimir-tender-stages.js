@@ -478,32 +478,42 @@ function distributeWorkDaysByVisits(p) {
   });
 
   const mhAssigned = shares.reduce((s, x) => s + x.mh, 0);
-  // Если позиции не размечены по заездам (или размечены частично), делим по
-  // числу заездов: РП видит равные доли, а не ноль.
+  // Знаменатель долей — РАЗМЕЧЕННЫЕ человеко-часы, а не весь MH.
+  // Иначе неразмеченные позиции уходили бы остатком одному заезду: на 2138
+  // размечено 146 позиций из 675, и первый заезд получал 24 % при 407 сутках
+  // итога — цифры в карточке противоречили друг другу.
+  // Если разметки нет вовсе — делим поровну.
   const even = mhAssigned <= 0;
   const evenShare = 1 / shares.length;
 
   // Округление: трудосутки в 0,1 — как work_days в плане. Остаток отдаём
-  // последнему заезду, чтобы Σ совпадала с итогом ровно.
-  let allocated = 0;
-  const perVisit = shares.map((s, i) => {
-    const share = even ? evenShare : (mhAll > 0 ? s.mh / mhAll : evenShare);
-    const isLast = i === shares.length - 1;
-    const days = isLast
-      ? Math.round((totalWorkDays - allocated) * 10) / 10
-      : Math.round(totalWorkDays * share * 10) / 10;
-    allocated += days;
-    return {
-      id: s.visit.id,
-      label: s.visit.label,
-      period_start: s.visit.period_start || null,
-      period_end: s.visit.period_end || null,
-      positions: s.idList.length || null,
-      work_days: days,
-      person_hours: s.mh > 0 ? Math.round(s.mh) : null,
-      share_pct: Math.round(share * 1000) / 10
-    };
+  // самому КРУПНОМУ заезду (а не последнему по порядку): так доля не
+  // искажается тем, в каком порядке модель перечислила выезды.
+  const rawDays = shares.map((s) => {
+    const share = even ? evenShare : s.mh / mhAssigned;
+    return { share, days: totalWorkDays * share };
   });
+  const rounded = rawDays.map((x) => Math.round(x.days * 10) / 10);
+  const sumRounded = rounded.reduce((a, b) => a + b, 0);
+  const diff = Math.round((totalWorkDays - sumRounded) * 10) / 10;
+  if (diff !== 0 && rounded.length) {
+    let biggest = 0;
+    for (let i = 1; i < rounded.length; i += 1) {
+      if (rounded[i] > rounded[biggest]) biggest = i;
+    }
+    rounded[biggest] = Math.round((rounded[biggest] + diff) * 10) / 10;
+  }
+
+  const perVisit = shares.map((s, i) => ({
+    id: s.visit.id,
+    label: s.visit.label,
+    period_start: s.visit.period_start || null,
+    period_end: s.visit.period_end || null,
+    positions: s.idList.length || null,
+    work_days: rounded[i],
+    person_hours: s.mh > 0 ? Math.round(s.mh) : null,
+    share_pct: Math.round(rawDays[i].share * 1000) / 10
+  }));
 
   // Проверка окна ПО КАЖДОМУ заезду: сутки работ + мобилизация + дорога
   // туда-обратно должны влезть в окно именно этого периода. Раньше сравнивали
@@ -1717,10 +1727,9 @@ function normalizeCalcPlan(ai, opts) {
     // в workDaysCheck, чтобы РП видел разницу, но срок берётся из MH.
     finalWorkDays = mhDays;
     workDaysSource = 'mh_invariant';
-  } else if (hasExplicitDays) {
-    finalWorkDays = workDays || null;
-    workDaysSource = 'crew_days';
   } else {
+    // Ни нормы (MH), ни суток от модели нет: срок — от бригадо-суток, если
+    // они есть. Пусто остаётся пустым: выдумывать срок нельзя.
     finalWorkDays = workDays || null;
     workDaysSource = 'crew_days';
   }
@@ -1754,7 +1763,13 @@ function normalizeCalcPlan(ai, opts) {
   // оттуда: пустой trip_count при 3 visits оставлял смету на одном выезде.
   const rawVisitsCount = Array.isArray(raw.visits)
     ? raw.visits.filter((v) => v && (v.id || v.period || v.label)).length : 0;
-  const finalTripCount = Math.max(tripCount, rawVisitsCount || 0);
+  // Если модель/анализ перечислили заезды — число выездов равно их числу.
+  // Иначе получалось «trip_count 5, заездов 1»: смета считала дорогу и
+  // проживание за 5 приездов, а график показывал один (дефект 12.11.2026
+  // на #2138, где 5 пришло из сжатого ответа модели, а заезд был один).
+  const finalTripCount = rawVisitsCount > 0
+    ? rawVisitsCount
+    : Math.max(1, tripCount);
   const visits = Array.isArray(raw.visits)
     ? raw.visits.filter((v) => v && (v.id || v.period || v.label)).map((v, i) => ({
       id: String(v.id || `v${i + 1}`).slice(0, 40),
@@ -1830,7 +1845,17 @@ function normalizeCalcPlan(ai, opts) {
     // Сверка двух путей срока: если разошлись больше чем на 15 %, это
     // сигнал РП, а не повод молча перезаписать одно другим.
     work_days_check: workDaysCheck,
-    schedule_warnings: scheduleResolved.warnings.concat(frontsResolved.warning ? [frontsResolved.warning] : []),
+    schedule_warnings: scheduleResolved.warnings.concat(
+      frontsResolved.warning ? [frontsResolved.warning] : [],
+      // Ответ модели назвал больше выездов, чем перечислил заездов. Частый
+      // случай: модель сжала список, а число приездов оставила. Дорогу и
+      // проживание считаем по РЕАЛЬНЫМ заездам (иначе переплата), но
+      // молчать нельзя — РП должен знать, что ответ сжатый.
+      (Number(raw.trip_count) > 0 && rawVisitsCount > 0 && Math.round(Number(raw.trip_count)) !== finalTripCount)
+        ? `ответ модели: выездов ${Math.round(Number(raw.trip_count))}, заездов перечислено ${rawVisitsCount} — `
+          + `дорога и проживание посчитаны по ${finalTripCount}; уточните график`
+        : null
+    ).filter(Boolean),
     shortfall: scheduleResolved.shortfall,
     // Состав бригад целиком: кто именно нужен (мастер, слесари, ИТР,
     // наблюдающий, химик, ПТО). Это уходит в техплан и в смету.

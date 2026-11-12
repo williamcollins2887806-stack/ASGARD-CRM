@@ -642,6 +642,38 @@ async function routes(fastify, options) {
   });
 
   /**
+   * GET /sessions/:uid/stage/analyze-status — статус/attach к in-flight analyze.
+   * Закрытие модалки не убивает разбор: UI подписывается сюда при reopen.
+   */
+  fastify.get('/sessions/:uid/stage/analyze-status', {
+    preHandler: [fastify.requireRoles(ROLES)]
+  }, async (request, reply) => {
+    const session = await loadSessionForStages(request.params.uid);
+    if (!session) return reply.code(404).send({ error: 'Сессия не найдена' });
+    if (!(await canSeeSession(db, request.user, session))) {
+      return reply.code(404).send({ error: 'Сессия не найдена' });
+    }
+    const analyzeJob = require('../services/analyze-job');
+    const st = await analyzeJob.getAnalyzeStatus(db, request.params.uid);
+    return st;
+  });
+
+  /**
+   * POST /sessions/:uid/stage/analyze-cancel — явная отмена (единственный abort).
+   */
+  fastify.post('/sessions/:uid/stage/analyze-cancel', {
+    preHandler: [fastify.requireRoles(ROLES)]
+  }, async (request, reply) => {
+    const session = await loadSessionForStages(request.params.uid);
+    if (!session) return reply.code(404).send({ error: 'Сессия не найдена' });
+    if (!(await canSeeSession(db, request.user, session))) {
+      return reply.code(404).send({ error: 'Сессия не найдена' });
+    }
+    const analyzeJob = require('../services/analyze-job');
+    return analyzeJob.cancelAnalyze(db, request.params.uid);
+  });
+
+  /**
    * POST /sessions/:uid/stage/analyze — сгенерировать ДВ (ведомость объёмов).
    * Возвращает позиции, пробелы и вопросы заказчику. Не падает: при сбое модели
    * отдаёт { ok:false, error } и UI показывает «Повторить».
@@ -659,6 +691,22 @@ async function routes(fastify, options) {
     const workNorms = require('../services/work-norms');
     const stagesAi = require('../services/mimir-tender-stages-ai');
     const aiProvider = require('../services/ai-provider');
+    const analyzeJob = require('../services/analyze-job');
+
+    // Job lock ДО hijack: иначе 409 уйдёт в SSE и клиент не поймёт «уже идёт».
+    const began = await analyzeJob.beginAnalyze(db, request.params.uid);
+    if (began.conflict) {
+      return reply.code(409).send({
+        ok: false,
+        error: 'Анализ уже выполняется — откройте модалку снова, прогресс подхватится',
+        job: began.job,
+        code: 'ANALYZE_RUNNING'
+      });
+    }
+    if (!began.ok) {
+      return reply.code(500).send({ ok: false, error: began.error || 'не удалось стартовать analyze job' });
+    }
+    const analyzeJobStarted = true;
 
     // SSE: UI/скрипт шлёт Accept: text/event-stream или body.stream=true.
     // Без стрима — старый JSON (prod-rerun / API). Со стримом — шаги с числами.
@@ -710,12 +758,36 @@ async function routes(fastify, options) {
       if (ev.message) lastStep = { step: ev.step || lastStep.step, message: ev.message, pct: ev.pct != null ? ev.pct : lastStep.pct };
       if (Number(ev.positions) > 0) livePositions = Number(ev.positions);
       if (sendEvent) sendEvent(Object.assign({ type: 'progress' }, ev));
+      // Пишем прогресс в session, чтобы reopen мог attach без живого SSE.
+      if (analyzeJobStarted && (ev.message || ev.pct != null)) {
+        analyzeJob.patchAnalyzeProgress(db, request.params.uid, {
+          pct: ev.pct != null ? ev.pct : lastStep.pct,
+          message: ev.message || lastStep.message,
+          positions: livePositions || null,
+          step: ev.step || lastStep.step
+        }).catch(() => {});
+      }
     };
     const endStream = () => {
       if (sseKeepalive) clearInterval(sseKeepalive);
       sseKeepalive = null;
     };
-    const finishOk = (payload) => {
+    const finishOk = async (payload) => {
+      try {
+        if (analyzeJobStarted) {
+          await analyzeJob.finishAnalyze(db, request.params.uid, {
+            resultMeta: {
+              positions: (payload && payload.state && payload.state.positions
+                ? payload.state.positions.length : null)
+            }
+          });
+          if (session.tender_id) {
+            await analyzeJob.commitAnalyzeToReview(db, session.tender_id, payload);
+          }
+        }
+      } catch (e) {
+        request.log.warn({ err: e }, 'analyze job finish/commit failed');
+      }
       if (wantStream) {
         sendEvent(Object.assign({ type: 'result' }, payload));
         endStream();
@@ -724,7 +796,14 @@ async function routes(fastify, options) {
       }
       return payload;
     };
-    const finishErr = (code, payload) => {
+    const finishErr = async (code, payload) => {
+      try {
+        if (analyzeJobStarted) {
+          await analyzeJob.finishAnalyze(db, request.params.uid, {
+            error: (payload && payload.error) || 'analyze_failed'
+          });
+        }
+      } catch (_) {}
       if (wantStream) {
         sendEvent(Object.assign({ type: 'error', status: code }, payload));
         endStream();
@@ -796,43 +875,59 @@ async function routes(fastify, options) {
       // ── Дедуп документов по имени ─────────────────────────────────────────
       // На #2138 в БД лежит по 6 копий каждого файла (1453/1595/1607/1619/1630/1641
       // и т.д.) — их плодит повторная загрузка архива. Раньше они все уходили
-      // в анализ: бюджет промпта тратился на копии, а модель видела «шесть ТЗ»
-      // и могла считать позиции дважды. Оставляем ОДИН документ на имя:
-      // с самым длинным OCR (копии иногда распознаны хуже) и большим счётом строк.
-      // Разные документы с одинаковым именем не склеиваем: сравнение по имени
-      // идёт вместе с размером текста — если тексты различаются сильнее чем на
-      // 15 %, это другой документ, оставляем оба.
+      // в анализ: бюджет промпта тратился на копии, а модель видела «шесть ТЗ».
+      //
+      // Сравниваем ТЕКСТ, а не длину: два разных документа с одинаковой длиной
+      // раньше схлопывались в один, а копии с OCR-разницей 30 % оставались.
+      // Отпечаток = первые+последние фрагменты + нормализованное содержимое,
+      // сравнение по доле совпавших слов (быстро и устойчиво к OCR-шуму).
+      const textKey = (s) => String(s || '')
+        .toLowerCase()
+        .replace(/[^\p{L}\p{N}]+/gu, ' ')
+        .trim();
+      const similarity = (a, b) => {
+        const A = textKey(a);
+        const B = textKey(b);
+        if (!A || !B) return A === B ? 1 : 0;
+        // Быстрый отсев: сильно разная длина — точно не копия.
+        if (Math.min(A.length, B.length) / Math.max(A.length, B.length) < 0.6) return 0;
+        const wa = new Set(A.slice(0, 20000).split(' ').filter(Boolean));
+        const wb = new Set(B.slice(0, 20000).split(' ').filter(Boolean));
+        let inter = 0;
+        for (const w of wa) if (wb.has(w)) inter += 1;
+        return inter / Math.max(wa.size, wb.size);
+      };
+
       const byName = new Map();
       const deduped = [];
       let duplicatesDropped = 0;
       for (const d of documents) {
         const key = String(d.original_name || '').toLowerCase().trim();
-        const textLen = String(d.text || '').length;
-        const prev = byName.get(key);
-        if (!prev) {
-          const entry = Object.assign({}, d, { _len: textLen });
-          byName.set(key, entry);
-          deduped.push(entry);
+        const group = byName.get(key);
+        if (!group) {
+          byName.set(key, [d]);
+          deduped.push(d);
           continue;
         }
-        const prevLen = prev._len || 0;
-        const sameDoc = textLen > 0 && prevLen > 0
-          ? Math.abs(textLen - prevLen) / Math.max(textLen, prevLen) <= 0.15
-          : true;
-        if (!sameDoc) {
-          // Одно имя — разные документы (например, две редакции ТЗ).
-          const entry = Object.assign({}, d, { _len: textLen });
-          deduped.push(entry);
+        // Копия, если похожесть текста >= 0.85: OCR одного PDF даёт 5–15 %
+        // расхождений (опечатки распознавания), но структура и числа совпадают.
+        const dup = group.find((g) => similarity(g.text, d.text) >= 0.85);
+        if (dup) {
+          duplicatesDropped += 1;
+          // Оставляем более полный текст и больший структурный счёт.
+          const dupLen = String(dup.text || '').length;
+          const newLen = String(d.text || '').length;
+          if (newLen > dupLen * 1.02
+            || (Math.abs(newLen - dupLen) <= dupLen * 0.02
+              && (Number(d.table_positions) || 0) > (Number(dup.table_positions) || 0))) {
+            Object.assign(dup, d);
+          }
           continue;
         }
-        // Копия: берём более полный текст и больший структурный счёт.
-        duplicatesDropped += 1;
-        if (textLen > prevLen
-          || (textLen === prevLen && (Number(d.table_positions) || 0) > (Number(prev.table_positions) || 0))) {
-          Object.assign(prev, d, { _len: textLen });
-        }
+        group.push(d);
+        deduped.push(d);
       }
-      documents = deduped.map(({ _len, ...rest }) => rest);
+      documents = deduped;
       if (duplicatesDropped) {
         emit({
           step: 'docs_dedup',
@@ -900,7 +995,7 @@ async function routes(fastify, options) {
         const saved = await stageSvc.saveStage(db, request.params.uid, {
           stage: 'clarify', state, expectedVersion: b.expected_version
         });
-        return finishOk({
+        return await finishOk({
           ok: false,
           stage: 'clarify',
           gaps,
@@ -1001,7 +1096,7 @@ async function routes(fastify, options) {
       });
 
       if (!gen.ok) {
-        return finishErr(502, { ok: false, error: gen.error, raw: gen.raw || null });
+        return await finishErr(502, { ok: false, error: gen.error, raw: gen.raw || null });
       }
 
       // 3. Паспортное обогащение: если объём не задан, но марка аппарата
@@ -1038,8 +1133,14 @@ async function routes(fastify, options) {
       }
 
       // 4. Норма-превью по каждой позиции + привязка к технологии.
+      // Обязательно пишем mh/days/people на позицию — иначе план и график
+      // получают нули, хотя preview уже посчитал (дефект анализа 12.11).
       const positions = [];
-      for (const pos of gen.dv.positions) {
+      const dvList = Array.isArray(gen.dv.positions) ? gen.dv.positions : [];
+      let normFilled = 0;
+      let normNeedsInput = 0;
+      for (let ni = 0; ni < dvList.length; ni += 1) {
+        const pos = dvList[ni];
         const enriched = Object.assign({}, pos);
         if (pos.category_code && !pos.needs_classification) {
           try {
@@ -1053,21 +1154,51 @@ async function routes(fastify, options) {
               }
             });
             if (bundle.preview && bundle.preview.ok) {
+              const pv = bundle.preview;
+              const crew = pv.crew || {};
+              const people = (Number(crew.master) || 0) + (Number(crew.exec) || 0);
+              const wd = Number(pv.results && pv.results.work_days);
+              const mhCalc = Number(pv.results && pv.results.man_hours);
               enriched.norm = {
-                code: bundle.preview.rate && bundle.preview.rate.code,
-                work_days: bundle.preview.results && bundle.preview.results.work_days,
-                crew: bundle.preview.crew,
-                trace: bundle.preview.trace,
-                fallback: !!bundle.preview.fallback
+                code: pv.rate && pv.rate.code,
+                work_days: wd > 0 ? wd : null,
+                crew,
+                trace: pv.trace,
+                fallback: !!pv.fallback,
+                norm_basis: pv.basis || null
               };
+              if (wd > 0) enriched.days = Math.round(wd * 100) / 100;
+              if (people > 0) enriched.people = people;
+              if (mhCalc > 0) enriched.mh = Math.round(mhCalc * 100) / 100;
+              enriched.source = pv.fallback ? 'expert' : 'norm';
+              if (pv.rate && pv.rate.code) enriched.source_ref = String(pv.rate.code);
+              if (pv.fallback) {
+                enriched.explain = enriched.explain
+                  || 'Оценка Мимира (нормы в справочнике нет / fallback)';
+              }
+              if (wd > 0 || mhCalc > 0) normFilled += 1;
             } else if (bundle.preview && bundle.preview.needs_input) {
               enriched.norm = { error: bundle.preview.error, needs_input: true };
+              enriched.source = enriched.source || null;
+              normNeedsInput += 1;
             }
           } catch (e) {
             enriched.norm = { error: e.message };
           }
         }
         positions.push(enriched);
+        if ((ni + 1) % 40 === 0 || ni + 1 === dvList.length) {
+          emit({
+            step: 'norm_preview',
+            message: `Нормы: ${ni + 1}/${dvList.length}`
+              + (normFilled ? `, заполнено ${normFilled}` : '')
+              + (normNeedsInput ? `, нужно уточнить ${normNeedsInput}` : ''),
+            pct: 88 + Math.min(4, Math.round(((ni + 1) / Math.max(1, dvList.length)) * 4)),
+            positions: ni + 1,
+            norm_filled: normFilled,
+            norm_needs_input: normNeedsInput
+          });
+        }
       }
 
       // ── График заездов ──────────────────────────────────────────────────
@@ -1158,6 +1289,39 @@ async function routes(fastify, options) {
         stage: 'dv', state, expectedVersion: b.expected_version
       });
 
+      // needs_input по нормам → явный gap (не молчаливый 0 и не тихий expert).
+      if (normNeedsInput > 0) {
+        try {
+          const curN = await stageSvc.loadStage(db, request.params.uid);
+          const hasNormGap = (curN.state.gaps || []).some((g) => g && g.id === 'norm_inputs' && !g.resolved);
+          if (!hasNormGap) {
+            const gap = {
+              id: 'norm_inputs',
+              kind: 'norm',
+              blocking: false,
+              label: 'Не хватает данных для норм',
+              why: `У ${normNeedsInput} позиций есть категория, но для расчёта нормы не хватает `
+                + 'геометрии (трубки, Ø, длина и т.п.). Без этого срок по справочнику не считается.',
+              hint: 'Укажите недостающие параметры в позициях ДВ или подтвердите экспертную оценку на просчёте.',
+              required_before: 'calc'
+            };
+            await stageSvc.saveStage(db, request.params.uid, {
+              stage: 'dv',
+              state: stageSvc.normalizeState(Object.assign({}, curN.state, {
+                gaps: (curN.state.gaps || []).concat([gap])
+              }))
+            });
+            emit({
+              step: 'norm_gap',
+              message: `Нормы: ${normNeedsInput} позиций ждут уточнения геометрии.`,
+              pct: 94
+            });
+          }
+        } catch (e) {
+          request.log.warn({ err: e }, 'пробел norm_inputs не добавлен');
+        }
+      }
+
       // ── Режим заездов не подтверждён → неблокирующий вопрос РП ──────────
       // Анализ не останавливаем: объёмы уже разобраны. Но если непонятно,
       // едем один раз или 2–10 выездов, просчёт получит выдуманные дорогу и
@@ -1234,7 +1398,7 @@ async function routes(fastify, options) {
         positions: (saved.state.positions || []).length
       });
 
-      return finishOk({
+      return await finishOk({
         ok: true,
         stage: saved.stage,
         state: saved.state,
@@ -1292,6 +1456,10 @@ async function routes(fastify, options) {
         trip_count: visitPlan ? visitPlan.trip_count : null,
         visit_conflicts: visitPlan ? visitPlan.conflicts : [],
         visit_gap_added: visitGapAdded,
+        // МТР top-level: UI раньше читал только d.mtr_suggestions, не state.
+        mtr_suggestions: Array.isArray(saved.state.mtr_suggestions)
+          ? saved.state.mtr_suggestions
+          : (Array.isArray(gen.dv.mtr_suggestions) ? gen.dv.mtr_suggestions : []),
         // История заказчика: видно, подтянулась ли и сколько прошлых тендеров.
         history_found: historyCount > 0,
         history_count: historyCount,
@@ -1300,7 +1468,7 @@ async function routes(fastify, options) {
       });
     } catch (e) {
       request.log.error({ err: e }, 'stage/analyze failed');
-      return finishErr(500, { ok: false, error: e.message });
+      return await finishErr(500, { ok: false, error: e.message });
     }
   });
 
@@ -1417,16 +1585,15 @@ async function routes(fastify, options) {
         mergedState.visit_plan = cur.state.visit_plan;
       }
       if (planForSave.trip_count || planForSave.visits) {
-        const vp = Object.assign({}, mergedState.visit_plan || {}, {
-          mode: (Array.isArray(planForSave.visits) && planForSave.visits.length) || Number(planForSave.trip_count) > 1
-            ? 'visits' : ((mergedState.visit_plan && mergedState.visit_plan.mode) || 'continuous'),
-          trip_count: Number(planForSave.trip_count) > 0
-            ? Math.round(Number(planForSave.trip_count))
-            : (Number((mergedState.visit_plan || {}).trip_count) || 1),
-          visits: Array.isArray(planForSave.visits) && planForSave.visits.length
-            ? planForSave.visits
-            : ((mergedState.visit_plan && mergedState.visit_plan.visits) || [])
-        });
+        // График и число выездов обязаны описывать ОДНО И ТО ЖЕ: раньше mode
+        // ставился 'visits' от одного только trip_count > 1, а заездов
+        // оставалось 1 («один непрерывный заезд») — смета считала дорогу за
+        // несколько приездов при графике из одного (дефект 12.11.2026, #2138).
+        const vp = Object.assign({}, mergedState.visit_plan || {},
+          require('../services/visit-plan-reconcile').reconcileVisitPlan({
+            planVisits: Array.isArray(planForSave.visits) ? planForSave.visits : [],
+            prevPlan: mergedState.visit_plan || {}
+          }));
         mergedState.visit_plan = vp;
         mergedState.trip_count = vp.trip_count;
         mergedState.visit_mode = vp.mode;

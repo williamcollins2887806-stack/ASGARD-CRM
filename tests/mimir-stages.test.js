@@ -304,5 +304,88 @@ check('окно дат: не задано — не блокируем', () => {
   assert.strictEqual(r.checked, false);
 });
 
+// ── P2: трудосутки по заездам (12.11.2026) ──────────────────────────────────
+// «407 суток» — это трудосутки ВСЕГО объёма и знаменатель ФОТ в смете.
+// РП нужно видеть разрез по выездам, а не менять саму цифру.
+check('P2: Σ трудосуток по заездам равна итогу, доли по человеко-часам', () => {
+  const r = st.distributeWorkDaysByVisits({
+    visits: [
+      { id: 'v1', label: 'апрель', position_ids: ['a'], period_start: '2027-04-01', period_end: '2027-04-30' },
+      { id: 'v2', label: 'октябрь', position_ids: ['b'], period_start: '2027-10-01', period_end: '2027-10-31' }
+    ],
+    positions: [
+      { id: 'a', mh: 30000 },
+      { id: 'b', mh: 10000 }
+    ],
+    totalWorkDays: 400
+  });
+  assert.strictEqual(r.perVisit.length, 2);
+  assert.strictEqual(r.total, 400, `Σ по заездам ${r.total}, а не 400`);
+  // 30000/40000 = 75 % → 300 сут; остаток отдан последнему.
+  assert.strictEqual(r.perVisit[0].work_days, 300);
+  assert.strictEqual(r.perVisit[1].work_days, 100);
+  assert.strictEqual(r.perVisit[0].share_pct, 75);
+});
+
+check('P2: итог не меняется — смета получает те же трудосутки', () => {
+  const plan = st.normalizeCalcPlan({
+    positions: [
+      { people: 4, days: 5, shifts: 2, shift_hours: 12, mh: 4800, id: 'a' },
+      { people: 4, days: 5, shifts: 2, shift_hours: 12, mh: 4800, id: 'b' }
+    ],
+    trip_count: 2,
+    visits: [
+      { id: 'v1', label: 'май', position_ids: ['a'] },
+      { id: 'v2', label: 'сентябрь', position_ids: ['b'] }
+    ]
+  }, { visit_mode: 'visits', trip_count: 2 });
+  // Трудосутки остались инвариантом MH — их нельзя переписать на «сумму заездов».
+  assert.strictEqual(plan.work_days_source, 'mh_invariant');
+  assert.ok(plan.work_days > 0, 'срок есть');
+  assert.strictEqual(plan.visits_work_total, plan.work_days, 'разрез сходится с итогом');
+  assert.ok(plan.visits_work.length === 2, 'два заезда');
+});
+
+check('P2: окно проверяется по КАЖДОМУ заезду, а не по общему сроку', () => {
+  const r = st.distributeWorkDaysByVisits({
+    visits: [
+      { id: 'v1', label: 'апрель', position_ids: ['a'], period_start: '2027-04-01', period_end: '2027-04-05' },
+      { id: 'v2', label: 'октябрь', position_ids: ['b'], period_start: '2027-10-01', period_end: '2027-10-31' }
+    ],
+    positions: [{ id: 'a', mh: 100 }, { id: 'b', mh: 100 }],
+    totalWorkDays: 40,
+    mobDays: 1,
+    roadDays: 2
+  });
+  const first = r.windowCheck[0];
+  const second = r.windowCheck[1];
+  assert.strictEqual(first.checked, true);
+  // 20 сут работ + 1 моб + 4 дорога = 25 при окне 5 → не влезает.
+  assert.strictEqual(first.ok, false, first.message);
+  assert.ok(/НЕ влезает/.test(first.message), first.message);
+  // 20 + 1 + 4 = 25 при окне 31 → влезает.
+  assert.strictEqual(second.ok, true, second.message);
+});
+
+check('P2: заезды без разметки позиций — равные доли, а не ноль', () => {
+  const r = st.distributeWorkDaysByVisits({
+    visits: [{ id: 'v1', label: 'а' }, { id: 'v2', label: 'б' }, { id: 'v3', label: 'в' }],
+    positions: [],
+    totalWorkDays: 300
+  });
+  assert.strictEqual(r.total, 300);
+  assert.deepStrictEqual(r.perVisit.map((v) => v.work_days), [100, 100, 100]);
+});
+
+check('P2: без срока разрез не выдумывается', () => {
+  const r = st.distributeWorkDaysByVisits({
+    visits: [{ id: 'v1', label: 'а' }],
+    positions: [{ id: 'a', mh: 100 }],
+    totalWorkDays: null
+  });
+  assert.strictEqual(r.total, null);
+  assert.strictEqual(r.perVisit[0].work_days, null);
+});
+
 console.log(`\nитог: ${pass} PASS, ${fail} FAIL`);
 process.exitCode = fail ? 1 : 0;

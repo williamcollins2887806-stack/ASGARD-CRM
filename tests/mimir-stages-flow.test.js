@@ -145,10 +145,18 @@ function fakeProvider(dvResponse, planResponse) {
     check('план сгенерирован', () => assert.strictEqual(planGen.ok, true));
     check('план: 2.5 бр.-сут, объём мал → одна бригада', () => {
       // 1.5 + 1 = 2.5 бригадо-суток; без окна дат и при малом объёме
-      // достаточно одной бригады — срок равен трудозатратам.
+      // достаточно одной бригады.
       assert.strictEqual(planGen.plan.total_crew_days, 2.5);
       assert.strictEqual(planGen.plan.crews, 1);
-      assert.strictEqual(planGen.plan.work_days, 2.5);
+      // Срок берётся из инварианта MH: 216 чел·ч / (5 чел × 1 бригада ×
+      // 9,25 ч × 2 смены) = 2,33 → 3 сут. Это канон: смета считает qty =
+      // work_days × смены × люди, и произведение обязано равняться MH.
+      // Срок «по бригадо-суткам» (2,5) остаётся справочным и попадает в
+      // work_days_check — расхождение 20 % видно РП, но не подменяет срок.
+      assert.strictEqual(planGen.plan.work_days_source, 'mh_invariant');
+      assert.strictEqual(planGen.plan.work_days, 3);
+      assert.strictEqual(planGen.plan.work_days_check.crew_days, 2.5,
+        'бригадо-сутки отданы справочно для сверки');
     });
     check('план: у всех источники', () => {
       assert.ok(planGen.plan.positions.every((p) => p.source && p.source_ref));

@@ -335,8 +335,22 @@ window.AsgardRpReviewModal = (function () {
     // это ТРУДОСУТКИ всего объёма при текущем числе бригад — знаменатель ФОТ
     // и проживания в смете. При 3 заездах 407 трудосуток = ~136 на выезд,
     // а не 407 календарных дней (P2, 12.11.2026).
-    const perTrip = Number(vp.work_days_per_trip) || (visits.length && totals.work_days
-      ? Math.round((Number(totals.work_days) / visits.length) * 10) / 10 : null);
+    //
+    // Долю на заезд берём из ПЛАНА (он знает работу на объекте), а не из
+    // visit_plan: там «дни» — сумма суток позиций, другая величина. На #2138
+    // это 150 против 407, и подстановка дала бы «50 на заезд» вместо 136.
+    const perTrip = Number(plan && plan.work_days_per_trip)
+      || (visits.length && Number(totals.work_days)
+        ? Math.round((Number(totals.work_days) / visits.length) * 10) / 10
+        : null);
+    // Число выездов показываем по ГРАФИКУ, а не по длине массива visits:
+    // модель может назвать 3 выезда и перечислить один заезд, и подпись
+    // «на заезд» пропадала, хотя делить было на что (3 × 136 = 407).
+    const tripsForLabel = Math.max(
+      Number(vp.trip_count) || 0,
+      visits.length,
+      plan && Number(plan.trip_count) || 0
+    );
     let h = '<section class="rp-visit-plan" data-rp-visit-root="1">' +
       '<div class="rp-visit-plan__head">' +
         '<div><strong>График заездов</strong>' +
@@ -348,7 +362,7 @@ window.AsgardRpReviewModal = (function () {
             ? '<span title="Трудосутки всего объёма при текущем числе бригад — знаменатель ФОТ и проживания">'
               + '<b>' + esc(String(totals.work_days)) + '</b> трудосуток</span>'
             : '') +
-          (perTrip && visits.length > 1
+          (perTrip && tripsForLabel > 1
             ? '<span><b>~' + esc(String(perTrip)) + '</b> на заезд</span>' : '') +
           (totals.person_hours
             ? '<span><b>' + esc(String(totals.person_hours)) + '</b> чел·ч</span>' : '') +
@@ -3154,5 +3168,12 @@ window.AsgardRpReviewModal = (function () {
     return h;
   }
 
-  return { open, renderReportSnippet, MISSING_FLAGS };
+  // Тест-хук: рендер графика заездов без открытия модалки. Нужен, чтобы
+  // проверить подписи и разрез трудосуток на реальном report_json в CI
+  // (tests/ui-rp-visit-labels.test.js). Поведения не меняет.
+  function __renderVisitScheduleForTest(rj) {
+    return renderVisitSchedule(rj || {});
+  }
+
+  return { open, renderReportSnippet, MISSING_FLAGS, __renderVisitScheduleForTest };
 })();

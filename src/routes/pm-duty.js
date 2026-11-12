@@ -287,7 +287,13 @@ async function buildSmetaFromStage(db, tenderId, rj) {
   const stateVisitPlan = (st && st.visit_plan) || null;
   const visitPlan = reportVisitPlan || stateVisitPlan || null;
   const planTrips = Number(st.calc && st.calc.trip_count) || 0;
-  const visitTrips = Number(visitPlan && visitPlan.trip_count) || 0;
+  // Число выездов из графика. Если в графике перечислены сами заезды, оно
+  // равно их числу: расхождение «trip_count 5, заездов 1» умножало дорогу и
+  // проживание на 5 при одном приезде (дефект #2138, 12.11.2026).
+  const planVisitsCount = Array.isArray(visitPlan && visitPlan.visits) ? visitPlan.visits.length : 0;
+  const visitTrips = planVisitsCount > 0
+    ? planVisitsCount
+    : (Number(visitPlan && visitPlan.trip_count) || 0);
   const currentTrips = Number(params.trip_count) || 0;
   // Ручная правка РП в модалке просчёта главнее автоматики: если в параметрах
   // уже стоит число, отличное от автоматического, — оставляем его.

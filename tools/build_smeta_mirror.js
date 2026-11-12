@@ -28,6 +28,17 @@ function buildMirror() {
   if (!src.includes('module.exports = {')) {
     throw new Error('src/services/asgard-smeta.js: не найден module.exports — структура файла изменилась');
   }
+  // Зеркало исполняется в браузере как есть, без бандлера: любой require()
+  // внутри тела даёт «require is not defined» и роняет просчёт у РП/ТО
+  // (инцидент 12.11.2026: loss_person_shifts тянул ./time-budget).
+  const requireCall = src.match(/^[^/\n]*\brequire\s*\(/m);
+  if (requireCall) {
+    const line = src.slice(0, requireCall.index).split('\n').length;
+    throw new Error(
+      'src/services/asgard-smeta.js:' + line + ': require() внутри зеркалируемого модуля — '
+      + 'в браузере это ReferenceError. Вынеси расчёт в локальную функцию.'
+    );
+  }
   const body = src.replace('module.exports = {', 'root.AsgardSmeta = {');
   if (!body.includes('root.AsgardSmeta = {')) {
     throw new Error('не удалось заменить module.exports на root.AsgardSmeta');
