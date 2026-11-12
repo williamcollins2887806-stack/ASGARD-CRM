@@ -41,15 +41,16 @@ describe('TV client: публикация медиа (D-406)', () => {
     assert.ok(enableIdx < metricsIdx, 'включение медиа должно идти до запуска телеметрии');
   });
 
-  it('useTracks не запрашивает неподписанные треки', () => {
-    /* Проверяем код, а не комментарии: в пояснении фраза встречается законно. */
+  it('useTracks запрашивает placeholder и неподписанные треки как в эталоне', () => {
+    /* D-415: эталон LiveKit использует onlySubscribed:false ВМЕСТЕ с
+       withPlaceholder:true. Placeholder создаёт плитку до прихода медиа,
+       поэтому пустых плиток не возникает. Раньше тест требовал обратного —
+       это фиксировало мой ошибочный вывод из D-406. */
     const code = meeting
       .replace(/\/\*[\s\S]*?\*\//g, '')
       .replace(/\/\/.*$/gm, '');
-    assert.ok(
-      !/onlySubscribed:\s*false/.test(code),
-      'onlySubscribed:false даёт publication.track = null — пустые плитки'
-    );
+    assert.ok(/withPlaceholder:\s*true/.test(code), 'нет withPlaceholder для камеры');
+    assert.ok(/onlySubscribed:\s*false/.test(code), 'эталон использует onlySubscribed:false');
   });
 
   it('плитка берёт именно publication.track', () => {

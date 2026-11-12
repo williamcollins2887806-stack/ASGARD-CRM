@@ -91,9 +91,12 @@
     var defaults = {
       simulcast: simulcast,
       videoSimulcastLayers: simulcast ? profile.layers : [],
-      /* Картинка важнее fps: при просадке режем кадры, а не разрешение.
-         Читается из publish-опций, не из videoEncoding. */
-      degradationPreference: 'maintain-resolution',
+      /* D-416: плавность вместо разрешения, как у Телемоста.
+         `maintain-resolution` при просадке канала режет кадры — картинка
+         «залипает» (низкий fps при формально высоком разрешении). `balanced`
+         разрешает SDK снизить разрешение, сохранив частоту кадров: движение
+         остаётся плавным, а глаз замечает это меньше, чем рывки. */
+      degradationPreference: 'balanced',
       /* Строкой: LK.VideoCodec в рантайме 2.9.1 не экспортируется. */
       videoCodec: h264Supported() ? 'h264' : 'vp8',
       backupCodec: false

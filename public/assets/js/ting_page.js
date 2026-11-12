@@ -3147,18 +3147,24 @@
   }
 
   /**
-   * На ноуте adaptiveStream часто залипает на low-слое (тайл 0×0 при paint → пиксели),
-   * хотя канал быстрый и на ТВ картинка отличная. Десктоп — без adaptive, явный HIGH.
+   * Опции комнаты. D-416: adaptiveStream включён ВСЕГДА, как в эталоне LiveKit.
+   *
+   * Раньше на десктопе стояло `adaptiveStream = false` «чтобы не залипало на
+   * низком слое». Настоящая причина залипания была другой: плитка на момент
+   * подписки имела размер 0×0 (сцена ещё не отрисована), SDK выбирал низший
+   * слой и не пересчитывал его. Отключение адаптации лечило симптом ценой
+   * качества: слой не подстраивался под канал вообще.
+   *
+   * Теперь как в эталоне — `pixelDensity: 'screen'`: SDK сам держит слой под
+   * фактический размер плитки и доступную полосу. Размеры плитки к моменту
+   * подписки обеспечиваются вёрсткой (сцена имеет ненулевую высоту до трека).
    */
   function livekitRoomOptions() {
     const LK = window.LivekitClient;
-    const narrow = typeof window !== 'undefined' && window.innerWidth <= 820;
-    const opts = { dynacast: true };
-    if (narrow) {
-      opts.adaptiveStream = { pixelDensity: 2 };
-    } else {
-      opts.adaptiveStream = false;
-    }
+    const opts = {
+      dynacast: true,
+      adaptiveStream: { pixelDensity: 'screen' },
+    };
     /* D-180: звук. Причины «дёргается сцена» и «задержка видео» были и в
        аудиотракте: без voiceIsolation и с авто-гейном каждый шорох
        пробивался как активный спикер. */
@@ -3193,8 +3199,10 @@
    * публикаций (камера + экран), лестницу ведём на каждую отдельно.
    */
   const videoQualityLadder = new Map(); // key -> 'high' | 'medium' | 'low'
-  const videoQualityStep = { high: 'medium', medium: 'low', low: 'low' };
-  const videoQualityStepUp = { low: 'medium', medium: 'high', high: 'high' };
+  /* D-416: стартовое состояние — 'auto' (решение за SDK). Ступени ниже
+     остаются реакцией на деградацию: опрос ConnectionQuality → вниз/вверх. */
+  const videoQualityStep = { auto: 'medium', high: 'medium', medium: 'low', low: 'low' };
+  const videoQualityStepUp = { auto: 'high', low: 'medium', medium: 'high', high: 'high' };
 
   function qualityEnum(level) {
     const LK = window.LivekitClient;
@@ -3220,16 +3228,17 @@
     return id + '|' + sid;
   }
 
-  /** Стартовая ступень: лучшее качество, дальше решает связь. */
+  /** Стартовая ступень: слой выбирает SDK, мы не форсируем HIGH. */
   function startPublicationQuality(pub, participant) {
-    /* adaptiveStream сам выбирает слой по размеру тайла — не мешаем. */
-    try {
-      if (typeof window !== 'undefined' && window.innerWidth <= 820) return;
-    } catch (_) { /* */ }
+    /* D-416: принудительный VideoQuality.HIGH отключён.
+       Он конфликтовал с adaptiveStream: SDK выбирал слой по размеру плитки и
+       полосе, а следующий же вызов возвращал его на HIGH — на слабом канале
+       это давало фризы, на медленном старте залипание. Лестница ниже всё ещё
+       работает как реакция на деградацию связи; стартовое значение — 'auto',
+       то есть решение за SDK. */
     const key = publicationQualityKey(pub, participant);
     if (!key || key === '|') return;
-    videoQualityLadder.set(key, 'high');
-    applyVideoQuality(pub, 'high');
+    videoQualityLadder.set(key, 'auto');
   }
 
   /**
@@ -3255,7 +3264,7 @@
 
     pubs.forEach((pub) => {
       const key = publicationQualityKey(pub, { identity: id });
-      const cur = videoQualityLadder.get(key) || 'high';
+      const cur = videoQualityLadder.get(key) || 'auto';
       let next = cur;
       if (q === 'excellent') next = videoQualityStepUp[cur];
       else if (q === 'good') next = cur;            // держим текущую ступень

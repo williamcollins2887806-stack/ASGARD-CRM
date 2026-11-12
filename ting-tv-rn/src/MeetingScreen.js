@@ -8,6 +8,7 @@ import {
   useLocalParticipant,
   useConnectionState,
   useRoomContext,
+  useVisualStableUpdate,
 } from '@livekit/react-native';
 import { Track } from 'livekit-client';
 import { mediaDevices } from '@livekit/react-native-webrtc';
@@ -152,11 +153,24 @@ function RoomBody({ roomTitle, selfName, onLeave, startedAt, code, identity }) {
     };
   }, [room, code, identity]);
 
-  /* D-406: только ПОДПИСАННЫЕ треки. С onlySubscribed:false useTracks отдаёт и
-     публикации, на которые мы ещё не подписаны, — у них publication.track = null.
-     В плитке получался пустой RTCView: человек «есть», картинки нет.
-     Default SDK = true, и это правильно для отрисовки чужого видео. */
-  const videoTracks = useTracks([Track.Source.Camera, Track.Source.ScreenShare]);
+  /* D-415: список треков как в эталоне LiveKit (react-native-meet).
+     `withPlaceholder: true` создаёт плитку ДО прихода медиа: участник виден
+     сразу с аватаром, а картинка подставляется по факту подписки. Без этого
+     человек «пропадал» на время переподключения.
+     `onlySubscribed: false` у эталона работает ВМЕСТЕ с placeholder, а не
+     вместо него. Раньше я убрал флаг, посчитав его причиной пустых плиток
+     (D-406) — причина была в отсутствии placeholder. */
+  const rawVideoTracks = useTracks(
+    [
+      { source: Track.Source.Camera, withPlaceholder: true },
+      { source: Track.Source.ScreenShare, withPlaceholder: false },
+    ],
+    { onlySubscribed: false },
+  );
+
+  /* D-415: как в эталоне — useVisualStableUpdate держит порядок плиток, чтобы
+     при входе нового участника остальные не переезжали (видео «прыгало»). */
+  const videoTracks = useVisualStableUpdate(rawVideoTracks, 5);
 
   /* D-413: видно, какие треки реально приходят и подписаны ли мы на них. */
   useEffect(() => {
@@ -174,13 +188,25 @@ function RoomBody({ roomTitle, selfName, onLeave, startedAt, code, identity }) {
   const tiles = useMemo(() => {
     const out = [];
     const me = localParticipant;
-    if (me) {
-      const mine = videoTracks.find(
-        (t) => t.participant && me.identity && t.participant.identity === me.identity,
+
+    /* D-415: у placeholder нет publication, у неподписанной публикации
+       publication.track = null. В RTCView отдаём только живой трек —
+       иначе получался пустой прямоугольник вместо аватара. */
+    const videoFor = (who) => {
+      const ref = videoTracks.find(
+        (t) => t.participant && t.participant.identity === who,
       );
+      if (!ref || !ref.publication) return null;
+      const pub = ref.publication;
+      const tr = pub.track;
+      if (!tr) return null;
+      return tr;
+    };
+
+    if (me) {
       out.push({
         id: me.identity || 'me',
-        track: mine && mine.publication ? mine.publication.track : null,
+        track: videoFor(me.identity),
         isLocal: true,
         isSpeaking: !!me.isSpeaking,
         label: selfName || 'Зал',
@@ -189,12 +215,9 @@ function RoomBody({ roomTitle, selfName, onLeave, startedAt, code, identity }) {
     }
     participants.forEach((p) => {
       if (!p || p.identity === (me && me.identity)) return;
-      const pub = videoTracks.find(
-        (t) => t.participant && t.participant.identity === p.identity,
-      );
       out.push({
         id: p.identity,
-        track: pub && pub.publication ? pub.publication.track : null,
+        track: videoFor(p.identity),
         isLocal: false,
         isSpeaking: !!p.isSpeaking,
         label: p.name || p.identity,

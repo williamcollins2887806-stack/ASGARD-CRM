@@ -1656,8 +1656,9 @@ body.ting-guest .ting-card,
   border-left: 1px solid rgba(255,255,255,.08);
   min-height: 0;
   box-shadow: -12px 0 40px rgba(0,0,0,.28);
-  backdrop-filter: blur(22px) saturate(1.2);
-  -webkit-backdrop-filter: blur(22px) saturate(1.2);
+  /* D-416: без backdrop-filter. Панель лежит поверх видео, и blur
+     пересчитывается на каждом кадре (GPU thrash). Фон 92% непрозрачности,
+     поэтому визуально разницы нет, а композитор разгружен. */
   transform: translateX(calc(100% + 16px));
   transition: transform .28s cubic-bezier(.22,.61,.36,1), visibility .28s;
   pointer-events: none;
@@ -1751,8 +1752,7 @@ body.ting-guest .ting-card,
   overscroll-behavior: contain;
   z-index: 12;
   box-shadow: -12px 0 40px rgba(0,0,0,.45);
-  backdrop-filter: blur(22px) saturate(1.2);
-  -webkit-backdrop-filter: blur(22px) saturate(1.2);
+  /* D-416: без backdrop-filter — панель поверх видео, blur грузит GPU. */
   animation: ting-drawer-in .22s cubic-bezier(.22,.61,.36,1);
   box-sizing: border-box;
 }
@@ -2077,7 +2077,7 @@ body.ting-guest .ting-card,
   padding: 12px 14px 14px;
   color: var(--ting-on-media);
   box-shadow: 0 20px 48px rgba(0,0,0,.5);
-  backdrop-filter: blur(20px);
+  /* D-416: без backdrop-filter — меню лежит поверх видео. */
 }
 .ting-more-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; font-size: 14px; }
 .ting-more-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
