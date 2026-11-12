@@ -14,6 +14,12 @@ import { registerGlobals } from '@livekit/react-native';
 
 registerGlobals();
 
+/* D-413: удалённый лог. Ставим ДО импорта App, чтобы перехватить даже ошибки
+   инициализации. Логи уходят на наш сервер только после входа в комнату. */
+import { installRemoteLog } from './src/remoteLog';
+
+installRemoteLog();
+
 import App from './App';
 import { name as appName } from './app.json';
 

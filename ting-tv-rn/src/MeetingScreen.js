@@ -10,12 +10,14 @@ import {
   useRoomContext,
 } from '@livekit/react-native';
 import { Track } from 'livekit-client';
+import { mediaDevices } from '@livekit/react-native-webrtc';
 import Hall from './Hall';
 import Dock from './Dock';
 import { COLORS, FONT } from './theme';
 import { API_BASE, ENDPOINTS, apiPost, hallModeFor } from './api';
 import { startTvMetrics } from './tvMetrics';
 import { ensureMediaPermissions, permissionHint } from './permissions';
+import { setLogRoom, flushLogs } from './remoteLog';
 
 const MARK = require('./assets/mark.png');
 
@@ -51,12 +53,95 @@ function RoomBody({ roomTitle, selfName, onLeave, startedAt, code, identity }) {
   const [peopleOpen, setPeopleOpen] = useState(false);
   const [timer, setTimer] = useState(0);
 
+  /* D-411: удалённый звук идёт по peer connection и воспроизводится нативно
+     самим react-native-webrtc — отдельный компонент для этого не нужен. */
+
   useEffect(() => {
     const t = setInterval(() => {
       setTimer(Math.floor((Date.now() - startedAt) / 1000));
     }, 1000);
     return () => clearInterval(t);
   }, [startedAt]);
+
+  /* D-410: КОРЕНЬ «камера не захватывается».
+     Прошлый фикс передавал { deviceId, width, height }, но у VideoCaptureOptions
+     (livekit-client 2.x) НЕТ полей width/height — размер задаётся только через
+     resolution: { width, height }. Лишние ключи SDK молча игнорирует, размер
+     остаётся неопределённым, и USB-камера на ТВ отдаёт трек, который сразу
+     гасится: индикатор вспыхивает и пропадает, кнопка возвращается в «выкл».
+     Микрофон тоже включаем с явными опциями (AEC/NS/AGC), иначе на части
+     прошивок аудиотрак не стартует.
+     Сначала пробуем deviceId + resolution, затем resolution без deviceId,
+     затем голые опции — три ступени, а не одна. */
+  useEffect(() => {
+    if (!localParticipant) return undefined;
+    let cancelled = false;
+
+    const pickCameraId = async () => {
+      try {
+        const devices = await mediaDevices.enumerateDevices();
+        const cams = (devices || []).filter((d) => d.kind === 'videoinput');
+        console.info('[TingTV] камер найдено', cams.length,
+          JSON.stringify(cams.map((c) => ({ id: (c.deviceId || '').slice(0, 12), label: c.label }))));
+        const cam = cams.find((d) => d.deviceId);
+        return cam && cam.deviceId ? String(cam.deviceId) : null;
+      } catch (e) {
+        console.warn('[TingTV] enumerate', e && e.name, e && e.message);
+        return null;
+      }
+    };
+
+    (async () => {
+      /* Микрофон: явные опции обработки звука. */
+      try {
+        await localParticipant.setMicrophoneEnabled(true, {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+        });
+      } catch (e) {
+        console.warn('[TingTV] mic', e && e.name, e && e.message);
+      }
+      if (cancelled) return;
+
+      const camId = await pickCameraId();
+      if (cancelled) return;
+
+      const resolution = { width: 1280, height: 720, frameRate: 30 };
+      const attempts = [];
+      if (camId) attempts.push({ deviceId: camId, resolution });
+      attempts.push({ resolution });
+      attempts.push({});
+
+      for (let i = 0; i < attempts.length; i += 1) {
+        if (cancelled) return;
+        const opts = attempts[i];
+        try {
+          const pub = await localParticipant.setCameraEnabled(true, opts);
+          console.info('[TingTV] camera attempt', i + 1, '->',
+            pub ? ('pub sid=' + (pub.trackSid || '?') + ' kind=' + (pub.track ? pub.track.kind : 'нет')) : 'undefined',
+            JSON.stringify(opts));
+          if (pub && (pub.track || pub.videoTrack)) {
+            try {
+              const mt = pub.track && pub.track.mediaStreamTrack;
+              const s = mt && mt.getSettings ? mt.getSettings() : {};
+              console.info('[TingTV] camera settings', JSON.stringify({
+                w: s.width, h: s.height, fps: s.frameRate, device: (s.deviceId || '').slice(0, 12),
+              }));
+            } catch (_) { /* */ }
+            return;
+          }
+        } catch (e) {
+          console.warn('[TingTV] camera', i + 1, e && e.name, e && e.message);
+        }
+      }
+      console.warn('[TingTV] camera: все попытки неудачны');
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [localParticipant]);
 
   /* Непрерывная телеметрия surface='tv' → thing_client_metrics. */
   useEffect(() => {
@@ -67,11 +152,24 @@ function RoomBody({ roomTitle, selfName, onLeave, startedAt, code, identity }) {
     };
   }, [room, code, identity]);
 
-  /* Обе камеры и шаринг экрана: тип источника задаём явно, иначе camera
-     выбранной пользователем камеры может не оказаться в списке. */
-  const videoTracks = useTracks([Track.Source.Camera, Track.Source.ScreenShare], {
-    onlySubscribed: false,
-  });
+  /* D-406: только ПОДПИСАННЫЕ треки. С onlySubscribed:false useTracks отдаёт и
+     публикации, на которые мы ещё не подписаны, — у них publication.track = null.
+     В плитке получался пустой RTCView: человек «есть», картинки нет.
+     Default SDK = true, и это правильно для отрисовки чужого видео. */
+  const videoTracks = useTracks([Track.Source.Camera, Track.Source.ScreenShare]);
+
+  /* D-413: видно, какие треки реально приходят и подписаны ли мы на них. */
+  useEffect(() => {
+    try {
+      const info = videoTracks.map((t) => ({
+        who: t.participant ? t.participant.identity : '?',
+        local: !!(t.participant && t.participant.isLocal),
+        hasTrack: !!(t.publication && t.publication.track),
+        subscribed: !!(t.publication && t.publication.isSubscribed),
+      }));
+      console.info('[TingTV] видеотреков', info.length, JSON.stringify(info));
+    } catch (_) { /* */ }
+  }, [videoTracks]);
 
   const tiles = useMemo(() => {
     const out = [];
@@ -120,7 +218,30 @@ function RoomBody({ roomTitle, selfName, onLeave, startedAt, code, identity }) {
     if (!localParticipant) return;
     const next = !camOn;
     setCamOn(next);
-    try { await localParticipant.setCameraEnabled(next); } catch (_) { setCamOn(!next); }
+    try {
+      if (next) {
+        /* D-408/D-412: те же ограничения, что в дефолтах комнаты. Ключевое —
+           resolution, а не width/height: у VideoCaptureOptions других полей нет. */
+        let opts = { resolution: { width: 1280, height: 720, frameRate: 30 } };
+        try {
+          const devices = await mediaDevices.enumerateDevices();
+          const cam = (devices || []).find((d) => d.kind === 'videoinput' && d.deviceId);
+          if (cam && cam.deviceId) {
+            opts = {
+              deviceId: String(cam.deviceId),
+              resolution: { width: 1280, height: 720, frameRate: 30 },
+            };
+          }
+        } catch (_) { /* */ }
+        const pub = await localParticipant.setCameraEnabled(true, opts);
+        if (!pub) throw new Error('нет публикации');
+      } else {
+        await localParticipant.setCameraEnabled(false);
+      }
+    } catch (e) {
+      console.warn('[TingTV] toggleCam', e && e.name, e && e.message);
+      setCamOn(!next);
+    }
   }, [localParticipant, camOn]);
 
   return (
@@ -167,12 +288,16 @@ export default function MeetingScreen({ code, pin, onLeave }) {
   useEffect(() => {
     let cancelled = false;
     (async () => {
+      /* D-413: логи привязываются к комнате — только тогда уходят на сервер. */
+      setLogRoom(code);
+      console.info('[TingTV] вход в комнату', code, 'pin', pin ? 'да' : 'нет');
       try {
         /* D-405: сначала разрешения. Без них AudioRecord/Camera2 отдадут пустой
            поток, и в зале будет «камера не работает» без объяснения причины.
            Запрос идёт ДО аудиосессии: Android не даёт открыть микрофон, пока
            разрешение не выдано. */
         const granted = await ensureMediaPermissions();
+        console.info('[TingTV] разрешения', JSON.stringify(granted));
         if (cancelled) return;
         if (!granted.camera || !granted.mic) {
           setPermissionNote(permissionHint(granted));
@@ -181,6 +306,7 @@ export default function MeetingScreen({ code, pin, onLeave }) {
         /* Аудиосессия обязательна до подключения: без неё WebRTC не получит
            аудиомаршрут, и звук уйдёт в никуда на части прошивок ТВ. */
         await AudioSession.startAudioSession();
+        console.info('[TingTV] аудиосессия запущена');
 
         const res = await apiPost(ENDPOINTS.guestToken(code), {
           pin: pin || undefined,
@@ -189,11 +315,13 @@ export default function MeetingScreen({ code, pin, onLeave }) {
         });
         if (cancelled) return;
         if (!res || !res.token) throw new Error('сервер не выдал токен');
+        console.info('[TingTV] токен получен, identity', res.identity);
         setToken(res.token);
         setServerUrl(res.url || res.server_url || API_BASE);
         setTitle((res.room && (res.room.title || res.room.slug)) || code);
         setIdentity(res.identity || '');
       } catch (e) {
+        console.error('[TingTV] вход не удался', e && e.name, e && e.message);
         if (!cancelled) setError(String((e && e.message) || e));
       } finally {
         if (!cancelled) setBusy(false);
@@ -213,6 +341,8 @@ export default function MeetingScreen({ code, pin, onLeave }) {
   const handleLeave = useCallback(() => {
     if (left.current) return;
     left.current = true;
+    console.info('[TingTV] выход из комнаты');
+    flushLogs();
     try { apiPost(ENDPOINTS.leave(code), { identity }).catch(() => {}); } catch (_) {}
     try { AudioSession.stopAudioSession(); } catch (_) {}
     onLeave && onLeave();
@@ -252,7 +382,26 @@ export default function MeetingScreen({ code, pin, onLeave }) {
         connect
         audio
         video
-        options={{ adaptiveStream: true, dynacast: true }}
+        options={{
+          adaptiveStream: true,
+          dynacast: true,
+          /* D-412: КОРЕНЬ «камера/микрофон не захватываются на ТВ».
+             Комната создавалась без дефолтов захвата, поэтому SDK брал
+             встроенные пресеты с facingMode: 'user' — у USB-камеры (4K, для ТВ)
+             такого facing нет, и трек гасился сразу после открытия.
+             Задаём дефолты здесь: они применяются и к первичной публикации,
+             и к повторному включению кнопкой, и к автопубликации при connect.
+             Размер — ровно 1280x720 (720p): больше на ТВ не нужно, а 4K-камера
+             без ограничения отдаёт поток, который энкодер не тянет. */
+          videoCaptureDefaults: {
+            resolution: { width: 1280, height: 720, frameRate: 30 },
+          },
+          audioCaptureDefaults: {
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true,
+          },
+        }}
         onDisconnected={handleLeave}
         onError={(e) => setError(String((e && e.message) || e))}
       >

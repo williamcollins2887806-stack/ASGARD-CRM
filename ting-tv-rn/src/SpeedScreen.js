@@ -1,6 +1,8 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
-import { COLORS, FONT, RADIUS, textShadow } from './theme';
+import {
+  ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions,
+} from 'react-native';
+import { COLORS, FONT, RADIUS } from './theme';
 import { measureDownload, measureUpload, verdict } from './speedtest';
 
 /**
@@ -13,11 +15,11 @@ import { measureDownload, measureUpload, verdict } from './speedtest';
  * Замер запускается сам при открытии: с пульта лишние нажатия — лишний повод
  * ошибиться.
  */
-function Big({ value, unit, label, tone }) {
+function Big({ value, unit, label, tone, compact }) {
   return (
-    <View style={styles.bigBox}>
+    <View style={[styles.bigBox, compact && styles.bigBoxCompact]}>
       <View style={styles.bigRow}>
-        <Text style={[styles.bigValue, tone && { color: tone }]}>{value}</Text>
+        <Text style={[styles.bigValue, compact && styles.bigValueCompact, tone && { color: tone }]}>{value}</Text>
         <Text style={styles.bigUnit}>{unit}</Text>
       </View>
       <Text style={styles.bigLabel}>{label}</Text>
@@ -31,7 +33,14 @@ export default function SpeedScreen({ code, onBack }) {
   const [phase, setPhase] = useState('idle');
   const [error, setError] = useState('');
   const [focused, setFocused] = useState(false);
+  const [backFocused, setBackFocused] = useState(false);
   const started = useRef(false);
+
+  /* D-409: экран замера тоже не влезал на 540 dp — карточка 920 dp по ширине
+     при 960 dp экрана и высота больше самого экрана. Считаем от реальных dp. */
+  const { width, height } = useWindowDimensions();
+  const compact = height < 640;
+  const cardWidth = Math.min(width - 48, 920);
 
   const run = useCallback(async () => {
     if (started.current) return;
@@ -69,73 +78,92 @@ export default function SpeedScreen({ code, onBack }) {
 
   return (
     <View style={styles.root}>
-      <View style={styles.card}>
-        <Text style={styles.title}>Скорость до нашего сервера</Text>
-        <Text style={styles.sub}>
-          Маршрут до asgard-crm.ru — именно по нему идут видео и звук зала.
-          Сторонние замеры показывают другие направления и для нас не показательны.
-        </Text>
+      <ScrollView
+        contentContainerStyle={[styles.scroll, compact && styles.scrollCompact]}
+        showsVerticalScrollIndicator={false}
+      >
+        <View style={[styles.card, { width: cardWidth }, compact && styles.cardCompact]}>
+          <Text style={[styles.title, compact && styles.titleCompact]}>Скорость до нашего сервера</Text>
+          <Text style={[styles.sub, compact && styles.subCompact]}>
+            Маршрут до asgard-crm.ru — именно по нему идут видео и звук зала.
+          </Text>
 
-        <View style={styles.row}>
-          <Big
-            value={down ? down.mbps.toFixed(1) : '—'}
-            unit="Мбит/с"
-            label="Приём от сервера"
-            tone={down ? toneFor(v.level) : undefined}
-          />
-          <Big
-            value={up ? up.mbps.toFixed(1) : (code ? '—' : 'н/д')}
-            unit="Мбит/с"
-            label="Отдача на сервер"
-            tone={up ? (up.mbps < v.needUp ? COLORS.danger : COLORS.live) : undefined}
-          />
+          <View style={[styles.row, compact && styles.rowCompact]}>
+            <Big
+              value={down ? down.mbps.toFixed(1) : '—'}
+              unit="Мбит/с"
+              label="Приём от сервера"
+              tone={down ? toneFor(v.level) : undefined}
+              compact={compact}
+            />
+            <Big
+              value={up ? up.mbps.toFixed(1) : (code ? '—' : 'н/д')}
+              unit="Мбит/с"
+              label="Отдача на сервер"
+              tone={up ? (up.mbps < v.needUp ? COLORS.danger : COLORS.live) : undefined}
+              compact={compact}
+            />
+          </View>
+
+          {phase !== 'done' ? (
+            <View style={styles.progress}>
+              <ActivityIndicator color={COLORS.gold} />
+              <Text style={styles.progressText}>
+                {phase === 'down' ? 'Меряем приём…' : phase === 'up' ? 'Меряем отдачу…' : 'Готовим замер…'}
+              </Text>
+            </View>
+          ) : null}
+
+          {error ? <Text style={styles.error}>Не удалось: {error}</Text> : null}
+
+          {phase === 'done' ? (
+            <View style={[styles.verdict, compact && styles.verdictCompact, v.level === 'bad' && styles.verdictBad, v.level === 'warn' && styles.verdictWarn]}>
+              <Text style={[styles.verdictText, compact && styles.verdictTextCompact, { color: toneFor(v.level) }]}>{v.text}</Text>
+              <Text style={styles.verdictHint}>
+                Нужно примерно {v.needDown.toFixed(1)} Мбит/с на приём для двух собеседников
+                и {v.needUp.toFixed(1)} Мбит/с на отдачу для 720p.
+              </Text>
+            </View>
+          ) : null}
+
+          <Pressable
+            accessible
+            accessibilityRole="button"
+            accessibilityLabel="Повторить замер"
+            focusable
+            onPress={() => { started.current = false; run(); }}
+            onFocus={() => setFocused(true)}
+            onBlur={() => setFocused(false)}
+            style={[styles.cta, compact && styles.ctaCompact, focused && styles.ctaFocused]}
+          >
+            <Text style={[styles.ctaText, compact && styles.ctaTextCompact]}>Повторить замер</Text>
+          </Pressable>
+
+          {/* D-409: раньше «Назад» был Text с onPress — пультом его не выбрать,
+              и с экрана замера было НЕ ВЫЙТИ. Теперь это focusable Pressable. */}
+          <Pressable
+            accessible
+            accessibilityRole="button"
+            accessibilityLabel="Назад к вводу кода"
+            focusable
+            onPress={() => onBack && onBack()}
+            onFocus={() => setBackFocused(true)}
+            onBlur={() => setBackFocused(false)}
+            style={[styles.backBtn, compact && styles.backBtnCompact, backFocused && styles.backBtnFocused]}
+          >
+            <Text style={[styles.backText, backFocused && styles.backTextFocused]}>Назад к вводу кода</Text>
+          </Pressable>
         </View>
-
-        {phase !== 'done' ? (
-          <View style={styles.progress}>
-            <ActivityIndicator color={COLORS.gold} />
-            <Text style={styles.progressText}>
-              {phase === 'down' ? 'Меряем приём…' : phase === 'up' ? 'Меряем отдачу…' : 'Готовим замер…'}
-            </Text>
-          </View>
-        ) : null}
-
-        {error ? <Text style={styles.error}>Не удалось: {error}</Text> : null}
-
-        {phase === 'done' ? (
-          <View style={[styles.verdict, v.level === 'bad' && styles.verdictBad, v.level === 'warn' && styles.verdictWarn]}>
-            <Text style={[styles.verdictText, { color: toneFor(v.level) }]}>{v.text}</Text>
-            <Text style={styles.verdictHint}>
-              Нужно примерно {v.needDown.toFixed(1)} Мбит/с на приём для двух собеседников
-              и {v.needUp.toFixed(1)} Мбит/с на отдачу для 720p.
-            </Text>
-          </View>
-        ) : null}
-
-        <Pressable
-          accessible
-          accessibilityRole="button"
-          accessibilityLabel="Повторить замер"
-          focusable
-          onPress={() => { started.current = false; run(); }}
-          onFocus={() => setFocused(true)}
-          onBlur={() => setFocused(false)}
-          style={[styles.cta, focused && styles.ctaFocused]}
-        >
-          <Text style={styles.ctaText}>Повторить замер</Text>
-        </Pressable>
-
-        <Text style={styles.foot} onPress={onBack}>Назад к вводу кода</Text>
-      </View>
+      </ScrollView>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 40 },
+  root: { flex: 1 },
+  scroll: { flexGrow: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 24, paddingVertical: 16 },
+  scrollCompact: { paddingVertical: 8 },
   card: {
-    width: 920,
-    maxWidth: '96%',
     paddingHorizontal: 48,
     paddingVertical: 40,
     borderRadius: RADIUS.xl,
@@ -143,9 +171,13 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: COLORS.line,
   },
+  cardCompact: { paddingHorizontal: 28, paddingVertical: 18 },
   title: { color: COLORS.t1, fontSize: FONT.h1, fontWeight: '800' },
+  titleCompact: { fontSize: 24 },
   sub: { color: COLORS.t2, fontSize: FONT.small, lineHeight: 24, marginTop: 10, maxWidth: 760 },
+  subCompact: { fontSize: 13, lineHeight: 18, marginTop: 4 },
   row: { flexDirection: 'row', gap: 24, marginTop: 28 },
+  rowCompact: { gap: 14, marginTop: 12 },
   bigBox: {
     flex: 1,
     borderRadius: RADIUS.lg,
@@ -155,8 +187,10 @@ const styles = StyleSheet.create({
     paddingVertical: 22,
     paddingHorizontal: 24,
   },
+  bigBoxCompact: { paddingVertical: 10, paddingHorizontal: 16 },
   bigRow: { flexDirection: 'row', alignItems: 'baseline', gap: 10 },
   bigValue: { color: COLORS.t1, fontSize: 64, fontWeight: '800', letterSpacing: -1 },
+  bigValueCompact: { fontSize: 42 },
   bigUnit: { color: COLORS.t2, fontSize: FONT.small, fontWeight: '700' },
   bigLabel: { color: COLORS.t3, fontSize: FONT.tiny, marginTop: 6, letterSpacing: 0.4 },
   progress: { flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 24 },
@@ -171,9 +205,11 @@ const styles = StyleSheet.create({
     padding: 20,
     gap: 8,
   },
+  verdictCompact: { marginTop: 12, padding: 14, gap: 4 },
   verdictBad: { borderColor: 'rgba(232,71,90,0.45)', backgroundColor: 'rgba(232,71,90,0.10)' },
   verdictWarn: { borderColor: COLORS.goldDim, backgroundColor: COLORS.goldGlow },
   verdictText: { fontSize: FONT.h3, fontWeight: '800' },
+  verdictTextCompact: { fontSize: 17 },
   verdictHint: { color: COLORS.t2, fontSize: FONT.tiny, lineHeight: 21 },
   cta: {
     marginTop: 28,
@@ -185,7 +221,23 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  ctaCompact: { marginTop: 12, height: 50 },
   ctaFocused: { backgroundColor: COLORS.goldLite, borderColor: COLORS.t1 },
   ctaText: { color: COLORS.ink, fontSize: FONT.h3, fontWeight: '800' },
-  foot: { color: COLORS.gold, fontSize: FONT.small, fontWeight: '700', marginTop: 20, ...textShadow },
+  ctaTextCompact: { fontSize: 17 },
+  /* D-409: «Назад» — focusable кнопка: пультом выбирается и нажимается. */
+  backBtn: {
+    marginTop: 16,
+    height: 58,
+    borderRadius: RADIUS.md,
+    borderWidth: 2,
+    borderColor: COLORS.lineStrong,
+    backgroundColor: COLORS.panelHi,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  backBtnCompact: { marginTop: 10, height: 46 },
+  backBtnFocused: { borderColor: COLORS.gold, backgroundColor: COLORS.goldGlow },
+  backText: { color: COLORS.t1, fontSize: FONT.small, fontWeight: '700' },
+  backTextFocused: { color: COLORS.goldLite },
 });
