@@ -1007,25 +1007,6 @@ window.AsgardTelephonyPage = (function () {
         openDetailPanel(btn.getAttribute('data-call-id'));
       });
     });
-    // «История обращения» — переход в карточку другого звонка той же заявки.
-    container.querySelectorAll('.call-history-item[data-call-id]').forEach(function (row) {
-      row.addEventListener('click', function (e) {
-        e.stopPropagation();
-        var sid = row.getAttribute('data-call-id');
-        if (sid) openDetailPanel(sid);
-      });
-    });
-    // «Другие звонки по этой заявке» — переход в карточку sibling-звонка.
-    // Раньше строки рендерились с data-ph-open (обработчик из другого модуля),
-    // поэтому клик не открывал ничего.
-    wrap.querySelectorAll('.call-sibling-row').forEach(function (row) {
-      row.style.cursor = 'pointer';
-      row.addEventListener('click', function (e) {
-        e.stopPropagation();
-        var sid = row.getAttribute('data-call-id');
-        if (sid) openDetailPanel(sid);
-      });
-    });
     wrap.querySelectorAll('.call-record-play').forEach(function (btn) {
       btn.addEventListener('click', function (e) {
         e.stopPropagation();
@@ -2284,6 +2265,21 @@ window.AsgardTelephonyPage = (function () {
           AsgardPhone.outbound(n).catch(function (err) { toast('Телефон', err.message, 'err'); });
         } else if (n) {
           location.href = 'tel:' + n;
+        }
+      });
+    });
+    // «История обращения» — клик по прошлому звонку открывает его карточку.
+    container.querySelectorAll('.call-history-item[data-call-id]').forEach(function (row) {
+      row.addEventListener('click', function (e) {
+        e.stopPropagation();
+        var sid = row.getAttribute('data-call-id');
+        if (sid) openDetailPanel(sid);
+      });
+      row.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          var sid = row.getAttribute('data-call-id');
+          if (sid) openDetailPanel(sid);
         }
       });
     });
