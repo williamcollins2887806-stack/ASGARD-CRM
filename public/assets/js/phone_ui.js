@@ -90,6 +90,7 @@
    * fallback — короткий WebAudio-бип, если файл недоступен.
    */
   function startRingtone() {
+    if (isMobileReceiveMode()) { stopRingtone(); return; }
     if (!soundEnabled || document.body.classList.contains('is-gallery')) return;
     try {
       if (!ringAudio) {

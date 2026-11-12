@@ -485,7 +485,23 @@ window.AsgardTelephonyPopup = (function () {
     osc(550, t, t + 1.25);
   }
 
+  /**
+   * Мобильный режим: GSM уже звонит, браузер музыку не дублирует.
+   * Проверяем и режим линии, и метку звонка (via/answered_mobile), потому что
+   * applyLineTaken в ядре сбрасывает mode=null перед передачей звонка popup'у.
+   */
+  function isMobileReceiveMode() {
+    var P = window.AsgardPhone;
+    if (P && P.isMobileReceive && P.isMobileReceive()) return true;
+    if (P && P.getMode && P.getMode() === 'mobile') return true;
+    var meta = (P && P.getCallMeta && P.getCallMeta()) || {};
+    return meta.via === 'mobile' || !!meta.answered_mobile;
+  }
+
   function startRingtone() {
+    // Единая точка: какой бы путь ни пришёл (popup, SSE, setStatus),
+    // в мобильном режиме рингтона в браузере нет.
+    if (isMobileReceiveMode()) { stopRingtone(); return; }
     if (state.ringtoneActive) return;
     var ctx = ensureAudioCtx();
     if (!ctx) return;
