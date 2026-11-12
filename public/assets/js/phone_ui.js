@@ -960,7 +960,7 @@
     return AV_PALETTE[h % AV_PALETTE.length];
   }
 
-  function callRowHtml(it, kind, online) {
+  function callRowHtml(it, kind, online, count, totalDuration) {
     var missed = kind === 'missed';
     var isHuginn = it.source === 'huginn';
     var num = missed ? it.from_number : (it.direction === 'outbound' ? it.to_number : it.from_number);
@@ -988,6 +988,11 @@
     var callBtn = hasTarget
       ? '<button type="button" class="ph-ios-call" data-ph-call="' + esc(num || '') + '"' + hgAttr + ' aria-label="Позвонить" title="Позвонить">' + (ICON && ICON.call ? ICON.call : '📞') + '</button>'
       : '';
+    // «2 раза» — как в телефоне: несколько подряд звонков одного номера.
+    var repeatBadge = (count && count > 1)
+      ? '<span class="ph-ios-repeat" title="Звонков подряд: ' + count +
+        (totalDuration ? ' · всего ' + fmtTimer(totalDuration * 1000) : '') + '">' + count + ' раза</span>'
+      : '';
     return '<div class="ph-dp-row ph-ios-row ' + dirCls + '" data-ph-open="' + (missed ? 'missed' : 'log') + '" data-id="' + esc(it.id) + '">' +
       dirIco +
       '<div class="ph-ios-av-wrap">' +
@@ -996,7 +1001,7 @@
         avatarHtml(name, num, it.avatar_url) +
       '</div>' +
       '<div class="ph-dp-row-main" data-ph-call="' + esc(num || '') + '"' + hgAttr + ' title="Позвонить">' +
-        '<div class="ph-dp-row-name">' + esc(name) + '</div>' +
+        '<div class="ph-dp-row-name">' + esc(name) + repeatBadge + '</div>' +
         '<div class="ph-dp-row-meta">' + esc(dirLabel) + ' ' + srcBadge + '</div>' +
       '</div>' +
       '<div class="ph-ios-right">' +
@@ -1017,6 +1022,51 @@
     var y = new Date(now); y.setDate(now.getDate() - 1);
     if (d.toDateString() === y.toDateString()) return 'вчера ' + hm;
     return d.toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit' }) + ' ' + hm;
+  }
+
+  /** Последние 10 цифр номера строки журнала ('' если номера нет). */
+  function rowPhoneTail(it) {
+    var raw = it.client_number
+      || (it.direction === 'outbound' || it.call_type === 'outbound'
+        ? (it.line_number || it.to_number)
+        : (it.from_number || it.number || it.caller_number))
+      || '';
+    return String(raw).replace(/\D/g, '').slice(-10);
+  }
+
+  /**
+   * Схлопывание подряд идущих звонков одного номера — ТОЛЬКО для панели дока.
+   * На странице /telephony строки НЕ склеиваем: там из строки открывается
+   * карточка, и объединённая строка мешает открыть конкретный звонок.
+   */
+  function groupRepeatedRows(list) {
+    var WINDOW_MS = 3 * 60 * 60 * 1000;
+    var out = [];
+    var byKey = {};
+    for (var i = 0; i < (list || []).length; i++) {
+      var it = list[i];
+      var ph = rowPhoneTail(it);
+      var dir = it.direction || it.call_type || '';
+      var key = (ph || ('id:' + it.id)) + '|' + dir;
+      var t = new Date(it.started_at || it.created_at || it.ts || 0).getTime();
+      var prev = byKey[key];
+      if (prev && Math.abs((prev.time || 0) - t) <= WINDOW_MS) {
+        prev.count += 1;
+        prev.totalDuration += Number(it.duration_seconds || it.duration) || 0;
+        prev.time = t;
+        continue;
+      }
+      var g = {
+        lead: it,
+        count: 1,
+        totalDuration: Number(it.duration_seconds || it.duration) || 0,
+        key: key,
+        time: t,
+      };
+      byKey[key] = g;
+      out.push(g);
+    }
+    return out;
   }
 
   function lineBannersHtml(opSt) {
@@ -1107,11 +1157,23 @@
     }
     var list = phoneListFilter === 'missed' ? missed : recent;
     var listKind = phoneListFilter === 'missed' ? 'missed' : 'log';
+    /* ПОВТОРНЫЕ ЗВОНКИ (12.11.2026): как в любом телефоне — подряд идущие
+       звонки одного номера схлопываются в одну строку с пометкой «2 раза».
+       Раньше «+7 953 …» висел двумя одинаковыми строками. */
+    var listGroups = groupRepeatedRows(list);
     var stillBoot = panelData.missed === null && panelData.recent === null && !!panelData.loading && !peers.length;
     var listHtml = stillBoot
       ? '<div class="ph-dp-empty">Загрузка…</div>'
-      : (list.length
-        ? list.map(function (it) { return callRowHtml(it, listKind === 'missed' || it.call_type === 'missed' ? 'missed' : 'log', online); }).join('')
+      : (listGroups.length
+        ? listGroups.map(function (g) {
+            return callRowHtml(
+              g.lead,
+              listKind === 'missed' || g.lead.call_type === 'missed' ? 'missed' : 'log',
+              online,
+              g.count,
+              g.totalDuration
+            );
+          }).join('')
         : '<div class="ph-dp-empty">' + (phoneListFilter === 'missed' ? 'Нет пропущенных' : 'Нет недавних звонков') + '</div>');
     var dialBlock = phoneDialOpen
       ? ((online
