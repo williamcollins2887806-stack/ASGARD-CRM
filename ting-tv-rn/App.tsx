@@ -4,12 +4,13 @@
  * Три экрана без библиотеки роутера: вход, замер скорости, зал. Так меньше
  * зависимостей и предсказуемее поведение фокуса по D-pad на телевизоре.
  */
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { StatusBar, StyleSheet, View } from 'react-native';
 import JoinScreen from './src/JoinScreen';
 import MeetingScreen from './src/MeetingScreen';
 import SpeedScreen from './src/SpeedScreen';
 import Backdrop from './src/Backdrop';
+import { ensureMediaPermissions } from './src/permissions';
 import { COLORS } from './src/theme';
 
 type Screen =
@@ -22,6 +23,13 @@ function App(): React.JSX.Element {
   /* Код нужен экрану замера, чтобы измерить отдачу на реальный эндпоинт
      комнаты, а не в пустоту. */
   const [lastCode, setLastCode] = useState('');
+
+  /* D-405: спрашиваем камеру и микрофон сразу при запуске, а не в момент
+     подключения. На телеке человек видит системный диалог и пультом даёт
+     «Разрешить». Повторно диалог не покажется, если уже выдано. */
+  useEffect(() => {
+    ensureMediaPermissions().catch(() => {});
+  }, []);
 
   const handleJoin = useCallback((code: string, pin: string) => {
     setLastCode(code);

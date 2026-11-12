@@ -15,6 +15,7 @@ import Dock from './Dock';
 import { COLORS, FONT } from './theme';
 import { API_BASE, ENDPOINTS, apiPost, hallModeFor } from './api';
 import { startTvMetrics } from './tvMetrics';
+import { ensureMediaPermissions, permissionHint } from './permissions';
 
 const MARK = require('./assets/mark.png');
 
@@ -159,6 +160,7 @@ export default function MeetingScreen({ code, pin, onLeave }) {
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(true);
   const [identity, setIdentity] = useState('');
+  const [permissionNote, setPermissionNote] = useState('');
   const startedAt = useRef(Date.now()).current;
   const left = useRef(false);
 
@@ -166,6 +168,16 @@ export default function MeetingScreen({ code, pin, onLeave }) {
     let cancelled = false;
     (async () => {
       try {
+        /* D-405: сначала разрешения. Без них AudioRecord/Camera2 отдадут пустой
+           поток, и в зале будет «камера не работает» без объяснения причины.
+           Запрос идёт ДО аудиосессии: Android не даёт открыть микрофон, пока
+           разрешение не выдано. */
+        const granted = await ensureMediaPermissions();
+        if (cancelled) return;
+        if (!granted.camera || !granted.mic) {
+          setPermissionNote(permissionHint(granted));
+        }
+
         /* Аудиосессия обязательна до подключения: без неё WebRTC не получит
            аудиомаршрут, и звук уйдёт в никуда на части прошивок ТВ. */
         await AudioSession.startAudioSession();
@@ -228,6 +240,12 @@ export default function MeetingScreen({ code, pin, onLeave }) {
   }
 
   return (
+    <View style={styles.fill}>
+      {permissionNote ? (
+        <View style={styles.permBanner} pointerEvents="none">
+          <Text style={styles.permText}>{permissionNote}</Text>
+        </View>
+      ) : null}
       <LiveKitRoom
         serverUrl={serverUrl}
         token={token}
@@ -247,11 +265,24 @@ export default function MeetingScreen({ code, pin, onLeave }) {
           identity={identity}
         />
       </LiveKitRoom>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   fill: { flex: 1 },
+  /* D-405: видимая причина, если разрешения не выданы. */
+  permBanner: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 50,
+    backgroundColor: 'rgba(232,71,90,0.94)',
+    paddingVertical: 10,
+    paddingHorizontal: 18,
+  },
+  permText: { color: '#fff', fontSize: FONT.small, fontWeight: '700', textAlign: 'center' },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 40, gap: 18 },
   bigMark: { width: 140, height: 140, opacity: 0.9 },
   waitTitle: { color: COLORS.t1, fontSize: FONT.h1, fontWeight: '800' },

@@ -75,23 +75,40 @@ export default function Hall({ tiles, title, timer, stateLabel, mode, peopleOpen
       : { width, height }));
   }, []);
 
-  /* Вписываем 16:9 в сцену: ширина ограничена колонками, высота — рядами.
-     Берём меньший из двух вариантов, чтобы ни одна сторона не обрезалась. */
+  /* D-403: 16:9 вписываем в РЕАЛЬНУЮ свободную область.
+     Прошлая версия считала от box.height, а onLayout отдаёт размер ВМЕСТЕ с
+     padding сцены (74 сверху + 112 снизу = 186 px). Из-за этого плитки выходили
+     выше доступного места и сетка снова вылезала за экран.
+     Теперь: вычитаем padding сцены и margin самой плитки (6 с каждой стороны). */
+  const INNER_PAD_TOP = 74;
+  const INNER_PAD_BOTTOM = 112;
+  const INNER_PAD_SIDE = 14;
+  const TILE_MARGIN = 6;
+
   const tileSize = useMemo(() => {
     if (!box.width || !box.height || !rows.length) return null;
     const rowsCount = rows.length;
     const maxCols = Math.max(1, ...rows.map((r) => r.length));
-    const gap = 12;
-    const availW = box.width - gap * (maxCols + 1);
-    const availH = box.height - gap * (rowsCount + 1);
-    if (availW <= 0 || availH <= 0) return null;
-    const wByWidth = availW / maxCols;
-    const wByHeight = (availH / rowsCount) * (16 / 9);
-    const width = Math.max(64, Math.min(wByWidth, wByHeight));
+
+    /* Свободная область: убираем padding сцены. */
+    const innerW = box.width - INNER_PAD_SIDE * 2;
+    const innerH = box.height - INNER_PAD_TOP - INNER_PAD_BOTTOM;
+    if (innerW <= 0 || innerH <= 0) return null;
+
+    /* Каждая плитка занимает width + 2*margin по горизонтали и вертикали. */
+    const m2 = TILE_MARGIN * 2;
+    const wByWidth = innerW / maxCols - m2;
+    const hByHeight = innerH / rowsCount - m2;
+    if (wByWidth <= 0 || hByHeight <= 0) return null;
+
+    /* Берём ограничение по высоте тоже: 16:9 → высота = ширина * 9/16. */
+    const widthByHeight = hByHeight * (16 / 9);
+    const width = Math.max(48, Math.min(wByWidth, widthByHeight));
     return { width, height: width * 9 / 16 };
   }, [box.width, box.height, rows]);
 
   if (connecting) {
+
     return (
       <View style={styles.center}>
         <Image source={MARK} style={styles.bigMark} resizeMode="contain" />
