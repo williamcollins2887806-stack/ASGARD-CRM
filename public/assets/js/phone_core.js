@@ -810,11 +810,39 @@
     },
 
     /**
+     * Входящий ушёл на МОБИЛЬНЫЙ оператора (via='mobile').
+     * Браузер ничего не звенит и не поднимает WebRTC — только тихий баннер
+     * с карточкой. Перевод доступен по pbx_uid после «Я ответил».
+     */
+    applyMobileIncoming: function (meta) {
+      meta = meta || {};
+      callMeta = Object.assign({}, callMeta, {
+        number: meta.number || meta.from || meta.from_number || callMeta.number,
+        direction: 'inbound',
+        channel: meta.channel || callMeta.channel || null,
+        pbx_uid: meta.pbx_uid || (meta.call_id ? String(meta.call_id).replace(/^pbx_/, '') : callMeta.pbx_uid) || null,
+        call_id: meta.call_id || callMeta.call_id || null,
+        history_id: meta.history_id || callMeta.history_id || null,
+        lookup: meta.lookup || callMeta.lookup || {},
+        via: 'mobile',
+        is_duty: !!meta.is_duty,
+      });
+      setState(STATES.ringing, { number: callMeta.number, callMeta: callMeta });
+      // Отдельное событие: UI показывает баннер, а не рингующий попап.
+      emit('incoming_mobile', { number: callMeta.number, callMeta: callMeta });
+      return callMeta;
+    },
+
+    /**
      * Оператор ответил на мобильном: UI → in_call без WebRTC-сессии.
      * Нужно, чтобы открыть «Перевести» (кнопка живёт в incall).
      */
     markMobileAnswered: function () {
-      if (mode !== 'mobile') return { ok: false, reason: 'not_mobile' };
+      // Звонок пришёл на телефон — неважно, какой режим стоял у оператора
+      // (дежурный может быть в 'browser', но принимает с мобильного).
+      if (mode !== 'mobile' && !(callMeta && callMeta.via === 'mobile')) {
+        return { ok: false, reason: 'not_mobile' };
+      }
       if (state !== STATES.ringing && state !== STATES.in_call) {
         return { ok: false, reason: 'not_ringing' };
       }
@@ -825,7 +853,7 @@
     },
 
     isMobileReceive: function () {
-      return mode === 'mobile';
+      return mode === 'mobile' || !!(callMeta && callMeta.via === 'mobile');
     },
 
     checkMic: function () {

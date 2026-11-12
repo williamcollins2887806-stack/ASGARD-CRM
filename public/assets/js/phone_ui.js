@@ -561,6 +561,46 @@
     showIncomingCard(lastIncoming);
   }
 
+  /**
+   * Входящий на МОБИЛЬНЫЙ оператора: тихий баннер без звука.
+   * Клик открывает карточку с «Я ответил» и переводом.
+   */
+  function renderMobileIncoming(detail) {
+    ensureShell();
+    lastIncoming = detail || {};
+    uiMode = 'incoming';
+    setBtnState('ring');
+    stopRingtone();
+    if (!dom.incoming) return;
+    var v = incomingView(lastIncoming);
+    dom.incoming.className = 'ph-card ph-card--incoming ph-card--mobile ph-card--quiet';
+    dom.incoming.innerHTML =
+      '<div class="ph-card-inner">' +
+        '<div class="ph-card-top">' +
+          '<div class="ph-avatar" aria-hidden="true">' + (v.ini ? esc(v.ini) : '☎') + '</div>' +
+          '<div class="ph-card-meta">' +
+            '<div class="ph-card-title">Звонок на телефон' + (lastIncoming.is_duty ? ' (дежурный)' : '') + '</div>' +
+            '<div class="ph-card-name">' + esc(v.title) + '</div>' +
+            '<div class="ph-card-sub">' + esc(v.sub) + ' · ответьте с телефона</div>' +
+          '</div>' +
+        '</div>' +
+        '<div class="ph-card-actions">' +
+          '<button type="button" class="ph-act ph-act--answer" id="phOpenMobileCard" data-tooltip="Открыть карточку">Открыть</button>' +
+          '<button type="button" class="ph-act ph-act--transfer" id="phQuietTransfer" data-tooltip="Перевести">Перевести</button>' +
+          '<button type="button" class="ph-act ph-act--ghost" id="phQuietHide" data-tooltip="Скрыть">Скрыть</button>' +
+        '</div>' +
+      '</div>';
+    dom.incoming.style.display = 'block';
+    clearTimeout(incomingPulseTimer);
+
+    var openBtn = dom.incoming.querySelector('#phOpenMobileCard');
+    if (openBtn) openBtn.onclick = function () { showIncomingCard(lastIncoming); };
+    var trBtn = dom.incoming.querySelector('#phQuietTransfer');
+    if (trBtn) trBtn.onclick = openTransferModal;
+    var hideBtn = dom.incoming.querySelector('#phQuietHide');
+    if (hideBtn) hideBtn.onclick = hideIncomingCard;
+  }
+
   function showIncomingCard(detail) {
     ensureShell();
     var v = incomingView(detail);
@@ -1718,6 +1758,7 @@
       }
     }
     if (type === 'incoming') renderIncoming(d);
+    if (type === 'incoming_mobile') renderMobileIncoming(d);
     if (type === 'progress') {
       // Абонент дозванивается: показать «Гудки…».
       ringingStarted = true;

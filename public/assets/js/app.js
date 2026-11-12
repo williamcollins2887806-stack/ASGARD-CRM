@@ -3008,6 +3008,10 @@ AsgardRouter.add("/assembly", () => {
           pbx_uid: raw.pbx_uid || (raw.call_id ? String(raw.call_id).replace(/^pbx_/, '') : null),
           channel: raw.channel || null,
           history_id: raw.history_id || null,
+          // via='mobile' → звонок на телефон оператора: в браузере только баннер,
+          // без рингтона и без WebRTC. Перевод доступен по pbx_uid.
+          via: raw.via || null,
+          is_duty: !!raw.is_duty,
           caller: raw.caller || raw.from || raw.from_number || raw.caller_number || raw.fromNumber,
           caller_name: raw.caller_name || raw.callerName,
           client_name: raw.client_name || raw.clientName,
@@ -3026,6 +3030,26 @@ AsgardRouter.add("/assembly", () => {
       function notifyIncomingCall(data) {
         const mapped = mapCallSsePayload(data);
         const P = window.AsgardPhone;
+        // Звонок ушёл на мобильный: телефон уже звонит, браузер молчит.
+        // Показываем тихий баннер — по клику карточка с переводом.
+        if (mapped.via === 'mobile') {
+          if (P && P.applyMobileIncoming) {
+            P.applyMobileIncoming({
+              number: mapped.caller,
+              channel: mapped.channel,
+              pbx_uid: mapped.pbx_uid,
+              call_id: mapped.call_id,
+              history_id: mapped.history_id,
+              lookup: mapped.lookup,
+              is_duty: mapped.is_duty,
+            });
+          } else {
+            document.dispatchEvent(new CustomEvent('asgard-phone', {
+              detail: { type: 'incoming_mobile', number: mapped.caller, callMeta: mapped },
+            }));
+          }
+          return;
+        }
         if (P && P.getState && P.getState() !== 'offline') {
           if (P.applyIncoming) {
             P.applyIncoming({

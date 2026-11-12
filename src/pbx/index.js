@@ -169,6 +169,23 @@ async function handleInboundAgi(session) {
         await session.setVariable('ASGARD_DUTY_MOBILE', dutyMobile);
         await session.setVariable('ASGARD_DUTY_MOBILE_TO', String(pbxConfig.mobile_ring_sec ?? 30));
         if (!announce) await session.answer();
+        // CRM: тихий баннер с переводом (без рингтона). Раньше уходил только
+        // call:missed — баннер не всплывал, перевести было неоткуда.
+        await notifyRing(client, {
+          event: 'call:incoming',
+          user_id: dutyUserId,
+          data: {
+            call_id: 'pbx_' + uniqueId,
+            pbx_uid: String(uniqueId),
+            channel: channel || null,
+            from: caller || null,
+            from_number: caller || null,
+            via: 'mobile',
+            is_duty: true,
+            history_id: hist.id,
+            fallback: 'duty_mobile',
+          },
+        });
         await session.verbose(`Duty mobile fallback ${dutyMobile}`, 1);
         return { ok: true, fallback: 'duty_mobile', plan, hist };
       }

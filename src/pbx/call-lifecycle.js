@@ -274,6 +274,9 @@ function buildRingNotifyPayload({ pbxUid, caller, lookup, target, channel, callH
       client_inn: lookup?.inn || null,
       lookup_type: lookup?.type || 'unknown',
       target_type: target?.targetType || null,
+      // via: 'mobile' — в CRM нужен ТИХИЙ баннер (без рингтона), перевод по pbx_uid.
+      via: target?.targetType === 'mobile' ? 'mobile' : null,
+      is_duty: !!target?.isDuty,
       history_id: callHistoryId || null,
     },
   };
