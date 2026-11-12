@@ -77,17 +77,57 @@ class CallAnalyzer {
     if (cleaned.endsWith(BT3)) cleaned = cleaned.slice(0, -3);
     cleaned = cleaned.trim();
     const jsonStart = cleaned.indexOf('{');
-    const jsonEnd = cleaned.lastIndexOf('}');
-    if (jsonStart !== -1 && jsonEnd > jsonStart) cleaned = cleaned.slice(jsonStart, jsonEnd + 1);
+    if (jsonStart !== -1) {
+      const jsonEnd = cleaned.lastIndexOf('}');
+      cleaned = jsonEnd > jsonStart ? cleaned.slice(jsonStart, jsonEnd + 1) : cleaned.slice(jsonStart);
+    }
     try {
       return this._normalizeFields(JSON.parse(cleaned));
     } catch (err) {
+      // Модель часто обрезает JSON на maxTokens — пробуем закрыть хвост.
+      const repaired = this._repairTruncatedJson(cleaned);
+      if (repaired && repaired !== cleaned) {
+        try {
+          return this._normalizeFields(JSON.parse(repaired));
+        } catch (_) { /* fall through */ }
+      }
       const parseErr = new Error('AI JSON parse failed: ' + err.message);
       parseErr.code = 'json_parse_error';
       parseErr.retryable = true; // 1–2 retries then pipeline may mark error_final
       parseErr.raw = cleaned.slice(0, 500);
       throw parseErr;
     }
+  }
+
+  /**
+   * Закрывает обрезанный JSON: незакрытую строку и скобки.
+   * Не чинит мусор без `{` — только truncation.
+   */
+  _repairTruncatedJson(raw) {
+    if (!raw || raw[0] !== '{') return null;
+    let s = String(raw);
+    let inString = false;
+    let escape = false;
+    const stack = [];
+    for (let i = 0; i < s.length; i++) {
+      const ch = s[i];
+      if (inString) {
+        if (escape) { escape = false; continue; }
+        if (ch === '\\') { escape = true; continue; }
+        if (ch === '"') inString = false;
+        continue;
+      }
+      if (ch === '"') { inString = true; continue; }
+      if (ch === '{' || ch === '[') stack.push(ch === '{' ? '}' : ']');
+      else if (ch === '}' || ch === ']') {
+        if (stack.length && stack[stack.length - 1] === ch) stack.pop();
+      }
+    }
+    if (inString) s += '"';
+    // Убрать висячую запятую перед закрытием
+    s = s.replace(/,\s*$/, '');
+    while (stack.length) s += stack.pop();
+    return s;
   }
 
   _inferOutcomeKind(data) {
