@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Full-bleed fallback: градиент на весь квадрат, маску даёт лаунчер. -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:drawable="@drawable/ic_launcher_background" />
+    <item android:drawable="@drawable/ic_ting_foreground" />
+</layer-list>
