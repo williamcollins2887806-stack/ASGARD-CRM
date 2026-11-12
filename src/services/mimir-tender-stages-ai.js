@@ -1406,8 +1406,23 @@ async function generateDv(p) {
     }
 
     // Недобор. Обрезанный ответ — добираем (модель не успела).
-    // Необрезанный — просим продолжить один раз.
-    if (!wasTruncated && round > 0) break;
+    // Необрезанный — тоже добираем, если позиций МЕНЬШЕ ожидаемого.
+    //
+    // Дефект, найденный на проде 12.11: модель на втором раунде вернула
+    // ЗАКРЫТЫЙ JSON (stop), но всего 289 позиций. Флаг обрезки стал false,
+    // и добор прекратился на 612 из 1348 — хотя половина ведомости не
+    // разобрана. Полнота определяется КОЛИЧЕСТВОМ против ожидания, а не
+    // тем, закрыл ли модель массив.
+    if (!wasTruncated) {
+      // Один «необрезанный» недобор прощаем: модель могла ответить на
+      // другом языке/формате. Но если и он не добрал 20 % ожидаемого —
+      // дальше просить бессмысленно.
+      if (round > 0 && validCount < expectedMin * 0.8) {
+        // продолжаем: недобор существенный
+      } else if (round > 0) {
+        break;
+      }
+    }
 
     if (!got) break;
 
@@ -1435,7 +1450,6 @@ async function generateDv(p) {
 
   // Собираем итоговую ДВ: поля-описания из первого круга, позиции — все.
   const dv = Object.assign({}, firstDv, { positions: allPositions });
-
   // Считаем валидные позиции ДО сверки полноты: `checkCompleteness` получает
   // это число параметром. Раньше строка `const validFound = ...` стояла ниже
   // вызова и модуль падал с «Cannot access 'validFound' before initialization»
@@ -1503,6 +1517,22 @@ async function generateDv(p) {
   const expectedFinal = Math.max(expectedRows || 0, modelSaidPositions || 0);
   const grossShortfall = expectedFinal > 0 && validFound < expectedFinal * 0.5;
   const incomplete = lastTruncated || exhaustedRounds || grossShortfall;
+
+  // Флаг полноты обязан попасть В САМУ ДВ, а не только в ответ функции:
+  // карточка сохраняет `dv`, и без этих полей UI видит incomplete = undefined,
+  // то есть «всё хорошо», хотя разбор неполный. На проде это дало 612
+  // позиций из 1348 с молчаливым «полно».
+  dv.incomplete = !!incomplete;
+  dv.expected_rows = expectedFinal || null;
+  dv.found_positions = validFound;
+  dv.rounds = rounds;
+  dv.incomplete_reason = incomplete
+    ? (lastTruncated
+      ? `модель не успела выдать весь разбор: ${validFound} из ~${expectedFinal || '?'}`
+      : (exhaustedRounds
+        ? `исчерпаны раунды добора: ${validFound} из ~${expectedFinal || '?'}`
+        : `собрано меньше половины ожидаемого: ${validFound} из ~${expectedFinal}`))
+    : null;
 
   emit({
     step: 'dv_ready',

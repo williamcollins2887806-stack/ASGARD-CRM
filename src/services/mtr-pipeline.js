@@ -142,10 +142,32 @@ function deriveNeeds(p) {
       .filter(Boolean).join(' ');
     if (!hay) continue;
 
-    // Объём позиции: сколько аппаратов/штук. У чистки трубок это `objects`,
-    // у остальных — 1 (одна позиция = один узел).
-    const units = Number(pos.objects) > 0 ? Number(pos.objects)
-      : (Number(pos.volume) > 0 ? 1 : 1);
+    // Сколько единиц оборудования в позиции. Приоритет:
+    //   1) objects[].qty — реальное число аппаратов;
+    //   2) трубок по объёму / длине — для чистки трубок;
+    //   3) объём в п.м / типовая длина 6 м — грубая, но не «1».
+    // Без этого 613 позиций давали «шланг × 1», что бессмысленно.
+    let units = 0;
+    if (Array.isArray(pos.objects) && pos.objects.length) {
+      units = pos.objects.reduce((s, o) => s + (Number(o && o.qty) || 0), 0);
+    }
+    if (!(units > 0)) {
+      const lenM = Number(pos.conversion_params && pos.conversion_params.length_m);
+      const lenNorm = lenM > 100 ? lenM / 1000 : lenM;
+      const vol = Number(pos.volume);
+      if (vol > 0 && lenNorm > 0) units = vol / lenNorm;
+      else if (vol > 0) units = vol / 6;
+    }
+    if (!(units > 0)) units = 1;
+
+    // Расходники гидрочистки зависят от ПОГОННЫХ МЕТРОВ, а не от числа
+    // аппаратов: шланг и форсунка изнашиваются на каждый метр прохода.
+    // Норма расхода: ~1 комплект шланга на 5000 п.м, форсунка на 10000 п.м.
+    // Без этого 46 800 п.м давали «шланг × 1».
+    const runM = /п\.?\s*м|пог\.?\s*м/i.test(String(pos.unit || ''))
+      ? Number(pos.volume) || 0
+      : 0;
+    if (runM > 0) units = Math.max(units, runM / 5000);
 
     let matched = false;
     for (const hint of RESOURCE_HINTS) {

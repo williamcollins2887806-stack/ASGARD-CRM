@@ -353,7 +353,7 @@ function selectForPrompt(documents, opts) {
     }
 
     if (hash) seen.set(hash, { name });
-    kept.push({
+    kept.push(Object.assign({}, d, {
       original_name: name,
       text,
       doc_role: role.role,
@@ -362,7 +362,7 @@ function selectForPrompt(documents, opts) {
       doc_role_source: role.source,
       // Сколько строк объёма нашли внутри — для журнала (source='table_rows').
       doc_table_rows: role.table_rows || null
-    });
+    }));
   }
 
   // Внутри одной роли — от большего к меньшему: содержательный документ
