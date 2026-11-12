@@ -131,11 +131,17 @@ C:\Android\sdk\platform-tools\adb.exe install -r android\app\build\outputs\apk\d
 аудиосессия Android, раскладки `wait` / `spot` / `dual` / `spot-rail` / `g3` /
 `g4` / `g5`, переключение микрофона и камеры, выход с отправкой `/leave`.
 
-Сборка проверена: `BUILD SUCCESSFUL`, APK 188 МБ, пакет `com.asgard.ting.tv`,
-label «Тинг Зал», `leanback-launchable`.
+Сборка: `assembleRelease`, пакет `com.asgard.ting.tv`, label «Тинг Зал»,
+`leanback-launchable`. ABI: `armeabi-v7a` + `arm64-v8a` — TCL Android TV
+часто 32-битный; arm64-only ставился с ошибкой «несовместимо».
 
-Почему APK вырос со 166 до 188 МБ: добавился `react-native-svg` (векторные
-иконки и градиентный фон) и фирменные PNG-логотипы.
+## Телеметрия
+
+В зале крутится цикл `src/tvMetrics.js`: сэмпл getStats каждые 5 с, flush
+батчем (~12 сэмплов / ~60 с) на `/client-log` с `surface='tv'`,
+`device_class='tv'`. Формат полей совпадает с веб-/ting-tv/ и гостем:
+`fps`, `rttMs`, `freezeCount`, `limiter`, `packetsLost` (дельта), `icePair`.
+Строки попадают в `thing_client_metrics`.
 
 ## Что осталось
 
@@ -143,7 +149,6 @@ label «Тинг Зал», `leanback-launchable`.
 - публикация камеры и микрофона — сейчас публикуется через `LiveKitRoom` с
   флагами `audio` и `video`; после проверки зонда надо убедиться, что камера
   берётся та, что встроена в UVC-устройство
-- телеметрия с `surface='tv'` в новый клиент (в веб-версии уже есть)
 - вывод `/ting-tv/` из эксплуатации после подтверждения
 
 ## Важное следствие

@@ -7,12 +7,14 @@ import {
   useParticipants,
   useLocalParticipant,
   useConnectionState,
+  useRoomContext,
 } from '@livekit/react-native';
 import { Track } from 'livekit-client';
 import Hall from './Hall';
 import Dock from './Dock';
 import { COLORS, FONT } from './theme';
 import { API_BASE, ENDPOINTS, apiPost, hallModeFor } from './api';
+import { startTvMetrics } from './tvMetrics';
 
 const MARK = require('./assets/mark.png');
 
@@ -38,7 +40,8 @@ function stateLabel(s) {
  * Внутри LiveKitRoom: собирает плитки из треков, рисует зал и док.
  * Отдельный компонент, потому что хуки LiveKit требуют контекста комнаты.
  */
-function RoomBody({ roomTitle, selfName, onLeave, startedAt }) {
+function RoomBody({ roomTitle, selfName, onLeave, startedAt, code, identity }) {
+  const room = useRoomContext();
   const participants = useParticipants();
   const connectionState = useConnectionState();
   const { localParticipant } = useLocalParticipant();
@@ -53,6 +56,15 @@ function RoomBody({ roomTitle, selfName, onLeave, startedAt }) {
     }, 1000);
     return () => clearInterval(t);
   }, [startedAt]);
+
+  /* Непрерывная телеметрия surface='tv' → thing_client_metrics. */
+  useEffect(() => {
+    if (!room || !code) return undefined;
+    const stop = startTvMetrics({ room, code, identity });
+    return () => {
+      try { stop(); } catch (_) { /* */ }
+    };
+  }, [room, code, identity]);
 
   /* Обе камеры и шаринг экрана: тип источника задаём явно, иначе camera
      выбранной пользователем камеры может не оказаться в списке. */
@@ -231,6 +243,8 @@ export default function MeetingScreen({ code, pin, onLeave }) {
           selfName="Зал совещаний"
           onLeave={handleLeave}
           startedAt={startedAt}
+          code={code}
+          identity={identity}
         />
       </LiveKitRoom>
   );
