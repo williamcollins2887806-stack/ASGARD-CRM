@@ -10305,6 +10305,23 @@ body.call-detail-open .asg-main-wrap {
 }
 .call-history-steps li { margin: 2px 0; }
 
+/* Журнал: повторные звонки одного номера — бейдж «2 раза», как в телефоне */
+.call-repeat-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-left: 6px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 1.5;
+  background: color-mix(in srgb, var(--blue) 16%, transparent);
+  color: var(--blue);
+  border: 1px solid color-mix(in srgb, var(--blue) 30%, transparent);
+  vertical-align: middle;
+}
+
 .call-detail-label {
   font-size: 12px;
   color: var(--t3);

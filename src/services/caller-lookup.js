@@ -262,6 +262,48 @@ async function lookupCaller(db, phone) {
     }
   } catch (_) { /* table */ }
 
+  // 4.5. ПАМЯТЬ НОМЕРА (12.11.2026): раньше номер, введённый в справочник
+  // ПОСЛЕ первого звонка, оставался «неизвестным» навсегда. Если по этому
+  // номеру уже был звонок с распознанным именем/компанией — берём оттуда.
+  // Так «Дима Путков» подхватывается, даже если его мобильный появился
+  // в справочнике позже первого звонка.
+  try {
+    const memo = await db.query(
+      `SELECT ch.id, ch.client_inn, ch.ai_lead_data,
+              c.name AS customer_name, c.contact_person AS customer_contact
+         FROM call_history ch
+         LEFT JOIN customers c ON c.inn = ch.client_inn
+        WHERE RIGHT(REGEXP_REPLACE(COALESCE(ch.client_number, ch.from_number, ''), '[^0-9]', '', 'g'), 10) = $1
+          AND ch.client_number IS NOT NULL
+          AND (
+            c.name IS NOT NULL
+            OR (ch.ai_lead_data->>'company_name') IS NOT NULL
+            OR (ch.ai_lead_data->>'contact_person') IS NOT NULL
+          )
+        ORDER BY ch.created_at DESC NULLS LAST
+        LIMIT 1`,
+      [tail]
+    );
+    if (memo.rows.length) {
+      const row = memo.rows[0];
+      let ld = {};
+      try { ld = typeof row.ai_lead_data === 'string' ? JSON.parse(row.ai_lead_data) : (row.ai_lead_data || {}); } catch (_) { ld = {}; }
+      const company = row.customer_name || ld.company_name || null;
+      const person = row.customer_contact || ld.contact_person || null;
+      if (company || person) {
+        return {
+          type: 'call_memory',
+          inn: row.client_inn || ld.customer_inn || undefined,
+          name: person || company,
+          company: company || null,
+          responsible_name: null,
+          last_tender_title: null,
+          region: ld.location || null,
+        };
+      }
+    }
+  } catch (_) { /* таблицы/колонки */ }
+
   // 5. Unknown + region stub из прошлых звонков / DaData
   let region = null;
   try {

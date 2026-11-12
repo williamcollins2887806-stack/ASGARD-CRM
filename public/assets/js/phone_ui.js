@@ -564,6 +564,10 @@
   /**
    * Входящий на МОБИЛЬНЫЙ оператора: тихий баннер без звука.
    * Клик открывает карточку с «Я ответил» и переводом.
+   *
+   * ВАЖНО (12.11.2026): при открытом доке Хугинна карточка .ph-card не видна —
+   * звонок живёт в панели #hgPanel. Раньше здесь рисовалась только карточка,
+   * поэтому в PWA с открытой панелью оператор не видел ничего.
    */
   function renderMobileIncoming(detail) {
     ensureShell();
@@ -571,6 +575,17 @@
     uiMode = 'incoming';
     setBtnState('ring');
     stopRingtone();
+    // Док открыт → показываем в панели, как обычный входящий.
+    var D = dock();
+    if (D) {
+      if (!D.isPanelOpen('phone')) {
+        if (!autoOpened) autoOpened = { prevTab: D.getTab(), wasCollapsed: D.isCollapsed() };
+        D.openTab('phone');
+      } else {
+        paintPanel();
+      }
+      if (panelShown()) { hideIncomingCard(); return; }
+    }
     if (!dom.incoming) return;
     var v = incomingView(lastIncoming);
     dom.incoming.className = 'ph-card ph-card--incoming ph-card--mobile ph-card--quiet';

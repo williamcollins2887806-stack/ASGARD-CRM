@@ -848,13 +848,58 @@ window.AsgardTelephonyPage = (function () {
     }
   }
 
+  /**
+   * Схлопывание повторных звонков одного номера (как в любом телефоне):
+   * «+7 953 …» ×2 → одна строка с бейджем «2 раза» и списком внутри.
+   * Схлопываем только подряд идущие звонки в пределах 3 часов, чтобы не
+   * склеить два разных обращения недели.
+   */
+  function groupRepeatedCalls(calls) {
+    var WINDOW_MS = 3 * 60 * 60 * 1000;
+    var out = [];
+    var byKey = {};
+    for (var i = 0; i < calls.length; i++) {
+      var c = calls[i];
+      var ph = String(c.client_number
+        || (c.call_type === 'inbound' ? c.from_number : (c.line_number || c.to_number)) || '')
+        .replace(/\D/g, '').slice(-10);
+      var dirOf = c.call_type || '';
+      // Ключ включает направление: входящий и исходящий одному номеру — разные
+      // события, склеивать их нельзя.
+      var key = (ph || ('id:' + c.id)) + '|' + dirOf;
+      var prev = byKey[key];
+      var t = new Date(c.created_at || c.started_at || 0).getTime();
+      if (prev && Math.abs((prev.time || 0) - t) <= WINDOW_MS) {
+        prev.items.push(c);
+        prev.count = prev.items.length;
+        prev.totalDuration = (prev.totalDuration || 0) + (Number(c.duration_seconds) || 0);
+        prev.time = t;
+        continue;
+      }
+      var group = {
+        lead: c,
+        items: [c],
+        count: 1,
+        direction: dirOf,
+        totalDuration: Number(c.duration_seconds) || 0,
+        key: key,
+        time: t,
+      };
+      byKey[key] = group;
+      out.push(group);
+    }
+    return out;
+  }
+
   function renderLogTable(wrap, calls) {
     if (!calls.length) {
       wrap.innerHTML = emptyState('empty', 'Нет звонков за выбранный период');
       return;
     }
 
-    var rows = calls.map(function (c, idx) {
+    var groups = groupRepeatedCalls(calls);
+    var rows = groups.map(function (grp) {
+      var c = grp.lead;
       var dir = c.call_type || 'missed';
       var dirCls  = 'call-dir call-dir--' + dir;
       var dirIcon = DIR_ICONS[dir] || '\u2014';
@@ -871,6 +916,11 @@ window.AsgardTelephonyPage = (function () {
       var phone = c.client_number
         || (dir === 'inbound' ? c.from_number : (c.line_number || c.to_number));
       var client = c.client_name ? esc(c.client_name) : esc(fmtPhone(phone));
+      // «2 раза» как в телефоне: несколько звонков одного номера подряд.
+      var repeatBadge = grp.count > 1
+        ? '<span class="call-repeat-badge" data-tooltip="Звонков подряд: ' + grp.count +
+          ' · всего ' + fmtDuration(grp.totalDuration) + '">' + grp.count + ' раза</span>'
+        : '';
       var hasRecord = c.record_path || c.recording_id;
       var recordIcon = hasRecord
         ? '<button type="button" class="call-record-play" data-call-id="' + esc(String(c.id)) + '" data-tooltip="Слушать запись" aria-label="Слушать запись">' +
@@ -923,7 +973,7 @@ window.AsgardTelephonyPage = (function () {
       var mainRow = '<tr class="call-row call-row-wow call-row-wow--' + dir + (expandable ? ' call-row--expandable' : '') + '" data-id="' + esc(String(c.id)) + '">' +
         '<td>' + esc(fmtDate(c.created_at)) + '</td>' +
         '<td><span class="' + dirCls + '"' + dirTipAttr + '>' + dirIcon + '</span>' + recordIcon + '</td>' +
-        '<td class="tel-cell-client tel-num">' + client + dadataBadge + '</td>' +
+        '<td class="tel-cell-client tel-num">' + client + repeatBadge + dadataBadge + '</td>' +
         '<td class="tel-cell-dur">' + esc(fmtDuration(c.duration_seconds)) + '</td>' +
         '<td class="tel-cell-manager">' + esc(c.manager_name || '\u2014') + '</td>' +
         '<td class="ai-col">' + summaryCell + '</td>' +
