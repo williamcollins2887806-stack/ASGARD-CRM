@@ -1049,7 +1049,7 @@ module.exports = async function telephonyRoutes(fastify, opts) {
               pt.assigned_to AS pre_tender_assigned_to,
               pa.name AS pre_tender_assignee_name,
               t.id AS task_ref, t.status AS task_status,
-              COALESCE(t.assignee_id, t.created_by) AS task_assignee_id,
+              COALESCE(t.assignee_id, t.creator_id) AS task_assignee_id,
               ta.name AS task_assignee_name
        FROM call_history ch
        LEFT JOIN customers c ON c.inn = ch.client_inn
@@ -1057,7 +1057,7 @@ module.exports = async function telephonyRoutes(fastify, opts) {
        LEFT JOIN pre_tender_requests pt ON pt.id = ch.pre_tender_id
        LEFT JOIN users pa ON pa.id = pt.assigned_to
        LEFT JOIN tasks t ON t.id = ch.task_id
-       LEFT JOIN users ta ON ta.id = COALESCE(t.assignee_id, t.created_by)
+       LEFT JOIN users ta ON ta.id = COALESCE(t.assignee_id, t.creator_id)
        ${where}
        ORDER BY ch.${sortCol} ${sortOrder}
        LIMIT $${paramIdx++} OFFSET $${paramIdx}`,
