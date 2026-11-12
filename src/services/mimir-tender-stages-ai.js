@@ -798,7 +798,16 @@ function structureLine(it) {
     o.zone || '—',
     o.fouling || '—',
     o.period || '—',
-    o.clean_count != null ? String(o.clean_count) : '—'
+    o.clean_count != null ? String(o.clean_count) : '—',
+    // ── Геометрия аппарата ────────────────────────────────────────────────
+    // Без этих трёх полей модель физически не может их вернуть: в порции она
+    // видит только текст этой строки. А норма tubes.gdo/gmo/chem считает
+    // ИМЕННО трубки и длину — на #2138 без них 452 позиции из 658 остались
+    // без срока с ответом «Укажите число трубок» (дефект 12.11.2026).
+    o.tubes != null ? String(o.tubes) : '—',
+    o.length_m != null ? String(o.length_m) : '—',
+    o.dn_mm != null ? String(o.dn_mm) : '—',
+    o.mh != null ? String(o.mh) : '—'
   ].join(' | ');
 }
 
@@ -1017,7 +1026,24 @@ function chunkStructureRows(structured, maxRows) {
  */
 const BUDGET_POSITION_MARGIN = 1.15;
 
-/** Ожидание для токен-бюджета: с запасом, но не ноль. */
+/**
+ * Сколько строк давать в первой порции.
+ *
+ * Это СТАРТОВАЯ догадка, а не измеренная истина: размер дальше подбирается
+ * по факту ответа (см. очередь строк в generateDv). Поэтому здесь достаточно
+ * консервативной оценки, что одна строка занимает не больше
+ * TOKENS_PER_POSITION_PORTION токенов. Если провайдер отдаёт меньше —
+ * первая порция не пройдёт, и детект уменьшит её сам.
+ *
+ * @param {number} modelCap — предел ответа модели в токенах
+ * @returns {number} стартовое число строк
+ */
+function budgetPortionRows(modelCap) {
+  const budget = require('./ai-call-budget');
+  const perRow = Number(budget.TOKENS_PER_POSITION_PORTION) || 300;
+  const safe = Math.floor((Number(modelCap) || 32000) * 0.6);
+  return Math.max(16, Math.floor(safe / perRow));
+}
 function budgetPositions(expectedRows, modelSaid) {
   const n = Math.max(Number(expectedRows) || 0, Number(modelSaid) || 0);
   if (!(n > 0)) return 0;
@@ -1214,22 +1240,38 @@ async function generateDv(p) {
     chars: system.length + user.length,
     model: o.model
   });
-  // Порция ≈ столько строк, чтобы ответ заведомо влез в предел модели.
+  // ── Порция: размер НЕ угадывается, а подбирается по ответу ────────────────
+  // Раньше здесь стояла константа «330 токенов на позицию», снятая с ОДНОГО
+  // тендера (#2138). Это плохо: смена модели, провайдера или формата позиции
+  // делала её ложью, и разбор снова начинал терять данные — тихо.
   //
-  // Считаем от РЕАЛЬНОГО предела провайдера и измеренной стоимости позиции
-  // в порции, а не от магических чисел: раньше здесь стояло
-  // «cap >= 128000 ? 250», и на провайдере с пределом 46k порции не
-  // включались вовсе — модель обрывалась, и разбор молча давал 115 из 673.
-  //
-  // Стоимость позиции в порции = 330 токенов (замер с полным системным
-  // промптом, tools/small_probe.js), а не 151 «в вакууме»: в порции модель
-  // повторяет структуру полей и техоснастку. На 164 строках ответ доходил
-  // до 82 994 символов и обрывался в length с незакрытым JSON.
-  const safeOutputTokens = Math.floor(callPlan.output.modelCap * 0.75);
-  const rowsPerChunk = Math.max(20, Math.min(250,
-    Math.floor(safeOutputTokens / budget.TOKENS_PER_POSITION_PORTION)));
-  const chunks = callPlan.chunk ? chunkStructureRows(structured, rowsPerChunk) : [];
-  const useChunks = chunks.length > 1;
+  // Теперь размер подбирается на ходу:
+  //   • старт — консервативный (мелкая порция почти всегда проходит);
+  //   • ответ прошёл — размер РАСТЁТ (до двух раз), чтобы не гонять сотни
+  //     вызовов на большой ведомости;
+  //   • ответ оборван (stop=length) или JSON битый — размер делится вдвое;
+  //   • итоговый размер закрепляется и попадает в отчёт.
+  // Так предел провайдера выясняется по факту, а не берётся из паспорта.
+  const startRowsPerChunk = Math.max(20, Math.min(120,
+    Math.floor(budgetPortionRows(callPlan.output.modelCap))));
+  // ── Чанки считаем ДИНАМИЧЕСКИ, а не один раз вперёд ──────────────────────
+  // Размер порции подбирается по ответу модели (см. цикл ниже), поэтому
+  // список кусков строится не заранее, а по мере надобности: берём очередные
+  // `rowsPerChunk` строк из ещё не разобранного остатка.
+  const chunkRowsSource = (() => {
+    const entries = (structured && Array.isArray(structured.entries)) ? structured.entries : [];
+    const all = [];
+    for (const e of entries) {
+      const list = (e.parsed && Array.isArray(e.parsed.positions)) ? e.parsed.positions : [];
+      for (const p of list) all.push({ row: p, entry: e });
+    }
+    return all;
+  })();
+  let rowsPerChunk = startRowsPerChunk;
+  // Порции нужны, когда ответ не влезает И строк в ведомости больше, чем
+  // помещается в одну порцию. Оба условия обязательны: иначе одна порция
+  // равна всей ведомости, и режим порций не нужен.
+  const useChunks = callPlan.chunk && chunkRowsSource.length > rowsPerChunk;
   if (!callPlan.chunk) {
     emit({
       step: 'single_call',
@@ -1268,170 +1310,151 @@ async function generateDv(p) {
     const chunkSystem = chunkPrompt.system;
     emit({
       step: 'chunks',
-      message: `Большая ведомость: режу на ${chunks.length} порций по строкам таблицы `
-        + `(чтобы модель не обрезала ответ).`,
+      message: `Большая ведомость: разбираю порциями по строкам таблицы. `
+        + `Размер порции подбираю по ответу модели (старт ${rowsPerChunk} строк).`,
       pct: 12,
-      chunks: chunks.length,
       structure_rows: structured.rows,
       rows_per_chunk: rowsPerChunk
     });
+
+    // ── Очередь строк: размер порции подбирается по ответу ────────────────
+    // Не режем заранее: строки берутся из остатка текущим `rowsPerChunk`.
+    //   • ответ прошёл — размер растёт (до двух раз), чтобы не гонять
+    //     сотни вызовов на большой ведомости;
+    //   • оборван (stop=length) или JSON битый — пополам и повтор;
+    //   • мельче MIN_PORTION строк не дробим: честно пишем в потери.
+    const MIN_PORTION = 8;
     const perChunk = [];
-    for (let ci = 0; ci < chunks.length; ci += 1) {
-      const ch = chunks[ci];
-      // Прогресс по порциям: важно показывать, сколько их всего и сколько уже
-      // собрано — на 20 порциях без этого UI снова выглядит зависшим.
-      const chunkPct = 12 + Math.round((ci / Math.max(chunks.length, 1)) * 55);
+    let cursor = 0;
+    let chunkNo = 0;
+    let guardTotal = 0;
+    let growUps = 0;
+
+    while (cursor < chunkRowsSource.length && guardTotal < 200) {
+      guardTotal += 1;
+      chunkNo += 1;
+      const slice = chunkRowsSource.slice(cursor, cursor + rowsPerChunk);
+      const fromLine = cursor + 1;
+      const toLine = cursor + slice.length;
+      const rows = slice.map((x) => structureLine(x.row));
+      const chunkPct = 12 + Math.round((cursor / Math.max(chunkRowsSource.length, 1)) * 55);
+
       emit({
         step: 'chunk_wait',
-        message: `Порция ${ci + 1}/${chunks.length}: «${String(ch.title || 'раздел').slice(0, 50)}» `
-          + `(стр. ${ch.fromLine}–${ch.toLine}) — жду модель…`,
+        message: `Порция ${chunkNo}: строки ${fromLine}–${toLine} (${rows.length}) — жду модель…`,
         pct: chunkPct,
-        chunk: ci + 1,
-        chunks: chunks.length,
+        chunk: chunkNo,
+        rows: rows.length,
+        rows_per_chunk: rowsPerChunk,
         positions: allPositions.length
       });
-      // ── Порция с рантайм-детектом обрыва ────────────────────────────────
-      // Порция, которая не влезла в предел провайдера, раньше ПРОСТО ТЕРЯЛАСЬ:
-      // `catch → continue`, и целая часть ведомости исчезала. На #2138 так
-      // пропадали десятки позиций, и разбор молча оставался неполным.
-      //
-      // Теперь: если ответ оборван (`stop=length`) или JSON не собрался —
-      // режем порцию ВДВОЕ и повторяем её же. Предел провайдера не угадывается
-      // константой: он определяется по факту обрыва, поэтому смена модели или
-      // лимита не приводит к тихой потере данных.
-      //
-      // Замер (tools/detect_probe.js, 200 строк): max=4000 → length/битый,
-      // max=8000 → length/битый, max=12000 → stop/целый. Сигнал бинарный.
-      const pieces = [{ ...ch, _depth: 0 }];
-      let gotChunk = 0;
-      let chunkOk = false;
-      let guard = 0;
-      while (pieces.length && guard < 12) {
-        guard += 1;
-        const piece = pieces.shift();
-        if (!piece) break;
-        if (piece._rows && piece._rows.length < 8) {
-          // Мельче резать некуда: честно сообщаем, а не теряем молча.
-          emit({
-            step: 'chunk_too_small',
-            message: `Порция «${String(piece.title || '').slice(0, 40)}» не влезает даже `
-              + `в ${piece._rows.length} строк — оставлена на второй проход.`,
-            chunk: ci + 1,
-            chunks: chunks.length
-          });
-          continue;
-        }
 
-        const rowsInPiece = piece._rows ? piece._rows.length : null;
-        const outLimit = Math.min(64000, Math.max(16000,
-          budget.outputLimit({
-            expectedPositions: Math.ceil(piece.text.split('\n').length * BUDGET_POSITION_MARGIN),
-            model: o.model
-          }).limit));
+      const text = rows.join('\n');
+      const outLimit = Math.min(64000, Math.max(16000,
+        budget.outputLimit({
+          expectedPositions: Math.ceil(rows.length * BUDGET_POSITION_MARGIN),
+          model: o.model
+        }).limit));
 
-        let res = null;
-        try {
-          res = await completeOrStream(o.aiProvider, {
-            system: chunkSystem,
-            messages: [{
-              role: 'user',
-              content: `Перенеси ВСЕ строки этой порции таблицы в JSON — по одной позиции на строку. `
-                + `Ничего не суммируй, ничего не пропускай. Порция: ${piece.title} `
-                + `(строки ${piece.fromLine}–${piece.toLine}).\n\n`
-                + piece.text
-            }],
-            maxTokens: outLimit,
-            temperature: 0,
-            expectJson: true,
-            reasoning: { enabled: false },
-            model: o.model
-          }, typeof o.onProgress === 'function' ? emit : null, {
-            pct: chunkPct,
-            label: `порция ${ci + 1}/${chunks.length}`
-          });
-        } catch (e) {
-          emit({
-            step: 'chunk_fail',
-            message: `Порция ${ci + 1}/${chunks.length} не ответила: ${String(e.message || '').slice(0, 80)}`,
-            chunk: ci + 1,
-            chunks: chunks.length
-          });
-          res = null;
-        }
-
-        const stopReason = String((res && res.stopReason) || '').toLowerCase();
-        const truncated = stopReason === 'length' || stopReason === 'max_tokens';
-        const parsed = res ? safeJson(res.text) : null;
-
-        if (truncated || !parsed) {
-          // Обрыв: режем порцию пополам и пробуем её же снова.
-          const rows = piece._rows || [];
-          if (rows.length >= 16) {
-            const mid = Math.floor(rows.length / 2);
-            const halves = [rows.slice(0, mid), rows.slice(mid)];
-            const offset = piece._offset || 0;
-            halves.forEach((half, hi) => {
-              const from = offset + (hi === 0 ? 0 : mid);
-              pieces.push({
-                ...piece,
-                _depth: (piece._depth || 0) + 1,
-                _offset: from,
-                _rows: half,
-                fromLine: from + 1,
-                toLine: from + half.length,
-                title: `${piece.title} [${from + 1}–${from + half.length}]`,
-                text: half.join('\n')
-              });
-            });
-            shrinks += 1;
-            emit({
-              step: 'chunk_shrink',
-              message: `Порция ${ci + 1}/${chunks.length}: ответ оборван `
-                + `(${truncated ? 'stop=length' : 'JSON не собрался'}) — режу `
-                + `${rows.length} строк на ${mid} + ${rows.length - mid} и повторяю.`,
-              pct: chunkPct,
-              chunk: ci + 1,
-              chunks: chunks.length,
-              rows: rows.length,
-              shrinks
-            });
-            continue;
-          }
-          emit({
-            step: 'chunk_lost_rows',
-            message: `Порция ${ci + 1}/${chunks.length}: ${rows.length} строк не разобралось `
-              + `даже после дробления — попадут в предупреждения.`,
-            chunk: ci + 1,
-            chunks: chunks.length,
-            rows: rows.length
-          });
-          continue;
-        }
-
-        // Успех: позиции этой части идут в общий котёл.
-        const dvPart = stages.normalizeDv(parsed, catalog);
-        if (!firstDv) firstDv = dvPart;
-        perChunk.push(dvPart.positions || []);
-        gotChunk += (dvPart.positions || []).length;
-        chunkOk = true;
-        const said = Number(parsed.source_positions_count);
-        if (Number.isFinite(said) && said > 0) modelSaidPositions += Math.round(said);
-        if (rowsInPiece) {
-          heldRows += Math.max(0, rowsInPiece - (dvPart.positions || []).length);
-        }
+      let res = null;
+      try {
+        res = await completeOrStream(o.aiProvider, {
+          system: chunkSystem,
+          messages: [{
+            role: 'user',
+            content: `Перенеси ВСЕ строки этой порции таблицы в JSON — по одной позиции на строку. `
+              + `Ничего не суммируй, ничего не пропускай. Порция: строки ${fromLine}–${toLine}.\n\n`
+              + text
+          }],
+          maxTokens: outLimit,
+          temperature: 0,
+          expectJson: true,
+          reasoning: { enabled: false },
+          model: o.model
+        }, typeof o.onProgress === 'function' ? emit : null, {
+          pct: chunkPct,
+          label: `порция ${chunkNo}`
+        });
+      } catch (e) {
+        emit({
+          step: 'chunk_fail',
+          message: `Порция ${chunkNo} не ответила: ${String(e.message || '').slice(0, 80)}`,
+          chunk: chunkNo
+        });
+        res = null;
       }
-      rounds += chunkOk ? 1 : 0;
+
+      const stopReason = String((res && res.stopReason) || '').toLowerCase();
+      const truncated = stopReason === 'length' || stopReason === 'max_tokens';
+      const parsed = res ? safeJson(res.text) : null;
+
+      if (truncated || !parsed) {
+        if (rows.length > MIN_PORTION) {
+          // Делим пополам и пробуем тот же участок снова — курсор НЕ двигаем.
+          rowsPerChunk = Math.max(MIN_PORTION, Math.floor(rows.length / 2));
+          shrinks += 1;
+          emit({
+            step: 'chunk_shrink',
+            message: `Порция ${chunkNo}: ответ оборван (${truncated ? 'stop=length' : 'JSON не собрался'}) — `
+              + `уменьшаю до ${rowsPerChunk} строк и повторяю.`,
+            pct: chunkPct,
+            chunk: chunkNo,
+            rows: rows.length,
+            rows_per_chunk: rowsPerChunk,
+            shrinks
+          });
+          continue;
+        }
+        // Мельче некуда — строки честно считаем потерянными и идём дальше.
+        heldRows += rows.length;
+        cursor += rows.length;
+        emit({
+          step: 'chunk_lost_rows',
+          message: `Порция ${chunkNo}: ${rows.length} строк не разобралось даже по ${rows.length} — `
+            + `попадут в предупреждения.`,
+          chunk: chunkNo,
+          rows: rows.length
+        });
+        continue;
+      }
+
+      // Успех: позиции в котёл, курсор двигаем, размер порции растёт.
+      const dvPart = stages.normalizeDv(parsed, catalog);
+      if (!firstDv) firstDv = dvPart;
+      perChunk.push(dvPart.positions || []);
+      const got = (dvPart.positions || []).length;
+      heldRows += Math.max(0, rows.length - got);
+      const said = Number(parsed.source_positions_count);
+      if (Number.isFinite(said) && said > 0) modelSaidPositions += Math.round(said);
+      cursor += rows.length;
+
       const interim = chunker.mergeChunkPositions(perChunk);
       emit({
         step: 'chunk_done',
-        message: `Порция ${ci + 1}/${chunks.length}: +${gotChunk} поз. Собрано сейчас ${interim.length}.`,
-        pct: 12 + Math.round(((ci + 1) / Math.max(chunks.length, 1)) * 55),
-        chunk: ci + 1,
-        chunks: chunks.length,
+        message: `Порция ${chunkNo}: +${got} поз. Собрано ${interim.length}.`,
+        pct: 12 + Math.round((cursor / Math.max(chunkRowsSource.length, 1)) * 55),
+        chunk: chunkNo,
+        rows: rows.length,
+        rows_per_chunk: rowsPerChunk,
         positions: interim.length,
-        chunk_positions: gotChunk
+        chunk_positions: got
       });
+
+      // Рост: пока ответ проходит и порций впереди много — удваиваем размер.
+      const left = chunkRowsSource.length - cursor;
+      if (left > rowsPerChunk && growUps < 3 && rowsPerChunk < 250) {
+        rowsPerChunk = Math.min(250, Math.floor(rowsPerChunk * 2));
+        growUps += 1;
+        emit({
+          step: 'chunk_grow',
+          message: `Ответ прошёл — увеличиваю порцию до ${rowsPerChunk} строк.`,
+          pct: chunkPct,
+          rows_per_chunk: rowsPerChunk
+        });
+      }
     }
+    rounds += chunkNo;
+
     // Склейка с удалением повторов на стыках порций.
     allPositions.push(...chunker.mergeChunkPositions(perChunk));
     lastAdded = allPositions.length;

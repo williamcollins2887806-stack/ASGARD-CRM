@@ -115,5 +115,77 @@ check('нормальный ответ не дробится (нет лишни�
   assert.strictEqual(r.got, 104);
 });
 
+// ── Рост порции: размер подбирается, а не берётся из константы ──────────────
+/**
+ * Модель поведения очереди строк (как в generateDv): старт с малого,
+ * рост при успехе, деление при обрыве.
+ */
+function simulateAdaptive(totalRows, start, canHandle) {
+  const rows = Array.from({ length: totalRows }, (_, i) => 'строка ' + (i + 1));
+  let cursor = 0;
+  let size = start;
+  let growUps = 0;
+  const calls = [];
+  let got = 0;
+  let shrinks = 0;
+  let lost = 0;
+  let guard = 0;
+  while (cursor < rows.length && guard < 200) {
+    guard += 1;
+    const slice = rows.slice(cursor, cursor + size);
+    const ok = canHandle(slice.length);
+    calls.push({ size: slice.length, ok });
+    if (!ok) {
+      if (slice.length > 8) {
+        size = Math.max(8, Math.floor(slice.length / 2));
+        shrinks += 1;
+        continue;
+      }
+      lost += slice.length;
+      cursor += slice.length;
+      continue;
+    }
+    got += slice.length;
+    cursor += slice.length;
+    if (rows.length - cursor > size && growUps < 3 && size < 250) {
+      size = Math.min(250, Math.floor(size * 2));
+      growUps += 1;
+    }
+  }
+  return { calls, got, shrinks, lost, finalSize: size };
+}
+
+check('порция РАСТЁТ, когда ответ проходит', () => {
+  const r = simulateAdaptive(500, 20, () => true);
+  assert.ok(r.calls.length < 25, 'вызовов ' + r.calls.length + ' — рост не работает');
+  assert.ok(r.finalSize > 20, 'размер не вырос: ' + r.finalSize);
+  assert.strictEqual(r.got, 500, 'разобрано ' + r.got + ' из 500');
+  assert.strictEqual(r.lost, 0);
+});
+
+check('порция ДЕЛИТСЯ, когда провайдер не тянет', () => {
+  // Провайдер держит не больше 40 строк за вызов, а старт — 120.
+  const r = simulateAdaptive(400, 120, (n) => n <= 40);
+  assert.ok(r.shrinks >= 1, 'деления не было');
+  assert.strictEqual(r.got, 400, 'разобрано ' + r.got + ' из 400');
+  assert.strictEqual(r.lost, 0);
+});
+
+check('размер НЕ берётся из константы: на слабом провайдере он меньше', () => {
+  const strong = simulateAdaptive(600, 20, () => true);
+  const weak = simulateAdaptive(600, 20, (n) => n <= 40);
+  assert.ok(weak.finalSize <= strong.finalSize,
+    `слабый провайдер получил порцию ${weak.finalSize} больше сильного ${strong.finalSize}`);
+  assert.ok(weak.calls.length >= strong.calls.length,
+    'слабый провайдер сделал меньше вызовов — значит размер не подстроился');
+});
+
+check('адаптивный режим не теряет строк на большом объёме', () => {
+  const r = simulateAdaptive(2000, 20, (n) => n <= 100);
+  assert.strictEqual(r.got, 2000, 'разобрано ' + r.got + ' из 2000');
+  assert.strictEqual(r.lost, 0);
+  assert.ok(r.calls.length < 100, 'вызовов ' + r.calls.length);
+});
+
 console.log(`\nитог: ${pass} PASS, ${fail} FAIL`);
 process.exitCode = fail ? 1 : 0;
