@@ -251,6 +251,67 @@ window.AsgardRpReviewModal = (function () {
    * страховка). Если не определён — показываем баннер и вопрос РП, а не
    * выдумываем график.
    */
+  /**
+   * Даты заезда из ТЕКСТОВОГО ярлыка периода.
+   *
+   * Зачем: у заездов в visit_plan часто нет period_start/period_end — только
+   * подпись «май», «октябрь 2027», «май-июнь». Без дат Гант не рисовался
+   * вовсе (months пустой), и РП видел заголовок графика и пустоту.
+   *
+   * Понимает: «май», «май 2027», «октябрь 2027», «май-июнь», «март - апрель»,
+   * «10.2027», «2027-10», «январь – март 2027». Возвращает первый и последний
+   * месяц периода как YYYY-MM-DD; чего понять не удалось — null.
+   *
+   * @param {string} label — подпись заезда
+   * @param {string} [start] — уже известное начало (приоритет)
+   * @param {string} [end] — уже известный конец
+   * @returns {{start:string|null, end:string|null}}
+   */
+  function periodSpanFromLabel(label, start, end) {
+    if (start || end) return { start: start || null, end: end || null };
+
+    const MONTHS = {
+      январ: 1, феврал: 2, март: 3, апрел: 4, май: 5, мая: 5, июн: 6,
+      июл: 7, август: 8, сентябр: 9, октябр: 10, ноябр: 11, декабр: 12
+    };
+    const src = String(label || '').toLowerCase();
+    if (!src) return { start: null, end: null };
+
+    const yearMatch = src.match(/(20\d{2})/);
+    const year = yearMatch ? Number(yearMatch[1]) : new Date().getFullYear();
+
+    // Числовая запись: 10.2027 или 2027-10
+    const numeric = src.match(/\b(\d{1,2})[./-](20\d{2})\b/) || src.match(/\b(20\d{2})[./-](\d{1,2})\b/);
+    if (numeric) {
+      const m = Number(numeric[1].length === 4 ? numeric[2] : numeric[1]);
+      const y = Number(numeric[1].length === 4 ? numeric[1] : numeric[2]);
+      if (m >= 1 && m <= 12) {
+        return { start: `${y}-${String(m).padStart(2, '0')}-01`, end: monthEndIso(y, m) };
+      }
+    }
+
+    // Названия месяцев: берём первый и последний по порядку в тексте.
+    const found = [];
+    for (const [stem, m] of Object.entries(MONTHS)) {
+      const idx = src.indexOf(stem);
+      if (idx >= 0) found.push({ idx, m });
+    }
+    if (!found.length) return { start: null, end: null };
+    found.sort((a, b) => a.idx - b.idx);
+    const first = found[0].m;
+    const last = found[found.length - 1].m;
+    return {
+      start: `${year}-${String(first).padStart(2, '0')}-01`,
+      end: monthEndIso(year, last)
+    };
+  }
+
+  /** Последний день месяца в ISO. */
+  function monthEndIso(year, month) {
+    const d = new Date(Date.UTC(year, month, 0));
+    return d.toISOString().slice(0, 10);
+  }
+
   function renderVisitSchedule(rj) {
     const vp = rj && rj.visit_plan;
     if (!vp) return '';
@@ -296,6 +357,17 @@ window.AsgardRpReviewModal = (function () {
 
     // Таймлайн: один месяц — одна колонка. Полоса заезда накрывает месяцы
     // его периода; без дат — полоса занимает весь ряд с пометкой «без срока».
+    //
+    // ВАЖНО (дефект 12.11.2026): у заездов часто НЕТ period_start/period_end —
+    // только текстовый ярлык («май», «октябрь 2027»). Раньше даты брались
+    // строго из полей, поэтому months оставался пустым, и Гант не рисовался
+    // вовсе — РП видел заголовок и пустоту. Теперь даты ВЫВОДЯТСЯ из ярлыка.
+    const resolved = visits.map((v) => {
+      const span = v.period_start && v.period_end
+        ? { start: v.period_start, end: v.period_end }
+        : periodSpanFromLabel(v.label || v.period || '', v.period_start, v.period_end);
+      return Object.assign({}, v, span);
+    });
     const months = [];
     const monthKeys = new Set();
     const addMonth = (key) => {
@@ -304,9 +376,9 @@ window.AsgardRpReviewModal = (function () {
       monthKeys.add(key);
       months.push(key);
     };
-    visits.forEach((v) => {
-      const s = String(v.period_start || '').slice(0, 7);
-      const e = String(v.period_end || '').slice(0, 7);
+    resolved.forEach((v) => {
+      const s = String(v.start || '').slice(0, 7);
+      const e = String(v.end || '').slice(0, 7);
       if (s && e && s !== e) {
         // Заполняем месяцы между началом и концом.
         const [sy, sm] = s.split('-').map(Number);
@@ -412,9 +484,9 @@ window.AsgardRpReviewModal = (function () {
     }
     h += '</div>';
 
-    visits.forEach((v, i) => {
-      const s = String(v.period_start || '').slice(0, 7);
-      const e = String(v.period_end || '').slice(0, 7);
+    resolved.forEach((v, i) => {
+      const s = String(v.start || '').slice(0, 7);
+      const e = String(v.end || '').slice(0, 7);
       const spanMonths = months.length ? Math.max(1, monthSpan(s, e, months)) : 0;
       const startIdx = months.length ? Math.max(0, months.indexOf(s)) : 0;
 
@@ -423,7 +495,7 @@ window.AsgardRpReviewModal = (function () {
           '<span class="rp-visit-row__num">' + (i + 1) + '</span>' +
           '<span class="rp-visit-row__name">' + esc(v.label || 'заезд') + '</span>' +
           '<span class="rp-visit-row__dates">' +
-            esc([v.period_start, v.period_end].filter(Boolean).join(' — ') || 'даты не указаны') +
+            esc([v.start, v.end].filter(Boolean).join(' — ') || 'даты не указаны') +
           '</span>' +
         '</div>';
 
@@ -495,11 +567,68 @@ window.AsgardRpReviewModal = (function () {
       g.people = Math.max(g.people, Number(p.people) || 0);
       if (Number(p.days) > 0) g.days += Number(p.days);
     }
-    const list = [...groups.values()].sort((a, b) => b.works - a.works || a.label.localeCompare(b.label));
+    // ── Сортировка ПО КАЛЕНДАРЮ, а не по количеству работ ─────────────────
+    // Раньше здесь было `sort((a,b) => b.works - a.works)`: месяцы шли в
+    // порядке убывания объёма — май, сентябрь, март, апрель. Ведомость
+    // читают как график, поэтому нужен январь → декабрь (жалоба 12.11.2026).
+    //
+    // Ключ периода приводим к числу месяцев: `parsePeriodToMonth` даёт
+    // { from, to } в виде YYYYMM, а для составных периодов («май-июнь»,
+    // «март, июль, сентябрь») берём САМЫЙ РАННИЙ месяц — так строка встаёт
+    // в начало своего окна, а не после всех.
+    const list = [...groups.values()].sort((a, b) => {
+      const ma = periodSortKey(a.key, a.label);
+      const mb = periodSortKey(b.key, b.label);
+      if (ma !== mb) return ma - mb;
+      // Внутри одного месяца — по объёму работ, чтобы крупное было выше.
+      return (b.works || 0) - (a.works || 0) || String(a.label).localeCompare(String(b.label));
+    });
     if (noPeriod.length) {
+      // «Без срока» — всегда последним: это не месяц, а пробел в данных.
       list.push({ key: '__none__', label: 'без срока', positions: noPeriod, works: noPeriod.length, mh: 0, people: 0, days: 0 });
     }
     return list;
+  }
+
+  /**
+   * Числовой ключ периода для календарной сортировки: YYYYMM.
+   *
+   * Понимает: «май», «май 2027», «октябрь 2027», «10.2027», «2027-10»,
+   * «май-июнь», «март, июль, сентябрь 2027», «май либо июль 2027».
+   * Для периода с несколькими месяцами берётся САМЫЙ РАННИЙ.
+   * Непонятное — в конец (999999), чтобы не ломать порядок известных.
+   *
+   * @param {string} key — нормализованный ключ группы
+   * @param {string} label — исходная подпись
+   * @returns {number}
+   */
+  function periodSortKey(key, label) {
+    const months = {
+      январ: 1, феврал: 2, март: 3, апрел: 4, май: 5, мая: 5, июн: 6,
+      июл: 7, август: 8, сентябр: 9, октябр: 10, ноябр: 11, декабр: 12
+    };
+    const src = String(label || key || '').toLowerCase();
+    const yearMatch = src.match(/(20\d{2})/);
+    const year = yearMatch ? Number(yearMatch[1]) : 0;
+
+    // Числовая дата: 10.2027 / 2027-10
+    const num = src.match(/\b(\d{1,2})[./-](20\d{2})\b/) || src.match(/\b(20\d{2})[./-](\d{1,2})\b/);
+    let month = 0;
+    if (num) {
+      month = Number(num[1].length === 4 ? num[2] : num[1]);
+    } else {
+      // Ищем ВСЕ названия месяцев и берём самый ранний.
+      for (const [stem, m] of Object.entries(months)) {
+        if (new RegExp(stem).test(src)) {
+          if (!month || m < month) month = m;
+        }
+      }
+    }
+    if (!month) return 999999;
+    // Год нужен, только если он есть: без года считаем, что это тот же год,
+    // иначе «май» уехал бы в начало до «января 2027».
+    const y = year || 2000;
+    return y * 100 + month;
   }
 
   /** Заголовок периода: свёрнут/развёрнут, с подытогами. */

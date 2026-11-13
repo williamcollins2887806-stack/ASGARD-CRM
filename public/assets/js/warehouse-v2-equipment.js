@@ -832,6 +832,9 @@ window.WH2Equipment = (function () {
     if (!esc) esc = (UI.esc) || (s => String(s == null ? '' : s).replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m])));
     if (!toast) toast = UI.toast || ((t, m, tp) => console.log(`[${tp}] ${t}: ${m}`));
     if (!fmt) fmt = n => (n == null ? '—' : Number(n).toLocaleString('ru-RU'));
+    // Карточку открывают и с маркета, где render() не запускался —
+    // без инжекта стилей модалка едет «сырым» текстом.
+    injectCSS();
     if (!api) api = async (url, opts = {}) => {
       const t = localStorage.getItem('asgard_token') || localStorage.getItem('auth_token');
       const r = await fetch(url, { headers: { Authorization: 'Bearer ' + t, 'Content-Type': 'application/json' }, ...opts });
