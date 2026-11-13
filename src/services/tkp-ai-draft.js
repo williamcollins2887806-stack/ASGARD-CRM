@@ -689,10 +689,37 @@ function readTechPlan(review, pricing) {
   const rj = parseReviewJson(review);
   const raw = rj.tech_json || {};
   const sm = (pricing && pricing.smeta) || {};
+
+  // ── МТР: четыре источника, один порядок ──────────────────────────────────
+  // Контракт агента МТР (13.11.2026): результат лежит в `report_json.mtr`
+  // и `mtr_suggestions`, но `readTechPlan` их не читал вовсе — правки МТР
+  // в карточке не доходили до ТКП. Порядок как в rp-tech-plan-ui.readPlan:
+  //   tech_json.mtr (РП правил в карточке) → smeta.mtr → report_json.mtr
+  //   → report_json.mtr_suggestions
+  //
+  // Отличаем «нет данных» от «РП очистил перечень» (`[]`): пустой массив в
+  // tech_json — это осознанное решение, и подменять его сметой нельзя.
+  const tjHasMtrKey = Object.prototype.hasOwnProperty.call(raw, 'mtr');
+  const tjMtr = Array.isArray(raw.mtr) ? raw.mtr : null;
+  const tjCleared = tjHasMtrKey && Array.isArray(raw.mtr) && raw.mtr.length === 0;
+
+  const smMtr = Array.isArray(sm.mtr) ? sm.mtr : [];
+  const rjMtr = Array.isArray(rj.mtr) ? rj.mtr : [];
+  const rjSug = Array.isArray(rj.mtr_suggestions) ? rj.mtr_suggestions : [];
+
+  const pickMtr = () => {
+    if (tjMtr && tjMtr.length) return tjMtr;
+    if (tjCleared) return [];
+    if (smMtr.length) return smMtr;
+    if (rjMtr.length) return rjMtr;
+    if (rjSug.length) return rjSug;
+    return [];
+  };
+
   return {
     schedule: raw.schedule || sm.schedule || {},
     crew: Array.isArray(raw.crew) && raw.crew.length ? raw.crew : (Array.isArray(sm.crew) ? sm.crew : []),
-    mtr: Array.isArray(raw.mtr) && raw.mtr.length ? raw.mtr : (Array.isArray(sm.mtr) ? sm.mtr : []),
+    mtr: pickMtr(),
     man_hours_total: raw.man_hours_total != null ? raw.man_hours_total
       : ((sm.totals && sm.totals.man_hours != null) ? sm.totals.man_hours : null)
   };
@@ -731,10 +758,17 @@ function collectWorkNames(pricing, review) {
   // Перечень оборудования/техники (секция F) — это объекты работ, не затраты.
   // Заголовок секции («F. Планируемое оборудование и техника») в работы не берём:
   // это подпись раздела, а не работа.
+  //
+  // ВАЖНО: с 13.11.2026 в F лежат ещё и строки МТР (установки АВД, CIP-контуры,
+  // компрессоры) — агент МТР кладёт их туда. Они НЕ являются работами:
+  // без фильтра в таблице КП появлялась строка «Работа: АВД высокого давления».
   const rows = Array.isArray(pricing.smeta && pricing.smeta.rows) ? pricing.smeta.rows : [];
   rows.forEach((r) => {
     if (!r || r.section !== 'F') return;
     if (r.kind === 'section') return;
+    // Строка пришла из МТР — это ресурс, а не работа.
+    if (r.tech_from === 'mtr' || r.mtr_source) return;
+    if (r.is_equipment) return;
     const n = String(r.name || '').trim();
     if (n) push(n);
   });
@@ -805,9 +839,10 @@ function buildTechPromptLines(review, pricing) {
   const crew = Array.isArray(raw.crew) && raw.crew.length
     ? raw.crew
     : (Array.isArray(sm.crew) && sm.crew.length ? sm.crew : []);
-  const mtr = Array.isArray(raw.mtr) && raw.mtr.length
-    ? raw.mtr
-    : (Array.isArray(sm.mtr) ? sm.mtr : []);
+  // МТР — тот же резолвер, что в readTechPlan: иначе в текст КП не попадала
+  // техника из mtr_suggestions, и модель писала условия «по общим словам».
+  const tp = readTechPlan(review, pricing);
+  const mtr = tp.mtr;
   const schedule = Object.assign({}, sm.schedule || {}, raw.schedule || {});
   if (!Number(schedule.work_days) && Number(params.work_days)) schedule.work_days = params.work_days;
   if (!Number(schedule.shift_mode) && Number(params.shifts_per_day)) schedule.shift_mode = String(params.shifts_per_day);
@@ -1241,7 +1276,22 @@ async function buildAiDraft(p) {
   const ctx = buildPromptContext({ tender, review, checklist, docs, pricing });
   const system = buildSystemPrompt(ctx);
   const ai = await callModel(system, USER_INSTRUCTION);
-  const aiData = ai.parsed || {};
+
+  // ── Отказ модели не должен давать правдоподобный пустой ТКП ───────────────
+  // `ai.parsed || {}` молча подменял нераспарсенный ответ пустым объектом:
+  // subject/description подставлялись из fallback, services оставался '',
+  // scope_included/scope_excluded — пустые массивы. Пользователь видел
+  // «ТКП создано» с пустыми блоками и не понимал, что модель не ответила.
+  // Лучше честная ошибка: ТО нажмёт «Сохранить» ещё раз или впишет текст.
+  if (!ai || !ai.parsed) {
+    const reason = (ai && ai.meta && (ai.meta.reason || ai.meta.stop)) || 'ответ модели не разобран';
+    throw Object.assign(
+      new Error('Модель не вернула текст КП (' + reason + '). Черновик не создан — '
+        + 'повторите генерацию. Суммы и позиции при этом не пострадали: они берутся из просчёта.'),
+      { statusCode: 502, code: 'ai_unparsed' }
+    );
+  }
+  const aiData = ai.parsed;
 
   // В таблице КП — одна сводная позиция: строки сметы это статьи затрат,
   // а не работы (см. buildClientItems). Название берём из ПРЕДМЕТА ЗАКУПКИ:

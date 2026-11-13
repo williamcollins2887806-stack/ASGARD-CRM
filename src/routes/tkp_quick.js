@@ -1238,6 +1238,67 @@ async function routes(fastify, options) {
         request.log.warn({ err: e }, 'график заездов не собран');
       }
 
+      // ── Агент МТР: чем выполнять работы ────────────────────────────────
+      // В PROMPT-dv-v1 МТР описан как «химия, расходники, инструмент, СИЗ»,
+      // поэтому модель отдавала ветошь и сальники, но ни одной установки.
+      // Отдельный агент получает уже разобранные позиции и склад, и называет
+      // технику. Отказ не ломает конвейер: ниже подстрахует mtr-pipeline.
+      let mtrAgent = null;
+      try {
+        const mtrSvc = stagesAi;
+        mtrAgent = await mtrSvc.generateMtr({
+          aiProvider,
+          positions,
+          tz_text: allText,
+          warehouse_text: warehouseCtx ? warehouseCtx.text : null,
+          trips: (visitPlan && visitPlan.trip_count) || 1,
+          crew: Number((positions[0] || {}).people) || 5,
+          onProgress: emit
+        });
+        emit({
+          step: 'mtr',
+          message: mtrAgent.ok
+            ? `МТР: техники ${mtrAgent.units.length}, расходников ${mtrAgent.consumables.length}.`
+            : `МТР: агент не дал ресурсов (${mtrAgent.error || 'нет ответа'}), беру типовой перечень.`,
+          pct: 95,
+          mtr_units: (mtrAgent.units || []).length,
+          mtr_consumables: (mtrAgent.consumables || []).length
+        });
+      } catch (e) {
+        request.log.warn({ err: e }, 'агент МТР упал');
+      }
+
+      // Страховка и слияние: типовой перечень по методу, если агент промолчал
+      // или назвал только расходники. Дедуп по имени, ответ агента первым.
+      let mtrMerged = (mtrAgent && Array.isArray(mtrAgent.rows)) ? mtrAgent.rows.slice() : [];
+      try {
+        const mtrPipeline = require('../services/mtr-pipeline');
+        const built = await mtrPipeline.buildMtr({
+          db,
+          positions,
+          people: Number((positions[0] || {}).people) || 5,
+          trips: (visitPlan && visitPlan.trip_count) || 1,
+          allowWeb: false
+        });
+        const seen = new Set(mtrMerged.map((r) => mtrPipeline.normalizeName(r.name)));
+        (built.rows || []).forEach((r) => {
+          const key = mtrPipeline.normalizeName(r.name);
+          if (!key || seen.has(key)) return;
+          seen.add(key);
+          mtrMerged.push({
+            name: r.name,
+            qty: r.qty,
+            unit: r.unit,
+            source: r.source,
+            purpose: r.gap || r.note || '',
+            basis: r.is_equipment ? 'method' : (r.basis || null),
+            is_equipment: !!r.is_equipment
+          });
+        });
+      } catch (e) {
+        request.log.warn({ err: e }, 'МТР: типовой перечень не собран');
+      }
+
       const state = stageSvc.normalizeState({
         gaps: pf.gaps.map((g) => ({ ...g, resolved: true })),
         positions,
@@ -1255,12 +1316,11 @@ async function routes(fastify, options) {
         risks: gen.dv.risks || null,
         decision_recommend: gen.dv.decision_recommend || null,
         // ── МТР: материалы и оборудование ──────────────────────────────────
-        // Модель возвращает их в `mtr_suggestions`, нормализатор их держит,
-        // но раньше state ЭТО поле не сохранял — в БД не было ни у одного
-        // тендера (0 из 10 на 10.11.2026), и вкладка «Бригада и МТР» всегда
-        // показывала «Перечень не заполнен». Сохраняем на этапе ДВ.
-        mtr_suggestions: Array.isArray(gen.dv.mtr_suggestions)
-          ? gen.dv.mtr_suggestions : [],
+        // Источник — отдельный агент МТР (он видит ТЗ и склад) плюс типовой
+        // перечень по методу из mtr-pipeline. Оба слиты в mtrMerged с дедупом.
+        // Раньше здесь был только ответ модели ДВ, и он приходил пустым или
+        // без техники — «ветошь и ремкомплект насоса» без единой установки.
+        mtr_suggestions: mtrMerged.slice(0, 200),
         questions_for_customer: Array.isArray(gen.dv.questions_for_customer)
           ? gen.dv.questions_for_customer : [],
         // Срок и режим работ — тоже часть анализа, нужны перед просчётом.

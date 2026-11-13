@@ -34,6 +34,13 @@ const DEFAULT_PARAMS = {
   rate_master: 7000,
   rate_itr: 10000,
   rate_road: 3000,
+  // Ожидание (простой) на объекте между работами — ₽/чел·день.
+  // Правило 12.11.2026: при разрыве < 25 дней бригада ждёт на объекте,
+  // и это оплачивается. Отдельная ставка, НЕ rate_road: дорога — это
+  // переезд, ожидание — бездействие, но обе по 3000 по факту.
+  rate_wait: 3000,
+  // Дни ожидания на один заезд (суммарно по всем паузам внутри заезда).
+  wait_days_per_trip: 0,
   meals: 1000,
   lodging: 1250,
   siz: 15000,
@@ -278,7 +285,13 @@ function normalizeMtr(mtr) {
       source: MTR_SOURCES.includes(src) ? src : (m.equipment_id ? 'warehouse' : 'purchase'),
       purpose: String(m.purpose || '').trim(),
       price: (m.price != null && m.price !== '') ? num(m.price) : null,
-      note: String(m.note || '')
+      note: String(m.note || ''),
+      // Доля закупки, входящая в себестоимость (блок G). Без переноса здесь
+      // значение из карточки терялось, и любая закупка считалась за 100 %.
+      sharePct: m.sharePct != null && m.sharePct !== '' ? m.sharePct : null,
+      // Техника из агента МТР: нужна UI, чтобы отличать установку от расходника.
+      is_equipment: !!m.is_equipment,
+      price_confirmed: m.price_confirmed !== false
     });
   });
   return out;
@@ -590,30 +603,99 @@ function applyTechPlanRows(rows, crew, mtr, p) {
 
   if (hasMtr) {
     // Убрать прежние строки перечня (в т.ч. шаблонную F1) и собрать из mtr.
+    // Раньше ВСЁ уходило в F как kind:'info', то есть справочно, вне сумм:
+    // закупка не попадала ни в один денежный блок, и МТР не влиял на
+    // себестоимость. Теперь по источнику:
+    //   warehouse → F (наше, цена 0, справочно — в суммы не идёт)
+    //   purchase  → G (закупка, доля sharePct входит в себестоимость)
+    //   rent      → H (аренда, посменная)
+    //
+    // Чистим по tech_from === 'mtr' ВО ВСЕХ разделах: строки МТР теперь живут
+    // не только в F. Иначе повторное применение (правка МТР → пересчёт)
+    // дублировало закупку и удваивало себестоимость.
+    // Плюс, как и раньше, убираем все строки F (включая шаблонную F1):
+    // раздел целиком пересобирается из mtr.
     for (let i = list.length - 1; i >= 0; i -= 1) {
       const r = list[i];
       if (!r) continue;
+      if (r.tech_from === 'mtr') { list.splice(i, 1); continue; }
       if (String(r.section) === 'F' && (r.kind === 'info' || r.kind === 'line')) list.splice(i, 1);
     }
     const secFIdx = list.findIndex((r) => r && r.kind === 'section' && String(r.section) === 'F');
-    const fresh = mtr.map((m, i) => ({
-      id: 'f_mtr_' + (m.code || i),
+
+    const own = [];      // склад — наше
+    const purchase = []; // закупка
+    const rent = [];     // аренда
+
+    mtr.forEach((m, i) => {
+      const src = String(m.source || '').toLowerCase();
+      const row = {
+        id: 'f_mtr_' + (m.code || i),
+        kind: 'info',
+        section: 'F',
+        code: 'F' + (i + 1),
+        name: m.name,
+        unit: m.unit || 'шт',
+        qty: num(m.qty) || 1,
+        price: m.price != null ? m.price : 0,
+        inventory_number: m.inventory_number || '',
+        equipment_id: m.equipment_id || null,
+        mtr_source: m.source,
+        note: m.purpose || m.note || '',
+        tech_from: 'mtr',
+        is_equipment: !!m.is_equipment,
+        editable: { qty: true, price: true, name: true, note: true }
+      };
+      if (src === 'warehouse') {
+        // Своё: цена = 0, чтобы не удваивать себестоимость. Если РП вписал
+        // цену вручную — это его решение, sum пойдёт в амортизацию/расход.
+        own.push(row);
+      } else if (src === 'rent') {
+        rent.push(Object.assign({}, row, {
+          id: 'h_mtr_' + (m.code || i),
+          section: 'H',
+          kind: 'line',
+          code: (rent.length + 1),
+          sharePct: m.sharePct != null ? m.sharePct : 1,
+          editable: { qty: true, price: true, name: true, note: true, sharePct: true }
+        }));
+      } else {
+        purchase.push(Object.assign({}, row, {
+          id: 'g_mtr_' + (m.code || i),
+          section: 'G',
+          kind: 'line',
+          code: 'G' + (purchase.length + 2),
+          // Доля закупки, входящая в себестоимость: по умолчанию 100 %.
+          // РП в просчёте ставит свою долю ПО КАЖДОЙ позиции.
+          sharePct: m.sharePct != null ? m.sharePct : 1,
+          editable: { qty: true, price: true, name: true, note: true, sharePct: true }
+        }));
+      }
+    });
+
+    // F: сначала своё (справочно), затем сама закупка как справка о потребности,
+    // но уже БЕЗ влияния на суммы — денежная строка закупки живёт в G.
+    const fRows = own.concat(purchase.map((r) => Object.assign({}, r, {
+      id: 'f_ref_' + r.id,
       kind: 'info',
       section: 'F',
-      code: 'F' + (i + 1),
-      name: m.name,
-      unit: m.unit || 'шт',
-      qty: num(m.qty) || 1,
-      price: m.price != null ? m.price : 0,
-      inventory_number: m.inventory_number || '',
-      equipment_id: m.equipment_id || null,
-      mtr_source: m.source,
-      note: m.purpose || m.note || '',
-      tech_from: 'mtr',
-      editable: { qty: true, price: true, name: true, note: true }
-    }));
-    if (secFIdx >= 0) list.splice(secFIdx + 1, 0, ...fresh);
-    else list.push(...fresh);
+      mtr_ref_to: r.id
+    })));
+    if (secFIdx >= 0) list.splice(secFIdx + 1, 0, ...fRows);
+    else list.push(...fRows);
+
+    // G: после заголовка секции G.
+    if (purchase.length) {
+      const secGIdx = list.findIndex((r) => r && r.kind === 'section' && String(r.section) === 'G');
+      if (secGIdx >= 0) list.splice(secGIdx + 1, 0, ...purchase);
+      else list.push(...purchase);
+    }
+    // H: после заголовка секции H.
+    if (rent.length) {
+      const secHIdx = list.findIndex((r) => r && r.kind === 'section' && String(r.section) === 'H');
+      if (secHIdx >= 0) list.splice(secHIdx + 1, 0, ...rent);
+      else list.push(...rent);
+    }
   }
 
   return list;
@@ -674,6 +756,33 @@ function evalQtyExpr(expr, p) {
   const crew = num(p.workers_per_shift) + num(p.masters_per_shift);
   const trips = num(p.trip_count) || 1;
   const workPerTrip = num(p.work_days) / trips;
+
+  /**
+   * Люд-дни и число людей ПО ЗАЕЗДАМ, если план их передал.
+   *
+   * Раньше смета считала `crew × trips`: на КАЖДЫЙ выезд «ехали» все
+   * (например 30 человек), даже если в заезде 5 позиций. Дорога, проживание,
+   * пайковые и ожидание раздувались кратно (дефект 12.11.2026).
+   *
+   * Теперь план отдаёт `visits_work[].people` — сколько человек реально едет
+   * в каждый заезд. Считаем по ним:
+   *   visitPersonDays  — Σ(люди × трудосутки) = люд-дни работы на объекте;
+   *   visitTripPeople  — Σ(люди) = сколько всего поездок туда-обратно.
+   *
+   * Если разреза нет (ручной расчёт, старая смета) — падаем на прежнюю
+   * формулу `crew × trips`, чтобы ничего не сломать.
+   */
+  const visitPeople = Array.isArray(p.visits_work)
+    ? p.visits_work.filter((v) => v && Number(v.people) > 0)
+    : [];
+  const hasVisitPeople = visitPeople.length > 0;
+  const visitPersonDays = hasVisitPeople
+    ? visitPeople.reduce((s, v) => s + Number(v.people) * (Number(v.work_days) || 0), 0)
+    : null;
+  const visitTripPeople = hasVisitPeople
+    ? visitPeople.reduce((s, v) => s + Number(v.people), 0)
+    : null;
+
   const map = {
     work_days: num(p.work_days),
     shifts: num(p.shifts_per_day),
@@ -687,14 +796,35 @@ function evalQtyExpr(expr, p) {
     itr_days: num(p.work_days),
     master_shifts: num(p.work_days) * num(p.shifts_per_day) * num(p.masters_per_shift),
     worker_shifts: num(p.work_days) * num(p.shifts_per_day) * num(p.workers_per_shift),
-    // (раб+мастер)×смен×дорога×2×выезды
-    road_person_days: crew * num(p.shifts_per_day) * num(p.road_days) * 2 * trips,
+    // (раб+мастер)×смен×дорога×2×выезды — либо по людям заездов, если план их дал.
+    road_person_days: visitTripPeople != null
+      ? visitTripPeople * num(p.shifts_per_day) * num(p.road_days) * 2
+      : crew * num(p.shifts_per_day) * num(p.road_days) * 2 * trips,
     // СИЗ: люди на проект ≈ бригада×смен + ИТР
     siz_people: crew * num(p.shifts_per_day) + 1,
-    // Пайковые: siz_people × (сут на выезд) × выезды; сут = work/trip + road×2 + mob
-    meal_person_days: (crew * num(p.shifts_per_day) + 1) * (workPerTrip + num(p.road_days) * 2 + num(p.mob_days)) * trips,
-    // Проживание: crew×shifts × (work/trip + mob) × trips
-    lodging_nights: crew * num(p.shifts_per_day) * (workPerTrip + num(p.mob_days)) * trips,
+    // Пайковые: люд-дни × выезды; сут = work/trip + road×2 + mob.
+    // Если план передал людей по заездам — берём их люд-дни, а не crew × trips.
+    meal_person_days: hasVisitPeople
+      ? visitPersonDays
+        + (visitTripPeople * num(p.shifts_per_day) + trips)
+          * (num(p.road_days) * 2 + num(p.mob_days))
+      : (crew * num(p.shifts_per_day) + 1) * (workPerTrip + num(p.road_days) * 2 + num(p.mob_days)) * trips,
+    // Проживание: люд-ночи = работа + мобилизация, по людям каждого заезда.
+    lodging_nights: hasVisitPeople
+      ? visitPersonDays + (visitTripPeople * num(p.shifts_per_day) + trips) * num(p.mob_days)
+      : crew * num(p.shifts_per_day) * (workPerTrip + num(p.mob_days)) * trips,
+    // Ожидание на объекте: чел·дни простоя ВСЕЙ бригады.
+    //
+    // Считается так: люди (бригада × смены + ИТР) × дни ожидания на заезд ×
+    // выезды. Дни ожидания приходят из графика заездов — это суммарные паузы
+    // между работами внутри одного заезда (при разрыве < 25 дней бригада
+    // остаётся на объекте, правило 12.11.2026).
+    //
+    // Если ожидания нет — 0, и строка C3 не влияет на сумму (цена 0 не мешает,
+    // но лучше не показывать пустую строку: см. фильтр пустых).
+    wait_person_days: hasVisitPeople
+      ? (visitTripPeople * num(p.shifts_per_day) + trips) * num(p.wait_days_per_trip)
+      : (crew * num(p.shifts_per_day) + 1) * num(p.wait_days_per_trip) * trips,
     // Потери B в чел·сменах: часы × люди / производительных часов в смене.
     // Наценка на них не начисляется отдельно — это труд, ставка рабочего.
     loss_person_shifts: (() => {
@@ -744,6 +874,7 @@ function evalPriceExpr(expr, p) {
     rate_master: num(p.rate_master),
     rate_worker: num(p.rate_worker),
     rate_road: num(p.rate_road),
+    rate_wait: num(p.rate_wait),
     meals: num(p.meals),
     lodging: num(p.lodging),
     siz: num(p.siz)
@@ -790,6 +921,17 @@ function skeletonRows() {
       qtyExpr: 'meal_person_days', priceExpr: 'meals', editable: { qty: true, price: true, name: true } },
     { id: 'c2', kind: 'line', section: 'C', code: 'C2', name: 'Проживание', unit: 'чел·ночь',
       qtyExpr: 'lodging_nights', priceExpr: 'lodging', editable: { qty: true, price: true, name: true } },
+    // Ожидание (простой) между работами внутри ОДНОГО заезда.
+    //
+    // Правило 12.11.2026: если между работами меньше 25 дней, бригада не едет
+    // домой — люди ждут на объекте. Гонять их туда-обратно дороже: дорога × 2
+    // плюс мобилизация на каждый приезд. Но и простой не бесплатный: он
+    // оплачивается по ставке ожидания (по умолчанию 3000 ₽/чел·день).
+    //
+    // Строка в разделе C (командировочные), потому что это выплата работнику
+    // за время на объекте — как пайковые. Значит она входит в базу налога 55%.
+    { id: 'c3', kind: 'line', section: 'C', code: 'C3', name: 'Ожидание на объекте (простой между работами)', unit: 'чел·дн',
+      qtyExpr: 'wait_person_days', priceExpr: 'rate_wait', editable: { qty: true, price: true, name: true } },
     { id: 'c_tot', kind: 'subtotal', section: 'C', code: 'C_TOT', name: 'Командировочные, итого', sumOf: 'C_lines' },
 
     { id: 'sec_d', kind: 'section', section: 'D', name: 'D. Логистика / транспорт' },
@@ -962,6 +1104,18 @@ function recalcAsgardSmeta(estimate) {
   est.params = mergeParams(est.params);
   const p = est.params;
 
+  // ── Разрез по заездам → внутрь параметров ────────────────────────────────
+  // `visits_work` приходит сверху (из плана) и описывает, сколько человек
+  // едет в каждый заезд. evalQtyExpr работает только с params, поэтому
+  // пробрасываем разрез туда: иначе смета снова считает crew × trips и
+  // «везёт» всю бригаду в маленький заезд.
+  if (Array.isArray(est.visits_work) && est.visits_work.length) {
+    p.visits_work = est.visits_work.map((v) => ({
+      people: Number(v && v.people) > 0 ? Number(v.people) : null,
+      work_days: Number(v && v.work_days) > 0 ? Number(v.work_days) : 0
+    })).filter((v) => v.people != null);
+  }
+
   // Техплан: бригада, МТР, график. Нормализуем ДО строк — из него строятся A и F.
   est.crew = normalizeCrew(est.crew);
   // ── Состав бригады → параметры сметы ──────────────────────────────────────
@@ -1104,14 +1258,20 @@ function recalcAsgardSmeta(estimate) {
   const fot = sumSectionLines('A');
   const current = sumSectionLines('B');
   const travel = sumSectionLines('C');
-  // База налога 55% = ФОТ + пайковые (суточные/пайковые — выплата работнику, облагается).
-  // Проживание — компенсация расходов, налогом не облагается, поэтому берём только C1.
-  const perDiem = (est.rows || []).reduce((s, r) => {
+  // База налога 55% = ФОТ + пайковые + ожидание.
+  //
+  // Пайковые и ожидание — выплаты РАБОТНИКУ за время на объекте, поэтому
+  // облагаются как ФОТ (решение 12.11.2026). Проживание — компенсация
+  // расходов, налогом не облагается, поэтому в базу не входит.
+  const perDiemAndWait = (est.rows || []).reduce((s, r) => {
     if (r.kind !== 'line') return s;
-    const isPerDiem = r.id === 'c1' || String(r.code || '').toUpperCase() === 'C1';
-    return isPerDiem ? s + num(r.sum) : s;
+    const id = String(r.id || '').toLowerCase();
+    const code = String(r.code || '').toUpperCase();
+    // C1 — пайковые, C3 — ожидание. Оба в базе налога.
+    const taxable = id === 'c1' || id === 'c3' || code === 'C1' || code === 'C3';
+    return taxable ? s + num(r.sum) : s;
   }, 0);
-  const fotTaxBase = fot + perDiem;
+  const fotTaxBase = fot + perDiemAndWait;
   const fotTax = Math.round(fotTaxBase * p.fot_tax * 100) / 100;
   const personnel = fot + fotTax;
   const transport = sumSectionLines('D');

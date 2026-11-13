@@ -99,8 +99,13 @@
     // tech_json мог быть сохранён раньше, чем в нём появился МТР (сборка сметы
     // из анализа писала mtr: []). Тогда вкладка «Бригада и МТР» показывала
     // «Перечень не заполнен», хотя ведомость материалов уже лежала в смете.
-    // Пустой список в отчёте — не приговор: берём из сметы/отчёта.
-    if (!plan.mtr.length) {
+    //
+    // ВАЖНО: отличаем «нет данных» (`undefined`/`null`) от «РП очистил
+    // перечень» (`[]`). Раньше проверялось только `.length`, и очистка
+    // возвращала старые строки из сметы — РП убрал позицию, а она всплывала.
+    const mtrDeclared = tj && Object.prototype.hasOwnProperty.call(tj, 'mtr');
+    const mtrClearedByRp = mtrDeclared && Array.isArray(tj.mtr) && tj.mtr.length === 0;
+    if (!plan.mtr.length && !mtrClearedByRp) {
       const fallback = Array.isArray(est.mtr) ? est.mtr
         : (Array.isArray(rj.mtr) ? rj.mtr
           : (Array.isArray(rj.mtr_suggestions) ? rj.mtr_suggestions : []));
@@ -184,6 +189,17 @@
   function fmtQty(n) {
     const v = Number(n) || 0;
     return v.toLocaleString('ru-RU', { maximumFractionDigits: 2 });
+  }
+
+  /**
+   * Деньги в МТР: цена закупки приходит из справочника типовой (не сделка),
+   * поэтому копейки не нужны, но и округлять до сотен нельзя — цена может
+   * быть точной из счёта. Две значащие цифры после запятой.
+   */
+  function fmtMoney(n) {
+    const v = Number(n);
+    if (!Number.isFinite(v)) return '—';
+    return v.toLocaleString('ru-RU', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
   }
 
   /* ─────────────────── разметка ─────────────────── */
@@ -343,12 +359,13 @@
       + '</div>';
     h += '<table class="rp-tech-table rp-tech-table--edit"><thead><tr>'
       + '<th>Название</th><th>Инв. номер</th><th class="num">Кол-во</th><th>Ед.</th>'
-      + '<th>Источник</th><th>Назначение</th>' + (ro ? '' : '<th></th>') + '</tr></thead><tbody>';
+      + '<th>Источник</th><th class="num">Цена, ₽</th><th class="num">В себест., %</th>'
+      + '<th>Назначение</th>' + (ro ? '' : '<th></th>') + '</tr></thead><tbody>';
     if (!mtr.length) {
       // Пустой МТР — не ошибка, а отсутствие данных. Раньше здесь стояло
       // сухое «Перечень не заполнен», и РП думал, что не хватает полей
       // (жалоба 09.11.2026). Теперь объясняем, что это и как заполнить.
-      h += '<tr><td colspan="' + (ro ? 6 : 7) + '" class="rp-tech-note">'
+      h += '<tr><td colspan="' + (ro ? 8 : 9) + '" class="rp-tech-note">'
         + (ro
           ? 'Материалы и оборудование не указаны.'
           : 'Материалы и оборудование не указаны — это не блокирует просчёт. '
@@ -357,6 +374,31 @@
     }
     mtr.forEach((m, i) => {
       const sug = m.suggested || null;
+      const srcCode = String(m.source || 'purchase');
+      // Склад — наше (цена 0, деньги уже в амортизации). Закупка — деньги
+      // в блок G с долей sharePct. Аренда — блок H. Бейдж говорит РП, куда
+      // пойдёт строка, не заставляя открывать смету.
+      const srcBadge = '<span class="rp-mtr-src rp-mtr-src--' + esc(srcCode) + '">'
+        + esc(srcCode === 'warehouse' ? 'склад' : srcCode === 'rent' ? 'аренда' : 'закупка')
+        + '</span>';
+      // Неподтверждённая цена — пробел: РП видит его, а не ноль.
+      const priceGap = m.price != null && m.price_confirmed === false;
+      const priceCell = ro
+        ? (m.price != null ? fmtMoney(m.price) : '—')
+          + (priceGap ? ' <span class="rp-mtr-gap" title="цена типовая, не подтверждена">?</span>' : '')
+        : '<input type="number" min="0" step="0.01" style="width:96px"'
+            + ' data-mtr="' + i + '.price" value="' + esc(m.price != null ? m.price : '') + '"'
+            + ' placeholder="' + (priceGap ? 'уточнить' : '0') + '"' + dis + '>'
+          + (priceGap ? ' <span class="rp-mtr-gap" title="цена типовая, не подтверждена">?</span>' : '');
+      // Доля в себестоимость — только для закупки: склад не закупаем,
+      // аренда входит целиком.
+      const shareCell = srcCode === 'purchase'
+        ? (ro
+          ? esc(String(Math.round(Number(m.sharePct != null ? m.sharePct : 1) * 100)) + ' %')
+          : '<input type="number" min="0" max="100" step="1" style="width:64px"'
+            + ' data-mtr="' + i + '.sharePct"'
+            + ' value="' + esc(Math.round(Number(m.sharePct != null ? m.sharePct : 1) * 100)) + '"' + dis + '>')
+        : '<span class="rp-tech-note">—</span>';
       const nameCell = ro
         ? esc(m.name)
         : '<input type="text" list="rpTechStockList" data-mtr="' + i + '.name" value="' + esc(m.name) + '">'
@@ -368,10 +410,12 @@
         + '<td class="mono"><input type="text" style="width:110px" data-mtr="' + i + '.inventory_number" value="' + esc(m.inventory_number || (sug && sug.inventory_number) || '') + '"' + dis + '></td>'
         + '<td class="num"><input type="number" min="0" step="1" style="width:64px" data-mtr="' + i + '.qty" value="' + esc(m.qty || 1) + '"' + dis + '></td>'
         + '<td><input type="text" style="width:56px" data-mtr="' + i + '.unit" value="' + esc(m.unit || 'шт') + '"' + dis + '></td>'
-        + '<td><select data-mtr="' + i + '.source"' + dis + '>'
-        + MTR_SOURCES.map((s) => '<option value="' + s.code + '"'
-          + (m.source === s.code ? ' selected' : '') + '>' + esc(s.label) + '</option>').join('')
-        + '</select></td>'
+        + '<td>' + (ro ? srcBadge : '<select data-mtr="' + i + '.source"' + dis + '>'
+          + MTR_SOURCES.map((s) => '<option value="' + s.code + '"'
+            + (m.source === s.code ? ' selected' : '') + '>' + esc(s.label) + '</option>').join('')
+          + '</select>') + '</td>'
+        + '<td class="num">' + priceCell + '</td>'
+        + '<td class="num">' + shareCell + '</td>'
         + '<td><input type="text" data-mtr="' + i + '.purpose" value="' + esc(m.purpose || '') + '"' + dis + '></td>'
         + (ro ? '' : '<td><button type="button" class="rp-tech-del" data-mtr-del="' + i + '" title="Удалить">✕</button></td>')
         + '</tr>';
@@ -458,13 +502,28 @@
       });
     }).filter((c) => c.count > 0 || c.role_code);
 
-    base.mtr = base.mtr.map((m) => Object.assign({}, m, {
-      name: txt(m.name),
-      inventory_number: txt(m.inventory_number),
-      qty: num(m.qty, 1) || 1,
-      unit: txt(m.unit) || 'шт',
-      source: MTR_SOURCES.some((s) => s.code === m.source) ? m.source : 'purchase'
-    })).filter((m) => m.name || m.inventory_number);
+    base.mtr = base.mtr.map((m) => {
+      const src = MTR_SOURCES.some((s) => s.code === m.source) ? m.source : 'purchase';
+      const priceNum = m.price === '' || m.price == null ? null : num(m.price, 0);
+      // Доля приходит из input в процентах (0..100) — переводим в 0..1.
+      // Раньше поле не переносилось, и любая закупка считалась за 100 %.
+      let sharePct = m.sharePct;
+      if (sharePct === '' || sharePct == null) sharePct = 1;
+      else {
+        const n = num(sharePct, 100);
+        sharePct = Math.max(0, Math.min(100, n)) / 100;
+      }
+      return Object.assign({}, m, {
+        name: txt(m.name),
+        inventory_number: txt(m.inventory_number),
+        qty: num(m.qty, 1) || 1,
+        unit: txt(m.unit) || 'шт',
+        source: src,
+        price: priceNum,
+        // Долю держим только у закупки: склад не закупаем, аренда входит целиком.
+        sharePct: src === 'purchase' ? sharePct : 1
+      });
+    }).filter((m) => m.name || m.inventory_number);
 
     base.man_hours_total = manHours(base);
     base.filled_by = 'rp';

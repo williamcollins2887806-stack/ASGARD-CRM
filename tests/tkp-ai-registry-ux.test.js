@@ -95,15 +95,36 @@ check('API реестра отдаёт tkp_id', () => {
   assert.ok(/ORDER BY k\.id DESC/.test(apiSrc), 'нет ORDER BY id DESC LIMIT 1');
 });
 
-check('full KP PDF со stamp не идёт в LibreOffice', () => {
-  assert.ok(/wantStamp/.test(fullSrc) || /opts\.stamp \|\| opts\.signature/.test(fullSrc),
-    'нет ветки wantStamp');
-  // LibreOffice convert только внутри !wantStamp
+check('full KP PDF со stamp идёт через тот же DOCX-шаблон (не HTML)', () => {
+  // Раньше этот гейт требовал обратного: «при stamp/signature не идти в
+  // LibreOffice, отдать HTML». На практике это давало РАЗНЫЕ документы:
+  // Word по шаблону с логотипом и печатью, PDF — HTML-рендер без шапки
+  // (ТКП 3071, 08.11.2026; владелец сравнил выгрузки). Коммиты 03f62469 и
+  // ddc3909b перевели печать внутрь DOCX (applyStampAndSignature) и оставили
+  // один шаблон для Word и PDF.
+  //
+  // Теперь проверяем то, что действительно важно:
+  //  1) PDF собирается из DOCX-шаблона ВСЕГДА, включая штамп;
+  //  2) stamp/signature доезжают до сборки DOCX, а не теряются;
+  //  3) картинки вставляются в сам DOCX (applyStampAndSignature), поэтому
+  //     LibreOffice их не выбросит.
   const m = fullSrc.match(/async function generateFullKpPdfBuffer[\s\S]*?async function generateFullKpPdf/);
-  assert.ok(m, 'функция не найдена');
+  assert.ok(m, 'функция generateFullKpPdfBuffer не найдена');
   const body = m[0];
-  assert.ok(/wantStamp/.test(body), 'wantStamp не в generateFullKpPdfBuffer');
-  assert.ok(/if\s*\(\s*!wantStamp\s*\)/.test(body), 'LibreOffice не обёрнут в !wantStamp');
+
+  assert.ok(/generateFullKpDocxBuffer\(/.test(body),
+    'PDF перестал собираться из единого DOCX-шаблона');
+  assert.ok(/stamp:\s*!!opts\.stamp/.test(body) && /signature:\s*!!opts\.signature/.test(body),
+    'stamp/signature не передаются в сборку DOCX');
+  assert.ok(!/if\s*\(\s*!wantStamp\s*\)/.test(body),
+    'вернулась ветка «без штампа — шаблон, со штампом — HTML»: Word и PDF разойдутся');
+
+  // Печать/подпись вставляются в DOCX, а не в HTML.
+  assert.ok(/applyStampAndSignature/.test(fullSrc), 'нет вставки печати в DOCX');
+  const stampFn = fullSrc.match(/function applyStampAndSignature\(buf, opts\)[\s\S]*?\n\}/);
+  assert.ok(stampFn, 'applyStampAndSignature не найдена');
+  assert.ok(/word\/media\//.test(stampFn[0]),
+    'печать/подпись не кладутся в word/media — LibreOffice их не увидит');
 });
 
 console.log('\ntkp-ai-registry-ux: ' + passed + '/' + (passed + failed) + ' проверок пройдено');

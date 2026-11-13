@@ -4629,10 +4629,21 @@ async function _finishAttachPdfOnly(fastify, reply, tkp, isNew) {
     };
   } catch (err) {
     fastify.log.error({ msg: err.message }, '[TKP attach_pdf_only]');
+    // Сбой рендера PDF оставлял запись в tkp: в реестре появлялось «ТКП создано»,
+    // а файла в карточке не было. Гейты выше так не делают — удаляют черновик.
+    // Поступаем так же: новый черновик убираем, существующий не трогаем
+    // (в нём может быть текст ТО).
+    if (isNew) {
+      await fastify.db.query('DELETE FROM tkp WHERE id = $1 AND status = $2', [tkp.id, 'draft'])
+        .catch(() => {});
+    }
     return reply.code(500).send({
-      error: 'ТКП сохранено, но PDF не удалось прикрепить: ' + (err.message || ''),
+      error: (isNew
+        ? 'ТКП не создано: PDF не удалось сформировать. '
+        : 'ТКП сохранено, но PDF не удалось прикрепить. ')
+        + (err.message || ''),
       code: 'pdf_attach_failed',
-      item: tkp
+      item: isNew ? null : tkp
     });
   }
 }

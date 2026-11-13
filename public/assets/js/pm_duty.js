@@ -886,7 +886,13 @@ window.AsgardPmDutyPage = (function () {
           let readOnly = tab === 'archive' || !!row.is_final
             || (tab === 'mine' && analysisClosed)
             || isPreview;
-          const mode = (tab === 'calc' || row.phase === 'calc' || analysisClosed) ? 'calc' : 'analysis';
+          // `row.phase` — это только «анализ закрыт» (CASE по analysis_finalized_at),
+          // а не «просчёт существует». Без `!row.needs_calc` клик по записи, где
+          // цены и файла сметы ещё нет, открывал пустую форму просчёта с
+          // DEFAULT_PARAMS (3 слесаря, 10 суток) вместо готового анализа.
+          // Флаг needs_calc считает сервер (reviewNeedsCalc) и отдаёт в «Мои».
+          const mode = (tab === 'calc' || row.phase === 'calc' || analysisClosed) && !row.needs_calc
+            ? 'calc' : 'analysis';
           const opts = { readOnly, mode };
           try {
             const u = JSON.parse(localStorage.getItem('asgard_user') || '{}');

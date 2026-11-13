@@ -2083,10 +2083,176 @@ function volumeKeyFor(pos) {
   return 'qty';
 }
 
+/* ─────────────────────────── Агент МТР ─────────────────────────────────── */
+
+/** Сколько строк МТР ждать на одну позицию. Установок мало, расходников больше. */
+const MTR_TOKENS_PER_POSITION = 60;
+const MTR_MIN_OUTPUT_TOKENS = 8000;
+
+/**
+ * Компактная строка позиции для промпта МТР.
+ *
+ * Полный объект ДВ тут не нужен: агенту важны объём, единица и число
+ * аппаратов — из них он выводит количество установок. `tech_equip` даёт метод.
+ */
+function mtrPositionLine(p, i) {
+  const parts = [
+    `${i + 1}. [${p.id || ('p' + (i + 1))}] ${p.name || '—'}`,
+    `${p.volume != null ? p.volume : '?'} ${p.unit || ''}`.trim()
+  ];
+  if (Array.isArray(p.objects) && p.objects.length) {
+    const n = p.objects.reduce((s, o) => s + (Number(o && o.qty) || 0), 0);
+    if (n > 0) parts.push(`аппаратов: ${n}`);
+  }
+  if (p.tech_equip) parts.push(`технология: ${p.tech_equip}`);
+  if (p.method_name) parts.push(`метод: ${p.method_name}`);
+  if (p.category_name) parts.push(`категория: ${p.category_name}`);
+  return parts.join(' | ');
+}
+
+/** Нормализует строку ответа модели к единому виду. */
+function normalizeMtrRow(raw) {
+  if (!raw) return null;
+  const name = String(raw.name || raw.item || '').trim().slice(0, 200);
+  if (!name) return null;
+  const src = String(raw.source || '').toLowerCase();
+  const source = ['warehouse', 'purchase', 'rent'].includes(src) ? src : 'purchase';
+  const basisRaw = String(raw.basis || '').toLowerCase();
+  const basis = ['doc', 'method', 'typical'].includes(basisRaw) ? basisRaw : 'method';
+  const qty = Number(raw.qty) > 0 ? Math.min(Number(raw.qty), 500) : 1;
+  return {
+    name,
+    unit: String(raw.unit || 'шт').trim().slice(0, 20) || 'шт',
+    qty: Math.ceil(qty),
+    source,
+    purpose: String(raw.purpose || raw.note || '').trim().slice(0, 240),
+    basis,
+    for_positions: Array.isArray(raw.for_positions)
+      ? raw.for_positions.map((x) => String(x)).slice(0, 30) : []
+  };
+}
+
+/**
+ * Отдельный агент МТР: чем выполнять работы.
+ *
+ * ── Зачем отдельный вызов ─────────────────────────────────────────────────
+ * В `PROMPT-dv-v1` МТР перечислен как «химия, расходники, инструмент, СИЗ»,
+ * поэтому модель на анализа возвращала ветошь и сальники, но ни одной
+ * установки. Спрашивать технику внутри разбора объёмов бессмысленно: там
+ * модель занята переносом строк и экономит на хвосте ответа.
+ *
+ * Здесь узкая задача и отдельный бюджет токенов: позиции уже разобраны,
+ * нужно только назвать ресурсы. Отказ агента не ломает конвейер — вызывающий
+ * код остаётся на детерминированном `mtr-pipeline.deriveEquipment`.
+ *
+ * @param {object} p
+ * @param {object} p.aiProvider
+ * @param {Array}  p.positions — позиции ДВ (name, volume, unit, objects, tech_equip)
+ * @param {string} [p.tz_text]
+ * @param {string} [p.warehouse_text]
+ * @param {number} [p.trips=1]
+ * @param {number} [p.crew=0]
+ * @param {function} [p.onProgress]
+ * @returns {Promise<{ok:boolean, units:Array, consumables:Array, rows:Array, error?:string}>}
+ */
+async function generateMtr(p) {
+  const o = p || {};
+  const positions = Array.isArray(o.positions) ? o.positions : [];
+  if (!positions.length) {
+    return { ok: false, error: 'Нет позиций — МТР не из чего выводить', units: [], consumables: [], rows: [] };
+  }
+
+  const mtrPipeline = require('./mtr-pipeline');
+  const emit = (ev) => {
+    if (typeof o.onProgress !== 'function') return;
+    try { o.onProgress(Object.assign({ step: 'mtr' }, ev || {})); } catch (_) { /* UI не блокер */ }
+  };
+
+  // Сколько единиц в промпт: позиции компактные, но 600 строк — это много.
+  // Берём все, потому что строка весит ~80 символов (не 483, как в ДВ).
+  const positionsText = positions.map((x, i) => mtrPositionLine(x, i)).join('\n');
+  const tzText = String(o.tz_text || '').slice(0, 40000) || '(ТЗ текстом не задано)';
+  const warehouseText = String(o.warehouse_text || '(данных по складу нет)');
+
+  const system = promptLoader.buildPrompt('PROMPT-mtr-v1.md', {
+    positions_text: positionsText,
+    tz_text: tzText,
+    warehouse_text: warehouseText,
+    method_equipment: mtrPipeline.equipmentHintText()
+  });
+
+  const expected = Math.max(6, Math.ceil(positions.length * 0.5));
+  const maxTokens = Math.max(
+    MTR_MIN_OUTPUT_TOKENS,
+    Math.round(expected * MTR_TOKENS_PER_POSITION) + 2000
+  );
+
+  emit({ message: `Подбираю технику и материалы: позиций ${positions.length}`, pct: 60 });
+
+  let res;
+  try {
+    res = await completeOrStream(o.aiProvider, {
+      system,
+      messages: [{ role: 'user', content: 'Определи технику и расходники по этим работам.' }],
+      maxTokens,
+      temperature: 0,
+      expectJson: true,
+      // Reasoning выключен: на длинном JSON он съедает весь бюджет вывода.
+      reasoning: { enabled: false }
+    }, null, { label: 'МТР', pct: 60 });
+  } catch (e) {
+    return { ok: false, error: (e && e.message) || 'Модель недоступна', units: [], consumables: [], rows: [] };
+  }
+
+  const parsed = safeJson(res && res.text);
+  if (!parsed) {
+    return {
+      ok: false,
+      error: 'Модель вернула не-JSON',
+      stop: res && res.stopReason,
+      units: [], consumables: [], rows: []
+    };
+  }
+
+  const units = (Array.isArray(parsed.units) ? parsed.units : [])
+    .map(normalizeMtrRow).filter(Boolean);
+  const consumables = (Array.isArray(parsed.consumables) ? parsed.consumables : [])
+    .map(normalizeMtrRow).filter(Boolean);
+
+  // Дедуп: установка и расходник с одним именем — одна строка.
+  const rows = [];
+  const seen = new Set();
+  [...units, ...consumables].forEach((r) => {
+    const key = mtrPipeline.normalizeName(r.name);
+    if (seen.has(key)) return;
+    seen.add(key);
+    rows.push(r);
+  });
+
+  emit({
+    message: `МТР: техники ${units.length}, расходников ${consumables.length}`,
+    pct: 68,
+    units: units.length,
+    consumables: consumables.length
+  });
+
+  return {
+    ok: rows.length > 0,
+    units,
+    consumables,
+    rows,
+    model: res && res.model,
+    tokens: res && res.usage,
+    stop: res && res.stopReason,
+    error: rows.length ? null : 'Модель не назвала ни одного ресурса'
+  };
+}
+
 module.exports = {
   dupKey,
   generateDv,
   generateCalcPlan,
+  generateMtr,
   buildCalibrationPreview,
   catalogForPrompt,
   docsToText,

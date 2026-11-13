@@ -124,7 +124,13 @@ window.AsgardRegistryDetail = (function () {
       document.getElementById('regDetailOpenReport')?.addEventListener('click', () => {
         if (window.AsgardRpReviewModal) {
           hideModal();
-          let opts = { mode: 'calc', readOnly: true };
+          // Кнопка показывается только при незакрытом отчёте (`!rev.is_final`),
+          // значит считать ещё нечего: 'calc' открывал review-модалку в режиме
+          // просчёта с пустой сметой. Режим — по факту, как в реестре и «Мои».
+          const _closed = !!(row.analysis_finalized_at || row.rp_review?.analysis_finalized_at);
+          const _needsCalc = _closed && !row.rp_review?.is_final
+            && !(Number(row.rp_review?.work_price) > 0) && !row.rp_review?.estimate_file_id;
+          let opts = { mode: (_closed && !_needsCalc) ? 'calc' : 'analysis', readOnly: true };
           try {
             const u = JSON.parse(localStorage.getItem('asgard_user') || '{}');
             const r = u.role || '';

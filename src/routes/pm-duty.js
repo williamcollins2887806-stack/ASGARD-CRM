@@ -306,6 +306,27 @@ async function buildSmetaFromStage(db, tenderId, rj) {
     params.visit_mode_unconfirmed = true;
   }
 
+  // ── Ожидание на объекте ───────────────────────────────────────────────────
+  // Если разрыв между работами внутри заезда ≤ 25 дней, бригада не уезжает
+  // домой, и дни простоя оплачиваются (правило 12.11.2026, 3000 ₽/чел·день).
+  //
+  // Берём из графика: каждый заезд знает свой простой (календарь минус
+  // работа). В смете ожидание задаётся НА ВЫЕЗД, поэтому делим сумму простоя
+  // на число выездов — смета умножит обратно на trip_count.
+  //
+  // Ручная правка РП главнее: если он выставил wait_days_per_trip сам,
+  // автоматику не перезаписываем.
+  const waitAuto = (() => {
+    const visits = Array.isArray(visitPlan && visitPlan.visits) ? visitPlan.visits : [];
+    if (!visits.length) return 0;
+    const total = visits.reduce((s, v) => s + (Number(v.wait_days) || 0), 0);
+    if (!(total > 0)) return 0;
+    return Math.round((total / Math.max(1, params.trip_count)) * 10) / 10;
+  })();
+  const waitManual = Number(params.wait_days_per_trip) || 0;
+  params.wait_days_per_trip = waitManual > 0 ? waitManual : waitAuto;
+  if (!(params.rate_wait > 0)) params.rate_wait = 3000;
+
   // ── МТР: материалы и оборудование ────────────────────────────────────────
   // Было жёстко `mtr: []` — и в смету, и через неё в tech_json уезжал пустой
   // перечень, хотя модель анализа уже вернула `mtr_suggestions`. Из-за этого
@@ -333,6 +354,18 @@ async function buildSmetaFromStage(db, tenderId, rj) {
     params,
     crew,
     mtr,
+    // Разрез по заездам: сколько человек реально едет в каждый.
+    // Без него смета считает дорогу и проживание как `crew × trips` — то есть
+    // на маленький заезд «едет» вся бригада, и логистика раздувается кратно
+    // (дефект 12.11.2026). Смета берёт отсюда `people` и `work_days`.
+    visits_work: (() => {
+      const fromPlan = Array.isArray(st.calc && st.calc.visits_work)
+        ? st.calc.visits_work : [];
+      if (fromPlan.length) return fromPlan;
+      const fromReport = Array.isArray(rj && rj.calc_plan && rj.calc_plan.visits_work)
+        ? rj.calc_plan.visits_work : [];
+      return fromReport;
+    })(),
     // Перечень работ из ведомости: он задаёт объём, из которого выведен срок.
     // Без него смета не отличала тендер на 6 позиций от тендера на 600.
     works: (() => {
@@ -1991,7 +2024,18 @@ async function reviewRoutes(fastify) {
         normPreviewMd: normLines.join('\n'),
         workersMd: '',
         dateWindow: win,
-        maxParallelPosts: 2
+        // Хардкод «2 поста» занижал параллельность на объектах, где реально
+        // 3–6 фронтов (тендер 2138: 3 аппарата ГДО). Берём из плана позиций,
+        // а если его нет — не ограничиваем сверху числом 2.
+        maxParallelPosts: (() => {
+          const fronts = positions.reduce((s, p) => {
+            if (Array.isArray(p.objects) && p.objects.length) {
+              return s + p.objects.reduce((a, o) => a + (Number(o && o.qty) || 0), 0);
+            }
+            return s + (Number(p.objects_count) || 0);
+          }, 0);
+          return fronts > 0 ? Math.min(fronts, 12) : null;
+        })()
       });
       if (!gen.ok) return reply.code(502).send({ ok: false, error: gen.error });
       return { ok: true, plan: gen.plan, model: gen.model, catalog_size: (catalog.rates || []).length };

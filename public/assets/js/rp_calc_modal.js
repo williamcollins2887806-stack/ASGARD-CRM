@@ -788,8 +788,15 @@ window.AsgardRpCalcModal = (function () {
     // Только просмотр: активные кнопки расчёта здесь — мёртвый путь (правки не сохраняются),
     // поэтому показываем лишь пояснение.
     if (state.readOnly) {
+      // Директор и ТО в просмотре видят «нет расчёта» даже когда снимок
+      // анализа с настоящей сметой заполнен: проверка снимка была только в
+      // ветке редактирования. Сообщаем, что расчёт есть, но не перенесён.
+      const snapHas = !!(state.analysisSmeta && state.analysisSmeta.totals
+        && (state.analysisSmeta.totals.price_no_vat != null || state.analysisSmeta.totals.cost != null));
       return '<div class="rp-calc-need-smeta"><strong>Смета не рассчитана</strong>' +
-        '<p class="muted">В карточке нет расчёта — просмотр без данных.</p></div>';
+        '<p class="muted">' + (snapHas
+          ? 'В карточке есть расчёт из анализа, но он не перенесён в просчёт. РП может сделать это на вкладке «Смета».'
+          : 'В карточке нет расчёта — просмотр без данных.') + '</p></div>';
     }
     const hasAnalysis = !!(state.analysisSmeta && state.analysisSmeta.totals
       && (state.analysisSmeta.totals.price_no_vat != null || state.analysisSmeta.totals.cost != null));
@@ -1020,9 +1027,12 @@ window.AsgardRpCalcModal = (function () {
         'изменения сохранятся. Лишнюю позицию можно удалить, недостающую — добавить.</p>' +
       (hasPlan
         ? '<div class="rp-calc-dv-summary">' +
-            (plan.crews ? '<span>Бригад: <b>' + esc(String(plan.crews)) + '</b> × ' +
-              esc(String(plan.crew_size || 5)) + ' чел</span>' : '') +
-            (plan.work_days != null
+            (plan.crews ? '<span>Бригад: <b>' + esc(String(plan.crews)) + '</b>'
+              // `|| 5` подставлял выдуманную бригаду, когда плана состава нет:
+              // на карточке с 3 или 12 людьми стояло «5 чел». Прочерк честнее.
+              + (plan.crew_size != null ? ' × ' + esc(String(plan.crew_size)) + ' чел' : '')
+              + '</span>' : '') +
+            (Number(plan.work_days) > 0
               ? '<span title="Трудосутки всего объёма при текущем числе бригад — знаменатель ФОТ и проживания">'
                 + 'Трудосуток: <b>' + esc(String(plan.work_days)) + '</b>'
                 + (plan.trip_count > 1 && plan.work_days_per_trip != null
@@ -1043,7 +1053,7 @@ window.AsgardRpCalcModal = (function () {
                   .map((w) => w.label || 'заезд').join(', ')) + '</span>'
               : '') +
             (plan.people_total ? '<span>Людей на объекте: <b>' + esc(String(plan.people_total)) + '</b></span>' : '') +
-            (plan.total_crew_days ? '<span>Трудозатрат: <b>' + esc(String(plan.total_crew_days)) + '</b> бр.-сут</span>' : '') +
+            (plan.total_crew_days ? '<span title="Бригадо-сутки: суммарные трудозатраты всего объёма">Трудозатрат: <b>' + esc(String(plan.total_crew_days)) + '</b> трудосуток</span>' : '') +
             (Array.isArray(plan.crew) && plan.crew.length
               ? '<span>Состав: ' + plan.crew.map((c) => esc(c.role || c.role_code) + ' ' + esc(String(c.count))).join(' · ') + '</span>'
               : '') +
@@ -3187,6 +3197,21 @@ window.AsgardRpCalcModal = (function () {
           // у всех карточек одна и та же сумма (см. renderSmetaNeededBanner).
           const seed = rj.asgard_smeta || null;
           const seedOk = !!(seed && seed.template === 'asgard_v1' && Array.isArray(seed.rows) && seed.rows.length);
+          // Страховка от «пустого просчёта»: сметы нет ни в отчёте, ни в снимке
+          // анализа — считать нечего, значит показываем анализ, а не скелет формы
+          // с DEFAULT_PARAMS (3 слесаря, 10 суток). Иначе пользователь видит
+          // рабочие поля с выдуманными числами и читает это как просчёт.
+          if (!seedOk && opts.mode !== 'calc') {
+            const snap = (d.analysis_snapshot && d.analysis_snapshot.asgard_smeta)
+              || (rj.analysis_snapshot && rj.analysis_snapshot.asgard_smeta)
+              || null;
+            if (!snap && window.AsgardRpReviewModal) {
+              hideModal();
+              window.AsgardRpReviewModal.open(tender, pms || [], onRefresh || function () {},
+                { mode: 'analysis' });
+              return;
+            }
+          }
           session.state.analysisSmeta = (d.analysis_snapshot && d.analysis_snapshot.asgard_smeta)
             || (rj.analysis_snapshot && rj.analysis_snapshot.asgard_smeta)
             || null;

@@ -1090,6 +1090,24 @@
 }
 .rp-dv-row__src span { opacity: .75; }
 
+/* Пагинация ведомости: на 603 позициях строки рисуем порциями по 150. */
+.rp-dv-more {
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  margin-top: 10px; padding: 10px 12px;
+  border: 1px dashed var(--brd-m, rgba(255,255,255,.08));
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--bg3, rgba(255,255,255,.03)) 60%, transparent);
+}
+.rp-dv-more__btn {
+  padding: 7px 13px; border-radius: 8px; cursor: pointer;
+  border: 1px solid var(--brd, rgba(255,255,255,.16));
+  background: transparent; color: var(--t1);
+  font-size: 12.5px; font-weight: 600;
+  transition: border-color .15s ease, background .15s ease;
+}
+.rp-dv-more__btn:hover { border-color: var(--accent, #3B82F6); background: rgba(59,130,246,.08); }
+.rp-dv-more__hint { font-size: 11.5px; color: var(--t3); }
+
 /* Кнопка добавления — мягкая, пунктирная: это действие, а не основное. */
 .rp-dv-actions {
   display: flex; align-items: center; gap: 12px; flex-wrap: wrap;

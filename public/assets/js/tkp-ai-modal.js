@@ -891,7 +891,14 @@ window.AsgardTkpAi = (function () {
   function canOffer(row) {
     if (!row || !canCreate()) return false;
     if (row.tkp_exists || row.tkp_id) return false;
-    return reviewReady(row);
+    if (!reviewReady(row)) return false;
+    // Цена — то, из чего строится КП. Без неё бэкенд всё равно ответит
+    // no_price (tkp-ai-draft:1233), и пользователь потратит минуту на
+    // генерацию, чтобы получить отказ. Не предлагаем кнопку заранее.
+    const rev = row.rp_review || {};
+    const price = Number(rev.work_price_ex_vat != null ? rev.work_price_ex_vat : rev.work_price);
+    if (!Number.isFinite(price) || price <= 0) return false;
+    return true;
   }
 
   /**

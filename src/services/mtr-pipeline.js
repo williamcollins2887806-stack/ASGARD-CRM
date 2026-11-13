@@ -77,6 +77,222 @@ const BASE_ITEMS = [
   { name: 'перчатки защитные', unit: 'пар', qty_per_man: 1, note: 'на человека на выезд' }
 ];
 
+/**
+ * Типовая ТЕХНИКА по методу работ — не расходники.
+ *
+ * ── Зачем ─────────────────────────────────────────────────────────────────
+ * `RESOURCE_HINTS` выше описывает расходники (РВД, форсунки, ветошь), и на
+ * тендере 2138 МТР вышел из 8 строк расходников без единой установки. Причина
+ * не в модели: работу физически нечем выполнить, а в списке этого не было.
+ *
+ * Ключ — подстрока в названии/методе/`tech_equip`. Отдаём тип техники, а не
+ * марку: заказчик марку не пишет, и это не повод молчать.
+ *
+ * `price_hint` — заглушка верхней границы из MODULE-norms-asgard-v1:377-395.
+ * Это НЕ цена сделки: она нужна, чтобы строка не была нулевой в блоке закупки
+ * и РП видел порядок. Подтверждает цену человек или веб-поиск.
+ */
+const EQUIPMENT_HINTS = [
+  {
+    match: /гидро|гидрод|гидроструйн|гдо|авд|высок\w*\s+давлен|сверхвысок/i,
+    items: [
+      { name: 'установка гидроструйной очистки высокого давления (АВД)', unit: 'шт',
+        per: 'post', price_hint: 350000, note: '1 установка = 1 фронт работ' },
+      { name: 'шланг высокого давления (РВД) в комплекте', unit: 'компл',
+        per: 'unit', price_hint: 45000, note: 'расходник на установку' }
+    ]
+  },
+  {
+    match: /химическ|кислотн|щелочн|промывк|ингибитор|пассивац|cip|реагент/i,
+    items: [
+      { name: 'насосная станция дозирования реагента', unit: 'шт',
+        per: 'post', price_hint: 150000, note: 'подача раствора в контур' },
+      { name: 'ёмкость с обвязкой (CIP-контур)', unit: 'компл',
+        per: 'post', price_hint: 200000, note: 'приготовление и слив раствора' },
+      { name: 'pH-метр / расходомер', unit: 'компл',
+        per: 'post', price_hint: 40000, note: 'контроль раствора' }
+    ]
+  },
+  {
+    match: /сварк|сварочн|наплавк|резк|накс|трубопровод|заварить|стык/i,
+    items: [
+      { name: 'сварочный пост (аппарат + оснастка)', unit: 'шт',
+        per: 'post', price_hint: 200000, note: 'на сварщика' },
+      { name: 'баллон защитного газа с редуктором', unit: 'компл',
+        per: 'post', price_hint: 25000, note: 'аргон/смесь' }
+    ]
+  },
+  {
+    match: /изоляц|теплоизол|минват|скорлуп/i,
+    items: [
+      { name: 'инструмент для монтажа изоляции', unit: 'компл',
+        per: 'post', price_hint: 30000, note: 'нож, степлер, раскрой' }
+    ]
+  },
+  {
+    match: /монтаж|демонтаж|замен|подъ[её]м|такелаж/i,
+    items: [
+      { name: 'автокран / манипулятор (аренда)', unit: 'смена',
+        per: 'trip', price_hint: 25000, note: 'аренда, не покупка' },
+      { name: 'леса / подмости (аренда)', unit: 'компл',
+        per: 'post', price_hint: 60000, note: 'работы на высоте' }
+    ]
+  },
+  {
+    match: /очистк|чистк|накип|отложен|шлам|мойк|промыв/i,
+    items: [
+      { name: 'установка гидроструйной очистки высокого давления (АВД)', unit: 'шт',
+        per: 'post', price_hint: 350000, note: 'механическая очистка поверхностей' },
+      { name: 'насадка / шарошка для очистки труб', unit: 'компл',
+        per: 'post', price_hint: 35000, note: 'очистка внутренних поверхностей' }
+    ]
+  },
+  {
+    match: /пескоструй|абразив|дробеструй|дробеочистк/i,
+    items: [
+      { name: 'пескоструйная установка', unit: 'шт',
+        per: 'post', price_hint: 250000, note: '1 установка = 1 пост' },
+      { name: 'компрессор воздушный', unit: 'шт',
+        per: 'post', price_hint: 150000, note: 'питание пескоструя' }
+    ]
+  },
+  {
+    match: /высот|промальп|люльк|верхолаз/i,
+    items: [
+      { name: 'страховочная привязь', unit: 'компл',
+        per: 'man', price_hint: 50000, note: 'на работающего на высоте' },
+      { name: 'верёвка статика 11 мм', unit: 'м',
+        per: 'man', price_hint: 200, note: 'спуск/подъём, 50 м на человека' }
+    ]
+  },
+  {
+    match: /газоопасн|загазован|драгер|газоанализ|азот|инертн/i,
+    items: [
+      { name: 'газоанализатор многоканальный', unit: 'шт',
+        per: 'post', price_hint: 70000, note: 'контроль среды перед спуском' }
+    ]
+  },
+  {
+    match: /бетон|стяжк|фундамент|кирпич|кладк|штукатур/i,
+    items: [
+      { name: 'бетоносмеситель', unit: 'шт',
+        per: 'post', price_hint: 80000, note: 'приготовление смеси' },
+      { name: 'вибратор глубинный', unit: 'шт',
+        per: 'post', price_hint: 25000, note: 'уплотнение бетона' }
+    ]
+  },
+  {
+    match: /землян|котлован|транше|экскават|грунт/i,
+    items: [
+      { name: 'экскаватор (аренда)', unit: 'смена',
+        per: 'trip', price_hint: 35000, note: 'аренда' }
+    ]
+  },
+  {
+    match: /покрас|окрас|антикорроз|грунтовк|лакокрас/i,
+    items: [
+      { name: 'краскопульт / окрасочный агрегат', unit: 'шт',
+        per: 'post', price_hint: 60000, note: 'наносимый состав' }
+    ]
+  },
+  {
+    match: /электромонтаж|кабел|щит|электрик|электрооборуд/i,
+    items: [
+      { name: 'инструмент электромонтажника', unit: 'компл',
+        per: 'post', price_hint: 45000, note: 'опрессовка, прозвонка' }
+    ]
+  }
+];
+
+/**
+ * Подбирает типовую технику по тексту позиций.
+ *
+ * Возвращает строки с `source: 'typical'` и `basis: 'method'`: это НЕ факт
+ * наличия на складе, а «такая техника нужна по методу». Склад подставится
+ * отдельным матчингом, РП подтвердит.
+ *
+ * @param {Array} positions — позиции ДВ (name, tech_equip, method_name, objects, volume, unit)
+ * @param {object} [opts]
+ * @param {number} [opts.trips=1] — заездов, для аренды посменной техники
+ * @param {number} [opts.crew=0] — людей в смене, для «на человека»
+ * @returns {Array<{name:string, unit:string, qty:number, source:string, basis:string, price_hint:number, note:string}>}
+ */
+function deriveEquipment(positions, opts) {
+  const o = opts || {};
+  const list = Array.isArray(positions) ? positions : [];
+  const trips = Math.max(1, Number(o.trips) || 1);
+  const crew = Math.max(0, Number(o.crew) || 0);
+
+  const buckets = new Map();
+
+  list.forEach((pos) => {
+    if (!pos) return;
+    const hay = [pos.name, pos.tech_equip, pos.method_name, pos.category_name]
+      .filter(Boolean).join(' ');
+    if (!hay) return;
+
+    // Сколько параллельных фронтов даёт эта позиция.
+    let fronts = 0;
+    if (Array.isArray(pos.objects) && pos.objects.length) {
+      fronts = pos.objects.reduce((s, o2) => s + (Number(o2 && o2.qty) || 0), 0);
+    }
+    if (!(fronts > 0)) fronts = Number(pos.objects_count) || 0;
+    if (!(fronts > 0)) fronts = 1;
+    // Потолок: столько бригад на объект не встанет, остальное — ошибка распознавания.
+    fronts = Math.min(fronts, 12);
+
+    EQUIPMENT_HINTS.forEach((group) => {
+      if (!group.match.test(hay)) return;
+      group.items.forEach((item) => {
+        let qty = 1;
+        if (item.per === 'post') qty = fronts;
+        else if (item.per === 'trip') qty = trips;
+        else if (item.per === 'man') qty = crew > 0 ? crew : 1;
+        else if (item.per === 'unit') qty = fronts;
+        // Погонные метры на человека (верёвка): на человека не 1 м, а длина спуска.
+        if (item.unit === 'м' && item.per === 'man') qty *= 50;
+
+        const key = normalizeName(item.name) + '|' + item.unit;
+        const cur = buckets.get(key) || {
+          name: item.name,
+          unit: item.unit,
+          qty: 0,
+          source: 'typical',
+          basis: 'method',
+          price_hint: item.price_hint || null,
+          note: item.note || '',
+          hits: 0
+        };
+        // Не суммируем фронты по всем позициям: одна установка на пост,
+        // а не по установке на каждую строку ведомости.
+        cur.qty = Math.max(cur.qty, qty);
+        cur.hits += 1;
+        buckets.set(key, cur);
+      });
+    });
+  });
+
+  return Array.from(buckets.values()).map((x) => ({
+    name: x.name,
+    unit: x.unit,
+    qty: Math.max(1, Math.ceil(x.qty)),
+    source: x.source,
+    basis: x.basis,
+    price_hint: x.price_hint,
+    note: x.note,
+    hits: x.hits
+  }));
+}
+
+/** Справочник техники для промпта: «метод → что нужно». */
+function equipmentHintText() {
+  return EQUIPMENT_HINTS.map((g) => {
+    const items = g.items.map((i) => `${i.name} (${i.unit}, на ${i.per === 'post' ? 'пост' : i.per === 'trip' ? 'заезд' : i.per === 'man' ? 'человека' : 'единицу'})`);
+    return '- ' + items.join('; ');
+  }).join('\n');
+}
+
+
 /** Нормализует имя для группировки. */
 function normalizeName(s) {
   return String(s || '')
@@ -326,7 +542,27 @@ async function buildMtr(p) {
     people: o.people,
     trips: o.trips
   });
-  if (!needs.length) {
+
+  // ── Техника по методу ────────────────────────────────────────────────────
+  // Раньше МТР состоял только из расходников: на тендере 2138 вышло 8 строк
+  // (ветошь, сальники), но ни одной установки — работать было нечем.
+  // Здесь типовая техника добавляется к расходникам, а не заменяет их.
+  const equipment = deriveEquipment(o.positions, {
+    trips: o.trips,
+    crew: o.people
+  });
+  const equipNeeds = equipment.map((e) => ({
+    name: e.name,
+    unit: e.unit,
+    qty: e.qty,
+    basis: e.basis,
+    note: e.note,
+    source_hint: e.source,
+    price_hint: e.price_hint,
+    is_equipment: true
+  }));
+
+  if (!needs.length && !equipNeeds.length) {
     return {
       needs: [],
       rows: [],
@@ -337,15 +573,70 @@ async function buildMtr(p) {
       note: 'МТР не определён: нет ни позиций ДВ, ни данных о людях'
     };
   }
-  const rows = await resolveMtr({ db: o.db, needs, allowWeb: o.allowWeb });
-  return Object.assign({ needs, rows }, splitForSmeta(rows));
+
+  const consumRows = needs.length
+    ? await resolveMtr({ db: o.db, needs, allowWeb: o.allowWeb })
+    : [];
+  // Техника: склад сверяем, но веб-поиск по каждой установке — дорого и
+  // неточно. Если цены нет, ставим price_hint из справочника и помечаем,
+  // что она не подтверждена.
+  const equipRows = equipNeeds.length
+    ? await resolveMtr({ db: o.db, needs: equipNeeds.map((n) => ({ ...n, qty_per: 0 })), allowWeb: false })
+      .catch(() => [])
+    : [];
+
+  // resolveMtr не знает про price_hint — переносим его и помечаем пробел.
+  const equipByName = new Map(equipNeeds.map((n) => [normalizeName(n.name), n]));
+  equipRows.forEach((r) => {
+    const hint = equipByName.get(normalizeName(r.name));
+    if (!hint) return;
+    if (!(Number(r.price) > 0) && Number(hint.price_hint) > 0) {
+      r.price = Number(hint.price_hint);
+      r.price_confirmed = false;
+      r.price_hint_used = true;
+      r.gap = 'цена типовая (справочник) — уточните у снабжения';
+    }
+    r.is_equipment = true;
+    r.basis = hint.basis || r.basis;
+  });
+
+  // Слияние с дедупом по имени: одна строка на ресурс.
+  const merged = [];
+  const seen = new Map();
+  [...equipRows, ...consumRows].forEach((r) => {
+    const key = normalizeName(r.name) + '|' + String(r.unit || '').toLowerCase();
+    if (seen.has(key)) {
+      // Дубликат: берём максимум по количеству, склад важнее закупки.
+      const cur = seen.get(key);
+      cur.qty = Math.max(Number(cur.qty) || 0, Number(r.qty) || 0);
+      if (r.source === 'warehouse') {
+        cur.source = 'warehouse';
+        cur.price = 0;
+        cur.price_confirmed = true;
+        cur.stock_qty = r.stock_qty;
+        cur.stock_enough = r.stock_enough;
+      }
+      return;
+    }
+    seen.set(key, r);
+    merged.push(r);
+  });
+
+  return Object.assign({
+    needs: needs.concat(equipNeeds),
+    rows: merged,
+    equipment: equipRows
+  }, splitForSmeta(merged));
 }
 
 module.exports = {
   RESOURCE_HINTS,
+  EQUIPMENT_HINTS,
   BASE_ITEMS,
   normalizeName,
   deriveNeeds,
+  deriveEquipment,
+  equipmentHintText,
   resolveMtr,
   splitForSmeta,
   buildMtr

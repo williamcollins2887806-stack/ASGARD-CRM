@@ -35,6 +35,17 @@ window.AsgardRpReviewModal = (function () {
   const PREFS_KEY = 'collapsed_periods';
   const collapsedPeriods = new Set();
   let prefsLoaded = false;
+  /**
+   * Сколько строк ДВ рисуем сразу.
+   *
+   * На тендере 2138 — 603 позиции, в каждой 5 инлайн-полей: это ~3600 узлов,
+   * и браузер начинал тормозить на каждом нажатии клавиши. В просчёте лимит
+   * давно стоит (PAGE = 150), а в анализе не было — правка объёма ощущалась
+   * как зависание. Группировку по периодам при этом сохраняем: показываем
+   * строки подряд от начала, группы строятся по видимому срезу.
+   */
+  const DV_PAGE = 150;
+  let dvShown = DV_PAGE;
 
   /** Нормализует подпись периода: «Март - Апрель» → «март - апрель». */
   function periodKey(label) {
@@ -514,6 +525,9 @@ window.AsgardRpReviewModal = (function () {
       h += '<div class="rp-visit-row__stats">' +
         '<span><b>' + esc(String(v.positions != null ? v.positions : '—')) + '</b> позиц.</span>' +
         '<span title="Трудосутки этого заезда при том же числе бригад, что в плане">' +
+          // В строке заезда — сокращённая подпись: полное «трудосуток» здесь
+          // не влезает по ширине, а тест ui-rp-visit-labels закрепляет именно
+          // сокращение. В шапке и в сводке пишем полное слово.
           '<b>' + esc(v.work_days != null ? String(v.work_days) : '—') + '</b> трудосут.</span>' +
         '<span><b>' + esc(v.people_peak != null ? String(v.people_peak) : '—') + '</b> чел.</span>' +
         '<span><b>' + esc(v.person_hours != null ? String(v.person_hours) : '—') + '</b> чел·ч</span>' +
@@ -693,6 +707,12 @@ window.AsgardRpReviewModal = (function () {
     // читается лучше, чем одна группа.
     const periodGroups = groupPositionsByPeriod(positions);
     const useGroups = periodGroups.length > 1;
+
+    // Пагинация: рисуем первые DV_PAGE строк. Группировка остаётся — она
+    // строится по тем же позициям, просто список короче. Без лимита на 603
+    // позициях получалось ~3600 полей и заметные лаги при вводе.
+    const shownPositions = positions.length > dvShown ? positions.slice(0, dvShown) : positions;
+    const hiddenCount = positions.length - shownPositions.length;
     if (useGroups) {
       const collapsedCount = periodGroups.filter((g) => collapsedPeriods.has(g.key)).length;
       h += '<div class="rp-dv-periods-bar">' +
@@ -708,6 +728,7 @@ window.AsgardRpReviewModal = (function () {
       // ── Заголовок периода при смене группы ────────────────────────────────
       // Проверяем ДО карточки: заголовок должен стоять над первой позицией
       // своей группы, а не после неё.
+      if (idx >= shownPositions.length) return;
       if (useGroups) {
         const pKey = String(p.period || '').trim() ? periodKey(p.period) : '__none__';
         if (pKey !== lastPeriodKey) {
@@ -852,6 +873,18 @@ window.AsgardRpReviewModal = (function () {
     if (useGroups && lastPeriodKey !== null) h += '</div></div>';
 
     h += '</div>';
+
+    // «Показать ещё»: остаток ведомости грузим порциями по DV_PAGE.
+    if (hiddenCount > 0) {
+      h += '<div class="rp-dv-more">' +
+        '<button type="button" class="rp-dv-more__btn" data-rp-dv-more="1">' +
+          'Показать ещё ' + Math.min(DV_PAGE, hiddenCount) +
+          ' из ' + hiddenCount + ' оставшихся' +
+        '</button>' +
+        '<span class="rp-dv-more__hint">Показано ' + shownPositions.length +
+          ' из ' + positions.length + ' — для скорости</span>' +
+        '</div>';
+    }
 
     if (!locked) {
       h += '<div class="rp-dv-actions">' +
@@ -1205,7 +1238,11 @@ window.AsgardRpReviewModal = (function () {
   }
 
   function renderRo(label, value) {
-    if (!value) return '';
+    // Число 0 — валидное значение (нулевой срок, нулевая цена), а `!value`
+    // выбрасывало строку целиком: в read-only карточке поле просто исчезало,
+    // хотя в редакторе оно видно. Отсекаем только пустоту и null/undefined.
+    const isEmpty = value == null || value === '' || value === false;
+    if (isEmpty) return '';
     return '<div class="rp-review-ro"><div class="lbl">' + esc(label) + '</div><div>' + esc(value) + '</div></div>';
   }
 
@@ -1316,7 +1353,15 @@ window.AsgardRpReviewModal = (function () {
       const cancelText = isReject ? 'Всё же открыть просчёт' : 'Пока останусь в анализе';
       const openCalc = () => {
         hideModal();
-        if (typeof opts.onOpenCalc === 'function') opts.onOpenCalc(tender);
+        // `opts.onOpenCalc` никем не передавался: кнопка «Открыть просчёт» просто
+        // закрывала модалку и ничего не открывала. Переходим напрямую в просчёт,
+        // отдавая те же row/pms/refresh, с которыми открыт анализ.
+        if (typeof opts.onOpenCalc === 'function') {
+          try { opts.onOpenCalc(tender); return; } catch (_) { /* падаем в прямой путь */ }
+        }
+        if (window.AsgardRpCalcModal && typeof window.AsgardRpCalcModal.open === 'function') {
+          window.AsgardRpCalcModal.open(tender, pms || [], onSaved || function () {}, { mode: 'calc' });
+        }
       };
       let ok = true;
       if (window.AsgardConfirm && typeof AsgardConfirm.open === 'function') {
@@ -1425,10 +1470,15 @@ window.AsgardRpReviewModal = (function () {
     }
 
     function renderUploadDrop(inputId, title, hint) {
+      // Нативный <input type="file"> рисует свою кнопку «Выбрать файл · Файл
+      // не выбран». В просчёте это уже закрыто кастомной кнопкой (rp-calc-btn-add),
+      // а в анализе таких нативных кнопок стояло три подряд — рядом с нашей
+      // drop-зоной. Скрываем input и нажимаем на него из своей кнопки.
       return '<div class="rp-review-estimate rp-review-estimate-drop" style="margin-top:10px">' +
         '<strong>' + esc(title) + '</strong>' +
         '<span class="muted" style="font-size:12px">' + esc(hint) + '</span>' +
-        '<input type="file" class="inp" id="' + inputId + '" accept="' + RP_FILE_ACCEPT + '" style="margin-top:10px;width:100%"/></div>';
+        '<button type="button" class="btn mini rp-review-file-add" data-file-for="' + inputId + '" style="margin-top:10px">Добавить файл</button>' +
+        '<input type="file" class="inp rp-review-file-input" id="' + inputId + '" accept="' + RP_FILE_ACCEPT + '" hidden style="display:none"/></div>';
     }
 
     /** Always visible for RP (upload) and TO (download) — not gated by decision/mode. */
@@ -2255,6 +2305,16 @@ window.AsgardRpReviewModal = (function () {
         });
       });
 
+      // «Показать ещё»: увеличиваем окно и перерисовываем блок ДВ целиком —
+      // группы периодов строятся заново по расширенному срезу, поэтому
+      // вставка строк фрагментом сломала бы разметку групп.
+      root.querySelectorAll('[data-rp-dv-more]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          dvShown += DV_PAGE;
+          rerenderDvSection();
+        });
+      });
+
       // Развернуть/свернуть все периоды разом.
       root.querySelectorAll('[data-rp-periods-all]').forEach((btn) => {
         btn.addEventListener('click', () => {
@@ -3015,6 +3075,15 @@ window.AsgardRpReviewModal = (function () {
           } catch (e) {
             toast('Ошибка', e.message || 'Импорт не удался', 'err');
           }
+        });
+      });
+      // Кнопки «Добавить файл» нажимают скрытый input: убирает три нативные
+      // «Файл не выбран» и оставляет одну свою кнопку на каждую drop-зону.
+      document.querySelectorAll('[data-file-for]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const id = btn.getAttribute('data-file-for');
+          const inp = id ? document.getElementById(id) : null;
+          if (inp) inp.click();
         });
       });
       document.getElementById('rpEstimateFile')?.addEventListener('change', (e) => {

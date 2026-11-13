@@ -286,7 +286,13 @@ function normalizeMtr(mtr) {
       source: MTR_SOURCES.includes(src) ? src : (m.equipment_id ? 'warehouse' : 'purchase'),
       purpose: String(m.purpose || '').trim(),
       price: (m.price != null && m.price !== '') ? num(m.price) : null,
-      note: String(m.note || '')
+      note: String(m.note || ''),
+      // Доля закупки, входящая в себестоимость (блок G). Без переноса здесь
+      // значение из карточки терялось, и любая закупка считалась за 100 %.
+      sharePct: m.sharePct != null && m.sharePct !== '' ? m.sharePct : null,
+      // Техника из агента МТР: нужна UI, чтобы отличать установку от расходника.
+      is_equipment: !!m.is_equipment,
+      price_confirmed: m.price_confirmed !== false
     });
   });
   return out;
@@ -598,30 +604,99 @@ function applyTechPlanRows(rows, crew, mtr, p) {
 
   if (hasMtr) {
     // Убрать прежние строки перечня (в т.ч. шаблонную F1) и собрать из mtr.
+    // Раньше ВСЁ уходило в F как kind:'info', то есть справочно, вне сумм:
+    // закупка не попадала ни в один денежный блок, и МТР не влиял на
+    // себестоимость. Теперь по источнику:
+    //   warehouse → F (наше, цена 0, справочно — в суммы не идёт)
+    //   purchase  → G (закупка, доля sharePct входит в себестоимость)
+    //   rent      → H (аренда, посменная)
+    //
+    // Чистим по tech_from === 'mtr' ВО ВСЕХ разделах: строки МТР теперь живут
+    // не только в F. Иначе повторное применение (правка МТР → пересчёт)
+    // дублировало закупку и удваивало себестоимость.
+    // Плюс, как и раньше, убираем все строки F (включая шаблонную F1):
+    // раздел целиком пересобирается из mtr.
     for (let i = list.length - 1; i >= 0; i -= 1) {
       const r = list[i];
       if (!r) continue;
+      if (r.tech_from === 'mtr') { list.splice(i, 1); continue; }
       if (String(r.section) === 'F' && (r.kind === 'info' || r.kind === 'line')) list.splice(i, 1);
     }
     const secFIdx = list.findIndex((r) => r && r.kind === 'section' && String(r.section) === 'F');
-    const fresh = mtr.map((m, i) => ({
-      id: 'f_mtr_' + (m.code || i),
+
+    const own = [];      // склад — наше
+    const purchase = []; // закупка
+    const rent = [];     // аренда
+
+    mtr.forEach((m, i) => {
+      const src = String(m.source || '').toLowerCase();
+      const row = {
+        id: 'f_mtr_' + (m.code || i),
+        kind: 'info',
+        section: 'F',
+        code: 'F' + (i + 1),
+        name: m.name,
+        unit: m.unit || 'шт',
+        qty: num(m.qty) || 1,
+        price: m.price != null ? m.price : 0,
+        inventory_number: m.inventory_number || '',
+        equipment_id: m.equipment_id || null,
+        mtr_source: m.source,
+        note: m.purpose || m.note || '',
+        tech_from: 'mtr',
+        is_equipment: !!m.is_equipment,
+        editable: { qty: true, price: true, name: true, note: true }
+      };
+      if (src === 'warehouse') {
+        // Своё: цена = 0, чтобы не удваивать себестоимость. Если РП вписал
+        // цену вручную — это его решение, sum пойдёт в амортизацию/расход.
+        own.push(row);
+      } else if (src === 'rent') {
+        rent.push(Object.assign({}, row, {
+          id: 'h_mtr_' + (m.code || i),
+          section: 'H',
+          kind: 'line',
+          code: (rent.length + 1),
+          sharePct: m.sharePct != null ? m.sharePct : 1,
+          editable: { qty: true, price: true, name: true, note: true, sharePct: true }
+        }));
+      } else {
+        purchase.push(Object.assign({}, row, {
+          id: 'g_mtr_' + (m.code || i),
+          section: 'G',
+          kind: 'line',
+          code: 'G' + (purchase.length + 2),
+          // Доля закупки, входящая в себестоимость: по умолчанию 100 %.
+          // РП в просчёте ставит свою долю ПО КАЖДОЙ позиции.
+          sharePct: m.sharePct != null ? m.sharePct : 1,
+          editable: { qty: true, price: true, name: true, note: true, sharePct: true }
+        }));
+      }
+    });
+
+    // F: сначала своё (справочно), затем сама закупка как справка о потребности,
+    // но уже БЕЗ влияния на суммы — денежная строка закупки живёт в G.
+    const fRows = own.concat(purchase.map((r) => Object.assign({}, r, {
+      id: 'f_ref_' + r.id,
       kind: 'info',
       section: 'F',
-      code: 'F' + (i + 1),
-      name: m.name,
-      unit: m.unit || 'шт',
-      qty: num(m.qty) || 1,
-      price: m.price != null ? m.price : 0,
-      inventory_number: m.inventory_number || '',
-      equipment_id: m.equipment_id || null,
-      mtr_source: m.source,
-      note: m.purpose || m.note || '',
-      tech_from: 'mtr',
-      editable: { qty: true, price: true, name: true, note: true }
-    }));
-    if (secFIdx >= 0) list.splice(secFIdx + 1, 0, ...fresh);
-    else list.push(...fresh);
+      mtr_ref_to: r.id
+    })));
+    if (secFIdx >= 0) list.splice(secFIdx + 1, 0, ...fRows);
+    else list.push(...fRows);
+
+    // G: после заголовка секции G.
+    if (purchase.length) {
+      const secGIdx = list.findIndex((r) => r && r.kind === 'section' && String(r.section) === 'G');
+      if (secGIdx >= 0) list.splice(secGIdx + 1, 0, ...purchase);
+      else list.push(...purchase);
+    }
+    // H: после заголовка секции H.
+    if (rent.length) {
+      const secHIdx = list.findIndex((r) => r && r.kind === 'section' && String(r.section) === 'H');
+      if (secHIdx >= 0) list.splice(secHIdx + 1, 0, ...rent);
+      else list.push(...rent);
+    }
   }
 
   return list;

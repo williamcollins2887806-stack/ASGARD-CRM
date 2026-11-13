@@ -174,9 +174,34 @@ function estimateTubesFromObjects(pos) {
   let catalog = { categories: [], rates: [] };
   try { catalog = await workNorms.loadCatalog(pool); } catch (e) { log('каталог:', e.message); }
 
+
   // ── Разбор ───────────────────────────────────────────────────────────────
   const tzText = sel.selected.map((d) => '=== ' + d.original_name + ' ===\n' + d.text).join('\n\n');
   log('запуск generateDv, вход:', tzText.length, 'символов');
+
+  // ── Склад: что есть у нас, чтобы агент МТР не писал «купить» на своё ─────
+  // В прогоне склад не передавался вовсе, и МТР предлагал закупку того,
+  // что лежит на складе. Ошибка дорогая: закупка попадает в блок G сметы.
+  let warehouseCtx = null;
+  let warehouseCtxText = null;
+  try {
+    const { buildWarehouseContext } = require(APP + '/src/services/warehouse-context');
+    const whRes = await pool.query(
+      `SELECT e.name, e.quantity, e.unit, c.name AS category_name
+         FROM equipment e
+         LEFT JOIN equipment_categories c ON c.id = e.category_id
+        WHERE COALESCE(e.is_active, true) = true
+          AND COALESCE(e.status, 'available') NOT IN ('written_off','disposed','lost')
+          AND COALESCE(e.quantity, 0) > 0
+        ORDER BY c.name, e.name
+        LIMIT 2000`
+    );
+    warehouseCtx = buildWarehouseContext(whRes.rows, { text: tzText });
+    warehouseCtxText = warehouseCtx.text || null;
+    log('склад:', warehouseCtx.total, 'наименований, в разбор', warehouseCtx.items.length);
+  } catch (e) {
+    log('склад не прочитан:', e.message);
+  }
 
   const res = await stagesAi.generateDv({
     db: pool,
@@ -311,37 +336,77 @@ function estimateTubesFromObjects(pos) {
     log('график заездов не собран:', e.message);
   }
 
-  // ── МТР: детерминированный проход, если модель не дала ───────────────────
-  // Модель на длинном ответе экономит и возвращает mtr_suggestions: [] —
-  // на прогоне 12.11 МТР пришёл нулевым при 613 позициях. Потребность в
-  // материалах выводится из видов работ БЕЗ модели (mtr-pipeline), поэтому
-  // не оставляем поле пустым: РП должен видеть, что нужно докупить.
+  // ── МТР: отдельный агент + детерминированный проход ──────────────────────
+  // Одна модель разбирала объёмы и на хвосте экономила: mtr_suggestions
+  // приходил пустым (12.11 при 613 позициях), а если и приходил — только
+  // расходники (ветошь, сальники) без единой установки. Работать нечем.
+  //
+  // Теперь два независимых источника и СЛИЯНИЕ, а не подмена:
+  //   1) агент МТР — отдельный вызов по уже разобранным позициям;
+  //   2) mtr-pipeline — типовая техника по методу + расходники, без модели.
+  // Падение агента не ломает прогон: остаётся pipeline.
   let mtrList = mtr;
-  if (!mtrList.length) {
-    try {
-      const mtrPipeline = require(APP + '/src/services/mtr-pipeline');
-      const built = await mtrPipeline.buildMtr({
-        db: pool,
-        positions: enrichedPositions,
-        people: Number((enrichedPositions[0] || {}).people) || 5,
-        trips: (visitPlan && visitPlan.trip_count)
-          || (Array.isArray(dv.visits) && dv.visits.length ? dv.visits.length : 1),
-        allowWeb: false   // цена будет null и помечена пробелом — это честно
-      });
-      mtrList = (built.rows || []).map((r) => ({
-        name: r.name,
-        qty: r.qty,
-        unit: r.unit,
-        source: r.source,
-        price: r.price,
-        price_confirmed: r.price_confirmed,
-        note: r.gap || r.note || null
-      }));
-      log('МТР выведен из видов работ:', mtrList.length, 'строк');
-    } catch (e) {
-      log('МТР не выведен:', e.message);
-    }
+  let mtrAgent = null;
+  const mtrTrips = (visitPlan && visitPlan.trip_count)
+    || (Array.isArray(dv.visits) && dv.visits.length ? dv.visits.length : 1);
+  const mtrCrew = Number((enrichedPositions[0] || {}).people)
+    || Number((calcPlan && calcPlan.headcount_shift) || 0) || 5;
+
+  try {
+    mtrAgent = await stagesAi.generateMtr({
+      aiProvider,
+      positions: enrichedPositions,
+      tz_text: tzText,
+      warehouse_text: warehouseCtxText,
+      trips: mtrTrips,
+      crew: mtrCrew,
+      onProgress: (ev) => { if (ev && ev.message) log('  мтр: ' + ev.message); }
+    });
+    log('агент МТР:', mtrAgent.ok ? 'ok' : 'отказ', '| техники',
+      (mtrAgent.units || []).length, '| расходников', (mtrAgent.consumables || []).length,
+      mtrAgent.error ? ('| ' + mtrAgent.error) : '');
+  } catch (e) {
+    log('агент МТР упал:', e.message);
   }
+
+  try {
+    const mtrPipeline = require(APP + '/src/services/mtr-pipeline');
+    const built = await mtrPipeline.buildMtr({
+      db: pool,
+      positions: enrichedPositions,
+      people: mtrCrew,
+      trips: mtrTrips,
+      allowWeb: false   // цена будет null и помечена пробелом — это честно
+    });
+    const pipelineRows = (built.rows || []).map((r) => ({
+      name: r.name,
+      qty: r.qty,
+      unit: r.unit,
+      source: r.source,
+      price: r.price,
+      price_confirmed: r.price_confirmed,
+      // Техника из справочника помечается: РП видит, что это типовая позиция.
+      basis: r.is_equipment ? 'method' : (r.basis || null),
+      is_equipment: !!r.is_equipment,
+      note: r.gap || r.note || null
+    }));
+    // Слияние: ответ агента первым (он видел ТЗ), pipeline дополняет.
+    const seen = new Set();
+    const merged = [];
+    const agentRows = (mtrAgent && Array.isArray(mtrAgent.rows)) ? mtrAgent.rows : [];
+    [...agentRows, ...pipelineRows].forEach((r) => {
+      const key = mtrPipeline.normalizeName(r.name);
+      if (!key || seen.has(key)) return;
+      seen.add(key);
+      merged.push(r);
+    });
+    mtrList = merged;
+    log('МТР итого:', mtrList.length, 'строк | техники',
+      mtrList.filter((r) => r.is_equipment || /установк|аппарат|пост|компрессор|насос|кран|леса/i.test(r.name)).length);
+  } catch (e) {
+    log('МТР не выведен:', e.message);
+  }
+
 
   const report = {
     ok: true,

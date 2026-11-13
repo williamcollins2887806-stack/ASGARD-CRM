@@ -243,38 +243,69 @@ function buildMtr(aiEstimate) {
     });
   });
 
-  // ── mtr_suggestions: контракт модели анализа ─────────────────────────────
-  // Модель на этапе анализа возвращает материалы/оборудование в `mtr_suggestions`
-  // (промпт PROMPT-dv-v1 просит именно это поле). Нормализатор их сохраняет, но
-  // buildMtr читал только `ai_meta.*` — контракт не совпадал, и перечень МТР
-  // терялся на переходе «анализ → просчёт». Теперь это равноправный источник.
+  // ── mtr_suggestions: контракт агента МТР ─────────────────────────────────
+  // МТР собирает ОТДЕЛЬНЫЙ агент (generateMtr) и типовой перечень по методу
+  // (mtr-pipeline). Нормализатор кладёт результат в `mtr_suggestions`.
+  //
+  // Раньше здесь жёстко ставился source: 'purchase', и позиция, которая есть
+  // на складе, уходила в закупку — ложь в смете и в письме директору.
+  // Теперь источник модели сохраняется: warehouse остаётся warehouse.
   arr(ai.mtr_suggestions).forEach((m) => {
     if (!m) return;
     const name = m.name || m.item;
     if (!txt(name)) return;
     if (out.some((x) => normName(x.name) === normName(name))) return;
+    const rawSrc = txt(m.source || '').toLowerCase();
+    // 'typical' и 'doc' — это не источник снабжения, а происхождение
+    // (типовой/из документов). Для сметы оба = закупка либо склад по факту
+    // наличия, поэтому оставляем purchase, а происхождение — в note.
+    const src = ['warehouse', 'purchase', 'rent'].includes(rawSrc) ? rawSrc : 'purchase';
     add(name, m.qty || m.quantity, {
       unit: txt(m.unit) || 'шт',
       purpose: txt(m.purpose),
-      // 'typical' — типовой расходник, 'doc' — из документов тендера.
-      // Для сметы оба означают закупку; склад подберётся matchWarehouse.
-      source: 'purchase',
-      note: txt(m.source === 'typical' ? 'типовой расходник' : 'из документов')
+      source: src,
+      price: m.price != null ? num(m.price) : null,
+      note: rawSrc === 'typical' ? 'типовой расходник'
+        : rawSrc === 'doc' ? 'из документов'
+          : txt(m.note),
+      is_equipment: !!m.is_equipment,
+      // Признак неподтверждённой цены: РП должен видеть пробел, а не ноль.
+      price_confirmed: m.price_confirmed !== false
     });
   });
 
-  if (!out.length) {
-    const needed = arr(ai.equipment_needed).length ? arr(ai.equipment_needed)
-      : arr(ai.equipment_status && ai.equipment_status.to_purchase);
-    needed.forEach((e) => {
-      if (!e) return;
-      add(e.item || e.name, e.quantity || e.qty, {
-        purpose: txt(e.purpose),
-        price: e.price != null ? num(e.price) : null,
-        source: ['warehouse', 'purchase', 'rent'].includes(txt(e.source)) ? txt(e.source) : 'purchase'
-      });
+  // ── Техника: слияние, а НЕ подстановка вместо расходников ───────────────
+  // Было `if (!out.length)` — один расходник в списке отменял всю технику,
+  // и на тендере 2138 МТР вышел из 8 строк (ветошь, сальник) без единой
+  // установки: работать нечем. Теперь техника добавляется к перечню.
+  const needed = arr(ai.equipment_needed).length ? arr(ai.equipment_needed)
+    : arr(ai.equipment_status && ai.equipment_status.to_purchase);
+  needed.forEach((e) => {
+    if (!e) return;
+    const name = e.item || e.name;
+    if (!txt(name)) return;
+    if (out.some((x) => normName(x.name) === normName(name))) return;
+    add(name, e.quantity || e.qty, {
+      purpose: txt(e.purpose),
+      price: e.price != null ? num(e.price) : null,
+      source: ['warehouse', 'purchase', 'rent'].includes(txt(e.source)) ? txt(e.source) : 'purchase',
+      is_equipment: true
     });
-  }
+  });
+  // equipment_plan — перечень техники от агента МТР (units)
+  arr(ai.equipment_plan).forEach((e) => {
+    if (!e) return;
+    const name = e.name || e.item;
+    if (!txt(name)) return;
+    if (out.some((x) => normName(x.name) === normName(name))) return;
+    add(name, e.qty || e.quantity, {
+      unit: txt(e.unit) || 'шт',
+      purpose: txt(e.purpose),
+      price: e.price != null ? num(e.price) : null,
+      source: ['warehouse', 'purchase', 'rent'].includes(txt(e.source)) ? txt(e.source) : 'purchase',
+      is_equipment: true
+    });
+  });
   // GAP-4: purchases_needed из анализа/просчёта Мимира
   const purchasesNeeded = arr(ai.purchases_needed).length
     ? arr(ai.purchases_needed)

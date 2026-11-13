@@ -259,7 +259,14 @@ window.AsgardRegistryTab = (function () {
     const final = !!row.rp_review?.is_final;
     // Дефолт режима — по фазе: незакрытый анализ всегда «analysis».
     // Раньше здесь стоял 'calc', и роль/просмотр навязывали просчёт в анализе.
-    const phaseMode = (row.analysis_finalized_at || row.rp_review?.analysis_finalized_at) ? 'calc' : 'analysis';
+    // Закрытый анализ — ещё не просчёт: если цены и файла сметы нет, открываем
+    // анализ (тот же reviewNeedsCalc, что и в «Мои»), иначе пустая форма calc.
+    const _rev = row.rp_review || {};
+    const _needsCalc = !!(_rev.analysis_finalized_at || row.analysis_finalized_at)
+      && !_rev.is_final
+      && !(Number(_rev.work_price) > 0)
+      && !_rev.estimate_file_id;
+    const phaseMode = ((row.analysis_finalized_at || _rev.analysis_finalized_at) && !_needsCalc) ? 'calc' : 'analysis';
     if (isDirector) {
       opts = Object.assign({ role: 'viewer', readOnly: true, mode: phaseMode }, opts);
     } else if (role === 'HEAD_TO' && !opts.forceEdit) {
@@ -1924,8 +1931,17 @@ window.AsgardRegistryTab = (function () {
         API.assignRegistryCalculator(Number(btn.dataset.id), 'to').then(() => {
           toast('Вы назначены считающим', 'ok');
           const row = rows.find((r) => r.id === Number(btn.dataset.id));
-          if (row && window.AsgardRpCalcModal) AsgardRpCalcModal.open(row, pmsCache, refresh, { mode: 'calc' });
-          else if (row && window.AsgardRpReviewModal) AsgardRpReviewModal.open(row, pmsCache, refresh, { mode: 'calc' });
+          // Пока анализ не закрыт, считать нечего — открываем анализ, иначе
+          // «Считаю сам» показывал пустую форму просчёта на DEFAULT_PARAMS.
+          const closed = !!(row && (row.analysis_finalized_at || row.rp_review?.analysis_finalized_at));
+          const mode = closed ? 'calc' : 'analysis';
+          if (row && mode === 'calc' && window.AsgardRpCalcModal) {
+            AsgardRpCalcModal.open(row, pmsCache, refresh, { mode: 'calc' });
+          } else if (row && window.AsgardRpReviewModal) {
+            AsgardRpReviewModal.open(row, pmsCache, refresh, { mode: mode });
+          } else {
+            refresh();
+          }
         }).catch((e) => toast(e.message, 'err'));
       });
     });
