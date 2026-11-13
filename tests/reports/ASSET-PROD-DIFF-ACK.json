@@ -92,6 +92,13 @@
       "reason": "Prod-only 280 строк — это блоки .sched-* и .skud-* (график стаффа и СКУД), перенесённые в отдельный assets/css/office-schedule.css. В локальном app.css их нет, потому что стили вынесены; на проде они остались дублем.",
       "evidence": "Проверено построчно: все 280 prod-only непустых строк присутствуют в public/assets/css/office-schedule.css (0 строк не найдено). Селекторы: .sched-header/.sched-cell/.sched-dash__*/.skud-banner__*/.skud-opt. office-schedule.css подключён в public/index.html строкой 69 (?v=20.28.407). Заливка app.css ничего не теряет: дубль заменяется вынесенным файлом.",
       "verdict": "superseded_by_local"
+    },
+    "public/assets/js/ting_room_core.js": {
+      "reason": "Prod-only 8 строк — устаревшие КОММЕНТАРИИ Тинга (D-402) и одна слитая строка с двумя // подряд. Разбор 13.11.2026: файл НЕ входит в набор деплоя этого батча (везём только huginn_dock.css + 4 файла оболочки), поэтому заливка его вообще не трогает.",
+      "evidence": "Сравнение прод ↔ локаль (scp /var/www/asgard-crm/public/assets/js/ting_room_core.js): prod 13911 Б (md5 ecc941884b59), local 14859 Б (md5 887634f29552), prod-only 8 / local-only 22. Все 8 prod-only — тексты комментариев; ФУНКЦИОНАЛЬНЫЕ константы совпадают: LOW_SPEED_DOWN_MS=6000, LOW_SPEED_UP_MS=1200, LOW_SPEED_RESTORED_MS=2200, noteConnectionQuality, API lowSpeed{note,reset,hiddenIds,setLocalIdFn}, mediaTrackLive. Прод-строка `LOW_SPEED_UP_MS = 1200;  // восстановление...  // подтверждаем...` содержит ДВА комментария на одной строке — след ручной склейки на сервере; локально та же строка чистая. Локальная версия новее: последний коммит 7c80c2cb (12.11.2026, «Тинг: лимит камер 6, телеметрия верхнего слоя, порог низкой скорости, ТВ 16:9»). Ни одна prod-строка не несёт поведения, отсутствующего локально.",
+      "verdict": "superseded_by_local",
+      "acked_at": "2026-11-13",
+      "acked_by": "deploy 20.28.557 (Huginn readability: композер + шрифт 14px) — файл вне набора деплоя"
     }
   }
 }
