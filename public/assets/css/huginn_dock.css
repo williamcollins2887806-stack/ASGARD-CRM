@@ -119,10 +119,10 @@
 
   --hg-font: -apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, Roboto, sans-serif;
   --hg-font-meta: 11px/1.2;
-  --hg-font-name: 17px/1.25;
-  --hg-font-preview: 15px/1.35;
-  --hg-font-body: 17px/1.4;
-  --hg-font-title: 17px/1.3;
+  --hg-font-name: 14px/1.25;
+  --hg-font-preview: 13px/1.35;
+  --hg-font-body: 14px/1.45;
+  --hg-font-title: 15px/1.3;
   --hg-font-status: 12px/1.3;
   --hg-font-screen: 18px/1.2;
 
@@ -2781,6 +2781,17 @@ html[data-theme="light"] .hg-scroll-fab {
   /* The composer overlays the thread; reserve its scroll clearance inside .hg-msgs only. */
   padding-bottom: 0;
 }
+/* Клиренс композера — на ВСЕХ ширинах, не только в @media (max-width:768px).
+   ДЕФЕКТ (13.11.2026): правила ниже в media-блоках оставляли десктоп (правый
+   рейл, широкое окно) с базовым отступом 16px, и последнее сообщение уходило
+   под плавающий композер (замер: под композером 40px при ширине 1440px и 0px
+   при ≤768px). Высота берётся из --hg-composer-height, который пишет
+   observeHgComposerSize(): она меняется от reply/вложений/записи голосового. */
+.hg-chrome.is-thread .hg-msgs {
+  padding-bottom: calc(
+    var(--hg-composer-height, calc(var(--hg-tg-input-h, 40px) + 22px + env(safe-area-inset-bottom, 0px))) + 8px
+  ) !important;
+}
 .hg-composer > * { position: relative; z-index: 1; }
 html[data-theme="light"] .hg-composer {
   --hg-tg-tool-bg: color-mix(in srgb, var(--bg2, #FDFAF5) 88%, transparent);
@@ -2995,7 +3006,7 @@ html[data-theme="light"] .hg-composer-row .hg-tool:hover {
   outline: none !important;
   box-shadow: none !important;
   padding: 8px 52px 8px 10px;
-  font: 400 17px/1.25 var(--hg-font);
+  font: 400 14px/1.35 var(--hg-font);
   background: transparent !important;
   background-color: transparent !important;
   background-image: none !important;
