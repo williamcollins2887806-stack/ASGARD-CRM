@@ -444,6 +444,9 @@ window.AsgardObsLetterModal = (function () {
     const save = el('dhObsSave');
     if (save) save.disabled = true;
     state.previewOkForLetter = false;
+    // V492: реквизиты изменились — кеш собранных файлов недействителен.
+    state.fileCache = {};
+    state.inflight = {};
     const dl1 = el('dhObsDlPdf');
     const dl2 = el('dhObsDlDocx');
     if (dl1) dl1.disabled = true;
@@ -532,6 +535,11 @@ window.AsgardObsLetterModal = (function () {
       updateItemsHint();
       updateAccountInfo();
       updateSubInfo();
+      // V492: любое изменение реквизитов делает собранный текст устаревшим.
+      // Без этого человек правил сумму, а текст оставался от старой — и
+      // «Сохранить» пропускала письмо с расхождением.
+      state.fileCache = {};
+      state.inflight = {};
       return true;
     } catch (_) { return false; }
   }
@@ -551,7 +559,8 @@ window.AsgardObsLetterModal = (function () {
       + list.map((w) => `<li>${esc(w)}</li>`).join('') + '</ul>';
   }
 
-  async function doCompose() {
+  async function doCompose(opts) {
+    const o = opts || {};
     const btn = el('dhObsComposeBtn');
     if (!btn || !state) return;
     btn.disabled = true;
@@ -560,7 +569,9 @@ window.AsgardObsLetterModal = (function () {
     try {
       const res = await apiJson(`/${state.docId}/obs-letter/compose`, {
         method: 'POST',
-        body: JSON.stringify(collectPayload()),
+        // V492: при сборке НЕ шлём старый текст из textarea (override перебил
+        // бы сборку) и не ждём модель — быстрый детерминированный каркас.
+        body: JSON.stringify(collectPayload({ skipOverride: true, noAi: true })),
       });
       const text = (res.paragraphs || []).join('\n\n');
       el('dhObsLetterText').value = text;
@@ -568,10 +579,15 @@ window.AsgardObsLetterModal = (function () {
       state.previewOkForLetter = false;
       el('dhObsSave').disabled = true;
       persistDraft();
-      toast('Текст письма', `Собрано абзацев: ${(res.paragraphs || []).length}`, 'ok');
-      markDirty();
+      if (!o.silent) {
+        toast('Текст письма', `Собрано абзацев: ${(res.paragraphs || []).length}`, 'ok');
+        // При автоподготовке (открытие окна) не помечаем форму грязной:
+        // иначе человек закрывает окно, ничего не тронув, и получает вопрос
+        // «есть несохранённые изменения».
+        markDirty();
+      }
     } catch (e) {
-      toast('Не удалось собрать текст', e.message || 'ошибка', 'err');
+      if (!o.silent) toast('Не удалось собрать текст', e.message || 'ошибка', 'err');
     } finally {
       btn.disabled = false;
       btn.textContent = prev;
@@ -615,7 +631,8 @@ window.AsgardObsLetterModal = (function () {
     q('dhObsSpecialText').focus();
   }
 
-  function collectPayload() {
+  function collectPayload(opts) {
+    const o = opts || {};
     const fromCard = !!el('dhObsFromCard').checked;
     const payload = {
       invoice_number: el('dhObsInvNo').value.trim(),
@@ -633,8 +650,13 @@ window.AsgardObsLetterModal = (function () {
       payment_period: String(el('dhObsPayPeriod').value || '').trim(),
       special_context: String(state && state.specialContext || '').trim(),
     };
-    const paras = letterParagraphsFromTextarea();
-    if (paras.length) payload.paragraphs_override = paras;
+    if (o.noAi) payload.no_ai = true;
+    // При compose текст из textarea НЕ отправляем: иначе сервер вернёт его же
+    // (override перебивает сборку) и кнопка «Собрать текст» перестанет собирать.
+    if (!o.skipOverride) {
+      const paras = letterParagraphsFromTextarea();
+      if (paras.length) payload.paragraphs_override = paras;
+    }
     const acc = Number(el('dhObsAccount').value) || 0;
     if (acc) payload.obs_account_id = acc;
     const sub = Number(el('dhObsSub').value) || 0;
@@ -646,20 +668,49 @@ window.AsgardObsLetterModal = (function () {
 
   // ─── Предпросмотр и скачивание ──────────────────────────────────────────
   async function fetchPreviewBlob(format) {
-    const r = await fetch(
-      `${API}/${state.docId}/obs-letter/preview?format=${format === 'docx' ? 'docx' : 'pdf'}`,
-      {
-        method: 'POST',
-        headers: { Authorization: 'Bearer ' + token(), 'Content-Type': 'application/json' },
-        body: JSON.stringify(collectPayload()),
-        cache: 'no-store',
+    const fmt = format === 'docx' ? 'docx' : 'pdf';
+    // V492: кеш уже собранного файла по отпечатку формы.
+    //
+    // Жалоба 12.11.2026: «очень долго скачивается Word и PDF, нажимаю —
+    // ничего не происходит 2–3 секунды, иногда не скачивается». Причина:
+    // каждая кнопка заново гоняла полный серверный рендер (Word + LibreOffice),
+    // а при живом предпросмотре на каждое изменение ещё и повторно.
+    // Теперь результат предпросмотра переиспользуется, пока текст/суммы не
+    // изменились; параллельные запросы на один и тот же формат схлопываются.
+    const fp = fmt + '|' + JSON.stringify(collectPayload({ noAi: true }));
+    if (state.fileCache && state.fileCache[fp]) return state.fileCache[fp];
+    if (state.inflight && state.inflight[fp]) return state.inflight[fp];
+    state.inflight = state.inflight || {};
+    const p = (async () => {
+      const r = await fetch(
+        `${API}/${state.docId}/obs-letter/preview?format=${fmt}`,
+        {
+          method: 'POST',
+          headers: { Authorization: 'Bearer ' + token(), 'Content-Type': 'application/json' },
+          // no_ai: сервер не зовёт модель — фолбэк детерминированный. Ещё и
+          // поэтому текст в предпросмотре совпадает с тем, что человек правил.
+          body: JSON.stringify(collectPayload({ noAi: true })),
+          cache: 'no-store',
+        }
+      );
+      if (!r.ok) {
+        const j = await r.json().catch(() => ({}));
+        throw new Error(j.error || ('HTTP ' + r.status));
       }
-    );
-    if (!r.ok) {
-      const j = await r.json().catch(() => ({}));
-      throw new Error(j.error || ('HTTP ' + r.status));
+      return r.blob();
+    })();
+    state.inflight[fp] = p;
+    try {
+      const blob = await p;
+      state.fileCache = state.fileCache || {};
+      // Держим только последние 4 файла — письмо на 1 лист, память не жалко.
+      const keys = Object.keys(state.fileCache);
+      if (keys.length >= 4) delete state.fileCache[keys[0]];
+      state.fileCache[fp] = blob;
+      return blob;
+    } finally {
+      delete state.inflight[fp];
     }
-    return r.blob();
   }
 
   // ─── V487: масштаб предпросмотра, split-ручка, живое обновление ──────────
@@ -726,6 +777,31 @@ window.AsgardObsLetterModal = (function () {
     setZoom(avail / 794);
   }
 
+  /**
+   * V492: вписать лист в панель, если сохранённый масштаб шире неё.
+   *
+   * Жалоба 12.11.2026: «в модалке справа окно, внутри которого живёт
+   * предпросмотр, и его можно туда-сюда перемещать — он не ровно по рамку
+   * поля». Причина: масштаб помнится в localStorage. На узком окне (или после
+   * перетаскивания ручки) лист при 100 % шире панели, появляется горизонтальный
+   * скролл — и лист читается как отдельный «остров», который ездит внутри
+   * рамки. Теперь при открытии масштаб подрезается под фактическую ширину.
+   */
+  function clampZoomToPane() {
+    const viewport = el('dhObsPrevViewport');
+    if (!viewport || !state) return;
+    // Явный выбор масштаба человеком не перебиваем: он мог специально
+    // увеличить лист. Подрезаем только стартовый/унаследованный масштаб.
+    if (state.zoomTouched) { applyZoom(); return; }
+    const avail = Math.max(220, viewport.clientWidth - 36);
+    const w = Math.round(794 * zoomNow());
+    if (w > avail) {
+      const fitted = Math.max(MIN_ZOOM, avail / 794);
+      state.zoom = Math.round(fitted * 100) / 100;
+    }
+    applyZoom();
+  }
+
   // ─── Перетаскивание ручки (как mlsp_split_grip) ─────────────────────────
   function applySplit(pct) {
     const body = el('dhObsBody');
@@ -756,7 +832,7 @@ window.AsgardObsLetterModal = (function () {
       document.body.classList.remove('dh-obs-resizing');
       try { localStorage.setItem(SPLIT_KEY, String(state.splitPct)); } catch (_) { /* */ }
       // После смены ширины «по ширине» надо пересчитать.
-      applyZoom();
+      clampZoomToPane();
     };
     const start = (e) => {
       dragging = true;
@@ -834,7 +910,11 @@ window.AsgardObsLetterModal = (function () {
       el('dhObsStale').hidden = true;
       state.previewed = true;
       const fp = letterTextFingerprint();
-      if (state.composedFingerprint && fp === state.composedFingerprint) {
+      // V492: достаточно, чтобы текст был собран (compose) и предпросмотр
+      // отрисован. Раньше требовалось точное совпадение отпечатка с моментом
+      // compose: любая правка пробела в textarea блокировала «Сохранить», и
+      // кнопка оставалась серой без объяснения — со стороны «не работает».
+      if (state.composedFingerprint && fp) {
         state.previewOkForLetter = true;
         el('dhObsSave').disabled = false;
       } else {
@@ -910,8 +990,15 @@ window.AsgardObsLetterModal = (function () {
 
   async function save() {
     if (!state.previewOkForLetter || !letterTextFingerprint()) {
-      toast('Сохранение', 'Сначала «Собрать текст» и предпросмотр с этим текстом', 'err');
-      return;
+      // V492: вместо сухого отказа — сразу собрать текст и предпросмотр.
+      // Раньше человек видел «Сначала соберите текст», шёл искать кнопку и
+      // возвращался; теперь порядок доводится автоматически.
+      toast('Сохранение', 'Готовлю текст и предпросмотр…', 'ok');
+      try {
+        if (!letterTextFingerprint()) await doCompose({ silent: true });
+        await doPreview();
+      } catch (_) { /* ошибку покажет doPreview */ }
+      if (!state.previewOkForLetter) return;
     }
     const btn = el('dhObsSave');
     btn.disabled = true;
@@ -928,8 +1015,21 @@ window.AsgardObsLetterModal = (function () {
       btn.textContent = 'Готово';
       state.dirty = false;
       state.saved = res;
+      // V492: после сохранения файл уже существует и не меняется — кеш
+      // оставляем, чтобы «Скачать Word/PDF» шли из ACL-роута без рендера.
       clearDraftStorage();
       toast('Письмо создано', 'Исх. № ' + (res.number || ''), 'ok');
+      // V492: привязка к карточке проверяется сразу и показывается человеку.
+      //
+      // Жалоба 12.11.2026: «после создания письмо не прикрепляется к карточке
+      // счёта». Корень был в ReferenceError из attachments (letterDocId до
+      // объявления) — транзакция откатывалась. Теперь, если сервер ответил
+      // успешно, но ссылки на письмо в карточке нет, говорим об этом прямо.
+      const attachedId = Number(res.letter_doc_id || 0);
+      if (!attachedId) {
+        el('dhObsFootLeft').innerHTML = '<span class="dh-obs-bad">Письмо создано, но карточка счёта не '
+          + 'связана с ним. Сообщите в поддержку: письмо Исх. № ' + esc(res.number || '') + '.</span>';
+      }
       if (typeof state.opts.onSaved === 'function') {
         try { await state.opts.onSaved(res); } catch (_) { /* не критично */ }
       }
@@ -1268,6 +1368,10 @@ window.AsgardObsLetterModal = (function () {
       specialRule: null,
       previewUrl: null,
       saved: null,
+      // V492: кеш собранных файлов предпросмотра и склейка параллельных
+      // запросов — иначе каждая кнопка «Скачать» заново рендерила Word/PDF.
+      fileCache: {},
+      inflight: {},
       // V487: масштаб и ширина колонок запоминаются между открытиями окна —
       // человек настраивает рабочее место один раз, а не на каждый счёт.
       zoom: (() => {
@@ -1302,6 +1406,10 @@ window.AsgardObsLetterModal = (function () {
     // (TypeError reading 'splitPct'), из-за чего не заполнялись договоры.
     applySplit(state.splitPct);
     applyZoom();
+    // V492: после раскладки подрезаем масштаб под ширину панели, иначе лист
+    // шире рамки и «ездит» внутри предпросмотра. rAF — чтобы clientWidth был
+    // уже посчитан после показа окна.
+    requestAnimationFrame(() => { try { clampZoomToPane(); } catch (_) { /* */ } });
     // V486: заводить ОБС-счёт могут РП и ТО, а не только админ.
     //
     // Заказчик 11.11.2026: «надо сделать, чтобы можно было в модалке добавить
@@ -1355,6 +1463,17 @@ window.AsgardObsLetterModal = (function () {
       updateAccountInfo();
       updateSubInfo();
       updateItemsHint();
+
+      // V492: текст собирается сразу при открытии.
+      //
+      // Заказчик 12.11.2026: «сделай так, чтобы перед созданием письма мы
+      // видели текст и могли его править». Раньше человек должен был сам
+      // догадаться нажать «Собрать текст», а без этого «Сохранить» оставалась
+      // серой — со стороны это выглядело как «кнопка не работает».
+      // Сборка идёт быстрым фолбэком (no_ai), занимает миллисекунды.
+      if (!el('dhObsLetterText').value.trim()) {
+        doCompose({ silent: true }).catch(() => { /* не блокируем открытие */ });
+      }
 
       if (!opt.can_create_letter) {
         el('dhObsFootLeft').innerHTML = '<span class="dh-obs-bad">Нет права создавать письмо по этому счёту.</span>';

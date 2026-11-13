@@ -35,6 +35,13 @@ const DEFAULT_PARAMS = {
   rate_master: 7000,
   rate_itr: 10000,
   rate_road: 3000,
+  // Ожидание (простой) на объекте между работами — ₽/чел·день.
+  // Правило 12.11.2026: при разрыве < 25 дней бригада ждёт на объекте,
+  // и это оплачивается. Отдельная ставка, НЕ rate_road: дорога — это
+  // переезд, ожидание — бездействие, но обе по 3000 по факту.
+  rate_wait: 3000,
+  // Дни ожидания на один заезд (суммарно по всем паузам внутри заезда).
+  wait_days_per_trip: 0,
   meals: 1000,
   lodging: 1250,
   siz: 15000,
@@ -675,6 +682,33 @@ function evalQtyExpr(expr, p) {
   const crew = num(p.workers_per_shift) + num(p.masters_per_shift);
   const trips = num(p.trip_count) || 1;
   const workPerTrip = num(p.work_days) / trips;
+
+  /**
+   * Люд-дни и число людей ПО ЗАЕЗДАМ, если план их передал.
+   *
+   * Раньше смета считала `crew × trips`: на КАЖДЫЙ выезд «ехали» все
+   * (например 30 человек), даже если в заезде 5 позиций. Дорога, проживание,
+   * пайковые и ожидание раздувались кратно (дефект 12.11.2026).
+   *
+   * Теперь план отдаёт `visits_work[].people` — сколько человек реально едет
+   * в каждый заезд. Считаем по ним:
+   *   visitPersonDays  — Σ(люди × трудосутки) = люд-дни работы на объекте;
+   *   visitTripPeople  — Σ(люди) = сколько всего поездок туда-обратно.
+   *
+   * Если разреза нет (ручной расчёт, старая смета) — падаем на прежнюю
+   * формулу `crew × trips`, чтобы ничего не сломать.
+   */
+  const visitPeople = Array.isArray(p.visits_work)
+    ? p.visits_work.filter((v) => v && Number(v.people) > 0)
+    : [];
+  const hasVisitPeople = visitPeople.length > 0;
+  const visitPersonDays = hasVisitPeople
+    ? visitPeople.reduce((s, v) => s + Number(v.people) * (Number(v.work_days) || 0), 0)
+    : null;
+  const visitTripPeople = hasVisitPeople
+    ? visitPeople.reduce((s, v) => s + Number(v.people), 0)
+    : null;
+
   const map = {
     work_days: num(p.work_days),
     shifts: num(p.shifts_per_day),
@@ -688,14 +722,35 @@ function evalQtyExpr(expr, p) {
     itr_days: num(p.work_days),
     master_shifts: num(p.work_days) * num(p.shifts_per_day) * num(p.masters_per_shift),
     worker_shifts: num(p.work_days) * num(p.shifts_per_day) * num(p.workers_per_shift),
-    // (раб+мастер)×смен×дорога×2×выезды
-    road_person_days: crew * num(p.shifts_per_day) * num(p.road_days) * 2 * trips,
+    // (раб+мастер)×смен×дорога×2×выезды — либо по людям заездов, если план их дал.
+    road_person_days: visitTripPeople != null
+      ? visitTripPeople * num(p.shifts_per_day) * num(p.road_days) * 2
+      : crew * num(p.shifts_per_day) * num(p.road_days) * 2 * trips,
     // СИЗ: люди на проект ≈ бригада×смен + ИТР
     siz_people: crew * num(p.shifts_per_day) + 1,
-    // Пайковые: siz_people × (сут на выезд) × выезды; сут = work/trip + road×2 + mob
-    meal_person_days: (crew * num(p.shifts_per_day) + 1) * (workPerTrip + num(p.road_days) * 2 + num(p.mob_days)) * trips,
-    // Проживание: crew×shifts × (work/trip + mob) × trips
-    lodging_nights: crew * num(p.shifts_per_day) * (workPerTrip + num(p.mob_days)) * trips,
+    // Пайковые: люд-дни × выезды; сут = work/trip + road×2 + mob.
+    // Если план передал людей по заездам — берём их люд-дни, а не crew × trips.
+    meal_person_days: hasVisitPeople
+      ? visitPersonDays
+        + (visitTripPeople * num(p.shifts_per_day) + trips)
+          * (num(p.road_days) * 2 + num(p.mob_days))
+      : (crew * num(p.shifts_per_day) + 1) * (workPerTrip + num(p.road_days) * 2 + num(p.mob_days)) * trips,
+    // Проживание: люд-ночи = работа + мобилизация, по людям каждого заезда.
+    lodging_nights: hasVisitPeople
+      ? visitPersonDays + (visitTripPeople * num(p.shifts_per_day) + trips) * num(p.mob_days)
+      : crew * num(p.shifts_per_day) * (workPerTrip + num(p.mob_days)) * trips,
+    // Ожидание на объекте: чел·дни простоя ВСЕЙ бригады.
+    //
+    // Считается так: люди (бригада × смены + ИТР) × дни ожидания на заезд ×
+    // выезды. Дни ожидания приходят из графика заездов — это суммарные паузы
+    // между работами внутри одного заезда (при разрыве < 25 дней бригада
+    // остаётся на объекте, правило 12.11.2026).
+    //
+    // Если ожидания нет — 0, и строка C3 не влияет на сумму (цена 0 не мешает,
+    // но лучше не показывать пустую строку: см. фильтр пустых).
+    wait_person_days: hasVisitPeople
+      ? (visitTripPeople * num(p.shifts_per_day) + trips) * num(p.wait_days_per_trip)
+      : (crew * num(p.shifts_per_day) + 1) * num(p.wait_days_per_trip) * trips,
     // Потери B в чел·сменах: часы × люди / производительных часов в смене.
     // Наценка на них не начисляется отдельно — это труд, ставка рабочего.
     loss_person_shifts: (() => {
@@ -745,6 +800,7 @@ function evalPriceExpr(expr, p) {
     rate_master: num(p.rate_master),
     rate_worker: num(p.rate_worker),
     rate_road: num(p.rate_road),
+    rate_wait: num(p.rate_wait),
     meals: num(p.meals),
     lodging: num(p.lodging),
     siz: num(p.siz)
@@ -791,6 +847,17 @@ function skeletonRows() {
       qtyExpr: 'meal_person_days', priceExpr: 'meals', editable: { qty: true, price: true, name: true } },
     { id: 'c2', kind: 'line', section: 'C', code: 'C2', name: 'Проживание', unit: 'чел·ночь',
       qtyExpr: 'lodging_nights', priceExpr: 'lodging', editable: { qty: true, price: true, name: true } },
+    // Ожидание (простой) между работами внутри ОДНОГО заезда.
+    //
+    // Правило 12.11.2026: если между работами меньше 25 дней, бригада не едет
+    // домой — люди ждут на объекте. Гонять их туда-обратно дороже: дорога × 2
+    // плюс мобилизация на каждый приезд. Но и простой не бесплатный: он
+    // оплачивается по ставке ожидания (по умолчанию 3000 ₽/чел·день).
+    //
+    // Строка в разделе C (командировочные), потому что это выплата работнику
+    // за время на объекте — как пайковые. Значит она входит в базу налога 55%.
+    { id: 'c3', kind: 'line', section: 'C', code: 'C3', name: 'Ожидание на объекте (простой между работами)', unit: 'чел·дн',
+      qtyExpr: 'wait_person_days', priceExpr: 'rate_wait', editable: { qty: true, price: true, name: true } },
     { id: 'c_tot', kind: 'subtotal', section: 'C', code: 'C_TOT', name: 'Командировочные, итого', sumOf: 'C_lines' },
 
     { id: 'sec_d', kind: 'section', section: 'D', name: 'D. Логистика / транспорт' },
@@ -963,6 +1030,18 @@ function recalcAsgardSmeta(estimate) {
   est.params = mergeParams(est.params);
   const p = est.params;
 
+  // ── Разрез по заездам → внутрь параметров ────────────────────────────────
+  // `visits_work` приходит сверху (из плана) и описывает, сколько человек
+  // едет в каждый заезд. evalQtyExpr работает только с params, поэтому
+  // пробрасываем разрез туда: иначе смета снова считает crew × trips и
+  // «везёт» всю бригаду в маленький заезд.
+  if (Array.isArray(est.visits_work) && est.visits_work.length) {
+    p.visits_work = est.visits_work.map((v) => ({
+      people: Number(v && v.people) > 0 ? Number(v.people) : null,
+      work_days: Number(v && v.work_days) > 0 ? Number(v.work_days) : 0
+    })).filter((v) => v.people != null);
+  }
+
   // Техплан: бригада, МТР, график. Нормализуем ДО строк — из него строятся A и F.
   est.crew = normalizeCrew(est.crew);
   // ── Состав бригады → параметры сметы ──────────────────────────────────────
@@ -1105,14 +1184,20 @@ function recalcAsgardSmeta(estimate) {
   const fot = sumSectionLines('A');
   const current = sumSectionLines('B');
   const travel = sumSectionLines('C');
-  // База налога 55% = ФОТ + пайковые (суточные/пайковые — выплата работнику, облагается).
-  // Проживание — компенсация расходов, налогом не облагается, поэтому берём только C1.
-  const perDiem = (est.rows || []).reduce((s, r) => {
+  // База налога 55% = ФОТ + пайковые + ожидание.
+  //
+  // Пайковые и ожидание — выплаты РАБОТНИКУ за время на объекте, поэтому
+  // облагаются как ФОТ (решение 12.11.2026). Проживание — компенсация
+  // расходов, налогом не облагается, поэтому в базу не входит.
+  const perDiemAndWait = (est.rows || []).reduce((s, r) => {
     if (r.kind !== 'line') return s;
-    const isPerDiem = r.id === 'c1' || String(r.code || '').toUpperCase() === 'C1';
-    return isPerDiem ? s + num(r.sum) : s;
+    const id = String(r.id || '').toLowerCase();
+    const code = String(r.code || '').toUpperCase();
+    // C1 — пайковые, C3 — ожидание. Оба в базе налога.
+    const taxable = id === 'c1' || id === 'c3' || code === 'C1' || code === 'C3';
+    return taxable ? s + num(r.sum) : s;
   }, 0);
-  const fotTaxBase = fot + perDiem;
+  const fotTaxBase = fot + perDiemAndWait;
   const fotTax = Math.round(fotTaxBase * p.fot_tax * 100) / 100;
   const personnel = fot + fotTax;
   const transport = sumSectionLines('D');

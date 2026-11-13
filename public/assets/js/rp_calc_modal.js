@@ -910,15 +910,20 @@ window.AsgardRpCalcModal = (function () {
 
     // Позиции — карточками, как в анализе: на 9 колонок в модалке не читается.
     // ── Позиции — строками таблицы, как в анализе ──────────────────────────
-    // Раньше здесь были КАРТОЧКИ по 5 строк каждая: на 628 позициях вкладка
-    // растягивалась на десятки тысяч пикселей, и её невозможно было ни
-    // прочитать, ни править (жалоба 12.11.2026). Ведомость читают построчно —
-    // значит и править её надо построчно. Тот же вид, что в карточке анализа,
-    // чтобы РП не переучивался между модалками.
+    // Ведомость читают построчно, поэтому правка — строка таблицы, а не
+    // карточка-анкета. На 628 позициях карточки растягивали вкладку на
+    // десятки тысяч пикселей (жалоба 12.11.2026).
     const UNITS = ['м3', 'м2', 'п.м', 'т', 'шт', 'кг', 'компл', 'Гкал', 'апп.', 'м'];
 
+    // ── Постраничный показ ────────────────────────────────────────────────
+    // 628 строк в DOM — это ~10 тысяч узлов: браузер начинает тормозить на
+    // каждом нажатии клавиши в поле. Показываем по 150 и даём «показать ещё».
+    // Правка при этом не теряется: обработчики висят на контейнере.
+    const PAGE = 150;
+    const shown = Math.min(positions.length, Number(state.dvShown) || PAGE);
+
     let rows = '';
-    positions.forEach((p, idx) => {
+    positions.slice(0, shown).forEach((p, idx) => {
       const c = byPos[p.id] || {};
       const src = c.source ? srcMap[c.source] || c.source : null;
       const srcCls = c.source === 'norm' ? ' is-norm' : (c.source === 'expert' ? ' is-expert' : '');
@@ -955,6 +960,12 @@ window.AsgardRpCalcModal = (function () {
             UNITS.map((u) => '<option value="' + esc(u) + '"' + (u === p.unit ? ' selected' : '') + '>' +
               esc(u) + '</option>').join('') +
           '</select>' +
+          // Кратность — рядом с объёмом, потому что она умножает объём.
+          // Без неё двух- и четырёхкратные чистки считались за один проход.
+          '<input class="rp-dv-field rp-dv-field--clean" type="number" step="1" min="1" ' +
+            'data-dv-field="clean_count" ' +
+            'value="' + (p.clean_count != null ? esc(String(p.clean_count)) : '') + '" ' +
+            'placeholder="1" title="Число чисток за год (кратность)" aria-label="Число чисток"/>' +
         '</div>' +
         '<div class="rp-dv-row__foul">' +
           '<select class="rp-dv-field rp-dv-field--foul" data-dv-field="fouling" aria-label="Отложения">' +
@@ -1049,7 +1060,7 @@ window.AsgardRpCalcModal = (function () {
         '<div class="rp-dv-head" aria-hidden="true">' +
           '<span></span>' +
           '<span>Наименование · метод</span>' +
-          '<span>Объём</span>' +
+          '<span>Объём · ед. · чист.</span>' +
           '<span>Отложения</span>' +
           '<span>Период</span>' +
           '<span>' + (hasPlan ? 'Люди · сутки' : 'Источник') + '</span>' +
@@ -1057,6 +1068,14 @@ window.AsgardRpCalcModal = (function () {
         '</div>' +
         '<div class="rp-dv-list">' + rows + '</div>' +
       '</div>' +
+      (shown < positions.length
+        ? '<div class="rp-dv-more">' +
+          '<button type="button" class="rp-dv-more__btn" data-act="dv-more">' +
+            'Показать ещё ' + Math.min(PAGE, positions.length - shown) + ' из ' +
+            (positions.length - shown) + ' оставшихся</button>' +
+          '<span class="rp-dv-more__hint">показано ' + shown + ' из ' + positions.length + '</span>' +
+          '</div>'
+        : '') +
       '<p class="rp-calc-hint">Источник <b>«справочник»</b> — из наших норм (код показан рядом, ' +
         'это официальная цифра). <b>«оценка»</b> — Мимир прикинул сам, цифра уйдёт в калибровку ' +
         'после сохранения.</p>' +
@@ -2097,6 +2116,15 @@ window.AsgardRpCalcModal = (function () {
         const panel = root.querySelector('[data-panel="dv"]');
         if (!panel) return;
 
+        // Постраничный показ: 628 строк в DOM — это ~10 тысяч узлов, и
+        // браузер начинает тормозить на каждом нажатии клавиши в поле.
+        panel.querySelectorAll('[data-act="dv-more"]').forEach(function (btn) {
+          btn.addEventListener('click', function () {
+            state.dvShown = (Number(state.dvShown) || 150) + 150;
+            dvRerender();
+          });
+        });
+
         // Удаление позиции.
         panel.querySelectorAll('[data-act="dv-del"]').forEach(function (btn) {
           btn.addEventListener('click', function () {
@@ -2140,9 +2168,15 @@ window.AsgardRpCalcModal = (function () {
             if (!Number.isFinite(idx) || idx < 0 || idx >= list.length) return;
             let v = inp.value;
             if (field === 'volume') v = v === '' ? null : Number(v);
+            // Кратность — целое от 1. Пустое поле означает «не задано»:
+            // подставлять 1 молча нельзя, иначе РП не увидит, что данных нет.
+            if (field === 'clean_count') {
+              const n = Number(v);
+              v = v === '' || !Number.isFinite(n) || n <= 0 ? null : Math.round(n);
+            }
             if (field === 'name' && !String(v).trim()) return;
             list[idx][field] = v;
-            // Ручная правка объёма или единицы — источник теперь РП.
+            // Ручная правка объёма, единицы или кратности — источник теперь РП.
             if (field === 'volume' || field === 'unit') list[idx].volume_source = 'rp';
             dvSave(list);
           }

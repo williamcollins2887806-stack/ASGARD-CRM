@@ -972,9 +972,11 @@ html[data-theme='light'] .rp-calc-approve-toggle input[type='checkbox']:checked 
 .rp-calc-dv-plan { margin-left: auto; }
 
 /* Общая сетка колонок: одна и та же для шапки и строк, поэтому шапка не
-   «плывёт» относительно данных. */
+   «плывёт» относительно данных.
+   Ширины подобраны под реальные данные: объём+единица+кратность вместе,
+   потому что кратность умножает объём и должна читаться рядом с ним. */
 .rp-dv-table {
-  --rp-dv-cols: 30px minmax(0, 1fr) 150px 104px 132px 104px 28px;
+  --rp-dv-cols: 30px minmax(0, 1fr) 210px 104px 122px 96px 30px;
   border: 1px solid var(--brd-m);
   border-radius: 11px;
   overflow: hidden;
@@ -1011,7 +1013,20 @@ html[data-theme='light'] .rp-calc-approve-toggle input[type='checkbox']:checked 
   font-variant-numeric: tabular-nums; text-align: right; padding-top: 6px;
 }
 .rp-dv-row__name { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-.rp-dv-row__qty { display: flex; align-items: center; gap: 6px; }
+.rp-dv-row__qty { display: flex; align-items: center; gap: 5px; }
+/* Объём: число видно ЦЕЛИКОМ. На скриншоте 12.11 «5475» обрезалось до «5475‹»
+   из-за узкой колонки — правка объёма вслепую. */
+.rp-dv-field--vol { width: 100%; min-width: 0; text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; }
+.rp-dv-field--unit { flex: 0 0 62px; font-size: 11.5px; color: var(--t2); cursor: pointer; }
+/* Кратность — маленькое поле с подписью «×», чтобы её не путали с объёмом. */
+.rp-dv-field--clean {
+  flex: 0 0 46px; text-align: center; font-variant-numeric: tabular-nums;
+  font-size: 11.5px; color: var(--t2);
+}
+.rp-dv-row__qty::after {
+  content: '×'; order: -1; margin-right: -2px;
+  font-size: 10px; color: var(--t3);
+}
 .rp-dv-row__tags { display: inline-flex; gap: 4px; flex-wrap: wrap; }
 .rp-dv-row__tags em {
   font-style: normal; padding: 0 6px; border-radius: 4px;
@@ -1041,6 +1056,20 @@ html[data-theme='light'] .rp-calc-approve-toggle input[type='checkbox']:checked 
 .rp-dv-field--foul { font-size: 11px; color: var(--t2); cursor: pointer; }
 .rp-dv-field--period { font-size: 11px; color: var(--t2); }
 .rp-dv-field--unit option, .rp-dv-field--foul option { color: #111; background: #fff; }
+
+/* Постраничный показ: 628 строк в DOM тормозят ввод в поле. */
+.rp-dv-more {
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--brd-m);
+}
+.rp-dv-more__btn {
+  padding: 7px 14px; border-radius: 9px;
+  border: 1px solid var(--brd-m); background: var(--bg3); color: var(--t1);
+  font: inherit; font-size: 12px; font-weight: 650; cursor: pointer;
+  transition: background .15s ease, border-color .15s ease;
+}
+.rp-dv-more__btn:hover { background: var(--bg4); border-color: var(--primary); }
+.rp-dv-more__hint { font-size: 11px; color: var(--t3); font-variant-numeric: tabular-nums; }
 
 /* Удаление — тихое, проявляется по наведению. */
 .rp-dv-row__del {

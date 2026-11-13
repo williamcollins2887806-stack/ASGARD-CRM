@@ -3562,9 +3562,14 @@ html[data-theme="light"] .dh-obs-submodal__foot { border-color: rgba(15, 23, 42,
   /* V487: перетаскиваемая ширина формы и превью (как mlsp_split).
      --dh-obs-split задаётся из JS, значение помнится в localStorage. */
   grid-template-columns: minmax(280px, var(--dh-obs-split, 46%)) 10px minmax(300px, 1fr);
+  grid-template-rows: minmax(0, 1fr);
   gap: 0 14px;
   overflow: hidden;
   min-height: 0;
+  /* V492: колонки занимают всю доступную высоту окна. Раньше форма и
+     предпросмотр имели каждый свой max-height: 62vh, из-за чего справа
+     оставалась «дыра», а лист жил отдельным островком внутри панели. */
+  flex: 1 1 auto;
 }
 /* Ручка между формой и превью: тонкая полоса, курсор col-resize. */
 .dh-obs-grip {
@@ -3592,7 +3597,10 @@ body.dh-obs-resizing { cursor: col-resize; user-select: none; }
 body.dh-obs-resizing iframe { pointer-events: none; }
 .dh-obs-form {
   overflow-y: auto;
-  max-height: 62vh;
+  /* V492: колонка тянется по высоте окна, а не обрывается на 62vh —
+     иначе под формой оставалась пустая полоса. */
+  height: 100%;
+  min-height: 0;
   padding-right: 6px;
 }
 /* V487: «дорогой» вид секций — не капс-анкета, а блоки с акцентом. */
@@ -3663,6 +3671,7 @@ html[data-theme="light"] .dh-obs-preflight {
   display: flex;
   flex-direction: column;
   min-height: 0;
+  height: 100%;
   /* V487: превью — «рабочий стол» с подложкой, а не пустое поле. */
   border: 1px solid var(--brd);
   border-radius: 14px;
@@ -3711,7 +3720,9 @@ html[data-theme="light"] .dh-obs-preflight {
 .dh-obs-prev-viewport {
   flex: 1 1 auto;
   min-height: 0;
-  max-height: 62vh;
+  /* V492: вместо отдельного max-height — занимает всё поле панели, как
+     вьюпорт в «Пропусках МЛСП». Лист остаётся по центру свободного места. */
+  height: 100%;
   overflow: auto;
   display: flex;
   align-items: flex-start;
