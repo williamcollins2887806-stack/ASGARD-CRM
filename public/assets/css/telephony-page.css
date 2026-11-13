@@ -1295,6 +1295,17 @@ html:not([data-theme="dark"]):not(.theme-dark) .telephony-page .call-ai-status--
   background: var(--bg2);
 }
 
+/* Перекрывающиеся реплики (говорят одновременно): слегка приглушаем и
+   добавляем связку слева, чтобы было видно — это один момент разговора. */
+.telephony-page .transcript-seg-row--overlap {
+  background: color-mix(in srgb, var(--amber, #e0a800) 6%, transparent);
+  border-left: 2px solid color-mix(in srgb, var(--amber, #e0a800) 40%, transparent);
+  padding-left: 10px;
+}
+.telephony-page .transcript-seg-row--overlap + .transcript-seg-row--overlap {
+  margin-top: -4px;
+}
+
 .telephony-page .transcript-seg-time {
   font-size: 11px;
   font-family: var(--mono, monospace);

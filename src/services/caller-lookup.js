@@ -148,6 +148,17 @@ async function lookupCaller(db, phone) {
        FROM customers
        WHERE phone LIKE $1
           OR RIGHT(REGEXP_REPLACE(COALESCE(phone, ''), '[^0-9]', '', 'g'), 10) = $2
+          -- ВТОРОЙ НОМЕР КОМПАНИИ (13.11.2026): contacts[] — jsonb-массив,
+          -- держит сколько угодно контактов. Раньше искали только в
+          -- customers.phone, поэтому второй номер той же компании
+          -- определялся как «Неизвестный».
+          OR EXISTS (
+            SELECT 1 FROM jsonb_array_elements(
+              CASE WHEN jsonb_typeof(contacts) = 'array' THEN contacts ELSE '[]'::jsonb END
+            ) ct
+            WHERE RIGHT(REGEXP_REPLACE(COALESCE(ct->>'phone', ''), '[^0-9]', '', 'g'), 10) = $2
+               OR RIGHT(REGEXP_REPLACE(COALESCE(ct->>'phone2', ''), '[^0-9]', '', 'g'), 10) = $2
+          )
        LIMIT 1`,
       [likeTail, tail]
     );

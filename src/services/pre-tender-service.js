@@ -58,9 +58,33 @@ const SYSTEM_PROMPT = `Ты — старший аналитик тендерно
     "work_deadline": "YYYY-MM-DD или null (крайний срок подачи КП)",
     "work_start_plan": "YYYY-MM-DD или null (начало работ)",
     "work_end_plan": "YYYY-MM-DD или null (окончание работ)",
-    "estimated_sum": число или null
+    "estimated_sum": число или null,
+    "contacts": [
+      {
+        "name": "ФИО контактного лица или null",
+        "position": "должность или null",
+        "phone": "+7XXXXXXXXXX или null",
+        "phone2": "второй номер или null",
+        "ext": "добавочный (только цифры) или null",
+        "email": "почта или null",
+        "role": "contact | fax | hotline | unknown",
+        "confidence": "high | medium | low"
+      }
+    ]
   }
 }
+
+ПРАВИЛА contacts (контакты из документов и подписей):
+- Собирай контакты ТОЛЬКО заказчика. Не бери техподдержку ЭТП/площадки,
+  баннеры, рекламные блоки, номера из шапки бланка без привязки к человеку.
+- Если номер указан вместе с ФИО/должностью — это один контакт (name+position+phone).
+- Добавочный выделяй отдельно: «+7 (495) 280-00-66 доб. 2770» →
+  phone: "+74952800066", ext: "2770".
+- 8-800 берём ТОЛЬКО если рядом есть ФИО или добавочный — иначе это общая
+  линия, пропускай.
+- role="fax" — факс, role="hotline" — общая линия, role="unknown" — номер есть,
+  но непонятно чей. Такие НЕ делаем основным контактом.
+- Не дублируй один и тот же номер. Нет контактов — пустой массив [].
 
 ПРАВИЛА work_title:
 - Это ЗАГОЛОВОК карточки в канбане. 3-8 слов. Без «Здравствуйте», без подписей,
@@ -777,6 +801,15 @@ ${workloadInfo}`;
     // и справочника контрагентов. Иначе РП видел пустой телефон, хотя он есть в подписи.
     await applyContactFallbacks(preTenderId, pt, result, db);
 
+    // КОНТАКТЫ В КАРТОЧКУ КОНТРАГЕНТА (13.11.2026). Раньше телефоны из
+    // тендерной документации оставались только в pre_tender_requests и в
+    // карточку клиента не попадали (33 заявки с телефоном, 0 связанных).
+    try {
+      await syncContactsToCustomer(db, preTenderId, result);
+    } catch (e) {
+      console.warn('[PreTender] sync contacts to customer failed:', e.message);
+    }
+
     // Логируем
     await db.query(`
       INSERT INTO ai_analysis_log (entity_type, entity_id, analysis_type, model, provider, duration_ms, output_json)
@@ -895,6 +928,89 @@ function fallbackAnalysis(pt) {
  *  2. ИНН — из справочника customers по нормализованному названию.
  * Пишем только если поле пустое: ручные правки РП не перетираем.
  */
+/**
+ * Синхронизация контактов из разбора документов в карточку контрагента.
+ *
+ * Источник — `extracted_data.contacts` (ИИ) и `contact_person/contact_phone`
+ * как резерв. Пишем в `customers.contacts` (jsonb), дедуп по номеру, новый
+ * номер дописываем к существующему клиенту, а не создаём второго.
+ *
+ * Фильтры от мусора:
+ *   • номер короче 10 цифр — пропуск;
+ *   • 8-800 без добавочного и без ФИО — общая линия, пропуск;
+ *   • role=fax/hotline — пишем, но не делаем основным.
+ */
+async function syncContactsToCustomer(dbc, preTenderId, result) {
+  const ex = (result && result.extracted_data) || {};
+  const inn = String(ex.customer_inn || '').replace(/\D/g, '');
+  if (inn.length !== 10 && inn.length !== 12) return false;
+
+  const cust = await dbc.query('SELECT inn, contacts FROM customers WHERE inn = $1 LIMIT 1', [inn]);
+  if (!cust.rows[0]) return false;
+
+  const list = Array.isArray(ex.contacts) ? ex.contacts.slice() : [];
+  // Резерв: если массива нет, но отдельные поля заполнены.
+  if (!list.length && (ex.contact_phone || ex.contact_person)) {
+    list.push({
+      name: ex.contact_person || null,
+      position: null,
+      phone: ex.contact_phone || null,
+      phone2: ex.contact_phone2 || null,
+      ext: null,
+      email: null,
+      role: 'contact',
+      confidence: 'medium',
+    });
+  }
+  if (!list.length) return false;
+
+  const contacts = Array.isArray(cust.rows[0].contacts) ? cust.rows[0].contacts.slice() : [];
+  const tail = (v) => String(v || '').replace(/\D/g, '').slice(-10);
+  let added = 0;
+
+  for (const c of list) {
+    const phone = String(c && c.phone || '').replace(/[^\d+]/g, '');
+    const digits = phone.replace(/\D/g, '');
+    const ext = String(c && c.ext || '').replace(/\D/g, '') || null;
+    const role = String(c && c.role || 'contact').toLowerCase();
+
+    if (digits.length < 10) continue;
+    // 8-800 без ФИО и без добавочного — общая линия, не контакт.
+    if (/^8800/.test(digits) && !ext && !(c && c.name)) continue;
+
+    const p10 = tail(digits);
+    const exists = contacts.some((x) => tail(x && x.phone) === p10 || tail(x && x.phone2) === p10);
+    if (exists) continue;
+
+    contacts.push({
+      name: (c && c.name) || null,
+      position: (c && c.position) || null,
+      phone: digits,
+      phone2: (c && c.phone2) ? String(c.phone2).replace(/\D/g, '') : null,
+      ext,
+      email: (c && c.email) || null,
+      role: ['contact', 'fax', 'hotline', 'unknown'].includes(role) ? role : 'unknown',
+      source: 'tender_doc',
+      is_primary: false,
+    });
+    added += 1;
+  }
+
+  if (!added) return false;
+  // Основной контакт: первый с role=contact и валидным номером, если primary нет.
+  if (!contacts.some((x) => x.is_primary)) {
+    const idx = contacts.findIndex((x) => (x.role || 'contact') === 'contact' && x.phone);
+    if (idx >= 0) contacts[idx].is_primary = true;
+  }
+
+  await dbc.query(
+    'UPDATE customers SET contacts = $2::jsonb, updated_at = NOW() WHERE inn = $1',
+    [inn, JSON.stringify(contacts)]
+  );
+  console.log(`[PreTender] #${preTenderId}: +${added} контактов в карточку ${inn}`);
+  return true;
+}
+
 async function applyContactFallbacks(preTenderId, pt, result, dbc = db) {
   try {
     const text = String(pt.body_text || '') + '\n' + String(pt.work_description || '');

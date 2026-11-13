@@ -188,7 +188,33 @@ class CallAnalyzer {
       company: { name: this._str(data.company_name), inn: null },
       contact: { name: this._str(data.contact_person), phone: this._str(data.contact_phone), email: this._str(data.contact_email) },
       object: { name: this._str(data.object_description), address: this._str(data.location) },
-      work: { type: this._enum(data.work_type, VW), type_label: this._workTypeLabel(data.work_type), description: this._str(data.estimated_volume) }
+      work: { type: this._enum(data.work_type, VW), type_label: this._workTypeLabel(data.work_type), description: this._str(data.estimated_volume) },
+      // Карточка клиента для CRM (13.11.2026): связываем звонок с контрагентом.
+      client_card: this._normalizeClientCard(data)
+    };
+  }
+
+  /**
+   * Блок client_card от ИИ → плоская структура для резолва контрагента.
+   * Терпим к тому, что модель может отдать null/строку вместо объекта.
+   */
+  _normalizeClientCard(data) {
+    const raw = data && typeof data.client_card === 'object' && data.client_card
+      ? data.client_card
+      : {};
+    const innRaw = this._str(raw.inn);
+    const innDigits = innRaw ? innRaw.replace(/\D/g, '') : '';
+    const inn = (innDigits.length === 10 || innDigits.length === 12) ? innDigits : null;
+    const conf = String(raw.confidence || '').toLowerCase();
+    return {
+      company_name: this._str(raw.company_name),
+      inn,
+      city: this._str(raw.city),
+      contact_person: this._str(raw.contact_person),
+      position: this._str(raw.position),
+      phone: this._str(raw.phone),
+      confidence: ['high', 'medium', 'low'].includes(conf) ? conf : 'low',
+      said_explicitly: raw.said_explicitly === true,
     };
   }
   _str(v) { if (v === null || v === undefined) return null; const s = String(v).trim(); return s.length > 0 ? s : null; }

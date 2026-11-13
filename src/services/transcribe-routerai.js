@@ -20,7 +20,7 @@ const path = require('path');
 const { spawnSync } = require('child_process');
 const ai = require('./ai-provider');
 
-const DEFAULT_MODEL = 'microsoft/mai-transcribe-2';
+const DEFAULT_MODEL = 'mistralai/voxtral-small-transcribe-3-0';
 const DEFAULT_CHUNK_SEC = 900;
 const PARALLEL = 2;          // провайдер отдаёт 429 при большей параллельности
 const MAX_RETRIES = 5;       // 429/503/timeout — ретраим с экспоненциальным бэкоффом
@@ -36,6 +36,9 @@ function chunkSec() {
 
 /** Ключ и базовый URL берём из той же конфигурации AI, что и протокол. */
 async function creds() {
+  // Ждём загрузку ключей: в серверном процессе её делает startup, но в
+  // отдельном скрипте/скрипте A/B порядок другой. Без await getConfig()
+  // возвращал пустой ключ и STT падал с «не настроен».
   try { await ai._loadKeysFromDB(); } catch (_) { /* не критично */ }
   const cfg = ai.getConfig();
   const key = cfg.openaiKey || process.env.OPENAI_API_KEY || '';
@@ -171,7 +174,9 @@ async function transcribeFile(filePath, opts = {}) {
   if (!fs.existsSync(filePath)) throw new Error('Файл записи не найден: ' + filePath);
   const { key, url } = await creds();
   if (!key) throw new Error('RouterAI STT не настроен (нет ключа)');
-  const modelId = model();
+  // A/B-тест (13.11.2026): модель можно переопределить вызовом, не меняя .env.
+  // Нужно, чтобы прогнать одну запись двумя моделями и сравнить.
+  const modelId = opts.model || model();
   const span = chunkSec();
 
   const duration = _duration(filePath);

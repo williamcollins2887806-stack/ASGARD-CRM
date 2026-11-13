@@ -449,6 +449,21 @@ class CallPipeline {
       // Уже есть заявка/задача — только summary (канон §B11)
       const alreadyLinked = !!(call.pre_tender_id || call.lead_id || call.task_id);
 
+      // СВЯЗЬ С КОНТРАГЕНТОМ (13.11.2026). Раньше client_inn не заполнялся
+      // никогда: оператор видел номер, но не знал компанию. Теперь после
+      // анализа зовём резолвер (номер → ИНН → DaData/веб-поиск → очередь).
+      try {
+        const { linkCallToCustomer } = require('./call-client-link');
+        const linked = await linkCallToCustomer(this.db, call, analysis);
+        if (linked && linked.inn) {
+          console.log(`[CallPipeline] call #${call.id} linked to customer ${linked.inn} (${linked.step})`);
+        } else {
+          console.log(`[CallPipeline] call #${call.id} not linked (${linked && linked.step})`);
+        }
+      } catch (e) {
+        console.warn('[CallPipeline] client link failed:', e.message);
+      }
+
       if (!autoOk || alreadyLinked) return;
 
       if (outcome === 'lead') {

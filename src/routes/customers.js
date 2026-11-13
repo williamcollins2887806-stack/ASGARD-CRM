@@ -129,7 +129,16 @@ async function routes(fastify, options) {
         };
       }
 
-      return { found: false, message: 'Организация не найдена', suggestion: { inn } };
+      // 12 цифр — физлицо / самозанятый / ИП: в ЕГРЮЛ может не быть, но ИНН
+      // валиден → фронт предлагает создать карточку вручную (Doc Hub).
+      return {
+        found: false,
+        message: inn.length === 12
+          ? 'В ЕГРЮЛ не найден — возможно самозанятый / физлицо. Создайте карточку вручную по ФИО и ИНН.'
+          : 'Организация не найдена',
+        person_candidate: inn.length === 12,
+        suggestion: { inn, name: '', full_name: '', kpp: '', ogrn: '', address: '' }
+      };
     } catch (e) {
       logError(fastify, 'DaData lookup error', e, request);
       return reply.code(500).send({ error: 'Ошибка поиска по ИНН: ' + e.message });
@@ -866,9 +875,76 @@ async function routes(fastify, options) {
     // случайный порядок.
     for (const t of timeline) t.date = toIsoDate(t.date);
     timeline.sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
+    // ЗВОНКИ КОНТРАГЕНТА (13.11.2026). Раньше в карточке их не было вообще:
+    // непонятно, звонил ли клиент, кто ответил и чем закончилось. Берём по
+    // ИНН И по номерам из contacts[] (второй номер той же компании).
+    let callsList = [];
+    try {
+      const phones = [];
+      const prof = profileRes.rows[0] || {};
+      if (prof.phone) phones.push(String(prof.phone).replace(/\D/g, '').slice(-10));
+      const contacts = Array.isArray(prof.contacts) ? prof.contacts : [];
+      for (const c of contacts) {
+        const p1 = String((c && c.phone) || '').replace(/\D/g, '').slice(-10);
+        const p2 = String((c && c.phone2) || '').replace(/\D/g, '').slice(-10);
+        if (p1) phones.push(p1);
+        if (p2) phones.push(p2);
+      }
+      const uniqPhones = [...new Set(phones.filter((p) => p && p.length === 10))];
+
+      const callsRes = await db.query(
+        `SELECT ch.id, ch.created_at, ch.started_at, ch.duration_seconds,
+                COALESCE(ch.client_number, ch.from_number) AS number,
+                ch.ai_summary, ch.ai_is_target, ch.pre_tender_id, ch.task_id,
+                ch.transcript_status,
+                u.name AS employee_name,
+                pt.status AS pre_tender_status,
+                pt.assigned_to AS pre_tender_assigned_to,
+                pa.name AS pre_tender_assignee,
+                t.status AS task_status,
+                COALESCE(t.assignee_id, t.creator_id) AS task_assignee_id,
+                ta.name AS task_assignee
+           FROM call_history ch
+           LEFT JOIN users u ON u.id = COALESCE(ch.user_id, ch.answered_by)
+           LEFT JOIN pre_tender_requests pt ON pt.id = ch.pre_tender_id
+           LEFT JOIN users pa ON pa.id = pt.assigned_to
+           LEFT JOIN tasks t ON t.id = ch.task_id
+           LEFT JOIN users ta ON ta.id = COALESCE(t.assignee_id, t.creator_id)
+          WHERE ch.parent_call_id IS NULL
+            AND (
+              ch.client_inn = $1
+              OR ($2::text[] <> '{}'::text[]
+                  AND right(regexp_replace(COALESCE(ch.client_number, ch.from_number, ''), '\\D', '', 'g'), 10) = ANY($2::text[]))
+            )
+          ORDER BY COALESCE(ch.started_at, ch.created_at) DESC
+          LIMIT 100`,
+        [inn, uniqPhones.length ? uniqPhones : ['__none__']]
+      );
+      callsList = callsRes.rows.map((r) => ({
+        id: r.id,
+        at: r.started_at || r.created_at,
+        duration_seconds: r.duration_seconds,
+        number: r.number,
+        employee: r.employee_name || null,
+        summary: r.ai_summary || null,
+        is_target: r.ai_is_target,
+        transcript_status: r.transcript_status,
+        action: r.pre_tender_id
+          ? { kind: 'pre_tender', id: r.pre_tender_id, status: r.pre_tender_status, owner: r.pre_tender_assignee || null }
+          : (r.task_id
+            ? { kind: 'task', id: r.task_id, status: r.task_status, owner: r.task_assignee || null }
+            : null),
+      }));
+    } catch (e) {
+      console.warn('[customers] calls list: ' + e.message);
+      callsList = [];
+    }
+
     return {
       profile: profileRes.rows[0] || null,
       traffic_light: { color: traffic_color, label: traffic_label, reason: traffic_reason },
+      calls: callsList,
+      calls_total: callsList.length,
       roles: (dirMeta && dirMeta.roles) || null,
       relation_status: (dirMeta && dirMeta.relation_status) || null,
       is_active_relation: !!(dirMeta && dirMeta.is_active_relation),

@@ -88,16 +88,23 @@ test('analyze() обрабатывает markdown-обёрнутый JSON', asyn
   if (result.is_target !== false) throw new Error(`is_target should be false, got ${result.is_target}`);
 });
 
-test('analyze() возвращает объект с ошибкой при сбое AI', async () => {
+test('analyze() при сбое AI пробрасывает retryable-ошибку', async () => {
   const mockAi = { complete: async () => { throw new Error('AI unavailable'); } };
   const mockDb = createMockDb();
   const CallAnalyzer = require('../../src/services/call-analyzer');
   const analyzer = new CallAnalyzer(mockAi, mockDb);
 
-  const result = await analyzer.analyze('Достаточно длинный транскрипт для анализа системы', {});
-  // При ошибке должен вернуть объект (не null)
-  if (!result) throw new Error('Should return error object');
-  if (result.sentiment !== 'neutral') throw new Error('Error result should have neutral sentiment');
+  // Инфра-сбой НЕ подменяется фейковым резюме: пайплайн должен получить
+  // retryable-ошибку и повторить анализ (коммит 23f78717, добор ИИ после 402).
+  let thrown = null;
+  try {
+    await analyzer.analyze('Достаточно длинный транскрипт для анализа системы', {});
+  } catch (e) {
+    thrown = e;
+  }
+  if (!thrown) throw new Error('Should throw retryable error, not fake summary');
+  if (thrown.retryable !== true) throw new Error('Error should be retryable');
+  if (thrown.code !== 'provider_error') throw new Error('Expected provider_error, got ' + thrown.code);
 });
 
 test('analyze() короткий транскрипт → не целевой', async () => {
@@ -110,14 +117,22 @@ test('analyze() короткий транскрипт → не целевой', 
   if (result.is_target !== false) throw new Error('Short transcript should not be target');
 });
 
-test('analyze() обрабатывает не-JSON ответ как текст', async () => {
+test('analyze() не-JSON ответ → retryable ошибка парсинга', async () => {
   const mockAi = createMockAi('Это просто текстовый ответ без JSON формата совсем');
   const mockDb = createMockDb();
   const CallAnalyzer = require('../../src/services/call-analyzer');
   const analyzer = new CallAnalyzer(mockAi, mockDb);
 
-  const result = await analyzer.analyze('Достаточно длинный транскрипт для анализа текста', {});
-  if (!result) throw new Error('Should return fallback result');
+  // Ответ без JSON = нераспознанный формат: бросаем retryable, чтобы пайплайн
+  // повторил запрос, а не записал мусор в резюме.
+  let thrown = null;
+  try {
+    await analyzer.analyze('Достаточно длинный транскрипт для анализа текста', {});
+  } catch (e) {
+    thrown = e;
+  }
+  if (!thrown) throw new Error('Should throw parse error');
+  if (thrown.retryable !== true) throw new Error('Parse error should be retryable');
 });
 
 // ── _parseResponse ──
@@ -138,11 +153,18 @@ test('_parseResponse() убирает markdown-обёртку', () => {
   if (result.is_target !== false) throw new Error('is_target should be false');
 });
 
-test('_parseResponse() возвращает fallback для плохого JSON', () => {
+test('_parseResponse() бросает retryable при плохом JSON', () => {
   const CallAnalyzer = require('../../src/services/call-analyzer');
   const analyzer = new CallAnalyzer({}, {});
-  const result = analyzer._parseResponse('не валидный json {{{');
-  if (!result) throw new Error('Should return fallback');
+  // Битый JSON — повод повторить запрос, а не записать мусор в резюме.
+  let thrown = null;
+  try {
+    analyzer._parseResponse('не валидный json {{{');
+  } catch (e) {
+    thrown = e;
+  }
+  if (!thrown) throw new Error('Should throw parse error');
+  if (thrown.retryable !== true) throw new Error('Parse error should be retryable');
 });
 
 // ── Создание заявки ──

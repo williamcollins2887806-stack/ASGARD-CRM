@@ -38,11 +38,81 @@ window.AsgardTelephonyPage = (function () {
     none: 'Запись ещё не отправляли на расшифровку (или записи нет)'
   };
 
+  /**
+   * Склейка перекрывающихся реплик. Два сегмента считаются «одновременными»,
+   * если их интервалы пересекаются больше чем на OVERLAP_SEC. Такие реплики
+   * группируются, чтобы UI показал их подряд с обеими подписями, а не
+   * перемешал по времени начала.
+   */
+  function mergeOverlappingSegments(segs) {
+    var OVERLAP_SEC = 1.5;
+    var list = (segs || []).map(function (s) {
+      return {
+        seg: s,
+        start: parseSec(s && s.start) || 0,
+        end: parseSec(s && s.end) || parseSec(s && s.start) || 0,
+      };
+    }).sort(function (a, b) { return a.start - b.start; });
+
+    var out = [];
+    var i = 0;
+    while (i < list.length) {
+      var group = [list[i]];
+      var groupEnd = list[i].end;
+      var j = i + 1;
+      while (j < list.length) {
+        var overlap = Math.min(groupEnd, list[j].end) - Math.max(list[i].start, list[j].start);
+        if (overlap > OVERLAP_SEC) {
+          group.push(list[j]);
+          groupEnd = Math.max(groupEnd, list[j].end);
+          j += 1;
+        } else break;
+      }
+      if (group.length === 1) {
+        out.push(group[0].seg);
+      } else {
+        // Блок: возвращаем «виртуальные» сегменты с общей меткой overlap
+        // и порядком внутри блока (сначала тот, кто начал первым).
+        group.forEach(function (g, k) {
+          out.push(Object.assign({}, g.seg, { _overlapGroup: true, _overlapFirst: k === 0 }));
+        });
+      }
+      i = j;
+    }
+    return out;
+  }
+
+  /** Подпись клиента в субтитрах: компания/имя, но никогда наша собственная. */
+  function clientSpeakerLabel(call) {
+    if (!call) return 'Клиент';
+    var OWN = /асгард\s*(crm|сервис|service)/i;
+    var company = String(call.caller_company || '').trim();
+    if (company && !OWN.test(company)) return company;
+    var name = String(call.caller_name || call.client_name || '').trim();
+    if (name && !OWN.test(name)) return name;
+    return 'Клиент';
+  }
+
+  /** Собрать текст из сегментов, если поле transcript пустое. */
+  function transcriptFromSegments(c) {
+    var segs = c && c.transcript_segments;
+    if (!segs) return '';
+    if (typeof segs === 'string') {
+      try { segs = JSON.parse(segs); } catch (_) { return ''; }
+    }
+    if (!Array.isArray(segs) || !segs.length) return '';
+    return segs.map(function (s) { return String((s && s.text) || '').trim(); })
+      .filter(Boolean).join(' ');
+  }
+
   /** Статус ИИ-анализа (отдельно от расшифровки) */
   function getAiPipelineStatus(c) {
     var t = c.transcript_status || 'none';
     var aiSt = String(c.ai_analysis_status || '');
-    var tr = (c.transcript && String(c.transcript).trim()) || '';
+    // ТЕКСТ: transcript может быть пустым, хотя transcript_segments заполнены.
+    // Раньше статус «Нет текста» показывался при живых сегментах — неправда
+    // (жалоба 13.11.2026: у звонков с расшифровкой стояло «Нет текста»).
+    var tr = (c.transcript && String(c.transcript).trim()) || transcriptFromSegments(c);
     var hasSummary = !!(c.ai_summary && String(c.ai_summary).trim());
     var summaryLower = hasSummary ? String(c.ai_summary).toLowerCase() : '';
     var aiFailed = hasSummary && (
@@ -716,14 +786,32 @@ window.AsgardTelephonyPage = (function () {
   function loadColPrefs() {
     try {
       var raw = JSON.parse(localStorage.getItem(colsStorageKey()) || 'null');
-      if (raw && Array.isArray(raw.order)) return raw;
+      if (raw && Array.isArray(raw.order)) {
+        // Колонки, добавленные ПОСЛЕ сохранения настроек, в старом order
+        // отсутствуют. Без добора applyColPrefsToTable оставлял их на месте по
+        // индексу — шапка съезжала относительно тела (жалоба 13.11.2026).
+        var known = ['date','dir','client','dur','manager','summary','outcome','rating','process'];
+        known.forEach(function (k) {
+          if (raw.order.indexOf(k) < 0) {
+            // outcome ставим перед rating (как в разметке), остальные в конец
+            var at = k === 'outcome' ? raw.order.indexOf('rating') : -1;
+            if (at >= 0) raw.order.splice(at, 0, k);
+            else raw.order.push(k);
+          }
+        });
+        raw.hidden = Array.isArray(raw.hidden) ? raw.hidden : [];
+        return raw;
+      }
     } catch (_) {}
-    return { order: ['date', 'dir', 'client', 'dur', 'manager', 'summary', 'rating', 'process'], hidden: [] };
+    return { order: ['date', 'dir', 'client', 'dur', 'manager', 'summary', 'outcome', 'rating', 'process'], hidden: [] };
   }
   function applyColPrefsToTable(wrap) {
     if (!wrap) return;
     var prefs = loadColPrefs();
-    var fallback = ['date', 'dir', 'client', 'dur', 'manager', 'summary', 'rating', 'process'];
+    // Порядок колонок в разметке. `outcome` («Куда ушло») добавлен 12.11.2026,
+    // но в этот список его забыли — applyColPrefsToTable присваивал data-col по
+    // индексу, из-за чего ячейки съезжали и шапка не совпадала с телом.
+    var fallback = ['date', 'dir', 'client', 'dur', 'manager', 'summary', 'outcome', 'rating', 'process'];
     var stickyLeft = ['date', 'dir'];
     var stickyRight = ['process'];
     var middle = (prefs.order || fallback).filter(function (k) {
@@ -2063,6 +2151,11 @@ window.AsgardTelephonyPage = (function () {
       if (typeof segs === 'string') { try { segs = JSON.parse(segs); } catch(e) { segs = null; } }
       if (segs && Array.isArray(segs) && segs.length) {
         hasSegments = true;
+        // ПЕРЕКРЫВАЮЩИЕСЯ РЕПЛИКИ (13.11.2026): собеседники говорят внахлёст,
+        // поэтому сортировка только по `start` ставила блок оператора 12–22 с
+        // ПЕРЕД блоком клиента 13–39 — текст «прыгал». Склеиваем реплики,
+        // идущие с перекрытием > 1.5 с, в один блок: подписи идут подряд.
+        segs = mergeOverlappingSegments(segs);
         segmentsHtml = '<div class="call-detail-section">' +
           '<div class="telephony-chart-title">Субтитры разговора <span class="tel-subtitle">(кто что сказал)</span> ' +
           '<button type="button" class="btn btn--sm transcript-copy-btn" id="copyTranscriptBtn" data-tooltip="Скопировать весь текст">Копировать</button></div>' +
@@ -2073,17 +2166,29 @@ window.AsgardTelephonyPage = (function () {
           var endSec = parseSec(seg.end);
           // Нормализуем speaker (0/1/2, "SPEAKER_00", "0"), а не считаем всё «Клиент».
           var idx = seg.speaker_css != null ? seg.speaker_css : normalizeSpeaker(seg);
+          // Канал надёжнее индекса: L = клиент, R = оператор (стерео-запись).
+          var ch = String(seg.channel || '').toUpperCase();
+          if (ch === 'L') idx = 0;
+          else if (ch === 'R') idx = 1;
           var spkCls = 'transcript-seg-speaker--' + (idx == null ? 'u' : (idx % 4));
+          // В БД подпись лежит как speakerLabel (camelCase) — читаем ОБА варианта.
+          var rawLabel = seg.speakerLabel || seg.speaker_label || null;
           var spkLabel;
-          if (seg.speaker_label) spkLabel = seg.speaker_label;
-          else if (idx == null) spkLabel = 'Спикер';
-          else if (idx === 0) spkLabel = call.manager_name || 'Оператор';
-          else if (idx === 1) spkLabel = call.caller_company || call.caller_name || 'Абонент';
-          else spkLabel = 'Участник ' + (idx + 1);
+          if (rawLabel && !/^(оператор|клиент|спикер|абонент)$/i.test(String(rawLabel).trim())) {
+            spkLabel = rawLabel;
+          } else if (idx === 1) {
+            // Оператор: реальное ФИО из карточки звонка.
+            spkLabel = call.manager_name || 'Оператор';
+          } else if (idx === 0) {
+            // Клиент: компания/имя, но НЕ наша собственная компания.
+            spkLabel = clientSpeakerLabel(call);
+          } else {
+            spkLabel = 'Спикер';
+          }
           var timeFmt = fmtDuration(startSec);
           var startAttr = startSec == null ? '' : startSec;
           var endAttr = endSec == null ? '' : endSec;
-          segmentsHtml += '<div class="transcript-seg-row" data-start="' + startAttr + '" data-end="' + endAttr + '">' +
+          segmentsHtml += '<div class="transcript-seg-row' + (seg._overlapGroup ? ' transcript-seg-row--overlap' : '') + '" data-start="' + startAttr + '" data-end="' + endAttr + '">' +
             '<span class="transcript-seg-time">' + timeFmt + '</span>' +
             '<span class="' + spkCls + '">' + esc(spkLabel) + '</span>' +
             '<span class="transcript-seg-text">' + esc(seg.text || '') + '</span>' +

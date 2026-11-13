@@ -124,6 +124,79 @@ module.exports = async function telephonyRoutes(fastify, opts) {
     sseBroadcast = sse.broadcast;
   } catch (e) { /* SSE not available */ }
 
+  // ── Очередь «уточнить клиента» (V486) ──
+  // Звонки, где ИИ и DaData не смогли определить контрагента.
+  fastify.get('/client-review', { preHandler: [fastify.authenticate] }, async (request, reply) => {
+    const limit = Math.min(200, Math.max(1, parseInt(request.query.limit || '50', 10)));
+    const status = String(request.query.status || 'pending');
+    const allowed = ['pending', 'resolved', 'ignored'];
+    const st = allowed.includes(status) ? status : 'pending';
+    const r = await db.query(
+      `SELECT r.id, r.call_history_id, r.phone, r.suggested_name, r.status,
+              r.created_at,
+              ch.ai_summary, ch.duration_seconds,
+              ch.created_at AS call_at,
+              COALESCE(ch.client_number, ch.from_number) AS number,
+              u.name AS employee_name
+         FROM call_client_review r
+         JOIN call_history ch ON ch.id = r.call_history_id
+         LEFT JOIN users u ON u.id = COALESCE(ch.user_id, ch.answered_by)
+        WHERE r.status = $1
+        ORDER BY r.created_at DESC
+        LIMIT $2`,
+      [st, limit]
+    );
+    return reply.send({ items: r.rows, status: st });
+  });
+
+  /** Связать звонок из очереди с контрагентом по ИНН. */
+  fastify.post('/client-review/:id/resolve', { preHandler: [fastify.authenticate] }, async (request, reply) => {
+    const id = parseInt(request.params.id, 10);
+    const inn = String((request.body || {}).inn || '').replace(/\D/g, '');
+    if (!id) return reply.code(400).send({ error: 'Invalid id' });
+    if (inn.length !== 10 && inn.length !== 12) {
+      return reply.code(400).send({ error: 'Нужен ИНН: 10 или 12 цифр' });
+    }
+    const row = await db.query('SELECT * FROM call_client_review WHERE id = $1', [id]);
+    if (!row.rows[0]) return reply.code(404).send({ error: 'Строка не найдена' });
+    const cust = await db.query('SELECT inn FROM customers WHERE inn = $1 LIMIT 1', [inn]);
+    if (!cust.rows[0]) return reply.code(404).send({ error: 'Контрагент с таким ИНН не найден' });
+
+    // Связываем текущий и все прошлые звонки этого номера.
+    const phone = row.rows[0].phone;
+    if (phone) {
+      await db.query(
+        `UPDATE call_history SET client_inn = $1, updated_at = NOW()
+          WHERE right(regexp_replace(COALESCE(client_number, from_number, ''), '\\D', '', 'g'), 10) = $2`,
+        [inn, phone]
+      );
+    } else {
+      await db.query('UPDATE call_history SET client_inn = $1, updated_at = NOW() WHERE id = $2',
+        [inn, row.rows[0].call_history_id]);
+    }
+    await db.query(
+      `UPDATE call_client_review
+          SET status = 'resolved', resolved_inn = $2, resolved_by = $3,
+              resolved_at = NOW(), updated_at = NOW()
+        WHERE id = $1`,
+      [id, inn, request.user.id]
+    );
+    return reply.send({ ok: true, inn });
+  });
+
+  /** Пометить «это не клиент» — убрать из очереди без создания карточки. */
+  fastify.post('/client-review/:id/ignore', { preHandler: [fastify.authenticate] }, async (request, reply) => {
+    const id = parseInt(request.params.id, 10);
+    if (!id) return reply.code(400).send({ error: 'Invalid id' });
+    await db.query(
+      `UPDATE call_client_review
+          SET status = 'ignored', resolved_by = $2, resolved_at = NOW(), updated_at = NOW()
+        WHERE id = $1`,
+      [id, request.user.id]
+    );
+    return reply.send({ ok: true });
+  });
+
   // ── GET /status — сводка состояния телефонии для мобильного виджета ──
   fastify.get('/status', { preHandler: [fastify.authenticate] }, async (req, reply) => {
     const configured = mango.isConfigured();
@@ -284,7 +357,8 @@ module.exports = async function telephonyRoutes(fastify, opts) {
   async function findInboundParentForShoulder({ createTime, lineNumber }) {
     try {
       const r = await db.query(
-        `SELECT id, user_id, answered_by, duration_seconds
+        `SELECT id, user_id, answered_by, duration_seconds,
+                pbx_uid, call_id, client_number, from_number, line_number
            FROM call_history
           WHERE parent_call_id IS NULL
             AND COALESCE(direction, call_type) = 'inbound'
@@ -413,6 +487,39 @@ module.exports = async function telephonyRoutes(fastify, opts) {
       void assignedUserName;
       void sseSendToUser;
       void sendIncomingCallPush;
+
+      // Дозвон на МОБИЛЬНЫЙ сотрудника (фолбэк дежурного).
+      //
+      // ИНЦИДЕНТ 13.11.2026: звонки шли через Mango на телефон, а баннер ждали
+      // от Asterisk-контура. Но там plan.targets=0 (никого на линии), и событие
+      // call:incoming уходило в пустоту: фронт ждал PBX, фактический дозвон
+      // делал Mango, а Mango молчал намеренно. Оператор не видел ничего.
+      //
+      // Теперь: если Mango звонит на мобильный СОТРУДНИКА (from = наш сервер/транк,
+      // to = его mobile_phone) — отправляем тихий баннер именно ему.
+      try {
+        if (sseSendToUser && isServiceFromNumber(fromNumber)) {
+          const opUserId = await resolveUserIdByPhone(toNumber);
+          if (opUserId) {
+            const parent = await findInboundParentForShoulder({ createTime: null, lineNumber: null });
+            const pbxUid = parent?.pbx_uid || parent?.call_id || callId;
+            sseSendToUser(opUserId, 'call:incoming', {
+              call_id: parent ? ('pbx_' + (parent.pbx_uid || '')) : ('mango_' + callId),
+              pbx_uid: parent?.pbx_uid || null,
+              channel: null,
+              from: parent?.client_number || parent?.from_number || fromNumber || null,
+              from_number: parent?.client_number || parent?.from_number || fromNumber || null,
+              via: 'mobile',
+              is_duty: true,
+              history_id: parent?.id || null,
+              source: 'mango',
+            });
+            console.log(`[Telephony] mobile ring banner → user #${opUserId} (${toNumber})`);
+          }
+        }
+      } catch (e) {
+        console.warn('[Telephony] mobile ring banner failed:', e.message);
+      }
 
       // DaData обогащение (async — не блокируем ответ)
       if (fromNumber) {
