@@ -317,6 +317,11 @@ class CallPipeline {
         } else if (idx > 1) {
           seg.speaker = idx;         // 2, 3, ...
           seg.speakerLabel = label;
+          // ВАЖНО: помечаем канал как R (операторская дорожка), но индекс
+          // оставляем >1 — фронт по нему покажет ФИО второго сотрудника.
+          // Если обнулить channel, UI потеряет «оператор vs клиент».
+          seg.channel = seg.channel || 'R';
+          seg.transfer_speaker = true;
         }
       });
     } catch (e) {

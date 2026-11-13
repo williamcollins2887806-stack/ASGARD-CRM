@@ -36,9 +36,15 @@ class CallAnalyzer {
       const response = await completeFn({
         system: systemPrompt,
         messages: [{ role: 'user', content: transcript }],
-        maxTokens: 3000,
+        // ИНЦИДЕНТ 13.11.2026: было 3000 токенов, промпт вырос (client_card +
+        // история) → reasoning-модель съедала ВСЕ 3000 на размышления,
+        // finish_reason=length, content="" → «Unexpected end of JSON input».
+        // 6000 даёт бюджет на reasoning + JSON, плюс отключаем reasoning у
+        // модели, где провайдер это поддерживает (как в analyzePreTender).
+        maxTokens: Number(process.env.CALL_ANALYSIS_MAX_TOKENS || 6000),
         temperature: 0.1,
         model: process.env.CALL_ANALYSIS_MODEL || 'yandex-pro',
+        reasoning: { enabled: false },
       });
       const text = typeof response === 'string' ? response : (response.text || response.content || '');
       return this._parseResponse(text);

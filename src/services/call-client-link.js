@@ -267,7 +267,7 @@ async function createCustomer(db, org, card) {
     const r = await db.query(
       `INSERT INTO customers (inn, name, phone, city, contacts, created_at, updated_at)
        VALUES ($1, $2, $3, $4, $5::jsonb, NOW(), NOW())
-       ON CONFLICT (inn) DO NOTHING
+       ON CONFLICT (inn) WHERE inn IS NOT NULL AND inn <> '' DO NOTHING
        RETURNING inn, name, city, phone, contacts`,
       [
         inn,

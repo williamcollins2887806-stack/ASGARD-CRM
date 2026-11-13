@@ -2167,14 +2167,24 @@ window.AsgardTelephonyPage = (function () {
           // Нормализуем speaker (0/1/2, "SPEAKER_00", "0"), а не считаем всё «Клиент».
           var idx = seg.speaker_css != null ? seg.speaker_css : normalizeSpeaker(seg);
           // Канал надёжнее индекса: L = клиент, R = оператор (стерео-запись).
+          // НО: при переводе у оператора появляется speaker=2/3 (ФИО другого
+          // сотрудника). Канал R не должен затирать эту метку — иначе в
+          // субтитрах после перевода снова будет безымянный «Оператор»
+          // (баг найден 13.11.2026 на звонке 3197).
           var ch = String(seg.channel || '').toUpperCase();
+          var hasTransferSpeaker = seg.transfer_speaker === true || (typeof idx === 'number' && idx >= 2);
+          // Мёртвая зона перевода (speaker=null): не приписываем реплику
+          // первому оператору — это неопределённый «Спикер».
+          var isNeutral = idx == null && seg.transfer_speaker !== true;
           if (ch === 'L') idx = 0;
-          else if (ch === 'R') idx = 1;
+          else if (ch === 'R' && !hasTransferSpeaker) idx = 1;
           var spkCls = 'transcript-seg-speaker--' + (idx == null ? 'u' : (idx % 4));
           // В БД подпись лежит как speakerLabel (camelCase) — читаем ОБА варианта.
           var rawLabel = seg.speakerLabel || seg.speaker_label || null;
           var spkLabel;
-          if (rawLabel && !/^(оператор|клиент|спикер|абонент)$/i.test(String(rawLabel).trim())) {
+          if (isNeutral) {
+            spkLabel = 'Спикер';
+          } else if (rawLabel && !/^(оператор|клиент|спикер|абонент)$/i.test(String(rawLabel).trim())) {
             spkLabel = rawLabel;
           } else if (idx === 1) {
             // Оператор: реальное ФИО из карточки звонка.
